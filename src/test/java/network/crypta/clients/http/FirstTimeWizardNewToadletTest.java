@@ -25,7 +25,7 @@ import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
 import network.crypta.clients.http.wizardsteps.BandwidthManipulator;
-import network.crypta.clients.http.wizardsteps.DATASTORE_SIZE;
+import network.crypta.clients.http.wizardsteps.DatastoreSize;
 import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
@@ -188,7 +188,7 @@ class FirstTimeWizardNewToadletTest {
     try (MockedStatic<NodeL10n> nodeL10n = mockStatic(NodeL10n.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);
         MockedStatic<BandwidthManipulator> bandwidth = mockStatic(BandwidthManipulator.class);
-        MockedStatic<DATASTORE_SIZE> datastoreSize = mockStatic(DATASTORE_SIZE.class)) {
+        MockedStatic<DatastoreSize> datastoreSize = mockStatic(DatastoreSize.class)) {
 
       BaseL10n base = mock(BaseL10n.class);
       nodeL10n.when(NodeL10n::getBase).thenReturn(base);
@@ -205,8 +205,7 @@ class FirstTimeWizardNewToadletTest {
 
       toadlet.handleMethodPOST(new URI(FirstTimeWizardNewToadlet.TOADLET_URL), request, ctx);
 
-      datastoreSize.verify(
-          () -> DATASTORE_SIZE.setDatastoreSize(eq("2GiB"), eq(config), any()), times(1));
+      datastoreSize.verify(() -> DatastoreSize.setDatastoreSize(eq("2GiB"), eq(config)), times(1));
     }
 
     verify(nodeSubConfig).set("inputBandwidthLimit", "20000KiB");

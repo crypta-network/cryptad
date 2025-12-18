@@ -8,20 +8,20 @@ import java.net.URISyntaxException;
 import java.util.EnumMap;
 import java.util.Objects;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.clients.http.wizardsteps.BANDWIDTH;
-import network.crypta.clients.http.wizardsteps.BANDWIDTH_MONTHLY;
-import network.crypta.clients.http.wizardsteps.BANDWIDTH_RATE;
-import network.crypta.clients.http.wizardsteps.BROWSER_WARNING;
-import network.crypta.clients.http.wizardsteps.DATASTORE_SIZE;
-import network.crypta.clients.http.wizardsteps.MISC;
-import network.crypta.clients.http.wizardsteps.NAME_SELECTION;
-import network.crypta.clients.http.wizardsteps.OPENNET;
+import network.crypta.clients.http.wizardsteps.Bandwidth;
+import network.crypta.clients.http.wizardsteps.BandwidthMonthly;
+import network.crypta.clients.http.wizardsteps.BandwidthRate;
+import network.crypta.clients.http.wizardsteps.BrowserWarning;
+import network.crypta.clients.http.wizardsteps.DatastoreSize;
+import network.crypta.clients.http.wizardsteps.Misc;
+import network.crypta.clients.http.wizardsteps.NameSelection;
+import network.crypta.clients.http.wizardsteps.Opennet;
 import network.crypta.clients.http.wizardsteps.PageHelper;
 import network.crypta.clients.http.wizardsteps.PersistFields;
-import network.crypta.clients.http.wizardsteps.SECURITY_NETWORK;
-import network.crypta.clients.http.wizardsteps.SECURITY_PHYSICAL;
+import network.crypta.clients.http.wizardsteps.SecurityNetwork;
+import network.crypta.clients.http.wizardsteps.SecurityPhysical;
 import network.crypta.clients.http.wizardsteps.Step;
-import network.crypta.clients.http.wizardsteps.WELCOME;
+import network.crypta.clients.http.wizardsteps.Welcome;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
@@ -57,9 +57,9 @@ public class FirstTimeWizardToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(FirstTimeWizardToadlet.class);
   private final NodeClientCore core;
   private final EnumMap<WIZARD_STEP, Step> steps;
-  private final MISC stepMISC;
-  private final SECURITY_NETWORK stepSecurityNetwork;
-  private final SECURITY_PHYSICAL stepSecurityPhysical;
+  private final Misc stepMISC;
+  private final SecurityNetwork stepSecurityNetwork;
+  private final SecurityPhysical stepSecurityPhysical;
 
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled() directly.
 
@@ -165,23 +165,23 @@ public class FirstTimeWizardToadlet extends Toadlet {
 
     // Add step handlers that aren't set by presets
     steps = new EnumMap<>(WIZARD_STEP.class);
-    steps.put(WIZARD_STEP.WELCOME, new WELCOME(config));
-    steps.put(WIZARD_STEP.BROWSER_WARNING, new BROWSER_WARNING());
-    steps.put(WIZARD_STEP.NAME_SELECTION, new NAME_SELECTION(config));
-    steps.put(WIZARD_STEP.DATASTORE_SIZE, new DATASTORE_SIZE(core, config));
-    steps.put(WIZARD_STEP.OPENNET, new OPENNET());
-    steps.put(WIZARD_STEP.BANDWIDTH, new BANDWIDTH());
-    steps.put(WIZARD_STEP.BANDWIDTH_MONTHLY, new BANDWIDTH_MONTHLY(core, config));
-    steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BANDWIDTH_RATE(core, config));
+    steps.put(WIZARD_STEP.WELCOME, new Welcome(config));
+    steps.put(WIZARD_STEP.BROWSER_WARNING, new BrowserWarning());
+    steps.put(WIZARD_STEP.NAME_SELECTION, new NameSelection(config));
+    steps.put(WIZARD_STEP.DATASTORE_SIZE, new DatastoreSize(core, config));
+    steps.put(WIZARD_STEP.OPENNET, new Opennet());
+    steps.put(WIZARD_STEP.BANDWIDTH, new Bandwidth());
+    steps.put(WIZARD_STEP.BANDWIDTH_MONTHLY, new BandwidthMonthly(core, config));
+    steps.put(WIZARD_STEP.BANDWIDTH_RATE, new BandwidthRate(core, config));
 
     // Add step handlers that are set by presets
-    stepMISC = new MISC(core, config);
+    stepMISC = new Misc(core, config);
     steps.put(WIZARD_STEP.MISC, stepMISC);
 
-    stepSecurityNetwork = new SECURITY_NETWORK(core);
+    stepSecurityNetwork = new SecurityNetwork(core);
     steps.put(WIZARD_STEP.SECURITY_NETWORK, stepSecurityNetwork);
 
-    stepSecurityPhysical = new SECURITY_PHYSICAL(core);
+    stepSecurityPhysical = new SecurityPhysical(core);
     steps.put(WIZARD_STEP.SECURITY_PHYSICAL, stepSecurityPhysical);
   }
 
@@ -406,8 +406,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
       stepMISC.setUPnP(loadUPnPPlugin);
       stepMISC.setAutoUpdate(enableAutoUpdater);
       stepSecurityNetwork.setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
-      stepSecurityPhysical.setThreatLevel(
-          SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL, stepSecurityPhysical.getCurrentLevel());
+      stepSecurityPhysical.setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
       redirectTo.append("&preset=LOW&opennet=true");
     } else if (presetHigh) {
       stepMISC.setUPnP(loadUPnPPlugin);

@@ -19,10 +19,10 @@ import java.util.EnumMap;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.FirstTimeWizardToadlet.WIZARD_PRESET;
 import network.crypta.clients.http.FirstTimeWizardToadlet.WIZARD_STEP;
-import network.crypta.clients.http.wizardsteps.MISC;
+import network.crypta.clients.http.wizardsteps.Misc;
 import network.crypta.clients.http.wizardsteps.PageHelper;
-import network.crypta.clients.http.wizardsteps.SECURITY_NETWORK;
-import network.crypta.clients.http.wizardsteps.SECURITY_PHYSICAL;
+import network.crypta.clients.http.wizardsteps.SecurityNetwork;
+import network.crypta.clients.http.wizardsteps.SecurityPhysical;
 import network.crypta.clients.http.wizardsteps.Step;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
@@ -130,11 +130,9 @@ class FirstTimeWizardToadletTest {
     when(request.isPartSet("singlestep")).thenReturn(false);
 
     // Replace side-effecting steps with mocks to verify interactions.
-    MISC misc = mock(MISC.class);
-    SECURITY_NETWORK securityNetwork = mock(SECURITY_NETWORK.class);
-    SECURITY_PHYSICAL securityPhysical = mock(SECURITY_PHYSICAL.class);
-    when(securityPhysical.getCurrentLevel())
-        .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+    Misc misc = mock(Misc.class);
+    SecurityNetwork securityNetwork = mock(SecurityNetwork.class);
+    SecurityPhysical securityPhysical = mock(SecurityPhysical.class);
     setField(toadlet, "stepMISC", misc);
     setField(toadlet, "stepSecurityNetwork", securityNetwork);
     setField(toadlet, "stepSecurityPhysical", securityPhysical);
@@ -149,10 +147,7 @@ class FirstTimeWizardToadletTest {
     verify(misc).setUPnP(true);
     verify(misc).setAutoUpdate(true);
     verify(securityNetwork).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.LOW);
-    verify(securityPhysical)
-        .setThreatLevel(
-            SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL,
-            SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
+    verify(securityPhysical).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
     assertEquals(
         "/wizard/?step=BROWSER_WARNING&incognito=0&preset=LOW&opennet=true",
         locationCaptor.getValue());

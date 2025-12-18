@@ -13,34 +13,50 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Allows the user to set bandwidth limits with an emphasis on limiting to certain download and
- * upload rates.
+ * Wizard step that configures rate-based bandwidth limits.
+ *
+ * <p>This step renders a set of common “connection profile” presets and optionally adds a
+ * recommendation derived from the bandwidth-indicator plugin when available. It presents these
+ * choices as a radio group containing byte-per-second pairs (download/upload), and also provides a
+ * custom entry row where the user may type their own limits.
+ *
+ * <p>A typical interaction is: {@link #getStep(HTTPRequest, PageHelper)} renders the form, the user
+ * selects a preset or enters both custom fields, and {@link #postStep(HTTPRequest)} validates and
+ * persists the selection via the {@link BandwidthManipulator} helpers. On successful parsing and
+ * configuration, the wizard is marked complete and navigation proceeds to the wizard’s completion
+ * step. When parsing fails, the step redirects back to itself with query parameters that allow the
+ * UI to surface a targeted error message without partially applying limits.
+ *
+ * <ul>
+ *   <li><b>Presets:</b> fixed byte/s values intended as reasonable starting points.
+ *   <li><b>Detected recommendation:</b> half of detected down/up limits when available.
+ *   <li><b>Custom input:</b> only applied when both custom fields are provided.
+ * </ul>
  */
-public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
-  private static final Logger LOG = LoggerFactory.getLogger(BANDWIDTH_RATE.class);
+public class BandwidthRate extends BandwidthManipulator implements Step {
+  private static final Logger LOG = LoggerFactory.getLogger(BandwidthRate.class);
+
+  private static final String TAG_INPUT = "input";
+  private static final String ATTR_VALUE = "value";
 
   private final BandwidthLimit[] limits;
 
-  public BANDWIDTH_RATE(NodeClientCore core, Config config) {
+  /**
+   * Creates a new bandwidth-rate wizard step with a fixed set of preset profiles.
+   *
+   * <p>The preset list is stored on the instance and later rendered by {@link #getStep(HTTPRequest,
+   * PageHelper)}. Construction does not apply configuration changes; persistence occurs only after
+   * a successful {@link #postStep(HTTPRequest)} submission.
+   *
+   * @param core node core used to access runtime services such as plugin indicators
+   * @param config node configuration instance that receives the selected bandwidth limits
+   */
+  public BandwidthRate(NodeClientCore core, Config config) {
     super(core, config);
-    final int KiB = 1024;
+    final long KiB = 1024L;
     limits =
         new BandwidthLimit[] {
-          // FIXME feedback on typical real world ratios on slow connections would be helpful.
-
-          //				// Dial-up
-          //				// 57.6/33.6; call it 4KB/sec each way
-          //				new BandwidthLimit(4*KiB, 4*KiB, "bandwidthConnectionDialUp"),
-          //				// 128kbps symmetrical = 16KB/sec each way, take half so 8KB/sec each way
-          //				new BandwidthLimit(8*KiB, 8*KiB, "bandwidthConnectionISDN"),
-          //				// 256kbps/64kbps developing world broadband
-          //				new BandwidthLimit(16*KiB, 4*KiB, "bandwidthConnectionSlow256"),
-          //				// 512kbps/128kbps very slow broadband
-          //				new BandwidthLimit(32*KiB, 8*KiB, "bandwidthConnectionSlow512"),
-          //				// 1Mbps/128kbps
-          //				new BandwidthLimit(64*KiB, 8*KiB, "bandwidthConnection1M"),
-          //				// 2Mbps/128kbps (slow often => poor ratios)
-          //				new BandwidthLimit(128*KiB, 8*KiB, "bandwidthConnection2M"),
+          // Feedback on typical real world ratios on slow connections would be helpful.
           // 6Mbps/256kbps - 6Mbps is common in parts of china, as well as being the real value in
           // lots of DSL areas
           new BandwidthLimit(384 * KiB, 16 * KiB, "bandwidthConnection6M", false),
@@ -57,6 +73,21 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
         };
   }
 
+  /**
+   * Renders the wizard page that allows selecting a bandwidth profile by rate.
+   *
+   * <p>The page consists of a table of presets, an optional “detected” recommendation, and a custom
+   * entry row. Preset and detected entries are emitted as radio options where the value encodes a
+   * {@code "<downBytes>/<upBytes>"} pair. The custom row uses the {@code customDown} and {@code
+   * customUp} text fields and is only considered valid when both are provided.
+   *
+   * <p>If the request includes {@code parseError=true}, the page also renders an error box keyed by
+   * {@code parseTarget}, allowing {@link #postStep(HTTPRequest)} to redirect back with a specific
+   * parsing failure message.
+   *
+   * @param request incoming request carrying optional error flags and any previous selections
+   * @param helper page helper used to build HTML nodes for this wizard step
+   */
   @Override
   public void getStep(HTTPRequest request, PageHelper helper) {
     HTMLNode contentNode = helper.getPageContent(WizardL10n.l10n("bandwidthLimit"));
@@ -97,7 +128,7 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
       BandwidthLimit usable =
           new BandwidthLimit(
               detected.downBytes / 2, detected.upBytes / 2, "bandwidthDetected", true);
-      addLimitRow(table, helper, usable, true, true);
+      addLimitRow(table, usable, true, true);
       addedDefault = true;
     } catch (PluginNotFoundException | IllegalValueException e) {
       LOG.info(e.getMessage(), e);
@@ -105,12 +136,12 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
 
     BandwidthLimit current = getCurrentBandwidthLimitsOrNull();
     if (current != null) {
-      addLimitRow(table, helper, current, false, !addedDefault);
+      addLimitRow(table, current, false, !addedDefault);
       addedDefault = true;
     }
 
     for (BandwidthLimit limit : limits) {
-      addLimitRow(table, helper, limit, false, !addedDefault);
+      addLimitRow(table, limit, false, !addedDefault);
     }
 
     // Add custom option.
@@ -118,26 +149,38 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
     customForm.addChild("td", WizardL10n.l10n("bandwidthCustom"));
     customForm
         .addChild("td")
-        .addChild("input", new String[] {"type", "name"}, new String[] {"text", "customDown"});
+        .addChild(TAG_INPUT, new String[] {"type", "name"}, new String[] {"text", "customDown"});
     customForm
         .addChild("td")
-        .addChild("input", new String[] {"type", "name"}, new String[] {"text", "customUp"});
+        .addChild(TAG_INPUT, new String[] {"type", "name"}, new String[] {"text", "customUp"});
     // This is valid if it's filled in. So don't show the selector.
-    // FIXME javascript to auto-select it?
-    //		customForm.addChild("td").addChild("input",
-    //				new String[] { "type", "name", "value" },
-    //				new String[] { "radio", "bandwidth", "custom" });
+    // JavaScript could auto-select the custom option when fields are filled in.
 
     infoBox.addChild(
-        "input",
-        new String[] {"type", "name", "value"},
+        TAG_INPUT,
+        new String[] {"type", "name", ATTR_VALUE},
         new String[] {"submit", "back", NodeL10n.getBase().getString("Toadlet.back")});
     infoBox.addChild(
-        "input",
-        new String[] {"type", "name", "value"},
+        TAG_INPUT,
+        new String[] {"type", "name", ATTR_VALUE},
         new String[] {"submit", "next", NodeL10n.getBase().getString("Toadlet.next")});
   }
 
+  /**
+   * Handles form submission for the bandwidth-rate step and persists the chosen limits.
+   *
+   * <p>The handler prefers custom input: when both {@code customDown} and {@code customUp} are
+   * present and non-empty, it attempts to parse and apply those values. Otherwise, it expects a
+   * preset selection from the {@code bandwidth} radio group and applies the embedded {@code
+   * "<downBytes>/<upBytes>"} pair.
+   *
+   * <p>On any parse failure, this method redirects back to the same step while preserving the
+   * message(s) produced by the underlying configuration parser. On success, it marks the wizard
+   * complete and returns the completion step identifier.
+   *
+   * @param request submitted request containing preset selection and/or custom limit fields
+   * @return the next wizard step identifier, possibly including parameters for parse-error display
+   */
   @Override
   public String postStep(HTTPRequest request) {
 
@@ -215,16 +258,12 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
    * button.
    *
    * @param table Table to add a row to.
-   * @param helper To make a form for the button and hidden fields.
    * @param limit Limit to display.
    * @param recommended Whether to mark the limit with (Recommended) next to the select button.
+   * @param useMaybeDefault Whether to auto-select this entry when no other default was added.
    */
   private void addLimitRow(
-      HTMLNode table,
-      PageHelper helper,
-      BandwidthLimit limit,
-      boolean recommended,
-      boolean useMaybeDefault) {
+      HTMLNode table, BandwidthLimit limit, boolean recommended, boolean useMaybeDefault) {
     HTMLNode row = table.addChild("tr");
     row.addChild("td", WizardL10n.l10n(limit.descriptionKey));
     String downColumn =
@@ -232,9 +271,8 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
     if (limit.downBytes >= 32 * 1024) {
       downColumn += " (= ";
       if (limit.downBytes < 256 * 1024)
-        downColumn +=
-            new DecimalFormat("0.0").format(((double) ((limit.downBytes * 8))) / (1024 * 1024));
-      else downColumn += ((limit.downBytes * 8) / (1024 * 1024));
+        downColumn += new DecimalFormat("0.0").format((double) limit.downBytes * 8 / (1024 * 1024));
+      else downColumn += (limit.downBytes * 8) / (1024 * 1024);
       downColumn += "Mbps)";
     }
     row.addChild("td", downColumn);
@@ -244,8 +282,8 @@ public class BANDWIDTH_RATE extends BandwidthManipulator implements Step {
 
     HTMLNode radio =
         buttonCell.addChild(
-            "input",
-            new String[] {"type", "name", "value"},
+            TAG_INPUT,
+            new String[] {"type", "name", ATTR_VALUE},
             new String[] {"radio", "bandwidth", limit.downBytes + "/" + limit.upBytes});
     if (recommended || (useMaybeDefault && limit.maybeDefault))
       radio.addAttribute("checked", "checked");
