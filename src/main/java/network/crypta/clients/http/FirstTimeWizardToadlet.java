@@ -21,7 +21,7 @@ import network.crypta.clients.http.wizardsteps.PersistFields;
 import network.crypta.clients.http.wizardsteps.SECURITY_PHYSICAL;
 import network.crypta.clients.http.wizardsteps.SecurityNetwork;
 import network.crypta.clients.http.wizardsteps.Step;
-import network.crypta.clients.http.wizardsteps.WELCOME;
+import network.crypta.clients.http.wizardsteps.Welcome;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
@@ -165,7 +165,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
 
     // Add step handlers that aren't set by presets
     steps = new EnumMap<>(WIZARD_STEP.class);
-    steps.put(WIZARD_STEP.WELCOME, new WELCOME(config));
+    steps.put(WIZARD_STEP.WELCOME, new Welcome(config));
     steps.put(WIZARD_STEP.BROWSER_WARNING, new BrowserWarning());
     steps.put(WIZARD_STEP.NAME_SELECTION, new NameSelection(config));
     steps.put(WIZARD_STEP.DATASTORE_SIZE, new DatastoreSize(core, config));
