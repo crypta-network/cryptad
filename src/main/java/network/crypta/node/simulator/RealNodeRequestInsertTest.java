@@ -8,8 +8,6 @@ import java.util.Arrays;
 import java.util.List;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
-import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.keys.ClientKSK;
@@ -17,9 +15,9 @@ import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
+import network.crypta.keys.Key;
 import network.crypta.keys.KeyDecodeException;
 import network.crypta.keys.SSKEncodeException;
-import network.crypta.node.FSParseException;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.node.Node;
@@ -28,7 +26,7 @@ import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;
-import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
+import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.FileUtil;
@@ -39,7 +37,25 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
 /**
+ * Exercises insert-and-fetch behavior against a simulated real-node network.
+ *
+ * <p>This harness bootstraps a fixed-size darknet topology, inserts a small payload on a randomly
+ * selected node, and attempts to fetch the same data from another node until a target number of
+ * successful fetches is reached. It is intended for manual or batch execution to observe routing
+ * health and basic data integrity in a controlled environment. The class owns all test state,
+ * including node instances, request counters, and success tracking, and it is not thread-safe; run
+ * it from a single driver thread and avoid sharing instances across concurrent tests.
+ *
+ * <p>Responsibilities include:
+ *
+ * <ul>
+ *   <li>Constructing and starting a deterministic network topology.
+ *   <li>Generating insert/fetch keys and recording success ratios.
+ *   <li>Reporting running request identifiers to aid debugging.
+ * </ul>
+ *
  * @author amphibian
+ * @see RealNodeRoutingTest
  */
 public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
   private static final Logger LOG = LoggerFactory.getLogger(RealNodeRequestInsertTest.class);
@@ -62,44 +78,59 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
   static final boolean REAL_TIME_FLAG = false;
 
   static final int TARGET_SUCCESSES = 20;
-  // static final int NUMBER_OF_NODES = 50;
-  // static final short MAX_HTL = 10;
 
-  // FIXME: HACK: High bwlimit makes the "other" requests not affect the test requests.
-  // Real solution is to get rid of the "other" requests!!
+  // High bwlimit makes the "other" requests not affect the test requests.
+  // Real solution is to get rid of the "other" requests.
   static final int BWLIMIT = 1000 * 1024;
 
-  // public static final int DARKNET_PORT_BASE = RealNodePingTest.DARKNET_PORT2+1;
+  /**
+   * Base TCP port used when assigning per-node darknet listener ports.
+   *
+   * <p>This value anchors the deterministic port allocation for the simulated nodes. Each node
+   * receives {@code DARKNET_PORT_BASE + index}, so keep this range clear of other services when
+   * running the harness on a shared host.
+   */
   public static final int DARKNET_PORT_BASE = 10000;
+
+  /**
+   * Exclusive upper bound for the per-node darknet port range derived from {@link
+   * #DARKNET_PORT_BASE}.
+   *
+   * <p>The range is {@code [DARKNET_PORT_BASE, DARKNET_PORT_END)}, sized to the number of nodes in
+   * the simulated network. Keep this aligned with {@link #NUMBER_OF_NODES} to avoid port reuse.
+   */
   public static final int DARKNET_PORT_END = DARKNET_PORT_BASE + NUMBER_OF_NODES;
 
+  /**
+   * Launches the insert-and-fetch exercise using an on-disk working directory.
+   *
+   * <p>This entry point clears any previous working directory, initializes the test nodes with a
+   * deterministic random seed, links them into a Kleinberg-style topology, and then drives repeated
+   * insert and fetch operations until success criteria are met or a failure exit code is produced.
+   * The method is not idempotent because it deletes and recreates the working directory on each
+   * run. It is intended to be executed from the command line in a controlled environment.
+   *
+   * @param args command-line arguments; unused and expected to be empty or ignored
+   * @throws CHKEncodeException if CHK key generation fails for the test payload
+   * @throws NodeInitException if node initialization fails during test setup
+   * @throws InterruptedException if the test thread is interrupted while waiting
+   */
   public static void main(String[] args)
-      throws FSParseException,
-          PeerParseException,
-          CHKEncodeException,
-          NodeInitException,
-          ReferenceSignatureVerificationException,
-          InterruptedException {
+      throws CHKEncodeException, NodeInitException, InterruptedException {
     String name = "realNodeRequestInsertTest";
     File wd = new File(name);
     if (!FileUtil.removeAll(wd)) {
-      System.err.println("Mass delete failed, test may not be accurate.");
+      LOG.error("Mass delete failed, test may not be accurate.");
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
-    wd.mkdir();
+    if (!wd.mkdir() && !wd.isDirectory()) {
+      LOG.error("Working directory {} could not be created.", wd.getAbsolutePath());
+      System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
+    }
     DummyRandomSource random = new DummyRandomSource(3142);
-    // NOTE: globalTestInit returns in ignored random source
-    // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
-    // "freenet.node.Location:normal,freenet.node.simulator.RealNode:minor,freenet.node.Insert:MINOR,freenet.node.Request:MINOR,freenet.node.Node:MINOR");
-    // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
-    // "freenet.node.Location:MINOR,freenet.io.comm:MINOR,freenet.node.NodeDispatcher:MINOR,freenet.node.simulator:MINOR,freenet.node.PeerManager:MINOR,freenet.node.RequestSender:MINOR");
-    // NodeStarter.globalTestInit(name, false, LogLevel.ERROR,
-    // "freenet.node.FNP:MINOR,freenet.node.Packet:MINOR,freenet.io.comm:MINOR,freenet.node.PeerNode:MINOR,freenet.node.DarknetPeerNode:MINOR");
     NodeStarter.globalTestInit(wd, false, Level.ERROR, "", true, random);
-    System.out.println("Insert/retrieve test");
-    System.out.println();
+    LOG.info("Insert/retrieve test");
     DummyRandomSource topologyRandom = new DummyRandomSource(3143);
-    // DiffieHellman.init(random);
     Node[] nodes = new Node[NUMBER_OF_NODES];
     LOG.info("Creating nodes...");
     PriorityAwareExecutor executor = new PooledExecutor();
@@ -133,7 +164,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
                 p.setEnableFCP(false);
               });
       nodes[i] = NodeStarter.createTestNode(params);
-      LOG.info("Created node " + i);
+      LOG.info("Created node {}", i);
     }
 
     // Now link them up
@@ -144,7 +175,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
 
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       nodes[i].start(false);
-      System.err.println("Started node " + i + "/" + nodes.length);
+      LOG.info("Started node {}/{}", i, nodes.length);
     }
 
     waitForAllConnected(nodes);
@@ -153,25 +184,38 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
 
     random = new DummyRandomSource(3144);
 
-    System.out.println();
-    System.out.println("Ping average > 95%, lets do some inserts/requests");
-    System.out.println();
+    LOG.info("Ping average > 95%, lets do some inserts/requests");
 
     RealNodeRequestInsertTest tester =
         new RealNodeRequestInsertTest(nodes, random, TARGET_SUCCESSES);
 
-    while (true) {
+    int status = -1;
+    while (status == -1) {
       try {
         waitForAllConnected(nodes);
-        int status = tester.insertRequestTest();
-        if (status == -1) continue;
-        System.exit(status);
-      } catch (Throwable t) {
-        LOG.error("Caught " + t, t);
+        status = tester.insertRequestTest();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw e;
+      } catch (Exception e) {
+        LOG.error("Caught {}", e, e);
       }
     }
+    System.exit(status);
   }
 
+  /**
+   * Creates a test harness bound to a fixed node set and success target.
+   *
+   * <p>The caller supplies the already-started nodes and a deterministic random source used for
+   * selecting insert/fetch participants. The {@code targetSuccesses} parameter determines when the
+   * harness will report overall success and return an exit code of {@code 0}. Instances are mutable
+   * and track request state, so a single instance should be used for one run only.
+   *
+   * @param nodes node instances that participate in inserts and fetches
+   * @param random deterministic random source used for node selection
+   * @param targetSuccesses number of successful fetches required to succeed
+   */
   public RealNodeRequestInsertTest(Node[] nodes, DummyRandomSource random, int targetSuccesses) {
     this.nodes = nodes;
     this.random = random;
@@ -188,14 +232,20 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
   private final int targetSuccesses;
 
   /**
-   * @param nodes
-   * @param random
-   * @return -1 to continue or an exit code (0 or positive for an error).
-   * @throws CHKEncodeException
-   * @throws InvalidCompressionCodecException
-   * @throws SSKEncodeException
-   * @throws IOException
-   * @throws KeyDecodeException
+   * Executes a single insert and fetch attempt, updating success tracking.
+   *
+   * <p>The method selects a random insert node, generates an SSK-based key pair and encoded block,
+   * inserts the block, then selects a distinct fetch node and attempts to retrieve and decode the
+   * data. It returns {@code -1} to indicate the harness should continue, or a non-negative exit
+   * code when a terminal success or failure condition is reached. Each call increments the request
+   * counter and updates the running success average for reporting.
+   *
+   * @return {@code -1} to continue, or a non-negative terminal exit code
+   * @throws CHKEncodeException if CHK encoding fails while building the test block
+   * @throws InvalidCompressionCodecException if compression metadata is invalid for the block
+   * @throws SSKEncodeException if SSK encoding fails while creating insertable keys
+   * @throws IOException if encoding requires I/O and the bucket operation fails
+   * @throws KeyDecodeException if the fetched block cannot be decoded to bytes
    */
   int insertRequestTest()
       throws CHKEncodeException,
@@ -208,22 +258,64 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     try {
       Thread.sleep(100);
     } catch (InterruptedException e1) {
+      Thread.currentThread().interrupt();
+      LOG.warn("Interrupted while pausing before insert attempt {}", requestNumber, e1);
     }
     String dataString = baseString + requestNumber;
     // Pick random node to insert to
     int node1 = random.nextInt(NUMBER_OF_NODES);
     Node randomNode = nodes[node1];
-    // LOG.error("Inserting: \""+dataString+"\" to "+node1);
 
-    // boolean isSSK = requestNumber % 2 == 1;
     boolean isSSK = true;
 
+    byte[] buf = dataString.getBytes(StandardCharsets.UTF_8);
+    InsertKeys keys = createKeys(dataString, buf, isSSK);
+    ClientKeyBlock block = keys.block;
+
+    Key fetchNodeKey = keys.fetchKey.getNodeKey(false);
+    LOG.info("Created random test key {} = {}", keys.testKey, fetchNodeKey);
+
+    byte[] data = dataString.getBytes(StandardCharsets.UTF_8);
+    String decoded = new String(block.memoryDecode(), StandardCharsets.UTF_8);
+    LOG.debug("Decoded: {}", decoded);
+    LOG.info("Insert Key: {}", keys.insertKey.getURI());
+    LOG.info("Fetch Key: {}", keys.fetchKey.getURI());
+    try {
+      insertAttempts++;
+      randomNode
+          .getClientCore()
+          .realPut(block.getBlock(), false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
+      LOG.error("Inserted to {}", node1);
+    } catch (LowLevelPutException putEx) {
+      LOG.error("Insert failed", putEx);
+      return EXIT_INSERT_FAILED;
+    }
+    // Pick random node to request from
+    int node2;
+    do {
+      node2 = random.nextInt(NUMBER_OF_NODES);
+    } while (node2 == node1);
+    Node fetchNode = nodes[node2];
+    try {
+      block =
+          fetchNode.getClientCore().realGetKey(keys.fetchKey, false, false, false, REAL_TIME_FLAG);
+    } catch (LowLevelGetException e) {
+      block = null;
+    }
+    int result = handleFetchResult(block, data, node2);
+    if (result != -1) {
+      return result;
+    }
+    logRunningUids();
+    return -1;
+  }
+
+  private InsertKeys createKeys(String dataString, byte[] buf, boolean isSSK)
+      throws CHKEncodeException, InvalidCompressionCodecException, SSKEncodeException, IOException {
     FreenetURI testKey;
     ClientKey insertKey;
     ClientKey fetchKey;
     ClientKeyBlock block;
-
-    byte[] buf = dataString.getBytes(StandardCharsets.UTF_8);
     if (isSSK) {
       testKey = new FreenetURI("KSK", dataString);
 
@@ -238,89 +330,49 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
                   false,
                   (short) -1,
                   buf.length,
-                  COMPRESSOR_TYPE.DEFAULT_COMPRESSORDESCRIPTOR);
+                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
     } else {
       block =
           ClientCHKBlock.encode(
-              buf,
-              false,
-              false,
-              (short) -1,
-              buf.length,
-              COMPRESSOR_TYPE.DEFAULT_COMPRESSORDESCRIPTOR);
-      insertKey = fetchKey = block.getClientKey();
+              buf, false, false, (short) -1, buf.length, Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+      insertKey = block.getClientKey();
+      fetchKey = insertKey;
       testKey = insertKey.getURI();
     }
+    return new InsertKeys(testKey, insertKey, fetchKey, block);
+  }
 
-    System.err.println();
-    System.err.println("Created random test key " + testKey + " = " + fetchKey.getNodeKey(false));
-    System.err.println();
-
-    byte[] data = dataString.getBytes(StandardCharsets.UTF_8);
-    LOG.debug("Decoded: " + new String(block.memoryDecode(), StandardCharsets.UTF_8));
-    LOG.info("Insert Key: " + insertKey.getURI());
-    LOG.info("Fetch Key: " + fetchKey.getURI());
-    try {
-      insertAttempts++;
-      randomNode
-          .getClientCore()
-          .realPut(block.getBlock(), false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
-      LOG.error("Inserted to " + node1);
-    } catch (LowLevelPutException putEx) {
-      LOG.error("Insert failed: " + putEx);
-      System.err.println("Insert failed: " + putEx);
-      return EXIT_INSERT_FAILED;
-    }
-    // Pick random node to request from
-    int node2;
-    do {
-      node2 = random.nextInt(NUMBER_OF_NODES);
-    } while (node2 == node1);
-    Node fetchNode = nodes[node2];
-    try {
-      block = fetchNode.getClientCore().realGetKey(fetchKey, false, false, false, REAL_TIME_FLAG);
-    } catch (LowLevelGetException e) {
-      block = null;
-    }
+  private int handleFetchResult(ClientKeyBlock block, byte[] data, int node2)
+      throws KeyDecodeException {
     if (block == null) {
       int percentSuccess = 100 * fetchSuccesses / insertAttempts;
-      LOG.error("Fetch #" + requestNumber + " FAILED (" + percentSuccess + "%); from " + node2);
-      System.err.println(
-          "Fetch #" + requestNumber + " FAILED (" + percentSuccess + "%); from " + node2);
+      LOG.error("Fetch #{} FAILED ({}%); from {}", requestNumber, percentSuccess, node2);
       requestsAvg.report(0.0);
-    } else {
-      byte[] results = block.memoryDecode();
-      requestsAvg.report(1.0);
-      if (Arrays.equals(results, data)) {
-        fetchSuccesses++;
-        int percentSuccess = 100 * fetchSuccesses / insertAttempts;
-        LOG.error(
-            "Fetch #"
-                + requestNumber
-                + " from node "
-                + node2
-                + " succeeded ("
-                + percentSuccess
-                + "%): "
-                + new String(results));
-        System.err.println(
-            "Fetch #"
-                + requestNumber
-                + " succeeded ("
-                + percentSuccess
-                + "%): \""
-                + new String(results)
-                + '\"');
-        if (fetchSuccesses == targetSuccesses) {
-          System.err.println("Succeeded, " + targetSuccesses + " successful fetches");
-          return 0;
-        }
-      } else {
-        LOG.error("Returned invalid data!: " + new String(results));
-        System.err.println("Returned invalid data!: " + new String(results));
-        return EXIT_BAD_DATA;
-      }
+      return -1;
     }
+
+    byte[] results = block.memoryDecode();
+    requestsAvg.report(1.0);
+    if (!Arrays.equals(results, data)) {
+      String resultsString = new String(results, StandardCharsets.UTF_8);
+      LOG.error("Returned invalid data!: {}", resultsString);
+      return EXIT_BAD_DATA;
+    }
+
+    fetchSuccesses++;
+    int percentSuccess = 100 * fetchSuccesses / insertAttempts;
+    String resultsString = new String(results, StandardCharsets.UTF_8);
+    LOG.error(
+        "Fetch #{} from node {} succeeded ({}%): {}",
+        requestNumber, node2, percentSuccess, resultsString);
+    if (fetchSuccesses == targetSuccesses) {
+      LOG.info("Succeeded, {} successful fetches", targetSuccesses);
+      return 0;
+    }
+    return -1;
+  }
+
+  private void logRunningUids() {
     StringBuilder load = new StringBuilder("Running UIDs for nodes: ");
     int totalRunningUIDsAlt = 0;
     List<Long> runningUIDsList = new ArrayList<>();
@@ -331,14 +383,19 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       int runningUIDsAlt = nodes[i].getTracker().getTotalRunningUIDsAlt();
       totalRunningUIDsAlt += runningUIDsAlt;
       load.append(totalRunningUIDsAlt);
-      if (i != nodes.length - 1) load.append(' ');
+      if (i != nodes.length - 1) {
+        load.append(' ');
+      }
     }
-    System.err.println(load);
-    if (totalRunningUIDsAlt != 0)
-      System.err.println("Still running UIDs (alt): " + totalRunningUIDsAlt);
+    LOG.info("Running UIDs for nodes: {}", load);
+    if (totalRunningUIDsAlt != 0) {
+      LOG.info("Still running UIDs (alt): {}", totalRunningUIDsAlt);
+    }
     if (!runningUIDsList.isEmpty()) {
-      System.err.println("List of running UIDs: " + Arrays.toString(runningUIDsList.toArray()));
+      LOG.info("List of running UIDs: {}", runningUIDsList);
     }
-    return -1;
   }
+
+  private record InsertKeys(
+      FreenetURI testKey, ClientKey insertKey, ClientKey fetchKey, ClientKeyBlock block) {}
 }
