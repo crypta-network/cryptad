@@ -185,7 +185,7 @@ public abstract class BandwidthManipulator {
     }
 
     int downstreamBits = bwIndicator.getDownstreamMaxBitRate();
-    int upstreamBits = bwIndicator.getUpstramMaxBitRate();
+    int upstreamBits = bwIndicator.getUpstreamMaxBitRate();
     LOG.info(
         "bandwidthIndicator reports downstream {} bits/s and upstream {} bits/s.",
         downstreamBits,

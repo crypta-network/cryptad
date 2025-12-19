@@ -4,21 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import network.crypta.node.Node;
-import network.crypta.pluginmanager.FredPlugin;
-import network.crypta.pluginmanager.FredPluginFCP;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
-import network.crypta.pluginmanager.PluginReplySender;
-import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -104,7 +98,7 @@ class GetPluginInfoTest {
     SimpleFieldSet fs = createFieldSet(IDENTIFIER, PLUGIN_NAME, Boolean.FALSE);
     GetPluginInfo message = new GetPluginInfo(fs);
     when(node.getPluginManager()).thenReturn(pluginManager);
-    mockPluginInfo(true, false, 42L, "1.0.0", "plugin.jar", 123L, false);
+    mockPluginInfo(true, 42L, "1.0.0", "plugin.jar", 123L, false);
     when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(pluginInfoWrapper);
 
     message.run(handler, node);
@@ -130,7 +124,7 @@ class GetPluginInfoTest {
     GetPluginInfo message = new GetPluginInfo(fs);
     when(handler.hasFullAccess()).thenReturn(true);
     when(node.getPluginManager()).thenReturn(pluginManager);
-    mockPluginInfo(false, true, 99L, "2.3.4", "origin.jar", 9876L, true);
+    mockPluginInfo(true, 99L, "2.3.4", "origin.jar", 9876L, true);
     when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(pluginInfoWrapper);
 
     message.run(handler, node);
@@ -164,7 +158,6 @@ class GetPluginInfoTest {
   }
 
   private void mockPluginInfo(
-      boolean isFcpPlugin,
       boolean isFcpServerPlugin,
       long longVersion,
       String version,
@@ -172,35 +165,12 @@ class GetPluginInfoTest {
       long started,
       boolean includeDetails) {
     when(pluginInfoWrapper.getPluginClassName()).thenReturn(PLUGIN_NAME);
-    when(pluginInfoWrapper.getPlugin()).thenReturn(createPlugin(isFcpPlugin));
-    if (!isFcpPlugin || includeDetails) {
-      when(pluginInfoWrapper.isFCPServerPlugin()).thenReturn(isFcpServerPlugin);
-    }
+    when(pluginInfoWrapper.isFCPServerPlugin()).thenReturn(isFcpServerPlugin);
     when(pluginInfoWrapper.getPluginLongVersion()).thenReturn(longVersion);
     when(pluginInfoWrapper.getPluginVersion()).thenReturn(version);
     if (includeDetails) {
       when(pluginInfoWrapper.getFilename()).thenReturn(filename);
       when(pluginInfoWrapper.getStarted()).thenReturn(started);
     }
-  }
-
-  private FredPlugin createPlugin(boolean isFcpPlugin) {
-    if (isFcpPlugin) {
-      return new LegacyFcpTestPlugin();
-    }
-    return mock(FredPlugin.class);
-  }
-
-  private static class LegacyFcpTestPlugin implements FredPlugin, FredPluginFCP {
-
-    @Override
-    public void terminate() {}
-
-    @Override
-    public void runPlugin(PluginRespirator pr) {}
-
-    @Override
-    public void handle(
-        PluginReplySender replysender, SimpleFieldSet params, Bucket data, int accesstype) {}
   }
 }

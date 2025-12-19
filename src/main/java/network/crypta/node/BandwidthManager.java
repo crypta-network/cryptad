@@ -77,7 +77,7 @@ public class BandwidthManager {
 
                   // Convert bits/s (indicator) to bytes/s used by configuration.
                   int detectedInputBandwidth = bandwidthIndicator.getDownstreamMaxBitRate() / 8;
-                  int detectedOutputBandwidth = bandwidthIndicator.getUpstramMaxBitRate() / 8;
+                  int detectedOutputBandwidth = bandwidthIndicator.getUpstreamMaxBitRate() / 8;
 
                   // Current configured limits (bytes/s).
                   int currentInputBandwidth =

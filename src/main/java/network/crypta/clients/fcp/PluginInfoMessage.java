@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
-import network.crypta.pluginmanager.FredPlugin;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.SimpleFieldSet;
 
@@ -25,7 +24,7 @@ import network.crypta.support.SimpleFieldSet;
  * consumers can rely on consistent values.
  *
  * <ul>
- *   <li>Encodes legacy and server-side FCP support into the {@code IsTalkable} flag.
+ *   <li>Encodes server-side FCP support into the {@code IsTalkable} flag.
  *   <li>Optionally includes origin path and start timestamp for detailed queries.
  *   <li>Uses {@link SimpleFieldSet} for wire formatting to match other FCP messages.
  * </ul>
@@ -67,37 +66,9 @@ public class PluginInfoMessage extends FCPMessage {
     classname = pi.getPluginClassName();
     originuri = pi.getFilename();
     started = pi.getStarted();
-    // isFCPPlugin() is the deprecated old plugin FCP API, isFCPServerPlugin() the new one.
-    // Plugins may implement only the old, or the new, or both. As the on-network format is
-    // backwards compatible, we report them as talkable if any is implemented.
-    boolean legacyFcp = isLegacyFcpPlugin(pi);
-    isTalkable = legacyFcp || pi.isFCPServerPlugin();
+    isTalkable = pi.isFCPServerPlugin();
     longVersion = pi.getPluginLongVersion();
     version = pi.getPluginVersion();
-  }
-
-  /**
-   * Determines whether the plugin implements the legacy FCP interface.
-   *
-   * <p>The check uses the live plugin instance to test assignability against {@code FredPluginFCP}.
-   * It tolerates environments where the legacy class might be absent by catching {@link
-   * ClassNotFoundException} and treating the plugin as non-legacy in that scenario.
-   *
-   * @param pluginInfo wrapper that provides access to the plugin instance being inspected.
-   * @return {@code true} when the plugin instance implements the legacy FCP API; {@code false}
-   *     otherwise or when the legacy interface cannot be resolved.
-   */
-  private boolean isLegacyFcpPlugin(PluginInfoWrapper pluginInfo) {
-    FredPlugin plugin = pluginInfo.getPlugin();
-    if (plugin == null) {
-      return false;
-    }
-    try {
-      Class<?> legacyApi = Class.forName("network.crypta.pluginmanager.FredPluginFCP");
-      return legacyApi.isInstance(plugin);
-    } catch (ClassNotFoundException e) {
-      return false;
-    }
   }
 
   /**

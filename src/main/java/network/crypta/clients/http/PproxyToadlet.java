@@ -186,17 +186,16 @@ public class PproxyToadlet extends Toadlet {
     } catch (RedirectPluginHTTPException e) {
       writeTemporaryRedirect(ctx, e.message, e.newLocation);
     } catch (NotFoundPluginHTTPException e) {
-      sendErrorPage(ctx, NotFoundPluginHTTPException.code, e.message, e.location);
+      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (AccessDeniedPluginHTTPException e) {
-      sendErrorPage(ctx, AccessDeniedPluginHTTPException.code, e.message, e.location);
+      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (DownloadPluginHTTPException e) {
       MultiValueTable<String, String> head =
           MultiValueTable.from("Content-Disposition", "attachment; filename=\"" + e.filename + '"');
-      ctx.sendReplyHeaders(
-          DownloadPluginHTTPException.CODE, STATUS_FOUND, head, e.mimeType, e.data.length);
+      ctx.sendReplyHeaders(e.code(), STATUS_FOUND, head, e.mimeType, e.data.length);
       ctx.writeData(e.data);
     } catch (PluginHTTPException e) {
-      sendErrorPage(ctx, PluginHTTPException.code, e.message, e.location);
+      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (Exception t) {
       writeInternalError(t, ctx);
     }
@@ -513,19 +512,18 @@ public class PproxyToadlet extends Toadlet {
     } catch (RedirectPluginHTTPException e) {
       writeTemporaryRedirect(ctx, e.message, e.newLocation);
     } catch (NotFoundPluginHTTPException e) {
-      sendErrorPage(ctx, NotFoundPluginHTTPException.code, e.message, e.location);
+      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (AccessDeniedPluginHTTPException e) {
-      sendErrorPage(ctx, AccessDeniedPluginHTTPException.code, e.message, e.location);
+      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (DownloadPluginHTTPException e) {
       // Handles download responses inline rather than delegating to sendErrorPage.
 
       MultiValueTable<String, String> head =
           MultiValueTable.from("Content-Disposition", "attachment; filename=\"" + e.filename + '"');
-      ctx.sendReplyHeaders(
-          DownloadPluginHTTPException.CODE, STATUS_FOUND, head, e.mimeType, e.data.length);
+      ctx.sendReplyHeaders(e.code(), STATUS_FOUND, head, e.mimeType, e.data.length);
       ctx.writeData(e.data);
     } catch (PluginHTTPException e) {
-      sendErrorPage(ctx, PluginHTTPException.code, e.message, e.location);
+      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (SocketException e) {
       ctx.forceDisconnect();
     } catch (Exception t) {

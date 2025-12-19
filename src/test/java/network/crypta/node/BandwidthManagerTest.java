@@ -215,7 +215,7 @@ class BandwidthManagerTest {
 
     // Detected values are exactly 3x current (no alert because condition uses >, not >=)
     when(indicator.getDownstreamMaxBitRate()).thenReturn(currentIn * 3 * 8);
-    when(indicator.getUpstramMaxBitRate()).thenReturn(currentOut * 3 * 8);
+    when(indicator.getUpstreamMaxBitRate()).thenReturn(currentOut * 3 * 8);
 
     BandwidthManager bm = new BandwidthManager(node);
     bm.start();
@@ -243,7 +243,7 @@ class BandwidthManagerTest {
 
     // Downstream (download) detected at 4000 bytes/s (32000 bps); upstream small (100 bytes/s)
     when(indicator.getDownstreamMaxBitRate()).thenReturn(4000 * 8);
-    when(indicator.getUpstramMaxBitRate()).thenReturn(100 * 8);
+    when(indicator.getUpstreamMaxBitRate()).thenReturn(100 * 8);
 
     BandwidthManager bm = new BandwidthManager(node);
     bm.start();
@@ -292,7 +292,7 @@ class BandwidthManagerTest {
     when(nodeSubConfig.getInt("outputBandwidthLimit")).thenReturn(currentOut);
 
     when(indicator.getDownstreamMaxBitRate()).thenReturn(4000 * 8); // bytes: 4000
-    when(indicator.getUpstramMaxBitRate()).thenReturn(800 * 8); // bytes: 800
+    when(indicator.getUpstreamMaxBitRate()).thenReturn(800 * 8); // bytes: 800
 
     BandwidthManager bm = new BandwidthManager(node);
     bm.start();

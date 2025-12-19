@@ -117,9 +117,9 @@ class NodeIPDetectorTest {
     primeIpDetector(det /* none */);
 
     DetectedIP v4 = new DetectedIP(ip("203.0.113.7"), DetectedIP.FULL_INTERNET);
-    v4.mtu = 1480;
+    v4.setMtu(1480);
     DetectedIP v6 = new DetectedIP(ip("2001:db8::1"), DetectedIP.FULL_INTERNET);
-    v6.mtu = 1280;
+    v6.setMtu(1280);
 
     det.processDetectedIPs(new DetectedIP[] {v4, v6});
 

@@ -504,7 +504,7 @@ public class NodeIPDetector {
   public void processDetectedIPs(DetectedIP[] list) {
     pluginDetectedIPs = list;
     for (DetectedIP pluginDetectedIP : pluginDetectedIPs)
-      reportMTU(pluginDetectedIP.mtu, pluginDetectedIP.publicAddress instanceof Inet6Address);
+      reportMTU(pluginDetectedIP.getMtu(), pluginDetectedIP.publicAddress instanceof Inet6Address);
     redetectAddress();
   }
 

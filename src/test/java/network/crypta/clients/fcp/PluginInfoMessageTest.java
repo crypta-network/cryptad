@@ -9,7 +9,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import network.crypta.node.Node;
-import network.crypta.pluginmanager.FredPlugin;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
@@ -28,7 +27,6 @@ class PluginInfoMessageTest {
     when(pluginInfoWrapper.getPluginClassName()).thenReturn("network.crypta.plugins.TestPlugin");
     when(pluginInfoWrapper.getFilename()).thenReturn("test-plugin.jar");
     when(pluginInfoWrapper.getStarted()).thenReturn(123L);
-    when(pluginInfoWrapper.getPlugin()).thenReturn(mock(FredPlugin.class));
     when(pluginInfoWrapper.isFCPServerPlugin()).thenReturn(true);
     when(pluginInfoWrapper.getPluginLongVersion()).thenReturn(5L);
     when(pluginInfoWrapper.getPluginVersion()).thenReturn("5.0.0");
@@ -51,7 +49,6 @@ class PluginInfoMessageTest {
     when(pluginInfoWrapper.getPluginClassName()).thenReturn("network.crypta.plugins.DetailPlugin");
     when(pluginInfoWrapper.getFilename()).thenReturn("detail-plugin.jar");
     when(pluginInfoWrapper.getStarted()).thenReturn(9876L);
-    when(pluginInfoWrapper.getPlugin()).thenReturn(mock(FredPlugin.class));
     when(pluginInfoWrapper.isFCPServerPlugin()).thenReturn(false);
     when(pluginInfoWrapper.getPluginLongVersion()).thenReturn(9L);
     when(pluginInfoWrapper.getPluginVersion()).thenReturn("9.1");
@@ -74,7 +71,6 @@ class PluginInfoMessageTest {
     when(pluginInfoWrapper.getPluginClassName()).thenReturn("network.crypta.plugins.NamePlugin");
     when(pluginInfoWrapper.getFilename()).thenReturn("name-plugin.jar");
     when(pluginInfoWrapper.getStarted()).thenReturn(1L);
-    when(pluginInfoWrapper.getPlugin()).thenReturn(mock(FredPlugin.class));
     when(pluginInfoWrapper.isFCPServerPlugin()).thenReturn(false);
     when(pluginInfoWrapper.getPluginLongVersion()).thenReturn(1L);
     when(pluginInfoWrapper.getPluginVersion()).thenReturn("1.0");
@@ -89,7 +85,6 @@ class PluginInfoMessageTest {
     when(pluginInfoWrapper.getPluginClassName()).thenReturn("network.crypta.plugins.RunPlugin");
     when(pluginInfoWrapper.getFilename()).thenReturn("run-plugin.jar");
     when(pluginInfoWrapper.getStarted()).thenReturn(10L);
-    when(pluginInfoWrapper.getPlugin()).thenReturn(mock(FredPlugin.class));
     when(pluginInfoWrapper.isFCPServerPlugin()).thenReturn(false);
     when(pluginInfoWrapper.getPluginLongVersion()).thenReturn(2L);
     when(pluginInfoWrapper.getPluginVersion()).thenReturn("2.0");
