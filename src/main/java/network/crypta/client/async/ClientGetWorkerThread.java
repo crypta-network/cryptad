@@ -357,12 +357,23 @@ public class ClientGetWorkerThread extends Thread {
     getError();
   }
 
+  /**
+   * Rethrows the given throwable without declaring it.
+   *
+   * <p>This uses a generic type-erasure trick to bypass checked exception declarations; callers
+   * should treat the result as an unchecked rethrow.
+   */
   private static void rethrowUnchecked(Throwable t) {
     ClientGetWorkerThread.throwAny(t);
   }
 
+  /**
+   * Sneaky-throw helper that rethrows a checked exception as if it were unchecked.
+   *
+   * @param t the throwable to rethrow
+   */
+  @SuppressWarnings("unchecked")
   private static <T extends Throwable> void throwAny(Throwable t) throws T {
-    //noinspection unchecked
     throw (T) t;
   }
 }
