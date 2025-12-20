@@ -65,10 +65,10 @@ sonar {
       property("sonar.junit.reportsPath", primaryReportDir)
       property("sonar.surefire.reportsPath", primaryReportDir)
     }
-    // Dump scanner properties for CI debugging (without hard-coding absolute paths).
+    // Dump scanner properties for CI debugging (path is computed, not hard-coded).
     property(
       "sonar.scanner.dumpToFile",
-      project.relativePath(layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile),
+      layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile.absolutePath,
     )
 
     // Avoid UTF-8 decode warnings on binary fixtures.
@@ -102,6 +102,11 @@ tasks
   .matching { it.name == "sonar" }
   .configureEach {
     doFirst {
+      val dumpFile = layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile
+      // SonarScanner reads dump config from system properties, not analysis properties.
+      System.setProperty("sonar.scanner.dumpToFile", dumpFile.absolutePath)
+      System.setProperty("sonar.verbose", "true")
+
       val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
       val kotlinExt =
         project.extensions.findByType(
@@ -160,7 +165,6 @@ tasks
         "Sonar debug: sampleReportFile=${sampleReport?.let { project.relativePath(it) } ?: "not found"}"
       )
 
-      val dumpFile = layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile
       val dumpPath = project.relativePath(dumpFile)
       logger.lifecycle("Sonar debug: scannerDumpPath=$dumpPath")
     }
