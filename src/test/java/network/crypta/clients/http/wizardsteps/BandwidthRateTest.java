@@ -281,7 +281,7 @@ class BandwidthRateTest {
     FredPluginBandwidthIndicator indicator = mock(FredPluginBandwidthIndicator.class);
     when(ipDetector.getBandwidthIndicator()).thenReturn(indicator);
     when(indicator.getDownstreamMaxBitRate()).thenReturn(8_000_000);
-    when(indicator.getUpstramMaxBitRate()).thenReturn(1_000_000);
+    when(indicator.getUpstreamMaxBitRate()).thenReturn(1_000_000);
 
     BandwidthRate step = new TestableBandwidthRate(core, config, null);
 
