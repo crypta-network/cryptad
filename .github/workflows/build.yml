@@ -63,6 +63,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_SCANNER_OPTS: >-
+            -Dsonar.scanner.dumpToFile=build/sonar/scanner-dump.properties
+            -Dsonar.verbose=true
         run: ./gradlew build sonar
 
       - name: Build (no Sonar token)
