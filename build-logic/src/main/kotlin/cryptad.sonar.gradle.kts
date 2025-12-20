@@ -163,6 +163,14 @@ tasks
       val dumpFile = layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile
       val dumpPath = project.relativePath(dumpFile)
       logger.lifecycle("Sonar debug: scannerDumpPath=$dumpPath")
+    }
+  }
+
+tasks
+  .matching { it.name == "sonar" }
+  .configureEach {
+    doLast {
+      val dumpFile = layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile
       if (dumpFile.isFile) {
         val sanitized =
           dumpFile
