@@ -234,7 +234,7 @@ public class NativeThread extends Thread {
   @Override
   public final void run() {
     if (!setNativePriority(currentPriority))
-      LOG.warn("setNativePriority({}) has failed!", currentPriority);
+      LOG.info("setNativePriority({}) has failed!", currentPriority);
     super.run();
     realRun();
   }
