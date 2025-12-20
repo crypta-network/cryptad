@@ -27,23 +27,58 @@ sonar {
         .absolutePath
     property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
 
-    // Ensure test sources and JUnit XML reports are discoverable during analysis.
+    // Ensure test/main sources and JUnit XML reports are discoverable during analysis.
     val sourceSets = extensions.getByType<SourceSetContainer>()
-    val testSrcDirs =
-      sourceSets.getByName("test").allSource.srcDirs.map { it.absolutePath }.sorted()
-    if (testSrcDirs.isNotEmpty()) {
-      property("sonar.tests", testSrcDirs.joinToString(","))
+    val kotlinExt =
+      extensions.findByType(org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension::class.java)
+
+    val mainSourceDirs =
+      (sourceSets.getByName("main").java.srcDirs +
+          (kotlinExt?.sourceSets?.getByName("main")?.kotlin?.srcDirs ?: emptySet()))
+        .map { it.absolutePath }
+        .sorted()
+    if (mainSourceDirs.isNotEmpty()) {
+      property("sonar.sources", mainSourceDirs.joinToString(","))
+    }
+
+    val testSourceDirs =
+      (sourceSets.getByName("test").java.srcDirs +
+          (kotlinExt?.sourceSets?.getByName("test")?.kotlin?.srcDirs ?: emptySet()))
+        .map { it.absolutePath }
+        .sorted()
+    if (testSourceDirs.isNotEmpty()) {
+      property("sonar.tests", testSourceDirs.joinToString(","))
     }
 
     val testReportDirs =
       tasks
         .withType<org.gradle.api.tasks.testing.Test>()
         .map { it.reports.junitXml.outputLocation.get().asFile.absolutePath }
+        .ifEmpty {
+          listOf(layout.buildDirectory.dir("test-results/test").get().asFile.absolutePath)
+        }
         .distinct()
         .sorted()
-    if (testReportDirs.isNotEmpty()) {
-      property("sonar.junit.reportPaths", testReportDirs.joinToString(","))
-    }
+    property("sonar.junit.reportPaths", testReportDirs.joinToString(","))
+
+    // Avoid UTF-8 decode warnings on binary fixtures.
+    property(
+      "sonar.exclusions",
+      listOf(
+          "**/*.png",
+          "**/*.gif",
+          "**/*.bmp",
+          "**/*.webp",
+          "**/*.jpg",
+          "**/*.jpeg",
+          "**/*.ico",
+          "**/*.icns",
+          "**/*.pdf",
+          "**/*.zip",
+          "**/*.jar",
+        )
+        .joinToString(","),
+    )
 
     // Read token from environment if provided to avoid passing on CLI (modern scanners read
     // sonar.token)
