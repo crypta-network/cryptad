@@ -60,6 +60,11 @@ sonar {
         .distinct()
         .sorted()
     property("sonar.junit.reportPaths", testReportDirs.joinToString(","))
+    testReportDirs.firstOrNull()?.let { primaryReportDir ->
+      // Backward/compat properties used by older analyzers.
+      property("sonar.junit.reportsPath", primaryReportDir)
+      property("sonar.surefire.reportsPath", primaryReportDir)
+    }
 
     // Avoid UTF-8 decode warnings on binary fixtures.
     property(
