@@ -27,6 +27,24 @@ sonar {
         .absolutePath
     property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
 
+    // Ensure test sources and JUnit XML reports are discoverable during analysis.
+    val sourceSets = extensions.getByType<SourceSetContainer>()
+    val testSrcDirs =
+      sourceSets.getByName("test").allSource.srcDirs.map { it.absolutePath }.sorted()
+    if (testSrcDirs.isNotEmpty()) {
+      property("sonar.tests", testSrcDirs.joinToString(","))
+    }
+
+    val testReportDirs =
+      tasks
+        .withType<org.gradle.api.tasks.testing.Test>()
+        .map { it.reports.junitXml.outputLocation.get().asFile.absolutePath }
+        .distinct()
+        .sorted()
+    if (testReportDirs.isNotEmpty()) {
+      property("sonar.junit.reportPaths", testReportDirs.joinToString(","))
+    }
+
     // Read token from environment if provided to avoid passing on CLI (modern scanners read
     // sonar.token)
     providers.environmentVariable("SONAR_TOKEN").orNull?.let { token ->
