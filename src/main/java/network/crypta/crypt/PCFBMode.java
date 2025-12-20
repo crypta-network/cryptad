@@ -34,22 +34,6 @@ public class PCFBMode {
   protected int registerPointer;
 
   /**
-   * Creates a PCFB instance without an IV.
-   *
-   * <p>The internal register is initialized to zeros and will be encrypted on first use. Callers
-   * should prefer the {@code create(BlockCipher, byte[])} or {@code create(BlockCipher, byte[],
-   * int)} factory and provide a unique IV. Reusing an IV with the same key is insecure.
-   *
-   * @param c the underlying block cipher
-   * @return a new PCFB instance
-   * @deprecated Prefer {@link #create(BlockCipher, byte[])} with an explicit IV.
-   */
-  @Deprecated(since = "1")
-  public static PCFBMode create(BlockCipher c) {
-    return new PCFBMode(c);
-  }
-
-  /**
    * Creates a PCFB instance with an explicit IV starting at offset {@code 0}.
    *
    * <p>The register pointer is positioned at the end so the next operation re-encrypts the register

@@ -421,10 +421,9 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
   public PCFBMode getPCFB() {
     Rijndael aes = getRijndael();
     if (iv != null) return PCFBMode.create(aes, iv);
-    else
-      // Crypto note: when iv==null we fall back to zero-IV PCFB; keys are unique per bucket.
-      // TODO: Replace deprecated zero-IV PCFB factory; prefer supplying an IV or migrating mode.
-      return PCFBMode.create(aes);
+    // Crypto note: when iv==null we fall back to zero-IV PCFB; keys are unique per bucket.
+    byte[] zeroIv = new byte[PCFBMode.lengthIV(aes)];
+    return PCFBMode.create(aes, zeroIv);
   }
 
   /**

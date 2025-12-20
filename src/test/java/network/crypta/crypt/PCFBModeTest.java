@@ -198,7 +198,7 @@ class PCFBModeTest {
   @Test
   void lengthIV_matchesCipherBlockSizeBytes() {
     BlockCipher c = new ToyCipher(128);
-    PCFBMode pcfb = PCFBMode.create(c);
+    PCFBMode pcfb = createZeroIv(c);
     assertEquals(16, PCFBMode.lengthIV(c));
     assertEquals(16, pcfb.lengthIV());
   }
@@ -239,7 +239,7 @@ class PCFBModeTest {
   @Test
   void writeIV_whenCalled_writesRandomIVAndSetsState() throws IOException {
     BlockCipher c = new ToyCipher(128);
-    PCFBMode p = PCFBMode.create(c);
+    PCFBMode p = createZeroIv(c);
     DeterministicRandom rs = new DeterministicRandom((byte) 0x5A);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     p.writeIV(rs, out);
@@ -258,7 +258,7 @@ class PCFBModeTest {
     BlockCipher c = new ToyCipher(128);
     byte[] iv = new byte[16];
     for (int i = 0; i < iv.length; i++) iv[i] = (byte) (0x20 + i);
-    PCFBMode p = PCFBMode.create(c);
+    PCFBMode p = createZeroIv(c);
     p.readIV(new ByteArrayInputStream(iv));
     PCFBMode q = PCFBMode.create(c, iv);
     assertEquals(q.encipher(0x00), p.encipher(0x00));
@@ -443,5 +443,9 @@ class PCFBModeTest {
       // (no files, sockets, or threads) that need releasing. Keeping it empty avoids unnecessary
       // complexity in test helpers while complying with the RandomSource contract.
     }
+  }
+
+  private static PCFBMode createZeroIv(BlockCipher c) {
+    return PCFBMode.create(c, new byte[PCFBMode.lengthIV(c)]);
   }
 }
