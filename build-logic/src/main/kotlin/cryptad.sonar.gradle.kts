@@ -88,6 +88,70 @@ sonar {
   }
 }
 
+tasks
+  .matching { it.name == "sonar" }
+  .configureEach {
+    doFirst {
+      val sourceSets = project.extensions.getByType(SourceSetContainer::class.java)
+      val kotlinExt =
+        project.extensions.findByType(
+          org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension::class.java
+        )
+
+      val mainSourceDirs =
+        (sourceSets.getByName("main").java.srcDirs +
+            (kotlinExt?.sourceSets?.getByName("main")?.kotlin?.srcDirs ?: emptySet()))
+          .toList()
+      val testSourceDirs =
+        (sourceSets.getByName("test").java.srcDirs +
+            (kotlinExt?.sourceSets?.getByName("test")?.kotlin?.srcDirs ?: emptySet()))
+          .toList()
+
+      val testReportDirs =
+        tasks
+          .withType<org.gradle.api.tasks.testing.Test>()
+          .map { it.reports.junitXml.outputLocation.get().asFile }
+          .ifEmpty { listOf(layout.buildDirectory.dir("test-results/test").get().asFile) }
+          .distinct()
+
+      val sampleClass = "network.crypta.support.compress.NewLzmaCompressorTest"
+      val sampleBase = sampleClass.replace('.', '/')
+      val sampleCandidates = listOf("$sampleBase.java", "$sampleBase.kt")
+      val sampleFound =
+        testSourceDirs.any { dir -> sampleCandidates.any { rel -> dir.resolve(rel).isFile } }
+      val sampleReport =
+        testReportDirs
+          .asSequence()
+          .flatMap { dir -> (dir.listFiles() ?: emptyArray()).asSequence() }
+          .firstOrNull { it.name.contains(sampleClass) && it.name.endsWith(".xml") }
+
+      val reportCount =
+        testReportDirs.sumOf { dir ->
+          dir
+            .listFiles { file -> file.name.startsWith("TEST-") && file.name.endsWith(".xml") }
+            ?.size ?: 0
+        }
+
+      logger.lifecycle("Sonar debug: projectDir=${project.projectDir}")
+      logger.lifecycle(
+        "Sonar debug: mainSourceDirs=${mainSourceDirs.joinToString(",") { project.relativePath(it) }}"
+      )
+      logger.lifecycle(
+        "Sonar debug: testSourceDirs=${testSourceDirs.joinToString(",") { project.relativePath(it) }}"
+      )
+      logger.lifecycle(
+        "Sonar debug: testReportDirs=${testReportDirs.joinToString(",") { project.relativePath(it) }}"
+      )
+      logger.lifecycle("Sonar debug: testReportXmlCount=$reportCount")
+      logger.lifecycle(
+        "Sonar debug: sampleTestSourceFound=$sampleFound sampleCandidates=${sampleCandidates.joinToString(",")}"
+      )
+      logger.lifecycle(
+        "Sonar debug: sampleReportFile=${sampleReport?.let { project.relativePath(it) } ?: "not found"}"
+      )
+    }
+  }
+
 // Minimal SonarLint configuration with optional file scoping via -Psonarlint.sources
 extensions.configure<SonarLintSettings>("sonarLint") {
   // default: don't fail builds on findings until CI is configured to be green
