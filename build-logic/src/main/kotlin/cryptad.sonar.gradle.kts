@@ -35,7 +35,7 @@ sonar {
     val mainSourceDirs =
       (sourceSets.getByName("main").java.srcDirs +
           (kotlinExt?.sourceSets?.getByName("main")?.kotlin?.srcDirs ?: emptySet()))
-        .map { it.absolutePath }
+        .map { project.relativePath(it) }
         .sorted()
     if (mainSourceDirs.isNotEmpty()) {
       property("sonar.sources", mainSourceDirs.joinToString(","))
@@ -44,7 +44,7 @@ sonar {
     val testSourceDirs =
       (sourceSets.getByName("test").java.srcDirs +
           (kotlinExt?.sourceSets?.getByName("test")?.kotlin?.srcDirs ?: emptySet()))
-        .map { it.absolutePath }
+        .map { project.relativePath(it) }
         .sorted()
     if (testSourceDirs.isNotEmpty()) {
       property("sonar.tests", testSourceDirs.joinToString(","))
@@ -53,9 +53,9 @@ sonar {
     val testReportDirs =
       tasks
         .withType<org.gradle.api.tasks.testing.Test>()
-        .map { it.reports.junitXml.outputLocation.get().asFile.absolutePath }
+        .map { project.relativePath(it.reports.junitXml.outputLocation.get().asFile) }
         .ifEmpty {
-          listOf(layout.buildDirectory.dir("test-results/test").get().asFile.absolutePath)
+          listOf(project.relativePath(layout.buildDirectory.dir("test-results/test").get().asFile))
         }
         .distinct()
         .sorted()
