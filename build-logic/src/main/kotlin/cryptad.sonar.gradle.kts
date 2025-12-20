@@ -65,6 +65,11 @@ sonar {
       property("sonar.junit.reportsPath", primaryReportDir)
       property("sonar.surefire.reportsPath", primaryReportDir)
     }
+    // Dump scanner properties for CI debugging (without hard-coding absolute paths).
+    property(
+      "sonar.scanner.dumpToFile",
+      project.relativePath(layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile),
+    )
 
     // Avoid UTF-8 decode warnings on binary fixtures.
     property(
@@ -154,6 +159,24 @@ tasks
       logger.lifecycle(
         "Sonar debug: sampleReportFile=${sampleReport?.let { project.relativePath(it) } ?: "not found"}"
       )
+
+      val dumpFile = layout.buildDirectory.file("sonar/scanner-dump.properties").get().asFile
+      val dumpPath = project.relativePath(dumpFile)
+      logger.lifecycle("Sonar debug: scannerDumpPath=$dumpPath")
+      if (dumpFile.isFile) {
+        val sanitized =
+          dumpFile
+            .readLines()
+            .asSequence()
+            .filter { it.startsWith("sonar.") }
+            .filterNot { it.startsWith("sonar.token=") || it.startsWith("sonar.login=") }
+            .filterNot { it.startsWith("sonar.password=") }
+            .sorted()
+            .joinToString("\n")
+        logger.lifecycle("Sonar debug: scannerDumpProps\n$sanitized")
+      } else {
+        logger.lifecycle("Sonar debug: scannerDumpProps not available (file missing)")
+      }
     }
   }
 
