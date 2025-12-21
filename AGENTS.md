@@ -165,8 +165,8 @@ Refactoring guidance
 
 - Java version: 21 or higher
     - Java runtime has been installed in the environment. So you can run java and gradle related commands without issues
-- Kotlin version: 2.2.20 or higher
-    - ki shell has been installed in the environment.
+- Kotlin version: 2.3.0 or higher (matches `gradle/libs.versions.toml`)
+    - The ki shell is installed in the environment.
 
 ## Project-Specific Notes
 
@@ -499,13 +499,13 @@ Steps to update verification-metadata for Spotless
   - Edit `gradle.properties` → `org.gradle.dependency.verification=strict`.
 - Validate:
   - `./gradlew spotlessApply` should pass with strict verification.
- - Export keys (optional, recommended for reproducibility):
-   - `./gradlew --export-keys`
+- Export keys (optional, recommended for reproducibility):
+  - `./gradlew --export-keys`
 
 Tips
 - Keep Spotless config at the intended formatter version (currently `googleJavaFormat("1.28.0")`).
 - If verification still blocks resolution, re-run the metadata write with `pgp` and ensure the group-level trusted key entry exists.
- - Commit updated `gradle/verification-keyring.gpg` and `gradle/verification-keyring.keys` so new environments verify without re-fetching keys.
+- Commit updated `gradle/verification-keyring.gpg` and `gradle/verification-keyring.keys` so new environments verify without re-fetching keys.
 
 ## Dependency Metadata
 
@@ -516,7 +516,9 @@ Note: `dependencies.properties` has been removed (Sep 2025). It is no longer pac
 
 - Plugin & wiring
   - Added Gradle plugin `name.remal.sonarlint` via the build-logic convention plugin `cryptad.sonar` (`build-logic/src/main/kotlin/cryptad.sonar.gradle.kts`).
-  - Version pinned in the version catalog: `remalSonarlint = "7.0.0-rc-2"`.
+  - Versions pinned in the version catalog:
+    - `remalSonarlint = "7.0.0"`
+    - `sonarqube = "7.2.2.6593"`
   - The convention applies both `org.sonarqube` and `name.remal.sonarlint`.
 - Defaults
   - SonarLint is configured not to fail builds by default (`ignoreFailures = true`) to ease adoption.
