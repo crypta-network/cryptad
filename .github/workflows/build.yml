@@ -8,7 +8,7 @@ on:
         default: main
       jdk-version:
         type: string
-        default: '21'
+        default: '25'
     outputs:
       artifact-id:
         description: The artifact-id for built cryptad.jar

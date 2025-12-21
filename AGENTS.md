@@ -163,7 +163,7 @@ Refactoring guidance
 
 ## Environment Setup
 
-- Java version: 21 or higher
+- Java version: 25 or higher
     - Java runtime has been installed in the environment. So you can run java and gradle related commands without issues
 - Kotlin version: 2.3.0 or higher (matches `gradle/libs.versions.toml`)
     - The ki shell is installed in the environment.
@@ -298,7 +298,7 @@ Tip: If GitHub API rate limits are hit during builds, set `GITHUB_TOKEN` in the 
 ## Build System
 
 - Gradle with Kotlin DSL
-- Targets Java 21+
+- Targets Java 25+
 - Kotlin components present alongside Java
 - Dependency verification is configured and typically strict (temporarily set to lenient only when updating metadata)
 - Version info (`Version.kt`) generated with current build number and git revision
@@ -474,7 +474,7 @@ Notes
 
 ## Important Notes
 
-- Requires Java 21+ to compile and run
+- Requires Java 25+ to compile and run
 - Updater supports automatic updates and includes legacy-related utilities
 - Custom crypto implementations; avoid changes without review
 - Network protocol changes must consider backward compatibility

@@ -6,7 +6,7 @@ plugins {
 }
 
 java {
-  // Use Java 21 toolchain for build logic
+  // Keep build-logic compatible with Gradle's embedded Kotlin
   toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
   sourceCompatibility = JavaVersion.VERSION_21
   targetCompatibility = JavaVersion.VERSION_21
@@ -36,7 +36,7 @@ dependencies {
   )
 }
 
-// Align Kotlin JVM target with Java 21 for build-logic itself
 tasks.withType<KotlinCompile>().configureEach {
+  // Keep build-logic compatible with Gradle's embedded Kotlin
   compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
 }

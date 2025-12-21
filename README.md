@@ -9,7 +9,7 @@
   <a href="https://www.gnu.org/licenses/gpl-3.0">
     <img alt="License: GPLv3" src="https://img.shields.io/badge/license-GPLv3-blue.svg" />
   </a>
-  <img alt="Java 21+" src="https://img.shields.io/badge/Java-21%2B-007396?logo=openjdk" />
+  <img alt="Java 25+" src="https://img.shields.io/badge/Java-25%2B-007396?logo=openjdk" />
   <img alt="Kotlin 2.3.0+" src="https://img.shields.io/badge/Kotlin-2.3.0%2B-7F52FF?logo=kotlin" />
   <img alt="Gradle" src="https://img.shields.io/badge/Build-Gradle-02303A?logo=gradle" />
 </p>
@@ -147,7 +147,7 @@ wrapper, you can build immediately.
 
 Prerequisites:
 
-- Java 21 or newer
+- Java 25 or newer
 - Kotlin 2.3.0+ (tooling; the project includes Kotlin Gradle plugins)
 - A POSIX shell or Windows terminal
 
@@ -427,8 +427,8 @@ cd build/jpackage/Crypta.app/Contents
 
 ## Dependencies
 
-- Runtime: Java 21+
-- Language/Tooling: Kotlin 2.2.20+, Gradle Wrapper (provided in this repo)
+- Runtime: Java 25+
+- Language/Tooling: Kotlin 2.3.0+, Gradle Wrapper (provided in this repo)
 - External libraries are managed via Gradle.
 - Dependency verification is enabled. When adding or updating libraries:
   - Declare versions in `gradle/libs.versions.toml` and add usages in `build.gradle.kts`.

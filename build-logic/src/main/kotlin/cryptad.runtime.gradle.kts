@@ -134,10 +134,10 @@ val computeJlinkModules by
     modulesFile.set(layout.buildDirectory.file("jlink/modules.list"))
 
     // Toolchain + baseline
-    javaLanguageVersion.set(21)
+    javaLanguageVersion.set(25)
     // Resolve toolchain at configuration time and pass JDK home path as input
     val toolchains = project.serviceOf<JavaToolchainService>()
-    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
     javaHomePath.set(launcher.map { it.metadata.installationPath.asFile.absolutePath })
     baselineModules.set(
       listOf(
@@ -163,7 +163,7 @@ val createJreImage by
     dependsOn(computeJlinkModules)
     // Resolve toolchain and static inputs at configuration time to avoid Task.project access
     val toolchains = project.serviceOf<JavaToolchainService>()
-    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
     val javaHomePath = launcher.map { it.metadata.installationPath.asFile.absolutePath }
     val jreDirProvider = layout.buildDirectory.dir("jre")
     val modulesFileProvider = layout.buildDirectory.dir("jlink").map { it.file("modules.list") }

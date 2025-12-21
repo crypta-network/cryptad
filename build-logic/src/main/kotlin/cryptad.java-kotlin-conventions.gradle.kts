@@ -8,13 +8,14 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
   java
-  id("org.jetbrains.kotlin.jvm")
+  kotlin("jvm")
   jacoco
 }
 
 java {
-  sourceCompatibility = JavaVersion.VERSION_21
-  targetCompatibility = JavaVersion.VERSION_21
+  toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
+  sourceCompatibility = JavaVersion.VERSION_25
+  targetCompatibility = JavaVersion.VERSION_25
 }
 
 repositories {
@@ -60,7 +61,7 @@ tasks.withType<Javadoc>().configureEach {
 }
 
 tasks.withType<KotlinCompile>().configureEach {
-  compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+  compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25)
 }
 
 // Ensure Kotlin sources compile before Java when Java depends on Kotlin types
