@@ -10,7 +10,7 @@
     <img alt="License: GPLv3" src="https://img.shields.io/badge/license-GPLv3-blue.svg" />
   </a>
   <img alt="Java 21+" src="https://img.shields.io/badge/Java-21%2B-007396?logo=openjdk" />
-  <img alt="Kotlin 2.2.20+" src="https://img.shields.io/badge/Kotlin-2.2.20%2B-7F52FF?logo=kotlin" />
+  <img alt="Kotlin 2.3.0+" src="https://img.shields.io/badge/Kotlin-2.3.0%2B-7F52FF?logo=kotlin" />
   <img alt="Gradle" src="https://img.shields.io/badge/Build-Gradle-02303A?logo=gradle" />
 </p>
 
@@ -148,7 +148,7 @@ wrapper, you can build immediately.
 Prerequisites:
 
 - Java 21 or newer
-- Kotlin 2.2.20+ (tooling; the project includes Kotlin Gradle plugins)
+- Kotlin 2.3.0+ (tooling; the project includes Kotlin Gradle plugins)
 - A POSIX shell or Windows terminal
 
 Build the node JAR (prints SHA‑256 of the output):

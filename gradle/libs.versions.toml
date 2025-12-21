@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.2.21"
+kotlin = "2.3.0"
 coroutines = "1.10.2"
 bcprov = "2.73.9"
 jna = "5.18.1"
@@ -19,8 +19,8 @@ jsystemTheme = "ea2f8582ea"
 dbusJava = "5.1.1"
 junitJupiter = "6.0.0"
 junitPlatform = "6.0.0"
-sonarqube = "7.0.0.6105"
-remalSonarlint = "7.0.0-rc-4"
+sonarqube = "7.2.2.6593"
+remalSonarlint = "7.0.0"
 #noinspection UnusedVersionCatalogEntry
 jacoco = "0.8.14"
 
