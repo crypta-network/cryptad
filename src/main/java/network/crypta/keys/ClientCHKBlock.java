@@ -211,7 +211,6 @@ public class ClientCHKBlock implements ClientKeyBlock {
    * @throws IOException if allocating or writing the output bucket fails.
    * @throws UnsupportedOperationException if the block does not use the legacy algorithm.
    */
-  @SuppressWarnings("deprecation")
   public Bucket decodeOld(BucketFactory bf, int maxLength, boolean dontCompress)
       throws CHKDecodeException, IOException {
     // Overall hash already verified, so first job is to decrypt.
@@ -228,7 +227,8 @@ public class ClientCHKBlock implements ClientKeyBlock {
     if (cryptoKey.length < Node.SYMMETRIC_KEY_LENGTH)
       throw new CHKDecodeException("Crypto key too short");
     cipher.initialize(key.cryptoKey);
-    PCFBMode pcfb = PCFBMode.create(cipher);
+    byte[] zeroIv = new byte[PCFBMode.lengthIV(cipher)];
+    PCFBMode pcfb = PCFBMode.create(cipher, zeroIv);
     byte[] headers = block.headers;
     byte[] data = block.data;
     byte[] hbuf = Arrays.copyOfRange(headers, 2, headers.length);
@@ -850,8 +850,8 @@ public class ClientCHKBlock implements ClientKeyBlock {
      * keystream segment on every block.
      */
 
-    @SuppressWarnings("deprecation")
-    PCFBMode pcfb = PCFBMode.create(cipher);
+    byte[] zeroIv = new byte[PCFBMode.lengthIV(cipher)];
+    PCFBMode pcfb = PCFBMode.create(cipher, zeroIv);
     pcfb.blockEncipher(header, 2, header.length - 2);
     pcfb.blockEncipher(data, 0, data.length);
 
