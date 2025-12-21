@@ -198,10 +198,10 @@ fun iconPathForOs(): String =
     else -> project.file("src/jpackage/linux/cryptad.png").absolutePath
   }
 
-/** Resolves the `jpackage` executable from the Java 21 toolchain. */
+/** Resolves the `jpackage` executable from the Java 25 toolchain. */
 fun resolveJpackageExecutable(): File {
   val toolchains = project.extensions.getByType(JavaToolchainService::class.java)
-  val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+  val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
   val javaHome = launcher.get().metadata.installationPath.asFile
   val exe =
     javaHome.resolve(
@@ -674,7 +674,7 @@ val jpackageInstallerRpm by
           "--install-dir",
           "/opt/cryptad",
         )
-      // jpackage (JDK 21) does not accept linux post-install flags here; use template.spec
+      // jpackage (JDK 25) does not accept linux post-install flags here; use template.spec
       // override.
       args.addAll(listOf("--icon", iconPathForOs()))
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"

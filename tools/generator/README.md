@@ -57,7 +57,7 @@ Only attempt if you genuinely need to change the client helpers and understand G
 4. Verify the UI loads and push updates work (status bar messages, progress bars, keepalive) before committing.
 
 Notes:
-- Expect toolchain friction on modern JDKs; you may need to build with an older Java version that the GWT compiler supports, then run the daemon with Java 21+.
+- Expect toolchain friction on modern JDKs; you may need to build with an older Java version that the GWT compiler supports, then run the daemon with Java 25+.
 - Keep the output exactly under the `freenetjs/` directory to match URL paths the server emits.
 
 ## Testing Hints
@@ -69,4 +69,3 @@ Notes:
 
 - Security/maintenance: GWT hosted/dev mode and older permutations are not maintained; prefer minimal changes.
 - Backward compatibility: Any change to the generated assets can affect the HTTP client behavior; test thoroughly across the UI.
-
