@@ -459,7 +459,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     }
     try {
       return Integer.parseInt(value);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return defaultValue;
     }
   }
@@ -485,7 +485,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     String value = this.getPartAsStringFailsafe(name, 32);
     try {
       return Integer.parseInt(value);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return defaultValue;
     }
   }
@@ -529,7 +529,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     for (String s : valueList) {
       try {
         intValueList.add(Integer.valueOf(s));
-      } catch (Exception e) {
+      } catch (Exception _) {
         // ignore invalid parameter values
       }
     }
@@ -825,23 +825,6 @@ public class HTTPRequestImpl implements HTTPRequest {
   }
 
   /**
-   * Returns the part content as a UTF-8 string, truncated to {@code maxlength} bytes if necessary.
-   *
-   * <p>When the part is absent, an empty array is returned and the conversion yields an empty
-   * string. The method is lenient and does not throw on length overflow; callers needing strict
-   * enforcement should use {@link #getPartAsStringThrowing(String, int)}.
-   *
-   * @param name multipart field name
-   * @param maxlength maximum number of bytes to read before truncation
-   * @return UTF-8 decoded string, possibly empty when the part is missing
-   * @throws IllegalStateException if called after {@link #freeParts()}
-   */
-  @Override
-  public String getPartAsString(String name, int maxlength) {
-    return new String(getPartAsBytes(name, maxlength), StandardCharsets.UTF_8);
-  }
-
-  /**
    * Returns the part content as a UTF-8 string, enforcing presence and maximum length.
    *
    * <p>This variant throws {@link NoSuchElementException} when the part is missing and {@link
@@ -889,37 +872,6 @@ public class HTTPRequestImpl implements HTTPRequest {
 
   private String getPartAsLimitedString(Bucket part, int maxLength) {
     return new String(getPartAsLimitedBytes(part, maxLength), StandardCharsets.UTF_8);
-  }
-
-  /**
-   * Returns the part content as a byte array, truncating when necessary.
-   *
-   * <p>This method reads up to {@code maxlength} bytes and returns them in a newly allocated array.
-   * Missing parts yield an empty array. Use {@link #getPartAsBytesThrowing(String, int)} to enforce
-   * strict size limits.
-   *
-   * @param name multipart field name
-   * @param maxlength maximum number of bytes to read
-   * @return byte array containing up to {@code maxlength} bytes; empty when part is absent
-   * @throws IllegalStateException if invoked after {@link #freeParts()}
-   */
-  @Override
-  public byte[] getPartAsBytes(String name, int maxlength) {
-    if (freedParts) throw new IllegalStateException("Already freed");
-    Bucket part = this.parts.get(name);
-    if (part == null) return new byte[0];
-
-    if (part.size() > maxlength) return new byte[0];
-
-    try (InputStream is = part.getInputStream();
-        DataInputStream dis = new DataInputStream(is)) {
-      byte[] buf = new byte[(int) Math.min(part.size(), maxlength)];
-      dis.readFully(buf);
-      return buf;
-    } catch (IOException ioe) {
-      LOG.error("Caught IOE:{}", ioe.getMessage());
-      return new byte[0];
-    }
   }
 
   /**
@@ -1019,7 +971,7 @@ public class HTTPRequestImpl implements HTTPRequest {
     String value = this.getParameterValue(name);
     try {
       return Fields.parseLong(value);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return defaultValue;
     }
   }

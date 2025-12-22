@@ -171,21 +171,6 @@ public interface HTTPRequest {
   /**
    * Returns a multipart part as a UTF-8 {@code String} with a maximum length.
    *
-   * <p>If the part exceeds {@code maxlength} (characters), this method returns {@code ""} instead
-   * of throwing; prefer {@link #getPartAsStringThrowing(String, int)} for strict behavior.
-   *
-   * @param name the part name
-   * @param maxlength maximum number of characters to read
-   * @return the content as text, or {@code ""} on overflow or when missing
-   * @deprecated Prefer {@link #getPartAsStringThrowing(String, int)} or {@link
-   *     #getPartAsStringFailsafe(String, int)} depending on desired behavior.
-   */
-  @Deprecated(since = "1")
-  String getPartAsString(String name, int maxlength);
-
-  /**
-   * Returns a multipart part as a UTF-8 {@code String} with a maximum length.
-   *
    * <p>If the named part is missing a {@link NoSuchElementException} is thrown. If its size exceeds
    * {@code maxlength} a {@link SizeLimitExceededException} is thrown. Implementations may throw
    * {@link IllegalStateException} if parts were freed via {@link #freeParts()}.
@@ -216,21 +201,6 @@ public interface HTTPRequest {
   /**
    * Returns a multipart part as a {@code byte[]} with a maximum length.
    *
-   * <p>If the part exceeds {@code maxlength} (bytes), this method returns a zero-length array
-   * instead of throwing; prefer {@link #getPartAsBytesThrowing(String, int)} for strict behavior.
-   *
-   * @param name the part name
-   * @param maxlength maximum number of bytes to read
-   * @return the content as bytes, or {@code new byte[0]} on overflow or when missing
-   * @deprecated Prefer {@link #getPartAsBytesThrowing(String, int)} or {@link
-   *     #getPartAsBytesFailsafe(String, int)} depending on desired behavior.
-   */
-  @Deprecated(since = "1")
-  byte[] getPartAsBytes(String name, int maxlength);
-
-  /**
-   * Returns a multipart part as a {@code byte[]} with a maximum length.
-   *
    * <p>If the named part is missing a {@link NoSuchElementException} is thrown. If its size exceeds
    * {@code maxlength} a {@link SizeLimitExceededException} is thrown. Implementations may throw
    * {@link IllegalStateException} if parts were freed via {@link #freeParts()}.
@@ -242,7 +212,7 @@ public interface HTTPRequest {
    * @throws SizeLimitExceededException if the part exceeds {@code maxlength}
    * @throws IllegalStateException if parts were freed
    */
-  @SuppressWarnings("unused")
+  @SuppressWarnings("UnusedReturnValue")
   byte[] getPartAsBytesThrowing(String name, int maxlength)
       throws NoSuchElementException, SizeLimitExceededException;
 
