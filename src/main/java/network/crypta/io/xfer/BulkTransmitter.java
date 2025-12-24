@@ -275,7 +275,7 @@ public class BulkTransmitter {
     }
     try {
       peer.sendAsync(DMT.createFNPBulkSendAborted(uid), null, ctr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Best-effort notification only; ignore if not connected.
     }
   }
@@ -472,7 +472,7 @@ public class BulkTransmitter {
       while (!failedPacket && inFlightPackets != 0 && blocksNotSentButPresent.firstOne() < 0) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore and continue waiting; do not reassert the interrupt flag (see java:S2142).
           // We must not exit early here, or subsequent waits will spin and bypass throttling.
           interruptedDuringWait = true; // restored by send() finally block
@@ -508,7 +508,7 @@ public class BulkTransmitter {
         if (remaining <= 0) break;
         try {
           wait(remaining);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore and loop; we restore the interrupt in send() finally.
           interruptedDuringWait = true;
         }
@@ -549,7 +549,7 @@ public class BulkTransmitter {
         blocksNotSentButPresent.setBit(blockNo, false);
       }
       return System.currentTimeMillis();
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       cancel("Disconnected");
       if (LOG.isDebugEnabled()) LOG.debug("Cancelled: not connected {}", this);
       throw new DisconnectedException();
@@ -562,7 +562,7 @@ public class BulkTransmitter {
       while (inFlightPackets >= max && !failedPacket) {
         try {
           wait(1000);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore and continue waiting; keep honoring congestion/throttle semantics.
           // We restore the interrupt when send() returns to avoid spinning here.
           interruptedDuringWait = true;

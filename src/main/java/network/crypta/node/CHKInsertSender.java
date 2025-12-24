@@ -135,7 +135,7 @@ public final class CHKInsertSender extends BaseSender
       try {
         node.getUSM()
             .addAsyncFilter(getNotificationMessageFilter(false), BackgroundTransfer.this, null);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         // Normal
         if (LOG.isDebugEnabled()) LOG.debug("Disconnected while adding filter");
         BackgroundTransfer.this.completedTransfer(false);
@@ -317,7 +317,7 @@ public final class CHKInsertSender extends BaseSender
         try {
           node.getUSM()
               .addAsyncFilter(getNotificationMessageFilter(true), this, CHKInsertSender.this);
-        } catch (DisconnectedException e) {
+        } catch (DisconnectedException _) {
           // Normal
           if (LOG.isDebugEnabled())
             LOG.debug("Disconnected while adding filter after first timeout");
@@ -641,7 +641,7 @@ public final class CHKInsertSender extends BaseSender
           DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED),
           null,
           this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Ignore
     }
   }
@@ -722,9 +722,9 @@ public final class CHKInsertSender extends BaseSender
         new CHKBlock(prb.getBlock(), headers, (NodeCHK) key);
         LOG.error("Verify failed on {} but data was valid!", next);
       }
-    } catch (CHKVerifyException e) {
+    } catch (CHKVerifyException _) {
       LOG.info("Verify failed because data was invalid");
-    } catch (AbortedException e) {
+    } catch (AbortedException _) {
       onReceiveFailed();
     }
   }
@@ -751,7 +751,7 @@ public final class CHKInsertSender extends BaseSender
           LOG.info("Send failed; have not yet received all data but not aborted: {}", next);
         }
       }
-    } catch (AbortedException e) {
+    } catch (AbortedException _) {
       onReceiveFailed();
     }
   }
@@ -885,7 +885,7 @@ public final class CHKInsertSender extends BaseSender
                 }
               },
               this);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       next.noLongerRoutingTo(tag, false);
     }
   }
@@ -931,7 +931,7 @@ public final class CHKInsertSender extends BaseSender
             }
           },
           CHKInsertSender.this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       next.noLongerRoutingTo(tag, false);
     }
   }
@@ -1140,7 +1140,7 @@ public final class CHKInsertSender extends BaseSender
         if (state != 0) return state > 0;
         try {
           backgroundTransfers.wait(SECONDS.toMillis(100));
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Record and break out so higher-level shutdown paths can react promptly.
           // Re-assert interrupt here to satisfy static analysis and preserve signal.
           Thread.currentThread().interrupt();
@@ -1231,7 +1231,7 @@ public final class CHKInsertSender extends BaseSender
         while (status == NOT_FINISHED) {
           try {
             this.wait(0); // indefinite wait
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             // See rationale above: ignore to avoid busy-spin in polling callers.
           }
         }
@@ -1251,7 +1251,7 @@ public final class CHKInsertSender extends BaseSender
           } else {
             this.wait(waitMillis, waitNanos);
           }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Intentionally swallow interrupts here so callers that poll using wait/notify
           // do not busy-spin with an already-set interrupt flag. Shutdown/cancellation paths
           // may interrupt these threads; we still prefer to wait for a terminal status.
@@ -1270,7 +1270,7 @@ public final class CHKInsertSender extends BaseSender
         while (!completed()) {
           try {
             this.wait(0); // indefinite wait
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             // See comment in waitIfNotFinished(): ignore interrupts to avoid immediate
             // InterruptedException on subsequent wait() calls which would otherwise
             // cause tight-loop spinning in callers.
@@ -1292,7 +1292,7 @@ public final class CHKInsertSender extends BaseSender
           } else {
             this.wait(waitMillis, waitNanos);
           }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // See comment in waitIfNotFinished(): ignore interrupts to avoid immediate
           // InterruptedException on subsequent wait() calls which would otherwise
           // cause tight-loop spinning in callers.
@@ -1499,13 +1499,13 @@ public final class CHKInsertSender extends BaseSender
     if (LOG.isDebugEnabled()) LOG.debug("Sending DataInsert");
     try {
       next.sendSync(dataInsert, this, realTimeFlag);
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Not connected sending DataInsert: {}" + FOR + "{}", next, uid);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Unable to send {} to {} in a reasonable time", dataInsert, next);
       // Other side will fail. No need to do anything.
       next.noLongerRoutingTo(thisTag, false);
@@ -1531,7 +1531,7 @@ public final class CHKInsertSender extends BaseSender
       }
       try {
         msg = node.getUSM().waitFor(mf, this);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         LOG.info("Disconnected from {} while waiting for InsertReply on {}", next, this);
         transfer.onDisconnect(next);
         routeRequests();
@@ -1620,7 +1620,7 @@ public final class CHKInsertSender extends BaseSender
       }
       try {
         msg = node.getUSM().waitFor(mf, CHKInsertSender.this);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         LOG.info(
             "Disconnected from {} while waiting for InsertReply on {}",
             waitingFor,

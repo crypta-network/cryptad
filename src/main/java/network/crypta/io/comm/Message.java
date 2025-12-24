@@ -204,7 +204,7 @@ public class Message {
       int size = bb.readUnsignedShort();
       if (bb.remaining() < size) return null;
       return bb.slice(size);
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       if (LOG.isDebugEnabled()) LOG.debug("No submessages, returning: {}", m);
       return null;
     } catch (IOException e) {

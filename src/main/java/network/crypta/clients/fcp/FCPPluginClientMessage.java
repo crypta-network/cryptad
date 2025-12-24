@@ -215,7 +215,7 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
     final FCPPluginConnection serverConnection;
     try {
       serverConnection = handler.getFCPPluginConnection(pluginname);
-    } catch (PluginNotFoundException e) {
+    } catch (PluginNotFoundException _) {
       throw pluginUnavailable();
     }
 
@@ -227,7 +227,7 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
 
     try {
       serverConnection.send(SendDirection.TO_SERVER, message);
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw pluginUnavailable();
     }
   }
@@ -301,7 +301,7 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
 
     try {
       return fs.getBoolean("Success");
-    } catch (FSParseException e) {
+    } catch (FSParseException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Success must be a boolean (yes, no, true or false)",

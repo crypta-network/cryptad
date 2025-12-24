@@ -271,7 +271,7 @@ public class PeerManager {
         InputStreamReader ris = new InputStreamReader(fis, StandardCharsets.UTF_8);
         BufferedReader br = new BufferedReader(ris)) {
       readPeerFieldSets(br, peerEntries);
-    } catch (FileNotFoundException e4) {
+    } catch (FileNotFoundException _) {
       LOG.info("Peers file not found: {}", peersFile);
       return false;
     } catch (IOException e3) {
@@ -291,7 +291,7 @@ public class PeerManager {
           FileUtil.copy(fis, fos, -1);
         }
         LOG.warn("Broken peers file copied to {}", brokenPeersFile);
-      } catch (IOException e) {
+      } catch (IOException _) {
         LOG.warn("Unable to copy broken peers file");
       }
     }
@@ -365,7 +365,7 @@ public class PeerManager {
   private static SimpleFieldSet readNextPeerFieldSet(BufferedReader br) throws IOException {
     try {
       return new SimpleFieldSet(br, false, true);
-    } catch (EOFException eof) {
+    } catch (EOFException _) {
       return null; // end-of-file reached
     }
   }
@@ -373,7 +373,7 @@ public class PeerManager {
   private static void safeDeleteIfExists(File file) {
     try {
       java.nio.file.Files.deleteIfExists(file.toPath());
-    } catch (IOException ignore) {
+    } catch (IOException _) {
       // best-effort
     }
   }
@@ -735,7 +735,7 @@ public class PeerManager {
       Message msg = createDisconnectMessage(remove, purge);
       try {
         pn.sendAsync(msg, createDisconnectCallback(pn, remove, waitForAck), ctrDisconn);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         removePeerIfRequested(pn, remove);
         return;
       }
@@ -945,7 +945,7 @@ public class PeerManager {
         continue;
       try {
         peer.sendAsync(msg, null, ctr);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ignore
       }
     }
@@ -2115,14 +2115,14 @@ public class PeerManager {
         LOG.error("Cannot write peers to disk: cannot create {} (error={})", f, e2, e2);
         try {
           java.nio.file.Files.deleteIfExists(f.toPath());
-        } catch (IOException ignore) {
+        } catch (IOException _) {
           // best-effort
         }
       } catch (IOException e) {
         LOG.error("I/O error writing peers file: {}", e, e);
         try {
           java.nio.file.Files.deleteIfExists(f.toPath());
-        } catch (IOException ignore) {
+        } catch (IOException _) {
           // best-effort
         }
         // don't overwrite old file!
@@ -2130,7 +2130,7 @@ public class PeerManager {
         // Try-with-resources handles the stream cleanup
         try {
           java.nio.file.Files.deleteIfExists(f.toPath());
-        } catch (IOException ignore) {
+        } catch (IOException _) {
           // best-effort
         }
       }
@@ -2144,7 +2144,7 @@ public class PeerManager {
       if (prevFile == null) {
         try {
           java.nio.file.Files.deleteIfExists(thisFile.toPath());
-        } catch (IOException ignore) {
+        } catch (IOException _) {
           // best-effort
         }
       } else if (thisFile.exists()) {

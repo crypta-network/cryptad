@@ -377,7 +377,7 @@ public abstract class ClientRequest implements Serializable {
       try {
         if (persistenceString == null) return Persistence.CONNECTION;
         else return Persistence.valueOf(persistenceString.toUpperCase());
-      } catch (IllegalArgumentException e) {
+      } catch (IllegalArgumentException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.ERROR_PARSING_NUMBER,
             "Error parsing Persistence field: " + persistenceString,
@@ -759,7 +759,7 @@ public abstract class ClientRequest implements Serializable {
                   context -> {
                     try {
                       restart(context, disableFilterData);
-                    } catch (PersistenceDisabledException e) {
+                    } catch (PersistenceDisabledException _) {
                       // Impossible
                     }
                     return true;
@@ -781,7 +781,7 @@ public abstract class ClientRequest implements Serializable {
                 public void run() {
                   try {
                     restart(server.getCore().getClientContext(), disableFilterData);
-                  } catch (PersistenceDisabledException e) {
+                  } catch (PersistenceDisabledException _) {
                     // Impossible
                   }
                 }

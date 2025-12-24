@@ -303,7 +303,7 @@ public class NodeUpdateManager {
       ClientGetter get = new ClientGetter(this, freenetURI, context, priority, null, null, null);
       try {
         node.getClientCore().getClientContext().start(get);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         // Impossible
       } catch (FetchException e) {
         onFailure(e, null);
@@ -371,7 +371,7 @@ public class NodeUpdateManager {
                         (int)
                             SECONDS.toMillis(
                                 (long) Math.min(Math.pow(2, i), MINUTES.toSeconds(15)))));
-      } catch (InterruptedException ie) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
     }
@@ -543,7 +543,7 @@ public class NodeUpdateManager {
       if (Version.isBuildAtLeast(peer.getNodeName(), peer.getBuildNumber(), TRANSITION_VERSION)) {
         peer.sendAsync(getNewUOMAnnouncement(size), null, getByteCounter());
       }
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Sad, but ignore it
     }
   }
@@ -985,7 +985,7 @@ public class NodeUpdateManager {
     } catch (Exception t) {
       try {
         LOG.error("Caught {}", t, t);
-      } catch (Exception t1) {
+      } catch (Exception _) {
         // Ignore secondary logging failures
       }
     }

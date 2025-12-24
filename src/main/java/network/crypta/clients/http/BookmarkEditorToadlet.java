@@ -458,7 +458,7 @@ public class BookmarkEditorToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     try {
       return URLDecoder.decode(originalBookmark, false);
-    } catch (URLEncodedFormatException e) {
+    } catch (URLEncodedFormatException _) {
       ctx.pageMaker()
           .getInfobox(INFOBOX_ERROR, ctx.error(), ctx.content(), "bookmark-url-decode-error", false)
           .addChild("#", NodeL10n.getBase().getString("BookmarkEditorToadlet.urlDecodeError"));
@@ -833,7 +833,7 @@ public class BookmarkEditorToadlet extends Toadlet {
 
       String action = req.getPartAsStringFailsafe(PARAM_ACTION, MAX_ACTION_LENGTH);
       processPostAction(req, bookmarkPath, bookmark, action, postCtx);
-    } catch (MalformedURLException mue) {
+    } catch (MalformedURLException _) {
       addInvalidKeyError(pageMaker, content);
     }
     renderBookmarksPostResponse(bookmarkManager, pageMaker, content, ctx, page);

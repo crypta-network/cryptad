@@ -435,7 +435,7 @@ public class LongTermPushPullTest extends LongTermTest {
       String s = split[startIndex + i];
       try {
         times[i] = Integer.parseInt(s);
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         failures[i] = s;
       }
     }

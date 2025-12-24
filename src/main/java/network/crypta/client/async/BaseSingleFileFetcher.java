@@ -384,7 +384,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
     try {
       block = Key.createKeyBlock(this.key, lowLevelBlock);
       onSuccess(block, fromStore, token, context);
-    } catch (KeyVerifyException e) {
+    } catch (KeyVerifyException _) {
       onBlockDecodeError(token, context);
     }
   }

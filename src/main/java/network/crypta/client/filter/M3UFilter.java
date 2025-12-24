@@ -111,7 +111,7 @@ public class M3UFilter implements ContentDataFilter {
 
       try {
         dos.write(filtered.getBytes(StandardCharsets.UTF_8));
-      } catch (Exception e) {
+      } catch (Exception _) {
         dos.write(BAD_URI_REPLACEMENT.getBytes(StandardCharsets.UTF_8));
       }
 
@@ -146,7 +146,7 @@ public class M3UFilter implements ContentDataFilter {
         long maxLengthNoProgress = (200L * 1024 * 1024 * 11) / 10;
         filtered += "max-size=" + maxLengthNoProgress;
       }
-    } catch (Exception e) {
+    } catch (Exception _) {
       filtered = BAD_URI_REPLACEMENT;
     }
 

@@ -241,7 +241,7 @@ public class ReflectiveEventDispatch implements Runnable {
       DispatchWork work;
       try {
         work = takeNextWork();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         return;
       }

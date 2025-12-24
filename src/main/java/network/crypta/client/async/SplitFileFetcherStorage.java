@@ -1258,7 +1258,7 @@ public class SplitFileFetcherStorage {
     byte[] basicSettingsBuffer = new byte[length];
     try {
       preadChecksummed(offset, basicSettingsBuffer, 0, length);
-    } catch (ChecksumFailedException e) {
+    } catch (ChecksumFailedException _) {
       throw new StorageFormatException("Basic settings checksum invalid");
     }
     return basicSettingsBuffer;
@@ -1289,7 +1289,7 @@ public class SplitFileFetcherStorage {
     short s = dis.readShort();
     try {
       return SplitfileAlgorithm.getByCode(s);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Invalid splitfile type " + s);
     }
   }
@@ -1351,7 +1351,7 @@ public class SplitFileFetcherStorage {
       throws IOException, StorageFormatException {
     try {
       return ClientMetadata.construct(dis);
-    } catch (MetadataParseException e) {
+    } catch (MetadataParseException _) {
       throw new StorageFormatException("Invalid MIME type");
     }
   }
@@ -1613,7 +1613,7 @@ public class SplitFileFetcherStorage {
         raf.free(); // Failed, so free it.
         throw new FetchException(FetchExceptionMode.SPLITFILE_ERROR, errors);
       }
-    } catch (ChecksumFailedException e) {
+    } catch (ChecksumFailedException _) {
       LOG.error("Progress for segment {} on {} corrupted.", segment.segNo, this);
       needsDecode = true;
     }
@@ -1630,7 +1630,7 @@ public class SplitFileFetcherStorage {
     for (SplitFileFetcherSegmentStorage segment : segments) {
       try {
         segment.readSegmentKeys();
-      } catch (ChecksumFailedException e) {
+      } catch (ChecksumFailedException _) {
         throw new StorageFormatException("Keys corrupted");
       }
     }
@@ -1816,7 +1816,7 @@ public class SplitFileFetcherStorage {
             return false;
           },
           NativeThread.PriorityLevel.LOW_PRIORITY.value + 1);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Ignore.
     }
     return false;

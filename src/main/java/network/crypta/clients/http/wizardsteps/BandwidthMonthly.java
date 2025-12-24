@@ -204,7 +204,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
     try {
       gbPerMonth = Double.parseDouble(capTo);
       bytesPerMonth = Math.round(gbPerMonth * DatastoreUtil.ONE_GIB);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       target.append(URLEncoder.encode(capTo, true));
       target.append("&parseError=true");
       return target.toString();
@@ -214,7 +214,7 @@ public class BandwidthMonthly extends BandwidthManipulator implements Step {
     try {
       setBandwidthLimit(Long.toString(bandwidth.downBytes), false);
       setBandwidthLimit(Long.toString(bandwidth.upBytes), true);
-    } catch (InvalidConfigValueException e) {
+    } catch (InvalidConfigValueException _) {
       target.append(URLEncoder.encode(String.valueOf(gbPerMonth), true));
       target.append("&tooLow=true");
       return target.toString();

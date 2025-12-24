@@ -117,7 +117,7 @@ public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator
 
       sum += cP * previous.getY() + cC * current.getY() + cN * next.getY();
 
-    } catch (ExhaustedSampleException e) {
+    } catch (ExhaustedSampleException _) {
       // we have an incomplete step at the end of the sample
       // we use a trapezoid scheme for this last step
       sum += 0.5 * (current.getX() - previous.getX()) * (previous.getY() + current.getY());

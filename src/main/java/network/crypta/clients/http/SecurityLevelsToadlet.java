@@ -307,15 +307,15 @@ public class SecurityLevelsToadlet extends Toadlet {
         && password.equals(confirmPassword)) {
       try {
         core.getNode().changeMasterPassword(oldPassword, password, false);
-      } catch (MasterKeysWrongPasswordException e) {
+      } catch (MasterKeysWrongPasswordException _) {
         sendChangePasswordForm(ctx, true, false, newPhysicalLevel.name());
         storeConfigIfChanged(state);
         return true;
-      } catch (MasterKeysFileSizeException e) {
+      } catch (MasterKeysFileSizeException _) {
         sendPasswordFileCorruptedPage(ctx);
         storeConfigIfChanged(state);
         return true;
-      } catch (AlreadySetPasswordException e) {
+      } catch (AlreadySetPasswordException _) {
         sendChangePasswordForm(ctx, false, true, newPhysicalLevel.name());
         storeConfigIfChanged(state);
         return true;
@@ -364,11 +364,11 @@ public class SecurityLevelsToadlet extends Toadlet {
           ctx, PASSWORD_FOR_DECRYPT_TITLE_KEY, true, false, newPhysicalLevel.name());
       storeConfigIfChanged(state);
       return true;
-    } catch (MasterKeysFileSizeException e) {
+    } catch (MasterKeysFileSizeException _) {
       sendPasswordFileCorruptedPage(ctx);
       storeConfigIfChanged(state);
       return true;
-    } catch (AlreadySetPasswordException e) {
+    } catch (AlreadySetPasswordException _) {
       sendChangePasswordForm(ctx, false, true, newPhysicalLevel.name());
       storeConfigIfChanged(state);
       return true;
@@ -426,7 +426,7 @@ public class SecurityLevelsToadlet extends Toadlet {
       } else {
         core.getNode().setMasterPassword(password, false);
       }
-    } catch (AlreadySetPasswordException e) {
+    } catch (AlreadySetPasswordException _) {
       sendChangePasswordForm(ctx, false, false, newPhysicalLevel.name());
       storeConfigIfChanged(state);
       return true;
@@ -435,7 +435,7 @@ public class SecurityLevelsToadlet extends Toadlet {
       sendWrongPasswordResponse(ctx, PASSWORD_PAGE_TITLE_KEY, false, true, newPhysicalLevel.name());
       storeConfigIfChanged(state);
       return true;
-    } catch (MasterKeysFileSizeException e) {
+    } catch (MasterKeysFileSizeException _) {
       sendPasswordFileCorruptedPage(ctx);
       storeConfigIfChanged(state);
       return true;
@@ -508,7 +508,7 @@ public class SecurityLevelsToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     try {
       core.getNode().killMasterKeysFile();
-    } catch (IOException e) {
+    } catch (IOException _) {
       sendCantDeleteMasterKeysFile(ctx, newPhysicalLevel.name());
       return true;
     }
@@ -526,14 +526,14 @@ public class SecurityLevelsToadlet extends Toadlet {
     LOG.info("Setting master password");
     try {
       node.setMasterPassword(masterPassword, false);
-    } catch (AlreadySetPasswordException e) {
+    } catch (AlreadySetPasswordException _) {
       LOG.error("Already set master password");
       redirectToRoot(ctx);
       return;
-    } catch (MasterKeysWrongPasswordException e) {
+    } catch (MasterKeysWrongPasswordException _) {
       sendPasswordFormPage(ctx);
       return;
-    } catch (MasterKeysFileSizeException e) {
+    } catch (MasterKeysFileSizeException _) {
       sendPasswordFileCorruptedPage(ctx);
       return;
     }

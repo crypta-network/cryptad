@@ -223,7 +223,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         }
       }
       return false;
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
       return false;
     }
@@ -365,7 +365,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         msg = "Failed to extract result when key blown: " + t;
         LOG.error(msg, t);
         // Message already logged above
-      } catch (Exception t1) {
+      } catch (Exception _) {
         msg = "Internal error after retreiving revocation key";
       }
     }

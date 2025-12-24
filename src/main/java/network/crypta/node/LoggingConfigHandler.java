@@ -454,10 +454,10 @@ public class LoggingConfigHandler {
       try {
         config.forceUpdate(CONF_PRIORITY);
         config.forceUpdate("priorityDetail");
-      } catch (InvalidConfigValueException e2) {
+      } catch (InvalidConfigValueException _) {
         System.err.println(
             "Invalid logger.priority in configuration: " + config.getString(CONF_PRIORITY));
-      } catch (NodeNeedRestartException e) {
+      } catch (NodeNeedRestartException _) {
         // not expected for priority updates
       }
 
@@ -649,7 +649,7 @@ public class LoggingConfigHandler {
   private String safeParseIntervalUnit(String s) {
     try {
       return parseIntervalUnit(s);
-    } catch (Exception ignored) {
+    } catch (Exception _) {
       return UNIT_HOUR;
     }
   }
@@ -663,7 +663,7 @@ public class LoggingConfigHandler {
     if (i == 0) return 1;
     try {
       return Math.max(1, Integer.parseInt(s.substring(0, i)));
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return 1;
     }
   }

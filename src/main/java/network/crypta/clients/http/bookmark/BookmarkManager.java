@@ -135,7 +135,7 @@ public class BookmarkManager implements RequestClient {
       LOG.info("Attempting to read the bookmark file from {}", bookmarksFile);
       SimpleFieldSet sfs = SimpleFieldSet.readFrom(bookmarksFile, false, true);
       readBookmarks(MAIN_CATEGORY, sfs);
-    } catch (MalformedURLException mue) {
+    } catch (MalformedURLException _) {
       // Bookmark file contains a malformed key; ignore and fall back to backup/defaults.
     } catch (IOException ioe) {
       LOG.error("Error reading the bookmark file ({}):{}", bookmarksFile, ioe.getMessage(), ioe);
@@ -232,7 +232,7 @@ public class BookmarkManager implements RequestClient {
             updated |= bookmarkItem.setEdition(edition, node);
             // We may have bookmarked the same site twice, so continue the search.
           }
-        } catch (MalformedURLException mue) {
+        } catch (MalformedURLException _) {
           // Malformed bookmark key; ignore this entry.
         }
       }
@@ -487,7 +487,7 @@ public class BookmarkManager implements RequestClient {
       if (!wantUSK(u, item)) {
         node.getUskManager().unsubscribe(u, uskCB);
       }
-    } catch (MalformedURLException mue) {
+    } catch (MalformedURLException _) {
       // Malformed bookmark key; there is nothing to unsubscribe from.
     }
   }
@@ -502,7 +502,7 @@ public class BookmarkManager implements RequestClient {
         USK usk = USK.create(furi);
 
         if (usk.equals(u, false)) return true;
-      } catch (MalformedURLException mue) {
+      } catch (MalformedURLException _) {
         // Ignore malformed bookmark keys when checking whether any other bookmark wants this USK.
       }
     }
@@ -665,7 +665,7 @@ public class BookmarkManager implements RequestClient {
     try {
       USK u = item.getUSK();
       this.node.getUskManager().subscribe(u, this.uskCB, true, this);
-    } catch (MalformedURLException mue) {
+    } catch (MalformedURLException _) {
       // Malformed bookmark key; ignore and do not subscribe.
     }
   }

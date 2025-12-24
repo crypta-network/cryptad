@@ -438,7 +438,7 @@ public class PluginManager {
     try {
       new FreenetURI(pluginname); // test for MalformedURLException
       return startPluginFreenet(pluginname, store);
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       // not a freenet key
     }
 
@@ -593,7 +593,7 @@ public class PluginManager {
       loadedPlugins.addLoadedPlugin(pi);
       loadedPlugins.removeFailedPlugin(filename);
       LOG.info("Plugin loaded: {}", filename);
-    } catch (PluginAlreadyLoaded e) {
+    } catch (PluginAlreadyLoaded _) {
       return null;
     } catch (PluginNotFoundException e) {
       LOG.info("Loading plugin failed ({})", filename, e);
@@ -1705,7 +1705,7 @@ public class PluginManager {
       }
       try {
         loader.close();
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // best-effort cleanup; load failure will be surfaced via the thrown exception
       }
     }
@@ -1769,7 +1769,7 @@ public class PluginManager {
             }
             try {
               return Long.parseLong(filename.substring(lastIndexOfDash + 5));
-            } catch (NumberFormatException nfe1) {
+            } catch (NumberFormatException _) {
               return 0;
             }
           }

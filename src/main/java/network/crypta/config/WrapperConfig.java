@@ -152,7 +152,7 @@ public class WrapperConfig {
       boolean deletionFailed = false;
       try {
         java.nio.file.Files.deleteIfExists(oldOldConfig.toPath());
-      } catch (IOException e) {
+      } catch (IOException _) {
         deletionFailed = true;
       }
       if (deletionFailed) {

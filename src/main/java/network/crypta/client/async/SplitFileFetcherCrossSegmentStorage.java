@@ -190,7 +190,7 @@ public class SplitFileFetcherCrossSegmentStorage {
             try {
               lock = parent.jobRunner.lock();
               innerDecode();
-            } catch (PersistenceDisabledException e) {
+            } catch (PersistenceDisabledException _) {
               shutdown = true;
             } finally {
               chunk.release();
@@ -325,7 +325,7 @@ public class SplitFileFetcherCrossSegmentStorage {
     try {
       return ClientCHKBlock.encodeSplitfileBlock(
           data, key.getCryptoKey(), key.getCryptoAlgorithm());
-    } catch (CHKEncodeException e) {
+    } catch (CHKEncodeException _) {
       return null;
     }
   }

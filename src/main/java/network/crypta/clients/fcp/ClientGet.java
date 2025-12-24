@@ -1071,7 +1071,7 @@ public class ClientGet extends ClientRequest
                   return false;
                 },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         // Not much we can do
       }
     } else {
@@ -1710,7 +1710,7 @@ public class ClientGet extends ClientRequest
   private FreenetURI parseUri(String serializedUri) throws StorageFormatException {
     try {
       return new FreenetURI(serializedUri);
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       throw new StorageFormatException("Bad URI");
     }
   }
@@ -1718,7 +1718,7 @@ public class ClientGet extends ClientRequest
   private ReturnType parseReturnType(short code) throws StorageFormatException {
     try {
       return ReturnType.getByCode(code);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Bad return type " + code);
     }
   }
@@ -1729,7 +1729,7 @@ public class ClientGet extends ClientRequest
       return new FetchContext(inner);
     } catch (StorageFormatException | IOException e) {
       LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE, e);
-    } catch (ChecksumFailedException e) {
+    } catch (ChecksumFailedException _) {
       LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE);
     }
     return context.getDefaultPersistentFetchContext();
@@ -1826,7 +1826,7 @@ public class ClientGet extends ClientRequest
       }
     } catch (IOException e) {
       LOG.error("Unable to restore splitfile, restarting: {}", e.toString());
-    } catch (ChecksumFailedException e) {
+    } catch (ChecksumFailedException _) {
       LOG.error("Unable to restore splitfile, restarting (checksum failed)");
     }
   }

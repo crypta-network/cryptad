@@ -134,7 +134,7 @@ public class SendBookmarkMessage extends SendPeerMessage {
         return pn.sendBookmarkFeed(
             uri, bookmarkName, new String(description, StandardCharsets.UTF_8), hasAnAnActiveLink);
       } else return pn.sendBookmarkFeed(uri, bookmarkName, null, hasAnAnActiveLink);
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new MessageInvalidException(ProtocolErrorMessage.INVALID_MESSAGE, "", null, false);
     }
   }

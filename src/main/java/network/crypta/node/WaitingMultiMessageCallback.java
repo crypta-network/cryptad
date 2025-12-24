@@ -50,7 +50,7 @@ public class WaitingMultiMessageCallback extends MultiMessageCallback {
     while (!finished()) {
       try {
         wait();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Deliberately ignore; do not restore interrupt status to preserve the blocking contract.
       }
     }

@@ -314,7 +314,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         if (toCancel != null) {
           for (DBRAttempt a : toCancel) a.cancel(context);
         }
-      } catch (MalformedURLException e) {
+      } catch (MalformedURLException _) {
         // Impossible
       }
     }
@@ -927,7 +927,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     try {
       return block.decode(
           context.getBucketFactory(parent.persistent()), 1025 /* it's an SSK */, true);
-    } catch (KeyDecodeException e) {
+    } catch (KeyDecodeException _) {
       return null;
     } catch (IOException e) {
       LOG.error("An IOE occured while decoding: {}", e.getMessage(), e);
@@ -1760,7 +1760,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
       LOG.error("Unable to start: {}", t, t);
       try {
         runningStoreChecker.unregister(context, progressPollPriority);
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         // Ignore, hopefully it's already unregistered
       }
     }
@@ -2010,7 +2010,7 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
     ClientSSKBlock data;
     try {
       data = watchingKeys.decode((SSKBlock) found, edition);
-    } catch (SSKVerifyException e) {
+    } catch (SSKVerifyException _) {
       data = null;
     }
     onSuccess(null, edition, false, data, context);

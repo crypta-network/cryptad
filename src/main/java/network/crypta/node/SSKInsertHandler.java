@@ -142,7 +142,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.sendAsync(accepted, null, this);
       return true;
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
       return false;
     }
@@ -153,7 +153,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       Message msg;
       try {
         msg = node.getUSM().waitFor(buildWaitFilter(), this);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
         return false;
       }
@@ -212,7 +212,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
           DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED);
       try {
         source.sendSync(failed, this, realTimeFlag);
-      } catch (NotConnectedException | SyncSendWaitedTooLongException e) {
+      } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
         // Ignore
       }
       return false;
@@ -234,7 +234,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
             DMT.createFNPDataInsertRejected(uid, msg.getShort(DMT.DATA_INSERT_REJECTED_REASON)),
             null,
             this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ignore
       }
       return false;
@@ -254,12 +254,12 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       pubKey = DSAPublicKey.create(pubkeyAsBytes);
       if (LOG.isDebugEnabled()) LOG.debug("Receive pubkey for {}: {}", uid, pubKey);
       return true;
-    } catch (CryptFormatException e) {
+    } catch (CryptFormatException _) {
       LOG.error("Invalid pubkey from {} for {}", source, uid);
       Message rej = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_SSK_ERROR);
       try {
         source.sendSync(rej, this, realTimeFlag);
-      } catch (NotConnectedException | SyncSendWaitedTooLongException ee) {
+      } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
         // Ignore
       }
       return false;
@@ -270,7 +270,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       sendPubKeyAccepted();
       return true;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
       return false;
     }
@@ -286,7 +286,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       Message msg = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_SSK_ERROR);
       try {
         source.sendSync(msg, this, realTimeFlag);
-      } catch (NotConnectedException | SyncSendWaitedTooLongException e) {
+      } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
         // Ignore
       }
       return false;
@@ -299,7 +299,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       try {
         RequestHandler.sendSSK(
             storedBlock.getRawHeaders(), storedBlock.getRawData(), source, uid, this, realTimeFlag);
-      } catch (NotConnectedException e1) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
         // Preserve historical behavior: abort the handler when the source disconnects while
         // resending an existing stored block back to the originator.
@@ -353,7 +353,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.sendAsync(m, null, this);
       return true;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
       return true; // treat as forwarded to break loop on connection loss
     }
@@ -370,7 +370,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     }
     try {
       RequestHandler.sendSSK(headers, data, source, uid, this, realTimeFlag);
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
     }
   }
@@ -407,10 +407,10 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
       return;
     }
@@ -424,10 +424,10 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPRouteNotFound(uid, senderRef.getHTL());
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Send timeout for {} to source", msg);
     }
     canCommit = true;
@@ -439,10 +439,10 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPInsertReply(uid);
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
     }
     canCommit = true;
@@ -455,9 +455,9 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Ignore
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
     }
     finish(status);
@@ -512,7 +512,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
           false,
           canWriteDatastore,
           false);
-    } catch (KeyCollisionException e) {
+    } catch (KeyCollisionException _) {
       LOG.info("Datastore collision on {}", this);
     }
   }

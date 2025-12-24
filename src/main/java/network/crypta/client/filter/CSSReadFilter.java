@@ -110,7 +110,7 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
         r = new BufferedReader(isr, 32768);
         w = new BufferedWriter(osw, 32768);
 
-      } catch (UnsupportedEncodingException e) {
+      } catch (UnsupportedEncodingException _) {
         throw UnknownCharsetException.create(charset);
       }
       CSSParser parser = new CSSParser(r, w, cb, charset, false, false);
@@ -155,7 +155,7 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
       InputStreamReader isr;
       try {
         isr = new InputStreamReader(strm, charset);
-      } catch (UnsupportedEncodingException e) {
+      } catch (UnsupportedEncodingException _) {
         throw UnknownCharsetException.create(charset);
       }
       try (BufferedReader r = new BufferedReader(isr, 32768)) {

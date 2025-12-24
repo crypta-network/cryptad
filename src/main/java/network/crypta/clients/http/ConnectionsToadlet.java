@@ -1355,7 +1355,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     try {
       return fetchReferenceViaUrl(urltext);
-    } catch (IOException e) {
+    } catch (IOException _) {
       this.sendErrorPage(
           ctx,
           200,
@@ -1374,7 +1374,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     try {
       FreenetURI refUri = new FreenetURI(urltext);
       return AddPeer.getReferenceFromFreenetURI(refUri, client);
-    } catch (MalformedURLException | FetchException e) {
+    } catch (MalformedURLException | FetchException _) {
       LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urltext);
       URL url = buildUrl(urltext);
       return AddPeer.getReferenceFromURL(url);
@@ -1514,9 +1514,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
         pn = node.createNewDarknetNode(fs, trust, visibility);
         ((DarknetPeerNode) pn).setPrivateDarknetCommentNote(privateComment);
       }
-    } catch (FSParseException | PeerParseException e1) {
+    } catch (FSParseException | PeerParseException _) {
       return PeerAdditionReturnCodes.CANT_PARSE;
-    } catch (ReferenceSignatureVerificationException e1) {
+    } catch (ReferenceSignatureVerificationException _) {
       return PeerAdditionReturnCodes.INVALID_SIGNATURE;
     } catch (Exception e) {
       LOG.error("Internal error adding reference :{}", e.getMessage(), e);

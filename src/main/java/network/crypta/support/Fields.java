@@ -1302,7 +1302,7 @@ public abstract class Fields {
       if (a < b) return -1;
       return Integer.compare(yDigits.length(), xDigits.length()); // Extra 0's at beginning.
       // Extra 0's at beginning.
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Too many digits!
       return xDigits.compareTo(yDigits);
     }

@@ -115,7 +115,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
     while (!Thread.currentThread().isInterrupted()) {
       try {
         realRun();
-      } catch (InterruptedException ie) {
+      } catch (InterruptedException _) {
         // Restore interrupt status and exit loop so caller controls lifecycle via interrupt.
         Thread.currentThread().interrupt();
         break;

@@ -121,7 +121,7 @@ public class FCPConnectionOutputHandler implements Runnable {
       QueueAction action;
       try {
         action = nextQueueAction(flushedSinceLastSend);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         flushAndClose(os);
         return;
@@ -196,7 +196,7 @@ public class FCPConnectionOutputHandler implements Runnable {
         if (closedOutputQueue) return;
         try {
           outQueue.wait(ON_CLOSED_WAIT_MS);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return;
         }

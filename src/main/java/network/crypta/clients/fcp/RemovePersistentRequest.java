@@ -139,7 +139,7 @@ public class RemovePersistentRequest extends FCPMessage {
                       return true;
                     },
                 NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         FCPMessage err =
             new ProtocolErrorMessage(
                 ProtocolErrorMessage.PERSISTENCE_DISABLED,

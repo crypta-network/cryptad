@@ -215,7 +215,7 @@ public class SSL {
             ssf = null;
             try {
               keystore.load(null, keyStorePass.toCharArray());
-            } catch (Exception e) {
+            } catch (Exception _) {
               // Just clear the key store
             }
           }
@@ -346,7 +346,7 @@ public class SSL {
       // Keystore and private keys are password-protected; load existing or create an empty store.
       try (FileInputStream fis = new FileInputStream(keyStorePath)) {
         keystore.load(fis, keyStorePass.toCharArray());
-      } catch (FileNotFoundException fnfe) {
+      } catch (FileNotFoundException _) {
         // Keystore file is absent: initialize an empty keystore (no certificate yet).
         keystore.load(null, keyStorePass.toCharArray());
       }
@@ -368,7 +368,7 @@ public class SSL {
       // Load existing keystore or generate a fresh one with a self-signed certificate.
       try (FileInputStream fis = new FileInputStream(keyStorePath)) {
         keystore.load(fis, keyStorePass.toCharArray());
-      } catch (FileNotFoundException fnfe) {
+      } catch (FileNotFoundException _) {
         createSelfSignedCertificate();
       }
     }

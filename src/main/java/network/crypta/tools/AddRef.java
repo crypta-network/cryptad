@@ -137,7 +137,7 @@ public class AddRef {
   private static void sleepAtShutdown() {
     try {
       Thread.sleep(3000);
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }

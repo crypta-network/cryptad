@@ -487,7 +487,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
       option.setValue(value);
     } catch (InvalidConfigValueException e) {
       errbuf.append(option.getName()).append(' ').append(e.getMessage()).append('\n');
-    } catch (NodeNeedRestartException e) {
+    } catch (NodeNeedRestartException _) {
       needRestart = true;
     } catch (Exception e) {
       errbuf.append(option.getName()).append(' ').append(e).append('\n');

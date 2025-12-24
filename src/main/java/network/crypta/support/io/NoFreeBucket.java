@@ -294,7 +294,7 @@ public class NoFreeBucket implements Bucket, Serializable {
     try {
       Object v = fields.get("proxy", null);
       if (v != null) legacyProxy = (Bucket) v;
-    } catch (IllegalArgumentException ignore) {
+    } catch (IllegalArgumentException _) {
       // Field not present in local descriptor; treat as absent.
     }
 
@@ -314,7 +314,7 @@ public class NoFreeBucket implements Bucket, Serializable {
         throw new StreamCorruptedException("NoFreeBucket: missing delegate in serialized form");
       }
       throw e;
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // Reached end of this object's data with no delegate present.
       throw new StreamCorruptedException("NoFreeBucket: unexpected EOF while reading delegate");
     }

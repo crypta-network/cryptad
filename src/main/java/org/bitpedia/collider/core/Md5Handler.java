@@ -62,7 +62,7 @@ public class Md5Handler {
   public void analyzeInit() {
     try {
       digest = MessageDigest.getInstance("MD5");
-    } catch (NoSuchAlgorithmException e) {
+    } catch (NoSuchAlgorithmException _) {
       // Never happens - MD5 always exists
     }
   }

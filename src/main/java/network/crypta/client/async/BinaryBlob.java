@@ -182,7 +182,7 @@ public final class BinaryBlob {
       long blobLength;
       try {
         blobLength = dis.readInt() & 0xFFFFFFFFL;
-      } catch (EOFException e) {
+      } catch (EOFException _) {
         // End of file
         dis.close();
         return;

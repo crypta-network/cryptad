@@ -93,7 +93,7 @@ public class SendTextMessage extends SendPeerMessage {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD, "Invalid data length", null, false);
       }
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new MessageInvalidException(ProtocolErrorMessage.INVALID_MESSAGE, "", null, false);
     }
   }

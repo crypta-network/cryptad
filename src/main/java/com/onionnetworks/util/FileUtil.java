@@ -264,7 +264,7 @@ public class FileUtil {
 
     try {
       return File.createTempFile(name, null, parent);
-    } catch (IOException e) {
+    } catch (IOException _) {
       if (f != null) {
         // try the user's temp dir
         return createTempFile(null);

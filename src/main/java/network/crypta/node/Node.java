@@ -457,7 +457,7 @@ public class Node implements TimeSkewDetectorCallback {
               key = keys.clientCacheMasterKey;
               clientCacheType = val;
             }
-          } catch (MasterKeysWrongPasswordException e1) {
+          } catch (MasterKeysWrongPasswordException _) {
             setClientCacheAwaitingPassword();
             throw new InvalidConfigValueException("You must enter the password");
           }
@@ -1061,13 +1061,13 @@ public class Node implements TimeSkewDetectorCallback {
       Peer p;
       try {
         p = new Peer(udpAddr, false, true);
-      } catch (UnknownHostException e) {
+      } catch (UnknownHostException _) {
         LOG.info(
             "Unknown host while parsing our darknet node reference: {} (likely host-local scope or"
                 + " transient DNS)",
             udpAddr);
         p = null;
-      } catch (HostnameSyntaxException e) {
+      } catch (HostnameSyntaxException _) {
         LOG.error(
             "Invalid hostname or IP Address syntax error while parsing our darknet node reference:"
                 + " {}",
@@ -1214,12 +1214,12 @@ public class Node implements TimeSkewDetectorCallback {
 
     try {
       new NodeL10n(BaseL10n.LANGUAGE.mapToLanguage(nodeConfig.getString("l10n")), getCfgDir());
-    } catch (MissingResourceException e) {
+    } catch (MissingResourceException _) {
       try {
         new NodeL10n(
             BaseL10n.LANGUAGE.mapToLanguage(nodeConfig.getOption("l10n").getDefault()),
             getCfgDir());
-      } catch (MissingResourceException e1) {
+      } catch (MissingResourceException _) {
         new NodeL10n(
             BaseL10n.LANGUAGE.mapToLanguage(BaseL10n.LANGUAGE.getDefault().shortCode), getCfgDir());
       }
@@ -1263,7 +1263,7 @@ public class Node implements TimeSkewDetectorCallback {
     public void run() {
       try {
         Thread.sleep(100);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
       if (node.isPRNGReady) return;
@@ -1377,7 +1377,7 @@ public class Node implements TimeSkewDetectorCallback {
   private static long parseBootIdFromHex(String s) {
     try {
       return Fields.bytesToLong(HexUtil.hexToBytes(s));
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return -1;
     }
   }
@@ -1577,7 +1577,7 @@ public class Node implements TimeSkewDetectorCallback {
           LOG.warn(
               "Failed to delete master keys file {}: {}", masterKeysFile, ioe.getMessage(), ioe);
         }
-      } catch (MasterKeysWrongPasswordException | IOException e) {
+      } catch (MasterKeysWrongPasswordException | IOException _) {
         done = true;
       } finally {
         attempts++;
@@ -1609,7 +1609,7 @@ public class Node implements TimeSkewDetectorCallback {
       byte[] buf = s.getBytes(StandardCharsets.ISO_8859_1);
       if (buf.length != bootFileLength) LOG.warn("Not 16 bytes for boot ID {} - WTF??", bootID);
       raf.write(buf);
-    } catch (IOException e) {
+    } catch (IOException _) {
       oldBootID = -1;
       // If we have an error in reading, *or in writing*, we don't reliably know the last boot ID.
     }
@@ -2758,7 +2758,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           (oldLevel, newLevel) -> {
             try {
               nodeConfig.set(STORE_PREALLOCATE_KEY, newLevel != PHYSICAL_THREAT_LEVEL.LOW);
-            } catch (NodeNeedRestartException | InvalidConfigValueException e) {
+            } catch (NodeNeedRestartException | InvalidConfigValueException _) {
               // Ignore
             }
           });
@@ -2779,7 +2779,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                 clientCore.getClientLayerPersister().disableWrite();
                 clientCore.getClientLayerPersister().waitForNotWriting();
                 clientCore.getClientLayerPersister().deleteAllFiles();
-              } catch (IOException e) {
+              } catch (IOException _) {
                 try {
                   Files.delete(masterKeysFile.toPath());
                 } catch (IOException ioe) {
@@ -2830,7 +2830,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     if (securityLevels.physicalThreatLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM) {
       try {
         killMasterKeysFile();
-      } catch (IOException e) {
+      } catch (IOException _) {
         String msg =
             "Unable to securely delete old master.keys file when switching to MAXIMUM seclevel!!";
         LOG.error(msg);
@@ -3549,7 +3549,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     String dirName = installConfig.getString(cfgKey);
     try {
       dir.move(dirName);
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new NodeInitException(
           NodeInitException.EXIT_BAD_DIR, "could not set up directory: " + longdesc);
     }
@@ -4099,7 +4099,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     try {
       // Ignore Rejected - let it be retried on other peers
       m = usm.waitFor(mf1, null);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       LOG.info("Disconnected in waiting for pong");
       return -1;
     }
@@ -5432,7 +5432,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       try {
         // E.g. if we haven't finished startup
         LOG.error("Failed to tell peers we are going down: {}", t, t);
-      } catch (Exception t1) {
+      } catch (Exception _) {
         // Ignore. We don't want to mess up the exit process!
       }
     }
@@ -6367,7 +6367,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     clientCore.getClientLayerPersister().killAndWaitForNotRunning();
     try {
       MasterKeys.killMasterKeys(getMasterPasswordFile());
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.warn(
           "Unable to wipe master passwords key file! Please delete {} to ensure that nobody can"
               + " recover your old downloads.",

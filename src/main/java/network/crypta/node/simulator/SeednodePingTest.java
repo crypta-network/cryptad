@@ -307,7 +307,7 @@ public class SeednodePingTest extends RealNodeTest {
         LOG.error("{} is routable!", seednode);
       }
       return true;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.error(
           "{} is not connected {}", seednode.getIdentityString(), seednode.getHandshakeCount());
       return false;

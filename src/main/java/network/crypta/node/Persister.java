@@ -104,7 +104,7 @@ class Persister implements Runnable {
       fs.writeToBigBuffer(fos);
     } catch (FileNotFoundException e) {
       LOG.error("Could not store throttle data to disk: {}", e, e);
-    } catch (IOException e) {
+    } catch (IOException _) {
       try {
         java.nio.file.Files.delete(persistTemp.toPath());
       } catch (IOException ex) {
@@ -147,7 +147,7 @@ class Persister implements Runnable {
     } catch (IOException e) {
       try {
         throttleFS = SimpleFieldSet.readFrom(persistTemp, false, true);
-      } catch (FileNotFoundException e1) {
+      } catch (FileNotFoundException _) {
         // Expected when no snapshot has been written yet.
       } catch (IOException e1) {
         if (persistTarget.length() > 0 || persistTemp.length() > 0)

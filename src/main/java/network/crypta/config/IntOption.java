@@ -114,7 +114,7 @@ public class IntOption extends Option<Integer> {
   protected Integer parseString(String val) throws InvalidConfigValueException {
     try {
       return parseString(val, dimension);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new InvalidConfigValueException(l10nParseError(val));
     }
   }
@@ -124,7 +124,7 @@ public class IntOption extends Option<Integer> {
   private static Integer parseString(String val, Dimension dimension) throws NumberFormatException {
     try {
       return Fields.parseInt(val, dimension);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return Fields.parseInt(val, Dimension.NOT);
     }
   }

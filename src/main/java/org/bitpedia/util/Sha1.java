@@ -219,7 +219,7 @@ public final class Sha1 extends MessageDigest {
     try {
       engineDigest(hashvalue, 0, HASH_LENGTH);
       return hashvalue;
-    } catch (DigestException e) {
+    } catch (DigestException _) {
       return new byte[0];
     }
   }

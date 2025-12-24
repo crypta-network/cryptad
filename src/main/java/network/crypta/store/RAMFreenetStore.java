@@ -79,7 +79,7 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
       if (!dontPromote) blocksByRoutingKey.push(key, block);
       if (meta != null && block.oldBlock) meta.setOldBlock();
       return ret;
-    } catch (KeyVerifyException e) {
+    } catch (KeyVerifyException _) {
       blocksByRoutingKey.removeKey(key);
       misses++;
       return null;
@@ -250,7 +250,7 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
       if (!skip) {
         try {
           target.getStore().put(ret, block.data, block.header, false, block.oldBlock);
-        } catch (KeyCollisionException e) {
+        } catch (KeyCollisionException _) {
           // Ignore
         }
       }

@@ -342,7 +342,7 @@ public class RequestHandler
         // overload.
         sentRejectedOverload = true;
       }
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.info("Requestor disconnected; cannot forward reject overload");
     }
   }
@@ -385,7 +385,7 @@ public class RequestHandler
               node.getNodeStats());
       tag.handlerTransferBegins();
       bt.sendAsync();
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       synchronized (this) {
         disconnected = true;
       }
@@ -507,7 +507,7 @@ public class RequestHandler
 
     try {
       processFinishedStatus(status, rs);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.info(REQUESTOR_GONE_CANT_SEND_TERMINAL);
       applyByteCounts();
       unregisterRequestHandlerWithNode();
@@ -806,7 +806,7 @@ public class RequestHandler
     tag.unlockHandler();
     try {
       source.sendAsync(msg, new TerminalMessageByteCountCollector(), this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Will have called the callback, so caller doesn't need to worry about it.
     }
   }
@@ -914,7 +914,7 @@ public class RequestHandler
     byte[] noderef;
     try {
       noderef = rs.waitForOpennetNoderef();
-    } catch (WaitedTooLongForOpennetNoderefException e) {
+    } catch (WaitedTooLongForOpennetNoderefException _) {
       // Send the timeout info upstream (towards higher HTL)
       sendTerminal(DMT.createFNPOpennetCompletedTimeout(uid));
       return;
@@ -966,7 +966,7 @@ public class RequestHandler
 
     try {
       om.sendOpennetRef(false, uid, source, om.getCrypto().myCompressedFullRef(), this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.info("Cannot send opennet ref; node disconnected for {}", this);
       // Oh well...
       applyByteCounts();
@@ -1048,7 +1048,7 @@ public class RequestHandler
 
     try {
       om.sendOpennetRef(false, uid, source, noderef, this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       rs.ackOpennet(dataSource);
       // Lost contact with request source, nothing we can do
       applyByteCounts();
@@ -1103,7 +1103,7 @@ public class RequestHandler
                       // gotNoderef()
                       // exits.
                     });
-          } catch (NotConnectedException e) {
+          } catch (NotConnectedException _) {
             // How sad
           }
         }
@@ -1121,7 +1121,7 @@ public class RequestHandler
             DMT.createFNPOpennetCompletedTimeout(uid),
             rs.finishOpennetOnAck(dataSource),
             RequestHandler.this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ignore
       }
       rs.ackOpennet(rs.successFrom());

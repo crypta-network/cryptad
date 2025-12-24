@@ -245,7 +245,7 @@ public class Id3Handler {
         info.genre = buf[127] >= 0 ? buf[127] : buf[127] + 256;
 
         return info;
-      } catch (IOException e) {
+      } catch (IOException _) {
         return null;
       }
     }
@@ -310,7 +310,7 @@ public class Id3Handler {
         h.size[3] = buf[9] >= 0 ? buf[9] : buf[9] + 256;
 
         return h;
-      } catch (IOException e) {
+      } catch (IOException _) {
         return null;
       }
     }
@@ -348,7 +348,7 @@ public class Id3Handler {
         h.flags = f.readUnsignedShort();
 
         return h;
-      } catch (Exception e) {
+      } catch (Exception _) {
         return null;
       }
     }
@@ -386,7 +386,7 @@ public class Id3Handler {
         f.read(h.size);
 
         return h;
-      } catch (Exception e) {
+      } catch (Exception _) {
         return null;
       }
     }
@@ -515,7 +515,7 @@ public class Id3Handler {
 
       return info;
 
-    } catch (Exception e) {
+    } catch (Exception _) {
       return null;
     }
   }
@@ -532,7 +532,7 @@ public class Id3Handler {
       populateFromId3v1(id3, target);
 
       return target;
-    } catch (IOException e) {
+    } catch (IOException _) {
       return info;
     }
   }
@@ -661,7 +661,7 @@ public class Id3Handler {
         if ((1000 <= intYear) && (intYear < 3000)) {
           target.year = id3.year;
         }
-      } catch (NumberFormatException ignored) {
+      } catch (NumberFormatException _) {
         // Intentionally ignore invalid year formats to preserve original behavior.
       }
     }

@@ -132,7 +132,7 @@ public abstract class DataCarryingMessage extends BaseDataCarryingMessage {
       FileUtil.copy(is, new NullOutputStream(), len);
       throw new MessageInvalidException(
           ProtocolErrorMessage.INTERNAL_ERROR, e.toString(), getIdentifier(), isGlobal());
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       FileUtil.copy(is, new NullOutputStream(), len);
       throw new MessageInvalidException(
           ProtocolErrorMessage.PERSISTENCE_DISABLED, null, getIdentifier(), isGlobal());

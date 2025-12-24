@@ -121,7 +121,7 @@ public class SendURIMessage extends SendPeerMessage {
         byte[] description = BucketTools.toByteArray(bucket);
         return pn.sendDownloadFeed(uri, new String(description, StandardCharsets.UTF_8));
       } else return pn.sendDownloadFeed(uri, null);
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new MessageInvalidException(ProtocolErrorMessage.INVALID_MESSAGE, "", null, false);
     }
   }

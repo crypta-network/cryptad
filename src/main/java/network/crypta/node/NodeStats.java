@@ -2677,7 +2677,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       while (threadLimit < getActiveThreadCount()) {
         try {
           overloadSync.wait(5000L);
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException _) {
           // Preserve interrupt status and return to caller.
           Thread.currentThread().interrupt();
           return;
@@ -2714,7 +2714,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     try {
       int[] running = exec.runningThreads();
       for (int v : running) runningWorkers += v;
-    } catch (Throwable ignored) {
+    } catch (Throwable _) {
       // Keep floor at 0 if introspection is unavailable.
     }
 
@@ -2722,11 +2722,11 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     int idleWorkers = 0;
     try {
       idleWorkers = Math.max(exec.getWaitingThreadsCount(), 0);
-    } catch (Throwable ignored) {
+    } catch (Throwable _) {
       try {
         int[] waiting = exec.waitingThreads();
         for (int v : waiting) idleWorkers += v;
-      } catch (Throwable ignoredAlso) {
+      } catch (Throwable _) {
         // Leave at 0 if we cannot determine idle workers.
       }
     }
@@ -2735,7 +2735,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     int live;
     try {
       live = java.lang.management.ManagementFactory.getThreadMXBean().getThreadCount();
-    } catch (Throwable ignored) {
+    } catch (Throwable _) {
       // If MXBean is unavailable (very unlikely), fall back to the executor floor.
       return Math.max(runningWorkers, 0);
     }

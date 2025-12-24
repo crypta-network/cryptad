@@ -223,7 +223,7 @@ public class InsertCompressor implements CompressJob {
                 },
                 "Insert thread for " + this);
       }
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // When persistence is disabled and queueing fails, explicitly free any temporary
       // compressed bucket to avoid leaking the backing file.
       if (producedData != null && producedData != origData) {
@@ -382,7 +382,7 @@ public class InsertCompressor implements CompressJob {
               bestCompressedDataSize,
               amountOfDataToCheckCompressionRatio,
               minimumCompressionPercentage);
-        } catch (CompressionOutputSizeException | CompressionRatioException e) {
+        } catch (CompressionOutputSizeException | CompressionRatioException _) {
           if (hasher != null) {
             drainFully(is);
             attempt.hashes = hasher.getResults();
@@ -419,7 +419,7 @@ public class InsertCompressor implements CompressJob {
                   return true;
                 },
             NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
-      } catch (PersistenceDisabledException e1) {
+      } catch (PersistenceDisabledException _) {
         LOG.error(DB_DISABLED_MSG);
       }
     } else {
@@ -488,7 +488,7 @@ public class InsertCompressor implements CompressJob {
                   return true;
                 },
             NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
-      } catch (PersistenceDisabledException e1) {
+      } catch (PersistenceDisabledException _) {
         // Can't do anything
       }
     } else {

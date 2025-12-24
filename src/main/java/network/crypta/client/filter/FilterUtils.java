@@ -58,7 +58,7 @@ public class FilterUtils {
     try {
       Integer.parseInt(strValue);
       return true;
-    } catch (Exception e) {
+    } catch (Exception _) {
       return false;
     }
   }
@@ -94,7 +94,7 @@ public class FilterUtils {
       Double.parseDouble(strDecimal);
       if (containsE) return isInteger(strInteger);
       else return true;
-    } catch (Exception e) {
+    } catch (Exception _) {
       return false;
     }
   }
@@ -139,13 +139,13 @@ public class FilterUtils {
       try {
         Integer.parseInt(value.substring(0, value.length() - 1));
         return true;
-      } catch (Exception e) {
+      } catch (Exception _) {
         // Ignore parse failure; fall through to double parsing
       }
       try {
         Double.parseDouble(value.substring(0, value.length() - 1));
         return true;
-      } catch (Exception e) {
+      } catch (Exception _) {
         // Ignore parse failure; not a valid percentage
       }
     }
@@ -176,7 +176,7 @@ public class FilterUtils {
     try {
       int x = Integer.parseInt(lengthValue);
       return units || isSVG || x == 0;
-    } catch (Exception e) {
+    } catch (Exception _) {
       // Ignore parse failure; try parsing as double below
     }
 
@@ -184,7 +184,7 @@ public class FilterUtils {
       double dval = Double.parseDouble(lengthValue);
       if (!units && !isSVG && dval != 0) return false;
       return !(Double.isInfinite(dval) || Double.isNaN(dval));
-    } catch (Exception e) {
+    } catch (Exception _) {
       // Ignore parse failure; not a valid length
     }
     return false;
@@ -244,7 +244,7 @@ public class FilterUtils {
       try {
         Float.parseFloat(firstPart);
         return true;
-      } catch (Exception e) {
+      } catch (Exception _) {
         // Ignore parse failure; not a valid angle
       }
     }
@@ -758,7 +758,7 @@ public class FilterUtils {
       try {
         float temp = Float.parseFloat(firstPart);
         if (temp > 0) return true;
-      } catch (Exception e) {
+      } catch (Exception _) {
         // Ignore parse failure; not a valid frequency
       }
     }
@@ -823,7 +823,7 @@ public class FilterUtils {
   public static String sanitizeURI(FilterCallback cb, String uri) {
     try {
       return cb.processURI(uri, null);
-    } catch (Exception e) {
+    } catch (Exception _) {
       return "";
     }
   }
@@ -899,7 +899,7 @@ public class FilterUtils {
       try {
         Float.parseFloat(strParts[0]);
         Float.parseFloat(strParts[1]);
-      } catch (Exception e) {
+      } catch (Exception _) {
         return false;
       }
     }
@@ -932,7 +932,7 @@ public class FilterUtils {
 
       int value = Integer.parseInt(strValue);
       return (value >= min && value <= max);
-    } catch (Exception e) {
+    } catch (Exception _) {
       return false;
     }
   }

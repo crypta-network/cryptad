@@ -363,10 +363,10 @@ public class OpennetManager {
     // Keep opennet crypto details in a separate file
     try {
       readFile(nodeFile);
-    } catch (IOException e) {
+    } catch (IOException _) {
       try {
         readFile(backupNodeFile);
-      } catch (IOException e1) {
+      } catch (IOException _) {
         crypto.initCrypto();
       }
     }
@@ -395,7 +395,7 @@ public class OpennetManager {
     if (orig.exists()) {
       try {
         Files.deleteIfExists(backup.toPath());
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // Keep behavior: ignore delete failures
       }
     }
@@ -406,7 +406,7 @@ public class OpennetManager {
       fs.writeTo(bw);
       bw.flush(); // Ensure data is written before moving file
       FileUtil.moveTo(backup, orig);
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Resources are automatically closed by try-with-resources
     }
   }
@@ -438,7 +438,7 @@ public class OpennetManager {
   private Peer parseUdpPeerOrThrow(String u) throws IOException {
     try {
       return new Peer(u, false, true);
-    } catch (HostnameSyntaxException e) {
+    } catch (HostnameSyntaxException _) {
       LOG.error("Invalid hostname or IP address in opennet peer reference: {}", u);
       return null; // skip invalid
     } catch (PeerParseException e) {
@@ -1691,7 +1691,7 @@ public class OpennetManager {
       while (!finished)
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
         }
       if (timedOut) throw new WaitedTooLongForOpennetNoderefException();
@@ -1829,7 +1829,7 @@ public class OpennetManager {
                 }
               },
               ctr);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       callback.gotNoderef(null);
     }
   }
@@ -1884,7 +1884,7 @@ public class OpennetManager {
     Message msg = DMT.createFNPOpennetNoderefRejected(uid, reason);
     try {
       source.sendAsync(msg, null, ctr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Ignore
     }
   }

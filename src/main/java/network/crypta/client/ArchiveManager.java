@@ -883,7 +883,7 @@ public class ArchiveManager {
             element2,
             callback,
             context);
-      } catch (MetadataUnresolvedException e1) {
+      } catch (MetadataUnresolvedException _) {
         x = resolve(e, x, bf, ctx, key, gotElement, element2, callback, context);
       }
     }

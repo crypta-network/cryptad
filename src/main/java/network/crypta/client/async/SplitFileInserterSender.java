@@ -288,7 +288,7 @@ public class SplitFileInserterSender extends SendableInsert {
         throws LowLevelPutException {
       try {
         node.getNode().store(block, false, canWriteClientCache, true, false);
-      } catch (KeyCollisionException e) {
+      } catch (KeyCollisionException _) {
         throw new LowLevelPutException(LowLevelPutException.COLLISION);
       }
     }

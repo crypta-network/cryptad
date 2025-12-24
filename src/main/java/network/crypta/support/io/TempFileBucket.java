@@ -206,7 +206,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
       if (!(file.createNewFile() || file.exists()))
         throw new ResumeFailedException(
             "Tempfile " + file + " does not exist and cannot be created");
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new ResumeFailedException("Tempfile cannot be created");
     }
   }

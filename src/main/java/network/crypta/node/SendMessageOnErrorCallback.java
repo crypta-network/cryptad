@@ -73,7 +73,7 @@ public class SendMessageOnErrorCallback implements AsyncMessageCallback {
     if (LOG.isDebugEnabled()) LOG.debug("Disconnect event for {}", this);
     try {
       dest.sendAsync(msg, null, ctr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Source and destination disconnected: {} for {}", msg, this);
     }

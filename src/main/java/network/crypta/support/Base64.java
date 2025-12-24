@@ -276,7 +276,7 @@ public class Base64 {
     }
     // Illegal characters can cause an ArrayIndexOutOfBoundsException when
     // looking up reverseAlphabet.
-    catch (ArrayIndexOutOfBoundsException e) {
+    catch (ArrayIndexOutOfBoundsException _) {
       throw new IllegalBase64Exception("illegal Base64 character");
     }
   }

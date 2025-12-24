@@ -71,7 +71,7 @@ public class Journal extends AsyncPersistentProps {
       // try and read existing journal.
       try {
         written = RangeSet.parse(bytes);
-      } catch (ParseException e) {
+      } catch (ParseException _) {
         throw new IOException("Corrupt journal.");
       }
     } else {

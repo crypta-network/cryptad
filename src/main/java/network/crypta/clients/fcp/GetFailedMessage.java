@@ -362,7 +362,7 @@ public class GetFailedMessage extends FCPMessage implements Serializable {
     int x = dis.readInt();
     try {
       failureMode = FetchExceptionMode.getByCode(x);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Bad error code");
     }
     this.isFatal = FetchException.isFatal(failureMode);

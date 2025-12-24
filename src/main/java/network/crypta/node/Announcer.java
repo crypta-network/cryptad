@@ -384,7 +384,7 @@ public class Announcer {
       SimpleFieldSet fs = new SimpleFieldSet(br, false, false, true, false);
       if (!fs.isEmpty()) out.add(fs);
       return ReadStatus.OK;
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       return ReadStatus.EOF;
     } catch (IOException e) {
       LOG.error("Error while reading seednodes from {}", file, e);

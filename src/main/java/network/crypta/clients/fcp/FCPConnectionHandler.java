@@ -295,7 +295,7 @@ public class FCPConnectionHandler implements Closeable {
                     return false;
                   },
               NativeThread.PriorityLevel.NORM_PRIORITY.value);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Ignore: cleanup already best-effort.
     }
   }
@@ -329,7 +329,7 @@ public class FCPConnectionHandler implements Closeable {
   public void closedInput() {
     try {
       sock.shutdownInput();
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Ignore
     }
     synchronized (this) {
@@ -338,7 +338,7 @@ public class FCPConnectionHandler implements Closeable {
     }
     try {
       sock.close();
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Ignore
     }
   }
@@ -354,7 +354,7 @@ public class FCPConnectionHandler implements Closeable {
   public void closedOutput() {
     try {
       sock.shutdownOutput();
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Ignore
     }
     synchronized (this) {
@@ -363,7 +363,7 @@ public class FCPConnectionHandler implements Closeable {
     }
     try {
       sock.close();
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Ignore
     }
   }
@@ -516,7 +516,7 @@ public class FCPConnectionHandler implements Closeable {
   private ClientGet buildClientGet(ClientGetMessage message) {
     try {
       return new ClientGet(this, message, server.getCore());
-    } catch (IdentifierCollisionException e) {
+    } catch (IdentifierCollisionException _) {
       handleIdentifierCollision(message.identifier, message.global);
     } catch (MessageInvalidException e) {
       sendProtocolError(e);
@@ -706,7 +706,7 @@ public class FCPConnectionHandler implements Closeable {
   private ClientPut buildClientPut(ClientPutMessage message, boolean includeErrorDetail) {
     try {
       return new ClientPut(this, message, server);
-    } catch (IdentifierCollisionException e) {
+    } catch (IdentifierCollisionException _) {
       handleIdentifierCollision(message.identifier, message.global);
     } catch (MessageInvalidException e) {
       sendProtocolError(e);
@@ -730,7 +730,7 @@ public class FCPConnectionHandler implements Closeable {
     } catch (MalformedURLException e) {
       sendUriParseError(
           includeErrorDetail ? e.getMessage() : null, message.identifier, message.global);
-    } catch (TooManyFilesInsertException e) {
+    } catch (TooManyFilesInsertException _) {
       sendTooManyFilesError(message.identifier, message.global);
     }
     return null;
@@ -756,7 +756,7 @@ public class FCPConnectionHandler implements Closeable {
     try {
       request.register(false);
       return true;
-    } catch (IdentifierCollisionException e) {
+    } catch (IdentifierCollisionException _) {
       handleIdentifierCollision(identifier, global);
       return false;
     }
@@ -804,7 +804,7 @@ public class FCPConnectionHandler implements Closeable {
           .getClientContext()
           .jobRunner
           .queue(job, NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       sendPersistenceDisabled(identifier, global);
     }
   }

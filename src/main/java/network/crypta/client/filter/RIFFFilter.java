@@ -145,7 +145,7 @@ public abstract class RIFFFilter implements ContentDataFilter {
             context,
             new ReadFilterContext(in, out, charset, otherParams, schemeHostAndPort, cb));
       } while (remainingSize != 0);
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       throw new DataFilterException(
           l10n(KEY_INVALID_TITLE),
           l10n(KEY_INVALID_TITLE),

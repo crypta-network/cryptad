@@ -227,7 +227,7 @@ public class NetworkInterface implements Closeable {
     for (Acceptor acceptor : grabAcceptors()) {
       try {
         acceptor.close();
-      } catch (IOException e) {
+      } catch (IOException _) {
         // Intentionally ignore errors while closing stale acceptors.
       }
     }
@@ -265,7 +265,7 @@ public class NetworkInterface implements Closeable {
   private void applyTimeout(Acceptor acceptor, InetSocketAddress addr) {
     try {
       acceptor.setSoTimeout(timeout);
-    } catch (SocketException e) {
+    } catch (SocketException _) {
       LOG.error("Unable to setSoTimeout in setBindTo() on {}", addr);
     }
   }
@@ -441,7 +441,7 @@ public class NetworkInterface implements Closeable {
           InetAddress clientAddress = clientSocket.getInetAddress();
           if (LOG.isDebugEnabled()) LOG.debug("Connection from {}", clientAddress);
           handleAcceptedClient(clientSocket, clientAddress);
-        } catch (SocketTimeoutException ste1) {
+        } catch (SocketTimeoutException _) {
           // Expected when SO_TIMEOUT is set; continue accepting.
           if (LOG.isDebugEnabled()) LOG.debug("Timeout");
         } catch (IOException ioe1) {
@@ -470,7 +470,7 @@ public class NetworkInterface implements Closeable {
     private void closeQuietly(Socket s) {
       try {
         s.close();
-      } catch (IOException ioe1) {
+      } catch (IOException _) {
         // Best-effort close of a rejected/terminated client socket.
       }
     }

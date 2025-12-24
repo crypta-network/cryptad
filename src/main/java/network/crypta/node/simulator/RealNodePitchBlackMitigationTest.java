@@ -374,7 +374,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
   private static void sleepSilently(int sleepTime) {
     try {
       Thread.sleep(sleepTime);
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
   }

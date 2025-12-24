@@ -190,7 +190,7 @@ public class SplitFileFetcher
               p.fetchContext,
               p.isFinalFetch,
               fileCompleteViaTruncation);
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
     } catch (IOException e) {
       throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);

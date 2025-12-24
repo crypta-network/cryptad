@@ -150,7 +150,7 @@ class BlockCiphers {
         new JceEcbBlockCipher("AES").init(false, new KeyParameter(new byte[keySize]));
       }
       return true;
-    } catch (Exception e) {
+    } catch (Exception _) {
       return false;
     }
   }

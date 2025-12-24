@@ -294,7 +294,7 @@ public class SplitFileInserterCrossSegmentStorage {
             try {
               lock = parent.jobRunner.lock();
               innerEncode();
-            } catch (PersistenceDisabledException e) {
+            } catch (PersistenceDisabledException _) {
               // Will be retried on restarting.
               shutdown = true;
             } finally {

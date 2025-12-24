@@ -76,7 +76,7 @@ public class TrapezoidIntegrator implements SampledFunctionIntegrator {
     while (hasMoreSamples) {
       try {
         sum = sampler.nextSamplePoint().getY();
-      } catch (ExhaustedSampleException e) {
+      } catch (ExhaustedSampleException _) {
         hasMoreSamples = false;
       }
     }

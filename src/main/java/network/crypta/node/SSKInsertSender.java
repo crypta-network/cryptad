@@ -380,7 +380,7 @@ public class SSKInsertSender extends BaseSender
     try {
       node.getUSM()
           .addAsyncFilter(mf, new AcceptedRejectedTimeoutCallback(this, next, tag, uid), this);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       next.noLongerRoutingTo(tag, false);
     }
   }
@@ -463,7 +463,7 @@ public class SSKInsertSender extends BaseSender
               }
             },
             sender);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         next.noLongerRoutingTo(tag, false);
       }
     }
@@ -569,7 +569,7 @@ public class SSKInsertSender extends BaseSender
     Message dataMessage;
     try {
       dataMessage = node.getUSM().waitFor(mfData, this);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected: {} getting datareply for {}", next, this);
       next.noLongerRoutingTo(thisTag, false);
       return DO.NEXT_PEER;
@@ -592,7 +592,7 @@ public class SSKInsertSender extends BaseSender
 
       // The node will now propagate the new data. There is no need to move to the next node yet.
       return DO.WAIT;
-    } catch (SSKVerifyException e) {
+    } catch (SSKVerifyException _) {
       LOG.error("Invalid SSK from remote on collusion: {}:{}", this, block);
       finish(INTERNAL_ERROR, next);
       return DO.FINISHED;
@@ -733,7 +733,7 @@ public class SSKInsertSender extends BaseSender
         while (status == NOT_FINISHED) {
           try {
             this.wait(0); // indefinite wait
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             // Intentionally swallow interrupts to avoid tight-loop spinning when callers
             // repeatedly wait on this monitor during shutdown/cancellation.
           }
@@ -754,7 +754,7 @@ public class SSKInsertSender extends BaseSender
           } else {
             this.wait(waitMillis, waitNanos);
           }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Intentionally swallow interrupts to avoid tight-loop spinning when callers
           // repeatedly wait on this monitor during shutdown/cancellation.
         }
@@ -960,12 +960,12 @@ public class SSKInsertSender extends BaseSender
       next.sendSync(dataMsg, this, realTimeFlag);
       sentPayload(data.length);
       return true;
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Not connected to {}", next);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
       return false;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Waited too long to send {} to {} on {}", dataMsg, next, this);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
@@ -977,12 +977,12 @@ public class SSKInsertSender extends BaseSender
     Message pkMsg = DMT.createFNPSSKPubKey(uid, pubKey, realTimeFlag);
     try {
       next.sendSync(pkMsg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Node disconnected while sending pubkey: {}", next);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
       return false;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.warn("Took too long to send pubkey to {} on {}", next, this);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
@@ -999,7 +999,7 @@ public class SSKInsertSender extends BaseSender
     Message newAck;
     try {
       newAck = node.getUSM().waitFor(mf1, this);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled()) LOG.atDebug().log("Disconnected from {}", next);
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
@@ -1020,7 +1020,7 @@ public class SSKInsertSender extends BaseSender
       Message msg;
       try {
         msg = node.getUSM().waitFor(mf, this);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         LOG.atInfo().log("Disconnected from {} while waiting for InsertReply on {}", next, this);
         next.noLongerRoutingTo(thisTag, false);
         routeRequests();
@@ -1053,7 +1053,7 @@ public class SSKInsertSender extends BaseSender
       Message msg;
       try {
         msg = node.getUSM().waitFor(mf, this);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         LOG.atInfo().log("Disconnected from {} while waiting for InsertReply on {}", next, this);
         next.noLongerRoutingTo(thisTag, false);
         return;

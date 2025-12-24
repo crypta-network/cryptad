@@ -821,7 +821,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     try {
       out.add(new Peer(phys, true, true));
       return out;
-    } catch (HostnameSyntaxException | PeerParseException | UnknownHostException e) {
+    } catch (HostnameSyntaxException | PeerParseException | UnknownHostException _) {
       // Try compatibility forms only if a comma appears.
       if (phys.indexOf(',') >= 0) {
         // Pattern: A,B,C:port → apply trailing port to each host
@@ -832,7 +832,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
           try {
             int p = Integer.parseInt(portStr);
             if (p < 0 || p > 65535) portOk = false;
-          } catch (NumberFormatException nfe) {
+          } catch (NumberFormatException _) {
             portOk = false;
           }
           if (portOk) {
@@ -842,7 +842,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
               String cand = h.trim() + ":" + portStr;
               try {
                 out.add(new Peer(cand, true, true));
-              } catch (Exception ignored) {
+              } catch (Exception _) {
                 // try next
               }
             }
@@ -855,7 +855,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
           try {
             Peer parsed = new Peer(cand, true, true);
             if (!out.contains(parsed)) out.add(parsed);
-          } catch (Exception ignored) {
+          } catch (Exception _) {
             // continue
           }
         }
@@ -2042,7 +2042,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
                       .setType(DMT.FNPPong)
                       .setField(DMT.PING_SEQNO, pingID),
                   null);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       throw new NotConnectedException("Disconnected while waiting for pong");
     }
     return msg != null;
@@ -2134,7 +2134,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         int waitTime = (int) (Math.min(end - now, Integer.MAX_VALUE));
         try {
           wait(waitTime);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Re-interrupt current thread and stop waiting
           Thread.currentThread().interrupt();
           return;
@@ -3007,7 +3007,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         offset = 0;
         if (LOG.isDebugEnabled())
           LOG.debug("We have decompressed a {} bytes big reference.", length);
-      } catch (DataFormatException e) {
+      } catch (DataFormatException _) {
         throw new FSParseException("Invalid compressed data");
       }
     }
@@ -3090,7 +3090,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     try {
       // verifyReferenceSignature() returns true on success, or throws on failure; no need to test.
       verifyReferenceSignature(fs);
-    } catch (ReferenceSignatureVerificationException e) {
+    } catch (ReferenceSignatureVerificationException _) {
       throw new FSParseException("Invalid signature");
     }
   }
@@ -3255,7 +3255,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   private Peer tryParsePeer(String phys) {
     try {
       return new Peer(phys, true, true);
-    } catch (UnknownHostException e) {
+    } catch (UnknownHostException _) {
       // Host appears syntactically valid but cannot be resolved here (e.g., link‑local scope name
       // not present on this host). Lower severity to INFO to avoid noisy logs.
       LOG.info(
@@ -3263,7 +3263,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
               + "{} (unresolvable here; likely host-local scope or transient DNS)",
           phys);
       return null;
-    } catch (HostnameSyntaxException | PeerParseException e) {
+    } catch (HostnameSyntaxException | PeerParseException _) {
       // True syntax issues: keep ERROR to surface malformed noderefs.
       LOG.error(STR_INVALID_HOST_OR_IP_WHILE_PARSING + "{}", phys);
       return null;
@@ -4432,7 +4432,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       } else if ("Fred".equals(components[0]) && components.length >= 4) {
         return Integer.parseInt(components[3]);
       }
-    } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+    } catch (NumberFormatException | ArrayIndexOutOfBoundsException _) {
       // Fall through to return -1
     }
     return -1;
@@ -4470,7 +4470,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         parsedVersionComponents.set(components);
         return components;
       }
-    } catch (Exception e) {
+    } catch (Exception _) {
       // Parsing failed, return empty array
     }
 
@@ -4537,7 +4537,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     Message msg = DMT.createFNPOfferKey(key, authenticator);
     try {
       sendAsync(msg, null, node.getNodeStats().sendOffersCtr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Ignore
     }
   }
@@ -4887,7 +4887,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     }
     try {
       sendAsync(n2nm, cb, node.getNodeStats().nodeToNodeCounter);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (includeSentTime) {
         fs.removeValue("sentTime");
       }
@@ -5603,7 +5603,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
         while (shouldContinueWaiting()) {
           try {
             wait();
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
           }
         }
@@ -5620,7 +5620,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
           int millis = (int) Math.min(Integer.MAX_VALUE, remaining);
           wait(millis);
           if (LOG.isDebugEnabled()) LOG.debug("Maximum wait time exceeded on {}", this);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
         }
       }

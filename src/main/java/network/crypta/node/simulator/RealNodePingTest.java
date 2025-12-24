@@ -182,7 +182,7 @@ public class RealNodePingTest {
             boolean connected = true;
             try {
               success = pn.ping(ping);
-            } catch (NotConnectedException e1) {
+            } catch (NotConnectedException _) {
               LOG.error("Not connected");
               connected = false;
               success = false;
@@ -198,7 +198,7 @@ public class RealNodePingTest {
       CountDownLatch done = new CountDownLatch(1);
       try {
         done.await();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
     }

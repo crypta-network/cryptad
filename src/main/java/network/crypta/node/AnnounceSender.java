@@ -267,7 +267,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     if (source == null) return true;
     try {
       source.sendAsync(DMT.createFNPAccepted(uid), null, this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       return false;
     }
     return transferNoderef();
@@ -285,7 +285,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       try {
         msg = node.getUSM().waitFor(mf, this);
         if (LOG.isDebugEnabled()) LOG.debug("first part got {}", msg);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         LOG.info("Disconnected from {} while waiting for Accepted on {}", next, uid);
         return false;
       }
@@ -357,7 +357,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     try {
       sendRest(next, xferUID);
       return true;
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Not connected while sending noderef on {}", next);
       return false;
     }
@@ -369,7 +369,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       MessageFilter mf = buildFinalWaitFilter(next);
       try {
         msg = node.getUSM().waitFor(mf, this);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         LOG.info("Disconnected from {} while waiting for announcement", next);
         return Flow.CONTINUE;
       }
@@ -515,7 +515,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     if (source != null) {
       try {
         sendNotWanted();
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         LOG.warn("Lost connection to source (announce not wanted)");
         return FinalOutcome.TERMINATE;
       }
@@ -561,7 +561,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       Message msg;
       try {
         msg = node.getUSM().waitFor(mf, this);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         return;
       }
       if (!processCompletionFollowup(msg, next)) return;
@@ -579,7 +579,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       if (source != null) {
         try {
           sendNotWanted();
-        } catch (NotConnectedException e) {
+        } catch (NotConnectedException _) {
           LOG.warn("Lost connection to source (announce completed)");
           return false;
         }
@@ -623,7 +623,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
         };
     try {
       node.getExecutor().execute(r);
-    } catch (Throwable t) {
+    } catch (Throwable _) {
       synchronized (this) {
         waitingForTransfers--;
       }
@@ -658,7 +658,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       forwardedRefs++;
       om.sendAnnouncementReply(uid, source, buf, this);
       if (cb != null) cb.relayedNoderef();
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // ignore
     }
   }
@@ -685,7 +685,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private long sendTo(PeerNode next) {
     try {
       return om.startSendAnnouncementRequest(uid, next, noderefBuf, this, target, htl);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected");
       return -1;
     }
@@ -707,7 +707,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     if (source != null) {
       try {
         source.sendAsync(msg, null, this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ok
       }
     }
@@ -718,7 +718,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     while (waitingForTransfers > 0) {
       try {
         wait();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
     }
@@ -730,7 +730,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     if (source != null) {
       try {
         source.sendAsync(msg, null, this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ok
       }
     }
@@ -746,7 +746,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     if (source != null) {
       try {
         source.sendAsync(msg, null, this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Oh well.
       }
     }
@@ -782,7 +782,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       LOG.warn(LOG_REJECTING_NODEREF, e, e);
       OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
       return false;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.info("Could not receive noderef, disconnected");
       return false;
     }

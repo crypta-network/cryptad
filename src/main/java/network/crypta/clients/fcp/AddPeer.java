@@ -98,10 +98,10 @@ public class AddPeer extends FCPMessage {
     try {
       this.trust = FRIEND_TRUST.valueOf(fs.get("Trust"));
       fs.removeValue("Trust");
-    } catch (NullPointerException e) {
+    } catch (NullPointerException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "AddPeer requires Trust", messageIdentifier, false);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Invalid Trust value on AddPeer",
@@ -111,13 +111,13 @@ public class AddPeer extends FCPMessage {
     try {
       this.visibility = FRIEND_VISIBILITY.valueOf(fs.get("Visibility"));
       fs.removeValue("Visibility");
-    } catch (NullPointerException e) {
+    } catch (NullPointerException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD,
           "AddPeer requires Visibility",
           messageIdentifier,
           false);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Invalid Visibility value on AddPeer",
@@ -341,7 +341,7 @@ public class AddPeer extends FCPMessage {
           node.getClientCore()
               .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
       return AddPeer.getReferenceFromFreenetURI(refUri, client);
-    } catch (MalformedURLException | FetchException e) {
+    } catch (MalformedURLException | FetchException _) {
       LOG.warn("Url cannot be used as Crypta URI, trying to fetch as URL: {}", urlString);
       URL url = createUrlFromString(urlString);
       return AddPeer.getReferenceFromURL(url);

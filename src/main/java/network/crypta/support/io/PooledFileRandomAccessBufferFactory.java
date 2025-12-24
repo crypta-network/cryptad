@@ -60,7 +60,7 @@ public class PooledFileRandomAccessBufferFactory implements LockableRandomAccess
     } catch (IOException | RuntimeException e) {
       try {
         Files.deleteIfExists(file.toPath());
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // Best-effort cleanup; ignore secondary deletion failure to preserve the cause.
       }
       throw e;
@@ -102,7 +102,7 @@ public class PooledFileRandomAccessBufferFactory implements LockableRandomAccess
        */
       try {
         Files.deleteIfExists(file.toPath());
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // Best-effort cleanup; ignore secondary deletion failure to preserve the cause.
       }
       throw e;

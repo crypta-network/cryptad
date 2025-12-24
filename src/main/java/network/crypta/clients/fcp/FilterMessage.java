@@ -115,7 +115,7 @@ public class FilterMessage extends DataCarryingMessage {
   private String parseIdentifier(SimpleFieldSet fs) throws MessageInvalidException {
     try {
       return fs.getString(IDENTIFIER);
-    } catch (FSParseException e) {
+    } catch (FSParseException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD,
           "Must contain an " + IDENTIFIER + " field",
@@ -128,7 +128,7 @@ public class FilterMessage extends DataCarryingMessage {
     String op = readRequiredString(fs, "Operation", "Must contain an Operation field");
     try {
       return FilterOperation.valueOf(op);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw invalidField("Illegal Operation value");
     }
   }
@@ -137,7 +137,7 @@ public class FilterMessage extends DataCarryingMessage {
     String ds = readRequiredString(fs, "DataSource", "Must contain a DataSource field");
     try {
       return DataSource.valueOf(ds);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw invalidField("Illegal DataSource value");
     }
   }
@@ -177,7 +177,7 @@ public class FilterMessage extends DataCarryingMessage {
     }
     try {
       return fs.getLong(DATA_LENGTH_FIELD);
-    } catch (FSParseException e) {
+    } catch (FSParseException _) {
       throw dataLengthParsingError();
     }
   }
@@ -205,7 +205,7 @@ public class FilterMessage extends DataCarryingMessage {
       throws MessageInvalidException {
     try {
       return fs.getString(fieldName);
-    } catch (FSParseException e) {
+    } catch (FSParseException _) {
       throw missingField(missingMessage);
     }
   }
@@ -334,7 +334,7 @@ public class FilterMessage extends DataCarryingMessage {
           applyFilter(input, output, handler.getServer().getCore().getClientContext());
       resultCharset = status.charset;
       resultMimeType = status.mimeType;
-    } catch (UnsafeContentTypeException e) {
+    } catch (UnsafeContentTypeException _) {
       unsafe = true;
     } catch (IOException e) {
       throw internalError("IO error running content filter", e);

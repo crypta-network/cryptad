@@ -162,7 +162,7 @@ public class LocalFileInsertToadlet extends LocalFileBrowserToadlet {
     if (key != null) {
       try {
         furi = new FreenetURI(key);
-      } catch (MalformedURLException e) {
+      } catch (MalformedURLException _) {
         // keep default null when parsing fails
       }
     }

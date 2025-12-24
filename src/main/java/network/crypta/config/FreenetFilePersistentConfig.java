@@ -60,7 +60,7 @@ public class FreenetFilePersistentConfig extends FilePersistentConfig {
           while (!hasNodeStarted) {
             try {
               FreenetFilePersistentConfig.this.wait(1000);
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
               // Worker threads may be interrupted during shutdown. Avoid persisting a partially
               // initialized configuration: record the interruption, re-assert the flag, and exit
               // the wait loop so the task can bail out below.

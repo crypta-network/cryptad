@@ -189,7 +189,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
     long maxLen = Math.max(ctx.getMaxTempLength(), ctx.getMaxOutputLength());
     try {
       finalResult = context.getBucketFactory(persistent()).makeBucket(maxLen);
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), state, context);
       return;
     } catch (IOException e) {

@@ -244,12 +244,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       next.reportRoutedTo(
           key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
       node.getPeers().incrementSelectionSamples(next);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.debug("Not connected");
       next.noLongerRoutingTo(origTag, false);
       routeRequests();
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Failed to send {} to {} in a reasonable time.", req, next);
       next.noLongerRoutingTo(origTag, false);
       // Try another node.
@@ -553,7 +553,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         if (LOG.isDebugEnabled())
           LOG.debug("Matched {} with {}", matched, state.expectedAcceptState);
       }
-    } catch (SlotWaiterFailedException e) {
+    } catch (SlotWaiterFailedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Rerouting as slot waiter failed...");
       state.shouldContinueLoop = true;
     }
@@ -591,7 +591,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           .addArgument(realTimeFlag)
           .log();
       return true;
-    } catch (SlotWaiterFailedException e) {
+    } catch (SlotWaiterFailedException _) {
       state.shouldContinueLoop = true;
       return true;
     }
@@ -623,12 +623,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
       node.getPeers().incrementSelectionSamples(state.next);
       return true;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.debug("Not connected");
       state.next.noLongerRoutingTo(origTag, false);
       routeRequests();
       return false;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Failed to send {} to {} in a reasonable time.", req, state.next);
       state.next.noLongerRoutingTo(origTag, false);
       routeRequests();
@@ -787,7 +787,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       return (msg == null)
           ? new WaitResult(WaitKind.TIMEOUT, null)
           : new WaitResult(WaitKind.RECEIVED, msg);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       LOG.info("Disconnected from {} while waiting for Accepted on {}", next, uid);
       next.noLongerRoutingTo(origTag, false);
       return new WaitResult(WaitKind.DISCONNECTED, null);

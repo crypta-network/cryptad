@@ -742,7 +742,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
     if (cs != null) {
       try {
         cs = URLDecoder.decode(cs, false);
-      } catch (URLEncodedFormatException e) {
+      } catch (URLEncodedFormatException _) {
         cs = null;
       }
     }

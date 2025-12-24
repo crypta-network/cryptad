@@ -181,7 +181,7 @@ public class ModifyPersistentRequest extends FCPMessage {
                       return true;
                     },
                 NativeThread.PriorityLevel.NORM_PRIORITY.value);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         ProtocolErrorMessage msg =
             new ProtocolErrorMessage(
                 ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, identifier, global);

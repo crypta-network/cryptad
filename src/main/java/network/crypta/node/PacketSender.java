@@ -485,7 +485,7 @@ public class PacketSender implements Runnable {
           while ((remaining = deadline - System.currentTimeMillis()) > 0) {
             wait(remaining);
           }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Swallow to treat interrupt as a wake-up without latching the flag.
         }
       }

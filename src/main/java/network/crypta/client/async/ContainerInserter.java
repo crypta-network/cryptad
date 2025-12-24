@@ -387,7 +387,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       } catch (MetadataUnresolvedException e) {
         try {
           x = resolve(e, x, context);
-        } catch (IOException e1) {
+        } catch (IOException _) {
           fail(new InsertException(InsertExceptionMode.INTERNAL_ERROR, e, null), context);
           return;
         }
@@ -407,7 +407,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
         String nameInArchive = ".metadata-" + (x++);
         containerItems.add(new ContainerElement(bucket, nameInArchive));
         m.resolve(nameInArchive);
-      } catch (MetadataUnresolvedException e1) {
+      } catch (MetadataUnresolvedException _) {
         x = resolve(e, x, context);
       }
     }

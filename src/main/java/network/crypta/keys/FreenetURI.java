@@ -390,7 +390,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     if (s.indexOf('@') < 0 || s.indexOf('/') < 0) {
       try {
         s = URLDecoder.decode(s, false);
-      } catch (URLEncodedFormatException e) {
+      } catch (URLEncodedFormatException _) {
         throw new MalformedURLException(
             "Invalid URI: no @ or /, or @ or / is escaped but there are invalid escapes");
       }

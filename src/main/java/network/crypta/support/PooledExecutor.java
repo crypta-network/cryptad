@@ -415,7 +415,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
           this.setName(defaultName);
           try {
             wait(remaining);
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             // Preserve the interrupt status so higher levels can make an exit decision
             // (rule S2142: either rethrow or re‑interrupt). We choose to re‑interrupt and then
             // decide below whether to clear it when a job is actually present.

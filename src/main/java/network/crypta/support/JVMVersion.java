@@ -183,7 +183,7 @@ public class JVMVersion {
         } while (i < len && Character.isDigit(version.charAt(i)));
         try {
           parsed[count] = Integer.parseInt(version.substring(start, i));
-        } catch (NumberFormatException ex) {
+        } catch (NumberFormatException _) {
           // Treat overflow or unexpected content as zero for this component
           parsed[count] = 0;
         }

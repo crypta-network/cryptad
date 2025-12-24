@@ -348,7 +348,7 @@ public class PushDataManager {
                 awaitingNotifications.get(requestId).getFirst().requestId))) { // Not asked us yet
       try {
         wait();
-      } catch (InterruptedException ie) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         return null;
       }

@@ -276,7 +276,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     WIZARD_STEP currentStep;
     try {
       currentStep = WIZARD_STEP.valueOf(request.getParam("step", WIZARD_STEP.WELCOME.toString()));
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       currentStep = WIZARD_STEP.WELCOME;
     }
 
@@ -382,7 +382,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
     try {
       String currentValue = request.getPartAsStringFailsafe("step", 20);
       return currentValue.isEmpty() ? WIZARD_STEP.WELCOME : WIZARD_STEP.valueOf(currentValue);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return WIZARD_STEP.WELCOME;
     }
   }

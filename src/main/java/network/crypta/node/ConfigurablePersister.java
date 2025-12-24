@@ -160,7 +160,7 @@ public class ConfigurablePersister extends Persister {
         throw new InvalidConfigValueException(
             l10n(L10N_DOES_NOT_EXIST_CANNOT_CREATE) + " : " + errorPath);
       }
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new InvalidConfigValueException(
           l10n(L10N_DOES_NOT_EXIST_CANNOT_CREATE) + " : " + errorPath);
     }

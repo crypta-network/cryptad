@@ -294,7 +294,7 @@ public class DiagnosticToadlet extends Toadlet {
   private StoreAccessStats getTotalAccessStats(DataStoreStats storeStatsEntry) {
     try {
       return storeStatsEntry.getTotalAccessStats();
-    } catch (StatsNotAvailableException e) {
+    } catch (StatsNotAvailableException _) {
       return null;
     }
   }
@@ -303,13 +303,13 @@ public class DiagnosticToadlet extends Toadlet {
       StringBuilder textBuilder, StoreAccessStats sessionAccess, StoreAccessStats totalAccess) {
     try {
       textBuilder.append(fix1p4.format(sessionAccess.successRate())).append("%");
-    } catch (StatsNotAvailableException e) {
+    } catch (StatsNotAvailableException _) {
       textBuilder.append("\n");
       return;
     }
     try {
       appendTotalSuccessRate(textBuilder, totalAccess);
-    } catch (StatsNotAvailableException ignored) {
+    } catch (StatsNotAvailableException _) {
       // Ignore failures from total stats so we still show the session success rate.
     }
     textBuilder.append("\n");
@@ -874,7 +874,7 @@ public class DiagnosticToadlet extends Toadlet {
       } else {
         appendQueueCounts(textBuilder, reqs);
       }
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       textBuilder.append("DatabaseDisabledException\n");
     }
     textBuilder.append("\n");

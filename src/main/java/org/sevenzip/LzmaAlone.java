@@ -244,7 +244,7 @@ public class LzmaAlone {
       if (sw.isEmpty()) return false;
       try {
         return parseSwitch(sw);
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         return false;
       }
     }
@@ -267,7 +267,7 @@ public class LzmaAlone {
             try {
               numBenchmarkPasses = Integer.parseInt(s);
               if (numBenchmarkPasses < 1) yield -1;
-            } catch (NumberFormatException e) {
+            } catch (NumberFormatException _) {
               yield -1;
             }
           } else {

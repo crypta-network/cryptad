@@ -102,7 +102,7 @@ public class BulkReceiver {
     }
     try {
       peer.sendAsync(DMT.createFNPBulkReceiveAborted(uid), null, ctr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Peer is already disconnected; there is nothing to notify.
     }
   }
@@ -154,7 +154,7 @@ public class BulkReceiver {
         try {
           // Fast-path: data may have arrived concurrently; acknowledge completion immediately.
           peer.sendAsync(DMT.createFNPBulkReceivedAll(uid), null, ctr);
-        } catch (NotConnectedException e) {
+        } catch (NotConnectedException _) {
           // Acknowledge best-effort only. We already have the data locally.
         }
         return true;
@@ -163,7 +163,7 @@ public class BulkReceiver {
       try {
         // Wait for either filter to match; returns null on timeout.
         m = prb.usm.waitFor(mfSendKilled.or(mfPacket), ctr);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         prb.abort(RetrievalException.SENDER_DISCONNECTED, "Sender disconnected");
         return false;
       }

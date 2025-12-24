@@ -266,7 +266,7 @@ public class CompatibilityAnalyser implements Serializable {
     try {
       min = CompatibilityMode.byCode(dis.readShort());
       max = CompatibilityMode.byCode(dis.readShort());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Bad min value");
     }
     if (dis.readBoolean()) {

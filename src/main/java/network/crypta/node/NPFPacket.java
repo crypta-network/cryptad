@@ -88,7 +88,7 @@ class NPFPacket {
     if (numAckRanges > 0) {
       try {
         offset = parseAckRanges(plaintext, numAckRanges, packet, offset);
-      } catch (ArrayIndexOutOfBoundsException e) {
+      } catch (ArrayIndexOutOfBoundsException _) {
         packet.error = true;
         return -1;
       }

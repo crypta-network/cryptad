@@ -329,7 +329,7 @@ public class ListPersistentRequestsMessage extends FCPMessage {
     public void run() {
       try {
         context.jobRunner.queue(this, NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         outputHandler.handler.send(new EndListPersistentRequestsMessage(listRequestIdentifier));
       }
     }
@@ -421,7 +421,7 @@ public class ListPersistentRequestsMessage extends FCPMessage {
                         return false;
                       },
                   NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1);
-            } catch (PersistenceDisabledException e) {
+            } catch (PersistenceDisabledException _) {
               handler.send(new EndListPersistentRequestsMessage(listRequestIdentifier));
             }
           }

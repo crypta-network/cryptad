@@ -310,7 +310,7 @@ public final class FileUtil {
   public static Charset getFileEncodingCharset() {
     try {
       return Charset.forName(Charset.defaultCharset().displayName());
-    } catch (Exception e) {
+    } catch (Exception _) {
       return Charset.defaultCharset();
     }
   }
@@ -355,7 +355,7 @@ public final class FileUtil {
     File result;
     try {
       result = file.getAbsoluteFile().getCanonicalFile();
-    } catch (IOException e) {
+    } catch (IOException _) {
       result = file.getAbsoluteFile();
     }
     return result;
@@ -508,7 +508,7 @@ public final class FileUtil {
     try {
       Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
       return true;
-    } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
+    } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException _) {
       // Fall back to a non-atomic move allowing replacement.
     } catch (IOException e) {
       LOG.error("Could not move {} to {}: {}", orig, dest, e, e);

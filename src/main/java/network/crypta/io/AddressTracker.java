@@ -93,7 +93,7 @@ public class AddressTracker {
         BufferedReader br = new BufferedReader(ir)) {
       SimpleFieldSet fs = new SimpleFieldSet(br, false, true);
       return new AddressTracker(fs, lastBootID);
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Fall through
     } catch (FSParseException e) {
       LOG.warn("Failed to load from disk for port {}: {}", port, e, e);
@@ -392,7 +392,7 @@ public class AddressTracker {
       SimpleFieldSet fs = getFieldset(bootID);
       fs.writeTo(bw);
       bw.flush();
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error("Cannot store packet tracker to disk");
       return;
     }

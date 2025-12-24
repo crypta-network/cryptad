@@ -119,7 +119,7 @@ public class GIFFilter implements ContentDataFilter {
         // By elimination, this must be GIF89a here.
         GIF89aValidator.filter(input, output);
       }
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       throwDataError(l10n("unexpectedEOFTitle"), l10n("unexpectedEOF"));
     }
     output.flush();

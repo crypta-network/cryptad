@@ -126,9 +126,9 @@ public class UptimeEstimator implements Runnable {
           wasOnline[slotNo % wasOnline.length] = wasOnlineWeek[slotNo] = true;
         }
       }
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // Reached end of file; no more samples to load.
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error("Read old uptime file failed: {}; treating slots as offline", file);
     }
   }
@@ -165,7 +165,7 @@ public class UptimeEstimator implements Runnable {
       dos.writeInt(fiveMinutesSinceEpoch);
     } catch (FileNotFoundException e) {
       LOG.error("Create or open uptime file failed for {}: {}", logFile, e, e);
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error("Write to uptime log failed: {}", logFile);
     } finally {
       // Schedule the next sample.

@@ -1423,7 +1423,7 @@ public final class SimpleToadletServer
       while (fproxyConnections > maxFproxyConnections) {
         try {
           wait();
-        } catch (InterruptedException ignored) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return false;
         }
@@ -1824,7 +1824,7 @@ public final class SimpleToadletServer
     Toadlet toadlet = null;
     try {
       toadlet = findToadlet(link);
-    } catch (PermanentRedirectException pre1) {
+    } catch (PermanentRedirectException _) {
       /* ignore. */
     }
     if (toadlet instanceof LinkFilterExceptedToadlet exceptedToadlet) {

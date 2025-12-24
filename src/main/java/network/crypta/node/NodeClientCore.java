@@ -582,7 +582,7 @@ public class NodeClientCore implements Persistable {
     LOG.info("Late database initialisation: starting middle phase");
     try {
       initStorage(databaseKey);
-    } catch (MasterKeysWrongPasswordException e) {
+    } catch (MasterKeysWrongPasswordException _) {
       LOG.warn(
           "Late database initialisation failed: wrong master key/password provided (hasKey={}).",
           databaseKey != null);
@@ -707,7 +707,7 @@ public class NodeClientCore implements Persistable {
   private FilenameGenerator createTempFilenameGeneratorOrThrow() throws NodeInitException {
     try {
       return new FilenameGenerator(random, true, getTempDir(), "temp-");
-    } catch (IOException e) {
+    } catch (IOException _) {
       String msg = "Could not find or create temporary directory (filename generator)";
       throw new NodeInitException(NodeInitException.EXIT_BAD_DIR, msg);
     }
@@ -879,7 +879,7 @@ public class NodeClientCore implements Persistable {
     }
     try {
       initStorage(databaseKey);
-    } catch (MasterKeysWrongPasswordException e) {
+    } catch (MasterKeysWrongPasswordException _) {
       LOG.warn("Cannot load persistent requests, awaiting password ...");
       node.setDatabaseAwaitingPassword();
     }
@@ -913,7 +913,7 @@ public class NodeClientCore implements Persistable {
     try {
       // May need to change filenames for client.dat* or even create them.
       initStorage(NodeClientCore.this.getNode().getDatabaseKey());
-    } catch (MasterKeysWrongPasswordException e) {
+    } catch (MasterKeysWrongPasswordException _) {
       NodeClientCore.this.getNode().setDatabaseAwaitingPassword();
     }
   }
@@ -1316,7 +1316,7 @@ public class NodeClientCore implements Persistable {
       LOG.info("Deleting old temporary dir: {}", oldTemp);
       try {
         FileUtil.secureDeleteAll(oldTemp);
-      } catch (IOException e) {
+      } catch (IOException _) {
         // Ignore.
       }
     }
@@ -2097,7 +2097,7 @@ public class NodeClientCore implements Persistable {
         node.shouldStoreDeep(block.getKey(), null, is == null ? new PeerNode[0] : is.getRoutedTo());
     try {
       node.store(block, deep, canWriteClientCache, false, false);
-    } catch (KeyCollisionException e) {
+    } catch (KeyCollisionException _) {
       // CHKs don't collide
     }
   }
@@ -2340,7 +2340,7 @@ public class NodeClientCore implements Persistable {
         LOG.error("Collided but no key?!");
         try {
           node.store(block, false, canWriteClientCache, false, false);
-        } catch (KeyCollisionException e2) {
+        } catch (KeyCollisionException _) {
           LOG.error("Collided but no key and still collided!");
           throw new LowLevelPutException(
               LowLevelPutException.INTERNAL_ERROR,

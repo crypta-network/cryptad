@@ -177,7 +177,7 @@ public class TigerTree implements StreamingHash {
     byte[] hash = new byte[HASHSIZE];
     try {
       digest(hash, 0, HASHSIZE);
-    } catch (DigestException e) {
+    } catch (DigestException _) {
       return new byte[0];
     }
     return hash;

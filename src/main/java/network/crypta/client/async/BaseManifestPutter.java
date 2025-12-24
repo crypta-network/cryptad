@@ -1414,7 +1414,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (LOG.isDebugEnabled()) LOG.debug("Main metadata needs resolving: {}", String.valueOf(e));
       try {
         resolve(e, context);
-      } catch (IOException ioe) {
+      } catch (IOException _) {
         fail(new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null), context);
       } catch (InsertException ie) {
         fail(ie, context);

@@ -105,7 +105,7 @@ public class InetAddressIpv6FirstComparator implements Comparator<InetAddress> {
     if (reachable == null) {
       try {
         reachable = inetAddress.isReachable((int) DEFAULT_MAX_PING_TIME);
-      } catch (IOException e) {
+      } catch (IOException _) {
         reachable = false;
       }
       reachabilityCache.put(hashCode, reachable);

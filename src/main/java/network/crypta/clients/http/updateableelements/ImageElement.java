@@ -252,7 +252,7 @@ public class ImageElement extends BaseUpdatableElement {
                         .tracker
                         .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
                         .close(waiter);
-                  } catch (FetchException fe2) {
+                  } catch (FetchException _) {
                     wasError = true;
                   }
                 }
@@ -457,7 +457,7 @@ public class ImageElement extends BaseUpdatableElement {
     try {
       resources.waiter = tracker.makeFetcher(key, maxSize, null, REFILTER_POLICY.RE_FILTER);
       resources.result = resources.waiter.getResultFast();
-    } catch (FetchException fe) {
+    } catch (FetchException _) {
       whenJsEnabled.addChild("div", "error");
     }
     return resources;

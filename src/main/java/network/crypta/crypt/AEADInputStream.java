@@ -176,7 +176,7 @@ public class AEADInputStream extends FilterInputStream {
     // authentication tag.
     try {
       excessEnd = cipher.doFinal(excess, 0);
-    } catch (InvalidCipherTextException e) {
+    } catch (InvalidCipherTextException _) {
       throw new AEADVerificationFailedException();
     }
     finished = true;

@@ -140,7 +140,7 @@ public class Metadata implements Serializable {
     parsedVersion = version;
     try {
       documentType = DocumentType.byCode(dis.readByte());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new MetadataParseException("Unsupported document type: " + documentType);
     }
     if (LOG.isDebugEnabled()) LOG.debug("Document type: {}", documentType);
@@ -429,7 +429,7 @@ public class Metadata implements Serializable {
       throws IOException, MetadataParseException {
     try {
       splitfileAlgorithm = SplitfileAlgorithm.getByCode(dis.readShort());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new MetadataParseException("Invalid splitfile code");
     }
     if (!((splitfileAlgorithm == SplitfileAlgorithm.NONREDUNDANT)

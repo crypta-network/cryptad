@@ -154,7 +154,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg;
     try {
       msg = waitForDataInsert();
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       // Peer disconnected while we were waiting; do not treat as timeout/overload.
       if (LOG.isInfoEnabled()) LOG.info("Disconnected while waiting for DataInsert on {}", uid);
       return;
@@ -181,10 +181,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       // either block here, or inside the filter, but we prefer to fail early on send.
       source.sendSync(accepted, this, realTimeFlag);
       return true;
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
       return false;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Unable to send {} in a reasonable time to {}", accepted, source);
       return false;
     }
@@ -203,7 +203,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
           DMT.createFNPDataInsertRejected(uid, msg.getShort(DMT.DATA_INSERT_REJECTED_REASON)),
           null,
           this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Upstream disconnected while we were notifying it; nothing more to do here.
     }
   }
@@ -272,7 +272,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     if (!alreadyForwarded && sender.receivedRejectedOverload()) {
       try {
         source.sendAsync(DMT.createFNPRejectedOverload(uid, false), null, this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
         return true; // Treat as forwarded to avoid retrying endlessly.
       }
@@ -291,7 +291,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
           s.wait(remaining);
           remaining = deadline - System.currentTimeMillis();
         }
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Restore interrupt status; likely set by receive failing.
         Thread.currentThread().interrupt();
       }
@@ -330,10 +330,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
       return;
     }
@@ -347,10 +347,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPRouteNotFound(uid, sender.getHTL());
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
       return;
     }
@@ -368,10 +368,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPInsertReply(uid);
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.debug(LOST_CONNECTION_TO_SOURCE);
       return;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
       return;
     }
@@ -388,7 +388,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       source.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException | SyncSendWaitedTooLongException e) {
+    } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
       // Ignore
     }
     finish(CHKInsertSender.INTERNAL_ERROR);
@@ -496,7 +496,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
                 }
               },
               this);
-    } catch (NotConnectedException | DisconnectedException e) {
+    } catch (NotConnectedException | DisconnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
     }
   }
@@ -554,7 +554,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       while (receiveStarted && !receiveCompleted) {
         try {
           wait(SECONDS.toMillis(100));
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Restore interrupted status
           Thread.currentThread().interrupt();
         }
@@ -582,7 +582,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       tag.timedOutToHandlerButContinued();
       try {
         source.sendAsync(DMT.createFNPInsertTransfersCompleted(uid, true), null, this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ignore.
       }
       // Still waiting until downstream reports completed
@@ -605,7 +605,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
           int t = (int) Math.clamp(remaining, 0L, Integer.MAX_VALUE);
           if (t > 0) s.wait(t);
           else return true; // took too long
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Restore interrupted status and loop
           Thread.currentThread().interrupt();
         }
@@ -620,7 +620,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
         if (s.completed()) return;
         try {
           s.wait(SECONDS.toMillis(10));
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Restore interrupted status and loop
           Thread.currentThread().interrupt();
         }
@@ -633,10 +633,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       // We do need to sendSync here so we have accurate byte counter totals.
       source.sendSync(m, this, realTimeFlag);
       if (LOG.isDebugEnabled()) LOG.debug("Sent completion: {}" + FOR_STRING + "{}", m, this);
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Not connected: {}" + FOR_STRING + "{}", source, this);
       // May need to commit anyway...
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, m, source);
       // May need to commit anyway...
     }
@@ -701,7 +701,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     if (toSend != null) {
       try {
         source.sendAsync(toSend, null, this);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // :(
         if (LOG.isDebugEnabled())
           LOG.debug("Lost connection in {} when sending FNPDataInsertRejected", this);
@@ -719,7 +719,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
           false,
           canWriteDatastore,
           false);
-    } catch (KeyCollisionException e) {
+    } catch (KeyCollisionException _) {
       // Impossible with CHKs.
     }
     if (LOG.isDebugEnabled()) LOG.debug("Committed");
@@ -787,7 +787,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       } catch (NotConnectedException ex) {
         // If they are not connected, that's probably why the receive failed!
         if (LOG.isDebugEnabled()) LOG.debug("Can't send {} to {}: {}", msg, source, ex, ex);
-      } catch (SyncSendWaitedTooLongException ex) {
+      } catch (SyncSendWaitedTooLongException _) {
         LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
       }
       if (e.getReason() == RetrievalException.SENDER_DISCONNECTED)

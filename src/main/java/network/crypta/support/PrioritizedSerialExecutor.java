@@ -157,7 +157,7 @@ public class PrioritizedSerialExecutor implements PriorityAwareExecutor {
             remaining = deadline - System.currentTimeMillis();
           }
           return polled;
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException _) {
           // Restore interrupt status and let caller decide (we won't remove from the queue here
           // to avoid dropping work on exit).
           Thread.currentThread().interrupt();

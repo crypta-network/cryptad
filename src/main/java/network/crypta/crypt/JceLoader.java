@@ -196,7 +196,7 @@ public class JceLoader {
       Field f = System.class.getField("out");
       Object ps = f.get(null);
       return (ps instanceof PrintStream printStream) ? printStream : null;
-    } catch (NoSuchFieldException | IllegalAccessException e) {
+    } catch (NoSuchFieldException | IllegalAccessException _) {
       return null;
     }
   }
@@ -290,7 +290,7 @@ public class JceLoader {
         Set<PosixFilePermission> perms = PosixFilePermissions.fromString("rw-------");
         FileAttribute<Set<PosixFilePermission>> attr = PosixFilePermissions.asFileAttribute(perms);
         nssPath = Files.createTempFile("nss", ".cfg", attr);
-      } catch (UnsupportedOperationException | IOException ex) {
+      } catch (UnsupportedOperationException | IOException _) {
         Path base =
             Paths.get(System.getProperty("user.home", System.getProperty("java.io.tmpdir")));
         Path secureDir = base.resolve(".crypta-tmp");

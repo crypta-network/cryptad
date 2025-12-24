@@ -324,10 +324,10 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     File f = makeFilename(dir, baseName, backup, encrypted);
     try {
       FileUtil.secureDelete(f);
-    } catch (IOException e) {
+    } catch (IOException _) {
       try {
         Files.deleteIfExists(f.toPath());
-      } catch (IOException ioe) {
+      } catch (IOException _) {
         LOG.warn(
             "Failed to delete {} when setting maximum security level. There may be traces on disk"
                 + " of your previous download queue.",
@@ -418,7 +418,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         ctx.random.nextBytes(buf);
         return;
       }
-    } catch (Exception ignored) {
+    } catch (Exception _) {
       // fall through to default RNG
     }
     FALLBACK_SECURE_RNG.nextBytes(buf);
@@ -581,7 +581,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     try {
       checker.readAndChecksum(ois, loadedSalt, 0, loadedSalt.length);
       loaded.setSalt(loadedSalt);
-    } catch (ChecksumFailedException e1) {
+    } catch (ChecksumFailedException _) {
       LOG.error("Unable to read global salt (checksum failed)");
     }
     requestStarters.setGlobalSalt(loadedSalt);
@@ -635,7 +635,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         }
       }
       return request;
-    } catch (ChecksumFailedException e) {
+    } catch (ChecksumFailedException _) {
       LOG.error("Failed to load request (checksum failed)");
       return null;
     } catch (Exception t) {
@@ -661,7 +661,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
             loadedFully ? RequestLoadStatus.RESTORED_FULLY : RequestLoadStatus.RESTORED_RESTARTED);
         return restored;
       }
-    } catch (ChecksumFailedException e) {
+    } catch (ChecksumFailedException _) {
       if (current == null) {
         LOG.error("Failed to recover a request (checksum failed)");
         loaded.addPartiallyLoadedRequest(reqID, null, RequestLoadStatus.FAILED);
@@ -691,7 +691,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     for (int i = 0; i < count; i++) {
       try {
         buckets[i] = (DelayedFree) readChecksummedObject(ois, length);
-      } catch (ChecksumFailedException e) {
+      } catch (ChecksumFailedException _) {
         LOG.warn("Failed to load a bucket to free");
       }
     }
@@ -895,7 +895,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     byte[] buf = new byte[length];
     try {
       checker.readAndChecksum(is, buf, 0, length);
-    } catch (ChecksumFailedException e) {
+    } catch (ChecksumFailedException _) {
       LOG.error(
           "Checksum failed reading RequestIdentifier. This is not serious but means we will have to"
               + " read the next request even if we don't need it.");

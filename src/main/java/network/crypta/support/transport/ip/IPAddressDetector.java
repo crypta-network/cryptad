@@ -184,7 +184,7 @@ public class IPAddressDetector implements Runnable {
       try {
         // strip scope_id from global addresses
         return InetAddress.getByAddress(addr.getAddress());
-      } catch (UnknownHostException e) {
+      } catch (UnknownHostException _) {
         // ignore/impossible
       }
     }
@@ -331,7 +331,7 @@ public class IPAddressDetector implements Runnable {
         if (checkpoint()) {
           detector.redetectAddress();
         }
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         break;
       } catch (AssertionError ae) {
