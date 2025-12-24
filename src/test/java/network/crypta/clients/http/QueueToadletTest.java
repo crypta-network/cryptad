@@ -101,7 +101,7 @@ class QueueToadletTest {
   @Test
   void notifySuccess_whenDownloadCompleted_recordsIdentifierAndRegistersAlert() throws Exception {
     // Arrange
-    QueueToadlet toadlet = createQueueToadlet(false);
+    createQueueToadlet(false);
     clearInvocations(executor, alerts, jobRunner);
 
     ClientGet request = mock(ClientGet.class);
@@ -127,7 +127,7 @@ class QueueToadletTest {
   @Test
   void notifySuccess_whenDirectionMismatch_doesNothing() throws Exception {
     // Arrange
-    QueueToadlet toadlet = createQueueToadlet(false);
+    createQueueToadlet(false);
     clearInvocations(executor, alerts);
 
     ClientPut uploadRequest = mock(ClientPut.class);
@@ -147,7 +147,7 @@ class QueueToadletTest {
   @Test
   void onRemove_whenEntryExists_removesAndPersistsEmptyList() throws Exception {
     // Arrange
-    QueueToadlet toadlet = createQueueToadlet(false);
+    createQueueToadlet(false);
     clearInvocations(executor, alerts, jobRunner);
 
     ClientGet request = mock(ClientGet.class);
@@ -302,12 +302,11 @@ class QueueToadletTest {
     return (Map<String, ?>) field.get(tracker);
   }
 
-  private RequestCompletionCallback getCompletionCallback()
-      throws NoSuchFieldException, IllegalAccessException {
+  private RequestCompletionCallback getCompletionCallback() {
     return (RequestCompletionCallback) getCompletionTracker();
   }
 
-  private Object getCompletionTracker() throws NoSuchFieldException, IllegalAccessException {
+  private Object getCompletionTracker() {
     if (completionCallback == null) {
       throw new IllegalStateException("Completion callback was not captured.");
     }
