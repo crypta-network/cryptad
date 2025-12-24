@@ -35,6 +35,7 @@ import network.crypta.clients.fcp.ClientGet;
 import network.crypta.clients.fcp.ClientPut;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.PersistentRequestRoot;
+import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
@@ -74,6 +75,7 @@ class QueueToadletTest {
   @Mock private UserAlertManager alerts;
   @Mock private PriorityAwareExecutor executor;
   @Mock private ClientLayerPersister jobRunner;
+  private RequestCompletionCallback completionCallback;
 
   @TempDir Path tempDir;
 
@@ -83,7 +85,8 @@ class QueueToadletTest {
     QueueToadlet toadlet = createQueueToadlet(false);
 
     // Assert
-    verify(fcp).setCompletionCallback(toadlet);
+    RequestCompletionCallback callback = getCompletionCallback();
+    verify(fcp).setCompletionCallback(callback);
     verify(jobRunner, times(1)).queue(any(PersistentJob.class), anyInt());
     assertEquals(QueueToadlet.PATH_DOWNLOADS, toadlet.path());
   }
@@ -108,7 +111,7 @@ class QueueToadletTest {
     when(request.getDataSize()).thenReturn(123L);
 
     // Act
-    toadlet.notifySuccess(request);
+    getCompletionCallback().notifySuccess(request);
 
     // Assert
     File completedList = tempDir.resolve("completed.list.downloads").toFile();
@@ -130,7 +133,7 @@ class QueueToadletTest {
     ClientPut uploadRequest = mock(ClientPut.class);
 
     // Act
-    toadlet.notifySuccess(uploadRequest);
+    getCompletionCallback().notifySuccess(uploadRequest);
 
     // Assert
     File completedList = tempDir.resolve("completed.list.downloads").toFile();
@@ -153,18 +156,18 @@ class QueueToadletTest {
     when(request.getURI()).thenReturn(sampleUri());
     when(request.getDataSize()).thenReturn(500L);
 
-    toadlet.notifySuccess(request);
+    getCompletionCallback().notifySuccess(request);
     clearInvocations(executor, alerts);
 
     // Act
-    toadlet.onRemove(request);
+    getCompletionCallback().onRemove(request);
 
     // Assert
     File completedList = tempDir.resolve("completed.list.downloads").toFile();
     assertTrue(completedList.exists());
     assertEquals(0, Files.readAllBytes(completedList.toPath()).length);
 
-    Map<?, ?> completedGets = getCompletedGets(toadlet);
+    Map<?, ?> completedGets = getCompletedGets();
     assertFalse(completedGets.containsKey("download-2"));
     verify(executor).execute(any(Runnable.class), anyString());
   }
@@ -188,6 +191,13 @@ class QueueToadletTest {
     when(core.getClientContext()).thenReturn(context);
 
     when(fcp.getGlobalRequest(anyString())).thenReturn(null);
+    doAnswer(
+            invocation -> {
+              completionCallback = invocation.getArgument(0);
+              return null;
+            })
+        .when(fcp)
+        .setCompletionCallback(any(RequestCompletionCallback.class));
 
     doAnswer(
             invocation -> {
@@ -285,10 +295,22 @@ class QueueToadletTest {
   }
 
   @SuppressWarnings("unchecked")
-  private Map<String, ?> getCompletedGets(QueueToadlet toadlet)
-      throws NoSuchFieldException, IllegalAccessException {
-    var field = QueueToadlet.class.getDeclaredField("completedGets");
+  private Map<String, ?> getCompletedGets() throws NoSuchFieldException, IllegalAccessException {
+    Object tracker = getCompletionTracker();
+    var field = tracker.getClass().getDeclaredField("completedGets");
     field.setAccessible(true);
-    return (Map<String, ?>) field.get(toadlet);
+    return (Map<String, ?>) field.get(tracker);
+  }
+
+  private RequestCompletionCallback getCompletionCallback()
+      throws NoSuchFieldException, IllegalAccessException {
+    return (RequestCompletionCallback) getCompletionTracker();
+  }
+
+  private Object getCompletionTracker() throws NoSuchFieldException, IllegalAccessException {
+    if (completionCallback == null) {
+      throw new IllegalStateException("Completion callback was not captured.");
+    }
+    return completionCallback;
   }
 }
