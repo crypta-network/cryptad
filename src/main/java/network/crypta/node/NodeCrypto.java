@@ -235,7 +235,7 @@ public class NodeCrypto {
     if (identity == null) throw new IOException();
     try {
       myIdentity = Base64.decode(identity);
-    } catch (IllegalBase64Exception e2) {
+    } catch (IllegalBase64Exception _) {
       throw new IOException();
     }
     identityHash = SHA256.digest(myIdentity);
@@ -294,7 +294,7 @@ public class NodeCrypto {
   private static Long safeParseLong(String value) {
     try {
       return Long.parseLong(value);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return null;
     }
   }

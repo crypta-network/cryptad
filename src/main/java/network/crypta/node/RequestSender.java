@@ -661,7 +661,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         MessageFilter mf = createMessageFilter(timeout, waitingFor);
         try {
           node.getUSM().addAsyncFilter(mf, this, RequestSender.this);
-        } catch (DisconnectedException e) {
+        } catch (DisconnectedException _) {
           onDisconnect(lastNode);
         }
       } else {
@@ -713,7 +713,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           int timeout =
               (int) (Math.min(Integer.MAX_VALUE, secondDeadline - System.currentTimeMillis()));
           msg = node.getUSM().waitFor(createMessageFilter(timeout, waitingFor), RequestSender.this);
-        } catch (DisconnectedException e) {
+        } catch (DisconnectedException _) {
           LOG.info("Disconnected from {} while waiting for reply on {}", waitingFor, this);
           waitingFor.noLongerRoutingTo(origTag, false);
           return;
@@ -1073,7 +1073,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         LOG.error("Failed to verify: {}" + FROM_SEP + "{}", e, next, e);
         if (!wasFork) finish(VERIFY_FAILURE, next, false);
         else next.noLongerRoutingTo(origTag, false);
-      } catch (KeyCollisionException e) {
+      } catch (KeyCollisionException _) {
         LOG.info("Collision on {}", RequestSender.this);
         block =
             node.fetch(
@@ -1162,10 +1162,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     msg.addSubMessage(DMT.createFNPRealTimeFlag(realTimeFlag));
     try {
       pn.sendSync(msg, this, realTimeFlag);
-    } catch (NotConnectedException e2) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(DISCONNECTED + "{}" + GETTING_OFFER_FOR + "{}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
-    } catch (SyncSendWaitedTooLongException e) {
+    } catch (SyncSendWaitedTooLongException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Took too long sending offer get to {}" + FOR_SEP + "{}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
@@ -1181,7 +1181,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
               buildOfferReplyCallback(offer, pn, offers),
               this);
       return OFFER_STATUS.FETCHING;
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(DISCONNECTED + "{}" + GETTING_OFFER_FOR + "{}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
     }
@@ -1322,7 +1322,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
               },
               this);
       return OFFER_STATUS.TWO_STAGE_TIMEOUT;
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       // Okay.
       if (LOG.isDebugEnabled())
         LOG.debug("Disconnected (2): {}" + GETTING_OFFER_FOR + "{}", pn, key);
@@ -1382,7 +1382,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         LOG.error("Got headers but not data from {} for offer for {} on {}", pn, key, this);
       }
       return dataMessage;
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug(DISCONNECTED + "{} getting data for offer for {}", pn, key);
       return null;
@@ -1400,7 +1400,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     Message pk;
     try {
       pk = node.getUSM().waitFor(mfPK, this);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug(DISCONNECTED + "{} getting pubkey for offer for {}", pn, key);
       return false;
@@ -1616,7 +1616,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     } catch (SSKVerifyException e) {
       LOG.error("Failed to verify (from get offer): {} from {}", e, next, e);
       return false;
-    } catch (KeyCollisionException e) {
+    } catch (KeyCollisionException _) {
       LOG.info("Collision (from get offer) on {}", this);
       finish(SUCCESS, next, true);
       return false;
@@ -1666,7 +1666,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         SSKBlock sskBlock = new SSKBlock(data, headers, (NodeSSK) key, false);
         if (LOG.isDebugEnabled()) LOG.debug("Verified SSK");
         node.storeShallow(sskBlock, canWriteClientCache, canWriteDatastore, tryOffersOnly);
-      } catch (KeyCollisionException e) {
+      } catch (KeyCollisionException _) {
         LOG.info("Collision on {}", this);
       }
     }
@@ -1747,7 +1747,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           wait(deadline - now);
           now = System.currentTimeMillis();
           maybeLogMissedNotify(now, deadline, current);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return mask;
         }
@@ -1934,7 +1934,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     // We probably should set opennetFinished after the send completes.
     try {
       next.sendAsync(msg, finishOpennetOnAck(next), this);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Ignore.
     }
   }
@@ -1976,11 +1976,11 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       LOG.error("Bad signature on opennet noderef for {} from {} : {}", this, next, e, e);
       ackOpennet(next);
       return false;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Not connected sending ConnectReply on {} to {}", this, next);
       origTag.finishedWaitingForOpennet(next);
-    } catch (WaitedTooLongForOpennetNoderefException e) {
+    } catch (WaitedTooLongForOpennetNoderefException _) {
       return onOpennetTimeout(next);
     } finally {
       synchronized (this) {
@@ -2057,7 +2057,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       opennetFinished = true;
       try {
         next.sendAsync(DMT.createFNPOpennetCompletedTimeout(uid), finishOpennetOnAck(next), this);
-      } catch (NotConnectedException notConnectedException) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) {
           LOG.debug("Not connected sending ConnectReply on {} to {}", this, next);
         }
@@ -2067,7 +2067,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     }
     try {
       OpennetManager.waitForOpennetNoderef(false, next, uid, this, node);
-    } catch (WaitedTooLongForOpennetNoderefException e1) {
+    } catch (WaitedTooLongForOpennetNoderefException _) {
       LOG.error(
           "RequestSender FATAL TIMEOUT out waiting for noderef from {}" + FOR_SEP + "{}",
           next,
@@ -2103,7 +2103,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           if (waitTime <= 0) return tooLongWaitingForOpennet();
           try {
             wait(waitTime);
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             // In this code path, interrupts are used as signals; keep waiting
             // but remember to restore the interrupt status on exit.
             wasInterrupted = true;
@@ -2544,7 +2544,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
                 }
               },
               this);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       next.noLongerRoutingTo(origTag, false);
     }
   }

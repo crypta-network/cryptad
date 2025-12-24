@@ -409,7 +409,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     } catch (TooBigException e) {
       onFailure(new FetchException(FetchExceptionMode.TOO_BIG, e), false, context);
       return null;
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
       return null;
     } catch (IOException e) {
@@ -576,7 +576,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     } catch (MetadataParseException | EOFException e) {
       // EOFException is also a metadata error
       onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
     } catch (IOException e) {
       // Bucket error?
@@ -958,7 +958,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     if (metadataBucket != null) {
       try {
         metadata = Metadata.construct(metadataBucket);
-      } catch (InsufficientDiskSpaceException e) {
+      } catch (InsufficientDiskSpaceException _) {
         throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
       } catch (IOException e) {
         throw new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
@@ -1045,11 +1045,11 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       synchronized (this) {
         metadata = newMetadata;
       }
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
     } catch (MetadataParseException e) {
       throw new FetchException(FetchExceptionMode.INVALID_METADATA, e);
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new FetchException(FetchExceptionMode.BUCKET_ERROR);
     } finally {
       dataBucket.free();
@@ -1075,9 +1075,9 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
                 metadata = newMetadata;
               }
               innerWrapHandleMetadata(true, ctx1);
-            } catch (IOException e) {
+            } catch (IOException _) {
               onFailure(new FetchException(FetchExceptionMode.BUCKET_ERROR), false, ctx1);
-            } catch (MetadataParseException e) {
+            } catch (MetadataParseException _) {
               onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA), false, ctx1);
             } finally {
               data.free();
@@ -1181,9 +1181,9 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       } else {
         return dataBucket;
       }
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new FetchException(FetchExceptionMode.BUCKET_ERROR);
     }
   }
@@ -1675,7 +1675,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
           return false;
         }
         return true;
-      } catch (InsufficientDiskSpaceException e) {
+      } catch (InsufficientDiskSpaceException _) {
         onFailure(
             new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE),
             SingleFileFetcher.this,
@@ -1809,7 +1809,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       } catch (MetadataParseException e) {
         SingleFileFetcher.this.onFailure(
             new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
-      } catch (InsufficientDiskSpaceException e) {
+      } catch (InsufficientDiskSpaceException _) {
         SingleFileFetcher.this.onFailure(
             new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
       } catch (IOException e) {

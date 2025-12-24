@@ -156,7 +156,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     SecureRandom s;
     try {
       s = SecureRandom.getInstance("SHA1PRNG");
-    } catch (NoSuchAlgorithmException e) {
+    } catch (NoSuchAlgorithmException _) {
       s = null;
     }
     sr = s;
@@ -268,7 +268,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     // Consume the local IP address
     try {
       consumeString(InetAddress.getLocalHost().toString());
-    } catch (Exception e) {
+    } catch (Exception _) {
       // Ignore
     }
     readStartupEntropy(startupEntropy);
@@ -311,7 +311,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 
       EntropySource seedFile = new EntropySource();
       for (int i = 0; i < 32; i++) acceptEntropy(seedFile, dis.readLong(), 64);
-    } catch (EOFException f) {
+    } catch (EOFException _) {
       // End of file is acceptable; treat as a short seed file.
     } catch (IOException e) {
       LOG.error("IOE trying to read the seedfile from disk : {}", e.getMessage());

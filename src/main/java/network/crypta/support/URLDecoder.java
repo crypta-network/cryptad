@@ -107,7 +107,7 @@ public class URLDecoder {
       }
       decodedBytes.write((int) read);
       return new Result(i + 3, true);
-    } catch (NumberFormatException nfe) {
+    } catch (NumberFormatException _) {
       // Tolerate an apparent escape only until the first successful decode, to avoid silently
       // "fixing" mixed or partially encoded input.
       if (tolerant && !hasDecodedSomething) {

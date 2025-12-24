@@ -850,18 +850,18 @@ public class ToadletContextImpl implements ToadletContext {
       try {
         sendError(
             sock.getOutputStream(), 400, BAD_REQUEST, l10nParseError(e.getMessage()), true, null);
-      } catch (IOException e1) {
+      } catch (IOException _) {
         // Ignore
       }
-    } catch (TooLongException e) {
+    } catch (TooLongException _) {
       try {
         sendError(sock.getOutputStream(), 400, BAD_REQUEST, l10n("headersLineTooLong"), true, null);
-      } catch (IOException e1) {
+      } catch (IOException _) {
         // Ignore
       }
-    } catch (IOException e) {
+    } catch (IOException _) {
       // ignore and return
-    } catch (ToadletContextClosedException e) {
+    } catch (ToadletContextClosedException _) {
       LOG.error("ToadletContextClosedException while handling connection!");
     } catch (Exception t) {
       LOG.error("Caught error: {} handling socket", t, t);
@@ -890,7 +890,7 @@ public class ToadletContextImpl implements ToadletContext {
             false,
             false);
         sock.getOutputStream().write(messageBytes);
-      } catch (IOException e1) {
+      } catch (IOException _) {
         // ignore and return
       }
     }
@@ -1068,7 +1068,7 @@ public class ToadletContextImpl implements ToadletContext {
     try {
       length = Integer.parseInt(contentLengthHeader);
       if (length < 0) throw new NumberFormatException("content-length less than 0");
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       ctx.shouldDisconnect = true;
       ctx.sendReplyHeaders(400, BAD_REQUEST, null, null, -1);
       return DataReadResult.stop();

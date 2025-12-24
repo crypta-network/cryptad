@@ -1035,7 +1035,7 @@ public abstract class ClientPutBase extends ClientRequest
       if (!Charset.isSupported(charset)) {
         LOG.warn("Unsupported charset '{}' requested for ClientPutBase", charset);
       }
-    } catch (IllegalCharsetNameException e) {
+    } catch (IllegalCharsetNameException _) {
       LOG.warn("Illegal charset '{}' requested for ClientPutBase", charset);
     }
   }

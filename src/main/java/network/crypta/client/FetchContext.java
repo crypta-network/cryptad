@@ -1079,7 +1079,7 @@ public class FetchContext implements Serializable {
     this.ignoreUSKDatehints = dis.readBoolean();
     try {
       s = dis.readUTF();
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // input stream reached EOF, so it must have been and old version without scehmeHostAndPort.
       s = "";
     }

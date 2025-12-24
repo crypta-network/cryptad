@@ -185,7 +185,7 @@ public class HTMLDecoder {
       if ((i >= 0) && (i < 65536)) {
         return (char) i;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // ignore
     }
     return null;
@@ -197,7 +197,7 @@ public class HTMLDecoder {
       if ((i >= 0) && (i < 65536)) {
         return (char) i;
       }
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // ignore
     }
     return null;

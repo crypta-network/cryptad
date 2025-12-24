@@ -166,7 +166,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
     byte[] fullHeader = new byte[type.headerLen];
     try {
       new DataInputStream(is).readFully(fullHeader);
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // Historical message refers to a "footer" although we are reading the header.
       throw new IOException(
           "Underlying RandomAccessBuffer is not long enough to include the " + "footer.");
@@ -213,7 +213,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
       CryptByteBuffer crypt = new CryptByteBuffer(type.encryptType, headerEncKey, headerEncIV);
       unencryptedBaseKey =
           KeyGenUtils.getSecretKey(type.encryptKey, crypt.decryptCopy(encryptedKey));
-    } catch (InvalidKeyException | InvalidAlgorithmParameterException e) {
+    } catch (InvalidKeyException | InvalidAlgorithmParameterException _) {
       throw new IOException("Error reading encryption keys from header.");
     }
 

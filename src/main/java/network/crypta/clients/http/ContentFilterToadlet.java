@@ -394,7 +394,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
     File file = new File(filename);
     try (Bucket bucket = new FileBucket(file, true, false, false, false)) {
       processFilter(bucket, filename, resolvedMimeType, filterOperation, resultHandling, ctx, core);
-    } catch (FileNotFoundException e) {
+    } catch (FileNotFoundException _) {
       writeBadRequestError(
           l10n("errorNoFileOrCannotReadTitle"), cannotReadFileMessage(filename), ctx);
     }
@@ -419,7 +419,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
     }
     try (Bucket bucket = file.getData()) {
       processFilter(bucket, filename, resolvedMimeType, filterOperation, resultHandling, ctx, core);
-    } catch (FileNotFoundException e) {
+    } catch (FileNotFoundException _) {
       writeBadRequestError(
           l10n("errorNoFileOrCannotReadTitle"), cannotReadFileMessage(filename), ctx);
     }
@@ -484,7 +484,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
     try {
       FilterStatus status = applyFilter(data, resultBucket, mimeType, operation, core);
       resultMimeType = status.mimeType;
-    } catch (UnsafeContentTypeException e) {
+    } catch (UnsafeContentTypeException _) {
       unsafe = true;
     }
 

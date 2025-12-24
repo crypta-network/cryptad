@@ -531,7 +531,7 @@ public class SplitFileInserterSegmentStorage {
       if (!oldKey.equals(key))
         throw new IOException(
             "Key for block has changed! Data corruption or bugs in SplitFileInserter code");
-    } catch (MissingKeyException e) {
+    } catch (MissingKeyException _) {
       // Ok.
       writeKey(blockNumber, key);
     }
@@ -596,7 +596,7 @@ public class SplitFileInserterSegmentStorage {
       }
     } catch (IOException e) {
       parent.failOnDiskError(e);
-    } catch (MissingKeyException e) {
+    } catch (MissingKeyException _) {
       // Easy to recover so may as well...
       LOG.error("Missing key even though segment encoded. Recovering by re-encoding...");
       synchronized (this) {
@@ -690,7 +690,7 @@ public class SplitFileInserterSegmentStorage {
             try {
               lock = parent.jobRunner.lock();
               innerEncode();
-            } catch (PersistenceDisabledException e) {
+            } catch (PersistenceDisabledException _) {
               // Will be retried on restarting.
               shutdown = true;
             } finally {
@@ -978,7 +978,7 @@ public class SplitFileInserterSegmentStorage {
         blockChooser.onRNF(blockNo);
         parent.clearCooldown();
         return true;
-      } catch (MissingKeyException e1) {
+      } catch (MissingKeyException _) {
         LOG.error("RNF but no key on block {} on {}", blockNo, this);
         return false;
       } catch (IOException e1) {

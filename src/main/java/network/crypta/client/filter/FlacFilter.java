@@ -127,7 +127,7 @@ public class FlacFilter implements ContentDataFilter {
   private static int readUnsignedByteOrEOF(DataInputStream in) throws IOException {
     try {
       return in.readUnsignedByte();
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       return -1;
     }
   }
@@ -268,7 +268,7 @@ public class FlacFilter implements ContentDataFilter {
         packet = parser.parse(packet);
         if (packet != null) output.write(packet.toArray());
       }
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // Reached end of input; nothing more to write.
     }
   }

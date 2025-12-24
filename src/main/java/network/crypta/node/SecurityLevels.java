@@ -225,7 +225,7 @@ public class SecurityLevels {
             // Validate early to return a consistent error for invalid strings.
             try {
               PHYSICAL_THREAT_LEVEL.valueOf(val);
-            } catch (IllegalArgumentException e) {
+            } catch (IllegalArgumentException _) {
               throw new InvalidConfigValueException(
                   "Invalid value for physical threat level: " + val);
             }
@@ -342,7 +342,7 @@ public class SecurityLevels {
   public static NETWORK_THREAT_LEVEL parseNetworkThreatLevel(String arg) {
     try {
       return NETWORK_THREAT_LEVEL.valueOf(arg);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return null;
     }
   }
@@ -350,7 +350,7 @@ public class SecurityLevels {
   private static FRIENDS_THREAT_LEVEL parseFriendsThreatLevel(String arg) {
     try {
       return FRIENDS_THREAT_LEVEL.valueOf(arg);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return null;
     }
   }
@@ -364,7 +364,7 @@ public class SecurityLevels {
   public static PHYSICAL_THREAT_LEVEL parsePhysicalThreatLevel(String arg) {
     try {
       return PHYSICAL_THREAT_LEVEL.valueOf(arg);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       return null;
     }
   }

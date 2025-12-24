@@ -482,7 +482,7 @@ public class LongTermMHKTest extends LongTermTest {
           int fetchTime = Integer.parseInt(split[token]);
           singleKeySuccess = true;
           LOGGER.info("Fetched single key on try {} on {} in {}ms", i, date, fetchTime);
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
           LOGGER.info("Failed fetch single key on {} try {} : {}", date, i, split[token]);
         }
       }
@@ -501,7 +501,7 @@ public class LongTermMHKTest extends LongTermTest {
         mhkSuccess = true;
         counters.totalSingleKeySuccesses++;
         LOGGER.info("Fetched MHK #{} on {} in {}ms", i, date, fetchTime);
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         LOGGER.info("Failed fetch MHK #{} on {} : {}", i, date, split[token]);
       }
       token++;

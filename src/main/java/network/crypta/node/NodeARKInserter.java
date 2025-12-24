@@ -216,7 +216,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
       }
     } catch (InsertException e) {
       onFailure(e, inserter);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Inserter is non-persistent by design; this path should not occur.
     }
   }
@@ -278,7 +278,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
     // Back off briefly, then try again.
     try {
       Thread.sleep(5000);
-    } catch (InterruptedException e1) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
 

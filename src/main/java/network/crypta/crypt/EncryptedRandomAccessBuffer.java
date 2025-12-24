@@ -410,7 +410,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
       CryptByteBuffer crypt = new CryptByteBuffer(type.encryptType, headerEncKey, headerEncIV);
       unencryptedBaseKey =
           KeyGenUtils.getSecretKey(type.encryptKey, crypt.decryptCopy(encryptedKey));
-    } catch (InvalidKeyException | InvalidAlgorithmParameterException e) {
+    } catch (InvalidKeyException | InvalidAlgorithmParameterException _) {
       throw new IOException("Error reading encryption keys from header.");
     }
 

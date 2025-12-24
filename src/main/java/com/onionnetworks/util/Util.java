@@ -56,7 +56,7 @@ public class Util {
   private static SecureRandom initSecureRandom() {
     try {
       return SecureRandom.getInstance("SHA1PRNG");
-    } catch (NoSuchAlgorithmException ignored) {
+    } catch (NoSuchAlgorithmException _) {
       return new SecureRandom();
     }
   }

@@ -590,7 +590,7 @@ public class DarknetPeerNode extends PeerNode {
       Message msg = DMT.createRoutingStatus(shouldRoute);
       try {
         sendAsync(msg, null, node.getNodeStats().setRoutingStatusCtr);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // ok
       }
     }
@@ -662,7 +662,7 @@ public class DarknetPeerNode extends PeerNode {
       int fileNumber;
       try {
         fileNumber = Integer.parseInt(extraPeerDataFile.getName());
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         gotError = true;
         continue;
       }
@@ -731,7 +731,7 @@ public class DarknetPeerNode extends PeerNode {
     FileInputStream fis;
     try {
       fis = new FileInputStream(extraPeerDataFile);
-    } catch (FileNotFoundException e1) {
+    } catch (FileNotFoundException _) {
       LOG.info("Extra peer data file not found: {}", extraPeerDataFile.getPath());
       return false;
     }
@@ -741,7 +741,7 @@ public class DarknetPeerNode extends PeerNode {
     try {
       // Read in the single SimpleFieldSet
       fs = new SimpleFieldSet(br, false, true);
-    } catch (EOFException e3) {
+    } catch (EOFException _) {
       // End of file, fine
     } catch (IOException e4) {
       LOG.error("Could not read extra peer data file: {}", e4, e4);
@@ -776,7 +776,7 @@ public class DarknetPeerNode extends PeerNode {
     final int extraPeerDataType;
     try {
       extraPeerDataType = Integer.parseInt(extraPeerDataTypeString);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       LOG.error(
           "NumberFormatException parsing " + SFS_KEY_EXTRA_PEER_DATA_TYPE + " ({}) in file {}",
           extraPeerDataTypeString,
@@ -820,7 +820,7 @@ public class DarknetPeerNode extends PeerNode {
     final int peerNoteType;
     try {
       peerNoteType = Integer.parseInt(peerNoteTypeString);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       LOG.error(
           "NumberFormatException parsing peerNoteType ({}) in file {}",
           peerNoteTypeString,
@@ -868,7 +868,7 @@ public class DarknetPeerNode extends PeerNode {
       try {
         sendAsync(n2nm, cb, null);
         LOG.info("Sending queued ({}) N2NM to '{}': {}", fileNumber, getName(), n2nm);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         fs.removeValue(SFS_KEY_SENT_TIME);
       }
     }
@@ -935,7 +935,7 @@ public class DarknetPeerNode extends PeerNode {
     } catch (IOException e) {
       try {
         fos.close();
-      } catch (IOException e1) {
+      } catch (IOException _) {
         LOG.error("Cannot close extra peer data file: {}", e, e);
       }
       LOG.error("Cannot write file: {}", e, e);
@@ -1067,7 +1067,7 @@ public class DarknetPeerNode extends PeerNode {
     } catch (IOException e) {
       try {
         fos.close();
-      } catch (IOException e1) {
+      } catch (IOException _) {
         LOG.error("Cannot close extra peer data file: {}", e, e);
       }
       LOG.error("Cannot write file: {}", e, e);
@@ -2077,7 +2077,7 @@ public class DarknetPeerNode extends PeerNode {
       LOG.error("No such offer: {}", uid);
       try {
         sendAsync(DMT.createFNPBulkSendAborted(uid), null, node.getNodeStats().nodeToNodeCounter);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Fine by me!
       }
       return;
@@ -2121,7 +2121,7 @@ public class DarknetPeerNode extends PeerNode {
       String s = fs.get(FS_KEY_DESCRIPTION);
       if (s != null) description = Base64.decodeUTF8(s);
       uri = new FreenetURI(fs.get("URI"));
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       LOG.error("Malformed URI in N2NTM Bookmark Feed message");
       return;
     } catch (IllegalBase64Exception e) {
@@ -2152,7 +2152,7 @@ public class DarknetPeerNode extends PeerNode {
       String s = fs.get(FS_KEY_DESCRIPTION);
       if (s != null) description = Base64.decodeUTF8(s);
       uri = new FreenetURI(fs.get("URI"));
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       LOG.error("Malformed URI in N2NTM File Feed message");
       return;
     } catch (IllegalBase64Exception e) {
@@ -2312,7 +2312,7 @@ public class DarknetPeerNode extends PeerNode {
     node.getPeers().writePeersDarknetUrgent();
     try {
       sendVisibility();
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.info("Disconnected while sending visibility update");
     }
   }
@@ -2402,7 +2402,7 @@ public class DarknetPeerNode extends PeerNode {
               () -> {
                 try {
                   bt.send();
-                } catch (DisconnectedException e) {
+                } catch (DisconnectedException _) {
                   // :|
                 } finally {
                   synchronized (DarknetPeerNode.this) {
@@ -2447,7 +2447,7 @@ public class DarknetPeerNode extends PeerNode {
     try {
       sendMyFullNoderefHeader(uid, length);
       return true;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       return false;
     }
   }
@@ -2455,7 +2455,7 @@ public class DarknetPeerNode extends PeerNode {
   private BulkTransmitter createBulkTransmitterOrNull(PartiallyReceivedBulk prb, long uid) {
     try {
       return createBulkTransmitter(prb, uid);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       return null;
     }
   }
@@ -2556,7 +2556,7 @@ public class DarknetPeerNode extends PeerNode {
     if (!dontKeepFullFieldSet()) {
       try {
         sendAsync(DMT.createFNPGetYourFullNoderef(), null, node.getNodeStats().foafCounter);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ignore
       }
     }

@@ -250,7 +250,7 @@ public class ClientGetWorkerThread extends Thread {
         int r = currentInput.read(buf);
         if (r < 0) break;
       }
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // End of stream reached; nothing to do.
     }
   }
@@ -344,7 +344,7 @@ public class ClientGetWorkerThread extends Thread {
       while (!finished) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Record and continue waiting so the monitor can be released by wait().
           // We restore the interrupt status after exiting the synchronized block.
           interrupted = true;

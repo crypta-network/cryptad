@@ -766,7 +766,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       } else if (!overwrite) {
         throw new KeyCollisionException();
       }
-    } catch (KeyVerifyException e) {
+    } catch (KeyVerifyException _) {
       // ignore
     }
 
@@ -1658,7 +1658,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       initialMisses = misses.get();
       bloomFalsePos.set(raf.readLong());
       initialBloomFalsePos = bloomFalsePos.get();
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // Ignore, back compatibility.
     }
   }
@@ -1761,7 +1761,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         try {
           int sleepMillis = (CLEANER_PERIOD / 2) + random.nextInt(CLEANER_PERIOD + 1);
           Thread.sleep(sleepMillis);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return;
         }
@@ -2184,7 +2184,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private boolean sleepAfterBatch(boolean sleep, BatchProcessor<T> processor) {
       try {
         if (sleep) Thread.sleep(100);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         processor.abort();
         return false;

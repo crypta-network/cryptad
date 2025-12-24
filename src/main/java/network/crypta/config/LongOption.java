@@ -123,7 +123,7 @@ public class LongOption extends Option<Long> {
     long x;
     try {
       x = Fields.parseLong(val);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new InvalidConfigValueException(parseErrorMessage(val));
     }
     return x;

@@ -209,7 +209,7 @@ public class SecurityPhysical implements Step {
         PASSWORD_PROMPT type;
         try {
           type = PASSWORD_PROMPT.valueOf(request.getParam("type"));
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
           // Render the default page if unable to parse password prompt type.
           return false;
         }
@@ -410,11 +410,11 @@ public class SecurityPhysical implements Step {
       } else {
         core.getNode().setMasterPassword(pass, true);
       }
-    } catch (Node.AlreadySetPasswordException e) {
+    } catch (Node.AlreadySetPasswordException _) {
       // Do nothing, already set a password.
     } catch (MasterKeysWrongPasswordException e) {
       throw new IOException("Incorrect password when changing from another level to high", e);
-    } catch (MasterKeysFileSizeException e) {
+    } catch (MasterKeysFileSizeException _) {
       return errorCorrupt;
     }
     return null;
@@ -450,9 +450,9 @@ public class SecurityPhysical implements Step {
         LOG.error("Cannot change password as cannot write new passwords file", e);
         throw new IOException("cantWriteNewMasterKeysFile", e);
       }
-    } catch (MasterKeysWrongPasswordException e) {
+    } catch (MasterKeysWrongPasswordException _) {
       return promptPassword(newThreatLevel, PASSWORD_PROMPT.DECRYPT_WRONG);
-    } catch (MasterKeysFileSizeException e) {
+    } catch (MasterKeysFileSizeException _) {
       return errorCorrupt;
     } catch (Node.AlreadySetPasswordException e) {
       LOG.warn(
@@ -469,7 +469,7 @@ public class SecurityPhysical implements Step {
     }
     try {
       core.getNode().killMasterKeysFile();
-    } catch (IOException e) {
+    } catch (IOException _) {
       return FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
           + "&error=delete&newThreatLevel="
           + newThreatLevel.name();

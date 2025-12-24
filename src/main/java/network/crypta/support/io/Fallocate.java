@@ -220,7 +220,7 @@ public final class Fallocate {
         return 0; // Trigger legacy path when descriptor is not accessible
       }
       return getDescriptor((FileDescriptor) field.get(channel));
-    } catch (final Exception e) {
+    } catch (final Exception _) {
       // Intentionally fall back: descriptor is unavailable (e.g., different JDK implementation).
       return 0;
     }
@@ -241,7 +241,7 @@ public final class Fallocate {
         return 0; // Trigger legacy path when descriptor is not accessible
       }
       return (int) field.get(descriptor);
-    } catch (final Exception e) {
+    } catch (final Exception _) {
       // Intentionally fall back: descriptor is unavailable or null; return 0 for legacy path.
       return 0;
     }

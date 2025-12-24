@@ -369,7 +369,7 @@ public class SimpleFieldSet {
       try {
         String v = value.substring(1).replaceAll("\\s", "");
         return Base64.decodeUTF8(v);
-      } catch (IllegalBase64Exception e) {
+      } catch (IllegalBase64Exception _) {
         throw new IOException(
             "Unable to decode UTF8, = should not be allowed as first character of a value");
       }
@@ -1292,7 +1292,7 @@ public class SimpleFieldSet {
     if (s == null) return def;
     try {
       return Integer.parseInt(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return def;
     }
   }
@@ -1311,7 +1311,7 @@ public class SimpleFieldSet {
     if (s == null) throw new FSParseException("No key " + key);
     try {
       return Integer.parseInt(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new FSParseException(CANNOT_PARSE + s + " for integer " + key);
     }
   }
@@ -1329,7 +1329,7 @@ public class SimpleFieldSet {
     if (s == null) return def;
     try {
       return Double.parseDouble(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return def;
     }
   }
@@ -1348,7 +1348,7 @@ public class SimpleFieldSet {
     if (s == null) throw new FSParseException("No key " + key);
     try {
       return Double.parseDouble(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new FSParseException(CANNOT_PARSE + s + " for double " + key);
     }
   }
@@ -1366,7 +1366,7 @@ public class SimpleFieldSet {
     if (s == null) return def;
     try {
       return Long.parseLong(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return def;
     }
   }
@@ -1385,7 +1385,7 @@ public class SimpleFieldSet {
     if (s == null) throw new FSParseException("No key " + key);
     try {
       return Long.parseLong(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new FSParseException(CANNOT_PARSE + s + " for long " + key);
     }
   }
@@ -1404,7 +1404,7 @@ public class SimpleFieldSet {
     if (s == null) throw new FSParseException("No key " + key);
     try {
       return Short.parseShort(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new FSParseException(CANNOT_PARSE + s + " for short " + key);
     }
   }
@@ -1421,7 +1421,7 @@ public class SimpleFieldSet {
     if (s == null) return def;
     try {
       return Short.parseShort(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return def;
     }
   }
@@ -1440,7 +1440,7 @@ public class SimpleFieldSet {
     if (s == null) throw new FSParseException("No key " + key);
     try {
       return Byte.parseByte(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new FSParseException(CANNOT_PARSE + '"' + s + '"' + " as a byte.");
     }
   }
@@ -1455,7 +1455,7 @@ public class SimpleFieldSet {
   public byte getByte(String key, byte def) {
     try {
       return getByte(key);
-    } catch (FSParseException e) {
+    } catch (FSParseException _) {
       return def;
     }
   }
@@ -1473,7 +1473,7 @@ public class SimpleFieldSet {
     if (s == null) throw new FSParseException("No key " + key);
     try {
       return Base64.decode(s);
-    } catch (IllegalBase64Exception e) {
+    } catch (IllegalBase64Exception _) {
       throw new FSParseException(CANNOT_PARSE + "value \"" + s + "\" as a byte[]");
     }
   }

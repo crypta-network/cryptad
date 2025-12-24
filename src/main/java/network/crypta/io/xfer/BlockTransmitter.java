@@ -217,7 +217,7 @@ public class BlockTransmitter {
         synchronized (itemsPending) {
           itemsPending.add(item);
         }
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         onDisconnect();
         return false;
       } catch (AbortedException e) {
@@ -251,7 +251,7 @@ public class BlockTransmitter {
     private void sendAllSentNotification() {
       try {
         messageCore.send(destination, DMT.createAllSent(uid), ctr);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         LOG.info("disconnected for allSent()");
       }
     }
@@ -302,7 +302,7 @@ public class BlockTransmitter {
     packetSize = DMT.packetTransmitSize(prb.packetSize, prb.packets);
     try {
       sentPackets = new BitArray(prb.getNumPackets());
-    } catch (AbortedException e) {
+    } catch (AbortedException _) {
       LOG.error("Aborted during setup");
       // Will throw on running
     }
@@ -495,7 +495,7 @@ public class BlockTransmitter {
       try {
         innerSendAborted(reason, description);
         scheduleTimeoutAfterBlockSends();
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         onDisconnect();
       }
     };
@@ -511,7 +511,7 @@ public class BlockTransmitter {
     return () -> {
       try {
         innerSendAborted(reason, description);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         onDisconnect();
       }
     };
@@ -527,7 +527,7 @@ public class BlockTransmitter {
       if (!sendAborted) {
         try {
           innerSendAborted(reason, description);
-        } catch (NotConnectedException e) {
+        } catch (NotConnectedException _) {
           onDisconnect();
         }
       }
@@ -808,7 +808,7 @@ public class BlockTransmitter {
 
       registerAsyncFilters(mfAllReceived, mfSendAborted);
 
-    } catch (AbortedException e) {
+    } catch (AbortedException _) {
       onAborted(prb.abortReason, prb.abortDescription);
     }
   }
@@ -817,7 +817,7 @@ public class BlockTransmitter {
     try {
       messageCore.addAsyncFilter(mfAllReceived, cbAllReceived, ctr);
       messageCore.addAsyncFilter(mfSendAborted, cbSendAborted, ctr);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       onDisconnect();
     }
   }

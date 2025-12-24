@@ -123,7 +123,7 @@ public class DNSRequester implements Runnable {
         // Consume any pending wake so subsequent waits block as expected.
         wakeRequested = false;
       }
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       // Restore interrupt status so callers can act accordingly.
       Thread.currentThread().interrupt();
     }

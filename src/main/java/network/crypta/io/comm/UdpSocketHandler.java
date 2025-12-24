@@ -351,7 +351,7 @@ public class UdpSocketHandler
       // Account for transport overhead in statistics to approximate on-the-wire size.
       ioStatistics.reportReceivedBytes(address, getHeadersLength(address) + receiveBuffer.limit());
       return remote;
-    } catch (SocketTimeoutException e1) {
+    } catch (SocketTimeoutException _) {
       return null;
     } catch (IOException e2) {
       if (!active) { // Channel closed during shutdown; return silently.

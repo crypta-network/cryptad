@@ -728,7 +728,7 @@ public class WelcomeToadlet extends Toadlet {
           Fields.parseInt(
               request.getPartAsStringFailsafe(PARAM_OUTPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE));
       BandwidthManager.checkOutputBandwidthLimit(outputBandwidthLimit);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       errorMessage =
           NodeL10n.getBase()
               .getString("UpgradeConnectionSpeedUserAlert.InvalidValue", "type", "upload");
@@ -740,7 +740,7 @@ public class WelcomeToadlet extends Toadlet {
           Fields.parseInt(
               request.getPartAsStringFailsafe(PARAM_INPUT_BANDWIDTH_LIMIT, Byte.MAX_VALUE));
       BandwidthManager.checkInputBandwidthLimit(inputBandwidthLimit);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       errorMessage =
           combineErrorMessage(
               errorMessage,
@@ -780,7 +780,7 @@ public class WelcomeToadlet extends Toadlet {
       if (upgradeConnectionSpeedAlert != null) {
         upgradeConnectionSpeedAlert.setError(e.getMessage());
       }
-    } catch (NodeNeedRestartException ignored) {
+    } catch (NodeNeedRestartException _) {
       // The user will restart later if necessary.
     }
   }
@@ -1125,7 +1125,7 @@ public class WelcomeToadlet extends Toadlet {
       String tagStr = tags.isEmpty() ? "" : " [" + String.join(",", tags) + "]";
       String envText = " • Env: " + os + "/" + arch + tagStr;
       versionContent.addChild("span", ATTR_CLASS, "freenet-env", envText);
-    } catch (Exception e) {
+    } catch (Exception _) {
       // avoid breaking the page if environment detection fails
     }
   }

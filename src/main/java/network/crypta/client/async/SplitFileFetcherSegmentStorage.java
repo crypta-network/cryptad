@@ -446,7 +446,7 @@ public class SplitFileFetcherSegmentStorage {
             } catch (IOException e) {
               LOG.error("Failed to decode {} because of disk error: {}", this, e, e);
               parent.failOnDiskError(e);
-            } catch (PersistenceDisabledException e) {
+            } catch (PersistenceDisabledException _) {
               // Shutting down.
               // We don't call the callback here, so we don't care.
               shutdown = true;
@@ -717,7 +717,7 @@ public class SplitFileFetcherSegmentStorage {
           }
         }
       }
-    } catch (CHKEncodeException e) {
+    } catch (CHKEncodeException _) {
       LOG.error(
           "Block which should be {} for segment {} cannot be encoded for key {}",
           blockNumber,
@@ -778,7 +778,7 @@ public class SplitFileFetcherSegmentStorage {
           return;
         }
         if (capturingBinaryBlob) parent.fetcher.maybeAddToBinaryBlob(block);
-      } catch (CHKEncodeException e) {
+      } catch (CHKEncodeException _) {
         // Impossible!
         parent.fail(
             new FetchException(
@@ -813,7 +813,7 @@ public class SplitFileFetcherSegmentStorage {
           return false;
         }
         if (capturingBinaryBlob) parent.fetcher.maybeAddToBinaryBlob(block);
-      } catch (CHKEncodeException e) {
+      } catch (CHKEncodeException _) {
         // Impossible!
         parent.fail(
             new FetchException(
@@ -943,10 +943,10 @@ public class SplitFileFetcherSegmentStorage {
     try {
       decodedBlock = new ClientCHKBlock(block, decodeKey);
       decodedData = decodedBlock.memoryDecode();
-    } catch (CHKVerifyException e) {
+    } catch (CHKVerifyException _) {
       LOG.error("Verify failed on block for {}", decodeKey);
       return false;
-    } catch (CHKDecodeException e) {
+    } catch (CHKDecodeException _) {
       LOG.error("Decode failed on block for {}", decodeKey);
       return false;
     }
@@ -1659,7 +1659,7 @@ public class SplitFileFetcherSegmentStorage {
     SplitFileSegmentKeys keys;
     try {
       keys = getSegmentKeys();
-    } catch (IOException e) {
+    } catch (IOException _) {
       return null;
     }
     if (keys == null) return null;

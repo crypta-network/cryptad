@@ -162,7 +162,7 @@ public class BinaryBloomFilter extends BloomFilter {
       try {
         File tempFile = createSecureTempFile();
         forkedFilter = new BinaryBloomFilter(tempFile, length, k);
-      } catch (IOException e) {
+      } catch (IOException _) {
         // Fallback: in‑memory fork while still holding the write lock to preserve synchronization.
         forkedFilter = new BinaryBloomFilter(length, k);
       }
@@ -204,7 +204,7 @@ public class BinaryBloomFilter extends BloomFilter {
         f.deleteOnExit();
         return f;
       }
-    } catch (UnsupportedOperationException ignored) {
+    } catch (UnsupportedOperationException _) {
       // Fall through to generic creation path below.
     }
 

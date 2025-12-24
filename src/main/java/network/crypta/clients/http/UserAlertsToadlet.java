@@ -202,7 +202,7 @@ public class UserAlertsToadlet extends Toadlet {
     String redirect;
     try {
       redirect = request.getPartAsStringThrowing("redirectToAfterDisable", 1024);
-    } catch (SizeLimitExceededException | NoSuchElementException e) {
+    } catch (SizeLimitExceededException | NoSuchElementException _) {
       redirect = ".";
     }
     if (!isAllowedRedirect(redirect)) {

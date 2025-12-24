@@ -720,7 +720,7 @@ public class IPConverter {
   private static short countryOrdinalOrUnknown(String code) {
     try {
       return (short) Country.valueOf(code).ordinal();
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       // Does not invalidate the whole file, just means the country list is out of date.
       LOG.error("Country not in list: {}", code);
       return (short) -1;
@@ -815,7 +815,7 @@ public class IPConverter {
     long longip;
     try {
       longip = ip2num(ip);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return null; // Not an IP address.
     }
     return locateIP(longip);

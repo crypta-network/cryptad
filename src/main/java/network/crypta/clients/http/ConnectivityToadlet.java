@@ -168,7 +168,7 @@ public class ConnectivityToadlet extends Toadlet {
           portInfoList, fcpConfig, "DarknetConnectionsToadlet.fcpPort", l10nConn("fcpDisabled"));
       addPortConfigLine(
           portInfoList, tmciConfig, "DarknetConnectionsToadlet.tmciPort", l10nConn("tmciDisabled"));
-    } catch (FSParseException e) {
+    } catch (FSParseException _) {
       // Ignore malformed config so the page still renders.
     }
   }

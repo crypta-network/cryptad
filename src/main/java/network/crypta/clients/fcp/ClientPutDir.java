@@ -686,7 +686,7 @@ public class ClientPutDir extends ClientPutBase {
     }
     try {
       makePutter(context);
-    } catch (TooManyFilesInsertException e) {
+    } catch (TooManyFilesInsertException _) {
       this.onFailure(
           new InsertException(
               InsertException.InsertExceptionMode.TOO_MANY_FILES, (String) null, null),

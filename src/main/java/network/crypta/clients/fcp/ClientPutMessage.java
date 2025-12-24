@@ -181,16 +181,16 @@ public class ClientPutMessage extends DataCarryingMessage {
     } else {
       try {
         cmode = InsertContext.CompatibilityMode.valueOf(s);
-      } catch (IllegalArgumentException e) {
+      } catch (IllegalArgumentException _) {
         try {
           cmode = InsertContext.CompatibilityMode.values()[Integer.parseInt(s)];
-        } catch (NumberFormatException e1) {
+        } catch (NumberFormatException _) {
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_FIELD,
               "Invalid CompatibilityMode (not a name and not a number)",
               identifier,
               global);
-        } catch (ArrayIndexOutOfBoundsException e1) {
+        } catch (ArrayIndexOutOfBoundsException _) {
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_FIELD,
               "Invalid CompatibilityMode (not a valid number)",
@@ -206,13 +206,13 @@ public class ClientPutMessage extends DataCarryingMessage {
       String rawKey, String identifier, boolean global) throws MessageInvalidException {
     try {
       return HexUtil.hexToBytes(rawKey);
-    } catch (NumberFormatException e1) {
+    } catch (NumberFormatException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Invalid splitfile crypto key (not hex)",
           identifier,
           global);
-    } catch (IndexOutOfBoundsException e1) {
+    } catch (IndexOutOfBoundsException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Invalid splitfile crypto key (too short)",

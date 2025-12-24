@@ -123,7 +123,7 @@ public class PersistFields {
 
     try {
       parsedPreset = FirstTimeWizardToadlet.WIZARD_PRESET.valueOf(presetRaw);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       parsedPreset = null;
     }
 

@@ -178,7 +178,7 @@ public class NodeCryptoConfig {
   private FreenetInetAddress parseBindTo(SubConfig config) throws NodeInitException {
     try {
       return new FreenetInetAddress(config.getString(KEY_BIND_TO), false);
-    } catch (UnknownHostException e) {
+    } catch (UnknownHostException _) {
       throw new NodeInitException(
           NodeInitException.EXIT_COULD_NOT_BIND_USM,
           "Invalid bindTo: " + config.getString(KEY_BIND_TO));

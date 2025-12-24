@@ -224,7 +224,7 @@ public class GeneralSquareMatrix extends SquareMatrix {
       if (permutations == null) computeLUFactorization(epsilon);
       double d = upper.getDeterminant(epsilon);
       return evenPermutations ? d : -d;
-    } catch (SingularMatrixException e) {
+    } catch (SingularMatrixException _) {
       return 0.0;
     }
   }

@@ -159,15 +159,15 @@ public class PNGFilter implements ContentDataFilter {
 
       if (!state.hasSeenIEND) throwError("Missing IEND", "Missing IEND");
       if (!state.hasSeenIHDR) throwError("Missing IHDR", "Missing IHDR");
-    } catch (ArrayIndexOutOfBoundsException e) {
+    } catch (ArrayIndexOutOfBoundsException _) {
       throwError(
           "ArrayIndexOutOfBoundsException while filtering",
           "ArrayIndexOutOfBoundsException while filtering");
-    } catch (NegativeArraySizeException e) {
+    } catch (NegativeArraySizeException _) {
       throwError(
           "NegativeArraySizeException while filtering",
           "NegativeArraySizeException while filtering");
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       if (state.hasSeenIEND && state.hasSeenIHDR) return;
       throwError("EOF Exception while filtering", "EOF Exception while filtering");
     }

@@ -611,7 +611,7 @@ public class NodeIPDetector {
       FreenetInetAddress addr;
       try {
         addr = new FreenetInetAddress(val, false, true);
-      } catch (HostnameSyntaxException e) {
+      } catch (HostnameSyntaxException _) {
         throw new InvalidConfigValueException(
             unknownHostError("hostname or IP address syntax error"));
       } catch (UnknownHostException e) {

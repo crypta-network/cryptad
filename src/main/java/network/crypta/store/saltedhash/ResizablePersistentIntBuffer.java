@@ -339,7 +339,7 @@ public class ResizablePersistentIntBuffer {
           while (writing) {
             try {
               wait();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
               wasInterrupted = true; // record and keep waiting so we can flush/close
             }
           }
@@ -453,7 +453,7 @@ public class ResizablePersistentIntBuffer {
         while (writing) {
           try {
             wait();
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             wasInterrupted = true; // record and keep waiting
           }
         }

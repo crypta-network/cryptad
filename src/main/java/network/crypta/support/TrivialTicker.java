@@ -226,7 +226,7 @@ public class TrivialTicker implements Ticker {
       while (shutdownThread == null) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Preserve interrupt request; continue honoring the shutdown contract.
           interrupted = true;
         }
@@ -235,7 +235,7 @@ public class TrivialTicker implements Ticker {
       while (shutdownThread.isAlive()) {
         try {
           shutdownThread.join();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Preserve interrupt request; continue waiting for the worker to terminate.
           interrupted = true;
         }

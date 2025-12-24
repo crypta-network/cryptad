@@ -394,7 +394,7 @@ public class FreenetInetAddress {
   private InetAddress[] resolveAllByName(String host) {
     try {
       return InetAddress.getAllByName(host);
-    } catch (UnknownHostException e) {
+    } catch (UnknownHostException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("DNS said hostname '{}' is an unknown host, returning null", host);
       return new InetAddress[0];

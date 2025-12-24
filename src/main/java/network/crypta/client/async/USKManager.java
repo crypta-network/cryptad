@@ -307,7 +307,7 @@ public class USKManager {
             null);
     try {
       get.start(context);
-    } catch (FetchException e) {
+    } catch (FetchException _) {
       // Ignore
     }
   }

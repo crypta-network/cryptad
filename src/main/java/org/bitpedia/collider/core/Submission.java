@@ -330,7 +330,7 @@ public class Submission {
   private int readChunk(InputStream stm, byte[] buffer) {
     try {
       return stm.read(buffer);
-    } catch (IOException e) {
+    } catch (IOException _) {
       bc.setError(Bitcollider.ERROR_HASHCHECK);
       return Integer.MIN_VALUE;
     }
@@ -416,7 +416,7 @@ public class Submission {
 
       return ArrayUtils.byteArrayToHex(buf, 0, bytesRead);
 
-    } catch (IOException e) {
+    } catch (IOException _) {
       return null;
     }
   }
@@ -454,10 +454,10 @@ public class Submission {
       }
       return ret;
 
-    } catch (FileNotFoundException e) {
+    } catch (FileNotFoundException _) {
       bc.setError(Bitcollider.ERROR_FILENOTFOUND);
       return false;
-    } catch (IOException e) {
+    } catch (IOException _) {
       bc.setError(Bitcollider.ERROR_HASHCHECK);
       return false;
     }
@@ -868,7 +868,7 @@ public class Submission {
 
       try {
         attrInd = Integer.parseInt(key.substring(0, key.indexOf(".")));
-      } catch (Exception e) {
+      } catch (Exception _) {
         attrInd = -1;
       }
 

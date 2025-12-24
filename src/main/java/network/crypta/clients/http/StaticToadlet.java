@@ -187,7 +187,7 @@ public class StaticToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     try {
       return path.substring(ROOT_URL.length());
-    } catch (IndexOutOfBoundsException ioobe) {
+    } catch (IndexOutOfBoundsException _) {
       sendPathNotFound(ctx);
       return null;
     }
@@ -239,7 +239,7 @@ public class StaticToadlet extends Toadlet {
           new Date(System.currentTimeMillis() - 1000)); // Already expired, we want it to reload it.
       handedOff = true;
       ctx.writeData(fb);
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Not strictly accurate but close enough
       sendPathNotFound(ctx);
     } finally {

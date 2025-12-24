@@ -279,7 +279,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       osw = new OutputStreamWriter(output, charset);
       r = new BufferedReader(isr, 4096);
       w = new BufferedWriter(osw, 4096);
-    } catch (UnsupportedEncodingException e) {
+    } catch (UnsupportedEncodingException _) {
       throw UnknownCharsetException.create(charset);
     }
     HTMLParseContext pc = new HTMLParseContext(r, w, charset, cb, false);
@@ -319,7 +319,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       HTMLParseContext pc = new HTMLParseContext(r, w, null, new NullFilterCallback(), true);
       try {
         pc.run();
-      } catch (MalformedInputException e) {
+      } catch (MalformedInputException _) {
         return null;
       } catch (IOException e) {
         throw e;
@@ -832,7 +832,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       }
       stringBuilder.append("</script>");
       tagContent = stringBuilder.toString();
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error("Could not read m3uPlayer inline-script.");
       return errorTag;
     }
@@ -3537,7 +3537,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (info.charset != null) {
         try {
           info.charset = URLDecoder.decode(info.charset, false);
-        } catch (URLEncodedFormatException e) {
+        } catch (URLEncodedFormatException _) {
           info.charset = null;
         }
       }
@@ -3948,7 +3948,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         output.put(HtmlStrings.STR_HTTP_EQUIV, "Expires");
         output.put(HtmlStrings.STR_CONTENT, content);
         return true;
-      } catch (ParseException e) {
+      } catch (ParseException _) {
         return false;
       }
     }
@@ -4078,7 +4078,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         output.put(HtmlStrings.STR_HTTP_EQUIV, HtmlStrings.STR_REFRESH);
         output.put(HtmlStrings.STR_CONTENT, Integer.toString(seconds));
         return true;
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         pc.writeAfterTag.append("<!-- doesn't parse as number in meta refresh -->");
         return false;
       }
@@ -4107,7 +4107,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         output.put(HtmlStrings.STR_HTTP_EQUIV, HtmlStrings.STR_REFRESH);
         output.put(HtmlStrings.STR_CONTENT, seconds + "; url=" + HTMLEncoder.encode(url));
         return true;
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         pc.writeAfterTag.append(
             "<!-- doesn't parse as number in meta refresh possibly with url -->");
         return false;
@@ -4377,7 +4377,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     CSSParser pc = new CSSParser(r, w, cb, hpc.charset, false, isInline);
     try {
       pc.parse();
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error("IOException parsing inline CSS!");
     } catch (Error e) {
       if ("Error: could not match input".equals(e.getMessage())) {

@@ -270,7 +270,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     ClientGetter get = new ClientGetter(fw, uri, context, priorityClass, null, null, null);
     try {
       core.getClientContext().start(get);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return fw.waitForCompletion();
@@ -287,7 +287,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
             fw, FreenetURI.EMPTY_CHK_URI, context, priorityClass, null, null, initialMetadata);
     try {
       core.getClientContext().start(get);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return fw.waitForCompletion();
@@ -307,7 +307,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     ClientGetter get = new ClientGetter(fw, uri, context, priorityClass, null, null, null);
     try {
       core.getClientContext().start(get);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return fw.waitForCompletion();
@@ -339,7 +339,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     ClientGetter get = new ClientGetter(callback, uri, fctx, prio, null, null, null);
     try {
       core.getClientContext().start(get);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return get;
@@ -355,7 +355,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
             callback, FreenetURI.EMPTY_CHK_URI, fctx, prio, null, null, initialMetadata);
     try {
       core.getClientContext().start(get);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return get;
@@ -486,7 +486,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
             -1);
     try {
       core.getClientContext().start(put);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return pw.waitForCompletion();
@@ -527,7 +527,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
             -1);
     try {
       core.getClientContext().start(put);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return put;
@@ -616,12 +616,12 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
               false,
               forceCryptoKey,
               core.getClientContext());
-    } catch (TooManyFilesInsertException e1) {
+    } catch (TooManyFilesInsertException _) {
       throw new InsertException(InsertExceptionMode.TOO_MANY_FILES);
     }
     try {
       core.getClientContext().start(putter);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
     return pw.waitForCompletion();
@@ -839,7 +839,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     core.getTicker().queueTimedJob(() -> get.cancel(core.getClientContext()), timeout);
     try {
       core.getClientContext().start(get);
-    } catch (FetchException | PersistenceDisabledException e) {
+    } catch (FetchException | PersistenceDisabledException _) {
       // Ignore or impossible; both cases require no handling here.
     }
   }

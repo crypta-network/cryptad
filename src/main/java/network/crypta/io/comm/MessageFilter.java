@@ -645,7 +645,7 @@ public final class MessageFilter {
           this.wait(wait);
         }
         if (droppedConnection != null) throw new DisconnectedException();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
       return message;

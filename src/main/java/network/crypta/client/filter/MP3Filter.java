@@ -177,7 +177,7 @@ public class MP3Filter implements ContentDataFilter {
     State st = new State();
     try {
       st.frameHeader = in.readInt();
-    } catch (EOFException eof) {
+    } catch (EOFException _) {
       handleEOF(out, st);
       return;
     }
@@ -194,7 +194,7 @@ public class MP3Filter implements ContentDataFilter {
         } else {
           handleOutOfSync(in, st);
         }
-      } catch (EOFException eofEx) {
+      } catch (EOFException _) {
         eof = true;
       }
     }

@@ -202,7 +202,7 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
     } catch (TooBigException e) {
       onFailure(new FetchException(FetchExceptionMode.TOO_BIG, e), false, context);
       return null;
-    } catch (InsufficientDiskSpaceException e) {
+    } catch (InsufficientDiskSpaceException _) {
       onFailure(new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE), false, context);
       return null;
     } catch (IOException e) {

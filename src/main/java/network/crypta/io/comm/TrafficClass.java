@@ -58,7 +58,7 @@ public enum TrafficClass {
     int tcParsed = -1;
     try {
       tcParsed = Integer.parseInt(tcName);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       // Not an integer; fall through and attempt name matching.
     }
 

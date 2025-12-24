@@ -138,7 +138,7 @@ public class Welcome implements Step {
       config.get("node").set("l10n", desiredLanguage);
     } catch (InvalidConfigValueException e) {
       LOG.error("Failed to set language to {}.", desiredLanguage, e);
-    } catch (NodeNeedRestartException e) {
+    } catch (NodeNeedRestartException _) {
       // Changing language doesn't require a restart, at least as of version 1385.
       // Doing so would be really annoying as the node would have to start up again
       // which could be very slow.

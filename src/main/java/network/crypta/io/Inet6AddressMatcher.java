@@ -163,7 +163,7 @@ public class Inet6AddressMatcher implements AddressMatcher {
         throw new IllegalArgumentException(original + " is not an IPv6 address.");
       }
       return addressWord;
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new IllegalArgumentException(original + " is not an IPv6 address.");
     }
   }

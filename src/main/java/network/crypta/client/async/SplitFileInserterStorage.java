@@ -1134,7 +1134,7 @@ public class SplitFileInserterStorage {
   private ChecksumChecker createChecksumChecker(int checksumType) throws StorageFormatException {
     try {
       return ChecksumChecker.create(checksumType);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Bad checksum type");
     }
   }
@@ -1143,7 +1143,7 @@ public class SplitFileInserterStorage {
       throws IOException, StorageFormatException {
     try {
       return SplitfileAlgorithm.getByCode(dis.readShort());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Bad splitfile type");
     }
   }
@@ -1151,7 +1151,7 @@ public class SplitFileInserterStorage {
   private FECCodec getCodecFor(SplitfileAlgorithm algorithm) throws StorageFormatException {
     try {
       return FECCodec.getInstance(algorithm);
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       throw new StorageFormatException("Bad splitfile codec type");
     }
   }
@@ -1285,7 +1285,7 @@ public class SplitFileInserterStorage {
     Bucket crossSegmentSettings;
     try {
       crossSegmentSettings = encodeCrossSegmentSettings(bf);
-    } catch (IOException e) {
+    } catch (IOException _) {
       throw new InsertException(
           InsertExceptionMode.BUCKET_ERROR,
           "Failed to write to temporary storage while creating splitfile inserter",
@@ -1990,9 +1990,9 @@ public class SplitFileInserterStorage {
         status = Status.SUCCEEDED;
       }
       callback.onSucceeded(metadata);
-    } catch (IOException e) {
+    } catch (IOException _) {
       failWith(new InsertException(InsertExceptionMode.BUCKET_ERROR));
-    } catch (MissingKeyException e) {
+    } catch (MissingKeyException _) {
       // Fail here too. If we're getting disk corruption on keys, we're probably
       // getting it on the original data too.
       failWith(new InsertException(InsertExceptionMode.BUCKET_ERROR, "Missing keys", null));

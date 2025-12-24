@@ -71,7 +71,7 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
         if (dataLength < 0) {
           throw new NumberFormatException("DataLength must be non-negative");
         }
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD, "Invalid DataLength field", identifier, false);
       }

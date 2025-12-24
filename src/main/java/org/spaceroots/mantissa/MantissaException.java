@@ -49,7 +49,7 @@ public class MantissaException extends Exception {
   public static String translate(String s) {
     try {
       return resources.getString(s);
-    } catch (MissingResourceException mre) {
+    } catch (MissingResourceException _) {
       return s;
     }
   }

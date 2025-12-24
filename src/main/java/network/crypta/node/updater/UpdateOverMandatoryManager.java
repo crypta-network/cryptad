@@ -364,7 +364,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
           source,
           revocationKey,
           e);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       LOG.warn(
           "{}{} says that the auto-update key was blown, but has now gone offline! Something bad"
               + " may be happening!",
@@ -666,7 +666,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
             }
           },
           updateManager.getByteCounter());
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       synchronized (this) {
         askedSendJar.remove(source);
       }
@@ -1042,7 +1042,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
             LOG.info("Sent revocation key blob to {}", source.userToString());
           }
         }
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         // Not much we can do here either.
         if (LOG.isWarnEnabled()) {
           LOG.warn(
@@ -1428,7 +1428,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     } catch (FetchException e1) {
       LOG.error("Failed to decode UOM blob", e1);
       myCallback.onFailure(e1, cg);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
   }
@@ -1438,7 +1438,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     try (DataInputStream dis = new DataInputStream(temp.getInputStream())) {
       BinaryBlob.readBinaryBlob(dis, blocks, true);
       return true;
-    } catch (FileNotFoundException e) {
+    } catch (FileNotFoundException _) {
       LOG.error(
           "{}{} ? We lost the revocation certificate from {}!",
           SOMEONE_DELETED_PREFIX,
@@ -1607,7 +1607,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       updateManager.getNode().getClientCore().getClientContext().start(putter);
     } catch (InsertException e1) {
       LOG.error("Failed to start insert of {} binary blob: {}", type, e1, e1);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
   }
@@ -1616,7 +1616,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     Message msg = DMT.createFNPBulkReceiveAborted(uid);
     try {
       source.sendAsync(msg, null, updateManager.getByteCounter());
-    } catch (NotConnectedException e1) {
+    } catch (NotConnectedException _) {
       // Ignore
     }
   }
@@ -2028,7 +2028,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       updateManager.getNode().getClientCore().getClientContext().start(cg);
     } catch (FetchException e1) {
       myCallback.onFailure(e1, cg);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       // Impossible
     }
   }
@@ -2038,7 +2038,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
         new DataInputStream(new BufferedInputStream(new FileInputStream(temp)))) {
       BinaryBlob.readBinaryBlob(dis, blocks, true);
       return true;
-    } catch (FileNotFoundException e) {
+    } catch (FileNotFoundException _) {
       LOG.error(
           "{}{} ? We lost the main jar ({}) from {}!",
           SOMEONE_DELETED_PREFIX,
@@ -2046,7 +2046,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
           version,
           toString);
       return false;
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error(
           "Could not read main jar ({}) from temp file {} from node {} !", version, temp, toString);
       return false;
@@ -2160,9 +2160,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
       String fileToDeleteName = fileToDelete.getName();
       try {
         Files.delete(fileToDelete.toPath());
-      } catch (NoSuchFileException ex) {
+      } catch (NoSuchFileException _) {
         LOG.info("Temporary persistent file does not exist when deleting: {}", fileToDeleteName);
-      } catch (IOException ex) {
+      } catch (IOException _) {
         LOG.error(
             "Cannot delete temporary persistent file {} even though it exists: must be TOO"
                 + " persistent :)",
@@ -2186,7 +2186,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
         int buildNumber = Integer.parseInt(buildNumberStr);
         int lastGoodMainBuildNumber = Version.MIN_ACCEPTABLE_CRYPTAD_BUILD_NUMBER;
         return buildNumber < lastGoodMainBuildNumber;
-      } catch (NumberFormatException e) {
+      } catch (NumberFormatException _) {
         LOG.error("Wierd file in persistent temp: {}", fileName);
         return false;
       }
@@ -2334,7 +2334,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
                 source.incrementUOMSends();
                 try {
                   bt.send();
-                } catch (DisconnectedException e) {
+                } catch (DisconnectedException _) {
                   LOG.info(
                       "Disconnected while sending dependency with hash {} to {}",
                       HexUtil.bytesToHex(buf.getData()),
@@ -2621,7 +2621,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
         } else {
           LOG.warn("Download failed: {}{}{}", saveTo, FROM_LITERAL, fetchFrom);
         }
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         LOG.info("Disconnected while downloading {}{}{}", saveTo, FROM_LITERAL, fetchFrom);
       } catch (IOException e) {
         LOG.error("IOException while downloading {} from {}", saveTo, fetchFrom, e);
@@ -2775,7 +2775,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
           return true;
         }
         return false;
-      } catch (IOException e) {
+      } catch (IOException _) {
         return false;
       }
     }

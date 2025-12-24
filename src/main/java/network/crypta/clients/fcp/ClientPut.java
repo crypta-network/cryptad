@@ -475,10 +475,10 @@ public class ClientPut extends ClientPutBase {
       throws MessageInvalidException {
     try {
       return Base64.decodeStandard(encoded);
-    } catch (IllegalBase64Exception e) {
+    } catch (IllegalBase64Exception _) {
       try {
         return Base64.decode(encoded);
-      } catch (IllegalBase64Exception e1) {
+      } catch (IllegalBase64Exception _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Can't base64 decode " + ClientPutBase.FILE_HASH,

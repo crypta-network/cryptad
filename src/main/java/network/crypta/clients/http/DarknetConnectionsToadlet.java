@@ -636,7 +636,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     String idPart = request.getPartAsStringFailsafe("id", 32);
     try {
       return Long.parseLong(idPart);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       if (LOG.isWarnEnabled()) {
         LOG.warn("Invalid transfer id: {}", idPart);
       }
@@ -906,7 +906,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   private int parseHashcode(String inputHashcodeString) {
     try {
       return Integer.parseInt(inputHashcodeString);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return -1;
     }
   }

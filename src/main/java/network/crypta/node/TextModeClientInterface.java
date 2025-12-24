@@ -1004,7 +1004,7 @@ public class TextModeClientInterface implements Runnable {
       long sz = f.length();
       double rate = 1000.0 * sz / (endTime - startTime);
       outsb.append("Upload rate: ").append(rate).append(" bytes / second\r\n");
-    } catch (FileNotFoundException e1) {
+    } catch (FileNotFoundException _) {
       outsb.append("File not found");
     } catch (InsertException e) {
       outsb.append(FINISHED_INSERT_BUT).append(e.getMessage());
@@ -1513,7 +1513,7 @@ public class TextModeClientInterface implements Runnable {
       String locStr = line.substring(line.indexOf(':') + 1).trim();
       try {
         target = Double.parseDouble(locStr);
-      } catch (NumberFormatException nfe) {
+      } catch (NumberFormatException _) {
         outsb.append("Bad location: ").append(locStr);
         return false;
       }
@@ -1529,7 +1529,7 @@ public class TextModeClientInterface implements Runnable {
             try {
               w.write("ANNOUNCE:" + target + ":" + s + "\r\n");
               w.flush();
-            } catch (IOException e) {
+            } catch (IOException _) {
               // Ignore
             }
           }

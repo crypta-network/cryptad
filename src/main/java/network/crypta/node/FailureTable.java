@@ -573,7 +573,7 @@ public class FailureTable {
         () -> {
           try {
             innerSendOfferedKey(key, isSSK, needPubKey, uid, source, tag, realTimeFlag);
-          } catch (NotConnectedException e) {
+          } catch (NotConnectedException _) {
             tag.unlockHandler();
             // Too bad.
           } catch (Throwable t) {
@@ -640,7 +640,7 @@ public class FailureTable {
                   try {
                     source.sendSync(data, senderCounter, realTimeFlag);
                     senderCounter.sentPayload(dataLength);
-                  } catch (NotConnectedException | SyncSendWaitedTooLongException e) {
+                  } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
                     // Ignored
                   } finally {
                     tag.unlockHandler();

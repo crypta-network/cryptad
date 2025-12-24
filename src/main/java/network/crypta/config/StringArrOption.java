@@ -158,7 +158,7 @@ public class StringArrOption extends Option<String[]> {
   public static String decode(String s) {
     try {
       return URLDecoder.decode(s, false);
-    } catch (URLEncodedFormatException e) {
+    } catch (URLEncodedFormatException _) {
       return null;
     }
   }

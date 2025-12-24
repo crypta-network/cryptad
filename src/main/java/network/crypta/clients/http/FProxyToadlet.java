@@ -310,7 +310,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     if (ks.equals("/") || ks.startsWith("/servlet/")) {
       try {
         throw new RedirectException(WELCOME_PATH);
-      } catch (URISyntaxException e) {
+      } catch (URISyntaxException _) {
         // HUH!?!
       }
     }
@@ -1230,7 +1230,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         long[] range;
         try {
           range = parseRange(rangeStr);
-        } catch (HTTPRangeException e) {
+        } catch (HTTPRangeException _) {
           ctx.sendReplyHeaders(416, "Requested Range Not Satisfiable", null, null, 0);
           return;
         }

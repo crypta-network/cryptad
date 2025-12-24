@@ -91,7 +91,7 @@ public class SerialExecutor implements PriorityAwareExecutor {
               Runnable job = null;
               try {
                 job = jobs.poll(NEWJOB_TIMEOUT, TimeUnit.MILLISECONDS);
-              } catch (InterruptedException e) {
+              } catch (InterruptedException _) {
                 // Preserve evidence of interruption as recommended by S2142, but we will clear it
                 // before returning the thread to the pool to avoid leaking the flag.
                 wasInterrupted = true;

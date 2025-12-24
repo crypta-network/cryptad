@@ -299,7 +299,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     try {
       block =
           fetchNode.getClientCore().realGetKey(keys.fetchKey, false, false, false, REAL_TIME_FLAG);
-    } catch (LowLevelGetException e) {
+    } catch (LowLevelGetException _) {
       block = null;
     }
     int result = handleFetchResult(block, data, node2);

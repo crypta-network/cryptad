@@ -197,7 +197,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
         if (runningInserts == 0) return;
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return;
         }
@@ -714,7 +714,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
   private static Integer parseIntOrNull(String s) {
     try {
       return Integer.valueOf(s);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return null;
     }
   }
@@ -722,7 +722,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
   private static FreenetURI parseUriOrNull(String token) {
     try {
       return new FreenetURI(token);
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       return null;
     }
   }

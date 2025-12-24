@@ -173,7 +173,7 @@ public class PushingTagReplacerCallback implements TagReplacerCallback {
     String src;
     try {
       src = uriProcessor.makeURIAbsolute(uriProcessor.processURI(value, null, false, false));
-    } catch (CommentException | URISyntaxException e) {
+    } catch (CommentException | URISyntaxException _) {
       return null;
     }
     if (src.startsWith("/")) {
@@ -181,7 +181,7 @@ public class PushingTagReplacerCallback implements TagReplacerCallback {
     }
     try {
       return new ImageElement(tracker, new FreenetURI(src), maxSize, ctx, pt, true).generate();
-    } catch (MalformedURLException mue) {
+    } catch (MalformedURLException _) {
       return null;
     }
   }

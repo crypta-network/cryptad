@@ -150,9 +150,9 @@ public class MasterKeys {
           return ret;
         }
         return readNewFormat(dis, length, hardRandom, password, masterKeysFile);
-      } catch (FileNotFoundException e) {
+      } catch (FileNotFoundException _) {
         // Ok, create a new one.
-      } catch (EOFException e) {
+      } catch (EOFException _) {
         throw new MasterKeysFileSizeException(false);
       }
     }

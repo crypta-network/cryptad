@@ -80,7 +80,7 @@ public class EnhancedSimpsonIntegrator implements SampledFunctionIntegrator {
     while (!finished) {
       try {
         sum = sampler.nextSamplePoint().getY();
-      } catch (ExhaustedSampleException e) {
+      } catch (ExhaustedSampleException _) {
         finished = true;
       }
     }

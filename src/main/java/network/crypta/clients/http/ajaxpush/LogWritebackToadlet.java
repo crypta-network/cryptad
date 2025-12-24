@@ -85,7 +85,7 @@ public class LogWritebackToadlet extends Toadlet {
     if (LOG.isDebugEnabled()) {
       try {
         LOG.debug("GWT:{}", URLDecoder.decode(req.getParam("msg"), false));
-      } catch (URLEncodedFormatException e) {
+      } catch (URLEncodedFormatException _) {
         LOG.error("Invalid GWT:{}", req.getParam("msg"));
       }
     }

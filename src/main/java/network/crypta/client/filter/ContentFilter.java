@@ -745,10 +745,10 @@ public class ContentFilter {
       CharsetExtractor extractor, byte[] input, int length, String candidate) throws IOException {
     try {
       return extractor.getCharset(input, length, candidate);
-    } catch (UnsupportedEncodingException e) {
+    } catch (UnsupportedEncodingException _) {
       if (LOG.isDebugEnabled()) LOG.debug("{} not supported", candidate);
       return null;
-    } catch (DataFilterException e) {
+    } catch (DataFilterException _) {
       return null;
     }
   }

@@ -199,7 +199,7 @@ public class ImageCreatorToadlet extends Toadlet {
           ctx.sendReplyHeadersStatic(304, "Not Modified", null, "image/png", 0, LAST_MODIFIED);
           return true;
         }
-      } catch (ParseException pe) {
+      } catch (ParseException _) {
         return false;
       }
     }

@@ -172,7 +172,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       // because of UoM, this version is actually worth having as well
       USK myUsk = USK.create(this.uri.setSuggestedEdition(currentVersion));
       core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       LOG.error("The auto-update URI isn't valid and can't be used");
       onError.run();
     }
@@ -292,7 +292,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         synchronized (this) {
           isFetching = false;
         }
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         // Impossible
       }
     if (cancelled != null) cancelled.cancel(core.getClientContext());
@@ -488,7 +488,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     File jarFile = getBlobFile();
     try (InputStream is = Files.newInputStream(jarFile.toPath())) {
       parseManifestBounded(is);
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error("IOException trying to read manifest on update");
     } catch (Exception t) {
       LOG.error("Failed to parse update manifest: {}", t, t);
@@ -512,7 +512,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     // PluginJarUpdater keeps the FetchResult around to deploy the JAR later.
     try (InputStream is = bucket.getInputStream()) {
       parseManifestBounded(is);
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.error("IOException trying to read manifest from fetched result on update");
     } catch (Exception t) {
       LOG.error("Failed to parse update manifest from fetched result: {}", t, t);

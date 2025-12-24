@@ -40,7 +40,7 @@ public class Location {
         return LOCATION_INVALID;
       }
       return d;
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       return LOCATION_INVALID;
     }
   }

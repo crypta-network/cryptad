@@ -784,7 +784,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
           // Could be a race condition.
           try {
             core.getNode().store(b, false, req.canWriteClientCache, true, false);
-          } catch (KeyCollisionException e2) {
+          } catch (KeyCollisionException _) {
             LOG.error("Collided but no key and still collided!");
             throw new LowLevelPutException(
                 LowLevelPutException.INTERNAL_ERROR,

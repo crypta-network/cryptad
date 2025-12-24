@@ -132,7 +132,7 @@ public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator
         sum[i] += cP * pY[i] + cC * cY[i] + cN * nY[i];
       }
 
-    } catch (ExhaustedSampleException e) {
+    } catch (ExhaustedSampleException _) {
       // we have an incomplete step at the end of the sample
       // we use a trapezoid scheme for this last step
       double halfDx = 0.5 * (current.x - previous.x);

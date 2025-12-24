@@ -223,7 +223,7 @@ public class CountingBloomFilter extends BloomFilter {
         File tempFile = createSecureTempFile();
         tempFile.deleteOnExit();
         forkedFilter = new CountingBloomFilter(tempFile, length, k);
-      } catch (IOException e) {
+      } catch (IOException _) {
         forkedFilter = new CountingBloomFilter(length, k);
       }
     }
@@ -240,7 +240,7 @@ public class CountingBloomFilter extends BloomFilter {
         f.deleteOnExit();
         return f;
       }
-    } catch (UnsupportedOperationException ignored) {
+    } catch (UnsupportedOperationException _) {
       // Fall through to generic path below
     }
 

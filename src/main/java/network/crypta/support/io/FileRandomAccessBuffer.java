@@ -254,7 +254,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
     if (file.length() != length) throw new ResumeFailedException("File is wrong length");
     try {
       raf = new RandomAccessFile(file, readOnly ? "r" : "rw");
-    } catch (FileNotFoundException e) {
+    } catch (FileNotFoundException _) {
       throw new ResumeFailedException("File does not exist any more");
     }
   }

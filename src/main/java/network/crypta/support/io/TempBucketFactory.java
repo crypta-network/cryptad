@@ -223,7 +223,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
         } else {
           try {
             is.maybeResetInputStream();
-          } catch (IOException e) {
+          } catch (IOException _) {
             i.remove();
             IOUtils.closeQuietly(is);
           }
@@ -964,7 +964,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
               try {
                 cleanBucketQueue(now, false);
                 migratedOldBuckets = true;
-              } catch (InsufficientDiskSpaceException e) {
+              } catch (InsufficientDiskSpaceException _) {
                 if (!saidSo) {
                   LOG.error("Insufficient disk space to migrate in-RAM buckets to disk!");
                   saidSo = true;
@@ -974,7 +974,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                   // There is no portable event to await for "disk space increased",
                   // so we throttle retries to avoid busy-waiting and reduce CPU usage.
                   Thread.sleep(1000);
-                } catch (InterruptedException e1) {
+                } catch (InterruptedException _) {
                   Thread.currentThread().interrupt();
                 }
               }
@@ -987,7 +987,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
               }
               try {
                 if (!cleanBucketQueue(System.currentTimeMillis(), true)) return;
-              } catch (InsufficientDiskSpaceException e) {
+              } catch (InsufficientDiskSpaceException _) {
                 if (!saidSo) {
                   LOG.error("Insufficient disk space to migrate in-RAM buckets to disk!");
                   saidSo = true;
@@ -997,7 +997,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                   // There is no portable event to await for "disk space increased",
                   // so we throttle retries to avoid busy-waiting and reduce CPU usage.
                   Thread.sleep(1000);
-                } catch (InterruptedException e1) {
+                } catch (InterruptedException _) {
                   Thread.currentThread().interrupt();
                 }
               }

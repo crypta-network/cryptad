@@ -260,7 +260,7 @@ public class MediaType {
       if (expectedMimeType == null) return null;
       MediaType type = new MediaType(expectedMimeType);
       return type.getParameter("charset");
-    } catch (Throwable t) {
+    } catch (Throwable _) {
       // Could be malicious, hence "Robust".
       return null;
     }

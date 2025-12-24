@@ -543,7 +543,7 @@ public class ClientRequestScheduler implements RequestScheduler {
               }
             },
             TRIP_PENDING_PRIORITY);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         // Nothing to do
       }
     }
@@ -676,7 +676,7 @@ public class ClientRequestScheduler implements RequestScheduler {
               }
             },
             prio);
-      } catch (PersistenceDisabledException e1) {
+      } catch (PersistenceDisabledException _) {
         LOG.error(
             "callFailure() on a persistent request but database disabled", new Exception("error"));
       }
@@ -716,7 +716,7 @@ public class ClientRequestScheduler implements RequestScheduler {
               }
             },
             prio);
-      } catch (PersistenceDisabledException e1) {
+      } catch (PersistenceDisabledException _) {
         LOG.error(
             "callFailure() on a persistent request but database disabled", new Exception("error"));
       }

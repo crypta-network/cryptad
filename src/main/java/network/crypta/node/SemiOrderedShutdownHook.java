@@ -90,7 +90,7 @@ public class SemiOrderedShutdownHook extends Thread {
     for (Thread r : early) {
       try {
         r.join(TIMEOUT);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Remember interruption and continue joining remaining threads.
         wasInterrupted = true;
       }
@@ -107,7 +107,7 @@ public class SemiOrderedShutdownHook extends Thread {
     for (Thread r : late) {
       try {
         r.join(TIMEOUT);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Remember interruption and continue joining remaining threads.
         wasInterrupted = true;
       }

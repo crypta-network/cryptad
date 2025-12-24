@@ -259,7 +259,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
         InputStream inputStream = inputResource.bucket().getInputStream();
         OutputStream outputStream = outputBucket.getOutputStream()) {
       decompressor.decompress(inputStream, outputStream, maxLength, -1);
-    } catch (CompressionOutputSizeException e) {
+    } catch (CompressionOutputSizeException _) {
       throw new TooBigException("Too big");
     }
     return outputBucket;
@@ -514,7 +514,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
             (ArrayBucket)
                 comp.compress(
                     sourceData, new ArrayBucketFactory(), Long.MAX_VALUE, maxCompressedDataLength);
-      } catch (IOException e) {
+      } catch (IOException _) {
         // Ignore and try next compressor.
       }
       if (compressedData != null && compressedData.size() <= maxCompressedDataLength) {

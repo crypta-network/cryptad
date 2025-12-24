@@ -238,7 +238,7 @@ public class BitInputStream implements Closeable {
       try {
         readBit();
         remaining--;
-      } catch (EOFException ignored) {
+      } catch (EOFException _) {
         return n - remaining;
       }
     }

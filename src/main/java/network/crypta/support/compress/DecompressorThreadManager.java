@@ -189,7 +189,7 @@ public class DecompressorThreadManager {
         if (time > MINUTES.toMillis(20) && LOG.isErrorEnabled()) {
           LOG.error("Still waiting for decompressor chain after {}", TimeUtil.formatTime(time));
         }
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Preserve interrupt status and exit loop. The final error propagation path below
         // remains reachable so callers still observe a stored failure if one occurred.
         Thread.currentThread().interrupt();

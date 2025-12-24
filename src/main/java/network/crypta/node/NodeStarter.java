@@ -169,13 +169,13 @@ public class NodeStarter implements WrapperListener {
             try {
               //noinspection BusyWait
               Thread.sleep(MINUTES.toMillis(60));
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
               return;
             } catch (Exception t) {
               try {
                 LOG.error("Keep-alive thread caught {}", t, t);
-              } catch (Throwable ignored) {
+              } catch (Throwable _) {
                 // Ignore
               }
             }
@@ -420,7 +420,7 @@ public class NodeStarter implements WrapperListener {
           r.getCacheDir(),
           r.getRunDir(),
           r.getLogsDir());
-    } catch (Throwable t) {
+    } catch (Throwable _) {
       // Do not fail startup due to logging
     }
   }
@@ -622,13 +622,13 @@ public class NodeStarter implements WrapperListener {
             try {
               //noinspection BusyWait
               Thread.sleep(MINUTES.toMillis(60));
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
               return;
             } catch (Exception t) {
               try {
                 LOG.error("Keep-alive thread caught {}", t, t);
-              } catch (Throwable ignored) {
+              } catch (Throwable _) {
                 // Ignore
               }
             }
@@ -665,7 +665,7 @@ public class NodeStarter implements WrapperListener {
     } catch (Throwable t) {
       try {
         LOG.error("Default seednodes install failed", t);
-      } catch (Throwable ignored) {
+      } catch (Throwable _) {
         // ignored
       }
     }
@@ -679,7 +679,7 @@ public class NodeStarter implements WrapperListener {
         return p.getParent();
       }
       return p;
-    } catch (Exception e) {
+    } catch (Exception _) {
       return Paths.get("").toAbsolutePath();
     }
   }

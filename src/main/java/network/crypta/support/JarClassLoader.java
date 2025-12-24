@@ -174,7 +174,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
       }
 
       return jarEntryUrl(name);
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       // Malformed entry name detected; treat as not found.
       return null;
     }
@@ -200,7 +200,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
           if (jarEntry.getName().equals(name) || jarEntry.getName().equals(name + "/")) {
             try {
               nextElement = jarEntryUrl(name);
-            } catch (MalformedURLException e) {
+            } catch (MalformedURLException _) {
               /* ignore. */
             }
           }
@@ -245,7 +245,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
     if (localUrl == null || !url.toString().equals(localUrl.toString()))
       try {
         return url.openStream();
-      } catch (IOException e) {
+      } catch (IOException _) {
         return null;
       }
 
@@ -261,7 +261,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
     ZipEntry entry = tempJarFile.getEntry(name);
     try {
       return entry != null ? tempJarFile.getInputStream(entry) : null;
-    } catch (IOException e) {
+    } catch (IOException _) {
       return null;
     }
   }
@@ -299,7 +299,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
           Manifest man = tempJarFile.getManifest();
           if (man == null) throw new IOException();
           pkg = definePackage(pkgname, man);
-        } catch (IOException e) {
+        } catch (IOException _) {
           pkg = definePackage(pkgname, null, null, null, null, null, null, null);
         }
       }
@@ -420,7 +420,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
       // Best-effort cleanup of the dedicated directory on process exit when empty.
       f.getParentFile().deleteOnExit();
       return f;
-    } catch (UnsupportedOperationException e) {
+    } catch (UnsupportedOperationException _) {
       // POSIX permissions not supported (e.g., Windows). Create a dedicated directory under the
       // user's home and restrict permissions.
       Path base = Paths.get(System.getProperty("user.home"), ".crypta", "tmp");

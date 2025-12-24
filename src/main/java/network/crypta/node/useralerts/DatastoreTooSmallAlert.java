@@ -284,7 +284,7 @@ public class DatastoreTooSmallAlert implements UserAlert {
 
     try {
       core.getNode().getConfig().get("node").set("datastoreTooSmallDismissed", currentVersion);
-    } catch (ConfigException e) {
+    } catch (ConfigException _) {
       // Intentionally ignore: inability to persist dismissal should not impact runtime.
     }
   }

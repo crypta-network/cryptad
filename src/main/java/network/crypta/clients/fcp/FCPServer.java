@@ -877,7 +877,7 @@ public class FCPServer implements Runnable, DownloadCache {
               NativeThread.PriorityLevel.HIGH_PRIORITY.value);
       try {
         done.await();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         return success.get();
       }
@@ -925,7 +925,7 @@ public class FCPServer implements Runnable, DownloadCache {
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
     try {
       done.await();
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
       return success.get();
     }
@@ -1007,7 +1007,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
     try {
       done.await();
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
     if (ioException.get() != null) throw ioException.get();
@@ -1072,7 +1072,7 @@ public class FCPServer implements Runnable, DownloadCache {
           if (!ow.done) {
             try {
               ow.wait();
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
               return ow.success;
             }
@@ -1203,7 +1203,7 @@ public class FCPServer implements Runnable, DownloadCache {
       innerMakePersistentGlobalRequest(
           fetchURI, filterData, persistence, returnType, identifier, returnFilename, realTimeFlag);
       return true;
-    } catch (IdentifierCollisionException e) {
+    } catch (IdentifierCollisionException _) {
       return false;
     }
   }
@@ -1366,7 +1366,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
       try {
         done.await();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
       if (collision.get() != null) {
@@ -1429,7 +1429,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
       try {
         done.await();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
       return success.get();
@@ -1488,7 +1488,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
     try {
       done.await();
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
     }
     return resultRef.get();

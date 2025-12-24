@@ -86,7 +86,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
               Message msg = requestQueue.take();
               boolean isSSK = msg.getSpec() == DMT.FNPSSKDataRequest;
               innerHandleDataRequest(msg, (PeerNode) msg.getSource(), isSSK);
-            } catch (InterruptedException e) {
+            } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
               return;
             }
@@ -331,7 +331,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       Message reply = DMT.createFNPPong(m.getInt(DMT.PING_SEQNO));
       try {
         source.sendAsync(reply, null, pingCounter);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug("Lost connection while replying to {}", m);
       }
       return true;
@@ -539,7 +539,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       m.getSource().sendAsync(msg, null, ctr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Ignore
     }
   }
@@ -590,7 +590,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
           DMT.createFNPGetOfferedKeyInvalid(uid, DMT.GET_OFFERED_KEY_REJECTED_BAD_AUTHENTICATOR),
           null,
           node.getFailureTable().senderCounter);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Too bad.
     }
     return true;
@@ -643,7 +643,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
 
     try {
       node.getFailureTable().sendOfferedKey(key, isSSK, needPubKey, uid, source, tag, realTimeFlag);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // Too bad.
     }
   }
@@ -911,7 +911,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // OK
     }
     if (LOG.isDebugEnabled()) LOG.debug("Got bogus announcement message from {}", source);
@@ -925,7 +925,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     Message msg = DMT.createFNPOpennetDisabled(uid);
     try {
       source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // OK
     }
     if (LOG.isDebugEnabled())
@@ -956,7 +956,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     }
     try {
       source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // OK
     }
     return true;
@@ -970,7 +970,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // OK
     }
     if (LOG.isDebugEnabled())
@@ -985,7 +985,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
       source.sendAsync(msg, null, node.getNodeStats().announceByteCounter);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       // OK
     }
     if (LOG.isDebugEnabled())
@@ -1122,7 +1122,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
         try {
           rc.source.sendAsync(
               DMT.createFNPRoutedRejected(id, (short) 0), null, nodeStats.routedMessageCtr);
-        } catch (NotConnectedException e) {
+        } catch (NotConnectedException _) {
           LOG.error("Relay of probe DNF failed; peer disconnected: {}", rc.source);
         }
       }
@@ -1168,7 +1168,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     if (ctx == null) return false;
     try {
       source.sendAsync(DMT.createFNPRoutedRejected(id, htl), null, nodeStats.routedMessageCtr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Lost connection rejecting {}", m);
     }
     return true;
@@ -1205,7 +1205,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     if (source != null)
       try {
         source.sendAsync(reject, null, nodeStats.routedMessageCtr);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug("Lost connection while sending reject for {}", m);
       }
   }
@@ -1223,7 +1223,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     if (pn == null) return false;
     try {
       pn.sendAsync(m.cloneAndDropSubMessages(), null, nodeStats.routedMessageCtr);
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Lost connection while forwarding {} to {}", m, pn);
     }
     return true;
@@ -1285,7 +1285,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     try {
       next.sendAsync(m, null, nodeStats.routedMessageCtr);
       return true;
-    } catch (NotConnectedException e) {
+    } catch (NotConnectedException _) {
       return false;
     }
   }
@@ -1297,7 +1297,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     if (pn != null)
       try {
         pn.sendAsync(reject, null, nodeStats.routedMessageCtr);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         LOG.error("Send reject back to source {} failed", pn);
       }
   }
@@ -1330,7 +1330,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
       if (LOG.isDebugEnabled()) LOG.debug("Reply routed pong; counter={} id={}", x, id);
       try {
         src.sendAsync(reply, null, nodeStats.routedMessageCtr);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled())
           LOG.debug("Lost connection while replying to {} in dispatchRoutedMessage", m);
       }

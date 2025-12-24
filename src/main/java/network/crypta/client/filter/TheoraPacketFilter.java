@@ -290,7 +290,7 @@ public class TheoraPacketFilter implements CodecPacketFilter {
     try {
       input.readBit();
       LOG.debug("SETUP_HEADER contains redundant bits");
-    } catch (EOFException ignored) { // should be eof
+    } catch (EOFException _) { // should be eof
       // expected: no extra bits
     }
   }

@@ -458,7 +458,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       // FProxyFetchTracker.
       this.onSuccess(new FetchResult(new ClientMetadata(fullMimeType), output), null);
       return true;
-    } catch (IOException e) {
+    } catch (IOException _) {
       LOG.info("Failed filtering coalesced data in fproxy");
       return false;
     } catch (URISyntaxException e) {
@@ -480,7 +480,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     USK usk;
     try {
       usk = USK.create(uri);
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       return false; // Will fail later.
     }
     long ret = context.uskManager.lookupKnownGood(usk);

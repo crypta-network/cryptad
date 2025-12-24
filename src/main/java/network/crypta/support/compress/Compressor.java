@@ -246,7 +246,7 @@ public interface Compressor {
       if (ct == null) {
         try {
           ct = getCompressorByMetadataID(Short.parseShort(token));
-        } catch (NumberFormatException nfe) {
+        } catch (NumberFormatException _) {
           // Not a numeric identifier; proceed to error below.
           LOG.debug("Not a numeric codec identifier: {}", token);
         }

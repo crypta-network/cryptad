@@ -232,7 +232,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
             // Add the filter even with timeout <= 0 to drain any messages already buffered
             // before the timeout fires.
             waitNotification(truncateTimeout);
-          } catch (DisconnectedException e) {
+          } catch (DisconnectedException _) {
             onDisconnect(null);
           }
         }
@@ -404,7 +404,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
         private void sendAllReceivedSync(Message m) throws NotConnectedException {
           try {
             ((PeerNode) sender).sendSync(m, ctr, realTime);
-          } catch (SyncSendWaitedTooLongException e) {
+          } catch (SyncSendWaitedTooLongException _) {
             // Synchronous send exceeded wait threshold; proceed with completion regardless.
           }
         }
@@ -416,7 +416,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
             } else {
               usm.send(sender, m, ctr);
             }
-          } catch (NotConnectedException e1) {
+          } catch (NotConnectedException _) {
             // Ignore: data already present locally.
             if (LOG.isDebugEnabled())
               LOG.debug("Got data but can't send allReceived to {} as is disconnected", sender);
@@ -463,7 +463,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
                   }
                 },
                 ctr);
-          } catch (DisconnectedException e) {
+          } catch (DisconnectedException _) {
             // Ignore
           }
         }
@@ -511,7 +511,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
       // to, we need to acknowledge that.
       try {
         sendAborted(prb.abortReason, prb.abortDescription);
-      } catch (NotConnectedException e) {
+      } catch (NotConnectedException _) {
         // Ignore at this point.
       }
       callback.blockReceiveFailed(new RetrievalException(reason, description));
@@ -596,11 +596,11 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
               }
             };
         prb.addListener(myListener);
-      } catch (AbortedException e) {
+      } catch (AbortedException _) {
         try {
           callback.blockReceived(prb.getBlock());
           return;
-        } catch (AbortedException ignored) {
+        } catch (AbortedException _) {
           // Intentionally ignored: PRB aborted between attempts to get the block
         }
         callback.blockReceiveFailed(new RetrievalException(prb.abortReason, prb.abortDescription));
@@ -610,7 +610,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
     incRunningBlockReceives();
     try {
       waitNotification(false);
-    } catch (DisconnectedException e) {
+    } catch (DisconnectedException _) {
       RetrievalException retrievalException =
           new RetrievalException(RetrievalException.SENDER_DISCONNECTED);
       prb.abort(
@@ -633,7 +633,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
       try {
         discardFilter.setTimeout((int) timeleft);
         usm.addAsyncFilter(discardFilter, this, ctr);
-      } catch (DisconnectedException e) {
+      } catch (DisconnectedException _) {
         // ignore
       }
     }

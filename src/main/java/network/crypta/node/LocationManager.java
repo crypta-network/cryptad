@@ -386,7 +386,7 @@ public class LocationManager implements ByteCounter {
             // cleanup file, regardless of success
             try {
               Files.delete(f.toPath());
-            } catch (IOException ignored) {
+            } catch (IOException _) {
               f.deleteOnExit();
             }
           }
@@ -399,7 +399,7 @@ public class LocationManager implements ByteCounter {
           for (File f : leftoverFiles) {
             try {
               Files.delete(f.toPath());
-            } catch (IOException ignored) {
+            } catch (IOException _) {
               f.deleteOnExit();
             }
           }
@@ -445,7 +445,7 @@ public class LocationManager implements ByteCounter {
               switchLocationToDefendAgainstPitchBlackAttack(insertFromYesterday);
             }
             return;
-          } catch (IOException ignored) {
+          } catch (IOException _) {
             LOG.warn("Cannot convert fetched data to byte array (fetch={})", sskFetchResult);
             return;
           }
@@ -456,7 +456,7 @@ public class LocationManager implements ByteCounter {
           FreenetURI calculatedChkUri;
           try {
             calculatedChkUri = highLevelSimpleClient.insert(chkInsertBlock, true, null);
-          } catch (InsertException ignored) {
+          } catch (InsertException _) {
             LOG.error("Could not create CHK for expected content.");
             return;
           }
@@ -470,7 +470,7 @@ public class LocationManager implements ByteCounter {
               // which made its current content inaccessible.
               try {
                 switchLocationToDefendAgainstPitchBlackAttack(new ClientCHK(calculatedChkUri));
-              } catch (MalformedURLException ignored) {
+              } catch (MalformedURLException _) {
                 LOG.error("Cannot create ClientCHK from calculated CHK URI: {}", calculatedChkUri);
               }
             }
@@ -502,7 +502,7 @@ public class LocationManager implements ByteCounter {
             // create a file to check on the next run tomorrow
             File succeededInsertFile = node.userDir().file(nameForInsert);
             writeSuccessfulInsertFile(randomContentToInsert, nameForInsert, succeededInsertFile);
-          } catch (InsertException ignored) {
+          } catch (InsertException _) {
             LOG.error(
                 "Could not insert pitch-black detection data to today's KSK: {}, retry tomorrow",
                 insertForToday.getURI());
@@ -512,11 +512,11 @@ public class LocationManager implements ByteCounter {
         private Optional<byte[]> readBytesFromYesterdayFile(File insertInfoFromYesterday) {
           try {
             return Optional.of(Files.readAllBytes(insertInfoFromYesterday.toPath()));
-          } catch (FileNotFoundException ignored) {
+          } catch (FileNotFoundException _) {
             LOG.warn(
                 "Missing insert-info file from yesterday: {}", insertInfoFromYesterday.getName());
             return Optional.empty();
-          } catch (IOException ignored) {
+          } catch (IOException _) {
             LOG.warn(
                 "I/O error reading insert-info file from yesterday: {}",
                 insertInfoFromYesterday.getName());
@@ -544,7 +544,7 @@ public class LocationManager implements ByteCounter {
             byte[] randomContentToInsert, String nameForInsert, File succeededInsertFile) {
           try (FileOutputStream fileOutputStream = new FileOutputStream(succeededInsertFile)) {
             fileOutputStream.write(randomContentToInsert);
-          } catch (IOException ignored) {
+          } catch (IOException _) {
             LOG.error("Cannot write successful-insert content to file: {}", nameForInsert);
           }
         }
@@ -620,7 +620,7 @@ public class LocationManager implements ByteCounter {
           if (diff > 0) { // noinspection BusyWait
             Thread.sleep(Math.min((int) diff, SECONDS.toMillis(10)));
           }
-        } catch (InterruptedException ignored) {
+        } catch (InterruptedException _) {
           // Treat interrupt as a shutdown signal for the sender thread.
           Thread.currentThread().interrupt();
           return false;
@@ -830,14 +830,14 @@ public class LocationManager implements ByteCounter {
 
       try {
         node.getUSM().send(pn, m, LocationManager.this);
-      } catch (NotConnectedException ignored) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug("Disconnected before sending SwapReply to {}", pn);
         return null;
       }
 
       try {
         return node.getUSM().waitFor(filter, LocationManager.this);
-      } catch (DisconnectedException ignored) {
+      } catch (DisconnectedException _) {
         if (LOG.isDebugEnabled())
           LOG.debug("Disconnected while waiting for SwapCommit from {}", pn);
         return null;
@@ -897,7 +897,7 @@ public class LocationManager implements ByteCounter {
       Message confirm = DMT.createFNPSwapComplete(uid, myValue);
       try {
         node.getUSM().send(pn, confirm, LocationManager.this);
-      } catch (NotConnectedException ignored) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug("Disconnected before sending SwapCommit to {}", pn);
         return false;
       }
@@ -1011,7 +1011,7 @@ public class LocationManager implements ByteCounter {
 
       try {
         node.getUSM().send(pn, m, LocationManager.this);
-      } catch (NotConnectedException ignored) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled())
           LOG.debug("Disconnected while sending SwapRequest/SwapReply to {}", pn);
         return null;
@@ -1025,7 +1025,7 @@ public class LocationManager implements ByteCounter {
           LOG.error("Timeout waiting for SwapRejected/SwapReply on {}", uid);
         }
         return reply;
-      } catch (DisconnectedException ignored) {
+      } catch (DisconnectedException _) {
         if (LOG.isDebugEnabled())
           LOG.debug("Disconnected while waiting for SwapReply/SwapRejected for {}", uid);
         return null;
@@ -1051,7 +1051,7 @@ public class LocationManager implements ByteCounter {
 
       try {
         node.getUSM().send(pn, confirm, LocationManager.this);
-      } catch (NotConnectedException ignored) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug("Disconnected while sending SwapCommit to {}", pn);
         return null;
       }
@@ -1064,7 +1064,7 @@ public class LocationManager implements ByteCounter {
           LOG.error("Timeout waiting for SwapComplete on {}", uid);
         }
         return reply;
-      } catch (DisconnectedException ignored) {
+      } catch (DisconnectedException _) {
         if (LOG.isDebugEnabled())
           LOG.debug("Disconnected while waiting for SwapComplete on {}", uid);
         return null;
@@ -1178,7 +1178,7 @@ public class LocationManager implements ByteCounter {
               if (locationLog.exists() && locationLog.length() > 1024 * 1024 * 10) {
                 try {
                   Files.delete(locationLog.toPath());
-                } catch (IOException ignored) {
+                } catch (IOException _) {
                   locationLog.deleteOnExit();
                 }
               }
@@ -1416,7 +1416,7 @@ public class LocationManager implements ByteCounter {
       Message reject = DMT.createFNPSwapRejected(oldID);
       try {
         pn.sendAsync(reject, null, this);
-      } catch (NotConnectedException ignored) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(LOST_CONN_REJECT_LOCKED_MSG, pn);
       }
     }
@@ -1471,7 +1471,7 @@ public class LocationManager implements ByteCounter {
       Message rejected = DMT.createFNPSwapRejected(oldID);
       try {
         pn.sendAsync(rejected, null, this);
-      } catch (NotConnectedException ignored) {
+      } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(LOST_CONN_REJECT_LOCKED_MSG, pn);
       }
     } else if (decision.runNow) {
@@ -1536,7 +1536,7 @@ public class LocationManager implements ByteCounter {
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
       pn.sendAsync(reject, null, this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       LOG.info("Disconnected while sending late reject to {}", pn);
     }
     incrementSwapsRejectedNowhereToGo();
@@ -1550,7 +1550,7 @@ public class LocationManager implements ByteCounter {
           new MyCallback(DMT.createFNPSwapRejected(oldID), pn, forwarded),
           LocationManager.this);
       return true;
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Peer not connected");
       return false;
     }
@@ -1572,7 +1572,7 @@ public class LocationManager implements ByteCounter {
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
       pn.sendAsync(reject, null, this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected while rejecting SwapRequest to {}", pn);
     }
     incrementSwapsRejectedRecognizedID();
@@ -1585,7 +1585,7 @@ public class LocationManager implements ByteCounter {
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
       pn.sendAsync(reject, null, this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected while rejecting SwapRequest from {}", pn);
     }
     incrementSwapsRejectedRateLimit();
@@ -1608,7 +1608,7 @@ public class LocationManager implements ByteCounter {
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
       pn.sendAsync(reject, null, this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONN_REJECT_LOCKED_MSG, pn);
     }
     return true;
@@ -1660,7 +1660,7 @@ public class LocationManager implements ByteCounter {
       LOG.debug("Forwarding SwapReply {} from {} to {}", uid, source, item.requestSender);
     try {
       item.requestSender.sendAsync(fwd, null, this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Lost connection forwarding SwapReply {} to {}", uid, item.requestSender);
     }
@@ -1701,7 +1701,7 @@ public class LocationManager implements ByteCounter {
     m.set(DMT.UID, item.incomingID);
     try {
       item.requestSender.sendAsync(m, null, this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Lost connection forwarding SwapRejected {} to {}", uid, item.requestSender);
     }
@@ -1738,7 +1738,7 @@ public class LocationManager implements ByteCounter {
           new SendMessageOnErrorCallback(
               DMT.createFNPSwapRejected(item.incomingID), item.requestSender, this),
           this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Lost connection forwarding SwapCommit {} to {}", uid, item.routedTo);
     }
@@ -1781,7 +1781,7 @@ public class LocationManager implements ByteCounter {
     m.set(DMT.UID, item.incomingID);
     try {
       item.requestSender.sendAsync(m, null, this);
-    } catch (NotConnectedException ignored) {
+    } catch (NotConnectedException _) {
       LOG.info("Disconnected while forwarding SwapComplete {} to {}", uid, item.requestSender);
     }
     item.lastMessageTime = System.currentTimeMillis();
@@ -1886,7 +1886,7 @@ public class LocationManager implements ByteCounter {
         LOG.debug("Reject in lostOrRestartedNode: {} from {}", item.incomingID, item.requestSender);
       try {
         item.requestSender.sendAsync(msg, null, this);
-      } catch (NotConnectedException ignored) {
+      } catch (NotConnectedException _) {
         LOG.info("Both sender and receiver disconnected for {}", item);
       }
     }

@@ -80,7 +80,7 @@ public class EventDumper implements ClientEventListener {
   public void receive(ClientEvent ce, ClientContext context) {
     try {
       w.write(ce.getDescription() + "\n");
-    } catch (IOException e) {
+    } catch (IOException _) {
       // Ignore.
     }
   }

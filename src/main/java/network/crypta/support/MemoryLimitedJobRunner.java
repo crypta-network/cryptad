@@ -243,7 +243,7 @@ public class MemoryLimitedJobRunner {
       while (runningThreads > 0) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Record and continue waiting until all jobs finish; restore status on exit.
           interrupted = true;
         }

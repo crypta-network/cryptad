@@ -128,7 +128,7 @@ public class OggFilter implements ContentDataFilter {
   private static OggPage readNextPageOrNull(DataInputStream in) throws IOException {
     try {
       return OggPage.readPage(in);
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       return null;
     }
   }
@@ -202,7 +202,7 @@ public class OggFilter implements ContentDataFilter {
           long skipped = in.skip(1L); // Break the lock on the current page
           if (skipped <= 0) break;
         }
-      } catch (EOFException e) {
+      } catch (EOFException _) {
         // We've ran out of data to read. Break.
       }
     }
@@ -217,7 +217,7 @@ public class OggFilter implements ContentDataFilter {
         OggPage subpage = OggPage.readPage(in);
         if (subpage.headerValid()) return true;
       }
-    } catch (EOFException e) {
+    } catch (EOFException _) {
       // We've ran out of data to read. Break.
     }
     return false;

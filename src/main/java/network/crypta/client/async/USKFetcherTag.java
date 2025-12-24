@@ -289,7 +289,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
                   return false;
                 },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         // Impossible.
       }
     } else {
@@ -327,7 +327,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
                   return true;
                 },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         // Impossible.
       }
     } else {
@@ -411,7 +411,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
                   return false;
                 },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-      } catch (PersistenceDisabledException e) {
+      } catch (PersistenceDisabledException _) {
         // Impossible.
       }
     } else {

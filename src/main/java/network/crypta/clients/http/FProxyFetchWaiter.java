@@ -171,7 +171,7 @@ public class FProxyFetchWaiter {
       try {
         wait();
         hasWaited = true;
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Ignore interrupts to honour the blocking contract; caller expects to wait
         // until the fetch completes via wakeUp(true).
       }
@@ -194,7 +194,7 @@ public class FProxyFetchWaiter {
       try {
         waited = true;
         wait(remaining);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         return;
       }

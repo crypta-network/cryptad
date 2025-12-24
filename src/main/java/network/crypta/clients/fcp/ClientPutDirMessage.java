@@ -168,17 +168,17 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     }
     try {
       return InsertContext.CompatibilityMode.valueOf(modeValue).intern();
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException _) {
       try {
         int ordinal = Integer.parseInt(modeValue);
         return InsertContext.CompatibilityMode.values()[ordinal].intern();
-      } catch (NumberFormatException e1) {
+      } catch (NumberFormatException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Invalid CompatibilityMode (not a name and not a number)",
             identifier,
             global);
-      } catch (ArrayIndexOutOfBoundsException e1) {
+      } catch (ArrayIndexOutOfBoundsException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Invalid CompatibilityMode (not a valid number)",
@@ -196,13 +196,13 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     }
     try {
       return Optional.of(HexUtil.hexToBytes(key));
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Invalid splitfile crypto key (not hex)",
           identifier,
           global);
-    } catch (IndexOutOfBoundsException e) {
+    } catch (IndexOutOfBoundsException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Invalid splitfile crypto key (too short)",

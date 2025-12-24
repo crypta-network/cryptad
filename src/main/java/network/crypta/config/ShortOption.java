@@ -81,7 +81,7 @@ public class ShortOption extends Option<Short> {
     short x;
     try {
       x = Fields.parseShort(val);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       throw new InvalidConfigValueException(unrecognisedShortMessage(val));
     }
     return x;

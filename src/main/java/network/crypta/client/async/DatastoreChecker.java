@@ -254,7 +254,7 @@ public class DatastoreChecker implements PrioRunnable {
       }
       try {
         wait(SECONDS.toMillis(100));
-      } catch (InterruptedException ignored) {
+      } catch (InterruptedException _) {
         // Swallow and continue waiting; do not re-interrupt to avoid hot loop
       }
     }
@@ -308,7 +308,7 @@ public class DatastoreChecker implements PrioRunnable {
                           LowLevelGetException.INTERNAL_ERROR, "Internal error: " + e, e),
                       null,
                       context);
-                } catch (Exception e1) {
+                } catch (Exception _) {
                   LOG.error("Failed to fail: {}", e, e);
                 }
               }

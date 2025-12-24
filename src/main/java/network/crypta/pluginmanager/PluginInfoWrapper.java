@@ -406,7 +406,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
       if (maxWaitTime >= 0) {
         try {
           thread.join(maxWaitTime);
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           LOG.info(
               "stopPlugin interrupted while join()ed to terminating plugin thread - maybe one"
                   + " plugin stopping another???");

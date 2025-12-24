@@ -1067,7 +1067,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     try {
       sendJFKMessage2(
           nonceInitiator, hisExponential, pn, replyTo, unknownInitiator, setupType, negType);
-    } catch (NoContextsException e) {
+    } catch (NoContextsException _) {
       handleNoContextsException(NoContextsException.CONTEXT.REPLYING);
       return;
     }
@@ -2708,7 +2708,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     try {
       sendPacket(data, replyTo, pn);
       node.getNodeStats().reportAuthBytes(data.length + sock.getHeadersLength(replyTo));
-    } catch (LocalAddressException e) {
+    } catch (LocalAddressException _) {
       LOG.warn(
           "Tried to send auth packet to local address: {}"
               + FOR_STR
@@ -2778,7 +2778,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
     try {
       sendJFKMessage1(pn, peer, pn.handshakeUnknownInitiator(), pn.handshakeSetupType(), negType);
-    } catch (NoContextsException e) {
+    } catch (NoContextsException _) {
       handleNoContextsException(NoContextsException.CONTEXT.SENDING);
       return;
     }

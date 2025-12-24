@@ -187,7 +187,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   public void queueNormalOrDrop(PersistentJob job) {
     try {
       queue(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
-    } catch (PersistenceDisabledException e) {
+    } catch (PersistenceDisabledException _) {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Dropping job {} because persistence is disabled", job);
       }
@@ -480,7 +480,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         }
         try {
           sync.wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return;
         }
@@ -520,7 +520,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         synchronized (sync) {
           sync.wait();
         }
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         throw new PersistenceDisabledException();
       }
@@ -535,7 +535,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         synchronized (sync) {
           sync.wait();
         }
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         throw new PersistenceDisabledException();
       }
@@ -554,7 +554,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       while (writing) {
         try {
           sync.wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return;
         }
@@ -573,7 +573,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       while (writing) {
         try {
           sync.wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return;
         }
@@ -593,7 +593,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       while (runningJobs > 0 || writing) {
         try {
           sync.wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           return;
         }
@@ -652,7 +652,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       while (writing || (mustCheckpoint && enableCheckpointing)) {
         try {
           sync.wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           throw new PersistenceDisabledException();
         }

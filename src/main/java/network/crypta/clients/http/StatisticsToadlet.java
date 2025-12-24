@@ -919,7 +919,7 @@ public class StatisticsToadlet extends Toadlet {
           s = s.substring(0, s.indexOf(':'));
         }
         row.addChild("td", s);
-      } catch (Exception t) {
+      } catch (Exception _) {
         row.addChild("td", "ERROR: " + request.getClass());
       }
       long diff = now - request.creationTime;
@@ -1021,7 +1021,7 @@ public class StatisticsToadlet extends Toadlet {
   private StoreAccessStats getTotalAccessStats(DataStoreStats stats) {
     try {
       return stats.getTotalAccessStats();
-    } catch (StatsNotAvailableException e) {
+    } catch (StatsNotAvailableException _) {
       return null;
     }
   }
@@ -1047,7 +1047,7 @@ public class StatisticsToadlet extends Toadlet {
         rate += NBSP_OPEN_PAREN + fix1p4.format(totalAccess.successRate()) + "%)";
       }
       return rate;
-    } catch (StatsNotAvailableException e) {
+    } catch (StatsNotAvailableException _) {
       return "N/A";
     }
   }
@@ -1058,7 +1058,7 @@ public class StatisticsToadlet extends Toadlet {
     if (totalAccess != null && totalSupplier != null) {
       try {
         rate += NBSP_OPEN_PAREN + fix1p2.format(totalSupplier.rate()) + " /s)";
-      } catch (StatsNotAvailableException e) {
+      } catch (StatsNotAvailableException _) {
         return rate;
       }
     }
@@ -1068,7 +1068,7 @@ public class StatisticsToadlet extends Toadlet {
   private void addOptionalStat(HTMLNode row, StatSupplier supplier) {
     try {
       row.addChild("td", supplier.value());
-    } catch (StatsNotAvailableException e) {
+    } catch (StatsNotAvailableException _) {
       row.addChild("td", "N/A");
     }
   }

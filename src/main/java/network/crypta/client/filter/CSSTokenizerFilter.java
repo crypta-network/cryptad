@@ -195,7 +195,7 @@ class CSSTokenizerFilter {
   public boolean isValidURI(String uri) {
     try {
       return uri.equals(cb.processURI(uri, null));
-    } catch (CommentException e) {
+    } catch (CommentException _) {
       return false;
     }
   }
@@ -4123,7 +4123,7 @@ class CSSTokenizerFilter {
       try {
         String output = buildImportOutput(uri, medias);
         w.write(output);
-      } catch (CommentException e) {
+      } catch (CommentException _) {
         // Don't write anything
       }
     }
@@ -6006,7 +6006,7 @@ class CSSTokenizerFilter {
       try {
         Integer.parseInt(value); // CSS Property has a valid integer.
         return true;
-      } catch (Exception e) {
+      } catch (Exception _) {
         return false;
       }
     }
@@ -6021,7 +6021,7 @@ class CSSTokenizerFilter {
       try {
         Float.parseFloat(value); // Valid float
         return true;
-      } catch (Exception e) {
+      } catch (Exception _) {
         return false;
       }
     }
@@ -6042,7 +6042,7 @@ class CSSTokenizerFilter {
         if (LOG.isTraceEnabled()) LOG.trace("New url: \"{}\" from \"{}\"", s, w);
         word.setNewURL(s);
         return true;
-      } catch (CommentException e) {
+      } catch (CommentException _) {
         return false;
       }
     }

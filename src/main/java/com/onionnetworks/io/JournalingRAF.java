@@ -182,7 +182,7 @@ public class JournalingRAF extends FilterRAF {
     // FIX maybe throw exception on failed delete?
     try {
       Files.delete(file.toPath());
-    } catch (NoSuchFileException e) {
+    } catch (NoSuchFileException _) {
       // already deleted; nothing further to do
     } catch (IOException e) {
       LOGGER.log(Level.WARNING, e, () -> "Failed to delete journal file: " + file);
