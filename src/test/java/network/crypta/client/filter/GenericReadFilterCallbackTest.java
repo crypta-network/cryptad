@@ -16,7 +16,7 @@ import java.util.stream.Stream;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
 import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.keys.FreenetURI;
-import network.crypta.l10n.BaseL10nTest;
+import network.crypta.l10n.L10nTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,7 +38,7 @@ class GenericReadFilterCallbackTest {
   @BeforeAll
   static void setupL10n() {
     // Ensure deterministic error messages during testing
-    GenericReadFilterCallback.setBaseL10n(BaseL10nTest.createTestL10n(ENGLISH));
+    GenericReadFilterCallback.setBaseL10n(L10nTestUtils.createTestL10n(ENGLISH));
   }
 
   private GenericReadFilterCallback newCallback(String base) throws URISyntaxException {

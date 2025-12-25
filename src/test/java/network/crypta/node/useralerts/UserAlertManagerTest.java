@@ -28,7 +28,7 @@ import javax.xml.xpath.XPathFactory;
 import network.crypta.client.async.ClientContext;
 import network.crypta.clients.fcp.FCPConnectionHandler;
 import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.l10n.BaseL10nTest;
+import network.crypta.l10n.L10nTestUtils;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
@@ -57,7 +57,7 @@ class UserAlertManagerTest {
 
   @BeforeEach
   void setUp() {
-    BaseL10nTest.useTestTranslation();
+    L10nTestUtils.useTestTranslation();
     lenient().when(nodeClientCore.getNode()).thenReturn(node);
     lenient().when(node.getDarknetPubKeyHash()).thenReturn(new byte[] {1, 2, 3, 4});
     lenient().when(nodeClientCore.getClientContext()).thenReturn(clientContext);

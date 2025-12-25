@@ -32,10 +32,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
 
-public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
+class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
 
   @Test
-  public void testFetchPullBlobSingleNode()
+  void testFetchPullBlobSingleNode()
       throws NodeInitException,
           InsertException,
           FetchException,
@@ -101,7 +101,7 @@ public class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
   }
 
   @AfterEach
-  public void cleanUp() {
+  void cleanUp() {
     FileUtil.removeAll(dir);
   }
 

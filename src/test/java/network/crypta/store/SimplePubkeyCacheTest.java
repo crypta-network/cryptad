@@ -13,10 +13,10 @@ import network.crypta.support.ByteArrayWrapper;
 import network.crypta.support.math.MersenneTwister;
 import org.junit.jupiter.api.Test;
 
-public class SimplePubkeyCacheTest {
+class SimplePubkeyCacheTest {
 
   @Test
-  public void testSimple() {
+  void testSimple() {
     final int keys = 10;
     PubkeyStore pk = new PubkeyStore();
     new RAMFreenetStore<>(pk, keys);

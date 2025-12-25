@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.clients.http.ExternalLinkToadlet;
-import network.crypta.l10n.BaseL10nTest;
+import network.crypta.l10n.L10nTestUtils;
 import network.crypta.support.Logging;
 import network.crypta.support.TestProperty;
 import network.crypta.support.io.ArrayBucket;
@@ -47,9 +47,9 @@ import org.slf4j.event.Level;
  */
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
-public class ContentFilterTest {
+class ContentFilterTest {
   static {
-    GenericReadFilterCallback.setBaseL10n(BaseL10nTest.createTestL10n(ENGLISH));
+    GenericReadFilterCallback.setBaseL10n(L10nTestUtils.createTestL10n(ENGLISH));
   }
 
   private static final String HTML_OPEN = "<html>";

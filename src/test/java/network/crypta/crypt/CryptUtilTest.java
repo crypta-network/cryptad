@@ -10,10 +10,10 @@ import network.crypta.support.Fields;
 import network.crypta.support.math.MersenneTwister;
 import org.junit.jupiter.api.Test;
 
-public class CryptUtilTest {
+class CryptUtilTest {
 
   @Test
-  public void testRandomBytes() {
+  void testRandomBytes() {
     // two predictable pseudo-random sequence
     MersenneTwister mt1 = new MersenneTwister(Long.MAX_VALUE);
     MersenneTwister mt2 = new MersenneTwister(Long.MAX_VALUE);
@@ -31,7 +31,7 @@ public class CryptUtilTest {
   }
 
   @Test
-  public void testSecureRandomBytes() {
+  void testSecureRandomBytes() {
     SecureRandom r1;
     SecureRandom r2;
     try {

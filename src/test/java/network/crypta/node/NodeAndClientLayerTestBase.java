@@ -9,7 +9,7 @@ import network.crypta.keys.InsertableClientSSK;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.api.RandomAccessBucket;
 
-public class NodeAndClientLayerTestBase {
+class NodeAndClientLayerTestBase {
 
   static final int PORT = 2048;
   static final int FILE_SIZE = 1024 * 1024;

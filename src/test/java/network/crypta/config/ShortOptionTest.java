@@ -75,7 +75,7 @@ class ShortOptionTest {
       @Mock ShortCallback cb) {
     // Arrange
     // Reset global translations to production bundle. Other tests may install
-    // a test-only bundle via BaseL10nTest.useTestTranslation(), which would
+    // a test-only bundle via L10nTestUtils.useTestTranslation(), which would
     // make this localized message assertion nondeterministic.
     //noinspection InstantiationOfUtilityClass
     new NodeL10n();

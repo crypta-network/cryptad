@@ -1,16 +1,11 @@
 package network.crypta.test;
 
-import org.junit.jupiter.api.Test;
-
 /**
  * Utility class used throught test cases classes
  *
  * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
  */
 public final class UTFUtil {
-
-  @Test
-  public void testFake() {}
 
   /**
    * Contains all unicode characters except the low and high surrogates (they are no valid

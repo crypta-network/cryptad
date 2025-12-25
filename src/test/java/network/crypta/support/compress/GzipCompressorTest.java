@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  *
  * @author stuart martin &lt;wavey@freenetproject.org&gt;
  */
-public class GzipCompressorTest {
+class GzipCompressorTest {
 
   public static final String UNCOMPRESSED_DATA_1 =
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -31,7 +31,7 @@ public class GzipCompressorTest {
 
   /** test GZIP compressor's identity and functionality */
   @Test
-  public void testGzipCompressor() {
+  void testGzipCompressor() {
     Compressor compressorZero = Compressor.COMPRESSOR_TYPE.getCompressorByMetadataID((short) 0);
 
     // check GZIP is the first compressor
@@ -39,7 +39,7 @@ public class GzipCompressorTest {
   }
 
   @Test
-  public void testCompress() throws IOException {
+  void testCompress() throws IOException {
     // do gzip compression
     byte[] compressedData = doCompress(UNCOMPRESSED_DATA_1.getBytes());
 
@@ -51,7 +51,7 @@ public class GzipCompressorTest {
   }
 
   @Test
-  public void testBucketDecompress() throws IOException {
+  void testBucketDecompress() throws IOException {
     // do gzip decompression with buckets
     byte[] uncompressedData = doBucketDecompress(COMPRESSED_DATA_1);
 
@@ -61,7 +61,7 @@ public class GzipCompressorTest {
   }
 
   @Test
-  public void testByteArrayDecompress() throws IOException {
+  void testByteArrayDecompress() throws IOException {
     // build 5k array
     byte[] originalUncompressedData = new byte[5 * 1024];
     Arrays.fill(originalUncompressedData, (byte) 1);
@@ -80,7 +80,7 @@ public class GzipCompressorTest {
   }
 
   @Test
-  public void testCompressException() throws IOException {
+  void testCompressException() throws IOException {
 
     byte[] uncompressedData = UNCOMPRESSED_DATA_1.getBytes();
     Bucket inBucket = new ArrayBucket(uncompressedData);
@@ -96,7 +96,7 @@ public class GzipCompressorTest {
   }
 
   @Test
-  public void testDecompressException() throws IOException {
+  void testDecompressException() throws IOException {
     // build 5k array
     byte[] uncompressedData = new byte[5 * 1024];
     Arrays.fill(uncompressedData, (byte) 1);

@@ -8,9 +8,9 @@ import org.junit.jupiter.api.Test;
  * Tests that valid CSS identifiers without non-ASCII characters or escaped characters are
  * unchanged, and that invalid ones are changed as expected.
  */
-public class FilterCSSIdentifierTest {
+class FilterCSSIdentifierTest {
   @Test
-  public void testKnownValid() {
+  void testKnownValid() {
     String[] identifiers = {"sample_key-1", "-_", "-k_d", "_testing-key"};
 
     for (String identifier : identifiers) {
@@ -19,13 +19,13 @@ public class FilterCSSIdentifierTest {
   }
 
   @Test
-  public void testInvalidFirstDash() {
+  void testInvalidFirstDash() {
     assertEquals("-_things", PageMaker.filterCSSIdentifier("-9things"));
     assertEquals("-_", PageMaker.filterCSSIdentifier("--"));
   }
 
   @Test
-  public void testInvalidChar() {
+  void testInvalidChar() {
     assertEquals("__thing", PageMaker.filterCSSIdentifier("#$thing"));
   }
 }

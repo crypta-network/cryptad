@@ -8,7 +8,7 @@ import network.crypta.support.io.ByteArrayRandomAccessBuffer;
 import network.crypta.support.io.RandomAccessBufferTestBase;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
-public class EncryptedRandomAccessBufferAltTest extends RandomAccessBufferTestBase {
+class EncryptedRandomAccessBufferAltTest extends RandomAccessBufferTestBase {
 
   static {
     Security.addProvider(new BouncyCastleProvider());

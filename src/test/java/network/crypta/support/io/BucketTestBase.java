@@ -36,7 +36,7 @@ public abstract class BucketTestBase {
   protected boolean canOverwrite = true;
 
   @Test
-  public void testReadEmpty() throws IOException {
+  void testReadEmpty() throws IOException {
     Bucket bucket = makeBucket(3);
     try {
       assertEquals(0, bucket.size(), "Size-0");
@@ -56,7 +56,7 @@ public abstract class BucketTestBase {
   }
 
   @Test
-  public void testReadExcess() throws IOException {
+  void testReadExcess() throws IOException {
     Bucket bucket = makeBucket(Math.max(DATA1.length, DATA2.length));
     try {
       assertEquals(0, bucket.size(), "Size-0");
@@ -85,7 +85,7 @@ public abstract class BucketTestBase {
   }
 
   @Test
-  public void testReadWrite() throws IOException {
+  void testReadWrite() throws IOException {
     Bucket bucket = makeBucket(Math.max(DATA1.length, DATA2.length));
     try {
       assertEquals(0, bucket.size(), "Size-0");
@@ -125,7 +125,7 @@ public abstract class BucketTestBase {
 
   // Write twice -- should overwrite, not append
   @Test
-  public void testReuse() throws IOException {
+  void testReuse() throws IOException {
     if (!canOverwrite) {
       return;
     }
@@ -165,7 +165,7 @@ public abstract class BucketTestBase {
   }
 
   @Test
-  public void testNegative() throws IOException {
+  void testNegative() throws IOException {
     Bucket bucket = makeBucket(Math.max(DATA1.length, DATA2.length));
     try {
       // Write
@@ -190,7 +190,7 @@ public abstract class BucketTestBase {
   }
 
   @Test
-  public void testLargeData() throws IOException {
+  void testLargeData() throws IOException {
 
     Bucket bucket = makeBucket(DATA_LONG.length * 16L);
     try {
