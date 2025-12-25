@@ -133,8 +133,8 @@ public class FetchException extends Exception {
    * Returns the structured error mode describing why the fetch failed.
    *
    * <p>Use with {@link #isFatal(FetchExceptionMode)} and {@link #isDataFound(FetchExceptionMode,
-   * FailureCodeTracker)} to derive high‑level behavior such as retryability or whether any data was
-   * found.
+   * FailureCodeTracker)} to derive high‑level behavior such as retry-ability or whether any data
+   * was found.
    *
    * @return non‑null error mode associated with this failure
    */
@@ -713,7 +713,7 @@ public class FetchException extends Exception {
     TOO_MANY_BLOCKS_PER_SEGMENT(23),
     /** Not enough meta strings in URI given and no default document */
     NOT_ENOUGH_PATH_COMPONENTS(24),
-    /** Explicitly cancelled */
+    /** Explicitly canceled */
     CANCELLED(25),
     /** Archive restart */
     ARCHIVE_RESTART(26),
@@ -798,6 +798,9 @@ public class FetchException extends Exception {
    * @return {@code true} when retrying is not expected to help; {@code false} otherwise
    */
   public static boolean isFatal(FetchExceptionMode mode) {
+    if (isDeprecatedMode(mode)) {
+      return true;
+    }
     return switch (mode) {
       // Problems with the data as inserted, or the URI given. No point retrying.
       case ARCHIVE_FAILURE,
@@ -806,13 +809,9 @@ public class FetchException extends Exception {
           NOT_ENOUGH_PATH_COMPONENTS,
           INVALID_METADATA,
           NOT_IN_ARCHIVE,
-          TOO_DEEP_ARCHIVE_RECURSION,
           TOO_MANY_ARCHIVE_RESTARTS,
-          TOO_MANY_METADATA_LEVELS,
-          TOO_MANY_REDIRECTS,
           TOO_MUCH_RECURSION,
           UNKNOWN_METADATA,
-          UNKNOWN_SPLITFILE_METADATA,
           INVALID_URI,
           TOO_BIG,
           TOO_BIG_METADATA,
@@ -849,6 +848,7 @@ public class FetchException extends Exception {
       case ARCHIVE_RESTART, PERMANENT_REDIRECT, WRONG_MIME_TYPE ->
           // Fatal
           true;
+      default -> throw new IllegalStateException("Unhandled mode: " + mode);
     };
   }
 
@@ -871,6 +871,9 @@ public class FetchException extends Exception {
    * @return {@code true} when the failure conclusively indicates a problem with the data
    */
   public static boolean isDefinitelyFatal(FetchExceptionMode mode) {
+    if (isDeprecatedMode(mode)) {
+      return true;
+    }
     return switch (mode) {
       // Problems with the data as inserted, or the URI given. No point retrying.
       case ARCHIVE_FAILURE,
@@ -879,13 +882,9 @@ public class FetchException extends Exception {
           NOT_ENOUGH_PATH_COMPONENTS,
           INVALID_METADATA,
           NOT_IN_ARCHIVE,
-          TOO_DEEP_ARCHIVE_RECURSION,
           TOO_MANY_ARCHIVE_RESTARTS,
-          TOO_MANY_METADATA_LEVELS,
-          TOO_MANY_REDIRECTS,
           TOO_MUCH_RECURSION,
           UNKNOWN_METADATA,
-          UNKNOWN_SPLITFILE_METADATA,
           INVALID_URI,
           TOO_BIG,
           TOO_BIG_METADATA,
@@ -921,6 +920,7 @@ public class FetchException extends Exception {
       case ARCHIVE_RESTART, PERMANENT_REDIRECT, WRONG_MIME_TYPE ->
           // Fatal
           true;
+      default -> throw new IllegalStateException("Unhandled mode: " + mode);
     };
   }
 
@@ -942,15 +942,14 @@ public class FetchException extends Exception {
    * @return {@code true} when some data was located for the failure scenario
    */
   public static boolean isDataFound(FetchExceptionMode mode, FailureCodeTracker errorCodes) {
+    if (isDeprecatedMode(mode)) {
+      return true;
+    }
     return switch (mode) {
-      case TOO_DEEP_ARCHIVE_RECURSION,
-          UNKNOWN_SPLITFILE_METADATA,
-          TOO_MANY_REDIRECTS,
-          UNKNOWN_METADATA,
+      case UNKNOWN_METADATA,
           INVALID_METADATA,
           ARCHIVE_FAILURE,
           BLOCK_DECODE_ERROR,
-          TOO_MANY_METADATA_LEVELS,
           TOO_MANY_ARCHIVE_RESTARTS,
           TOO_MUCH_RECURSION,
           NOT_IN_ARCHIVE,
@@ -970,6 +969,17 @@ public class FetchException extends Exception {
       case SPLITFILE_ERROR -> errorCodes != null && errorCodes.isDataFound();
       default -> false;
     };
+  }
+
+  /**
+   * Returns whether the supplied mode corresponds to a deprecated stable error code.
+   *
+   * <p>Deprecated modes remain in the enum for compatibility, but callers should avoid referencing
+   * those constants directly.
+   */
+  private static boolean isDeprecatedMode(FetchExceptionMode mode) {
+    int code = mode.code;
+    return code == 1 || code == 2 || code == 7 || code == 16;
   }
 
   /**
