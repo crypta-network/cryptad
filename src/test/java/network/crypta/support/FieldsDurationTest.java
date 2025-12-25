@@ -8,7 +8,7 @@ import network.crypta.config.Dimension;
 import org.junit.jupiter.api.Test;
 
 /** Tests parsing of duration value. */
-public class FieldsDurationTest {
+class FieldsDurationTest {
 
   /** Duration input with and without various d|h|min|s. With correct result in millis */
   private static final Map<String, Integer> durations =
@@ -23,7 +23,7 @@ public class FieldsDurationTest {
       };
 
   @Test
-  public void test() {
+  void test() {
     durations.forEach(
         (duration, millis) -> {
           Integer parsed = Fields.parseInt(Fields.trimPerSecond(duration), Dimension.DURATION);

@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
  *
  * @author <a href="mailto:david.roden@bietr.de">David Roden</a>
  */
-public class FCPMessageTest {
+class FCPMessageTest {
 
   private static final String LIST_REQUEST_IDENTIFIER = "ListRequestIdentifier";
   private static final String IDENTIFIER = "identifier";
@@ -29,25 +29,25 @@ public class FCPMessageTest {
   private final FCPMessage originalMessage = mock(FCPMessage.class);
 
   @Test
-  public void wrappingNullReturnsNull() {
+  void wrappingNullReturnsNull() {
     assertThat(FCPMessage.withListRequestIdentifier(null, LIST_REQUEST_IDENTIFIER), nullValue());
   }
 
   @Test
-  public void wrappingMessageAddsIdentifier() {
+  void wrappingMessageAddsIdentifier() {
     when(originalMessage.getFieldSet()).thenReturn(new SimpleFieldSet(true));
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     assertThat(wrappedMessage.getFieldSet().get(LIST_REQUEST_IDENTIFIER), is(IDENTIFIER));
   }
 
   @Test
-  public void messageIsNotWrappedIfListRequestIdentifierIsNull() {
+  void messageIsNotWrappedIfListRequestIdentifierIsNull() {
     assertThat(
         FCPMessage.withListRequestIdentifier(originalMessage, null), sameInstance(originalMessage));
   }
 
   @Test
-  public void wrappedMessageDelegatesName() {
+  void wrappedMessageDelegatesName() {
     when(originalMessage.getName()).thenReturn(MESSAGE_NAME);
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     assertThat(wrappedMessage.getName(), is(MESSAGE_NAME));
@@ -55,7 +55,7 @@ public class FCPMessageTest {
   }
 
   @Test
-  public void wrappedMessageDelegatesRun() throws MessageInvalidException {
+  void wrappedMessageDelegatesRun() throws MessageInvalidException {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     FCPConnectionHandler connectionHandler = mock(FCPConnectionHandler.class);
     Node node = mock(Node.class);
@@ -64,7 +64,7 @@ public class FCPMessageTest {
   }
 
   @Test
-  public void wrappedMessageDelegatesEndString() {
+  void wrappedMessageDelegatesEndString() {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     when(originalMessage.getEndString()).thenReturn(END_STRING);
     assertThat(wrappedMessage.getEndString(), is(END_STRING));
@@ -72,7 +72,7 @@ public class FCPMessageTest {
   }
 
   @Test
-  public void wrappedMessageDelegatesSend() throws IOException {
+  void wrappedMessageDelegatesSend() throws IOException {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     OutputStream outputStream = mock(OutputStream.class);
     wrappedMessage.send(outputStream);

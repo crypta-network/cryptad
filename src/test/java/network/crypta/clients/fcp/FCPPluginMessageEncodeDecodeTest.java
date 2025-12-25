@@ -25,14 +25,14 @@ import org.junit.jupiter.api.Test;
  * to be attached by network, not server plugins.<br>
  * See {@link FCPPluginConnectionImpl} for an overview of the architecture.
  */
-public final class FCPPluginMessageEncodeDecodeTest {
+final class FCPPluginMessageEncodeDecodeTest {
 
   /**
    * Creates different interesting types of {@link FCPPluginMessage}, whose actual encoding and
    * decoding is then tested using {@link #testEncodeDecode(FCPPluginMessage)}.
    */
   @Test
-  public void testEncodeDecode() throws MessageInvalidException, IOException, FSParseException {
+  void testEncodeDecode() throws MessageInvalidException, IOException, FSParseException {
     ArrayList<FCPPluginMessage> messages = new ArrayList<>();
 
     // Non-reply messages. Can either have a SimpleFieldSet, or a Bucket, or both. We don't use

@@ -11,14 +11,14 @@ import com.onionnetworks.util.Util;
 import network.crypta.support.TestProperty;
 import org.junit.jupiter.api.Test;
 
-public class CodeTest {
+class CodeTest {
 
   public static final int KK = 192;
   public static final int PACKET_SIZE = 4096;
   public static FECMath fecMath = new FECMath(8);
 
   @Test
-  public void testBenchmark() {
+  void testBenchmark() {
     if (!TestProperty.BENCHMARK) {
       return;
     }
@@ -82,7 +82,7 @@ public class CodeTest {
   }
 
   @Test
-  public void testSimpleRev() {
+  void testSimpleRev() {
     int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
@@ -98,7 +98,7 @@ public class CodeTest {
   }
 
   @Test
-  public void testSimple() {
+  void testSimple() {
     int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {
@@ -113,7 +113,7 @@ public class CodeTest {
   }
 
   @Test
-  public void testShifted() {
+  void testShifted() {
     int lim = fecMath.getGfSize() + 1;
     try (FECCode code = FECCodeFactory.getDefault().createFECCode(KK, lim);
         FECCode code2 = new PureCode(KK, lim)) {

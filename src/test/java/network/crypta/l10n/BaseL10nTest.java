@@ -28,16 +28,16 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 @SuppressWarnings("java:S100") // allow descriptive test method names
-public class BaseL10nTest {
+class BaseL10nTest {
 
-  public static BaseL10n createL10n(LANGUAGE lang) {
+  static BaseL10n createL10n(LANGUAGE lang) {
     File overrideFile =
         new File(TestProperty.L10nPath_main, "crypta.l10n.${lang}.override.properties");
     return new BaseL10n(
         "network/crypta/l10n/", "crypta.l10n.${lang}.properties", overrideFile.getPath(), lang);
   }
 
-  public static BaseL10n createTestL10n(LANGUAGE lang) {
+  static BaseL10n createTestL10n(LANGUAGE lang) {
     File overrideFile =
         new File(TestProperty.L10nPath_test, "crypta.l10n.${lang}.override.properties");
     return new BaseL10n(
@@ -51,7 +51,7 @@ public class BaseL10nTest {
    * Installs a {@link #createTestL10n(LANGUAGE) BaseL10n} with translations read from the test
    * classpath into the global {@link NodeL10n}, allowing tests for translation keys.
    */
-  public static void useTestTranslation() {
+  static void useTestTranslation() {
     NodeL10n.setBase(createTestL10n(LANGUAGE.ENGLISH));
   }
 

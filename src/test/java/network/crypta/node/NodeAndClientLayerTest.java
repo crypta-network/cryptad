@@ -30,10 +30,10 @@ import org.slf4j.event.Level;
  *
  * @author toad
  */
-public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
+class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
 
   @Test
-  public void testFetchPullSingleNodeSsk()
+  void testFetchPullSingleNodeSsk()
       throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
@@ -45,7 +45,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
   }
 
   @Test
-  public void testFetchPullSingleNodeUskEditionZero()
+  void testFetchPullSingleNodeUskEditionZero()
       throws NodeInitException, InsertException, FetchException, IOException {
     if (!TestProperty.EXTENSIVE) {
       return;
@@ -57,7 +57,7 @@ public class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
   }
 
   @AfterEach
-  public void cleanUp() {
+  void cleanUp() {
     FileUtil.removeAll(dir);
   }
 

@@ -14,24 +14,24 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
+class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
 
   public RandomAccessFileWrapperTest() {
     super(TEST_LIST);
   }
 
   @BeforeEach
-  public void setUp() {
+  void setUp() {
     base.mkdir();
   }
 
   @AfterEach
-  public void tearDown() {
+  void tearDown() {
     FileUtil.removeAll(base);
   }
 
   @Test
-  public void testStoreTo() throws IOException, StorageFormatException, ResumeFailedException {
+  void testStoreTo() throws IOException, StorageFormatException, ResumeFailedException {
     File tempFile = File.createTempFile("test-storeto", ".tmp", base);
     byte[] buf = new byte[4096];
     Random r = new Random(1267612);

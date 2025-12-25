@@ -10,7 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-public class CryptadConfigSecurityTest {
+class CryptadConfigSecurityTest {
 
   @TempDir Path tmp;
 
@@ -29,20 +29,20 @@ public class CryptadConfigSecurityTest {
   }
 
   @Test
-  public void rejectsTraversal_inLeadingTokenForm() {
+  void rejectsTraversal_inLeadingTokenForm() {
     Map<String, String> b = base();
     assertThrows(IOException.class, () -> CryptadConfig.expandValue("dataDir/../../etc/passwd", b));
   }
 
   @Test
-  public void rejectsTraversal_inPlaceholderForm() {
+  void rejectsTraversal_inPlaceholderForm() {
     Map<String, String> b = base();
     assertThrows(
         IOException.class, () -> CryptadConfig.expandValue("${dataDir}/../../etc/passwd", b));
   }
 
   @Test
-  public void allowsNormalization_withinBase() throws IOException {
+  void allowsNormalization_withinBase() throws IOException {
     Map<String, String> b = base();
     String expanded = CryptadConfig.expandValue("dataDir/foo/../bar", b);
     assertEquals(expanded, Path.of(b.get("dataDir"), "bar").toString());

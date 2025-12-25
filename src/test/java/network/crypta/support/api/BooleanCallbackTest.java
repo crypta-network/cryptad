@@ -8,10 +8,10 @@ import network.crypta.config.NodeNeedRestartException;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 
-public class BooleanCallbackTest {
+class BooleanCallbackTest {
 
   @Test
-  public void canCreateBooleanCallbackFromLambdas()
+  void canCreateBooleanCallbackFromLambdas()
       throws NodeNeedRestartException, InvalidConfigValueException {
     BooleanCallback callback = BooleanCallback.from(() -> true, (value) -> theValue = value);
     callback.set(true);
@@ -20,7 +20,7 @@ public class BooleanCallbackTest {
   }
 
   @Test
-  public void canThrowInvalidConfigValueException()
+  void canThrowInvalidConfigValueException()
       throws NodeNeedRestartException, InvalidConfigValueException {
     BooleanCallback callback =
         BooleanCallback.from(
@@ -32,7 +32,7 @@ public class BooleanCallbackTest {
   }
 
   @Test
-  public void canThrowNodeNeedRestartException()
+  void canThrowNodeNeedRestartException()
       throws NodeNeedRestartException, InvalidConfigValueException {
     BooleanCallback callback =
         BooleanCallback.from(
@@ -44,8 +44,7 @@ public class BooleanCallbackTest {
   }
 
   @Test
-  public void getGivesTheSetVariable()
-      throws NodeNeedRestartException, InvalidConfigValueException {
+  void getGivesTheSetVariable() throws NodeNeedRestartException, InvalidConfigValueException {
     BooleanCallback callback =
         BooleanCallback.from(
             () -> theValue,

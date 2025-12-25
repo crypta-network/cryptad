@@ -52,14 +52,14 @@ public abstract class RandomAccessBufferTestBase {
    * correct size.
    */
   @Test
-  public void testSize() throws IOException {
+  void testSize() throws IOException {
     for (long size : fullSizeList) {
       innerTestSize(size);
     }
   }
 
   @Test
-  public void testFormula() throws IOException {
+  void testFormula() throws IOException {
     Random r = new Random(2126);
     Formula modulo256 = offset -> (byte) offset;
     Formula modulo57 = offset -> (byte) (offset % 57);
@@ -71,7 +71,7 @@ public abstract class RandomAccessBufferTestBase {
 
   /** Test that we can't write or read after the size limit */
   @Test
-  public void testWriteOverLimit() throws IOException {
+  void testWriteOverLimit() throws IOException {
     Random r = new Random(21092506);
     innerTestWriteOverLimit(0L, 1);
     innerTestWriteOverLimit(1, 1);
@@ -91,7 +91,7 @@ public abstract class RandomAccessBufferTestBase {
   }
 
   @Test
-  public void testClose() throws IOException {
+  void testClose() throws IOException {
     // Try to cover any thresholds for e.g. moving to disk.
     // Implementations should add their own tests according to known thresholds (white box).
     for (long size : fullSizeList) {
@@ -100,7 +100,7 @@ public abstract class RandomAccessBufferTestBase {
   }
 
   @Test
-  public void testArray() throws IOException {
+  void testArray() throws IOException {
     Random r = new Random(21162506);
     for (int size : sizeList) {
       innerTestArray(size, r, false);

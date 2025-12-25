@@ -65,7 +65,7 @@ class NodeL10nTest {
   @Test
   void setBase_whenProvided_replacesGlobalInstance() {
     // Arrange: install a dedicated BaseL10n that uses test resources
-    BaseL10n custom = BaseL10nTest.createTestL10n(LANGUAGE.ENGLISH);
+    BaseL10n custom = L10nTestUtils.createTestL10n(LANGUAGE.ENGLISH);
 
     // Act
     NodeL10n.setBase(custom);
