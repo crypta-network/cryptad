@@ -360,28 +360,7 @@ private fun checkCryptadCompatibility(
 ): Boolean {
     val version = v.getOrNull(1)?.toIntOrNull()
     val minVersion = lgv.getOrNull(1)?.toIntOrNull()
-
-    if (version == null || minVersion == null) {
-        if (LOG.isDebugEnabled)
-            LOG.debug(
-                "Not accepting (NumberFormatException) from {} and/or {}",
-                versionStr,
-                lastGoodVersionStr,
-            )
-        return false
-    }
-
-    if (version < minVersion) {
-        if (LOG.isDebugEnabled)
-            LOG.debug(
-                "Not accepting unstable from version: {}(lastGoodVersion={})",
-                versionStr,
-                lastGoodVersionStr,
-            )
-        return false
-    }
-
-    return true
+    return isNumberAtLeast(version, minVersion, versionStr, lastGoodVersionStr)
 }
 
 /** Checks compatibility between Fred/Freenet nodes. */
@@ -399,28 +378,7 @@ private fun checkFredCompatibility(
 
     val build = v.getOrNull(3)?.toIntOrNull()
     val minBuild = lgv.getOrNull(3)?.toIntOrNull()
-
-    if (build == null || minBuild == null) {
-        if (LOG.isDebugEnabled)
-            LOG.debug(
-                "Not accepting (NumberFormatException) from {} and/or {}",
-                versionStr,
-                lastGoodVersionStr,
-            )
-        return false
-    }
-
-    if (build < minBuild) {
-        if (LOG.isDebugEnabled)
-            LOG.debug(
-                "Not accepting unstable from version: {}(lastGoodVersion={})",
-                versionStr,
-                lastGoodVersionStr,
-            )
-        return false
-    }
-
-    return true
+    return isNumberAtLeast(build, minBuild, versionStr, lastGoodVersionStr)
 }
 
 /**
@@ -440,6 +398,39 @@ private fun parseVersionOrNull(version: String?, label: String = "version"): Arr
 
     val v = Fields.commaList(version) ?: return null
     return if (v.size < 3 || !isValidProtocol(v[2])) null else v
+}
+
+/**
+ * Checks that the parsed numeric version meets or exceeds the minimum and
+ * logs appropriate debug messages for invalid or too-old values.
+ */
+private fun isNumberAtLeast(
+    actual: Int?,
+    min: Int?,
+    versionStr: String?,
+    lastGoodVersionStr: String?
+): Boolean {
+    if (actual == null || min == null) {
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting (NumberFormatException) from {} and/or {}",
+                versionStr,
+                lastGoodVersionStr,
+            )
+        return false
+    }
+
+    if (actual < min) {
+        if (LOG.isDebugEnabled)
+            LOG.debug(
+                "Not accepting unstable from version: {}(lastGoodVersion={})",
+                versionStr,
+                lastGoodVersionStr,
+            )
+        return false
+    }
+
+    return true
 }
 
 /**
