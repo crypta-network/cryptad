@@ -705,7 +705,7 @@ public class ArchiveManager {
       Set<String> names,
       byte[] buf,
       ClientContext context)
-      throws IOException, ArchiveFailureException {
+      throws IOException {
     if (entry.isDirectory()) {
       return false;
     }
@@ -750,7 +750,7 @@ public class ArchiveManager {
       Set<String> names,
       byte[] buf,
       ClientContext context)
-      throws IOException, ArchiveFailureException {
+      throws IOException {
     boolean isMetadata = METADATA_NAME.equals(name);
     if (size > maxArchivedFileSize && !name.equals(element)) {
       addErrorElement(
@@ -871,7 +871,7 @@ public class ArchiveManager {
       String element2,
       ArchiveExtractCallback callback,
       ClientContext context)
-      throws IOException, ArchiveFailureException {
+      throws IOException {
     for (Metadata m : e.mustResolve) {
       try {
         addStoreElement(
@@ -985,8 +985,6 @@ public class ArchiveManager {
    *     we must not call it again.
    * @param callback Callback to be called if we do find it. We must getReaderBucket() before adding
    *     the data to the LRU, otherwise it may be deleted before it reaches the client.
-   * @throws ArchiveFailureException If a failure occurred resulting in the data not being readable.
-   *     Only happens if callback != null.
    */
   private void addStoreElement(
       ArchiveStoreContext ctx,
@@ -996,8 +994,7 @@ public class ArchiveManager {
       MutableBoolean gotElement,
       String callbackName,
       ArchiveExtractCallback callback,
-      ClientContext context)
-      throws ArchiveFailureException {
+      ClientContext context) {
     RealArchiveStoreItem element = new RealArchiveStoreItem(ctx, key, name, temp);
     element.addToContext();
     if (LOG.isDebugEnabled())
