@@ -10,7 +10,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class TagVerifierTest {
+class TagVerifierTest {
   private static final String BASE_URI_PROTOCOL = "http";
   private static final String BASE_URI_CONTENT = "localhost:8888";
   private static final String BASE_KEY =
@@ -26,7 +26,7 @@ public class TagVerifierTest {
   HTMLFilter.HTMLParseContext pc;
 
   @BeforeEach
-  public void setUp() throws Exception {
+  void setUp() throws Exception {
     filter = new HTMLFilter();
     attributes = new LinkedHashMap<>();
     pc =
@@ -40,7 +40,7 @@ public class TagVerifierTest {
   }
 
   @AfterEach
-  public void tearDown() {
+  void tearDown() {
     filter = null;
     attributes = null;
     pc = null;
@@ -50,111 +50,127 @@ public class TagVerifierTest {
   }
 
   @Test
-  public void testHTMLTagWithInvalidNS() throws DataFilterException {
+  void sanitize_whenHtmlTagHasInvalidNamespace_removesNamespaceAttribute()
+      throws DataFilterException {
+    // Arrange
     tagname = "html";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
-    // Place an invalid namespace into the tag
     attributes.put("xmlns", "http://www.w3.org/1909/xhtml");
-    // Place a unparsed attribute into the tag
     attributes.put("version", "-//W3C//DTD HTML 4.01 Transitional//EN");
-
     htmlTag = new ParsedTag(tagname, attributes);
-    final String HTML_INVALID_XMLNS = "<html version=\"-//W3C//DTD HTML 4.01 Transitional//EN\" />";
+    final String expectedHtml = "<html version=\"-//W3C//DTD HTML 4.01 Transitional//EN\" />";
 
-    assertEquals(
-        HTML_INVALID_XMLNS,
-        verifier.sanitize(htmlTag, pc).toString(),
-        "HTML tag containing an invalid xmlns");
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+    // Assert
+    assertEquals(expectedHtml, sanitized, "HTML tag containing an invalid xmlns");
   }
 
   @Test
-  public void testLinkTag() throws DataFilterException {
+  void sanitize_whenLinkTagHasStylesheetAttributes_returnsStylesheetLinkWithParams()
+      throws DataFilterException {
+    // Arrange
     tagname = "link";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
     attributes.put("rel", "stylesheet");
     attributes.put("type", "text/css");
     attributes.put("target", "_blank");
     attributes.put("media", "print, handheld");
     attributes.put("href", "foo.css");
-
     htmlTag = new ParsedTag(tagname, attributes);
-
-    final String LINK_STYLESHEET =
+    final String expectedLink =
         "<link rel=\"stylesheet\" type=\"text/css\" target=\"_blank\" media=\"print, handheld\""
             + " href=\"foo.css?type=text/css&amp;maybecharset=utf-8\" />";
 
-    assertEquals(
-        LINK_STYLESHEET, verifier.sanitize(htmlTag, pc).toString(), "Link tag importing CSS");
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+    // Assert
+    assertEquals(expectedLink, sanitized, "Link tag importing CSS");
   }
 
   @Test
-  public void testMetaTagHTMLContentType() throws DataFilterException {
+  void sanitize_whenMetaTagHasHtmlContentType_keepsTag() throws DataFilterException {
+    // Arrange
     tagname = "meta";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
     attributes.put("http-equiv", "Content-type");
     attributes.put("content", "text/html; charset=UTF-8");
     htmlTag = new ParsedTag(tagname, attributes);
+    String expected = htmlTag.toString();
 
-    assertEquals(
-        htmlTag.toString(),
-        verifier.sanitize(htmlTag, pc).toString(),
-        "Meta tag describing HTML content-type");
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+    // Assert
+    assertEquals(expected, sanitized, "Meta tag describing HTML content-type");
   }
 
   @Test
-  public void testMetaTagXHTMLContentType() throws DataFilterException {
+  void sanitize_whenMetaTagHasXhtmlContentType_keepsTag() throws DataFilterException {
+    // Arrange
     tagname = "meta";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
     attributes.put("http-equiv", "Content-type");
     attributes.put("content", "application/xhtml+xml; charset=UTF-8");
     htmlTag = new ParsedTag(tagname, attributes);
+    String expected = htmlTag.toString();
 
-    assertEquals(
-        htmlTag.toString(),
-        verifier.sanitize(htmlTag, pc).toString(),
-        "Meta tag describing XHTML content-type");
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+    // Assert
+    assertEquals(expected, sanitized, "Meta tag describing XHTML content-type");
   }
 
   @Test
-  public void testMetaTagSpider() throws DataFilterException {
+  void sanitize_whenMetaTagHasValidRobotsContent_keepsTag() throws DataFilterException {
+    // Arrange
     tagname = "meta";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
     attributes.put("name", "robots");
     attributes.put("content", "none, noindex, nofollow, noarchive, nosnippet, nocache");
     htmlTag = new ParsedTag(tagname, attributes);
+    String expected = htmlTag.toString();
 
-    assertEquals(
-        htmlTag.toString(),
-        verifier.sanitize(htmlTag, pc).toString(),
-        "Meta tag controlling spiders - valid value");
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
 
-    attributes.put("name", "robots");
-    attributes.put("content", "noindex,invalid");
-    htmlTag = new ParsedTag(tagname, attributes);
-
-    ParsedTag htmlTagFiltered;
-    attributes.put("content", "noindex");
-    htmlTagFiltered = new ParsedTag(tagname, attributes);
-    assertEquals(
-        htmlTagFiltered.toString(),
-        verifier.sanitize(htmlTag, pc).toString(),
-        "Meta tag controlling spiders - invalid value");
+    // Assert
+    assertEquals(expected, sanitized, "Meta tag controlling spiders - valid value");
   }
 
   @Test
-  public void testMetaTagUnknownContentType() {
+  void sanitize_whenMetaTagHasInvalidRobotsContent_filtersInvalidTokens()
+      throws DataFilterException {
+    // Arrange
     tagname = "meta";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
+    attributes.put("name", "robots");
+    attributes.put("content", "noindex,invalid");
+    htmlTag = new ParsedTag(tagname, attributes);
+    attributes.put("content", "noindex");
+    ParsedTag filteredTag = new ParsedTag(tagname, attributes);
+    String expected = filteredTag.toString();
 
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+    // Assert
+    assertEquals(expected, sanitized, "Meta tag controlling spiders - invalid value");
+  }
+
+  @Test
+  void sanitize_whenMetaTagHasUnknownContentType_throwsDataFilterException() {
+    // Arrange
+    tagname = "meta";
+    verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
     attributes.put("http-equiv", "Content-type");
     attributes.put("content", "want/fishsticks; charset=UTF-8");
     htmlTag = new ParsedTag(tagname, attributes);
 
+    // Act + Assert
     assertThrows(
         DataFilterException.class,
         () -> verifier.sanitize(htmlTag, pc),
@@ -162,54 +178,77 @@ public class TagVerifierTest {
   }
 
   @Test
-  public void testBodyTag() throws DataFilterException {
+  void sanitize_whenBodyTagHasEventHandlers_stripsEventHandlers() throws DataFilterException {
+    // Arrange
     tagname = "body";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
     attributes.put("bgcolor", "pink");
-    // Let's pretend the following is malicious JavaScript
     attributes.put("onload", "evil_scripting_magic");
-
     htmlTag = new ParsedTag(tagname, attributes);
+    final String expectedBody = "<body bgcolor=\"pink\" />";
 
-    final String BODY_TAG = "<body bgcolor=\"pink\" />";
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
 
-    assertEquals(BODY_TAG, verifier.sanitize(htmlTag, pc).toString(), "Body tag");
+    // Assert
+    assertEquals(expectedBody, sanitized, "Body tag");
   }
 
   @Test
-  public void testFormTag() throws DataFilterException {
+  void sanitize_whenFormTagHasLegacyCharset_replacesWithUtf8AndAddsEnctype()
+      throws DataFilterException {
+    // Arrange
     tagname = "form";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
     attributes.put("method", "POST");
-    // Place a bad charset into the tag. This will get replaced with utf-8
     attributes.put("accept-charset", "iso-8859-1");
     attributes.put("action", "/library/");
-
     htmlTag = new ParsedTag(tagname, attributes);
-    final String FORM_TAG =
+    final String expectedForm =
         "<form method=\"POST\" accept-charset=\"UTF-8\" action=\"/library/\""
             + " enctype=\"multipart/form-data\" />";
 
-    assertEquals(FORM_TAG, verifier.sanitize(htmlTag, pc).toString(), "Form tag");
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+    // Assert
+    assertEquals(expectedForm, sanitized, "Form tag");
   }
 
   @Test
-  public void testInvalidFormMethod() throws DataFilterException {
+  void sanitize_whenFormTagHasInvalidMethod_returnsNull() throws DataFilterException {
+    // Arrange
     tagname = "form";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
-
     attributes.put("method", "INVALID_METHOD");
     attributes.put("action", "/library/");
-
     htmlTag = new ParsedTag(tagname, attributes);
 
-    assertNull(verifier.sanitize(htmlTag, pc), "Form tag with an invalid method");
+    // Act
+    ParsedTag sanitized = verifier.sanitize(htmlTag, pc);
+
+    // Assert
+    assertNull(sanitized, "Form tag with an invalid method");
   }
 
   @Test
-  public void testValidInputTag() throws DataFilterException {
+  void sanitize_whenInputTagMissingType_keepsTag() throws DataFilterException {
+    // Arrange
+    tagname = "input";
+    verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
+    htmlTag = new ParsedTag(tagname, attributes);
+    String expected = htmlTag.toString();
+
+    // Act
+    String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+    // Assert
+    assertEquals(expected, sanitized, "Input tag without type");
+  }
+
+  @Test
+  void sanitize_whenInputTagHasValidType_keepsTag() throws DataFilterException {
+    // Arrange
     String[] types =
         new String[] {
           "TEXT",
@@ -228,26 +267,23 @@ public class TagVerifierTest {
           "tel",
           "url"
         };
-
     tagname = "input";
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
 
-    htmlTag = new ParsedTag(tagname, attributes);
-    assertEquals(
-        htmlTag.toString(), verifier.sanitize(htmlTag, pc).toString(), "Input tag without type");
-
     for (String t : types) {
+      // Act
       attributes.put("type", t);
       htmlTag = new ParsedTag(tagname, attributes);
-      assertEquals(
-          htmlTag.toString(),
-          verifier.sanitize(htmlTag, pc).toString(),
-          "Input tag with a valid type");
+      String sanitized = verifier.sanitize(htmlTag, pc).toString();
+
+      // Assert
+      assertEquals(htmlTag.toString(), sanitized, "Input tag with a valid type");
     }
   }
 
   @Test
-  public void testInvalidInputTag() throws DataFilterException {
+  void sanitize_whenInputTagHasInvalidType_returnsNull() throws DataFilterException {
+    // Arrange
     String[] types =
         new String[] {
           "file", "FILE", "INVALID_TYPE",
@@ -257,9 +293,13 @@ public class TagVerifierTest {
     verifier = HTMLFilter.allowedTagsVerifiers.get(tagname);
 
     for (String t : types) {
+      // Act
       attributes.put("type", t);
       htmlTag = new ParsedTag(tagname, attributes);
-      assertNull(verifier.sanitize(htmlTag, pc), "Input tag with an invalid type");
+      ParsedTag sanitized = verifier.sanitize(htmlTag, pc);
+
+      // Assert
+      assertNull(sanitized, "Input tag with an invalid type");
     }
   }
 }
