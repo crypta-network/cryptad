@@ -853,7 +853,9 @@ public class Metadata implements Serializable {
     }
     if (orig.hashes != null) {
       this.hashes = new HashResult[orig.hashes.length];
-      for (int i = 0; i < this.hashes.length; i++) this.hashes[i] = orig.hashes[i].clone();
+      for (int i = 0; i < this.hashes.length; i++) {
+        this.hashes[i] = new HashResult(orig.hashes[i]);
+      }
     }
     if (orig.manifestEntries != null) {
       this.manifestEntries = HashMap.newHashMap(orig.manifestEntries.size());
