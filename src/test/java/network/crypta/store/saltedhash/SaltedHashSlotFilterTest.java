@@ -18,8 +18,6 @@ import network.crypta.store.CHKStore;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.TestProperty;
-import network.crypta.support.Ticker;
-import network.crypta.support.TrivialTicker;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.io.ArrayBucketFactory;
@@ -31,10 +29,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** Test the slot filter mechanism */
-public class SaltedHashSlotFilterTest {
+class SaltedHashSlotFilterTest {
 
   @BeforeAll
-  public static void setupClass() {
+  static void setupClass() {
     FileUtil.removeAll(TEMP_DIR);
 
     if (!TEMP_DIR.mkdir()) {
@@ -43,72 +41,129 @@ public class SaltedHashSlotFilterTest {
   }
 
   @AfterAll
-  public static void cleanup() {
+  static void cleanup() {
     FileUtil.removeAll(TEMP_DIR);
   }
 
   @BeforeEach
-  public void setUpTest() {
+  void setUpTest() {
     ResizablePersistentIntBuffer.setPersistenceTime(-1);
     exec.start();
   }
 
   @Test
-  public void testCHKPresent_writeImmediately()
+  @SuppressWarnings("UnnecessaryLocalVariable")
+  void chkPresent_whenPersistenceImmediate_expectKeysPresent()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    checkCHKPresent(
-        -1, TEST_COUNT, ACCEPTABLE_FALSE_POSITIVES, STORE_SIZE, "testCHKPresent_writeImmediately");
+    // Arrange
+    int persistenceTime = -1;
+    int testCount = TEST_COUNT;
+    int acceptableFalsePositives = ACCEPTABLE_FALSE_POSITIVES;
+    int storeSize = STORE_SIZE;
+    String testName = "chkPresent_whenPersistenceImmediate_expectKeysPresent";
+
+    // Act
+    CheckResult result = checkCHKPresent(persistenceTime, testCount, storeSize, testName);
+
+    // Assert
+    assertTrue(result.falsePositives <= acceptableFalsePositives);
+    assertEquals(testCount, result.verifiedKeys);
   }
 
   // Much longer than the test will take.
   @Test
-  public void testCHKPresent_veryLongPersistanceTime()
+  @SuppressWarnings("UnnecessaryLocalVariable")
+  void chkPresent_whenPersistenceVeryLong_expectKeysPresent()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    checkCHKPresent(
-        600 * 1000,
-        TEST_COUNT,
-        ACCEPTABLE_FALSE_POSITIVES,
-        STORE_SIZE,
-        "testCHKPresent_veryLongPersistanceTime");
+    // Arrange
+    int persistenceTime = 600 * 1000;
+    int testCount = TEST_COUNT;
+    int acceptableFalsePositives = ACCEPTABLE_FALSE_POSITIVES;
+    int storeSize = STORE_SIZE;
+    String testName = "chkPresent_whenPersistenceVeryLong_expectKeysPresent";
+
+    // Act
+    CheckResult result = checkCHKPresent(persistenceTime, testCount, storeSize, testName);
+
+    // Assert
+    assertTrue(result.falsePositives <= acceptableFalsePositives);
+    assertEquals(testCount, result.verifiedKeys);
   }
 
   // Check that it doesn't reuse slots if it can avoid it.
   @Test
-  public void testCHKPresent_noReuseSlots()
+  void chkPresent_whenStoreFull_expectNoSlotReuse()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    checkCHKPresent(
-        -1,
-        SaltedHashFreenetStore.OPTION_MAX_PROBE,
-        1,
-        SaltedHashFreenetStore.OPTION_MAX_PROBE,
-        "testCHKPresent_noReuseSlots");
+    // Arrange
+    int persistenceTime = -1;
+    int testCount = SaltedHashFreenetStore.OPTION_MAX_PROBE;
+    int acceptableFalsePositives = 1;
+    int storeSize = SaltedHashFreenetStore.OPTION_MAX_PROBE;
+    String testName = "chkPresent_whenStoreFull_expectNoSlotReuse";
+
+    // Act
+    CheckResult result = checkCHKPresent(persistenceTime, testCount, storeSize, testName);
+
+    // Assert
+    assertTrue(result.falsePositives <= acceptableFalsePositives);
+    assertEquals(testCount, result.verifiedKeys);
   }
 
   @Test
-  public void testCHKPresent_smallStoreSpace()
+  void chkPresent_whenStoreSpaceSmall_expectKeysPresent()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    checkCHKPresent(-1, 10, 1, 20, "testCHKPresent_smallStoreSpace");
+    // Arrange
+    int persistenceTime = -1;
+    int testCount = 10;
+    int acceptableFalsePositives = 1;
+    int storeSize = 20;
+    String testName = "chkPresent_whenStoreSpaceSmall_expectKeysPresent";
+
+    // Act
+    CheckResult result = checkCHKPresent(persistenceTime, testCount, storeSize, testName);
+
+    // Assert
+    assertTrue(result.falsePositives <= acceptableFalsePositives);
+    assertEquals(testCount, result.verifiedKeys);
   }
 
   @Test
-  public void testCHKPresentWithClose_writeImmediately()
+  void chkPresentWithClose_whenPersistenceImmediate_expectKeysPresentAfterReopen()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    checkCHKPresentWithClose(-1, "testCHKPresentWithClose_writeImmediately");
+    // Arrange
+    int persistenceTime = -1;
+    String testName = "chkPresentWithClose_whenPersistenceImmediate_expectKeysPresentAfterReopen";
+
+    // Act
+    CheckResult result = checkCHKPresentWithClose(persistenceTime, testName);
+
+    // Assert
+    assertTrue(result.falsePositives <= ACCEPTABLE_FALSE_POSITIVES);
+    assertTrue(result.verifiedKeys > 0);
   }
 
   @Test
-  public void testCHKPresentWithClose_veryLongPersistanceTime()
+  void chkPresentWithClose_whenPersistenceVeryLong_expectKeysPresentAfterReopen()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    // Much longer than the test will take.
-    checkCHKPresentWithClose(600 * 1000, "testCHKPresentWithClose_veryLongPersistanceTime");
+    // Arrange
+    int persistenceTime = 600 * 1000;
+    String testName = "chkPresentWithClose_whenPersistenceVeryLong_expectKeysPresentAfterReopen";
+
+    // Act
+    CheckResult result = checkCHKPresentWithClose(persistenceTime, testName);
+
+    // Assert
+    assertTrue(result.falsePositives <= ACCEPTABLE_FALSE_POSITIVES);
+    assertTrue(result.verifiedKeys > 0);
   }
 
-  public void checkCHKPresentWithClose(int persistenceTime, String testName)
+  private CheckResult checkCHKPresentWithClose(int persistenceTime, String testName)
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     ResizablePersistentIntBuffer.setPersistenceTime(persistenceTime);
     File f = getStorePath(testName);
 
     CHKStore store = new CHKStore();
+    int falsePositives;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -123,59 +178,12 @@ public class SaltedHashSlotFilterTest {
             null)) {
       saltStore.start(null, true);
 
-      int falsePositives = populateStore(store, saltStore, TEST_COUNT);
-
-      assertTrue(falsePositives <= ACCEPTABLE_FALSE_POSITIVES);
-    }
-
-    store = new CHKStore();
-    try (SaltedHashFreenetStore<CHKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
-      saltStore.start(null, true);
-
-      checkStore(store, saltStore, TEST_COUNT);
-    }
-  }
-
-  @Test
-  public void testCHKPresentWithAbort()
-      throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
-    ResizablePersistentIntBuffer.setPersistenceTime(1000);
-    File f = getStorePath("testCHKPresentWithAbort");
-
-    CHKStore store = new CHKStore();
-    try (SaltedHashFreenetStore<CHKBlock> saltStore =
-        SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
-      saltStore.start(null, true);
-
-      int falsePositives = populateStore(store, saltStore, TEST_COUNT);
-
-      assertTrue(falsePositives <= ACCEPTABLE_FALSE_POSITIVES);
-
+      falsePositives = populateStore(store, saltStore, TEST_COUNT);
       saltStore.close(true);
     }
 
     store = new CHKStore();
+    int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -190,17 +198,73 @@ public class SaltedHashSlotFilterTest {
             null)) {
       saltStore.start(null, true);
 
-      checkStore(store, saltStore, TEST_COUNT);
+      verifiedKeys = checkStore(store, saltStore, TEST_COUNT, false);
     }
+    return new CheckResult(falsePositives, verifiedKeys);
   }
 
   @Test
-  public void testCHKDelayedTurnOnSlotFilters()
+  void chkPresent_whenStoreClosedWithAbort_expectKeysPresentAfterReopen()
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
+    // Arrange
     ResizablePersistentIntBuffer.setPersistenceTime(1000);
-    File f = getStorePath("testCHKDelayedTurnOnSlotFilters");
+    File f = getStorePath("chkPresent_whenStoreClosedWithAbort_expectKeysPresentAfterReopen");
 
+    // Act
     CHKStore store = new CHKStore();
+    int falsePositives;
+    try (SaltedHashFreenetStore<CHKBlock> saltStore =
+        SaltedHashFreenetStore.construct(
+            f,
+            "testCachingFreenetStoreCHK",
+            store,
+            weakPRNG,
+            STORE_SIZE,
+            true,
+            SemiOrderedShutdownHook.get(),
+            true,
+            true,
+            null)) {
+      saltStore.start(null, true);
+
+      falsePositives = populateStore(store, saltStore, TEST_COUNT);
+      saltStore.close(true);
+    }
+
+    store = new CHKStore();
+    int verifiedKeys;
+    try (SaltedHashFreenetStore<CHKBlock> saltStore =
+        SaltedHashFreenetStore.construct(
+            f,
+            "testCachingFreenetStoreCHK",
+            store,
+            weakPRNG,
+            STORE_SIZE,
+            true,
+            SemiOrderedShutdownHook.get(),
+            true,
+            true,
+            null)) {
+      saltStore.start(null, true);
+
+      verifiedKeys = checkStore(store, saltStore, TEST_COUNT, false);
+    }
+
+    // Assert
+    assertTrue(falsePositives <= ACCEPTABLE_FALSE_POSITIVES);
+    assertTrue(verifiedKeys > 0);
+  }
+
+  @Test
+  void chkPresent_whenSlotFiltersEnabledAfterPopulate_expectKeysPresent()
+      throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
+    // Arrange
+    ResizablePersistentIntBuffer.setPersistenceTime(1000);
+    File f = getStorePath("chkPresent_whenSlotFiltersEnabledAfterPopulate_expectKeysPresent");
+
+    // Act
+    CHKStore store = new CHKStore();
+    int falsePositives;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -215,13 +279,12 @@ public class SaltedHashSlotFilterTest {
             null)) {
       saltStore.start(null, true);
 
-      int falsePositives = populateStore(store, saltStore, TEST_COUNT);
-
-      assertEquals(falsePositives, TEST_COUNT);
+      falsePositives = populateStore(store, saltStore, TEST_COUNT);
     }
 
     store = new CHKStore();
     // Now turn on slot filters. Does it still work?
+    int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -236,21 +299,28 @@ public class SaltedHashSlotFilterTest {
             null)) {
       saltStore.start(null, true);
 
-      checkStore(store, saltStore, TEST_COUNT);
+      verifiedKeys = checkStore(store, saltStore, TEST_COUNT, false);
     }
+
+    // Assert
+    assertEquals(TEST_COUNT, falsePositives);
+    assertTrue(verifiedKeys > 0);
   }
 
   @Test
-  public void testCHKDelayedTurnOnSlotFiltersWithCleaner()
+  void chkPresent_whenSlotFiltersEnabledWithCleaner_expectKeysPresent()
       throws IOException,
           CHKEncodeException,
           CHKVerifyException,
           CHKDecodeException,
           InterruptedException {
+    // Arrange
     ResizablePersistentIntBuffer.setPersistenceTime(1000);
-    File f = getStorePath("testCHKDelayedTurnOnSlotFiltersWithCleaner");
+    File f = getStorePath("chkPresent_whenSlotFiltersEnabledWithCleaner_expectKeysPresent");
 
+    // Act
     CHKStore store = new CHKStore();
+    int falsePositives;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -265,14 +335,13 @@ public class SaltedHashSlotFilterTest {
             null)) {
       saltStore.start(null, true);
 
-      int falsePositives = populateStore(store, saltStore, TEST_COUNT);
-
-      assertEquals(falsePositives, TEST_COUNT);
+      falsePositives = populateStore(store, saltStore, TEST_COUNT);
     }
 
     store = new CHKStore();
     // Now turn on slot filters. Does it still work?
     SaltedHashFreenetStore.setNoCleanerSleep(true);
+    int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -288,8 +357,12 @@ public class SaltedHashSlotFilterTest {
       saltStore.start(null, true);
       saltStore.testingWaitForCleanerDone();
 
-      checkStore(store, saltStore, TEST_COUNT);
+      verifiedKeys = checkStore(store, saltStore, TEST_COUNT, false);
     }
+
+    // Assert
+    assertEquals(TEST_COUNT, falsePositives);
+    assertTrue(verifiedKeys > 0);
   }
 
   private File getStorePath(String testname) {
@@ -321,15 +394,10 @@ public class SaltedHashSlotFilterTest {
     return falsePositives;
   }
 
-  private void checkStore(CHKStore store, SaltedHashFreenetStore<CHKBlock> saltStore, int numKeys)
-      throws CHKEncodeException, CHKVerifyException, CHKDecodeException, IOException {
-    checkStore(store, saltStore, numKeys, false);
-  }
-
-  private void checkStore(
+  private int checkStore(
       CHKStore store, SaltedHashFreenetStore<CHKBlock> saltStore, int numKeys, boolean requireAll)
       throws CHKEncodeException, IOException, CHKVerifyException, CHKDecodeException {
-    boolean atLeastOneKey = false;
+    int verifiedKeys = 0;
     for (int i = 0; i < numKeys; i++) {
       String value = "test" + i;
       ClientCHKBlock block = encodeBlockCHK(value);
@@ -344,22 +412,20 @@ public class SaltedHashSlotFilterTest {
       String verifyValue = decodeBlockCHK(verifyBlock, key);
       assertEquals(value, verifyValue);
 
-      atLeastOneKey = true;
+      verifiedKeys++;
     }
-    assertTrue(atLeastOneKey, "At least one key should have been present");
+    return verifiedKeys;
   }
 
-  private void checkCHKPresent(
-      int persistenceTime,
-      int testCount,
-      int acceptableFalsePositives,
-      int storeSize,
-      String testName)
+  private CheckResult checkCHKPresent(
+      int persistenceTime, int testCount, int storeSize, String testName)
       throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     ResizablePersistentIntBuffer.setPersistenceTime(persistenceTime);
     File f = getStorePath(testName);
 
     CHKStore store = new CHKStore();
+    int falsePositives;
+    int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
             f,
@@ -374,12 +440,10 @@ public class SaltedHashSlotFilterTest {
             null)) {
       saltStore.start(null, true);
 
-      int falsePositives = populateStore(store, saltStore, testCount);
-
-      assertTrue(falsePositives <= acceptableFalsePositives);
-
-      checkStore(store, saltStore, testCount, true);
+      falsePositives = populateStore(store, saltStore, testCount);
+      verifiedKeys = checkStore(store, saltStore, testCount, true);
     }
+    return new CheckResult(falsePositives, verifiedKeys);
   }
 
   private String decodeBlockCHK(CHKBlock verify, ClientCHK key)
@@ -410,5 +474,6 @@ public class SaltedHashSlotFilterTest {
   private static final File TEMP_DIR = new File("tmp-SaltedHashSlotFilterTest");
   private final Random weakPRNG = new Random(12340);
   private final PooledExecutor exec = new PooledExecutor();
-  private final Ticker ticker = new TrivialTicker(exec);
+
+  private record CheckResult(int falsePositives, int verifiedKeys) {}
 }
