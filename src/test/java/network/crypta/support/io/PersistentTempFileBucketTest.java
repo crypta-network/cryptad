@@ -89,7 +89,7 @@ class PersistentTempFileBucketTest {
     long id = generator.makeRandomFilename();
     when(trackerMock.checkDiskSpace(any(), anyInt(), anyInt())).thenReturn(true);
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Act
       OutputStream os = bucket.getOutputStreamUnbuffered();
 
@@ -115,7 +115,7 @@ class PersistentTempFileBucketTest {
     long id = generator.makeRandomFilename();
     when(trackerMock.checkDiskSpace(any(), anyInt(), anyInt())).thenReturn(true);
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Act & Assert: BufferedOutputStream wraps unbuffered disk-space checking stream.
       try (OutputStream os = bucket.getOutputStream()) {
         assertInstanceOf(
@@ -138,7 +138,7 @@ class PersistentTempFileBucketTest {
     long id = generator.makeRandomFilename();
     when(trackerMock.checkDiskSpace(any(), anyInt(), anyInt())).thenReturn(true);
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Act
       try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
         os.write(new byte[len]);
@@ -156,7 +156,7 @@ class PersistentTempFileBucketTest {
     long id = generator.makeRandomFilename();
     // No stubbing needed; should not be called at all
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Act
       try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
         os.write(new byte[PersistentTempFileBucket.BUFFER_SIZE - 1]);
@@ -175,7 +175,7 @@ class PersistentTempFileBucketTest {
     when(trackerMock.checkDiskSpace(any(), anyInt(), anyInt())).thenReturn(false);
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
     File file = generator.getFilename(id);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Act / Assert
       try (OutputStream os = bucket.getOutputStreamUnbuffered()) {
         assertThrows(
@@ -195,7 +195,7 @@ class PersistentTempFileBucketTest {
     // Arrange
     long id = generator.makeRandomFilename();
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       bucket.setReadOnly();
       // Act / Assert
       assertThrows(IOException.class, bucket::getOutputStreamUnbuffered);
@@ -208,7 +208,7 @@ class PersistentTempFileBucketTest {
     long id = generator.makeRandomFilename();
     when(trackerMock.checkDiskSpace(any(), anyInt(), anyInt())).thenReturn(true);
     PersistentTempFileBucket original = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(original)) {
+    try (var _ = autoClose(original)) {
       // Create the backing file with some data
       try (OutputStream os = original.getOutputStream()) {
         os.write(new byte[] {1, 2, 3});
@@ -238,7 +238,7 @@ class PersistentTempFileBucketTest {
     // Arrange
     long id = generator.makeRandomFilename();
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Build a ClientContext with our generator as persistentFG and a spy tracker
       ClientContext context;
 
@@ -294,7 +294,7 @@ class PersistentTempFileBucketTest {
   void deleteOnExit_whenCalled_returnsFalse() {
     // Arrange
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(55L, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Act & Assert
       assertFalse(bucket.deleteOnExit());
     }
@@ -305,7 +305,7 @@ class PersistentTempFileBucketTest {
     // Arrange
     long id = 101L;
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       // Act & Assert
       assertEquals(id, bucket.getPersistentTempID());
     }
@@ -316,7 +316,7 @@ class PersistentTempFileBucketTest {
     // Arrange
     long id = 0xdeadbeefL;
     PersistentTempFileBucket bucket = new PersistentTempFileBucket(id, generator, trackerMock);
-    try (AutoFree ignored = autoClose(bucket)) {
+    try (var _ = autoClose(bucket)) {
       bucket.setReadOnly(); // capture non-default field as well
 
       ByteArrayOutputStream bos = new ByteArrayOutputStream();
