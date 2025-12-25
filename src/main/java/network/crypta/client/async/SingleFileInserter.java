@@ -336,7 +336,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
     long origSize = block.getData().size();
     byte[] hashThisLayerOnly = null;
     if (hashes != null && metadata) {
-      hashThisLayerOnly = HashResult.get(hashes, HashType.SHA256);
+      if (HashResult.contains(hashes, HashType.SHA256)) {
+        hashThisLayerOnly = HashResult.get(hashes, HashType.SHA256);
+      }
       hashes = null; // Inherit origHashes
     }
     if (hashes != null) {
@@ -402,6 +404,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
   private record KeyKind(int blockSize, int oneBlockCompressedSize, boolean isCHK, boolean isUSK) {}
 
   private KeyKind computeKeyKind(FreenetURI uri) throws InsertException {
+    if (uri == null) {
+      throw new InsertException(InsertExceptionMode.INVALID_URI, "Null key type", null);
+    }
     boolean isCHK = false;
     boolean isUSK = uri.getKeyType().equals("USK");
     int blockSize;
@@ -746,6 +751,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
 
   private void tryCompress(ClientContext context) throws InsertException {
     RandomAccessBucket origData = block.getData();
+    if (block.desiredURI == null) {
+      throw new InsertException(InsertExceptionMode.INVALID_URI, "Null key type", null);
+    }
     BlockSizes sizes = determineBlockSizes(block.desiredURI.getKeyType().toUpperCase());
     long origSize = origData.size();
     long wantHashes = computeWantedHashes(origData.size());
@@ -923,6 +931,9 @@ class SingleFileInserter implements ClientPutState, Serializable {
       throws InsertException {
 
     FreenetURI uri = block.desiredURI;
+    if (uri == null) {
+      throw new InsertException(InsertExceptionMode.INVALID_URI, "Null key type", null);
+    }
     uri.checkInsertURI(); // will throw an exception if needed
 
     if (uri.getKeyType().equals("USK")) {
