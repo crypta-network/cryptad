@@ -719,7 +719,6 @@ public class NodeClientCore implements Persistable {
       return new PersistentTempBucketFactory(
           persistentTempDir.dir(),
           "freenet-temp-",
-          node.getRandom(),
           node.getFastWeakRandom(),
           nodeConfig.getBoolean(CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS));
     } catch (IOException e) {
