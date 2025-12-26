@@ -675,7 +675,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     // Otherwise, just dump all current connection state and keep trying to connect.
     boolean remove = m.getBoolean(DMT.REMOVE);
     if (remove) {
-      node.getPeers().disconnectAndRemove(source, false, false, false);
+      node.getPeers().messenger().disconnectAndRemove(source, false, false, false);
       if (source instanceof DarknetPeerNode peerNode)
         LOG.info(
             "Disconnecting permanently from your friend \"{}\" because they asked us to remove"
@@ -1264,6 +1264,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
     if (next == null)
       next =
           node.getPeers()
+              .routingSelector()
               .closerPeer(
                   pn,
                   ctx.routedTo,

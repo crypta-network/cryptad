@@ -136,7 +136,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    */
   @Override
   protected PeerNodeStatus[] getPeerNodeStatuses(boolean noHeavy) {
-    return node.getPeers().getOpennetPeerNodeStatuses(noHeavy);
+    return node.getPeers().statusBook().getOpennetPeerNodeStatuses(noHeavy);
   }
 
   /**

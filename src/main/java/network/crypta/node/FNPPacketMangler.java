@@ -978,7 +978,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     sendJFKMessage4(params);
 
     if (dontWant) {
-      node.getPeers().disconnectAndRemove(params.pn, true, true, true);
+      node.getPeers().messenger().disconnectAndRemove(params.pn, true, true, true);
     } else {
       params.pn.maybeSendInitialMessages();
     }
@@ -1869,7 +1869,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   private void postHandshakeActionsJFK4(long newTrackerID, boolean dontWant, PeerNode pn) {
     if (newTrackerID >= 0) {
       if (dontWant) {
-        node.getPeers().disconnectAndRemove(pn, true, true, true);
+        node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
       } else {
         pn.maybeSendInitialMessages();
       }

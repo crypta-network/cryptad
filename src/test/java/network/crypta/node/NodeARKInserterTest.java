@@ -44,6 +44,7 @@ class NodeARKInserterTest {
   @Mock private NodeCrypto crypto;
   @Mock private NodeIPPortDetector detector;
   @Mock private PeerManager peerManager;
+  @Mock private PeerMessenger peerMessenger;
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient hlsc;
   @Mock private ClientContext clientContext;
@@ -86,6 +87,7 @@ class NodeARKInserterTest {
 
     when(node.getExecutor()).thenReturn(inlineExecutor);
     org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peerManager);
+    org.mockito.Mockito.lenient().when(peerManager.messenger()).thenReturn(peerMessenger);
     org.mockito.Mockito.lenient().when(node.getClientCore()).thenReturn(core);
     org.mockito.Mockito.lenient().when(core.getClientContext()).thenReturn(clientContext);
 
@@ -175,7 +177,7 @@ class NodeARKInserterTest {
     // Assert
     // Broadcast differential noderef with physical.udp
     ArgumentCaptor<SimpleFieldSet> sfsCaptor = ArgumentCaptor.forClass(SimpleFieldSet.class);
-    verify(peerManager).locallyBroadcastDiffNodeRef(sfsCaptor.capture(), eq(true), eq(false));
+    verify(peerMessenger).locallyBroadcastDiffNodeRef(sfsCaptor.capture(), eq(true), eq(false));
     assertEquals("127.0.0.1:12345", sfsCaptor.getValue().get("physical.udp"));
 
     // Insert started
@@ -231,7 +233,7 @@ class NodeARKInserterTest {
     verify(node, never()).writeOpennetFile();
 
     ArgumentCaptor<SimpleFieldSet> sfsCaptor = ArgumentCaptor.forClass(SimpleFieldSet.class);
-    verify(peerManager).locallyBroadcastDiffNodeRef(sfsCaptor.capture(), eq(true), eq(false));
+    verify(peerMessenger).locallyBroadcastDiffNodeRef(sfsCaptor.capture(), eq(true), eq(false));
     assertEquals(7L, Long.parseLong(sfsCaptor.getValue().get("ark.number")));
   }
 
@@ -253,7 +255,7 @@ class NodeARKInserterTest {
     verify(node, never()).writeNodeFile();
 
     ArgumentCaptor<SimpleFieldSet> sfsCaptor = ArgumentCaptor.forClass(SimpleFieldSet.class);
-    verify(peerManager).locallyBroadcastDiffNodeRef(sfsCaptor.capture(), eq(false), eq(true));
+    verify(peerMessenger).locallyBroadcastDiffNodeRef(sfsCaptor.capture(), eq(false), eq(true));
     assertEquals(3L, Long.parseLong(sfsCaptor.getValue().get("ark.number")));
   }
 
@@ -272,7 +274,7 @@ class NodeARKInserterTest {
     verify(crypto, never()).setMyARKNumber(any(Long.class));
     verify(node, never()).writeNodeFile();
     verify(node, never()).writeOpennetFile();
-    verifyNoInteractions(peerManager);
+    verifyNoInteractions(peerMessenger);
   }
 
   @Test

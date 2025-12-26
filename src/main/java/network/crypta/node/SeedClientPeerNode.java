@@ -159,7 +159,7 @@ public class SeedClientPeerNode extends PeerNode {
   @Override
   public boolean disconnected(boolean dumpMessageQueue, boolean dumpTrackers) {
     boolean ret = super.disconnected(true, true);
-    node.getPeers().disconnectAndRemove(this, false, false, false);
+    node.getPeers().messenger().disconnectAndRemove(this, false, false, false);
     return ret;
   }
 

@@ -275,7 +275,8 @@ public class SeednodePingTest extends RealNodeTest {
   private static PingLoopResult pingConnectedSeednodes(Node node, int pingIdStart) {
     int pingId = pingIdStart;
     int countConnectedSeednodes = 0;
-    for (SeedServerPeerNode seednode : node.getPeers().getConnectedSeedServerPeersVector(null)) {
+    for (SeedServerPeerNode seednode :
+        node.getPeers().seedPeers().getConnectedSeedServerPeersVector(null)) {
       if (pingSeednode(seednode, pingId)) {
         countConnectedSeednodes++;
         pingId++;

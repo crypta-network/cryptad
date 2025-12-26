@@ -27,6 +27,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.OpennetPeerNodeStatus;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.node.PeerStatusBook;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;
@@ -45,6 +46,7 @@ class OpennetConnectionsToadletTest {
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private PeerManager peerManager;
+  @Mock private PeerStatusBook statusBook;
   @Mock private SimpleFieldSet noderef;
 
   private OpennetConnectionsToadlet toadlet;
@@ -75,13 +77,15 @@ class OpennetConnectionsToadletTest {
     OpennetPeerNodeStatus[] statuses =
         new OpennetPeerNodeStatus[] {mock(OpennetPeerNodeStatus.class)};
     when(node.getPeers()).thenReturn(peerManager);
-    when(peerManager.getOpennetPeerNodeStatuses(false)).thenReturn(statuses);
+    when(peerManager.statusBook()).thenReturn(statusBook);
+    when(statusBook.getOpennetPeerNodeStatuses(false)).thenReturn(statuses);
 
     PeerNodeStatus[] result = toadlet.getPeerNodeStatuses(false);
 
     assertSame(statuses, result);
     verify(node, atLeastOnce()).getPeers();
-    verify(peerManager).getOpennetPeerNodeStatuses(false);
+    verify(peerManager).statusBook();
+    verify(statusBook).getOpennetPeerNodeStatuses(false);
   }
 
   @Test

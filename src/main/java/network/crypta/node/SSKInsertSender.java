@@ -240,6 +240,7 @@ public class SSKInsertSender extends BaseSender
 
   private PeerNode findNextPeer() {
     return node.getPeers()
+        .routingSelector()
         .closerPeer(
             forkedRequestTag == null ? source : null,
             nodesRoutedTo,

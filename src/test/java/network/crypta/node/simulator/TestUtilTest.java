@@ -11,6 +11,7 @@ import java.util.List;
 import network.crypta.node.Node;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerManager;
+import network.crypta.node.SeedPeerQueries;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -25,11 +26,13 @@ class TestUtilTest {
     Node node = mock(Node.class);
     OpennetManager opennet = mock(OpennetManager.class);
     PeerManager peers = mock(PeerManager.class);
+    SeedPeerQueries seedPeers = mock(SeedPeerQueries.class);
     when(node.getOpennet()).thenReturn(opennet);
     when(opennet.getAnnouncementThreshold()).thenReturn(3);
     when(node.getPeers()).thenReturn(peers);
+    when(peers.seedPeers()).thenReturn(seedPeers);
     when(peers.countSeednodes()).thenReturn(1);
-    when(peers.getConnectedSeedServerPeersVector(null)).thenReturn(List.of());
+    when(seedPeers.getConnectedSeedServerPeersVector(null)).thenReturn(List.of());
     when(peers.countValidPeers()).thenReturn(2);
     when(peers.countConnectedOpennetPeers()).thenReturn(3);
 
@@ -41,7 +44,7 @@ class TestUtilTest {
     verify(peers).countConnectedOpennetPeers();
     verify(peers).countSeednodes();
     verify(peers).countValidPeers();
-    verify(peers).getConnectedSeedServerPeersVector(null);
+    verify(seedPeers).getConnectedSeedServerPeersVector(null);
   }
 
   @Test

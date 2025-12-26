@@ -39,6 +39,7 @@ import org.mockito.quality.Strictness;
 class SeedClientPeerNodeTest {
 
   @Mock private PeerManager peerManager;
+  @Mock private PeerMessenger peerMessenger;
 
   @Mock private Node node;
 
@@ -62,6 +63,8 @@ class SeedClientPeerNodeTest {
     MessageCore usm = mock(MessageCore.class);
     doNothing().when(usm).onDisconnect(any());
     when(node.getUSM()).thenReturn(usm);
+
+    when(peerManager.messenger()).thenReturn(peerMessenger);
 
     RequestTracker tracker = mock(RequestTracker.class);
     doNothing().when(tracker).onRestartOrDisconnect(any());
@@ -212,7 +215,7 @@ class SeedClientPeerNodeTest {
     // In override: super.disconnected(true,true) returns prior connected state. New peers start
     // disconnected, so false is expected.
     assertFalse(ret);
-    verify(peerManager, times(1)).disconnectAndRemove(c, false, false, false);
+    verify(peerMessenger, times(1)).disconnectAndRemove(c, false, false, false);
   }
 
   @Test

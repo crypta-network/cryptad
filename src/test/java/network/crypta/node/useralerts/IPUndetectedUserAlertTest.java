@@ -16,6 +16,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.node.PeerManager;
+import network.crypta.node.PeerRoster;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,6 +36,7 @@ class IPUndetectedUserAlertTest {
   @Mock private Node node;
   @Mock private NodeIPDetector ipDetector;
   @Mock private PeerManager peers;
+  @Mock private PeerRoster roster;
   @Mock private NodeClientCore clientCore;
   @Mock private PersistentConfig config;
   @Mock private SubConfig nodeSubConfig;
@@ -50,6 +52,7 @@ class IPUndetectedUserAlertTest {
     // Common stubs used by multiple tests
     lenient().when(node.getIpDetector()).thenReturn(ipDetector);
     lenient().when(node.getPeers()).thenReturn(peers);
+    lenient().when(peers.roster()).thenReturn(roster);
     lenient().when(node.getDarknetPortNumber()).thenReturn(12345);
     lenient().when(node.getOpennetFNPPort()).thenReturn(-1);
     lenient().when(node.isOpennetEnabled()).thenReturn(false);
@@ -205,7 +208,7 @@ class IPUndetectedUserAlertTest {
     when(ipDetector.isDetecting()).thenReturn(false);
     when(ipDetector.noDetectPlugins()).thenReturn(false);
     when(ipDetector.hasJSTUN()).thenReturn(true);
-    when(peers.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[1]);
+    when(roster.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[1]);
 
     HTMLNode html = alert.getHTMLText();
     assertNotNull(html);
@@ -263,7 +266,7 @@ class IPUndetectedUserAlertTest {
   void htmlText_whenNoPlugins_includesLoadDetectPluginsMessageAndLinks() {
     when(ipDetector.noDetectPlugins()).thenReturn(true);
     when(ipDetector.isDetecting()).thenReturn(false);
-    when(peers.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
+    when(roster.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
 
     String out = alert.getHTMLText().generate();
     // Verify links for plugins and config are present; message is rendered via substitutions
@@ -277,7 +280,7 @@ class IPUndetectedUserAlertTest {
     when(ipDetector.noDetectPlugins()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(false);
     when(ipDetector.hasJSTUN()).thenReturn(false);
-    when(peers.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
+    when(roster.getDarknetPeers()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
 
     String out = alert.getHTMLText().generate();
     // Ensure the plugins link is present for loading JSTUN

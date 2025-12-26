@@ -340,6 +340,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     // Route it
     next =
         node.getPeers()
+            .routingSelector()
             .closerPeer(
                 source,
                 nodesRoutedTo,

@@ -125,8 +125,8 @@ public class Announcer {
    */
   protected void start() {
     if (!node.isOpennetEnabled()) return;
-    int darkPeers = node.getPeers().getDarknetPeers().length;
-    int openPeers = node.getPeers().getOpennetPeers().length;
+    int darkPeers = node.getPeers().roster().getDarknetPeers().length;
+    int openPeers = node.getPeers().roster().getOpennetPeers().length;
     int oldOpenPeers = om.countOldOpennetPeers();
     if (darkPeers + openPeers + oldOpenPeers == 0) {
       // Opennet is enabled and there are no peers. Connect to several seed nodes and announce.
@@ -180,7 +180,7 @@ public class Announcer {
 
     int count = connectSomeNodesInner(seeds);
     boolean stillConnecting;
-    List<SeedServerPeerNode> tryingSeeds = node.getPeers().getSeedServerPeersVector();
+    List<SeedServerPeerNode> tryingSeeds = node.getPeers().seedPeers().getSeedServerPeersVector();
     stillConnecting = hasUnannouncedTryingSeeds(tryingSeeds);
     debugCounts(count, stillConnecting);
     announceNow = handleNoMorePeers(count, stillConnecting);
@@ -538,11 +538,11 @@ public class Announcer {
     node.getExecutor()
         .execute(
             () -> {
-              for (OpennetPeerNode pn : node.getPeers().getOpennetPeers()) {
-                node.getPeers().disconnectAndRemove(pn, true, true, true);
+              for (OpennetPeerNode pn : node.getPeers().roster().getOpennetPeers()) {
+                node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
               }
-              for (SeedServerPeerNode pn : node.getPeers().getSeedServerPeersVector()) {
-                node.getPeers().disconnectAndRemove(pn, true, true, true);
+              for (SeedServerPeerNode pn : node.getPeers().seedPeers().getSeedServerPeersVector()) {
+                node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
               }
             });
   }
@@ -592,8 +592,9 @@ public class Announcer {
         running = runningAnnouncements;
       }
       if (enoughPeers()) {
-        for (SeedServerPeerNode pn : node.getPeers().getConnectedSeedServerPeersVector(null)) {
-          node.getPeers().disconnectAndRemove(pn, true, true, false);
+        for (SeedServerPeerNode pn :
+            node.getPeers().seedPeers().getConnectedSeedServerPeersVector(null)) {
+          node.getPeers().messenger().disconnectAndRemove(pn, true, true, false);
         }
         // Re-check every minute. Adverse conditions (e.g., CPU starvation) might require reseeding.
         node.getTicker()
@@ -689,7 +690,7 @@ public class Announcer {
 
   private void announceToAvailableSeeds() {
     List<SeedServerPeerNode> seeds =
-        node.getPeers().getConnectedSeedServerPeersVector(announcedToIdentities);
+        node.getPeers().seedPeers().getConnectedSeedServerPeersVector(announcedToIdentities);
     while (sentAnnouncements < WANT_ANNOUNCEMENTS && !seeds.isEmpty()) {
       final SeedServerPeerNode seed =
           ListUtils.removeRandomBySwapLastSimple(node.getRandom(), seeds);
@@ -839,7 +840,7 @@ public class Announcer {
                 // If disconnect takes longer than COOLING_OFF_PERIOD we might not reannounce to
                 // this seed immediately. Regardless, we cannot reannounce until the announced-to
                 // set is cleared, which is typically later than that period.
-                node.getPeers().disconnectAndRemove(seed, true, false, false);
+                node.getPeers().messenger().disconnectAndRemove(seed, true, false, false);
                 int shallow = node.maxHTL() - (totalAdded + totalNotWanted);
                 if (acceptedSomewhere)
                   LOG.atInfo()
@@ -958,7 +959,7 @@ public class Announcer {
           recentSentAnnouncements = sentAnnouncements;
           runningAnnouncementsLocal = Announcer.this.runningAnnouncements;
         }
-        List<SeedServerPeerNode> nodes = node.getPeers().getSeedServerPeersVector();
+        List<SeedServerPeerNode> nodes = node.getPeers().seedPeers().getSeedServerPeersVector();
         for (SeedServerPeerNode seed : nodes) {
           if (seed.isConnected()) connectedSeednodes++;
           else disconnectedSeednodes++;

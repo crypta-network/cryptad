@@ -2658,6 +2658,7 @@ public class NodeClientCore implements Persistable {
     // routing heuristics. If originator rules change, revisit this.
     short origHTL = node.decrementHTL(null, node.maxHTL());
     node.getPeers()
+        .routingSelector()
         .closerPeer(
             null,
             new HashSet<>(),

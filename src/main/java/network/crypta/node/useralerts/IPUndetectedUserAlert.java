@@ -157,7 +157,7 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
             new String[] {"link"},
             new HTMLNode[] {HTMLNode.link("/config/" + sc.getPrefix())});
 
-    int peers = node.getPeers().getDarknetPeers().length;
+    int peers = node.getPeers().roster().getDarknetPeers().length;
     if (peers > 0)
       textNode.addChild("p", l10n("noIPMaybeFromPeers", "number", Integer.toString(peers)));
 

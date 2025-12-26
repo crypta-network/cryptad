@@ -136,7 +136,7 @@ public class SeedServerPeerNode extends PeerNode {
     final OpennetManager om = node.getOpennet();
     if (om == null) {
       LOG.info("Opennet turned off while connecting to seednodes");
-      node.getPeers().disconnectAndRemove(this, true, true, true);
+      node.getPeers().messenger().disconnectAndRemove(this, true, true, true);
     } else {
       // Delay announcements: another node may connect first; avoid biasing toward the
       // fastest initial connection.
@@ -202,7 +202,7 @@ public class SeedServerPeerNode extends PeerNode {
   @Override
   public boolean disconnected(boolean dumpMessageQueue, boolean dumpTrackers) {
     boolean ret = super.disconnected(dumpMessageQueue, dumpTrackers);
-    node.getPeers().disconnectAndRemove(this, false, false, false);
+    node.getPeers().messenger().disconnectAndRemove(this, false, false, false);
     return ret;
   }
 

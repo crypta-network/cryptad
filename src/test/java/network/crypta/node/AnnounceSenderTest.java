@@ -49,6 +49,7 @@ class AnnounceSenderTest {
   @Mock private NodeCrypto crypto;
   @Mock private PriorityAwareExecutor executor;
   @Mock private PeerManager peers;
+  @Mock private PeerRoutingSelector routingSelector;
 
   private static final long FIXED_UID = 777L;
 
@@ -171,10 +172,12 @@ class AnnounceSenderTest {
 
   @Test
   void run_whenNoOnlyNodeAndNoPeerChosen_expectNoMoreNodes() {
-    // Arrange: onlyNode == null, peers.closerPeer() returns null so we RNF with next == null
+    // Arrange: onlyNode == null, routingSelector.closerPeer() returns null so we RNF with next ==
+    // null
     when(node.getPeers()).thenReturn(peers);
+    when(peers.routingSelector()).thenReturn(routingSelector);
     when(node.decrementHTL(isNull(), anyShort())).thenReturn((short) 1);
-    when(peers.closerPeer(
+    when(routingSelector.closerPeer(
             isNull(),
             anySet(),
             anyDouble(),
@@ -215,10 +218,11 @@ class AnnounceSenderTest {
   void updateHtl_usesLastPeerAfterSendFailure() throws Exception {
     // Arrange: multi-peer routing (onlyNode == null)
     when(node.getPeers()).thenReturn(peers);
+    when(peers.routingSelector()).thenReturn(routingSelector);
 
     PeerNode p1 = Mockito.mock(PeerNode.class);
     PeerNode p2 = Mockito.mock(PeerNode.class);
-    when(peers.closerPeer(
+    when(routingSelector.closerPeer(
             isNull(),
             anySet(),
             anyDouble(),

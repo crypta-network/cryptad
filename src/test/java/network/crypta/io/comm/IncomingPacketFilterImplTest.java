@@ -21,6 +21,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeCrypto;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNode;
+import network.crypta.node.PeerRoster;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +40,7 @@ class IncomingPacketFilterImplTest {
   @Mock private Node node;
   @Mock private NodeCrypto crypto;
   @Mock private PeerManager peerManager;
+  @Mock private PeerRoster roster;
   @Mock private RandomSource randomSource;
 
   private IncomingPacketFilterImpl filter;
@@ -85,8 +87,9 @@ class IncomingPacketFilterImplTest {
     // Node wiring used by the filter
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
+    when(peerManager.roster()).thenReturn(roster);
     PeerNode opn = Mockito.mock(PeerNode.class);
-    when(peerManager.getByPeer(peer, mangler)).thenReturn(opn);
+    when(roster.getByPeer(peer, mangler)).thenReturn(opn);
     when(opn.handleReceivedPacket(buf, 0, buf.length, now, peer)).thenReturn(true);
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);
@@ -102,7 +105,8 @@ class IncomingPacketFilterImplTest {
   void process_whenUnknownAddress_callsManglerWithNullPeerNode_andReturnsManglerResult() {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
-    when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
+    when(peerManager.roster()).thenReturn(roster);
+    when(roster.getByPeer(peer, mangler)).thenReturn(null);
     when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.DECODED);
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);
@@ -118,7 +122,8 @@ class IncomingPacketFilterImplTest {
   void process_whenManglerNotDecoded_thenFallbackPeersHandle_returnsDecoded() {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
-    when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
+    when(peerManager.roster()).thenReturn(roster);
+    when(roster.getByPeer(peer, mangler)).thenReturn(null);
     when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.NOT_DECODED);
 
     PeerNode pn1 = Mockito.mock(PeerNode.class);
@@ -139,7 +144,8 @@ class IncomingPacketFilterImplTest {
   void process_whenManglerNotDecoded_andNoPeerHandles_returnsNotDecoded() {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
-    when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
+    when(peerManager.roster()).thenReturn(roster);
+    when(roster.getByPeer(peer, mangler)).thenReturn(null);
     when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.NOT_DECODED);
 
     PeerNode pn1 = Mockito.mock(PeerNode.class);
@@ -160,7 +166,8 @@ class IncomingPacketFilterImplTest {
   void process_whenManglerReturnsShuttingDown_returnsShuttingDown_withoutFallback() {
     when(node.getRandom()).thenReturn(randomSource);
     when(node.getPeers()).thenReturn(peerManager);
-    when(peerManager.getByPeer(peer, mangler)).thenReturn(null);
+    when(peerManager.roster()).thenReturn(roster);
+    when(roster.getByPeer(peer, mangler)).thenReturn(null);
     when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.SHUTTING_DOWN);
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);

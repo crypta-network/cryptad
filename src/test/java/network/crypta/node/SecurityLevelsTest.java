@@ -32,12 +32,14 @@ class SecurityLevelsTest {
 
   @Mock private Node node;
   @Mock private PeerManager peers;
+  @Mock private PeerRoster roster;
 
   @BeforeEach
   void setup() {
     // Ensure Node.getPeers() returns our mock for tests that need it; lenient to avoid strict
     // stubbing failures in tests that don't call getConfirmWarning().
     org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peers);
+    org.mockito.Mockito.lenient().when(peers.roster()).thenReturn(roster);
   }
 
   // --- Helpers ---
@@ -60,7 +62,7 @@ class SecurityLevelsTest {
 
   private void stubPeers(int added, int connected) {
     org.mockito.Mockito.lenient()
-        .when(peers.getDarknetPeers())
+        .when(roster.getDarknetPeers())
         .thenReturn(new DarknetPeerNode[Math.max(added, 0)]);
     org.mockito.Mockito.lenient()
         .when(peers.countConnectedDarknetPeers())

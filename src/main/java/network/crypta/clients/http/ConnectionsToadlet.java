@@ -925,7 +925,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       boolean advancedMode,
       long now) {
     double totalSelectionRate = 0.0;
-    PeerNodeStatus[] allPeerNodeStatuses = node.getPeers().getPeerNodeStatuses(true);
+    PeerNodeStatus[] allPeerNodeStatuses = node.getPeers().statusBook().getPeerNodeStatuses(true);
     for (PeerNodeStatus status : allPeerNodeStatuses) {
       totalSelectionRate += status.getSelectionRate();
     }
