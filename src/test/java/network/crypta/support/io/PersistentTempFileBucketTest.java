@@ -248,7 +248,7 @@ class PersistentTempFileBucketTest {
       PersistentTempBucketFactory ptbfSpy =
           spy(
               new PersistentTempBucketFactory(
-                  tempDir.toFile(), "ctx-", null, seededSecureRandom(3), false));
+                  tempDir.toFile(), "ctx-", seededSecureRandom(3), false));
 
       // Rebuild context with ptbfSpy to ensure persistentFileTracker is our spy and persistentFG is
       // generator
