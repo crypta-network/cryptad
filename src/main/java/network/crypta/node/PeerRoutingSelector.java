@@ -9,9 +9,26 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Selects routing peers based on closeness and peer status.
+ * Selects routing peers based on location closeness and peer status signals.
  *
- * <p>This encapsulates the routing-selection logic formerly embedded in {@link PeerManager}.
+ * <p>This class centralizes the peer-selection policy that was previously spread across {@link
+ * PeerManager}. Callers provide the candidate set and routing context, and the selector evaluates
+ * peer distance, routing backoff state, timeouts, and optional recently-failed handling to produce
+ * a single best peer. The selector does not mutate peer state directly; instead it reports
+ * selection statistics and returns the chosen {@link PeerNode} for the caller to route to.
+ *
+ * <p>Selection is stateful only within a single call and is safe for repeated use as long as
+ * callers provide consistent inputs. The implementation assumes that the provided peer roster and
+ * status book are kept up to date by the surrounding node lifecycle. Thread safety is delegated to
+ * those collaborators; this class itself is immutable after construction.
+ *
+ * <p>Responsibilities include:
+ *
+ * <ul>
+ *   <li>Filtering peers by eligibility (version, backoff, routing status).
+ *   <li>Computing distance and load-based weighting.
+ *   <li>Optionally incorporating recently-failed retry timing.
+ * </ul>
  */
 public class PeerRoutingSelector {
   private static final Logger LOG = LoggerFactory.getLogger(PeerRoutingSelector.class);
@@ -20,12 +37,47 @@ public class PeerRoutingSelector {
   private final PeerRoster roster;
   private final PeerStatusBook statusBook;
 
+  /**
+   * Creates a selector that draws candidates from the provided node services.
+   *
+   * <p>The selector keeps references to the node, roster, and status book so it can evaluate peer
+   * availability, distance, and routing backoff state during selection. The constructor does not
+   * validate these collaborators beyond storing them, so callers should ensure they are non-null
+   * and fully initialized before invoking selection methods.
+   *
+   * @param node owning node used for configuration and statistics reporting
+   * @param roster source of the currently connected peer set
+   * @param statusBook snapshot provider for peer routing status counts
+   */
   public PeerRoutingSelector(Node node, PeerRoster roster, PeerStatusBook statusBook) {
     this.node = node;
     this.roster = roster;
     this.statusBook = statusBook;
   }
 
+  /**
+   * Selects the closest eligible peer using default selection parameters.
+   *
+   * <p>This overload provides a simplified entry point for common routing decisions. It applies a
+   * default maximum distance of {@code 2.0}, uses the current wall-clock time for timeout checks,
+   * and does not request recently-failed handling. The method is side-effect free with respect to
+   * peer state; it only reports backoff statistics when requested.
+   *
+   * @param pn the origin peer for this routing decision, or {@code null}
+   * @param routedTo peers already selected for this request path
+   * @param target target location on the ring, in normalized location units
+   * @param ignoreSelf whether to ignore the local node when selecting
+   * @param calculateMisrouting whether to record misrouting and backoff metrics
+   * @param minVersion minimum acceptable peer version, inclusive, in build units
+   * @param addUnpickedLocsTo optional list to collect alternative locations
+   * @param key key for per-node failure tracking, or {@code null}
+   * @param outgoingHTL hop-to-live for the outgoing request, in hops
+   * @param ignoreBackoffUnder backoff window to ignore, in milliseconds
+   * @param isLocal whether the request originates locally, affecting policy
+   * @param realTime whether to enforce real-time routing constraints
+   * @param excludeMandatoryBackoff whether to exclude mandatory-backoff peers from selection
+   * @return the selected peer, or {@code null} if none qualifies
+   */
   public PeerNode closerPeer(
       PeerNode pn,
       Set<PeerNode> routedTo,
@@ -60,6 +112,34 @@ public class PeerRoutingSelector {
         excludeMandatoryBackoff);
   }
 
+  /**
+   * Selects the closest eligible peer using fully specified routing parameters.
+   *
+   * <p>This method evaluates all connected peers against distance, routing backoff, timeout, and
+   * load-management constraints to produce a single best candidate. It can optionally integrate
+   * recently-failed information to delay retries until an appropriate wake-up time. The selection
+   * is deterministic for the given inputs and does not mutate peers; callers remain responsible for
+   * updating per-request state and for respecting a {@code null} result.
+   *
+   * @param pn the origin peer for this routing decision, or {@code null}
+   * @param routedTo peers already selected for this request path
+   * @param target target location on the ring, in normalized location units
+   * @param ignoreSelf whether to ignore the local node when selecting
+   * @param calculateMisrouting whether to record misrouting and backoff metrics
+   * @param minVersion minimum acceptable peer version, inclusive, in build units
+   * @param addUnpickedLocsTo optional list to collect alternative locations
+   * @param maxDistance maximum allowable distance from the target location
+   * @param key key for per-node failure tracking, or {@code null}
+   * @param outgoingHTL hop-to-live for the outgoing request, in hops
+   * @param ignoreBackoffUnder backoff window to ignore, in milliseconds
+   * @param isLocal whether the request originates locally, affecting policy
+   * @param realTime whether to enforce real-time routing constraints
+   * @param recentlyFailed optional holder for recently-failed timing feedback
+   * @param ignoreTimeout whether to ignore timeout-based exclusion checks
+   * @param now current time in milliseconds used for timeout comparisons
+   * @param newLoadManagement whether to use new load-management heuristics
+   * @return the selected peer, or {@code null} if none qualifies
+   */
   public PeerNode closerPeer(
       PeerNode pn,
       Set<PeerNode> routedTo,
@@ -131,9 +211,7 @@ public class PeerRoutingSelector {
     int backedOff =
         statusBook.getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
     if (backedOff + connected > 0) {
-      node.getNodeStats()
-          .backedOffPercent
-          .report(((double) backedOff) / ((double) backedOff + (double) connected));
+      node.getNodeStats().backedOffPercent.report((double) backedOff / (backedOff + connected));
     }
   }
 
@@ -412,8 +490,7 @@ public class PeerRoutingSelector {
       double totalSelectionRate,
       int index,
       long now) {
-    boolean skip = false;
-    skip = skip || isAlreadyRoutedTo(p, routedTo);
+    boolean skip = isAlreadyRoutedTo(p, routedTo);
     skip = skip || isOrigin(p, origin);
     skip = skip || isNotRoutable(p);
     skip = skip || isDisconnecting(p);
@@ -557,7 +634,7 @@ public class PeerRoutingSelector {
     boolean direct = true;
     double realDiff = Location.distance(loc, target);
     double diff = realDiff;
-    if (p.shallWeRouteAccordingToOurPeersLocation((int) outgoingHTL)) {
+    if (p.shallWeRouteAccordingToOurPeersLocation(outgoingHTL)) {
       double l = p.getClosestPeerLocation(target, excludeLocations);
       if (!Double.isNaN(l)) {
         double newDiff = Location.distance(l, target);
@@ -772,8 +849,7 @@ public class PeerRoutingSelector {
       until = Math.min(until, st.soonestTimeoutWakeup);
       if (LOG.isDebugEnabled()) {
         LOG.debug(
-            "Recently failed: {}ms",
-            Math.min((long) Integer.MAX_VALUE, st.soonestTimeoutWakeup - now));
+            "Recently failed: {}ms", Math.min(Integer.MAX_VALUE, st.soonestTimeoutWakeup - now));
       }
     }
     return until;
@@ -784,22 +860,20 @@ public class PeerRoutingSelector {
     long decidedUntil = until;
     if (decidedUntil > now + FailureTable.RECENTLY_FAILED_TIME) {
       long delay = decidedUntil - now;
-      LOG.error("Wake-up time too long: {}", TimeUtil.formatTime(delay));
+      if (LOG.isErrorEnabled()) {
+        LOG.error("Wake-up time too long: {}", TimeUtil.formatTime(delay));
+      }
       decidedUntil = now + FailureTable.RECENTLY_FAILED_TIME;
     }
     return key != null && node.getFailureTable().hadAnyOffers(key) ? -1L : decidedUntil;
   }
 
   private static final class FirstSecondChoice {
-    private final PeerNode first;
     private final long firstTime;
-    private final PeerNode second;
     private final long secondTime;
 
-    private FirstSecondChoice(PeerNode first, long firstTime, PeerNode second, long secondTime) {
-      this.first = first;
+    private FirstSecondChoice(long firstTime, long secondTime) {
       this.firstTime = firstTime;
-      this.second = second;
       this.secondTime = secondTime;
     }
   }
@@ -866,9 +940,9 @@ public class PeerRoutingSelector {
             now,
             newLoadManagement);
     if (second == null) return null;
-    long secondTime = entry.getTimeoutTime(first, outgoingHTL, now, false);
+    long secondTime = entry.getTimeoutTime(second, outgoingHTL, now, false);
     if (secondTime <= now) return null;
-    return new FirstSecondChoice(first, firstTime, second, secondTime);
+    return new FirstSecondChoice(firstTime, secondTime);
   }
 
   private void postSelectionUpdate(
@@ -886,8 +960,7 @@ public class PeerRoutingSelector {
         node.getNodeStats()
             .backedOffPercent
             .report(
-                ((double) numberOfRoutingBackedOff)
-                    / ((double) numberOfRoutingBackedOff + (double) numberOfConnected));
+                (double) numberOfRoutingBackedOff / (numberOfRoutingBackedOff + numberOfConnected));
       }
     }
     if (addUnpickedLocsTo != null
@@ -899,7 +972,7 @@ public class PeerRoutingSelector {
 
   private int maxCountWaiting(PeerNode[] peers) {
     int count = countConnectedPeers(peers);
-    return clamp(count / 4, 3, 10);
+    return clampCountWaiting(count / 4);
   }
 
   private int countConnectedPeers(PeerNode[] peers) {
@@ -971,10 +1044,12 @@ public class PeerRoutingSelector {
     return wakeup;
   }
 
-  private int clamp(int value, int minValue, int maxValue) {
-    if (value < minValue) return minValue;
-    return Math.min(value, maxValue);
+  private int clampCountWaiting(int value) {
+    if (value < MIN_COUNT_WAITING) return MIN_COUNT_WAITING;
+    return Math.min(value, MAX_COUNT_WAITING);
   }
 
   private static final long MIN_DELTA = 2000L;
+  private static final int MIN_COUNT_WAITING = 3;
+  private static final int MAX_COUNT_WAITING = 10;
 }
