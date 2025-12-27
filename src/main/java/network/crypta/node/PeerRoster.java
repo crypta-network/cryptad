@@ -598,7 +598,7 @@ public class PeerRoster {
       }
       PeerNode[] keepArray = keep.toArray(new PeerNode[0]);
       myPeers = keepArray;
-      connectedPeers = Arrays.copyOf(keepArray, conn.size());
+      connectedPeers = conn.toArray(new PeerNode[0]);
     }
   }
 
