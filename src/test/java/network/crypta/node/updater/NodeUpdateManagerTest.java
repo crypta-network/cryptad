@@ -30,6 +30,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeFile;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
+import network.crypta.node.PeerMessenger;
 import network.crypta.node.PeerNode;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.Version;
@@ -59,6 +60,7 @@ class NodeUpdateManagerTest {
   @Mock NodeClientCore nodeCore;
   @Mock UserAlertManager alerts;
   @Mock PeerManager peerManager;
+  @Mock PeerMessenger peerMessenger;
   @Mock NodeStats nodeStats;
   @Mock PluginManager pluginManager;
 
@@ -80,6 +82,7 @@ class NodeUpdateManagerTest {
     when(nodeCore.getPersistentTempDir()).thenReturn(persistentTmpDir);
     when(nodeCore.getAlerts()).thenReturn(alerts);
     when(node.getPeers()).thenReturn(peerManager);
+    when(peerManager.messenger()).thenReturn(peerMessenger);
     when(node.getNodeStats()).thenReturn(nodeStats);
     when(node.getPluginManager()).thenReturn(pluginManager);
     when(pluginManager.getOfficialPlugins()).thenReturn(Collections.emptyList());
@@ -220,7 +223,7 @@ class NodeUpdateManagerTest {
     assertTrue(manager.isBlown());
 
     // Announcement broadcasted via PeerManager
-    verify(peerManager, times(1))
+    verify(peerMessenger, times(1))
         .localBroadcast(
             any(Message.class),
             eq(true),

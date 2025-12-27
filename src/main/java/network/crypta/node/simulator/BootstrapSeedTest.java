@@ -69,7 +69,7 @@ public class BootstrapSeedTest {
     while (seconds < 600) {
       Thread.sleep(1000);
       int seeds = node.getPeers().countSeednodes();
-      int seedConns = node.getPeers().getConnectedSeedServerPeersVector(null).size();
+      int seedConns = node.getPeers().seedPeers().getConnectedSeedServerPeersVector(null).size();
       int opennetPeers = node.getPeers().countValidPeers();
       int opennetConns = node.getPeers().countConnectedOpennetPeers();
       LOG.error(

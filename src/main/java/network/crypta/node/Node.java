@@ -379,7 +379,7 @@ public class Node implements TimeSkewDetectorCallback {
       // reference
       SimpleFieldSet fs = new SimpleFieldSet(true);
       fs.putSingle("myName", myName);
-      peers.locallyBroadcastDiffNodeRef(fs, true, false);
+      peers.messenger().locallyBroadcastDiffNodeRef(fs, true, false);
       // We call the callback once again to ensure MeaningfulNodeNameUserAlert
       // has been unregistered ... see #1595
       get();
@@ -3966,12 +3966,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     // IMPORTANT: Read the peers only after we have finished initializing Node.
     // Peer constructors are complex and can call methods on Node.
-    peers.tryReadPeers(
-        nodeDir.file("peers-" + getDarknetPortNumber()).getPath(),
-        darknetCrypto,
-        null,
-        false,
-        false);
+    peers
+        .persistence()
+        .tryReadPeers(
+            nodeDir.file("peers-" + getDarknetPortNumber()).getPath(),
+            darknetCrypto,
+            null,
+            false,
+            false);
     peers.updatePMUserAlert();
 
     dispatcher.start(nodeStats); // must be before usm
@@ -5427,7 +5429,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     try {
       Message msg = DMT.createFNPDisconnect(false, false, -1, new ShortBuffer(new byte[0]));
-      peers.localBroadcast(msg, true, false, peers.ctrDisconn);
+      peers.messenger().localBroadcast(msg, true, false, peers.messenger().getDisconnCounter());
     } catch (Exception t) {
       try {
         // E.g. if we haven't finished startup
@@ -5454,7 +5456,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * @return array of active darknet peers.
    */
   public DarknetPeerNode[] getDarknetConnections() {
-    return peers.getDarknetPeers();
+    return peers.roster().getDarknetPeers();
   }
 
   /**
@@ -5476,7 +5478,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * @param pn peer to disconnect and remove.
    */
   public void removePeerConnection(PeerNode pn) {
-    peers.disconnectAndRemove(pn, true, false, false);
+    peers.messenger().disconnectAndRemove(pn, true, false, false);
   }
 
   public void onConnectedPeer() {
@@ -5778,7 +5780,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    peers.connect(node.darknetCrypto.exportPublicFieldSet(), trust, visibility);
+    peers.connector().connect(node.darknetCrypto.exportPublicFieldSet(), trust, visibility);
   }
 
   public short maxHTL() {

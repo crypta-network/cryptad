@@ -490,6 +490,7 @@ public class NodeUpdateManager {
       LOG.debug("Broadcasting UOM announcements");
     }
     node.getPeers()
+        .messenger()
         .localBroadcast(msg, true, true, getByteCounter(), TRANSITION_VERSION, Integer.MAX_VALUE);
   }
 

@@ -431,7 +431,7 @@ public class SecurityLevels {
 
   private HTMLNode handleHighOrMaximum(
       HTMLNode parent, NETWORK_THREAT_LEVEL newThreatLevel, String checkboxName) {
-    if (node.getPeers().getDarknetPeers().length == 0) {
+    if (node.getPeers().roster().getDarknetPeers().length == 0) {
       parent.addChild("p", l10n("noFriendsWarning"));
       if (newThreatLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
         HTMLNode p = parent.addChild("p");
@@ -452,7 +452,7 @@ public class SecurityLevels {
           l10n(
               "noConnectedFriendsWarning",
               new String[] {"added"},
-              new String[] {Integer.toString(node.getPeers().getDarknetPeers().length)}));
+              new String[] {Integer.toString(node.getPeers().roster().getDarknetPeers().length)}));
       if (newThreatLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
         HTMLNode p = parent.addChild("p");
         NodeL10n.getBase()
@@ -474,7 +474,7 @@ public class SecurityLevels {
               new String[] {"connected", "added"},
               new String[] {
                 Integer.toString(node.getPeers().countConnectedDarknetPeers()),
-                Integer.toString(node.getPeers().getDarknetPeers().length)
+                Integer.toString(node.getPeers().roster().getDarknetPeers().length)
               }));
       if (newThreatLevel == NETWORK_THREAT_LEVEL.MAXIMUM) {
         HTMLNode p = parent.addChild("p");

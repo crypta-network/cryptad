@@ -241,6 +241,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private PeerNode chooseNextNode(HashSet<PeerNode> routed) {
     if (onlyNode == null) {
       return node.getPeers()
+          .routingSelector()
           .closerPeer(
               source,
               routed,

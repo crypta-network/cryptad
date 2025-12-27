@@ -767,7 +767,7 @@ public final class PageMaker {
 
   private int countEnabledDarknetPeers() {
     int darknetTotal = 0;
-    for (DarknetPeerNode peer : node.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode peer : node.getPeers().roster().getDarknetPeers()) {
       if (peer != null && !peer.isDisabled()) {
         darknetTotal++;
       }

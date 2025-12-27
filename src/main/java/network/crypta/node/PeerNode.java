@@ -4751,8 +4751,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   }
 
   /**
-   * Does this peernode want to be returned by for example PeerManager.getByPeer() ? False =
-   * seednode etc., never going to be routable.
+   * Should this peer be returned by roster lookups (for example {@link PeerRoster#getByPeer})?
+   * False means seed nodes or other entries that are never routed.
    */
   public abstract boolean isRealConnection();
 

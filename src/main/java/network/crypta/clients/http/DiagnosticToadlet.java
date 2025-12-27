@@ -414,7 +414,7 @@ public class DiagnosticToadlet extends Toadlet {
 
   private void appendPeerStatistics(StringBuilder textBuilder) {
     textBuilder.append("Peer Statistics:\n");
-    PeerNodeStatus[] peerNodeStatuses = peers.getPeerNodeStatuses(true);
+    PeerNodeStatus[] peerNodeStatuses = peers.statusBook().getPeerNodeStatuses(true);
     Arrays.sort(peerNodeStatuses, Comparator.comparingInt(PeerNodeStatus::getStatusValue));
     appendPeerCount(
         textBuilder, peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED, "connectedShort");

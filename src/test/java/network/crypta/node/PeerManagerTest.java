@@ -191,16 +191,16 @@ class PeerManagerTest {
     pm.addPeer(p4);
 
     // only p1 qualifies
-    pm.localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
+    pm.messenger().localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
     verify(p1, times(1)).sendAsync(msg, null, ctr);
 
     // minVersion excludes all (since min=101 and p1..p3 have 100; p4 not connected)
-    pm.localBroadcast(msg, true, false, ctr, 101, Integer.MAX_VALUE);
+    pm.messenger().localBroadcast(msg, true, false, ctr, 101, Integer.MAX_VALUE);
     verify(p1, times(1)).sendAsync(msg, null, ctr); // unchanged
 
     // throwing NotConnectedException is ignored
     doThrow(new NotConnectedException()).when(p1).sendAsync(msg, null, ctr);
-    pm.localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
+    pm.messenger().localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
     // no exception thrown
   }
 
@@ -219,13 +219,13 @@ class PeerManagerTest {
     pm.addPeer(open);
     pm.addPeer(disconnected);
 
-    pm.locallyBroadcastDiffNodeRef(fs, true, false); // toDarknetOnly
+    pm.messenger().locallyBroadcastDiffNodeRef(fs, true, false); // toDarknetOnly
     verify(dark, times(1))
         .sendNodeToNodeMessage(fs, Node.N2N_MESSAGE_TYPE_DIFFNODEREF, false, 0L, false);
     verify(open, times(0))
         .sendNodeToNodeMessage(any(), anyInt(), anyBoolean(), anyLong(), anyBoolean());
 
-    pm.locallyBroadcastDiffNodeRef(fs, false, true); // toOpennetOnly
+    pm.messenger().locallyBroadcastDiffNodeRef(fs, false, true); // toOpennetOnly
     verify(open, times(1))
         .sendNodeToNodeMessage(fs, Node.N2N_MESSAGE_TYPE_DIFFNODEREF, false, 0L, false);
   }
@@ -242,11 +242,11 @@ class PeerManagerTest {
     pm.addPeer(pn);
 
     when(pn.matchesPeerAndPort(peer)).thenReturn(true);
-    assertEquals(pn, pm.getByPeer(peer));
+    assertEquals(pn, pm.roster().getByPeer(peer));
 
     when(pn.matchesPeerAndPort(peer)).thenReturn(false);
     when(pn.matchesIP(addr, false)).thenReturn(true);
-    assertEquals(pn, pm.getByPeer(peer));
+    assertEquals(pn, pm.roster().getByPeer(peer));
   }
 
   @Test
@@ -269,13 +269,13 @@ class PeerManagerTest {
     pm.addPeer(pn1);
     pm.addPeer(pn2);
 
-    assertEquals(pn1, pm.getByPeer(peer, mangler));
+    assertEquals(pn1, pm.roster().getByPeer(peer, mangler));
 
     // Fallback by IP + matching mangler
     when(pn1.matchesPeerAndPort(peer)).thenReturn(false);
     when(pn2.matchesPeerAndPort(peer)).thenReturn(false);
     when(pn1.matchesIP(addr, false)).thenReturn(true);
-    assertEquals(pn1, pm.getByPeer(peer, mangler));
+    assertEquals(pn1, pm.roster().getByPeer(peer, mangler));
   }
 
   @Test
@@ -294,7 +294,7 @@ class PeerManagerTest {
     pm.addPeer(p3);
     pm.addPeer(p4);
 
-    List<PeerNode> found = pm.getAllConnectedByAddress(addr, true);
+    List<PeerNode> found = pm.roster().getAllConnectedByAddress(addr, true);
     assertNotNull(found);
     assertEquals(1, found.size());
     assertEquals(p1, found.getFirst());

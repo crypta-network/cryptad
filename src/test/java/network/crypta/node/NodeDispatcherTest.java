@@ -252,7 +252,9 @@ class NodeDispatcherTest {
     m = withSource(m, src);
 
     PeerManager pm = mock(PeerManager.class);
+    PeerMessenger messenger = mock(PeerMessenger.class);
     when(node.getPeers()).thenReturn(pm);
+    when(pm.messenger()).thenReturn(messenger);
 
     boolean handled = dispatcher.handleMessage(m);
     assertTrue(handled);
@@ -261,7 +263,7 @@ class NodeDispatcherTest {
     scheduled.get().run();
 
     verify(src).disconnected(true, true);
-    verify(pm).disconnectAndRemove(src, false, false, false);
+    verify(messenger).disconnectAndRemove(src, false, false, false);
     verify(node).receivedNodeToNodeMessage(eq(src), eq(9), any(ShortBuffer.class), eq(true));
   }
 

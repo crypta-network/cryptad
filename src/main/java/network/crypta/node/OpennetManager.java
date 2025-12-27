@@ -459,13 +459,14 @@ public class OpennetManager {
     // Do this outside the constructor, since the constructor is called by the Node constructor, and
     // callbacks may make assumptions about data structures being ready.
     node.getPeers()
+        .persistence()
         .tryReadPeers(
             node.nodeDir().file("openpeers-" + crypto.getPortNumber()).toString(),
             crypto,
             this,
             true,
             false);
-    OpennetPeerNode[] nodes = node.getPeers().getOpennetPeers();
+    OpennetPeerNode[] nodes = node.getPeers().roster().getOpennetPeers();
     Arrays.sort(nodes, PEER_COMPARATOR);
     initLRUsFromExisting(nodes);
     if (LOG.isDebugEnabled()) {
@@ -479,6 +480,7 @@ public class OpennetManager {
     writeFile();
     // Read old peers
     node.getPeers()
+        .persistence()
         .tryReadPeers(
             node.nodeDir().file("openpeers-old-" + crypto.getPortNumber()).toString(),
             crypto,
@@ -520,7 +522,7 @@ public class OpennetManager {
       if (Location.isValid(opn.getLocation())) {
         lruQueue(opn).push(opn);
       } else {
-        node.getPeers().disconnectAndRemove(opn, false, false, false);
+        node.getPeers().messenger().disconnectAndRemove(opn, false, false, false);
       }
     }
   }
@@ -1067,7 +1069,7 @@ public class OpennetManager {
     for (OpennetPeerNode pn : result.dropList) {
       if (LOG.isDebugEnabled()) LOG.debug("Drop LRU opennet peer: {}", pn);
       pn.setAddedReason(null);
-      node.getPeers().disconnectAndRemove(pn, true, true, true);
+      node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
     }
   }
 
@@ -1079,7 +1081,7 @@ public class OpennetManager {
     // This does not check whether they are short or long as it is irrelevant for outdated peers.
     int maxTooOldPeers = maxOutdatedPeers();
     int count = 0;
-    OpennetPeerNode[] peers = node.getPeers().getOpennetPeers();
+    OpennetPeerNode[] peers = node.getPeers().roster().getOpennetPeers();
     for (OpennetPeerNode pn : peers) {
       if (pn.isUnroutableOlderVersion()) {
         count++;
@@ -1190,7 +1192,7 @@ public class OpennetManager {
         peersLRU.remove(toDrop);
       }
       if (LOG.isDebugEnabled()) LOG.debug("Drop {}", toDrop);
-      node.getPeers().disconnectAndRemove(toDrop, true, true, true);
+      node.getPeers().messenger().disconnectAndRemove(toDrop, true, true, true);
     }
   }
 
@@ -1365,7 +1367,7 @@ public class OpennetManager {
         false,
         ConnectionType.RECONNECT,
         distance)) { // Start at top as it just succeeded
-      node.getPeers().disconnectAndRemove(pn, true, false, true);
+      node.getPeers().messenger().disconnectAndRemove(pn, true, false, true);
     }
   }
 

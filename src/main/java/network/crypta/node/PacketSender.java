@@ -223,7 +223,7 @@ public class PacketSender implements Runnable {
         Math.max(pn.lastReceivedPacketTime(), lastReceivedPacketFromAnyNode);
     pn.maybeOnConnect();
     if (pn.shouldDisconnectAndRemoveNow() && !pn.isDisconnecting()) {
-      node.getPeers().disconnectAndRemove(pn, true, true, false);
+      node.getPeers().messenger().disconnectAndRemove(pn, true, true, false);
     }
   }
 
@@ -237,7 +237,9 @@ public class PacketSender implements Runnable {
       return;
     }
     if (shouldDisconnectDueToAcks(now, pn)) {
-      node.getPeers().disconnect(pn, true, true, false, true, false, SECONDS.toMillis(5));
+      node.getPeers()
+          .messenger()
+          .disconnect(pn, true, true, false, true, false, SECONDS.toMillis(5));
       return;
     }
     if (pn.isRoutable() && pn.noLongerRoutable()) {

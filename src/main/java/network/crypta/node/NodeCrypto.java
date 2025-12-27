@@ -580,8 +580,8 @@ public class NodeCrypto {
   @SuppressWarnings("java:S1168")
   public PeerNode[] getPeerNodes() {
     if (node.getPeers() == null) return null;
-    if (isOpennet) return node.getPeers().getOpennetAndSeedServerPeers();
-    else return node.getPeers().getDarknetPeers();
+    if (isOpennet) return node.getPeers().roster().getOpennetAndSeedServerPeers();
+    else return node.getPeers().roster().getDarknetPeers();
   }
 
   /**
@@ -598,7 +598,7 @@ public class NodeCrypto {
     // Disallow multiple connections to the same address.
     // TODO: For IPv6 consider a configurable same-/64 subnet rule instead of exact match.
     if (config.oneConnectionPerAddress()
-        && node.getPeers().anyConnectedPeerHasAddress(addr, pn)
+        && node.getPeers().roster().anyConnectedPeerHasAddress(addr, pn)
         && !detector.includes(addr)
         && addr.isRealInternetAddress(false, false, false)) {
       LOG.info("Skip handshake packets to {} for {}: same IP address as another node", addr, pn);
@@ -621,7 +621,7 @@ public class NodeCrypto {
     if (detector.includes(address)) return;
     if (!address.isRealInternetAddress(false, false, false)) return;
     java.util.List<PeerNode> possibleMatches =
-        node.getPeers().getAllConnectedByAddress(address, true);
+        node.getPeers().roster().getAllConnectedByAddress(address, true);
     if (possibleMatches == null) return;
     for (PeerNode pn : possibleMatches) {
       if (pn == peerNode || pn.equals(peerNode)) continue;
@@ -649,7 +649,9 @@ public class NodeCrypto {
           ((DarknetPeerNode) incomingPeer).getName(),
           address);
     }
-    node.getPeers().disconnectAndRemove(existingPeer, true, true, existingPeer.isOpennet());
+    node.getPeers()
+        .messenger()
+        .disconnectAndRemove(existingPeer, true, true, existingPeer.isOpennet());
   }
 
   /**

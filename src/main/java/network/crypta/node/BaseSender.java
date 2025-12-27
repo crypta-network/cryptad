@@ -657,6 +657,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
   private PeerNode closerPeer(Set<PeerNode> exclude, long now) {
     return node.getPeers()
+        .routingSelector()
         .closerPeer(
             sourceForRouting(),
             exclude,

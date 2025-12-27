@@ -2827,7 +2827,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     fs.put("RAMBucketPoolSize", node.getClientCore().getTempBucketFactory().getRamUsed());
 
     /* gather connection statistics */
-    PeerNodeStatus[] peerNodeStatuses = peers.getPeerNodeStatuses(true);
+    PeerNodeStatus[] peerNodeStatuses = peers.statusBook().getPeerNodeStatuses(true);
     int numberOfSeedServers = 0;
     int numberOfSeedClients = 0;
 

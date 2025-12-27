@@ -298,7 +298,9 @@ class NodeCryptoTest {
     FNPPacketMangler mangler = (FNPPacketMangler) getField(nc, "packetMangler");
 
     PeerManager pm = mock(PeerManager.class);
+    PeerRoster roster = mock(PeerRoster.class);
     when(node.getPeers()).thenReturn(pm);
+    when(pm.roster()).thenReturn(roster);
 
     PeerNode a = mock(PeerNode.class);
     when(a.handshakeUnknownInitiator()).thenReturn(true);
@@ -342,7 +344,9 @@ class NodeCryptoTest {
     when(cfg.oneConnectionPerAddress()).thenReturn(true);
 
     PeerManager pm = mock(PeerManager.class);
+    PeerRoster roster = mock(PeerRoster.class);
     when(node.getPeers()).thenReturn(pm);
+    when(pm.roster()).thenReturn(roster);
 
     FreenetInetAddress addr = new FreenetInetAddress(InetAddress.getByName("203.0.113.5"));
     PeerNode peer = mock(PeerNode.class);
@@ -352,7 +356,7 @@ class NodeCryptoTest {
     // Real internet address
     assertTrue(addr.isRealInternetAddress(false, false, false));
 
-    when(pm.anyConnectedPeerHasAddress(addr, peer)).thenReturn(true);
+    when(roster.anyConnectedPeerHasAddress(addr, peer)).thenReturn(true);
 
     boolean res = nc.allowConnection(peer, addr);
     assertFalse(res);
@@ -368,7 +372,11 @@ class NodeCryptoTest {
 
     // Prepare PeerManager with a conflicting Darknet peer
     PeerManager pm = mock(PeerManager.class);
+    PeerMessenger messenger = mock(PeerMessenger.class);
+    PeerRoster roster = mock(PeerRoster.class);
     when(node.getPeers()).thenReturn(pm);
+    when(pm.messenger()).thenReturn(messenger);
+    when(pm.roster()).thenReturn(roster);
 
     DarknetPeerNode conflicting = mock(DarknetPeerNode.class);
     // Make the inner crypto's config return oneConnectionPerAddress=true
@@ -379,7 +387,7 @@ class NodeCryptoTest {
     setPeerNodeCrypto(conflicting, otherCrypto);
 
     when(conflicting.isOpennet()).thenReturn(false);
-    when(pm.getAllConnectedByAddress(address, true))
+    when(roster.getAllConnectedByAddress(address, true))
         .thenReturn(new ArrayList<>(List.of(conflicting)));
 
     // Caller peer is also darknet, so the conflict applies
@@ -387,7 +395,7 @@ class NodeCryptoTest {
 
     nc.maybeBootConnection(caller, address);
 
-    verify(pm).disconnectAndRemove(eq(conflicting), eq(true), eq(true), anyBoolean());
+    verify(messenger).disconnectAndRemove(eq(conflicting), eq(true), eq(true), anyBoolean());
   }
 
   @Test

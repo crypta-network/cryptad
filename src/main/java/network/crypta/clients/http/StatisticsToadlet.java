@@ -270,7 +270,7 @@ public class StatisticsToadlet extends Toadlet {
   }
 
   private PeerStatusSummary preparePeerStatusSummary() {
-    PeerNodeStatus[] peerNodeStatuses = peers.getPeerNodeStatuses(true);
+    PeerNodeStatus[] peerNodeStatuses = peers.statusBook().getPeerNodeStatuses(true);
     Arrays.sort(peerNodeStatuses, Comparator.comparingInt(PeerNodeStatus::getStatusValue));
 
     PeerStatusSummary summary = new PeerStatusSummary(peerNodeStatuses);

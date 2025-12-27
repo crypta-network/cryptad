@@ -1732,7 +1732,7 @@ public class TextModeClientInterface implements Runnable {
    * success as boolean
    */
   private boolean disablePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1755,7 +1755,7 @@ public class TextModeClientInterface implements Runnable {
    * success as boolean
    */
   private boolean enablePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1778,7 +1778,7 @@ public class TextModeClientInterface implements Runnable {
    * existence as boolean
    */
   private boolean havePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1801,7 +1801,7 @@ public class TextModeClientInterface implements Runnable {
    */
   private boolean removePeer(String nodeIdentifier) {
     LOG.info("Removing peer from node for: {}", nodeIdentifier);
-    for (DarknetPeerNode pn : n.getPeers().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
