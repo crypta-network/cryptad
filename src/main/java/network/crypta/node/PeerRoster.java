@@ -112,7 +112,7 @@ public class PeerRoster {
   /**
    * Adds a peer to the roster if it is not already present.
    *
-   * <p>This method performs an identity-based check under the shared lock. When {@code reactivate}
+   * <p>This method performs an equality-based check under the shared lock. When {@code reactivate}
    * is {@code true}, it first cancels any disconnecting state on the peer before acquiring the
    * lock. Adding a peer only updates the roster snapshot; it does not implicitly mark the peer as
    * connected or modify the connected-peers snapshot.
@@ -125,7 +125,7 @@ public class PeerRoster {
     if (reactivate) peer.forceCancelDisconnecting();
     synchronized (lock) {
       for (PeerNode existing : myPeers) {
-        if (existing == peer) {
+        if (existing.equals(peer)) {
           if (LOG.isDebugEnabled()) {
             LOG.debug(
                 "Can't add peer {} because already have {}",
