@@ -24,37 +24,81 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Handles peer reference persistence for {@link PeerManager}.
+ * Coordinates persistence of peer references for {@link PeerManager}.
  *
- * <p>Responsible for reading peer files, writing updated peer lists, rotating backups, and caching
- * serialized peers. The manager owns the scheduling and synchronization for disk I/O.
+ * <p>This helper encapsulates the disk I/O for reading peer reference files on startup and
+ * periodically writing updated snapshots for darknet, opennet, and old opennet peers. It is created
+ * and owned by {@link PeerManager}; callers schedule work or mark peers dirty, while the class
+ * handles serialization, backup rotation, and best-effort recovery when files are missing or
+ * partially corrupt. Cached snapshots of the last written state prevent redundant writes and reduce
+ * churn on the filesystem.
+ *
+ * <p>Concurrency: callers may invoke write/mark methods from different threads. This class uses
+ * lightweight synchronization and volatile flags to coordinate state, while actual I/O happens on
+ * the ticker or executor threads provided by {@link Node}. It does not expose external
+ * thread-safety guarantees beyond those internal guards.
+ *
+ * <ul>
+ *   <li>Read peer reference files, with backup fallback and error reporting.
+ *   <li>Write snapshots with optional backup rotation and atomic replacement.
+ *   <li>Track old opennet peers separately for reconnection attempts.
+ * </ul>
  */
 class PeerPersistence {
+  /** Logger for persistence I/O, parsing, and recovery diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(PeerPersistence.class);
+
+  /** Read-log prefix used by {@link #buildReadMessage(File, OpennetManager, boolean, boolean)}. */
   private static final String READ_PREFIX = "Read ";
+
+  /** Number of backup generations retained for opennet peer files. */
   private static final int BACKUPS_OPENNET = 1;
+
+  /** Number of backup generations retained for darknet peer files. */
   private static final int BACKUPS_DARKNET = 10;
+
+  /** Minimum delay between scheduled non-urgent peer writes, in milliseconds. */
   private static final long MIN_WRITEPEERS_DELAY = MINUTES.toMillis(5);
 
+  /** Owning node, used for scheduling, alerts, and access to opennet services. */
   private final Node node;
+
+  /** Peer manager that owns the peer roster and accepts newly parsed peers. */
   private final PeerManager peerManager;
 
+  /** Guards access to filenames and cached serialized snapshots during writes. */
   private final Object writePeersSync = new Object();
+
+  /** Serializes file-system writes and backup rotations. */
   private final Object writePeerFileSync = new Object();
 
+  /** Dirty flag for pending darknet writes, set by requests and cleared on write. */
   private volatile boolean shouldWritePeersDarknet = false;
+
+  /** Dirty flag for pending opennet writes, set by requests and cleared on write. */
   private volatile boolean shouldWritePeersOpennet = false;
 
+  /** Current filename for the darknet peers file, or {@code null} until known. */
   private String darkFilename;
+
+  /** Current filename for the opennet peers file, or {@code null} until known. */
   private String openFilename;
+
+  /** Current filename for the old-opennet peers file, or {@code null} until known. */
   private String oldOpennetPeersFilename;
 
   // Note: Potential improvement: use a dedicated stable hash (not hashCode()).
   // Note: Potential improvement: strip non-essential metadata; keep peer locations only.
+  /** Serialized snapshot of the last written darknet peers, for change detection. */
   private String darknetPeersStringCache = null;
+
+  /** Serialized snapshot of the last written opennet peers, for change detection. */
   private String opennetPeersStringCache = null;
+
+  /** Serialized snapshot of the last written old-opennet peers, for change detection. */
   private String oldOpennetPeersStringCache = null;
 
+  /** Periodic write runnable that writes peers and re-schedules itself. */
   private final Runnable writePeersRunnable =
       () -> {
         try {
@@ -64,17 +108,40 @@ class PeerPersistence {
         }
       };
 
+  /**
+   * Create a new persistence helper bound to a node and its peer manager.
+   *
+   * <p>The instance is lightweight and does not perform I/O until scheduled. Callers typically
+   * invoke {@link #scheduleInitialWrite()} during startup and {@link #flushOnShutdown()} during
+   * shutdown to ensure files are flushed. This class assumes the provided components remain valid
+   * for the life of the node and does not attempt to outlive them.
+   *
+   * @param node owning node used for scheduling, alerts, and opennet access; must not be {@code
+   *     null}
+   * @param peerManager peer manager that owns the peer roster; must not be {@code null}
+   */
   PeerPersistence(Node node, PeerManager peerManager) {
     this.node = node;
     this.peerManager = peerManager;
   }
 
-  /** Schedule the periodic peer persistence job to run immediately. */
+  /**
+   * Schedule the periodic peer persistence job to run immediately.
+   *
+   * <p>This is normally invoked during startup once the node has completed construction. The
+   * runnable performs a best-effort write if peers are marked dirty, then re-schedules itself using
+   * {@link #scheduleWritePeersNextRun()} so the periodic cycle continues.
+   */
   void scheduleInitialWrite() {
     node.getTicker().queueTimedJob(writePeersRunnable, 0);
   }
 
-  /** Flush peer files during shutdown to avoid waiting for the periodic write interval. */
+  /**
+   * Flush peer files during shutdown to avoid waiting for the periodic write interval.
+   *
+   * <p>This marks both darknet and opennet peer lists as dirty and then writes them synchronously
+   * on the current thread. The write is best-effort: failures are logged but do not abort shutdown.
+   */
   void flushOnShutdown() {
     markWriteDarknet();
     markWriteOpennet();
@@ -86,13 +153,17 @@ class PeerPersistence {
    * empty or otherwise doesn't work. WARNING: Only call this AFTER the Node constructor has
    * completed! Methods may be called on Node!
    *
-   * @param filename The filename to read from. If this doesn't work, we try the .bak file.
-   * @param crypto The cryptographic identity which these nodes are connected to.
-   * @param opennet The opennet manager for the nodes. Only needed (for constructing the nodes) if
-   *     isOpennet.
-   * @param isOpennet Whether the file contains opennet peers.
-   * @param oldOpennetPeers If true, don't add the nodes to the routing table, pass them to the
-   *     opennet manager as "old peers" i.e. inactive nodes which may try to reconnect.
+   * <p>The method attempts the primary file first and then tries backup files in order, stopping at
+   * the first successful parse. If entries are unparseable or too old, they are skipped and the
+   * original file is copied to a {@code .broken} file for inspection. When reading old opennet
+   * peers, entries are routed to the opennet manager instead of the routing table. This method does
+   * not throw; all failures are logged and treated as a non-fatal startup condition.
+   *
+   * @param filename path to the peers file; backups are derived from this name
+   * @param crypto cryptographic identity for peers being loaded; must not be {@code null}
+   * @param opennet opennet manager used for opennet peers; may be {@code null} if not opennet
+   * @param isOpennet whether the file contains opennet peers instead of darknet peers
+   * @param oldOpennetPeers when {@code true}, treat entries as old peers for reconnection attempts
    */
   void tryReadPeers(
       String filename,
@@ -100,6 +171,79 @@ class PeerPersistence {
       OpennetManager opennet,
       boolean isOpennet,
       boolean oldOpennetPeers) {
+    recordPeerFilename(filename, isOpennet, oldOpennetPeers);
+    int maxBackups = isOpennet ? BACKUPS_OPENNET : BACKUPS_DARKNET;
+    for (int i = 0; i <= maxBackups; i++) {
+      File peersFile = getBackupFilename(filename, i);
+      // Try to read the node list from disk
+      if (peersFile.exists() && readPeers(peersFile, crypto, opennet, oldOpennetPeers)) {
+        if (LOG.isInfoEnabled()) {
+          LOG.info(buildReadMessage(peersFile, opennet, isOpennet, oldOpennetPeers));
+        }
+        return;
+      }
+    }
+    logMissingPeers(isOpennet);
+    // The other cases are less important.
+  }
+
+  /**
+   * Mark a peer list write request so the next periodic run persists it.
+   *
+   * <p>This is a low-priority, coalesced update. The flag is checked on the periodic runnable; if
+   * multiple calls arrive before the next tick, only one write occurs. Use {@link
+   * #writePeersUrgent(boolean)} for immediate persistence on a high-priority executor thread.
+   *
+   * @param opennet {@code true} to mark opennet peers; {@code false} for darknet peers
+   */
+  void writePeers(boolean opennet) {
+    if (opennet) markWriteOpennet();
+    else markWriteDarknet();
+  }
+
+  /**
+   * Write peers immediately on a high-priority executor thread.
+   *
+   * <p>This bypasses the periodic delay and triggers an immediate write with backup rotation. The
+   * write is still serialized with other disk writes to avoid concurrent file operations.
+   *
+   * @param opennet {@code true} to write opennet peers; {@code false} for darknet peers
+   */
+  void writePeersUrgent(boolean opennet) {
+    if (opennet) writePeersOpennetUrgent();
+    else writePeersDarknetUrgent();
+  }
+
+  /**
+   * Schedule the next periodic peer write after the configured delay.
+   *
+   * <p>This keeps the persistence loop running even if the previous write encountered errors. The
+   * delay is fixed and expressed in milliseconds by {@link #MIN_WRITEPEERS_DELAY}.
+   */
+  private void scheduleWritePeersNextRun() {
+    node.getTicker().queueTimedJob(writePeersRunnable, MIN_WRITEPEERS_DELAY);
+  }
+
+  /**
+   * Write any pending peer lists immediately without rotating backups.
+   *
+   * <p>This method performs the periodic, non-urgent write path. It clears dirty flags and writes
+   * only if the cached snapshot differs from the current serialized state.
+   */
+  private void writePeersNow() {
+    // Non-urgent periodic write does not rotate backups.
+    writePeersDarknetNow(false);
+    writePeersOpennetNow(false);
+  }
+
+  /**
+   * Record the current peer filename for later write operations.
+   *
+   * @param filename path to the peer file to remember for future writes
+   * @param isOpennet {@code true} if the filename is for opennet peers
+   * @param oldOpennetPeers {@code true} when the filename is for old opennet peers
+   */
+  private void recordPeerFilename(String filename, boolean isOpennet, boolean oldOpennetPeers) {
     synchronized (writePeersSync) {
       if (!oldOpennetPeers) {
         if (isOpennet) {
@@ -109,60 +253,65 @@ class PeerPersistence {
         }
       }
     }
-    int maxBackups = isOpennet ? BACKUPS_OPENNET : BACKUPS_DARKNET;
-    for (int i = 0; i <= maxBackups; i++) {
-      File peersFile = getBackupFilename(filename, i);
-      // Try to read the node list from disk
-      if (peersFile.exists() && readPeers(peersFile, crypto, opennet, oldOpennetPeers)) {
-        String msg;
-        if (oldOpennetPeers) {
-          int oldPeers = opennet == null ? 0 : opennet.countOldOpennetPeers();
-          msg = READ_PREFIX + oldPeers + " old-opennet-peers from " + peersFile;
-        } else if (isOpennet) {
-          msg =
-              READ_PREFIX
-                  + peerManager.roster().getOpennetPeers().length
-                  + " opennet peers from "
-                  + peersFile;
-        } else {
-          msg =
-              READ_PREFIX
-                  + peerManager.roster().getDarknetPeers().length
-                  + " darknet peers from "
-                  + peersFile;
-        }
-        LOG.info(msg);
-        return;
-      }
+  }
+
+  /**
+   * Build a human-readable message describing the most recent peer read.
+   *
+   * @param peersFile file that was read successfully
+   * @param opennet opennet manager for old-peers count, or {@code null} when absent
+   * @param isOpennet {@code true} if the file contained opennet peers
+   * @param oldOpennetPeers {@code true} if the file contained old opennet peers
+   * @return formatted log message describing the peer counts and source file
+   */
+  private String buildReadMessage(
+      File peersFile, OpennetManager opennet, boolean isOpennet, boolean oldOpennetPeers) {
+    if (oldOpennetPeers) {
+      int oldPeers = opennet == null ? 0 : opennet.countOldOpennetPeers();
+      return READ_PREFIX + oldPeers + " old-opennet-peers from " + peersFile;
     }
+    if (isOpennet) {
+      return READ_PREFIX + getOpennetPeerCount() + " opennet peers from " + peersFile;
+    }
+    return READ_PREFIX + getDarknetPeerCount() + " darknet peers from " + peersFile;
+  }
+
+  /**
+   * Log when expected peer files are missing during startup.
+   *
+   * @param isOpennet {@code true} if the missing file is for opennet peers
+   */
+  private void logMissingPeers(boolean isOpennet) {
     if (!isOpennet) {
       LOG.info("No darknet peers file found.");
     }
-    // The other cases are less important.
   }
 
-  /** Marks a peer list write request so the next periodic run persists it. */
-  void writePeers(boolean opennet) {
-    if (opennet) markWriteOpennet();
-    else markWriteDarknet();
+  /**
+   * Return the current opennet peer count based on the roster snapshot.
+   *
+   * @return number of opennet peers currently known to the roster
+   */
+  private int getOpennetPeerCount() {
+    PeerRoster roster = peerManager.roster();
+    return roster == null ? 0 : roster.getOpennetPeers().length;
   }
 
-  /** Writes peers immediately on a high-priority executor thread. */
-  void writePeersUrgent(boolean opennet) {
-    if (opennet) writePeersOpennetUrgent();
-    else writePeersDarknetUrgent();
+  /**
+   * Return the current darknet peer count based on the roster snapshot.
+   *
+   * @return number of darknet peers currently known to the roster
+   */
+  private int getDarknetPeerCount() {
+    PeerRoster roster = peerManager.roster();
+    return roster == null ? 0 : roster.getDarknetPeers().length;
   }
 
-  private void scheduleWritePeersNextRun() {
-    node.getTicker().queueTimedJob(writePeersRunnable, MIN_WRITEPEERS_DELAY);
-  }
-
-  private void writePeersNow() {
-    // Non-urgent periodic write does not rotate backups.
-    writePeersDarknetNow(false);
-    writePeersOpennetNow(false);
-  }
-
+  /**
+   * Write darknet peers immediately if they have been marked dirty.
+   *
+   * @param rotateBackups whether to rotate backup files instead of overwriting the primary file
+   */
   private void writePeersDarknetNow(boolean rotateBackups) {
     if (shouldWritePeersDarknet) {
       shouldWritePeersDarknet = false;
@@ -170,6 +319,11 @@ class PeerPersistence {
     }
   }
 
+  /**
+   * Write opennet peers immediately if they have been marked dirty.
+   *
+   * @param rotateBackups whether to rotate backup files instead of overwriting the primary file
+   */
   private void writePeersOpennetNow(boolean rotateBackups) {
     if (shouldWritePeersOpennet) {
       shouldWritePeersOpennet = false;
@@ -177,6 +331,11 @@ class PeerPersistence {
     }
   }
 
+  /**
+   * Dispatch an urgent opennet write on the executor with high priority.
+   *
+   * <p>This path rotates backups and runs outside the ticker to reduce latency.
+   */
   private void writePeersOpennetUrgent() {
     node.getExecutor()
         .execute(
@@ -193,6 +352,11 @@ class PeerPersistence {
             });
   }
 
+  /**
+   * Dispatch an urgent darknet write on the executor with high priority.
+   *
+   * <p>This path rotates backups and runs outside the ticker to reduce latency.
+   */
   private void writePeersDarknetUrgent() {
     node.getExecutor()
         .execute(
@@ -209,14 +373,21 @@ class PeerPersistence {
             });
   }
 
+  /** Mark the darknet peers as dirty so the next write persists them. */
   private void markWriteDarknet() {
     shouldWritePeersDarknet = true;
   }
 
+  /** Mark the opennet peers as dirty so the next write persists them. */
   private void markWriteOpennet() {
     shouldWritePeersOpennet = true;
   }
 
+  /**
+   * Serialize current darknet peers to an ordered field set string.
+   *
+   * @return serialized representation of darknet peers, possibly empty but never {@code null}
+   */
   private String getDarknetPeersString() {
     StringBuilder sb = new StringBuilder();
     PeerNode[] peers = peerManager.myPeers();
@@ -226,6 +397,11 @@ class PeerPersistence {
     return sb.toString();
   }
 
+  /**
+   * Serialize current opennet peers to an ordered field set string.
+   *
+   * @return serialized representation of opennet peers, possibly empty but never {@code null}
+   */
   private String getOpennetPeersString() {
     StringBuilder sb = new StringBuilder();
     PeerNode[] peers = peerManager.myPeers();
@@ -235,6 +411,12 @@ class PeerPersistence {
     return sb.toString();
   }
 
+  /**
+   * Serialize the current old opennet peers to an ordered field set string.
+   *
+   * @param om opennet manager providing the old-peer collection; must not be {@code null}
+   * @return serialized representation of old opennet peers, possibly empty but never {@code null}
+   */
   private String getOldOpennetPeersString(OpennetManager om) {
     StringBuilder sb = new StringBuilder();
     for (PeerNode pn : om.getOldPeers()) {
@@ -243,6 +425,11 @@ class PeerPersistence {
     return sb.toString();
   }
 
+  /**
+   * Write the darknet peers file if the serialized snapshot changed.
+   *
+   * @param rotateBackups whether to rotate backup files instead of overwriting the primary file
+   */
   private void writePeersInnerDarknet(boolean rotateBackups) {
     String newDarknetPeersString;
     synchronized (writePeersSync) {
@@ -256,6 +443,11 @@ class PeerPersistence {
     }
   }
 
+  /**
+   * Write opennet and old-opennet peer files if their snapshots changed.
+   *
+   * @param rotateBackups whether to rotate backup files instead of overwriting the primary file
+   */
   private void writePeersInnerOpennet(boolean rotateBackups) {
     String newOpennetPeersString = null;
     String newOldOpennetPeersString = null;
@@ -282,9 +474,17 @@ class PeerPersistence {
   }
 
   /**
-   * Write the peers file to disk.
+   * Write a serialized peers file to disk.
    *
-   * @param rotateBackups If true, rotate backups. If false, just clobber the latest file.
+   * <p>The write uses a temporary file, flushes and syncs it, then either rotates backups or
+   * replaces the primary file. This method is synchronized to prevent concurrent writes from
+   * interleaving or corrupting the backup chain. Errors are logged and the previous file is left
+   * intact when possible.
+   *
+   * @param filename target filename to write, not {@code null}
+   * @param sb serialized peers content, in UTF-8, not {@code null}
+   * @param maxBackups number of backup generations to retain; must be at least 1
+   * @param rotateBackups if {@code true}, rotate backups; otherwise overwrite the primary file
    */
   private void writePeersInner(String filename, String sb, int maxBackups, boolean rotateBackups) {
     assert (maxBackups >= 1);
@@ -323,6 +523,13 @@ class PeerPersistence {
     }
   }
 
+  /**
+   * Rotate backup files and install the new peers file as the latest generation.
+   *
+   * @param filename base filename used to compute backup paths
+   * @param maxBackups maximum number of backup generations to keep
+   * @param newFile temporary file containing the new peers content
+   */
   private void rotateBackupFiles(String filename, int maxBackups, File newFile) {
     File prevFile = null;
     for (int i = maxBackups; i >= 0; i--) {
@@ -338,12 +545,33 @@ class PeerPersistence {
     FileUtil.moveTo(newFile, prevFile);
   }
 
+  /**
+   * Resolve the backup filename for a given generation index.
+   *
+   * @param filename base filename for peers
+   * @param i backup index, where {@code 0} is the primary and {@code 1} is {@code .bak}
+   * @return the resolved backup file path for the given index
+   */
   private File getBackupFilename(String filename, int i) {
     if (i == 0) return new File(filename);
     if (i == 1) return new File(filename + ".bak");
     return new File(filename + ".bak." + i);
   }
 
+  /**
+   * Read and parse peers from a file, returning whether the read was fully successful.
+   *
+   * <p>If parsing fails for some entries, a copy of the original file is written to a {@code
+   * .broken} suffix for later inspection. Old opennet peers are routed to the opennet manager,
+   * while darknet peers are added directly to the peer manager. Exceptions are logged and treated
+   * as non-fatal so startup can continue.
+   *
+   * @param peersFile file to read and parse
+   * @param crypto cryptographic identity used to validate parsed peers
+   * @param opennet opennet manager, required when parsing opennet peers
+   * @param oldOpennetPeers {@code true} when parsing old opennet peers instead of active peers
+   * @return {@code true} if all entries were parsed and applied successfully
+   */
   @SuppressWarnings("java:S1181")
   private boolean readPeers(
       File peersFile, NodeCrypto crypto, OpennetManager opennet, boolean oldOpennetPeers) {
@@ -392,6 +620,15 @@ class PeerPersistence {
     return !someBroken;
   }
 
+  /**
+   * Convert serialized field sets into peer nodes, skipping entries that fail validation.
+   *
+   * @param peerEntries parsed field sets for peers, in file order
+   * @param crypto cryptographic identity used to validate peer references
+   * @param opennet opennet manager used when creating opennet peers
+   * @param droppedOldPeers user alert collector for too-old peers
+   * @return list of successfully created peer nodes, possibly empty
+   */
   private List<PeerNode> createPeerNodesFromEntries(
       List<SimpleFieldSet> peerEntries,
       NodeCrypto crypto,
@@ -418,6 +655,13 @@ class PeerPersistence {
     return created;
   }
 
+  /**
+   * Apply created peers to either the opennet manager or the peer manager.
+   *
+   * @param createdNodes peers successfully created from the input file
+   * @param opennet opennet manager used for old-opennet peers, may be {@code null}
+   * @param oldOpennetPeers {@code true} to add to old-opennet storage instead of routing table
+   */
   private void applyCreatedNodes(
       List<PeerNode> createdNodes, OpennetManager opennet, boolean oldOpennetPeers) {
     for (PeerNode pn : createdNodes) {
@@ -437,11 +681,24 @@ class PeerPersistence {
     }
   }
 
+  /**
+   * Log peer creation failures with both error and warning messages.
+   *
+   * @param e2 exception thrown while parsing or verifying a peer entry
+   * @param fs serialized field set that caused the parse failure
+   */
   private void handlePeerCreationException(Exception e2, SimpleFieldSet fs) {
     LOG.error("Peer parse error {} for {}", e2, fs, e2);
     LOG.warn("Cannot parse friend from peers file: {}", e2, e2);
   }
 
+  /**
+   * Read all peer field sets from a buffered reader.
+   *
+   * @param br reader positioned at the start of the peers file
+   * @param out destination list for parsed field sets
+   * @throws IOException if an I/O error occurs while reading from the stream
+   */
   private void readPeerFieldSets(BufferedReader br, List<SimpleFieldSet> out) throws IOException {
     for (SimpleFieldSet sfs = readNextPeerFieldSet(br);
         sfs != null;
@@ -450,6 +707,13 @@ class PeerPersistence {
     }
   }
 
+  /**
+   * Read the next peer field set from the stream.
+   *
+   * @param br reader positioned at the next field set
+   * @return parsed field set, or {@code null} when end-of-file is reached
+   * @throws IOException if an I/O error occurs while reading from the stream
+   */
   private SimpleFieldSet readNextPeerFieldSet(BufferedReader br) throws IOException {
     try {
       return new SimpleFieldSet(br, false, true);
@@ -458,6 +722,11 @@ class PeerPersistence {
     }
   }
 
+  /**
+   * Delete a file if it exists, ignoring I/O errors.
+   *
+   * @param file file to delete, possibly {@code null} if no temp file was created
+   */
   private static void safeDeleteIfExists(File file) {
     try {
       java.nio.file.Files.deleteIfExists(file.toPath());
