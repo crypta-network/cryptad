@@ -98,7 +98,9 @@ class SimpleSendableInsertTest {
     SendableRequestItem token =
         new SendableRequestItem() {
           @Override
-          public void dump() {}
+          public void dump() {
+            // No-op: this test stub never calls dump().
+          }
 
           @Override
           public SendableRequestItemKey getKey() {
@@ -164,7 +166,9 @@ class SimpleSendableInsertTest {
     SendableRequestItem token =
         new SendableRequestItem() {
           @Override
-          public void dump() {}
+          public void dump() {
+            // No-op: this test stub never calls dump().
+          }
 
           @Override
           public SendableRequestItemKey getKey() {
@@ -339,5 +343,6 @@ class SimpleSendableInsertTest {
         new SimpleSendableInsert(chkBlock, (short) 1, requestClient, insertScheduler);
     // Do not expect any exception from innerOnResume via public onResume.
     insert.onResume(clientContext);
+    assertEquals(1L, insert.countSendableKeys(clientContext));
   }
 }
