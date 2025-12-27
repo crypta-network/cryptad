@@ -10,7 +10,32 @@ import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Handles peer messaging and disconnect workflows for {@link PeerManager}. */
+/**
+ * Coordinates outbound peer messaging and disconnect workflows for {@link PeerManager}.
+ *
+ * <p>This helper centralizes the common patterns used when disconnecting a {@link PeerNode} and
+ * when broadcasting local messages to connected peers. Typical usage is from the owning {@link
+ * Node} or {@link PeerManager} to either send protocol disconnect messages, schedule disconnect
+ * timeouts, or deliver node-to-node messages to eligible peers.
+ *
+ * <p>Notable behaviors include deferring removal until an acknowledgment (when requested),
+ * recording disconnect traffic with a dedicated {@link ByteCounter}, and filtering broadcast
+ * targets by routability, connection type, and build number. Timeouts are scheduled through the
+ * node ticker and only apply to non-seed peers.
+ *
+ * <p>Thread-safety: this class does not introduce additional synchronization. Callers must respect
+ * {@link PeerManager} and {@link PeerNode} concurrency requirements when invoking its methods.
+ *
+ * <ul>
+ *   <li>Disconnects may be immediate, acknowledged, or timeout-driven.
+ *   <li>Broadcasts are best-effort; disconnected peers are skipped.
+ *   <li>Removals optionally trigger urgent peer persistence writes.
+ * </ul>
+ *
+ * @see PeerManager
+ * @see PeerNode
+ * @see Node
+ */
 public class PeerMessenger {
   private static final Logger LOG = LoggerFactory.getLogger(PeerMessenger.class);
 
@@ -40,7 +65,16 @@ public class PeerMessenger {
     this.peerManager = peerManager;
   }
 
-  /** Returns the byte counter used for disconnect traffic. */
+  /**
+   * Returns the byte counter used for disconnect traffic accounting.
+   *
+   * <p>The returned counter reports received and sent disconnect bytes into {@link NodeStats},
+   * allowing disconnect message overhead to be tracked separately from normal traffic. The counter
+   * is owned by this instance and should be treated as read-only by callers; it is safe to reuse
+   * for multiple disconnect sends.
+   *
+   * @return the shared counter that attributes disconnect bytes to node statistics.
+   */
   public ByteCounter getDisconnCounter() {
     return disconnCounter;
   }
@@ -48,10 +82,15 @@ public class PeerMessenger {
   /**
    * Disconnects a peer and removes it from the routing table.
    *
-   * @param pn Peer to disconnect.
-   * @param sendDisconnectMessage If true, send a protocol disconnect message.
-   * @param waitForAck If true, wait for the disconnect acknowledgment before removal.
-   * @param purge If true, request the remote to purge this node from old-peer state.
+   * <p>This is a convenience wrapper that requests a disconnect message and removal using the
+   * default inactivity timeout. Removal can be immediate or deferred until an acknowledgment,
+   * depending on the {@code waitForAck} flag. If the peer is already disconnecting, the call is a
+   * no-op.
+   *
+   * @param pn peer to disconnect; must be non-null and known.
+   * @param sendDisconnectMessage whether to send the protocol disconnect message.
+   * @param waitForAck whether to wait for disconnect acknowledgment before removal.
+   * @param purge whether to request remote purge of old-peer state.
    */
   public void disconnectAndRemove(
       PeerNode pn, boolean sendDisconnectMessage, boolean waitForAck, boolean purge) {
@@ -61,14 +100,23 @@ public class PeerMessenger {
   /**
    * Disconnects from a specified node.
    *
-   * @param pn Peer to disconnect.
-   * @param sendDisconnectMessage If false, do not send the protocol disconnect message.
-   * @param waitForAck If false, do not wait for the disconnect acknowledgment.
-   * @param purge If true, request the remote to purge this node from old-peer lists.
-   * @param dumpMessagesNow If true, drop queued messages immediately before completing disconnect.
-   * @param remove If true, remove the peer locally after disconnect.
-   * @param timeout Timeout in milliseconds to wait before completing removal if still
-   *     disconnecting.
+   * <p>If {@code sendDisconnectMessage} is true, a disconnect message is sent asynchronously and
+   * removal is either immediate (when {@code waitForAck} is false) or deferred until the callback
+   * is acknowledged. If the peer is not connected, removal occurs only when the peer is already in
+   * a disconnecting state. When {@code sendDisconnectMessage} is false, removal is immediate if
+   * {@code remove} is true. Timeouts are scheduled via the node ticker and apply only to non-seed
+   * peers.
+   *
+   * <p>Typical usage is during peer shutdown or routing table cleanup. The method is idempotent for
+   * peers already in the disconnecting state.
+   *
+   * @param pn peer to disconnect; must be non-null and tracked.
+   * @param sendDisconnectMessage whether to send the protocol disconnect message.
+   * @param waitForAck whether to wait for disconnect acknowledgment before removal.
+   * @param purge whether to request remote purge of old-peer lists.
+   * @param dumpMessagesNow whether to drop queued messages immediately.
+   * @param remove whether to remove the peer after disconnect flow.
+   * @param timeout timeout in milliseconds before forced removal if disconnecting.
    */
   public void disconnect(
       PeerNode pn,
@@ -95,7 +143,19 @@ public class PeerMessenger {
     }
   }
 
-  /** Asynchronously sends a message to all eligible peers. */
+  /**
+   * Asynchronously sends a message to all eligible peers using unbounded version filters.
+   *
+   * <p>This overload forwards to {@link #localBroadcast(Message, boolean, boolean, ByteCounter,
+   * int, int)} with the minimum and maximum build numbers set to the full integer range. It is a
+   * best-effort broadcast; disconnected peers are skipped and connection loss during send is
+   * ignored.
+   *
+   * @param msg message to send; must be non-null and reusable.
+   * @param ignoreRoutability whether to treat connected peers as eligible.
+   * @param onlyRealConnections whether to exclude non-real connections.
+   * @param ctr counter used to attribute bytes to statistics.
+   */
   public void localBroadcast(
       Message msg, boolean ignoreRoutability, boolean onlyRealConnections, ByteCounter ctr) {
     localBroadcast(
@@ -105,12 +165,26 @@ public class PeerMessenger {
   /**
    * Asynchronously sends a message to all eligible peers.
    *
-   * @param msg Message to send.
-   * @param ignoreRoutability When true, send to connected peers even if not routable.
-   * @param onlyRealConnections When true, exclude non-real connections.
-   * @param ctr Counter to attribute bytes to.
-   * @param minVersion Minimum accepted build number (inclusive).
-   * @param maxVersion Maximum accepted build number (inclusive).
+   * <p>Eligibility is determined by connection/routability, connection type, and build number
+   * range. If {@code ignoreRoutability} is true, connected peers are eligible even when not
+   * routable. If {@code onlyRealConnections} is true, transient or non-real connections are
+   * excluded. Build numbers are compared inclusively against {@code minVersion} and {@code
+   * maxVersion}.
+   *
+   * <p>Not connected errors are ignored to keep the broadcast best-effort. The method does not
+   * retry or queue messages on failure.
+   *
+   * <pre>{@code
+   * // Example: send a message to all routable peers at or above a build.
+   * messenger.localBroadcast(msg, false, true, ctr, 1000, Integer.MAX_VALUE);
+   * }</pre>
+   *
+   * @param msg message to send; must be non-null and reusable.
+   * @param ignoreRoutability whether to include connected but non-routable peers.
+   * @param onlyRealConnections whether to exclude non-real connections.
+   * @param ctr counter used to attribute bytes to statistics.
+   * @param minVersion minimum accepted build number, inclusive.
+   * @param maxVersion maximum accepted build number, inclusive.
    */
   public void localBroadcast(
       Message msg,
@@ -133,7 +207,18 @@ public class PeerMessenger {
     }
   }
 
-  /** Asynchronously sends a differential node reference to every connected peer. */
+  /**
+   * Asynchronously sends a differential node reference to every matching connected peer.
+   *
+   * <p>This uses the N2N diff node reference message type and targets peers selected by darknet and
+   * opennet flags. When both {@code toDarknetOnly} and {@code toOpennetOnly} are false, all
+   * connected peers are eligible. The message is sent best-effort and is not queued for
+   * disconnected peers.
+   *
+   * @param fs field set containing the diff node reference payload.
+   * @param toDarknetOnly whether to restrict sending to darknet peers.
+   * @param toOpennetOnly whether to restrict sending to opennet peers.
+   */
   public void locallyBroadcastDiffNodeRef(
       SimpleFieldSet fs, boolean toDarknetOnly, boolean toOpennetOnly) {
     // myPeers not connectedPeers as connectedPeers only contains
