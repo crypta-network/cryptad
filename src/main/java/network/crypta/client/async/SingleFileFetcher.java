@@ -4,6 +4,9 @@ import java.io.BufferedInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
@@ -116,7 +119,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   final ClientMetadata clientMetadata;
 
   /**
-   * Working metadata for the current step. May be a manifest, redirect, or splitfile descriptor
+   * Working metadata for the current step. It may be a manifest, redirect, or splitfile descriptor
    * depending on progress through the state machine.
    */
   private Metadata metadata;
@@ -315,7 +318,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    *
    * <p>When {@code forceFatal} is {@code true} or the exception is inherently fatal, the request is
    * finalized and the completion callback is notified. Otherwise, a retry is attempted subject to
-   * the configured policy. If the parent has already been cancelled, the error is converted to
+   * the configured policy. If the parent has already been canceled, the error is converted to
    * {@link FetchExceptionMode#CANCELLED} and treated as fatal.
    *
    * @param e the failure that occurred while processing this state
@@ -1525,7 +1528,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     // now
     // available.
 
-    // We need to transition here, so that everything gets deleted if we are cancelled during the
+    // We need to transition here, so that everything gets deleted if we are canceled during the
     // archive fetch phase.
     parent.onTransition(this, f, context);
 
@@ -1557,8 +1560,11 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     } catch (MetadataParseException e) {
       onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, context);
     } catch (FetchException e) {
-      if (notFinalizedSize) e = e.notFinalized();
-      onFailure(e, false, context);
+      FetchException failure = e;
+      if (notFinalizedSize) {
+        failure = e.notFinalized();
+      }
+      onFailure(failure, false, context);
     } catch (ArchiveFailureException | ArchiveRestartException e) {
       onFailure(wrapToFetchException(e), false, context);
     }
@@ -1621,7 +1627,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             streamGenerator.writeTo(output, context);
           }
         }
-      } catch (Throwable t) {
+      } catch (Exception t) {
         LOG.error("Caught {}", t, t);
         onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
         return;
@@ -1792,7 +1798,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             streamGenerator.writeTo(output, context);
           }
         }
-      } catch (Throwable t) {
+      } catch (Exception t) {
         LOG.error("Caught {}", t, t);
         onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
         return;
@@ -2212,6 +2218,20 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             usk,
             cb,
             datastoreOnly);
+    }
+
+    @Serial
+    private void writeObject(ObjectOutputStream out) throws IOException {
+      if (cb != null && !(cb instanceof Serializable)) {
+        throw new NotSerializableException(
+            "GetCompletionCallback must be Serializable: " + cb.getClass().getName());
+      }
+      out.defaultWriteObject();
+    }
+
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
     }
 
     @Override
