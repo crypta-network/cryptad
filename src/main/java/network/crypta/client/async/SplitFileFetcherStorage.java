@@ -1,6 +1,5 @@
 package network.crypta.client.async;
 
-import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -12,7 +11,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FECCodec;
@@ -24,15 +22,11 @@ import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
 import network.crypta.client.MetadataParseException;
-import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
-import network.crypta.crypt.HashType;
-import network.crypta.crypt.MultiHashOutputStream;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.ClientKey;
-import network.crypta.keys.FreenetURI;
 import network.crypta.keys.Key;
 import network.crypta.node.KeysFetchingLocally;
 import network.crypta.node.SendableRequestItem;
@@ -40,18 +34,13 @@ import network.crypta.node.SendableRequestItemKey;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.RandomArrayIterator;
 import network.crypta.support.Ticker;
-import network.crypta.support.api.Bucket;
-import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
-import network.crypta.support.io.ArrayBucketFactory;
-import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.NativeThread;
 import network.crypta.support.io.StorageFormatException;
-import network.crypta.support.math.MersenneTwister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -277,406 +266,29 @@ public class SplitFileFetcherStorage {
   private List<SplitFileFetcherSegmentStorage> segmentsToTryDecode;
 
   /**
-   * Builder-style constructor arguments for a fresh fetch session.
-   *
-   * <p>This holder captures all inputs required to initialise a brand-new storage instance when a
-   * splitfile fetch begins. It mirrors the metadata-driven structure of the file (segment keys,
-   * compression chain, client metadata) and also includes execution-time components such as
-   * schedulers, randomness and checksum policies. Instances are typically created via the nested
-   * {@link InitParams.Builder} and passed to the {@link
-   * SplitFileFetcherStorage#SplitFileFetcherStorage(InitParams)} constructor.
-   *
-   * <p>Thread-safety: {@code InitParams} is a simple data container; callers should publish it to a
-   * single thread and avoid mutation once built.
-   *
-   * @hidden
-   */
-  public static final class InitParams {
-    Metadata metadata;
-    SplitFileFetcherStorageCallback fetcher;
-    List<COMPRESSOR_TYPE> decompressors;
-    ClientMetadata clientMetadata;
-    boolean topDontCompress;
-    short topCompatibilityMode;
-    FetchContext origFetchContext;
-    boolean realTime;
-    KeySalter salt;
-    FreenetURI thisKey;
-    FreenetURI origKey;
-    boolean isFinalFetch;
-    byte[] clientDetails;
-    RandomSource random;
-    BucketFactory tempBucketFactory;
-    LockableRandomAccessBufferFactory rafFactory;
-    PersistentJobRunner exec;
-    Ticker ticker;
-    MemoryLimitedJobRunner memoryLimitedJobRunner;
-    ChecksumChecker checker;
-    boolean persistent;
-    File storageFile;
-    FileRandomAccessBufferFactory diskSpaceCheckingRAFFactory;
-    KeysFetchingLocally keysFetching;
-
-    /**
-     * Fluent builder for {@link InitParams}.
-     *
-     * <p>The builder performs no I/O and minimal validation. Typical usage sets the metadata,
-     * callback, decompression pipeline, factories, and execution helpers, then calls {@link
-     * #build()} to obtain an immutable {@link InitParams} snapshot.
-     *
-     * <p>Unless otherwise stated, all values are required. Optional values follow sensible defaults
-     * inside the storage constructor when omitted.
-     */
-    public static class Builder {
-      private Metadata metadata;
-      private SplitFileFetcherStorageCallback fetcher;
-      private List<COMPRESSOR_TYPE> decompressors;
-      private ClientMetadata clientMetadata;
-      private boolean topDontCompress;
-      private short topCompatibilityMode;
-      private FetchContext origFetchContext;
-      private boolean realTime;
-      private KeySalter salt;
-      private FreenetURI thisKey;
-      private FreenetURI origKey;
-      private boolean isFinalFetch;
-      private byte[] clientDetails;
-      private RandomSource random;
-      private BucketFactory tempBucketFactory;
-      private LockableRandomAccessBufferFactory rafFactory;
-      private PersistentJobRunner exec;
-      private Ticker ticker;
-      private MemoryLimitedJobRunner memoryLimitedJobRunner;
-      private ChecksumChecker checker;
-      private boolean persistent;
-      private File storageFile;
-      private FileRandomAccessBufferFactory diskSpaceCheckingRAFFactory;
-      private KeysFetchingLocally keysFetching;
-
-      /**
-       * Set the parsed splitfile {@link Metadata} required to plan the fetch.
-       *
-       * @param v metadata describing segments, blocks, and algorithms; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder metadata(Metadata v) {
-        this.metadata = v;
-        return this;
-      }
-
-      /**
-       * Set the fetcher callback that receives progress and completion events.
-       *
-       * @param v callback implementation used for notifications; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder fetcher(SplitFileFetcherStorageCallback v) {
-        this.fetcher = v;
-        return this;
-      }
-
-      /**
-       * Configure the decompressor pipeline to apply after block decode.
-       *
-       * @param v ordered list of compressor types; empty or singleton in most deployments.
-       * @return this builder for fluent chaining.
-       */
-      public Builder decompressors(List<COMPRESSOR_TYPE> v) {
-        this.decompressors = v;
-        return this;
-      }
-
-      /**
-       * Supply optional client metadata to attach to the completed object.
-       *
-       * @param v metadata such as MIME type and filename; may be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder clientMetadata(ClientMetadata v) {
-        this.clientMetadata = v;
-        return this;
-      }
-
-      /**
-       * Set whether the top-level container should avoid compression.
-       *
-       * @param v when {@code true}, skip attempting compression at the top level.
-       * @return this builder for fluent chaining.
-       */
-      public Builder topDontCompress(boolean v) {
-        this.topDontCompress = v;
-        return this;
-      }
-
-      /**
-       * Specify the minimum compatibility mode expected by the consumer.
-       *
-       * @param v numeric mode constant; affects padding and related behaviours.
-       * @return this builder for fluent chaining.
-       */
-      public Builder topCompatibilityMode(short v) {
-        this.topCompatibilityMode = v;
-        return this;
-      }
-
-      /**
-       * Provide the fetch context carrying retry and cooldown policy.
-       *
-       * @param v context with limits, timeouts, and priorities; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder fetchContext(FetchContext v) {
-        this.origFetchContext = v;
-        return this;
-      }
-
-      /**
-       * Indicate whether the fetch should prefer reduced buffering (real-time).
-       *
-       * @param v when {@code true}, configure for lower latency over throughput.
-       * @return this builder for fluent chaining.
-       */
-      public Builder realTime(boolean v) {
-        this.realTime = v;
-        return this;
-      }
-
-      /**
-       * Set the key salter used when deriving salted keys for requests.
-       *
-       * @param v optional salter strategy; may be {@code null} to disable salting.
-       * @return this builder for fluent chaining.
-       */
-      public Builder salt(KeySalter v) {
-        this.salt = v;
-        return this;
-      }
-
-      /**
-       * Set the primary request URI associated with this fetch.
-       *
-       * @param v the URI for the current object; used for logging and provenance.
-       * @return this builder for fluent chaining.
-       */
-      public Builder thisKey(FreenetURI v) {
-        this.thisKey = v;
-        return this;
-      }
-
-      /**
-       * Optionally record the original user-facing URI if different from {@link #thisKey}.
-       *
-       * @param v the original or canonical URI; may be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder origKey(FreenetURI v) {
-        this.origKey = v;
-        return this;
-      }
-
-      /**
-       * Indicate whether this fetch corresponds to the final content rather than metadata.
-       *
-       * @param v set {@code true} when fetching the actual payload, not intermediate data.
-       * @return this builder for fluent chaining.
-       */
-      public Builder isFinalFetch(boolean v) {
-        this.isFinalFetch = v;
-        return this;
-      }
-
-      /**
-       * Attach opaque client details preserved for callbacks and auditing.
-       *
-       * @param v optional byte array copied/stored as provided; may be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder clientDetails(byte[] v) {
-        this.clientDetails = v;
-        return this;
-      }
-
-      /**
-       * Provide the source of randomness used for key scheduling and shuffling.
-       *
-       * @param v randomness provider; must not be {@code null} in production use.
-       * @return this builder for fluent chaining.
-       */
-      public Builder random(RandomSource v) {
-        this.random = v;
-        return this;
-      }
-
-      /**
-       * Set the temporary bucket factory used to stage metadata before persistence.
-       *
-       * @param v factory for transient buffers; required when {@code persistent} is enabled.
-       * @return this builder for fluent chaining.
-       */
-      public Builder tempBucketFactory(BucketFactory v) {
-        this.tempBucketFactory = v;
-        return this;
-      }
-
-      /**
-       * Configure the random-access buffer factory that creates the backing store.
-       *
-       * @param v factory responsible for persistent RAF creation; must be compatible with the
-       *     chosen storage file.
-       * @return this builder for fluent chaining.
-       */
-      public Builder rafFactory(LockableRandomAccessBufferFactory v) {
-        this.rafFactory = v;
-        return this;
-      }
-
-      /**
-       * Provide the job runner used for off-thread work and callbacks.
-       *
-       * @param v persistent job runner implementation; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder exec(PersistentJobRunner v) {
-        this.exec = v;
-        return this;
-      }
-
-      /**
-       * Set the time source/scheduler used for delayed tasks and de-duplication.
-       *
-       * @param v ticker implementation; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder ticker(Ticker v) {
-        this.ticker = v;
-        return this;
-      }
-
-      /**
-       * Provide the memory-limited job runner used for heavy decode/encode work.
-       *
-       * @param v job runner aware of memory caps; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder memoryLimitedJobRunner(MemoryLimitedJobRunner v) {
-        this.memoryLimitedJobRunner = v;
-        return this;
-      }
-
-      /**
-       * Choose the checksum implementation and length used in persisted sections.
-       *
-       * @param v checker implementation which also provides the checksum length.
-       * @return this builder for fluent chaining.
-       */
-      public Builder checker(ChecksumChecker v) {
-        this.checker = v;
-        return this;
-      }
-
-      /**
-       * Enable or disable persistence of metadata and progress across restarts.
-       *
-       * @param v set {@code true} to persist enough state for resumption after a restart.
-       * @return this builder for fluent chaining.
-       */
-      public Builder persistent(boolean v) {
-        this.persistent = v;
-        return this;
-      }
-
-      /**
-       * Provide an explicit file for the backing store when truncation is desired.
-       *
-       * @param v target file path; when set, completion may use truncation optimisation.
-       * @return this builder for fluent chaining.
-       */
-      public Builder storageFile(File v) {
-        this.storageFile = v;
-        return this;
-      }
-
-      /**
-       * Configure a disk-space checking RAF factory for safer persistent allocations.
-       *
-       * @param v RAF factory that validates available space; optional but recommended.
-       * @return this builder for fluent chaining.
-       */
-      public Builder diskSpaceCheckingRAFFactory(FileRandomAccessBufferFactory v) {
-        this.diskSpaceCheckingRAFFactory = v;
-        return this;
-      }
-
-      /**
-       * Set the key-tracking helper that marks keys as fetching locally.
-       *
-       * @param v helper for cross-component key accounting; may be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder keysFetching(KeysFetchingLocally v) {
-        this.keysFetching = v;
-        return this;
-      }
-
-      /**
-       * Build an immutable snapshot of the current builder state.
-       *
-       * @return a fully-populated {@link InitParams} ready for storage construction.
-       */
-      public InitParams build() {
-        InitParams p = new InitParams();
-        p.metadata = metadata;
-        p.fetcher = fetcher;
-        p.decompressors = decompressors;
-        p.clientMetadata = clientMetadata;
-        p.topDontCompress = topDontCompress;
-        p.topCompatibilityMode = topCompatibilityMode;
-        p.origFetchContext = origFetchContext;
-        p.realTime = realTime;
-        p.salt = salt;
-        p.thisKey = thisKey;
-        p.origKey = origKey;
-        p.isFinalFetch = isFinalFetch;
-        p.clientDetails = clientDetails;
-        p.random = random;
-        p.tempBucketFactory = tempBucketFactory;
-        p.rafFactory = rafFactory;
-        p.exec = exec;
-        p.ticker = ticker;
-        p.memoryLimitedJobRunner = memoryLimitedJobRunner;
-        p.checker = checker;
-        p.persistent = persistent;
-        p.storageFile = storageFile;
-        p.diskSpaceCheckingRAFFactory = diskSpaceCheckingRAFFactory;
-        p.keysFetching = keysFetching;
-        return p;
-      }
-    }
-  }
-
-  /**
    * Create a new storage instance backed by a fresh on-disk layout.
    *
    * <p>This constructor interprets the supplied metadata, allocates segment/cross-segment state,
    * initialises Bloom filters and checksums, and wires asynchronous helpers. It does not block on
    * network I/O but may perform bounded file I/O to prepare the persistent structures when {@code
-   * persistent} is enabled in {@link InitParams}.
+   * persistent} is enabled in {@link SplitFileFetcherStorageInitParams}.
    *
    * <p>Callers normally place the instance under a coordinating fetcher which drives block request
    * scheduling. Once all segments finish and postconditions are met, the fetcher calls {@link
    * #streamGenerator()} to materialise the final byte stream.
    *
-   * @param p full set of immutable construction parameters created by {@link InitParams.Builder};
-   *     must reference the metadata for this splitfile and execution helpers such as {@code
-   *     jobRunner}, {@code ticker}, and checksum policy. May not be {@code null}.
+   * @param p full set of immutable construction parameters created by {@link
+   *     SplitFileFetcherStorageInitParams.Builder}; must reference the metadata for this splitfile
+   *     and execution helpers such as {@code jobRunner}, {@code ticker}, and checksum policy. May
+   *     not be {@code null}.
    * @throws FetchException if the fetch context indicates an unrecoverable configuration or policy
    *     error while preparing request state; this is not a network failure.
    * @throws MetadataParseException if the supplied {@link Metadata} cannot be interpreted into a
    *     valid splitfile layout (e.g., inconsistent block counts or unsupported algorithm).
    * @throws IOException if initial on-disk structures cannot be written or verified using the
-   *     configured {@link LockableRandomAccessBufferFactory} and {@link BucketFactory}.
+   *     configured {@link LockableRandomAccessBufferFactory} and temporary bucket factory.
    */
-  public SplitFileFetcherStorage(InitParams p)
+  public SplitFileFetcherStorage(SplitFileFetcherStorageInitParams p)
       throws FetchException, MetadataParseException, IOException {
     // Initialize immutable/basic fields.
     this.fetcher = p.fetcher;
@@ -788,7 +400,9 @@ public class SplitFileFetcherStorage {
     this.offsetKeyList = storedBlocksLength + storedCrossCheckBlocksLength;
     this.offsetSegmentStatus = offsetKeyList + acc.storedKeysLength;
 
-    byte[] generalProgress = encodeGeneralProgress();
+    byte[] generalProgress =
+        SplitFileFetcherStoragePersistence.encodeGeneralProgress(
+            checksumChecker, hasCheckedDatastore, errors);
 
     if (persistent) {
       offsetGeneralProgress = offsetSegmentStatus + acc.storedSegmentStatusLength;
@@ -820,20 +434,24 @@ public class SplitFileFetcherStorage {
 
     // Prepare metadata buffers and compute final layout lengths/offsets (assign finals here).
     long totalLength;
-    Bucket metadataTemp;
-    byte[] encodedURI;
+    SplitFileFetcherStoragePersistence.PreparedMetadata prepared = null;
     byte[] encodedBasicSettings;
     if (persistent) {
-      PersistentPreparation prep =
-          preparePersistent(
+      prepared =
+          SplitFileFetcherStoragePersistence.preparePersistent(
               p.metadata,
               p.tempBucketFactory,
-              new OriginalDetails(p.thisKey, p.origKey, p.clientDetails, p.isFinalFetch));
-      offsetOriginalDetails = prep.offsetOriginalDetails;
-      this.offsetBasicSettings = prep.offsetBasicSettings;
-      // Now we know encodedBasicSettings length, recompute totalLength accurately.
-      metadataTemp = prep.metadataTemp;
-      encodedURI = prep.encodedURI;
+              p.thisKey,
+              p.origKey,
+              p.clientDetails,
+              p.isFinalFetch,
+              offsetOriginalMetadata,
+              checksumChecker,
+              maxRetries,
+              cooldownTries,
+              cooldownLength);
+      offsetOriginalDetails = prepared.offsetOriginalDetails();
+      this.offsetBasicSettings = prepared.offsetBasicSettings();
       // Now offsets are final, we can encode the basic settings which embed them.
       encodedBasicSettings =
           encodeBasicSettings(
@@ -845,250 +463,15 @@ public class SplitFileFetcherStorage {
     } else {
       totalLength = offsetSegmentStatus;
       offsetOriginalDetails = offsetBasicSettings = offsetSegmentStatus;
-      metadataTemp = null;
-      encodedURI = encodedBasicSettings = null;
+      encodedBasicSettings = null;
     }
 
     // Create the actual LockableRandomAccessBuffer
     rafLength = totalLength;
     raf = createRAFOrThrow(p.storageFile, totalLength, p.rafFactory, p.diskSpaceCheckingRAFFactory);
-    writeToRAF(
-        segmentKeys, metadataTemp, encodedURI, encodedBasicSettings, totalLength, generalProgress);
+    writeToRAF(segmentKeys, prepared, encodedBasicSettings, totalLength, generalProgress);
     if (LOG.isDebugEnabled()) LOG.debug("Fetching {} on {} for {}", p.thisKey, this, fetcher);
     initAsyncHelpers();
-  }
-
-  /**
-   * Parameters needed to resume a previously persisted fetch session.
-   *
-   * <p>When storage was created in persistent mode, a restart rebuilds its in-memory state by
-   * reading and validating checksummed sections from the backing random access buffer. This holder
-   * conveys the environment required to do so, including the buffer itself, scheduling helpers and
-   * checksum implementation.
-   *
-   * <p>Unlike {@link InitParams}, these values are derived from the on-disk format rather than the
-   * metadata that initiated the fetch. Use the nested {@link ResumeParams.Builder} to construct an
-   * instance suitable for {@link SplitFileFetcherStorage#SplitFileFetcherStorage(ResumeParams)}.
-   *
-   * @hidden
-   */
-  public static final class ResumeParams {
-    LockableRandomAccessBuffer raf;
-    boolean realTime;
-    SplitFileFetcherStorageCallback callback;
-    FetchContext origContext;
-    RandomSource random;
-    PersistentJobRunner exec;
-    KeysFetchingLocally keysFetching;
-    Ticker ticker;
-    MemoryLimitedJobRunner memoryLimitedJobRunner;
-    ChecksumChecker checker;
-    boolean newSalt;
-    KeySalter salt;
-    boolean resumed;
-    boolean completeViaTruncation;
-
-    /**
-     * Fluent builder for {@link ResumeParams} used when reconstructing state from disk.
-     *
-     * <p>Callers provide the buffer to read from, runtime services (job/ticker), and flags
-     * indicating whether a new salt should be injected. The resulting {@link ResumeParams} is
-     * consumed by the resuming constructor.
-     */
-    public static class Builder {
-      private LockableRandomAccessBuffer raf;
-      private boolean realTime;
-      private SplitFileFetcherStorageCallback callback;
-      private FetchContext origContext;
-      private RandomSource random;
-      private PersistentJobRunner exec;
-      private KeysFetchingLocally keysFetching;
-      private Ticker ticker;
-      private MemoryLimitedJobRunner memoryLimitedJobRunner;
-      private ChecksumChecker checker;
-      private boolean newSalt;
-      private KeySalter salt;
-      private boolean resumed;
-      private boolean completeViaTruncation;
-
-      /**
-       * Set the random-access buffer to resume from.
-       *
-       * @param v buffer positioned at the previously persisted storage file.
-       * @return this builder for fluent chaining.
-       */
-      public Builder raf(LockableRandomAccessBuffer v) {
-        this.raf = v;
-        return this;
-      }
-
-      /**
-       * Configure whether resume should prefer real-time behaviour.
-       *
-       * @param v when {@code true}, optimises for latency over throughput.
-       * @return this builder for fluent chaining.
-       */
-      public Builder realTime(boolean v) {
-        this.realTime = v;
-        return this;
-      }
-
-      /**
-       * Set the callback used for notifications during the resumed session.
-       *
-       * @param v callback implementation; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder callback(SplitFileFetcherStorageCallback v) {
-        this.callback = v;
-        return this;
-      }
-
-      /**
-       * Provide the original fetch context to reapply scheduling policy.
-       *
-       * @param v fetch context used to derive retries and cooldown; non-null.
-       * @return this builder for fluent chaining.
-       */
-      public Builder context(FetchContext v) {
-        this.origContext = v;
-        return this;
-      }
-
-      /**
-       * Provide the randomness source used by resumed operations.
-       *
-       * @param v randomness provider; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder random(RandomSource v) {
-        this.random = v;
-        return this;
-      }
-
-      /**
-       * Set the job runner handling off-thread activity.
-       *
-       * @param v job runner for background tasks; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder exec(PersistentJobRunner v) {
-        this.exec = v;
-        return this;
-      }
-
-      /**
-       * Provide the helper used to mark keys as fetching locally.
-       *
-       * @param v optional accounting helper.
-       * @return this builder for fluent chaining.
-       */
-      public Builder keysFetching(KeysFetchingLocally v) {
-        this.keysFetching = v;
-        return this;
-      }
-
-      /**
-       * Set the ticker used for timed operations and coalescing.
-       *
-       * @param v ticker/scheduler implementation; non-null.
-       * @return this builder for fluent chaining.
-       */
-      public Builder ticker(Ticker v) {
-        this.ticker = v;
-        return this;
-      }
-
-      /**
-       * Provide the memory-limited job runner for heavy tasks.
-       *
-       * @param v job runner respecting memory caps; must not be {@code null}.
-       * @return this builder for fluent chaining.
-       */
-      public Builder memoryLimitedJobRunner(MemoryLimitedJobRunner v) {
-        this.memoryLimitedJobRunner = v;
-        return this;
-      }
-
-      /**
-       * Set the checksum implementation and length for persisted sections.
-       *
-       * @param v checker implementation; non-null.
-       * @return this builder for fluent chaining.
-       */
-      public Builder checker(ChecksumChecker v) {
-        this.checker = v;
-        return this;
-      }
-
-      /**
-       * Whether to inject a new salt when resuming, if supported.
-       *
-       * @param v set {@code true} to prefer re-salting.
-       * @return this builder for fluent chaining.
-       */
-      public Builder newSalt(boolean v) {
-        this.newSalt = v;
-        return this;
-      }
-
-      /**
-       * Provide the salter to use if {@link #newSalt(boolean)} is {@code true}.
-       *
-       * @param v salter implementation; may be {@code null} to disable.
-       * @return this builder for fluent chaining.
-       */
-      public Builder salt(KeySalter v) {
-        this.salt = v;
-        return this;
-      }
-
-      /**
-       * Mark that this session represents a true resume rather than a fresh start.
-       *
-       * @param v set {@code true} when resuming from persisted state.
-       * @return this builder for fluent chaining.
-       */
-      public Builder resumed(boolean v) {
-        this.resumed = v;
-        return this;
-      }
-
-      /**
-       * Enable completion via truncation when possible.
-       *
-       * @param v when {@code true}, prefer truncation optimisation at completion.
-       * @return this builder for fluent chaining.
-       */
-      public Builder completeViaTruncation(boolean v) {
-        this.completeViaTruncation = v;
-        return this;
-      }
-
-      /**
-       * Build a {@link ResumeParams} snapshot for resuming from disk.
-       *
-       * @return the constructed parameters object consumed by the resuming constructor.
-       */
-      public ResumeParams build() {
-        ResumeParams p = new ResumeParams();
-        p.raf = raf;
-        p.realTime = realTime;
-        p.callback = callback;
-        p.origContext = origContext;
-        p.random = random;
-        p.exec = exec;
-        p.keysFetching = keysFetching;
-        p.ticker = ticker;
-        p.memoryLimitedJobRunner = memoryLimitedJobRunner;
-        p.checker = checker;
-        p.newSalt = newSalt;
-        p.salt = salt;
-        p.resumed = resumed;
-        p.completeViaTruncation = completeViaTruncation;
-        return p;
-      }
-    }
   }
 
   /**
@@ -1098,15 +481,16 @@ public class SplitFileFetcherStorage {
    * section, and rebuilds segment state and Bloom filters. It also reattaches asynchronous helpers
    * and prepares any pending decode attempts when segment metadata indicates partial progress.
    *
-   * @param p environment and buffer required to resume; created via {@link ResumeParams.Builder}.
-   *     Must include a readable {@link LockableRandomAccessBuffer}.
+   * @param p environment and buffer required to resume; created via {@link
+   *     SplitFileFetcherStorageResumeParams.Builder}. Must include a readable {@link
+   *     LockableRandomAccessBuffer}.
    * @throws IOException if underlying storage cannot be accessed.
    * @throws StorageFormatException if the on-disk structure is corrupted or incompatible with the
    *     current format version.
    * @throws FetchException if the reconstructed state violates fetcher policy or cannot be
    *     reconciled with the provided runtime environment.
    */
-  public SplitFileFetcherStorage(ResumeParams p)
+  public SplitFileFetcherStorage(SplitFileFetcherStorageResumeParams p)
       throws IOException, StorageFormatException, FetchException {
     this.persistent = true;
     this.raf = p.raf;
@@ -1739,22 +1123,6 @@ public class SplitFileFetcherStorage {
     }
   }
 
-  private byte[] encodeGeneralProgress() {
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    try {
-      OutputStream ccos = checksumChecker.checksumWriterWithLength(baos, new ArrayBucketFactory());
-      DataOutputStream dos = new DataOutputStream(ccos);
-      long flags = 0;
-      if (hasCheckedDatastore) flags |= HAS_CHECKED_DATASTORE_FLAG;
-      dos.writeLong(flags);
-      errors.writeFixedLengthTo(dos);
-      dos.close();
-    } catch (IOException e) {
-      throw new IllegalStateException(e);
-    }
-    return baos.toByteArray();
-  }
-
   /**
    * Start the storage layer.
    *
@@ -1926,21 +1294,6 @@ public class SplitFileFetcherStorage {
    * Write details needed to restart the download from scratch, and to identify whether it is useful
    * to do so.
    */
-  private byte[] encodeAndChecksumOriginalDetails(
-      FreenetURI thisKey, FreenetURI origKey, byte[] clientDetails, boolean isFinalFetch)
-      throws IOException {
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    DataOutputStream dos = new DataOutputStream(baos);
-    dos.writeUTF(thisKey.toASCIIString());
-    dos.writeUTF(origKey.toASCIIString());
-    dos.writeBoolean(isFinalFetch);
-    dos.writeInt(clientDetails.length);
-    dos.write(clientDetails);
-    dos.writeInt(maxRetries);
-    dos.writeInt(cooldownTries);
-    dos.writeLong(cooldownLength);
-    return checksumChecker.appendChecksum(baos.toByteArray());
-  }
 
   /** Container for accumulated sizing information computed from segment keys and configuration. */
   private static final class AccumulatedSizes {
@@ -1962,20 +1315,6 @@ public class SplitFileFetcherStorage {
   }
 
   /** Bundles details needed to initialize persistent metadata sections. */
-  private static final class OriginalDetails {
-    final FreenetURI thisKey;
-    final FreenetURI origKey;
-    final byte[] clientDetails;
-    final boolean isFinalFetch;
-
-    OriginalDetails(
-        FreenetURI thisKey, FreenetURI origKey, byte[] clientDetails, boolean isFinalFetch) {
-      this.thisKey = thisKey;
-      this.origKey = origKey;
-      this.clientDetails = clientDetails;
-      this.isFinalFetch = isFinalFetch;
-    }
-  }
 
   /** Context needed to build segments and keys while computing offsets. */
   private static final class SegmentsBuildContext {
@@ -2026,74 +1365,9 @@ public class SplitFileFetcherStorage {
         splitfileDataBlocks, splitfileCheckBlocks, storedKeysLength, storedSegmentStatusLength);
   }
 
-  private static final class PersistentPreparation {
-    final Bucket metadataTemp;
-    final byte[] encodedURI;
-    final long totalLength;
-    final long offsetOriginalDetails;
-    final long offsetBasicSettings;
-
-    PersistentPreparation(
-        Bucket metadataTemp,
-        byte[] encodedURI,
-        long totalLength,
-        long offsetOriginalDetails,
-        long offsetBasicSettings) {
-      this.metadataTemp = metadataTemp;
-      this.encodedURI = encodedURI;
-      this.totalLength = totalLength;
-      this.offsetOriginalDetails = offsetOriginalDetails;
-      this.offsetBasicSettings = offsetBasicSettings;
-    }
-  }
-
-  private PersistentPreparation preparePersistent(
-      Metadata metadata, BucketFactory tempBucketFactory, OriginalDetails details)
-      throws FetchException, IOException {
-    Bucket metadataTemp = tempBucketFactory.makeBucket(-1);
-    try (OutputStream os = metadataTemp.getOutputStream();
-        OutputStream cos = checksumOutputStream(os);
-        BufferedOutputStream bos = new BufferedOutputStream(cos)) {
-      MultiHashOutputStream mos = new MultiHashOutputStream(bos, HashType.SHA256.bitmask);
-      metadata.writeTo(new DataOutputStream(mos));
-      mos.getResults()[0].writeTo(bos);
-    } catch (MetadataUnresolvedException e) {
-      throw new FetchException(
-          FetchExceptionMode.INTERNAL_ERROR,
-          "Metadata not resolved starting splitfile fetch?!: " + e,
-          e);
-    }
-    long metadataLength = metadataTemp.size();
-    long computedOffsetOriginalDetails = offsetOriginalMetadata + metadataLength;
-
-    byte[] encodedURI =
-        encodeAndChecksumOriginalDetails(
-            details.thisKey, details.origKey, details.clientDetails, details.isFinalFetch);
-    long computedOffsetBasicSettings = computedOffsetOriginalDetails + encodedURI.length;
-
-    //noinspection PointlessArithmeticExpression
-    long totalLength =
-        computedOffsetBasicSettings /* offset of basic settings */
-            + 0 /* encodedBasicSettings length (computed after assigning offsets) */
-            + 4 /* basic settings length */
-            + checksumLength /* footer checksum */
-            + 4 /* version */
-            + 4 /* flags */
-            + 2 /* checksum type */
-            + 8 /* magic */;
-
-    return new PersistentPreparation(
-        metadataTemp,
-        encodedURI,
-        totalLength,
-        computedOffsetOriginalDetails,
-        computedOffsetBasicSettings);
-  }
-
   private void writeToRAF(
       SplitFileSegmentKeys[] segmentKeys,
-      Bucket metadataTemp,
-      byte[] encodedURI,
+      SplitFileFetcherStoragePersistence.PreparedMetadata prepared,
       byte[] encodedBasicSettings,
       long totalLength,
       byte[] generalProgress)
@@ -2108,41 +1382,13 @@ public class SplitFileFetcherStorage {
         raf.pwrite(offsetGeneralProgress, generalProgress, 0, generalProgress.length);
         keyListener.innerWriteMainBloomFilter(offsetMainBloomFilter);
         keyListener.initialWriteSegmentBloomFilters(offsetSegmentBloomFilters);
-        BucketTools.copyTo(metadataTemp, raf, offsetOriginalMetadata, -1);
-        metadataTemp.free();
-        raf.pwrite(offsetOriginalDetails, encodedURI, 0, encodedURI.length);
-        raf.pwrite(offsetBasicSettings, encodedBasicSettings, 0, encodedBasicSettings.length);
-
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        DataOutputStream dos = new DataOutputStream(baos);
-        dos.writeInt(encodedBasicSettings.length - checksumLength);
-        byte[] bufToWrite = baos.toByteArray();
-        baos = new ByteArrayOutputStream();
-        dos = new DataOutputStream(baos);
-        dos.writeInt(0);
-        dos.writeShort(checksumChecker.getChecksumTypeID());
-        dos.writeInt(VERSION);
-        byte[] version = baos.toByteArray();
-        byte[] bufToChecksum = Arrays.copyOf(bufToWrite, bufToWrite.length + version.length);
-        System.arraycopy(version, 0, bufToChecksum, bufToWrite.length, version.length);
-        byte[] checksum = checksumChecker.generateChecksum(bufToChecksum);
-        raf.pwrite(
-            offsetBasicSettings + encodedBasicSettings.length, bufToWrite, 0, bufToWrite.length);
-        raf.pwrite(
-            offsetBasicSettings + encodedBasicSettings.length + bufToWrite.length,
-            checksum,
-            0,
-            checksum.length);
-        raf.pwrite(
-            offsetBasicSettings + encodedBasicSettings.length + bufToWrite.length + checksum.length,
-            version,
-            0,
-            version.length);
-        baos = new ByteArrayOutputStream();
-        dos = new DataOutputStream(baos);
-        dos.writeLong(END_MAGIC);
-        byte[] buf = baos.toByteArray();
-        raf.pwrite(totalLength - 8, buf, 0, 8);
+        SplitFileFetcherStoragePersistence.writePersistentMetadata(
+            raf,
+            offsetOriginalMetadata,
+            prepared,
+            encodedBasicSettings,
+            checksumChecker,
+            totalLength);
       }
     }
   }
@@ -2332,85 +1578,8 @@ public class SplitFileFetcherStorage {
 
     keyListener.finishedSetup();
 
-    return createCrossSegments(ctx.metadata, ctx.crossCheckBlocks, ctx.blocksPerSegment);
-  }
-
-  private SplitFileFetcherCrossSegmentStorage[] createCrossSegments(
-      Metadata metadata, int crossCheckBlocks, int blocksPerSegment) {
-    SplitFileFetcherCrossSegmentStorage[] xSegments;
-    if (crossCheckBlocks == 0) return new SplitFileFetcherCrossSegmentStorage[0];
-    Random crossSegmentRandom =
-        MersenneTwister.createUnsynchronized(
-            Metadata.getCrossSegmentSeed(metadata.getHashes(), metadata.getHashThisLayerOnly()));
-    xSegments = new SplitFileFetcherCrossSegmentStorage[segments.length];
-    int segLen = blocksPerSegment;
-    int deductBlocksFromSegments = metadata.getDeductBlocksFromSegments();
-    for (int i = 0; i < xSegments.length; i++) {
-      LOG.info("Allocating blocks (on fetch) for cross segment {}", i);
-      if (segments.length - i == deductBlocksFromSegments) {
-        segLen--;
-      }
-      SplitFileFetcherCrossSegmentStorage seg =
-          new SplitFileFetcherCrossSegmentStorage(i, segLen, crossCheckBlocks, this, fecCodec);
-      xSegments[i] = seg;
-      for (int j = 0; j < segLen; j++) {
-        allocateCrossDataBlock(seg, crossSegmentRandom);
-      }
-      for (int j = 0; j < crossCheckBlocks; j++) {
-        allocateCrossCheckBlock(seg, crossSegmentRandom);
-      }
-    }
-    return xSegments;
-  }
-
-  /** Reserved for future use. */
-  private void allocateCrossDataBlock(SplitFileFetcherCrossSegmentStorage segment, Random random) {
-    int x = 0;
-    for (int i = 0; i < 10; i++) {
-      x = random.nextInt(segments.length);
-      SplitFileFetcherSegmentStorage seg = segments[x];
-      int blockNum = seg.allocateCrossDataBlock(segment, random);
-      if (blockNum >= 0) {
-        segment.addDataBlock(seg, blockNum);
-        return;
-      }
-    }
-    for (int i = 0; i < segments.length; i++) {
-      x++;
-      if (x == segments.length) x = 0;
-      SplitFileFetcherSegmentStorage seg = segments[x];
-      int blockNum = seg.allocateCrossDataBlock(segment, random);
-      if (blockNum >= 0) {
-        segment.addDataBlock(seg, blockNum);
-        return;
-      }
-    }
-    throw new IllegalStateException("Unable to allocate cross data block!");
-  }
-
-  /** Reserved for future use. */
-  private void allocateCrossCheckBlock(SplitFileFetcherCrossSegmentStorage segment, Random random) {
-    int x = 0;
-    for (int i = 0; i < 10; i++) {
-      x = random.nextInt(segments.length);
-      SplitFileFetcherSegmentStorage seg = segments[x];
-      int blockNum = seg.allocateCrossCheckBlock(segment, random);
-      if (blockNum >= 0) {
-        segment.addDataBlock(seg, blockNum);
-        return;
-      }
-    }
-    for (int i = 0; i < segments.length; i++) {
-      x++;
-      if (x == segments.length) x = 0;
-      SplitFileFetcherSegmentStorage seg = segments[x];
-      int blockNum = seg.allocateCrossCheckBlock(segment, random);
-      if (blockNum >= 0) {
-        segment.addDataBlock(seg, blockNum);
-        return;
-      }
-    }
-    throw new IllegalStateException("Unable to allocate cross data block!");
+    return SplitFileFetcherCrossSegmentAllocator.createCrossSegments(
+        this, ctx.metadata, ctx.crossCheckBlocks, ctx.blocksPerSegment, segments, fecCodec);
   }
 
   /**
@@ -2527,7 +1696,9 @@ public class SplitFileFetcherStorage {
       if (!dirtyGeneralProgress) return;
       dirtyGeneralProgress = false;
     }
-    byte[] generalProgress = encodeGeneralProgress();
+    byte[] generalProgress =
+        SplitFileFetcherStoragePersistence.encodeGeneralProgress(
+            checksumChecker, hasCheckedDatastore, errors);
     try {
       raf.pwrite(offsetGeneralProgress, generalProgress, 0, generalProgress.length);
     } catch (IOException e) {

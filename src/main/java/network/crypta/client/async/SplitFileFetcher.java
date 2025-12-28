@@ -260,7 +260,7 @@ public class SplitFileFetcher
       throws IOException, FetchException, MetadataParseException {
     ChecksumChecker checker = new CRCChecksumChecker();
     return new SplitFileFetcherStorage(
-        new SplitFileFetcherStorage.InitParams.Builder()
+        new SplitFileFetcherStorageInitParams.Builder()
             .metadata(metadata)
             .fetcher(this)
             .decompressors(decompressors)
@@ -695,7 +695,7 @@ public class SplitFileFetcher
       raf.onResume(context);
       this.storage =
           new SplitFileFetcherStorage(
-              new SplitFileFetcherStorage.ResumeParams.Builder()
+              new SplitFileFetcherStorageResumeParams.Builder()
                   .raf(raf)
                   .realTime(realTimeFlag)
                   .callback(this)
