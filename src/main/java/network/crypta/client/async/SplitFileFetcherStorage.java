@@ -1179,7 +1179,7 @@ public class SplitFileFetcherStorage {
   private boolean regenerateKeysAsync() {
     try {
       this.jobRunner.queue(
-          context -> {
+          _ -> {
             regenerateKeysJob();
             return false;
           },
@@ -1290,11 +1290,6 @@ public class SplitFileFetcherStorage {
     return baos.toByteArray();
   }
 
-  /**
-   * Write details needed to restart the download from scratch, and to identify whether it is useful
-   * to do so.
-   */
-
   /** Container for accumulated sizing information computed from segment keys and configuration. */
   private static final class AccumulatedSizes {
     final int splitfileDataBlocks;
@@ -1313,8 +1308,6 @@ public class SplitFileFetcherStorage {
       this.storedSegmentStatusLength = storedSegmentStatusLength;
     }
   }
-
-  /** Bundles details needed to initialize persistent metadata sections. */
 
   /** Context needed to build segments and keys while computing offsets. */
   private static final class SegmentsBuildContext {
@@ -1623,7 +1616,7 @@ public class SplitFileFetcherStorage {
 
   private void callSuccessOffThread() {
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           synchronized (SplitFileFetcherStorage.this) {
             // Race conditions are possible, make sure we only call it once.
             if (succeeded) return false;
@@ -1708,7 +1701,7 @@ public class SplitFileFetcherStorage {
 
   private void initAsyncHelpers() {
     this.writeMetadataJob =
-        context -> {
+        _ -> {
           try {
             if (isFinishing()) return false;
             RAFLock lock = raf.lockOpen();
@@ -1778,7 +1771,7 @@ public class SplitFileFetcherStorage {
   /** Called on a normal non-truncation completion. Frees the storage file off-thread. */
   private void closeOffThread() {
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           // ATOMICITY/DURABILITY: This will run after the checkpoint after completion.
           // So after restart, even if the checkpoint failed, we will be in a valid state.
           // This is why this is queue() not queueInternal().
@@ -1898,7 +1891,7 @@ public class SplitFileFetcherStorage {
   public void fail(final FetchException e) {
     if (LOG.isDebugEnabled()) LOG.debug("Failing {} with error {} and codes {}", this, e, errors);
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           fetcher.fail(e);
           return true;
         });
@@ -1933,7 +1926,7 @@ public class SplitFileFetcherStorage {
   public void failOnDiskError(final IOException e) {
     LOG.error("Failing on disk error: {}", e, e);
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           fetcher.failOnDiskError(e);
           return true;
         });
@@ -1950,7 +1943,7 @@ public class SplitFileFetcherStorage {
   public void failOnDiskError(final ChecksumFailedException e) {
     LOG.error("Failing on unrecoverable corrupt data: {}", e, e);
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           fetcher.failOnDiskError(e);
           return true;
         });
@@ -2218,7 +2211,7 @@ public class SplitFileFetcherStorage {
    */
   public void failedBlock() {
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           fetcher.onFailedBlock();
           return false;
         });
@@ -2243,7 +2236,7 @@ public class SplitFileFetcherStorage {
    */
   public void restartedAfterDataCorruption() {
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           maybeClearCooldown();
           fetcher.restartedAfterDataCorruption();
           return false;
@@ -2260,7 +2253,7 @@ public class SplitFileFetcherStorage {
   void increaseCooldown(final long cooldownTime) {
     // Risky locking-wise, so run as a separate job.
     jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           long now = System.currentTimeMillis();
           long wakeupTime;
           synchronized (cooldownLock) {
