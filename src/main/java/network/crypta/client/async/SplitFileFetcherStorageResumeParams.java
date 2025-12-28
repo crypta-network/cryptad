@@ -75,9 +75,9 @@ public final class SplitFileFetcherStorageResumeParams {
     }
 
     /**
-     * Configure whether resume should prefer real-time behaviour.
+     * Configure whether resume should prefer real-time behavior.
      *
-     * @param v when {@code true}, optimises for latency over throughput.
+     * @param v when {@code true}, optimizes for latency over throughput.
      * @return this builder for fluent chaining.
      */
     public Builder realTime(boolean v) {
@@ -209,7 +209,7 @@ public final class SplitFileFetcherStorageResumeParams {
     /**
      * Enable completion via truncation when possible.
      *
-     * @param v when {@code true}, prefer truncation optimisation at completion.
+     * @param v when {@code true}, prefer truncation optimization at completion.
      * @return this builder for fluent chaining.
      */
     public Builder completeViaTruncation(boolean v) {
