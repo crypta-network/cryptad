@@ -2,10 +2,10 @@ package network.crypta.support.io;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Random;
 import java.util.stream.Stream;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
@@ -27,18 +27,23 @@ import org.mockito.Mockito;
  * run single-threaded; concurrency validation is out of scope.
  */
 class ByteArrayRandomAccessBufferTest {
+  private static final String READ_ONLY_MESSAGE = "Read-only";
+  private static final String UNREACHABLE_MESSAGE = "unreachable";
 
   /**
-   * Produce a deterministic pseudo-random byte array for test assertions.
+   * Produce a deterministic byte array for test assertions.
    *
    * @param size number of bytes to generate
-   * @param seed seed used to initialize {@link Random} for deterministic output
-   * @return a new array of length {@code size} filled with pseudo-random data
+   * @param seed seed used to initialize the deterministic pattern
+   * @return a new array of length {@code size} filled with deterministic data
    */
   private static byte[] bytes(int size, int seed) {
     byte[] data = new byte[size];
-    Random r = new Random(seed);
-    r.nextBytes(data);
+    int value = seed;
+    for (int i = 0; i < size; i++) {
+      value = 1664525 * value + 1013904223;
+      data[i] = (byte) (value >>> 16);
+    }
     return data;
   }
 
@@ -111,7 +116,7 @@ class ByteArrayRandomAccessBufferTest {
       // Read-only prevents writes and should raise an IOException.
       byte[] write = new byte[1];
       IOException ex = assertThrows(IOException.class, () -> raf.pwrite(0, write, 0, 1));
-      assertTrue(ex.getMessage().contains("Read-only"));
+      assertTrue(ex.getMessage().contains(READ_ONLY_MESSAGE));
     }
   }
 
@@ -128,7 +133,7 @@ class ByteArrayRandomAccessBufferTest {
 
       // Act + Assert
       IOException ex = assertThrows(IOException.class, () -> raf.pwrite(0, new byte[1], 0, 1));
-      assertTrue(ex.getMessage().contains("Read-only"));
+      assertTrue(ex.getMessage().contains(READ_ONLY_MESSAGE));
     }
   }
 
@@ -231,16 +236,15 @@ class ByteArrayRandomAccessBufferTest {
   @Test
   void pread_whenClosed_expectIOExceptionClosed() {
     // Arrange
-    try (ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(2)) {
-      raf.close();
-      byte[] out = new byte[1];
+    ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(2);
+    raf.close();
+    byte[] out = new byte[1];
 
-      // Act
-      IOException ex = assertThrows(IOException.class, () -> raf.pread(0, out, 0, 1));
+    // Act
+    IOException ex = assertThrows(IOException.class, () -> raf.pread(0, out, 0, 1));
 
-      // Assert
-      assertTrue(ex.getMessage().contains("Closed"));
-    }
+    // Assert
+    assertTrue(ex.getMessage().contains("Closed"));
   }
 
   // ---------- Write (pwrite) behavior ----------
@@ -332,16 +336,15 @@ class ByteArrayRandomAccessBufferTest {
   @Test
   void pwrite_whenClosed_expectIOExceptionClosed() {
     // Arrange
-    try (ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(2)) {
-      raf.close();
-      byte[] in = new byte[1];
+    ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(2);
+    raf.close();
+    byte[] in = new byte[1];
 
-      // Act
-      IOException ex = assertThrows(IOException.class, () -> raf.pwrite(0, in, 0, 1));
+    // Act
+    IOException ex = assertThrows(IOException.class, () -> raf.pwrite(0, in, 0, 1));
 
-      // Assert
-      assertTrue(ex.getMessage().contains("Closed"));
-    }
+    // Assert
+    assertTrue(ex.getMessage().contains("Closed"));
   }
 
   // ---------- Locking & lifecycle ----------
@@ -387,7 +390,7 @@ class ByteArrayRandomAccessBufferTest {
   void storeTo_whenCalled_expectUnsupportedOperationException() throws IOException {
     // Arrange
     try (ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(1)) {
-      try (DataOutputStream dos = new DataOutputStream(new java.io.ByteArrayOutputStream())) {
+      try (DataOutputStream dos = new DataOutputStream(new ByteArrayOutputStream())) {
         // Act + Assert
         assertThrows(UnsupportedOperationException.class, () -> raf.storeTo(dos));
       }
@@ -485,7 +488,7 @@ class ByteArrayRandomAccessBufferTest {
         IllegalArgumentException.class,
         () -> {
           try (LockableRandomAccessBuffer ignored = factory.makeRAF(-1)) {
-            fail("unreachable");
+            fail(UNREACHABLE_MESSAGE);
           }
         });
   }
@@ -506,7 +509,7 @@ class ByteArrayRandomAccessBufferTest {
             () -> {
               try (LockableRandomAccessBuffer ignored =
                   factory.makeRAF((long) Integer.MAX_VALUE + 1)) {
-                fail("unreachable");
+                fail(UNREACHABLE_MESSAGE);
               }
             });
 
@@ -541,7 +544,7 @@ class ByteArrayRandomAccessBufferTest {
 
       // Read-only must reject writes
       IOException ioe = assertThrows(IOException.class, () -> raf.pwrite(0, new byte[1], 0, 1));
-      assertTrue(ioe.getMessage().contains("Read-only"));
+      assertTrue(ioe.getMessage().contains(READ_ONLY_MESSAGE));
     }
   }
 
@@ -557,7 +560,7 @@ class ByteArrayRandomAccessBufferTest {
         IllegalArgumentException.class,
         () -> {
           try (LockableRandomAccessBuffer ignored = factory.makeRAF(src, 0, -1, false)) {
-            fail("unreachable");
+            fail(UNREACHABLE_MESSAGE);
           }
         });
   }
@@ -574,7 +577,7 @@ class ByteArrayRandomAccessBufferTest {
         ArrayIndexOutOfBoundsException.class,
         () -> {
           try (LockableRandomAccessBuffer ignored = factory.makeRAF(src, -1, 2, false)) {
-            fail("unreachable");
+            fail(UNREACHABLE_MESSAGE);
           }
         });
   }
@@ -591,7 +594,7 @@ class ByteArrayRandomAccessBufferTest {
         ArrayIndexOutOfBoundsException.class,
         () -> {
           try (LockableRandomAccessBuffer ignored = factory.makeRAF(src, 5, 1, false)) {
-            fail("unreachable");
+            fail(UNREACHABLE_MESSAGE);
           }
         });
   }
@@ -606,7 +609,6 @@ class ByteArrayRandomAccessBufferTest {
     ByteArrayRandomAccessBufferFactory factory = new ByteArrayRandomAccessBufferFactory();
     byte[] src = new byte[] {1, 2, 3, 4};
 
-    // Request 6 bytes starting at offset 2 → expect {3,4,0,0}
     try (ByteArrayRandomAccessBuffer raf =
         (ByteArrayRandomAccessBuffer) factory.makeRAF(src, 2, 4, false)) {
       assertEquals(4L, raf.size());
