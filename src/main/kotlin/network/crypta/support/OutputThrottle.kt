@@ -91,10 +91,20 @@ class OutputThrottle(maxTokens: Long, nanosPerTick: Long, initialTokens: Long) {
     // Accrue using the old rate; avoid clipping before changing the maximum.
     addTokensNoClip()
     // Rate increased (smaller nanos per tick): nudge any external waiters to re-evaluate.
-    if (nanosPerTick < this.nanosPerTick) (this as Object).notifyAll()
+    if (nanosPerTick < this.nanosPerTick) notifyAllWaiters()
     this.nanosPerTick = nanosPerTick
     this.max = newMaxTokens
     if (current > max) current = max
+  }
+
+  /**
+   * Notifies any threads waiting on this instance's monitor.
+   *
+   * Kotlin `Any` does not expose `notifyAll()`, so we call the JVM method via a suppressed cast.
+   */
+  @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+  private fun notifyAllWaiters() {
+    (this as Object).notifyAll()
   }
 
   /**
