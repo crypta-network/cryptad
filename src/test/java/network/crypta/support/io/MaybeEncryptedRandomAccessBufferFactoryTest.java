@@ -84,6 +84,23 @@ class MaybeEncryptedRandomAccessBufferFactoryTest {
     }
   }
 
+  private static void openAndClose(MaybeEncryptedRandomAccessBufferFactory factory, long size)
+      throws IOException {
+    LockableRandomAccessBuffer raf = factory.makeRAF(size);
+    if (raf != null) {
+      raf.close();
+    }
+  }
+
+  private static void openAndClose(
+      MaybeEncryptedRandomAccessBufferFactory factory, byte[] initialContents, int offset, int size)
+      throws IOException {
+    LockableRandomAccessBuffer raf = factory.makeRAF(initialContents, offset, size, false);
+    if (raf != null) {
+      raf.close();
+    }
+  }
+
   // ---------------------------- makeRAF(long) ----------------------------
 
   @ParameterizedTest(name = "encrypt={0}, secretSet={1}")
@@ -210,13 +227,7 @@ class MaybeEncryptedRandomAccessBufferFactoryTest {
     factory.setMasterSecret(deterministicSecret());
 
     // Act + Assert
-    assertThrows(
-        IOException.class,
-        () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(reqSize)) {
-            fail("expected IOException");
-          }
-        });
+    assertThrows(IOException.class, () -> openAndClose(factory, reqSize));
   }
 
   // ---------------------------- makeRAF(byte[], ..) ----------------------------
@@ -297,21 +308,9 @@ class MaybeEncryptedRandomAccessBufferFactoryTest {
     enabled.setMasterSecret(deterministicSecret());
 
     // Act + Assert (disabled path delegates to Arrays#copyOfRange -> NPE)
-    assertThrows(
-        NullPointerException.class,
-        () -> {
-          try (LockableRandomAccessBuffer ignored = disabled.makeRAF(null, 0, 1, false)) {
-            fail("expected NPE");
-          }
-        });
+    assertThrows(NullPointerException.class, () -> openAndClose(disabled, null, 0, 1));
     // Act + Assert (enabled path writes via pwrite -> NPE)
-    assertThrows(
-        NullPointerException.class,
-        () -> {
-          try (LockableRandomAccessBuffer ignored = enabled.makeRAF(null, 0, 1, false)) {
-            fail("expected NPE");
-          }
-        });
+    assertThrows(NullPointerException.class, () -> openAndClose(enabled, null, 0, 1));
   }
 
   @Test
@@ -327,20 +326,8 @@ class MaybeEncryptedRandomAccessBufferFactoryTest {
 
     // Act + Assert: disabled branch validates 'size' directly; encrypted branch
     // creates a padded RAF then fails ERAB init with IOException
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> {
-          try (LockableRandomAccessBuffer ignored = disabled.makeRAF(data, 0, -1, false)) {
-            fail("expected IAE");
-          }
-        });
-    assertThrows(
-        IOException.class,
-        () -> {
-          try (LockableRandomAccessBuffer ignored = enabled.makeRAF(data, 0, -1, false)) {
-            fail("expected IOException");
-          }
-        });
+    assertThrows(IllegalArgumentException.class, () -> openAndClose(disabled, data, 0, -1));
+    assertThrows(IOException.class, () -> openAndClose(enabled, data, 0, -1));
   }
 
   @Test
@@ -352,13 +339,7 @@ class MaybeEncryptedRandomAccessBufferFactoryTest {
     byte[] data = {1, 2, 3};
 
     // Act + Assert: copyOfRange validates bounds (offset beyond array end)
-    assertThrows(
-        ArrayIndexOutOfBoundsException.class,
-        () -> {
-          try (LockableRandomAccessBuffer ignored = disabled.makeRAF(data, 4, 1, false)) {
-            fail("expected AIOOBE");
-          }
-        });
+    assertThrows(ArrayIndexOutOfBoundsException.class, () -> openAndClose(disabled, data, 4, 1));
   }
 
   // ---------------------------- setEncryption ----------------------------
