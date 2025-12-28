@@ -45,13 +45,13 @@ class FreenetURITest {
     try {
       uri1.uskForSSK();
       fail("no exception throw!");
-    } catch (IllegalStateException e) {
+    } catch (IllegalStateException _) {
       // pass
     }
     try {
       uri2.sskForUSK();
       fail("no exception throw!");
-    } catch (IllegalStateException e) {
+    } catch (IllegalStateException _) {
       // pass
     }
 
@@ -91,7 +91,7 @@ class FreenetURITest {
       fail(
           "requestUriUSK.deriveRequestURIFromInsertURI() should fail because it IS a request URI"
               + " already!");
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       // Success
     }
 
@@ -108,7 +108,7 @@ class FreenetURITest {
       fail(
           "requestUriSSK.deriveRequestURIFromInsertURI() should fail because it IS a request URI"
               + " already!");
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       // Success
     }
 
@@ -125,7 +125,7 @@ class FreenetURITest {
       fail(
           "requestUriSSKPlain.deriveRequestURIFromInsertURI() should fail because it IS a request"
               + " URI already!");
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       // Success
     }
   }
@@ -135,7 +135,7 @@ class FreenetURITest {
     try {
       new FreenetURI("USK@/broken/0");
       fail("USK@/broken/0 is not a valid USK.");
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       // Works.
     }
   }
@@ -145,7 +145,7 @@ class FreenetURITest {
     try {
       new FreenetURI("SSK@/broken-0");
       fail("SSK@/broken-0 is not a valid SSK.");
-    } catch (MalformedURLException e) {
+    } catch (MalformedURLException _) {
       // Works.
     }
   }
