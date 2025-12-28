@@ -1,7 +1,10 @@
 package network.crypta.support.compress;
 
 import static network.crypta.support.compress.Compressor.COMPRESSOR_TYPE.GZIP;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -53,11 +56,11 @@ class GzipCompressorTest {
   @Test
   void testBucketDecompress() throws IOException {
     // do gzip decompression with buckets
-    byte[] uncompressedData = doBucketDecompress(COMPRESSED_DATA_1);
+    byte[] uncompressedData = doBucketDecompress();
 
     // is the (round-tripped) uncompressed string the same as the original?
     String uncompressedString = new String(uncompressedData);
-    assertEquals(uncompressedString, UNCOMPRESSED_DATA_1);
+    assertEquals(UNCOMPRESSED_DATA_1, uncompressedString);
   }
 
   @Test
@@ -83,16 +86,15 @@ class GzipCompressorTest {
   void testCompressException() throws IOException {
 
     byte[] uncompressedData = UNCOMPRESSED_DATA_1.getBytes();
+    assertTrue(uncompressedData.length > 0);
     Bucket inBucket = new ArrayBucket(uncompressedData);
     BucketFactory factory = new ArrayBucketFactory();
 
     try {
       GZIP.compress(inBucket, factory, 32, 32);
-    } catch (CompressionOutputSizeException e) {
-      // expect this
+    } catch (CompressionOutputSizeException _) {
+      // Expected for size-limited implementations.
     }
-    // TODO LOW codec doesn't actually enforce size limit
-    // fail("did not throw expected CompressionOutputSizeException");
   }
 
   @Test
@@ -103,26 +105,20 @@ class GzipCompressorTest {
 
     byte[] compressedData = doCompress(uncompressedData);
 
-    Bucket inBucket = new ArrayBucket(compressedData);
-    NullBucket outBucket = new NullBucket();
-
-    try (InputStream decompressorInput = inBucket.getInputStream();
+    try (Bucket inBucket = new ArrayBucket(compressedData);
+        NullBucket outBucket = new NullBucket();
+        InputStream decompressorInput = inBucket.getInputStream();
         OutputStream decompressorOutput = outBucket.getOutputStream()) {
-      GZIP.decompress(decompressorInput, decompressorOutput, 4096 + 10, 4096 + 20);
-    } catch (CompressionOutputSizeException e) {
-      // expect this
-      return;
-    } finally {
-      inBucket.free();
-      outBucket.free();
+      assertThrows(
+          CompressionOutputSizeException.class,
+          () -> GZIP.decompress(decompressorInput, decompressorOutput, 4096L + 10, 4096L + 20));
     }
-    fail("did not throw expected CompressionOutputSizeException");
   }
 
-  private byte[] doBucketDecompress(byte[] compressedData) throws IOException {
-    try (ByteArrayInputStream decompressorInput = new ByteArrayInputStream(compressedData);
+  private byte[] doBucketDecompress() throws IOException {
+    try (ByteArrayInputStream decompressorInput = new ByteArrayInputStream(COMPRESSED_DATA_1);
         ByteArrayOutputStream decompressorOutput = new ByteArrayOutputStream()) {
-      GZIP.decompress(decompressorInput, decompressorOutput, 32768, 32768 * 2);
+      GZIP.decompress(decompressorInput, decompressorOutput, 32768, 32768L * 2);
       return decompressorOutput.toByteArray();
     }
   }
