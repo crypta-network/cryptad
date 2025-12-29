@@ -38,66 +38,33 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Stores the state for a SplitFileFetcher, persisted to a LockableRandomAccessBuffer (i.e. a single
- * random access file), but with most of the metadata in memory. The data, and the larger metadata
- * such as the full keys, are read from disk when needed, and persisted to disk.
+ * Maintains persistent and in-memory state for a splitfile fetch.
  *
- * <p>On disk format goals:
+ * <p>This storage binds a {@link SplitFileFetcher} to a single {@link LockableRandomAccessBuffer},
+ * keeping hot metadata in memory while persisting block data, key lists, and progress so the fetch
+ * can resume after restarts. Segments may be stored in temporary FEC order; decoding reconstructs
+ * missing blocks and then rewrites data blocks into logical sequence. Callers create an instance
+ * for a new fetch or resume one from disk, then drive scheduling through the owning fetcher until
+ * completion.
  *
- * <ol>
- *   <li>Maximise robustness.
- *   <li>Minimise seeks.
- *   <li>Minimise disk usage.
- *   <li>Be as simple as realistically possible.
- * </ol>
+ * <p>The layout aims to minimize seeks and maximize robustness while tolerating recovery work after
+ * checksum failures. Callbacks into the fetcher run off-thread via job runners, and locking is
+ * shallow and taken last relative to segment locks. The storage itself is transient and recreated
+ * on startup; persisted sections carry enough state to rehydrate progress.
  *
- * <p>Overall on-disk structure: BLOCK STORAGE: Decoded data, one segment at a time (the last
- * segment's size is rounded up to a whole block). Within each segment, the number of blocks is
- * equal to the number of data blocks (plus the number of cross-check blocks if there are
- * cross-check blocks), but they are not necessarily actually data blocks (they may be check
- * blocks), and they may not be in the correct order. When we FEC decode, we read in the blocks,
- * construct the CHKs to see what keys they belong to, check that we still have enough valid keys
- * (update the metadata if the counts were wrong), do the decode, and write the data blocks back in
- * the correct order; the segment is finished. When all the segments are finished, we generate a
- * stream as usual, i.e. we still need to copy the file. It may be possible in future to simply
- * truncate the file but in many cases we need to decompress or filter, and there are significant
- * issues with code complexity and seeks during FEC decodes, see bug #6063.
+ * <p>On-disk sections include:
  *
- * <p>KEY LIST: The original key list. Not changed when a block is fetched. - Fixed and checksummed
- * (each segment has a checksum).
+ * <ul>
+ *   <li>Block storage for data and check blocks, organized per segment.
+ *   <li>Segment key lists with per-segment checksums.
+ *   <li>Segment status records with retry and block flags.
+ *   <li>Main and per-segment Bloom filters for key lookup.
+ *   <li>Original metadata/details and basic settings with a checksummed footer.
+ * </ul>
  *
- * <p>SEGMENT STATUS: The status of each segment, including the status of each block, including
- * flags and where it is in the block storage within the segment. - Checksummed per segment. So it
- * needs to be written as a whole segment. Can be regenerated from the block store and key list,
- * which happens routinely when FEC decoding.
- *
- * <p>BLOOM FILTERS: Main bloom filter. Segment bloom filters.
- *
- * <p>ORIGINAL METADATA: For extra robustness, keep the full original metadata.
- *
- * <p>ORIGINAL URL: If the original key is available, keep that too.
- *
- * <p>BASIC SETTINGS: Type of splitfile, length of file, overall decryption key, number of blocks
- * and check blocks per segment, etc. - Fixed and checksummed. Read as a block so we can check the
- * checksum.
- *
- * <p>FOOTER: Length of basic settings. (So we can seek back to get them) Version number. Checksum.
- * Magic value.
- *
- * <p>OTHER NOTES:
- *
- * <p>CHECKSUMS: 4-byte CRC32.
- *
- * <p>CONCURRENCY: Callbacks into fetcher should be run off-thread, as they will usually be inside a
- * MemoryLimitedJob.
- *
- * <p>LOCKING: Trivial or taken last. Hence, can be called inside e.g. RGA calls to getCooldownTime
- * etc.
- *
- * <p>PERSISTENCE: This whole class is transient. It is recreated on startup by the
- * SplitFileFetcher. Many of the fields are also transient, e.g. SplitFileFetcherSegmentStorage's
- * cooldown fields.
- *
+ * @see SplitFileFetcher
+ * @see SplitFileFetcherSegmentStorage
+ * @see SplitFileFetcherStoragePersistence
  * @author toad
  */
 public class SplitFileFetcherStorage {
@@ -209,7 +176,7 @@ public class SplitFileFetcherStorage {
   /** Offset to start of the key lists in bytes */
   final long offsetKeyList;
 
-  /** Offset to start of the segment status'es in bytes */
+  /** Offset to start of the segment status's in bytes */
   final long offsetSegmentStatus;
 
   /** Offset to start of the general progress section */
@@ -261,26 +228,22 @@ public class SplitFileFetcherStorage {
   /**
    * Create a new storage instance backed by a fresh on-disk layout.
    *
-   * <p>This constructor interprets the supplied metadata, allocates segment/cross-segment state,
-   * initialises Bloom filters and checksums, and wires asynchronous helpers. It does not block on
-   * network I/O but may perform bounded file I/O to prepare the persistent structures when {@code
-   * persistent} is enabled in {@link SplitFileFetcherStorageInitParams}.
+   * <p>This constructor interprets the supplied metadata, allocates segment and cross-segment
+   * state, initializes Bloom filters and checksums, and wires asynchronous helpers. It does not
+   * block on network I/O but may perform bounded file I/O to prepare the persistent structures when
+   * {@code persistent} is enabled in {@link SplitFileFetcherStorageInitParams}. On success the
+   * instance is ready to be driven by the owning fetcher and will contain computed offsets for all
+   * persistent sections.
    *
    * <p>Callers normally place the instance under a coordinating fetcher which drives block request
    * scheduling. Once all segments finish and postconditions are met, the fetcher calls {@link
-   * #streamGenerator()} to materialise the final byte stream.
+   * #streamGenerator()} to materialize the final byte stream.
    *
-   * @param p full set of immutable construction parameters created by {@link
-   *     SplitFileFetcherStorageInitParams.Builder}; must reference the metadata for this splitfile
-   *     and execution helpers such as {@code jobRunner}, {@code ticker}, and checksum policy. May
-   *     not be {@code null}.
-   * @throws FetchException if the fetch context indicates an unrecoverable configuration or policy
-   *     error while preparing request state; this is not a network failure.
-   * @throws MetadataParseException if the supplied {@link Metadata} cannot be interpreted into a
-   *     valid splitfile layout (e.g., inconsistent block counts or unsupported algorithm).
-   * @throws IOException if initial on-disk structures cannot be written or verified using the
-   *     configured {@link network.crypta.support.api.LockableRandomAccessBufferFactory} and
-   *     temporary bucket factory.
+   * @param p immutable parameters including metadata, factories, and execution helpers; must be
+   *     non-null.
+   * @throws FetchException when policy validation fails before any network activity begins.
+   * @throws MetadataParseException when metadata cannot describe a supported splitfile layout.
+   * @throws IOException when on-disk structures cannot be created or verified.
    */
   public SplitFileFetcherStorage(SplitFileFetcherStorageInitParams p)
       throws FetchException, MetadataParseException, IOException {
@@ -476,15 +439,13 @@ public class SplitFileFetcherStorage {
    * <p>This constructor validates footer magic, checksums, and version, locates each logical
    * section, and rebuilds segment state and Bloom filters. It also reattaches asynchronous helpers
    * and prepares any pending decode attempts when segment metadata indicates partial progress.
+   * Successful completion means the instance is ready for {@link #start(boolean)} with resume
+   * semantics and will reflect on-disk progress accurately.
    *
-   * @param p environment and buffer required to resume; created via {@link
-   *     SplitFileFetcherStorageResumeParams.Builder}. Must include a readable {@link
-   *     LockableRandomAccessBuffer}.
-   * @throws IOException if underlying storage cannot be accessed.
-   * @throws StorageFormatException if the on-disk structure is corrupted or incompatible with the
-   *     current format version.
-   * @throws FetchException if the reconstructed state violates fetcher policy or cannot be
-   *     reconciled with the provided runtime environment.
+   * @param p resume parameters including existing buffer and runtime helpers; must be non-null.
+   * @throws IOException when the underlying buffer cannot be read or locked.
+   * @throws StorageFormatException when checksums, version, or offsets are invalid.
+   * @throws FetchException when resumed state violates fetch policy or limits.
    */
   public SplitFileFetcherStorage(SplitFileFetcherStorageResumeParams p)
       throws IOException, StorageFormatException, FetchException {
@@ -858,12 +819,17 @@ public class SplitFileFetcherStorage {
   }
 
   /**
-   * Start the storage layer.
+   * Start the storage layer and enqueue any required recovery work.
    *
-   * @param resume True only if we are restarting without having serialized, i.e. from the file
-   *     only. In this case we will need to tell the parent how many blocks have been fetched.
-   * @return True if it should be scheduled immediately. If false, the storage layer will call back
-   *     into the fetcher later.
+   * <p>This method reattaches cross-segment helpers, schedules any deferred decode attempts, and
+   * optionally notifies the fetcher of resume statistics. When key Bloom filters are missing, it
+   * triggers asynchronous regeneration and returns {@code false} so the caller does not schedule
+   * requests prematurely. It performs no network I/O but may queue background work that later
+   * drives request scheduling through callbacks.
+   *
+   * @param resume {@code true} when resuming purely from disk state without memory snapshots.
+   * @return {@code true} when the caller may schedule immediately; {@code false} when callbacks
+   *     will schedule later.
    */
   public boolean start(boolean resume) {
     if (resume) onResumeInit();
@@ -1244,12 +1210,15 @@ public class SplitFileFetcherStorage {
   }
 
   /**
-   * Priority class forwarded to the request scheduler.
+   * Return the priority class forwarded to the request scheduler.
    *
    * <p>The class originates from the owning fetcher and influences how aggressively requests are
-   * scheduled relative to other work.
+   * scheduled relative to other work. The value is treated as a stable attribute of the fetch and
+   * is safe to query frequently; this method performs no synchronization beyond reading the cached
+   * field. Callers should avoid interpreting the numeric value directly and instead pass it through
+   * scheduler APIs that understand the range.
    *
-   * @return the priority class value defined by the fetcher.
+   * @return the fetcher's short priority class used by scheduling heuristics.
    */
   public short getPriorityClass() {
     return fetcher.getPriorityClass();
@@ -1261,10 +1230,10 @@ public class SplitFileFetcherStorage {
    * <p>When a segment finishes decoding, the storage checks whether all other segments have also
    * finished successfully. If so, completion is signaled and the success callback is scheduled. If
    * the fetcher requested a binary blob or truncation is in use, completion may be deferred until
-   * post-processing is done.
+   * post-processing is done. This method is safe to call multiple times for the same segment and
+   * will only trigger completion once.
    *
-   * @param segment the segment instance that has just reported success; must be one of {@link
-   *     #segments} and non-null. The parameter is used for logging and does not change behaviour.
+   * @param segment segment that just reported success, used only for diagnostics.
    */
   public void finishedSuccess(SplitFileFetcherSegmentStorage segment) {
     if (LOG.isDebugEnabled())
@@ -1303,11 +1272,14 @@ public class SplitFileFetcherStorage {
   }
 
   /**
-   * Create a {@link StreamGenerator} that materialises the final decoded data stream.
+   * Create a {@link StreamGenerator} that materializes the final decoded data stream.
    *
-   * <p>The returned generator emits the data blocks for all segments in logical order and applies
-   * any required transformations (e.g., decompression) declared by the metadata. The generator
-   * performs blocking file reads; callers should invoke it off the request-selection thread.
+   * <p>The returned generator emits data blocks for all segments in logical order and applies any
+   * required transformations (for example, decompression) declared by the metadata. The generator
+   * performs blocking file reads and may hold the RAF lock while streaming, so callers should
+   * invoke it off the request-selection thread and avoid concurrent mutation of segment state. It
+   * is intended for one logical consumer at a time; create a fresh generator for each output target
+   * if repeated streaming is required.
    *
    * <pre>{@code
    * // Example: write the reconstructed bytes to an OutputStream
@@ -1315,12 +1287,11 @@ public class SplitFileFetcherStorage {
    * gen.writeTo(outputStream, clientContext);
    * }</pre>
    *
-   * @return a generator that reads from the underlying storage and writes the complete payload on
-   *     demand. The instance is stateless between invocations of {@code writeTo} and not thread
-   *     safe.
+   * @return a generator that reads from underlying storage and writes the complete payload on
+   *     demand; it is not thread-safe.
    */
   public StreamGenerator streamGenerator() {
-    // Truncation optimisation can be added in future if safe.
+    // Truncation optimization can be added in future if safe.
     return new StreamGenerator() {
 
       @Override
@@ -1400,8 +1371,10 @@ public class SplitFileFetcherStorage {
    * Schedule a best-effort metadata write.
    *
    * <p>When running in persistent mode, metadata changes are checkpointed asynchronously to reduce
-   * contention and I/O overhead. Calls may coalesce when invoked in quick succession. In
-   * non-persistent mode this method is a no-op.
+   * contention and I/O overhead. Calls may coalesce when invoked in quick succession, so it is safe
+   * to call this after each state change without creating extra disk churn. In non-persistent mode
+   * this method is a no-op. The write occurs off-thread and does not guarantee immediate
+   * durability; callers that need a synchronous flush should use higher-level shutdown paths.
    */
   public void lazyWriteMetadata() {
     if (!persistent) return;
@@ -1423,7 +1396,8 @@ public class SplitFileFetcherStorage {
    *
    * <p>When both the fetcher and the encoder have finished (and truncation is not pending), the
    * storage closes its backing file off-thread. Repeated calls are safe and ignored after the first
-   * transition.
+   * transition. If truncation is requested, cleanup is deferred until encoding completes and the
+   * truncation path has run, ensuring the RAF remains available for late writes.
    */
   public void finishedFetcher() {
     synchronized (this) {
@@ -1524,7 +1498,7 @@ public class SplitFileFetcherStorage {
 
   /**
    * Called when a cross-segment has finished decoding. It doesn't necessarily have a "finished"
-   * state, except if it was cancelled.
+   * state, except if it was canceled.
    */
   void finishedEncoding(SplitFileFetcherCrossSegmentStorage segment) {
     if (LOG.isDebugEnabled())
@@ -1553,10 +1527,10 @@ public class SplitFileFetcherStorage {
    *
    * <p>Failure is posted to the job runner to avoid deadlocks with request-selection or decode
    * threads. The storage remains valid until the callback initiates shutdown, allowing callers to
-   * inspect error codes and progress.
+   * inspect error codes and progress. This method does not attempt retries or cancellation on its
+   * own; it simply forwards the provided {@link FetchException} to the fetcher.
    *
-   * @param e the failure cause describing mode and context; must not be {@code null}. The instance
-   *     is forwarded to the fetcher's {@code fail} callback without modification.
+   * @param e failure cause describing mode and context; must not be {@code null}.
    */
   public void fail(final FetchException e) {
     if (LOG.isDebugEnabled()) LOG.debug("Failing {} with error {} and codes {}", this, e, errors);
@@ -1571,9 +1545,11 @@ public class SplitFileFetcherStorage {
    * Abort the splitfile when a segment exhausts its retry budget.
    *
    * <p>This helper converts the condition into a consolidated {@link FetchException} and routes it
-   * through {@link #fail(FetchException)} so shutdown happens consistently.
+   * through {@link #fail(FetchException)} so shutdown happens consistently. It does not mutate the
+   * segment itself; segment state is expected to already reflect the terminal failure condition.
+   * Callers typically invoke this after a retry budget check fails.
    *
-   * @param segment the segment that can no longer make progress; used for logging only.
+   * @param segment segment that can no longer make progress, used only for logging.
    */
   public void failOnSegment(SplitFileFetcherSegmentStorage segment) {
     if (LOG.isDebugEnabled()) {
@@ -1589,9 +1565,11 @@ public class SplitFileFetcherStorage {
    * Report a non-recoverable disk I/O error to the fetcher.
    *
    * <p>Any failure during metadata or block persistence is considered fatal for the session. The
-   * notification occurs off-thread to avoid blocking callers inside I/O paths.
+   * notification occurs off-thread to avoid blocking callers inside I/O paths. The storage does not
+   * attempt to retry the failing operation; recovery decisions are left to the fetcher and its
+   * surrounding context.
    *
-   * @param e the I/O exception observed while reading or writing persistent state.
+   * @param e I/O exception observed while reading or writing persistent state.
    */
   public void failOnDiskError(final IOException e) {
     LOG.error("Failing on disk error: {}", e, e);
@@ -1606,9 +1584,10 @@ public class SplitFileFetcherStorage {
    * Report a checksum verification failure to the fetcher.
    *
    * <p>The storage zeroes the affected bytes and surfaces the failure via the callback. Depending
-   * on policy, the fetcher may propagate the error or attempt recovery using redundant blocks.
+   * on policy, the fetcher may propagate the error or attempt recovery using redundant blocks. This
+   * method only reports the condition; it does not initiate decoding or rebuilds directly.
    *
-   * @param e the checksum failure raised when verifying a checksummed section from disk.
+   * @param e checksum failure raised when verifying a checksummed section from disk.
    */
   public void failOnDiskError(final ChecksumFailedException e) {
     LOG.error("Failing on unrecoverable corrupt data: {}", e, e);
@@ -1623,7 +1602,9 @@ public class SplitFileFetcherStorage {
    * Count the number of not-yet-fetched keys across all segments.
    *
    * <p>The value includes keys that are currently cooling down or temporarily skipped. It is
-   * computed from in-memory segment state and does not perform disk I/O.
+   * computed from in-memory segment state and does not perform disk I/O. Use this for progress
+   * estimation rather than exact completion criteria; failed blocks and delayed retries can cause
+   * the count to oscillate.
    *
    * @return a non-negative count representing remaining work before decode can proceed.
    */
@@ -1638,6 +1619,7 @@ public class SplitFileFetcherStorage {
    *
    * <p>The returned array may be empty but never {@code null}. Keys are provided for diagnostic or
    * scheduling purposes and are not guaranteed to be immutable; callers should copy if retaining.
+   * On I/O failure the storage reports the disk error and returns an empty array.
    *
    * @return a possibly empty snapshot of outstanding {@link Key} instances.
    */
@@ -1655,8 +1637,9 @@ public class SplitFileFetcherStorage {
   /**
    * Count keys that are immediately eligible to send based on cooldown and retry limits.
    *
-   * <p>The result depends on the current time, retry counters and segment-level cooldown. It is
-   * intended for request schedulers to estimate near-term concurrency.
+   * <p>The result depends on the current time, retry counters, and segment-level cooldown. It is
+   * intended for request schedulers to estimate near-term concurrency rather than for strict
+   * accounting. The count is computed without disk I/O and may change rapidly as cooldowns expire.
    *
    * @return the number of keys that can be turned into outbound requests without waiting.
    */
@@ -1670,8 +1653,12 @@ public class SplitFileFetcherStorage {
    * Lightweight handle identifying a concrete block within a specific segment.
    *
    * <p>Instances are stable identifiers used by schedulers and callbacks to correlate request
-   * outcomes with storage state. Equality and hash semantics consider both the segment number and
-   * intra-segment block number.
+   * outcomes with storage state. The handle is immutable and embeds the owning storage, the segment
+   * index, and the block index so it can be used as a map key or queue token without additional
+   * lookups. It is not a cryptographic key; instead it is a positional reference that can be
+   * resolved to a {@link ClientKey} through {@link SplitFileFetcherStorage#getKey}. Equality and
+   * hash semantics incorporate the storage instance to avoid accidental collisions across
+   * concurrent fetches.
    */
   public static final class SplitFileFetcherStorageKey
       implements SendableRequestItem, SendableRequestItemKey {
@@ -1679,10 +1666,13 @@ public class SplitFileFetcherStorage {
     /**
      * Create a key handle for the given block and segment.
      *
-     * @param n zero-based block number within the segment; values outside the segment's range are
-     *     invalid and must not be supplied.
-     * @param segNo zero-based segment index inside the enclosing storage.
-     * @param storage the owning storage, used for lookups and logging; must not be {@code null}.
+     * <p>The constructor does not validate indices against segment bounds; callers must supply
+     * values obtained from segment state or scheduling helpers. The resulting instance is immutable
+     * and can be safely cached or used as a map key for the lifetime of the storage.
+     *
+     * @param n zero-based block index within the segment, must be in range.
+     * @param segNo zero-based segment index for the owning storage, must be valid.
+     * @param storage owning storage instance used for lookups and equality; must be non-null.
      */
     public SplitFileFetcherStorageKey(int n, int segNo, SplitFileFetcherStorage storage) {
       this.blockNumber = n;
@@ -1699,7 +1689,10 @@ public class SplitFileFetcherStorage {
     /**
      * Emit a debug dump of this key's computed request state.
      *
-     * <p>Intended for diagnostics and test support; output format is not part of the public API.
+     * <p>This implementation intentionally performs no work because the storage key carries only
+     * positional identifiers and has no derived state to emit. The method exists to satisfy the
+     * request-item interface and is safe to call from diagnostics or tests. Callers should not rely
+     * on side effects or output from this method.
      */
     @Override
     public void dump() {
@@ -1709,7 +1702,12 @@ public class SplitFileFetcherStorage {
     /**
      * Convert this handle into a request-layer key.
      *
-     * @return an immutable {@link SendableRequestItemKey} suitable for use by request senders.
+     * <p>This implementation returns {@code this} because the storage key already satisfies the
+     * request-layer contract. It avoids allocation and preserves identity semantics, which allows
+     * schedulers to compare or cache keys without additional wrapping. The returned instance is
+     * immutable for the lifetime of the storage.
+     *
+     * @return this instance as an immutable {@link SendableRequestItemKey} for scheduling.
      */
     @Override
     public SendableRequestItemKey getKey() {
@@ -1719,9 +1717,13 @@ public class SplitFileFetcherStorage {
     /**
      * Value equality based on segment and block indices.
      *
-     * @param o another object; equality holds when it is also a {@code SplitFileFetcherStorageKey}
-     *     with identical segment and block numbers.
-     * @return {@code true} when the two keys identify the same block, otherwise {@code false}.
+     * <p>Equality also requires the same owning storage instance, preventing collisions between
+     * concurrent fetches that may share segment numbering. This method is consistent with {@link
+     * #hashCode()} and is safe for use in hash-based collections. It performs a fast reference and
+     * primitive comparison without allocations.
+     *
+     * @param o candidate object to compare against this key for equality.
+     * @return {@code true} when the two keys identify the same storage block.
      */
     @Override
     public boolean equals(Object o) {
@@ -1733,7 +1735,11 @@ public class SplitFileFetcherStorage {
     /**
      * Hash code derived from the segment and block indices.
      *
-     * @return a stable hash suitable for use in hash-based collections.
+     * <p>The hash includes the owning storage reference to remain consistent with {@link #equals}.
+     * It is computed once at construction time and cached, so repeated calls are inexpensive. The
+     * value is stable for the lifetime of this key. No randomness is involved.
+     *
+     * @return a stable hash suitable for hash-based collections and caches.
      */
     public int hashCode() {
       return hashCode;
@@ -1751,6 +1757,11 @@ public class SplitFileFetcherStorage {
     /**
      * Human‑readable form for logging and diagnostics.
      *
+     * <p>The representation includes the segment and block indices and is intended for logs and
+     * debugging output. The exact format is not guaranteed to remain stable, so callers should not
+     * parse the string or depend on it for program logic. The output never includes key material or
+     * payload data.
+     *
      * @return a concise string containing the segment and block numbers.
      */
     public String toString() {
@@ -1762,10 +1773,11 @@ public class SplitFileFetcherStorage {
    * Choose a random eligible key from non-decoding, non-finished segments.
    *
    * <p>The selection uses a time‑varying seed to distribute requests and avoids segments currently
-   * decoding or ineligible due to cooldown/retry constraints. Returns {@code null} when no key is
-   * presently sendable.
+   * decoding or ineligible due to cooldown/retry constraints. The method synchronizes on the
+   * segment iterator to keep selection state consistent and may scan multiple segments before
+   * finding a candidate. Returns {@code null} when no key is presently sendable.
    *
-   * @return a randomly selected {@link SplitFileFetcherStorageKey} or {@code null} if none is
+   * @return a randomly selected {@link SplitFileFetcherStorageKey} or {@code null} when none is
    *     available.
    */
   public SplitFileFetcherStorageKey chooseRandomKey() {
@@ -1805,7 +1817,9 @@ public class SplitFileFetcherStorage {
    * Callback invoked after checking the local datastore for a candidate key.
    *
    * <p>When a check produces a definitive result the storage updates segment state and may schedule
-   * additional work. The method runs off-thread to avoid blocking request selection.
+   * additional work. The method runs off-thread to avoid blocking request selection. It increments
+   * the appropriate failure counters and notifies each segment that datastore probing has completed
+   * so retries can proceed. If all segments are already finished, the callback is a no-op.
    */
   public void finishedCheckingDatastoreOnLocalRequest() {
     // At this point, all the blocks will have been processed.
@@ -1829,10 +1843,12 @@ public class SplitFileFetcherStorage {
    * Record a non-fatal failure for a specific block request.
    *
    * <p>The error is accumulated in the failure tracker and the key is made retryable according to
-   * the configured policy. Persistent sessions schedule a metadata checkpoint.
+   * the configured policy. Persistent sessions schedule a metadata checkpoint. Callers should only
+   * invoke this for failures that may be retried; terminal failures should go through {@link
+   * #fail(FetchException)} or {@link #failOnSegment(SplitFileFetcherSegmentStorage)}.
    *
-   * @param key the key whose request failed; used to locate the segment and block counters.
-   * @param fe the reason for failure, including {@link FetchExceptionMode} and context.
+   * @param key handle whose request failed, used to locate segment and block.
+   * @param fe failure reason including mode and context for tracking.
    */
   public void onFailure(SplitFileFetcherStorageKey key, FetchException fe) {
     if (LOG.isDebugEnabled())
@@ -1850,11 +1866,12 @@ public class SplitFileFetcherStorage {
   /**
    * Resolve the client‑layer key for the given handle.
    *
-   * <p>On I/O failure the storage reports a disk error and returns {@code null}.
+   * <p>The lookup reads segment key data, so it may perform disk I/O and acquire the RAF lock. On
+   * I/O failure the storage reports a disk error and returns {@code null}. The call does not change
+   * segment state. Callers should treat the returned {@link ClientKey} as read-only.
    *
-   * @param key a handle returned by {@link #chooseRandomKey()} or constructed by a caller.
-   * @return the corresponding {@link ClientKey} when available; otherwise {@code null} on storage
-   *     failure.
+   * @param key handle identifying a block, usually from {@link #chooseRandomKey()}.
+   * @return client key for the block, or {@code null} on I/O failure.
    */
   public ClientKey getKey(SplitFileFetcherStorageKey key) {
     try {
@@ -1868,7 +1885,12 @@ public class SplitFileFetcherStorage {
   /**
    * Maximum number of per‑block retries permitted by policy.
    *
-   * @return a non‑negative limit; when reached a segment failure is raised and the splitfile fails.
+   * <p>The limit is derived from the originating {@link FetchContext} and remains fixed for the
+   * lifetime of the storage. When a block exceeds this count, its segment transitions to a failure
+   * state and the overall fetch eventually fails. A value of {@code -1} indicates unlimited
+   * retries.
+   *
+   * @return a non‑negative limit, or {@code -1} for unlimited retries.
    */
   public int maxRetries() {
     return maxRetries;
@@ -1877,7 +1899,10 @@ public class SplitFileFetcherStorage {
   /**
    * Notify the fetcher that a block has permanently failed.
    *
-   * <p>The notification is posted asynchronously. It does not modify storage state directly.
+   * <p>The notification is posted asynchronously to keep request-selection threads responsive. It
+   * does not modify storage state directly; callers should ensure segment bookkeeping has already
+   * transitioned the block into a terminal state before invoking this callback. Multiple calls may
+   * be coalesced by the fetcher.
    */
   public void failedBlock() {
     jobRunner.queueNormalOrDrop(
@@ -1890,8 +1915,11 @@ public class SplitFileFetcherStorage {
   /**
    * Indicate whether the final block may omit padding due to compatibility mode.
    *
-   * @return {@code true} when padding is not guaranteed for the last block, otherwise {@code
-   *     false}.
+   * <p>Some legacy compatibility modes allow a short final block without padding. Callers use this
+   * signal to decide whether to enforce padding checks during verification or decoding. The value
+   * is derived from the stored minimum compatibility mode and does not change after construction.
+   *
+   * @return {@code true} when padding is not guaranteed for the last block.
    */
   public boolean lastBlockMightNotBePadded() {
     return (finalMinCompatMode == CompatibilityMode.COMPAT_UNKNOWN
@@ -1902,7 +1930,9 @@ public class SplitFileFetcherStorage {
    * Called after a corruption recovery path has restarted the session.
    *
    * <p>Clears cooldown if appropriate and relays a notification to the fetcher on a background
-   * thread.
+   * thread. This method is used when metadata recovery or key regeneration succeeds, allowing the
+   * fetcher to resume scheduling without manual intervention. It does not re-run validation; it
+   * only signals that recovery work has completed.
    */
   public void restartedAfterDataCorruption() {
     jobRunner.queueNormalOrDrop(
@@ -1948,7 +1978,9 @@ public class SplitFileFetcherStorage {
    * Clear global cooldown when all segments have exited their individual cooldown windows.
    *
    * <p>This is safe to call frequently; it performs cheap checks and posts to the fetcher when the
-   * global flag changes.
+   * global flag changes. The method synchronizes on the cooldown lock and will reset the global
+   * wakeup time only when every segment reports a cleared cooldown. It does not schedule requests
+   * directly; that remains the fetcher's responsibility.
    */
   public void maybeClearCooldown() {
     synchronized (cooldownLock) {
@@ -1963,11 +1995,12 @@ public class SplitFileFetcherStorage {
    * Return the earliest time at which requests should resume after cooldown.
    *
    * <p>Returns {@code -1} when the overall request has finished. Otherwise, returns {@code 0} when
-   * there is no pending cooldown or a future epoch millisecond timestamp to wait until.
+   * there is no pending cooldown or a future epoch millisecond timestamp to wait until. The method
+   * updates the cached wakeup time to clear stale values and is safe to call from scheduling
+   * threads that only hold the request-selection lock.
    *
    * @param now the current epoch time in milliseconds used to clamp stale values.
-   * @return {@code -1} if finished, {@code 0} if no cooldown, or a future epoch millisecond
-   *     timestamp.
+   * @return negative one if finished, zero if no cooldown, else wakeup time.
    */
   public long getCooldownWakeupTime(long now) {
     // LOCKING: hasFinished() uses (this), separate from cooldownLock.
@@ -2095,7 +2128,12 @@ public class SplitFileFetcherStorage {
   /**
    * Mark that the local store has been checked at least once during this session.
    *
-   * @param context the execution context present when the check completed.
+   * <p>This updates the in-memory flag, marks general progress as dirty, and writes metadata
+   * immediately when persistence is enabled. The call is synchronized to ensure visibility across
+   * scheduler threads. Callers should pass the same {@link ClientContext} used for other storage
+   * checkpoint calls.
+   *
+   * @param context execution context available when the datastore check completed.
    */
   public synchronized void setHasCheckedStore(ClientContext context) {
     hasCheckedDatastore = true;
@@ -2107,7 +2145,12 @@ public class SplitFileFetcherStorage {
   /**
    * Whether a local datastore check has been performed in this session.
    *
-   * @return {@code true} once the first check has completed, otherwise {@code false}.
+   * <p>The flag is updated by {@link #setHasCheckedStore(ClientContext)} and is not persisted for
+   * transient sessions. It can be polled by schedulers to decide whether a datastore sweep should
+   * be attempted again after restarts. The value is read without additional I/O and is safe to
+   * query frequently.
+   *
+   * @return {@code true} once a datastore check has completed in this session.
    */
   public synchronized boolean hasCheckedStore() {
     return hasCheckedDatastore;
