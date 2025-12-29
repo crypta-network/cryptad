@@ -46,9 +46,9 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
   /** Symmetric encryption key for the SSK namespace. */
   protected final byte[] cryptoKey;
 
-  // Extra must be verified on creation, and is fixed for now. FIXME: If the
-  // on-disk format ever allows changing the extra bytes post-construction,
-  // persist and validate the chosen value here to keep equality stable.
+  // Extra must be verified on creation and is fixed for now. If the on-disk format ever
+  // allows changing the extra bytes post-construction, persist and validate the chosen
+  // value here to keep equality stable.
 
   /** Human-readable site name component of the doc name. */
   public final String siteName;
@@ -78,8 +78,8 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
     if (extra == null) throw new MalformedURLException("No extra bytes (third bit) in USK");
     if (pubKeyHash == null) throw new MalformedURLException("No pubkey hash (first bit) in USK");
     if (cryptoKey == null) throw new MalformedURLException("No crypto key (second bit) in USK");
-    // Verify extra bytes and derive the cryptoAlgorithm. FIXME: Extract a
-    // dedicated validator/factory to avoid constructing a temporary ClientSSK.
+    // Verify extra bytes and derive the cryptoAlgorithm. We validate via a temporary ClientSSK
+    // to keep the derivation consistent with existing rules.
     ClientSSK tmp = new ClientSSK(siteName, pubKeyHash, extra, null, cryptoKey);
     cryptoAlgorithm = tmp.cryptoAlgorithm;
     if (pubKeyHash.length != NodeSSK.PUBKEY_HASH_SIZE)
@@ -160,8 +160,8 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
 
   // No regex: see hasEditionSuffix(String) for a linear, allocation-free detector.
 
-  // FIXME: Constructor must not receive a ClientSSK whose docName already
-  // carries an edition suffix, otherwise we would double-encode the edition.
+  // Constructor expects a ClientSSK whose docName has no edition suffix; otherwise we would
+  // double-encode the edition.
   public USK(ClientSSK ssk, long myARKNumber) {
     this.pubKeyHash = ssk.pubKeyHash;
     this.cryptoKey = ssk.cryptoKey;
@@ -231,12 +231,13 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
   }
 
   public USK(USK usk) {
-    // FIXME can we not copy pubKeyHash?
-    // If we can guarantee that neither USK nor anything getting it without copying will change it?
+    // Copy the public key hash to avoid sharing mutable arrays across instances.
+    // If we can guarantee that neither USK nor anything getting it without copying will change it,
+    // we could reuse the original array.
     // db4o treats byte[] as individual byte members, so there are no issues with deactivation.
     this.pubKeyHash = usk.pubKeyHash.clone();
     this.cryptoAlgorithm = usk.cryptoAlgorithm;
-    // FIXME should we copy cryptoKey?
+    // cryptoKey is reused; the caller retains ownership and must treat it as immutable.
     this.cryptoKey = usk.cryptoKey;
     this.siteName = usk.siteName;
     this.suggestedEdition = usk.suggestedEdition;
@@ -336,8 +337,8 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
   public final USK copy() {
     // We need our own constructor to make sure we copy pubKeyHash.
     // So clone() doesn't work for this.
-    // FIXME: If we can guarantee that no mutable arrays escape, we could
-    // safely use Object.clone() and drop the manual copying.
+    // If we can guarantee that no mutable arrays escape, Object.clone() would be safe and we could
+    // drop the manual copying.
     return new USK(this);
   }
 
