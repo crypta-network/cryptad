@@ -12,9 +12,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.File;
 import java.util.List;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
@@ -29,7 +27,6 @@ import network.crypta.support.api.HTTPRequest;
 import network.crypta.support.io.DatastoreUtil;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.MockedStatic;
@@ -37,8 +34,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class DatastoreSizeTest {
-
-  @TempDir Path tempDir;
 
   private static final String ATTR_NAME = "name";
   private static final String ATTR_SELECTED = "selected";
@@ -81,23 +76,21 @@ class DatastoreSizeTest {
   }
 
   @Test
-  void maxDatastoreSize_whenMemoryBasedExceedsDisk_expectDiskBasedMinusMargin() throws IOException {
-    Path storePath = tempDir.resolve("store");
-    Files.createDirectories(storePath);
-    Files.write(storePath.resolve("a.bin"), new byte[1234]);
-    Files.write(storePath.resolve("b.bin"), new byte[5678]);
+  void maxDatastoreSize_whenMemoryBasedExceedsDisk_expectDiskBasedMinusMargin() {
+    // Keep free-space math deterministic instead of relying on the real filesystem.
+    long freeSpace = 20L * 1024 * 1024 * 1024;
+    File storeDir = mock(File.class);
+    File fileA = mock(File.class);
+    File fileB = mock(File.class);
+    when(fileA.length()).thenReturn(1234L);
+    when(fileB.length()).thenReturn(5678L);
+    when(storeDir.getUsableSpace()).thenReturn(freeSpace);
+    when(storeDir.listFiles()).thenReturn(new File[] {fileA, fileB});
 
     Node node = mock(Node.class);
-    when(node.getStoreDir()).thenReturn(storePath.toFile());
+    when(node.getStoreDir()).thenReturn(storeDir);
 
-    long freeSpace = storePath.toFile().getUsableSpace();
-    long fileBytes = 0;
-    try (var files = Files.list(storePath)) {
-      for (Path file : files.toList()) {
-        fileBytes += Files.size(file);
-      }
-    }
-    long expectedDiskCap = freeSpace + fileBytes;
+    long expectedDiskCap = freeSpace + 1234L + 5678L;
 
     long mockedMaxMemoryBytes = 64L * 1024 * 1024 * 1024;
     long available = mockedMaxMemoryBytes - 100L * 1024 * 1024;
