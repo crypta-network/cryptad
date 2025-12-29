@@ -78,6 +78,7 @@ tasks.withType<Test>().configureEach {
     jvmArgs("--add-opens=java.base/java.util=ALL-UNNAMED")
     jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED")
     jvmArgs("--add-opens=java.base/java.util.zip=ALL-UNNAMED")
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
   }
   // Allow dynamic agent loading for Mockito inline mock-maker (JEP 451).
   jvmArgs("-XX:+EnableDynamicAgentLoading")
