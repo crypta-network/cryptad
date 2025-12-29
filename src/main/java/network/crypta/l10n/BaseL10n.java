@@ -55,10 +55,9 @@ public class BaseL10n {
    * Registry of supported languages. Each enum constant defines a short code (RFC 5646 or ISO 639),
    * a display name, an installer {@code isoCode}, and optional Windows locale aliases.
    *
-   * <p>TODO: Replace this manually maintained list with a standards-based source backed by {@link
-   * Locale}. See discussion in PR 500 and bug 6857. The preferred target is IETF language tags (RFC
-   * 5646), which combine ISO 639-3 with standard region tags and are natively understood by {@link
-   * Locale}.
+   * <p>Note: This list is manually maintained. If it is ever replaced, prefer a standards-based
+   * source backed by {@link Locale}. The preferred target is IETF language tags (RFC 5646), which
+   * combine ISO 639-3 with standard region tags and are natively understood by {@link Locale}.
    *
    * @see "http://www.omniglot.com/language/names.htm"
    * @see "http://loc.gov/standards/iso639-2/php/code_list.php"
@@ -132,17 +131,17 @@ public class BaseL10n {
           "WINDOWS040C", "WINDOWS080C", "WINDOWS0C0C", "WINDOWS100C", "WINDOWS140C", "WINDOWS180C"
         }),
     ITALIAN("it", "Italiano", "ita", new String[] {"WINDOWS0410", "WINDOWS0810"}),
-    // TODO: RFC 5646 non-compliant. Rename when converting the entire
-    // list to RFC 5646; provide a migration path to avoid breaking plugin identifiers.
+    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking plugin identifiers.
     NORWEGIAN("nb-no", "Bokmål", "nob", new String[] {"WINDOWS0414", "WINDOWS0814"}),
     POLISH("pl", "Polski", "pol", new String[] {"WINDOWS0415"}),
     SWEDISH("sv", "Svenska", "swe", new String[] {"WINDOWS041D", "WINDOWS081D"}),
-    // TODO: RFC 5646 non-compliant. Rename when converting the entire
-    // list to RFC 5646; provide a migration path to avoid breaking plugin identifiers.
+    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking plugin identifiers.
     CHINESE("zh-cn", "中文(简体)", "chn", new String[] {"WINDOWS0804", "WINDOWS1004"}),
     // simplified chinese, used on mainland, Singapore and Malaysia
-    // TODO: RFC 5646 non-compliant. Rename when converting the entire
-    // list to RFC 5646; provide a migration path to avoid breaking plugin identifiers.
+    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking plugin identifiers.
     CHINESE_TAIWAN(
         "zh-tw", "中文(繁體)", "zh-tw", new String[] {"WINDOWS0404", "WINDOWS0C04", "WINDOWS1404"}),
     // traditional chinese, used in Taiwan, Hong Kong and Macau
@@ -156,8 +155,8 @@ public class BaseL10n {
     // may not speak russian, I'm not including it.
     JAPANESE("ja", "日本語", "jpn", new String[] {"WINDOWS0411"}),
     PORTUGUESE("pt-PT", "Português do Portugal", "pt", new String[] {"WINDOWS0816"}),
-    // TODO: RFC 5646 non-compliant. Rename when converting the entire
-    // list to RFC 5646; provide a migration path to avoid breaking plugin identifiers.
+    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // migration path to avoid breaking plugin identifiers.
     BRAZILIAN_PORTUGUESE("pt-br", "Português do Brasil", "pt-br", new String[] {"WINDOWS0416"}),
     GREEK("el", "Ελληνικά", "ell", new String[] {"WINDOWS0408"}),
     UNLISTED(UNLISTED_LITERAL, UNLISTED_LITERAL, UNLISTED_LITERAL, new String[] {});
