@@ -1161,7 +1161,7 @@ class SplitFileFetcherStorageTest {
             }
           };
       return new SplitFileFetcherStorage(
-          new SplitFileFetcherStorage.InitParams.Builder()
+          new SplitFileFetcherStorageInitParams.Builder()
               .metadata(metadata)
               .fetcher(cb)
               .decompressors(NO_DECOMPRESSORS)
@@ -1203,7 +1203,7 @@ class SplitFileFetcherStorageTest {
         throws IOException, StorageFormatException, FetchException {
       assertTrue(persistent);
       return new SplitFileFetcherStorage(
-          new SplitFileFetcherStorage.ResumeParams.Builder()
+          new SplitFileFetcherStorageResumeParams.Builder()
               .raf(raf)
               .realTime(false)
               .callback(cb)
