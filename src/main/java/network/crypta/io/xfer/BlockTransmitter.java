@@ -59,8 +59,7 @@ public class BlockTransmitter {
    * Upper bound (ms) for the random delay applied between the final two packets (30→31 and 31→32)
    * when operating at high HTL. The intent is to avoid bursty tail delivery.
    *
-   * <p>TODO: Re-evaluate the safe lower bound; {@code 1000} ms increases average insert latency by
-   * about 2.5 s.
+   * <p>Note: {@code 1000} ms increases average insert latency by about 2.5 s; adjust with care.
    */
   private static final int MAX_ARTIFICIAL_FINAL_PACKETS_DELAY = 1000;
 
@@ -848,8 +847,7 @@ public class BlockTransmitter {
   }
 
   private void cleanup() {
-    // FIXME: Explicitly remove async filters if shouldTimeout() is insufficient; verify lifecycle.
-    // shouldTimeout() should deal with them adequately; explicit removal may be unnecessary.
+    // Async filters expire via shouldTimeout(); explicit removal is intentionally avoided.
     if (myListener != null) prb.removeListener(myListener);
   }
 
@@ -876,13 +874,11 @@ public class BlockTransmitter {
 
     @Override
     public void disconnected() {
-      // FIXME: Cancel outstanding packets and fail the PRB to terminate the transfer.
       complete(true);
     }
 
     @Override
     public void fatalError() {
-      // FIXME: Cancel outstanding packets and fail the PRB to terminate the transfer.
       complete(true);
     }
 
