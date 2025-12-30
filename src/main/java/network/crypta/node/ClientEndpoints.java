@@ -42,6 +42,19 @@ public final class ClientEndpoints {
   private UserAlert startingUpAlert;
 
   /**
+   * Result wrapper for {@link #create(Node, NodeClientCore, NodeClientCoreInit,
+   * NodeClientPersistence, ClientContext)}.
+   *
+   * <p>The returned direct TMCI is created but not started. Callers must publish it via {@link
+   * #setDirectTMCI(TextModeClientInterface)} and schedule it on the node executor only after the
+   * {@link NodeClientCore} has completed endpoint assignment.
+   *
+   * @param endpoints fully constructed client endpoints bundle.
+   * @param directTMCI direct text-mode interface instance, or {@code null} when disabled.
+   */
+  public record InitResult(ClientEndpoints endpoints, TextModeClientInterface directTMCI) {}
+
+  /**
    * Creates a new bundle from the provided endpoint instances.
    *
    * <p>The constructor stores the references without validation or defensive copying, so the caller
@@ -279,13 +292,15 @@ public final class ClientEndpoints {
    * the persistence layer, and registers that server as the download cache in the client context.
    * If the node has not killed its database, it loads persistent requests immediately. No endpoints
    * are started by this method; callers typically invoke {@link #maybeStart()} once the node is
-   * ready. The returned instance captures the created references and does not perform any
-   * additional initialization beyond the steps described above.
+   * ready. When direct TMCI is enabled, it is created but not started; callers must register it on
+   * the endpoints bundle and schedule it after {@link NodeClientCore#getEndpoints()} is assigned.
+   * The returned instance captures the created references and does not perform any additional
+   * initialization beyond the steps described above.
    *
    * <pre>{@code
-   * ClientEndpoints endpoints =
+   * ClientEndpoints.InitResult initResult =
    *     ClientEndpoints.create(node, core, init, persistence, clientContext);
-   * endpoints.maybeStart();
+   * initResult.endpoints().maybeStart();
    * }</pre>
    *
    * @param node node instance used for endpoint creation and configuration.
@@ -293,21 +308,24 @@ public final class ClientEndpoints {
    * @param init initializer providing configuration and toadlet container access.
    * @param persistence persistence layer responsible for creating the FCP server.
    * @param clientContext client context updated with the FCP download cache.
-   * @return a new {@link ClientEndpoints} instance with initialized components attached.
+   * @return an {@link InitResult} containing the endpoints bundle and optional direct TMCI
+   *     instance.
    */
-  public static ClientEndpoints create(
+  public static InitResult create(
       Node node,
       NodeClientCore core,
       NodeClientCoreInit init,
       NodeClientPersistence persistence,
       ClientContext clientContext) {
-    TextModeClientInterfaceServer tmci =
+    TextModeClientInterfaceServer.InitResult tmciInit =
         TextModeClientInterfaceServer.maybeCreate(node, core, init.config());
+    TextModeClientInterfaceServer tmci = tmciInit.server();
     FCPServer fcpServer = persistence.createFcpServer(node, core);
     clientContext.setDownloadCache(fcpServer);
     if (!core.killedDatabase()) {
       fcpServer.load();
     }
-    return new ClientEndpoints(fcpServer, tmci, init.toadlets());
+    return new InitResult(
+        new ClientEndpoints(fcpServer, tmci, init.toadlets()), tmciInit.directTMCI());
   }
 }

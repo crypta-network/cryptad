@@ -25,7 +25,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,7 +55,7 @@ class TextModeClientInterfaceServerTest {
   }
 
   @Test
-  void maybeCreate_whenDirectEnabled_executesAndSetsDirectTMCI() {
+  void maybeCreate_whenDirectEnabled_returnsDirectTMCI() {
     Config cfg = Mockito.mock(Config.class);
     SubConfig sub = Mockito.mock(SubConfig.class);
     Mockito.when(cfg.createSubConfig("console")).thenReturn(sub);
@@ -68,24 +67,18 @@ class TextModeClientInterfaceServerTest {
     Mockito.when(sub.getBoolean("directEnabled")).thenReturn(true);
 
     // Node + core wiring
-    PriorityAwareExecutor exec = new CapturingExecutor();
-    Mockito.when(node.getExecutor()).thenReturn(exec);
     Mockito.when(core.getDownloadsDir()).thenReturn(tempDir);
     Mockito.when(core.makeClient(Mockito.anyShort(), Mockito.eq(true), Mockito.eq(false)))
         .thenReturn(Mockito.mock(network.crypta.client.HighLevelSimpleClient.class));
 
-    TextModeClientInterfaceServer server =
+    TextModeClientInterfaceServer.InitResult init =
         TextModeClientInterfaceServer.maybeCreate(node, core, cfg);
 
     // TMCI is disabled in config, so no server instance is created.
-    assertNull(server);
+    assertNull(init.server());
 
-    // Direct TMCI should be started and registered on the core.
-    ArgumentCaptor<TextModeClientInterface> tmciCaptor =
-        ArgumentCaptor.forClass(TextModeClientInterface.class);
-    Mockito.verify(core).getEndpoints();
-    Mockito.verify(endpoints).setDirectTMCI(tmciCaptor.capture());
-    assertNotNull(tmciCaptor.getValue());
+    // Direct TMCI should be created for later registration/start.
+    assertNotNull(init.directTMCI());
 
     // Sub-config should be finalized.
     Mockito.verify(sub).finishedInitialization();
@@ -229,7 +222,7 @@ class TextModeClientInterfaceServerTest {
     Mockito.verify(serverMock).setPort(12345);
   }
 
-  // Minimal executor used to capture tasks submitted by start() and maybeCreate(direct)
+  // Minimal executor used to capture tasks submitted by start().
   private static final class CapturingExecutor implements PriorityAwareExecutor {
     Runnable lastRunnable;
     String lastJobName;

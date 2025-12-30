@@ -403,7 +403,14 @@ public class NodeClientCore implements Persistable {
     // Some plugins depend on it, so it needs to be *created* before they are started.
 
     // TMCI and FCP (including persistent requests so needs to start before FProxy)
-    endpoints = ClientEndpoints.create(node, this, init, persistence, clientContext);
+    ClientEndpoints.InitResult endpointsInit =
+        ClientEndpoints.create(node, this, init, persistence, clientContext);
+    endpoints = endpointsInit.endpoints();
+    TextModeClientInterface directTMCI = endpointsInit.directTMCI();
+    if (directTMCI != null) {
+      endpoints.setDirectTMCI(directTMCI);
+      node.getExecutor().execute(directTMCI, "Direct text mode interface");
+    }
 
     // FProxy
     // Note: This wiring is a stopgap; plugins should handle this in the future.

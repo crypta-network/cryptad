@@ -170,10 +170,11 @@ class ClientEndpointsTest {
         Mockito.mockStatic(TextModeClientInterfaceServer.class)) {
       tmciMock
           .when(() -> TextModeClientInterfaceServer.maybeCreate(node, core, config))
-          .thenReturn(tmci);
+          .thenReturn(new TextModeClientInterfaceServer.InitResult(tmci, null));
 
-      ClientEndpoints endpoints =
+      ClientEndpoints.InitResult initResult =
           ClientEndpoints.create(node, core, init, persistence, clientContext);
+      ClientEndpoints endpoints = initResult.endpoints();
 
       assertSame(fcpServer, endpoints.getFCPServer());
       assertSame(tmci, endpoints.getTextModeClientInterface());
@@ -199,10 +200,11 @@ class ClientEndpointsTest {
         Mockito.mockStatic(TextModeClientInterfaceServer.class)) {
       tmciMock
           .when(() -> TextModeClientInterfaceServer.maybeCreate(node, core, config))
-          .thenReturn(tmci);
+          .thenReturn(new TextModeClientInterfaceServer.InitResult(tmci, null));
 
-      ClientEndpoints endpoints =
+      ClientEndpoints.InitResult initResult =
           ClientEndpoints.create(node, core, init, persistence, clientContext);
+      ClientEndpoints endpoints = initResult.endpoints();
 
       assertSame(fcpServer, endpoints.getFCPServer());
       assertSame(tmci, endpoints.getTextModeClientInterface());
