@@ -36,6 +36,9 @@ import network.crypta.support.io.TempBucketFactory;
 
 /** Helper methods that keep NodeClientCore wiring focused while preserving existing behavior. */
 public final class NodeClientCoreSupport {
+  /** Lock used when evaluating persistence alert validity to avoid synchronizing on parameters. */
+  private static final Object PERSISTENCE_ALERT_LOCK = new Object();
+
   private NodeClientCoreSupport() {}
 
   /** Returns the default cache directory for the current environment (service or desktop). */
@@ -152,7 +155,7 @@ public final class NodeClientCoreSupport {
         .routingSelector()
         .closerPeer(
             null,
-            new HashSet<PeerNode>(),
+            new HashSet<>(),
             key.toNormalizedDouble(),
             true,
             false,
@@ -206,7 +209,7 @@ public final class NodeClientCoreSupport {
         UserAlert.CRITICAL_ERROR) {
       @Override
       public boolean isValid() {
-        synchronized (core) {
+        synchronized (PERSISTENCE_ALERT_LOCK) {
           if (!core.killedDatabase()) return false;
         }
         if (node.awaitingPassword()) return false;
