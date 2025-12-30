@@ -20,10 +20,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Executes client fetch and insert operations on behalf of {@link NodeClientCore}.
+ * Coordinates client-side fetch and insert operations for a {@link NodeClientCore} instance.
  *
- * <p>This helper encapsulates the request/insert orchestration paths so the core can focus on
- * wiring services and configuration. It is intentionally stateful, bound to a single core instance.
+ * <p>This helper acts as the transfer-focused companion to the core, translating high-level
+ * requests into concrete sender workflows. It allocates and tracks UIDs, consults the datastore and
+ * client cache, and reports routing and transfer costs to node statistics. The instance is
+ * intentionally stateful and bound to a single {@link Node}; it does not reset or share state
+ * between cores. Asynchronous entry points return after scheduling work, while synchronous get/put
+ * methods block until completion and always release tracking resources before returning.
+ *
+ * <p>Thread safety follows the underlying node components; this class adds no extra synchronization
+ * beyond local bookkeeping.
+ *
+ * <ul>
+ *   <li>Schedules asynchronous fetches and forwards completion callbacks.
+ *   <li>Performs blocking CHK/SSK fetches with verification.
+ *   <li>Runs blocking inserts with caching and collision handling.
+ *   <li>Queues background reinserts and records transfer metrics.
+ * </ul>
+ *
+ * @see NodeClientCore
+ * @see RequestSender
+ * @see CHKInsertSender
+ * @see SSKInsertSender
  */
 public final class NodeClientCoreTransfers {
   private static final Logger LOG = LoggerFactory.getLogger(NodeClientCoreTransfers.class);
@@ -45,23 +64,23 @@ public final class NodeClientCoreTransfers {
   }
 
   /**
-   * Starts an asynchronous fetch for a key.
+   * Schedules a non-blocking fetch for the supplied key and arranges completion callbacks.
    *
-   * <p>If the data is found locally the listener is notified and no network request is started.
-   * Otherwise, a request sender is created and the listener receives completion or failure
-   * callbacks; some successful outcomes may be delivered via the pending-keys mechanism instead of
-   * the listener. The call is non-blocking and returns after scheduling work using a freshly
-   * generated UID. Store access is controlled by {@code localOnly} and {@code ignoreStore}; when
-   * both are {@code false} the datastore is checked first and routing proceeds on miss.
+   * <p>This call generates a new request UID, locks it with the tracker, and optionally consults
+   * the datastore before routing. If the data is found locally, the listener is notified and no
+   * network request is started. Otherwise, a {@link RequestSender} is created and the listener is
+   * notified on completion or failure; some successful outcomes may be delivered via the
+   * pending-keys mechanism instead of the listener. The method returns after scheduling work and
+   * does not wait for completion. Each invocation is independent, even for repeated keys.
    *
-   * @param key key to fetch; typically a {@code CHK} or {@link NodeSSK}.
-   * @param offersOnly when true, fetch only from offered-key sources.
-   * @param listener callback notified on completion or failure of the request.
-   * @param canReadClientCache whether this request may read from the client cache.
-   * @param canWriteClientCache whether this request may write into the client cache.
+   * @param key key to fetch; typically a {@link Key} or {@link NodeSSK}.
+   * @param offersOnly true to fetch only from offered-key sources.
+   * @param listener callback notified for success, failure, or local-store hits.
+   * @param canReadClientCache whether the request may read from the client cache.
+   * @param canWriteClientCache whether the request may write into the client cache.
    * @param realTimeFlag true for latency-optimized routing; false for bulk throughput.
-   * @param localOnly true to check only local store and skip routing.
-   * @param ignoreStore true to bypass datastore and always create a request.
+   * @param localOnly true to consult only local storage and skip routing.
+   * @param ignoreStore true to bypass the datastore and always create a request.
    */
   public void asyncGet(
       final Key key,
@@ -369,21 +388,23 @@ public final class NodeClientCoreTransfers {
   }
 
   /**
-   * Synchronously fetches a block for a client key.
+   * Synchronously fetches and verifies a client key block.
    *
-   * <p>This method blocks until the fetch completes or fails. Depending on {@code localOnly} and
-   * {@code ignoreStore}, it may read from the datastore or issue a routed request through the
-   * network. It returns a verified client block on success and throws a {@link
-   * LowLevelGetException} on any failure. The request uses an internally generated UID and releases
-   * tracking resources before returning.
+   * <p>This method blocks until the fetch completes or fails. It routes to the CHK or SSK path
+   * based on the key type and uses {@code localOnly} and {@code ignoreStore} to decide whether to
+   * consult the datastore or issue a network request. The call generates and locks a request UID,
+   * releases tracking resources before returning, and throws a {@link LowLevelGetException} on any
+   * failure. If the key type is unsupported, it throws {@link IllegalArgumentException}.
    *
    * @param key client key to fetch; must be {@link ClientCHK} or {@link ClientSSK}.
    * @param localOnly true to consult only the datastore and stop on miss.
-   * @param ignoreStore true to bypass datastore and route immediately.
-   * @param canWriteClientCache whether the request may write to the client cache.
+   * @param ignoreStore true to bypass the datastore and route immediately.
+   * @param canWriteClientCache whether the request may write into the client cache.
    * @param realTimeFlag true for latency-optimized routing; false for bulk routing.
    * @return verified client block, owned by the caller for use.
-   * @throws LowLevelGetException when not found, verify fails, or internal errors occur.
+   * @throws LowLevelGetException when the fetch fails, verification fails, or internal errors
+   *     occur.
+   * @throws IllegalArgumentException if the key is not a CHK or SSK.
    */
   public ClientKeyBlock realGetKey(
       ClientKey key,
@@ -641,20 +662,22 @@ public final class NodeClientCoreTransfers {
   }
 
   /**
-   * Inserts a block into the network.
+   * Synchronously inserts a CHK or SSK block into the network.
    *
-   * <p>This entry point accepts either CHK or SSK blocks and dispatches to the appropriate insert
-   * path. It performs local bookkeeping, records costs, and may store the block locally according
-   * to caching rules. The call blocks until the insert completes or fails. Failures are mapped to
-   * {@link LowLevelPutException} codes describing routing, overload, or collision outcomes.
+   * <p>This entry point dispatches to the appropriate insert path based on the concrete block type.
+   * It performs local bookkeeping, records transfer costs, and may store the block locally
+   * according to caching rules. The call blocks until the insert completes or fails; failures are
+   * mapped to {@link LowLevelPutException} codes describing routing, overload, or collision
+   * outcomes. Unsupported block types result in {@link IllegalArgumentException}.
    *
    * @param block block to insert; must be a {@link CHKBlock} or {@link SSKBlock}.
    * @param canWriteClientCache whether the insert may update the client cache.
-   * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert when multiple strategies apply.
-   * @param ignoreLowBackoff whether to ignore low backoff during routing.
+   * @param forkOnCacheable true to fork inserts when the block is cacheable.
+   * @param preferInsert true to prefer insert strategies when alternatives exist.
+   * @param ignoreLowBackoff true to ignore low backoff during routing decisions.
    * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
-   * @throws LowLevelPutException when routing fails, overload occurs, or an internal error arises.
+   * @throws LowLevelPutException when routing fails, overload occurs, or internal errors arise.
+   * @throws IllegalArgumentException if the block type is unsupported for insert.
    */
   public void realPut(
       KeyBlock block,
@@ -686,20 +709,21 @@ public final class NodeClientCoreTransfers {
   }
 
   /**
-   * Inserts a CHK block into the network and optionally caches it locally.
+   * Synchronously inserts a CHK block and applies local caching rules.
    *
    * <p>This variant constructs a CHK insert sender, waits for completion, reports costs, and stores
    * the block according to cache policy. It blocks until the insert completes and throws a {@link
    * LowLevelPutException} on routing failure, overload, or internal errors. The method generates
-   * and locks a request UID internally and releases it before returning.
+   * and locks a request UID internally and releases it before returning to the caller.
    *
    * @param block CHK block to insert and potentially store locally.
    * @param canWriteClientCache whether the insert may update the client cache.
-   * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert when multiple strategies apply.
-   * @param ignoreLowBackoff whether to ignore low backoff during routing.
+   * @param forkOnCacheable true to fork inserts when the block is cacheable.
+   * @param preferInsert true to prefer insert strategies when alternatives exist.
+   * @param ignoreLowBackoff true to ignore low backoff during routing decisions.
    * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
-   * @throws LowLevelPutException when routing fails, overload, or internal errors arise.
+   * @throws LowLevelPutException when routing fails, overload is reported, or internal errors
+   *     arise.
    */
   public void realPutCHK(
       CHKBlock block,
@@ -858,20 +882,21 @@ public final class NodeClientCoreTransfers {
   }
 
   /**
-   * Inserts an SSK block.
+   * Synchronously inserts an SSK block and handles collision checks.
    *
-   * <p>This method performs a local collision check using the client cache, then starts an SSK
-   * insert sender and waits for completion. It reports costs, stores the block when appropriate,
-   * and throws {@link LowLevelPutException} for collisions, routing failures, overload, or internal
-   * errors. The call blocks until the insert completes and always releases the request UID.
+   * <p>This method performs a local collision check using the client cache, starts an SSK insert
+   * sender, and waits for completion. It reports costs, stores the block when appropriate, and
+   * throws {@link LowLevelPutException} for collisions, routing failures, overload, or internal
+   * errors. The call blocks until the insert completes and always releases the request UID before
+   * returning.
    *
    * @param block SSK block to insert and potentially store locally.
    * @param canWriteClientCache whether the insert may update the client cache.
-   * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert when multiple strategies apply.
-   * @param ignoreLowBackoff whether to ignore low backoff during routing.
+   * @param forkOnCacheable true to fork inserts when the block is cacheable.
+   * @param preferInsert true to prefer insert strategies when alternatives exist.
+   * @param ignoreLowBackoff true to ignore low backoff during routing decisions.
    * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
-   * @throws LowLevelPutException on collision, routing failure, overload, or internal error.
+   * @throws LowLevelPutException on collision, routing failure, overload, or internal errors.
    */
   public void realPutSSK(
       SSKBlock block,
@@ -1066,9 +1091,9 @@ public final class NodeClientCoreTransfers {
    * Queues a low-priority reinsert of a key block.
    *
    * <p>The block is wrapped in a {@link SimpleSendableInsert} and scheduled on the request starters
-   * at the maximum priority class for reinserts. The operation is asynchronous; it enqueues work
-   * and returns immediately without waiting for completion. Use it to refresh availability for
-   * already known data.
+   * at the maximum priority class for reinserts. The operation is asynchronous: it enqueues work
+   * and returns immediately without waiting for completion. Use this method to refresh availability
+   * for already known data without blocking the caller.
    *
    * @param block key block to reinsert and schedule for background routing.
    */
