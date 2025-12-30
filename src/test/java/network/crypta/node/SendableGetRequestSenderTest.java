@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,6 +18,7 @@ import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -28,8 +30,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class SendableGetRequestSenderTest {
 
   @Mock private NodeClientCore core;
+  @Mock private NodeClientCoreTransfers transfers;
   @Mock private RequestScheduler scheduler;
   @Mock private ClientContext context;
+
+  @BeforeEach
+  void setUp() {
+    lenient().when(core.getTransfers()).thenReturn(transfers);
+  }
 
   private SendableGetRequestSender newSender() {
     return new SendableGetRequestSender();
@@ -151,7 +159,7 @@ class SendableGetRequestSenderTest {
               l.onSucceeded();
               return null;
             })
-        .when(core)
+        .when(transfers)
         .asyncGet(
             eq(nodeKey),
             eq(false),
@@ -190,7 +198,7 @@ class SendableGetRequestSenderTest {
               l.onFailed(failure);
               return null;
             })
-        .when(core)
+        .when(transfers)
         .asyncGet(
             eq(nodeKey),
             eq(false),
@@ -273,7 +281,7 @@ class SendableGetRequestSenderTest {
     when(req.isCancelled()).thenReturn(false);
 
     doThrow(new RuntimeException("asyncGet blew up"))
-        .when(core)
+        .when(transfers)
         .asyncGet(
             eq(nodeKey),
             eq(false),

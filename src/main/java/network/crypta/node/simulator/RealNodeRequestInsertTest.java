@@ -284,6 +284,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       insertAttempts++;
       randomNode
           .getClientCore()
+          .getTransfers()
           .realPut(block.getBlock(), false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
       LOG.error("Inserted to {}", node1);
     } catch (LowLevelPutException putEx) {
@@ -298,7 +299,10 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     Node fetchNode = nodes[node2];
     try {
       block =
-          fetchNode.getClientCore().realGetKey(keys.fetchKey, false, false, false, REAL_TIME_FLAG);
+          fetchNode
+              .getClientCore()
+              .getTransfers()
+              .realGetKey(keys.fetchKey, false, false, false, REAL_TIME_FLAG);
     } catch (LowLevelGetException _) {
       block = null;
     }

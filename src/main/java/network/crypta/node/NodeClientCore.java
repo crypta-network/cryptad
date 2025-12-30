@@ -1,14 +1,9 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
-import network.crypta.client.FECCodec;
 import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
-import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientLayerPersister;
@@ -19,25 +14,12 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
-import network.crypta.io.xfer.AbortedException;
-import network.crypta.io.xfer.PartiallyReceivedBlock;
-import network.crypta.keys.CHKBlock;
-import network.crypta.keys.CHKVerifyException;
-import network.crypta.keys.ClientCHK;
-import network.crypta.keys.ClientKey;
-import network.crypta.keys.ClientKeyBlock;
-import network.crypta.keys.ClientSSK;
 import network.crypta.keys.Key;
-import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
-import network.crypta.keys.SSKBlock;
-import network.crypta.keys.SSKVerifyException;
-import network.crypta.l10n.NodeL10n;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.pluginmanager.PluginRespirator;
 import network.crypta.pluginmanager.PluginStores;
-import network.crypta.store.KeyCollisionException;
 import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -46,7 +28,6 @@ import network.crypta.support.SizeUtil;
 import network.crypta.support.api.BooleanCallback;
 import network.crypta.support.api.IntCallback;
 import network.crypta.support.api.LongCallback;
-import network.crypta.support.api.StringArrCallback;
 import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.FilenameGenerator;
@@ -83,11 +64,6 @@ public class NodeClientCore implements Persistable {
   private static final Logger LOG = LoggerFactory.getLogger(NodeClientCore.class);
   private static final String CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS = "encryptPersistentTempBuckets";
   private static final String DOWNLOADS_DIR_NAME = "downloads";
-  private static final String LOG_BYTES_OPEN = " bytes (";
-  private static final String MSG_CANNOT_LOCK_UID = "Could not lock UID just randomly generated: ";
-  private static final String MSG_BROKEN_PRNG = " - probably indicates broken PRNG";
-  private static final String LOG_DOES_NOT_VERIFY = "Does not verify: ";
-
   // Maximum number of healing inserts. If a 320 MiB file barely succeeds,
   // it has ~10,000 blocks eligible for healing (10,000 × 32 KiB).
   // Large-file lifetime is currently 7–14 days; with a 10,000-key cap a 320 MiB file
@@ -101,6 +77,9 @@ public class NodeClientCore implements Persistable {
 
   /** Request starter group. Access via {@link #getRequestStarters()}. */
   private final RequestStarterGroup requestStarters;
+
+  /** Fetch/insert operations bound to this core. Access via {@link #getTransfers()}. */
+  private final NodeClientCoreTransfers transfers;
 
   /**
    * Runs memory-bounded background jobs such as FEC decoding within configured capacity and thread
@@ -120,12 +99,7 @@ public class NodeClientCore implements Persistable {
   private final String formPassword;
 
   final File downloadsDir;
-  private File[] downloadAllowedDirs;
-  private boolean includeDownloadDir;
-  private boolean downloadAllowedEverywhere;
-  private boolean downloadDisabled;
-  private File[] uploadAllowedDirs;
-  private boolean uploadAllowedEverywhere;
+  private final NodeClientCoreTransferPolicy transferPolicy;
 
   /** Temp bucket factory. Access via {@link #getTempBucketFactory()}. */
   private final TempBucketFactory tempBucketFactory;
@@ -330,9 +304,10 @@ public class NodeClientCore implements Persistable {
     sortOrder = registerMemoryLimitedJobThreadLimit(init, sortOrder, maxMemoryLimitedJobThreads);
     long overallMemoryLimit = NodeStarter.getMemoryLimitBytes();
     long defaultMemoryLimitedJobMemoryLimit =
-        computeDefaultMemoryLimitedJobMemoryLimit(overallMemoryLimit);
+        NodeClientCoreSupport.computeDefaultMemoryLimitedJobMemoryLimit(overallMemoryLimit);
     sortOrder =
-        registerMemoryLimitedJobMemoryLimit(init, sortOrder, defaultMemoryLimitedJobMemoryLimit);
+        NodeClientCoreSupport.registerMemoryLimitedJobMemoryLimit(
+            init, sortOrder, defaultMemoryLimitedJobMemoryLimit, this);
     memoryLimitedJobRunner =
         new MemoryLimitedJobRunner(
             init.nodeConfig().getLong("memoryLimitedJobMemoryLimit"),
@@ -369,6 +344,7 @@ public class NodeClientCore implements Persistable {
     getClientLayerPersister().start(getClientContext());
 
     requestStarters = createRequestStarters(node, portNumber, init, throttleFS);
+    transfers = new NodeClientCoreTransfers(this);
 
     clientContext.init(requestStarters, alerts);
 
@@ -386,13 +362,14 @@ public class NodeClientCore implements Persistable {
             new File(defaultDataDir, DOWNLOADS_DIR_NAME).getPath(),
             "NodeClientCore.downloadsDir",
             "NodeClientCore.downloadsDirLong",
-            l10n("couldNotFindOrCreateDir"));
+            NodeClientCoreSupport.l10n("couldNotFindOrCreateDir"));
+    this.transferPolicy = new NodeClientCoreTransferPolicy(node, downloadsDir);
 
     // Downloads allowed, uploads allowed
 
-    sortOrder = registerDownloadAllowedDirs(init, sortOrder);
+    sortOrder = transferPolicy.registerDownloadAllowedDirs(init, sortOrder);
 
-    sortOrder = registerUploadAllowedDirs(init, sortOrder);
+    sortOrder = transferPolicy.registerUploadAllowedDirs(init, sortOrder);
 
     LOG.info("Initializing USK Manager");
     uskManager.init(getClientContext());
@@ -415,7 +392,11 @@ public class NodeClientCore implements Persistable {
     // FProxy
     // Note: This wiring is a stopgap; plugins should handle this in the future.
     endpoints.registerStartupAlerts(
-        alerts, this, l10n("startingUpTitle"), l10n("startingUp"), l10n("startingUpShort"));
+        alerts,
+        this,
+        NodeClientCoreSupport.l10n("startingUpTitle"),
+        NodeClientCoreSupport.l10n("startingUp"),
+        NodeClientCoreSupport.l10n("startingUpShort"));
     endpoints.configureBucketFactory(tempBucketFactory);
 
     registerAlwaysCommit(init, sortOrder);
@@ -467,7 +448,8 @@ public class NodeClientCore implements Persistable {
               public void set(Long val) throws InvalidConfigValueException {
                 synchronized (NodeClientCore.this) {
                   if (val < 0)
-                    throw new InvalidConfigValueException(l10n("minDiskFreeMustBePositive"));
+                    throw new InvalidConfigValueException(
+                        NodeClientCoreSupport.l10n("minDiskFreeMustBePositive"));
                   minDiskFreeLongTerm = val;
                 }
                 updatePersistentRAFSpaceLimit();
@@ -498,7 +480,8 @@ public class NodeClientCore implements Persistable {
               public void set(Long val) throws InvalidConfigValueException {
                 synchronized (NodeClientCore.this) {
                   if (val < 0)
-                    throw new InvalidConfigValueException(l10n("minDiskFreeMustBePositive"));
+                    throw new InvalidConfigValueException(
+                        NodeClientCoreSupport.l10n("minDiskFreeMustBePositive"));
                   minDiskFreeShortTerm = val;
                 }
                 tempBucketFactory.setMinDiskSpace(val);
@@ -566,79 +549,20 @@ public class NodeClientCore implements Persistable {
     }
   }
 
-  private static String l10n(String key) {
-    return NodeL10n.getBase().getString("NodeClientCore." + key);
-  }
-
   // Note: Use NodeL10n.getBase().getString("NodeClientCore.<key>", pattern, value) directly
   // when parameter substitution is needed.
 
-  private void handleAsyncGetFinished(
-      boolean isSSK,
-      RequestCompletionListener listener,
-      long startTime,
-      Key key,
-      boolean realTimeFlag,
-      RequestSender rs,
-      boolean rejectedOverload) {
-    int status = rs.getStatus();
-    if (status == RequestSender.NOT_FINISHED) {
-      LOG.error("Bogus status in onRequestSenderFinished for {}", rs, new Exception("error"));
-      listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
-      return;
+  /**
+   * Generates a random UID for requests.
+   *
+   * <p>Note: {@code -1} is reserved internally and is never returned. If a peer uses {@code -1} it
+   * is merely scheduled more slowly (round-robin with no-UID messages).
+   */
+  long makeUID() {
+    while (true) {
+      long uid = random.nextLong();
+      if (uid != -1) return uid;
     }
-
-    if (isNonErrorStatus(status)) reportFetchCosts(isSSK, rs, status);
-
-    if (status == RequestSender.TIMED_OUT || status == RequestSender.GENERATED_REJECTED_OVERLOAD) {
-      handleTimeoutOrRejected(isSSK, realTimeFlag, startTime, key, rejectedOverload);
-    } else if (rs.hasForwarded() && isForwardedTerminalStatus(status)) {
-      handleForwardedStatuses(isSSK, realTimeFlag, startTime, key, status);
-    }
-
-    if (status == RequestSender.SUCCESS) {
-      listener.onSucceeded();
-      return;
-    }
-    handleStatusResult(isSSK, listener, rs, status);
-  }
-
-  private boolean isNonErrorStatus(int status) {
-    return status != RequestSender.TIMED_OUT
-        && status != RequestSender.GENERATED_REJECTED_OVERLOAD
-        && status != RequestSender.INTERNAL_ERROR;
-  }
-
-  private void reportFetchCosts(boolean isSSK, RequestSender rs, int status) {
-    if (LOG.isDebugEnabled())
-      LOG.debug(
-          "{} fetch cost {}/{}" + LOG_BYTES_OPEN + "{})",
-          isSSK ? "SSK" : "CHK",
-          rs.getTotalSentBytes(),
-          rs.getTotalReceivedBytes(),
-          status);
-    (isSSK
-            ? node.getNodeStats().localSskFetchBytesSentAverage
-            : node.getNodeStats().localChkFetchBytesSentAverage)
-        .report(rs.getTotalSentBytes());
-    (isSSK
-            ? node.getNodeStats().localSskFetchBytesReceivedAverage
-            : node.getNodeStats().localChkFetchBytesReceivedAverage)
-        .report(rs.getTotalReceivedBytes());
-    if (status == RequestSender.SUCCESS)
-      (isSSK
-              ? node.getNodeStats().successfulSskFetchBytesReceivedAverage
-              : node.getNodeStats().successfulChkFetchBytesReceivedAverage)
-          .report(rs.getTotalReceivedBytes());
-  }
-
-  private boolean isForwardedTerminalStatus(int status) {
-    return status == RequestSender.DATA_NOT_FOUND
-        || status == RequestSender.RECENTLY_FAILED
-        || status == RequestSender.SUCCESS
-        || status == RequestSender.ROUTE_NOT_FOUND
-        || status == RequestSender.VERIFY_FAILURE
-        || status == RequestSender.GET_OFFER_VERIFY_FAILURE;
   }
 
   private FilenameGenerator createTempFilenameGeneratorOrThrow() throws NodeInitException {
@@ -694,79 +618,10 @@ public class NodeClientCore implements Persistable {
     return sz;
   }
 
-  private void handleTimeoutOrRejected(
-      boolean isSSK, boolean realTimeFlag, long startTime, Key key, boolean rejectedOverload) {
-    if (rejectedOverload) return;
-    requestStarters.rejectedOverload(isSSK, false, realTimeFlag);
-    long rtt = System.currentTimeMillis() - startTime;
-    double targetLocation = key.toNormalizedDouble();
-    if (isSSK) node.getNodeStats().reportSSKOutcome(rtt, false, realTimeFlag);
-    else node.getNodeStats().reportCHKOutcome(rtt, false, targetLocation, realTimeFlag);
-  }
-
-  private void handleForwardedStatuses(
-      boolean isSSK, boolean realTimeFlag, long startTime, Key key, int status) {
-    long rtt = System.currentTimeMillis() - startTime;
-    double targetLocation = key.toNormalizedDouble();
-    requestStarters.requestCompleted(isSSK, false, key, realTimeFlag);
-    requestStarters.getThrottle(isSSK, false, realTimeFlag).successfulCompletion(rtt);
-    if (isSSK)
-      node.getNodeStats().reportSSKOutcome(rtt, status == RequestSender.SUCCESS, realTimeFlag);
-    else
-      node.getNodeStats()
-          .reportCHKOutcome(rtt, status == RequestSender.SUCCESS, targetLocation, realTimeFlag);
-    if (status == RequestSender.SUCCESS) {
-      LOG.debug("Successful {} fetch took {}", isSSK ? "SSK" : "CHK", rtt);
-    }
-  }
-
-  private void handleStatusResult(
-      boolean isSSK, RequestCompletionListener listener, RequestSender rs, int status) {
-    switch (status) {
-      case RequestSender.NOT_FINISHED:
-        LOG.error("RS still running in get{}!: {}", isSSK ? "SSK" : "CHK", rs);
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
-        return;
-      case RequestSender.DATA_NOT_FOUND:
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND));
-        return;
-      case RequestSender.RECENTLY_FAILED:
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.RECENTLY_FAILED));
-        return;
-      case RequestSender.ROUTE_NOT_FOUND:
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.ROUTE_NOT_FOUND));
-        return;
-      case RequestSender.TRANSFER_FAILED, RequestSender.GET_OFFER_TRANSFER_FAILED:
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.TRANSFER_FAILED));
-        return;
-      case RequestSender.VERIFY_FAILURE, RequestSender.GET_OFFER_VERIFY_FAILURE:
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.VERIFY_FAILED));
-        return;
-      case RequestSender.GENERATED_REJECTED_OVERLOAD, RequestSender.TIMED_OUT:
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.REJECTED_OVERLOAD));
-        return;
-      case RequestSender.INTERNAL_ERROR:
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
-        return;
-      default:
-        LOG.error(
-            "Unknown RequestSender code in get{}: {} on {}", isSSK ? "SSK" : "CHK", status, rs);
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
-    }
-  }
-
   private int computeMaxMemoryLimitedJobThreads() {
     int maxThreads = Runtime.getRuntime().availableProcessors() / 2;
     maxThreads = Math.min(maxThreads, node.getNodeStats().getThreadLimit() / 20);
     return Math.max(1, maxThreads);
-  }
-
-  private long computeDefaultMemoryLimitedJobMemoryLimit(long overallMemoryLimit) {
-    long limit = FECCodec.MIN_MEMORY_ALLOCATION;
-    if (overallMemoryLimit > 512L * 1024 * 1024) {
-      limit += (overallMemoryLimit - 512L * 1024 * 1024) / 20;
-    }
-    return limit;
   }
 
   private RequestStarterGroup createRequestStarters(
@@ -898,78 +753,12 @@ public class NodeClientCore implements Persistable {
               public void set(Integer uskFetch) throws InvalidConfigValueException {
                 if (uskFetch <= 0)
                   throw new InvalidConfigValueException(
-                      l10n("maxUSKFetchersMustBeGreaterThanZero"));
+                      NodeClientCoreSupport.l10n("maxUSKFetchersMustBeGreaterThanZero"));
                 maxBackgroundUSKFetchers = uskFetch;
               }
             },
             false);
     maxBackgroundUSKFetchers = init.nodeConfig().getInt("maxBackgroundUSKFetchers");
-    return sortOrder + 1;
-  }
-
-  private int registerDownloadAllowedDirs(NodeClientCoreInit init, int sortOrder) {
-    init.nodeConfig()
-        .register(
-            "downloadAllowedDirs",
-            new String[] {"all"},
-            sortOrder,
-            true,
-            true,
-            "NodeClientCore.downloadAllowedDirs",
-            "NodeClientCore.downloadAllowedDirsLong",
-            new StringArrCallback() {
-
-              @Override
-              public String[] get() {
-                synchronized (NodeClientCore.this) {
-                  if (downloadAllowedEverywhere) return new String[] {"all"};
-                  String[] dirs =
-                      new String[downloadAllowedDirs.length + (includeDownloadDir ? 1 : 0)];
-                  for (int i = 0; i < downloadAllowedDirs.length; i++)
-                    dirs[i] = downloadAllowedDirs[i].getPath();
-                  if (includeDownloadDir) dirs[downloadAllowedDirs.length] = DOWNLOADS_DIR_NAME;
-                  return dirs;
-                }
-              }
-
-              @Override
-              public void set(String[] val) {
-                setDownloadAllowedDirs(val);
-              }
-            });
-    setDownloadAllowedDirs(init.nodeConfig().getStringArr("downloadAllowedDirs"));
-    return sortOrder + 1;
-  }
-
-  private int registerUploadAllowedDirs(NodeClientCoreInit init, int sortOrder) {
-    init.nodeConfig()
-        .register(
-            "uploadAllowedDirs",
-            new String[] {"all"},
-            sortOrder,
-            true,
-            true,
-            "NodeClientCore.uploadAllowedDirs",
-            "NodeClientCore.uploadAllowedDirsLong",
-            new StringArrCallback() {
-
-              @Override
-              public String[] get() {
-                synchronized (NodeClientCore.this) {
-                  if (uploadAllowedEverywhere) return new String[] {"all"};
-                  String[] dirs = new String[uploadAllowedDirs.length];
-                  for (int i = 0; i < uploadAllowedDirs.length; i++)
-                    dirs[i] = uploadAllowedDirs[i].getPath();
-                  return dirs;
-                }
-              }
-
-              @Override
-              public void set(String[] val) {
-                setUploadAllowedDirs(val);
-              }
-            });
-    setUploadAllowedDirs(init.nodeConfig().getStringArr("uploadAllowedDirs"));
     return sortOrder + 1;
   }
 
@@ -995,45 +784,11 @@ public class NodeClientCore implements Persistable {
               public void set(Integer val) throws InvalidConfigValueException {
                 if (val < 1)
                   throw new InvalidConfigValueException(
-                      l10n("memoryLimitedJobThreadLimitMustBe1Plus"));
+                      NodeClientCoreSupport.l10n("memoryLimitedJobThreadLimitMustBe1Plus"));
                 memoryLimitedJobRunner.setMaxThreads(val);
               }
             },
             false);
-    return sortOrder + 1;
-  }
-
-  private int registerMemoryLimitedJobMemoryLimit(
-      NodeClientCoreInit init, int sortOrder, long defaultMemoryLimitedJobMemoryLimit) {
-    init.nodeConfig()
-        .register(
-            "memoryLimitedJobMemoryLimit",
-            defaultMemoryLimitedJobMemoryLimit,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.memoryLimitedJobMemoryLimit",
-            "NodeClientCore.memoryLimitedJobMemoryLimitLong",
-            new LongCallback() {
-
-              @Override
-              public Long get() {
-                return memoryLimitedJobRunner.getCapacity();
-              }
-
-              @Override
-              public void set(Long val) throws InvalidConfigValueException {
-                if (val < FECCodec.MIN_MEMORY_ALLOCATION)
-                  throw new InvalidConfigValueException(
-                      NodeL10n.getBase()
-                          .getString(
-                              "NodeClientCore.memoryLimitedJobMemoryLimitMustBeAtLeast",
-                              "min",
-                              SizeUtil.formatSize(FECCodec.MIN_MEMORY_ALLOCATION)));
-                memoryLimitedJobRunner.setCapacity(val);
-              }
-            },
-            true);
     return sortOrder + 1;
   }
 
@@ -1211,7 +966,7 @@ public class NodeClientCore implements Persistable {
                   if (newValue != lazyStartDatastoreChecker) {
                     lazyStartDatastoreChecker = newValue;
                     throw new NodeNeedRestartException(
-                        l10n("lazyStartDatastoreCheckerMustRestartNode"));
+                        NodeClientCoreSupport.l10n("lazyStartDatastoreCheckerMustRestartNode"));
                   }
                 }
               }
@@ -1231,7 +986,7 @@ public class NodeClientCore implements Persistable {
    * @return {@code true} if downloads are disabled and all targets are rejected.
    */
   public boolean isDownloadDisabled() {
-    return downloadDisabled;
+    return transferPolicy.isDownloadDisabled();
   }
 
   /**
@@ -1245,24 +1000,7 @@ public class NodeClientCore implements Persistable {
    * @param val allowlist entries describing special tokens or absolute/relative paths.
    */
   protected synchronized void setDownloadAllowedDirs(String[] val) {
-    int x = 0;
-    downloadAllowedEverywhere = false;
-    includeDownloadDir = false;
-    downloadDisabled = false;
-    int i;
-    downloadAllowedDirs = new File[val.length];
-    for (i = 0; i < downloadAllowedDirs.length; i++) {
-      String s = val[i];
-      if (s.equals(DOWNLOADS_DIR_NAME)) includeDownloadDir = true;
-      else if (s.equals("all")) downloadAllowedEverywhere = true;
-      else downloadAllowedDirs[x++] = new File(val[i]);
-    }
-    if (x != i) {
-      downloadAllowedDirs = Arrays.copyOf(downloadAllowedDirs, x);
-    }
-    if (i == 0) {
-      downloadDisabled = true;
-    }
+    transferPolicy.setDownloadAllowedDirs(val);
   }
 
   /**
@@ -1276,18 +1014,7 @@ public class NodeClientCore implements Persistable {
    * @param val allowlist entries describing special tokens or filesystem paths.
    */
   protected synchronized void setUploadAllowedDirs(String[] val) {
-    int x = 0;
-    int i;
-    uploadAllowedEverywhere = false;
-    uploadAllowedDirs = new File[val.length];
-    for (i = 0; i < uploadAllowedDirs.length; i++) {
-      String s = val[i];
-      if (s.equals("all")) uploadAllowedEverywhere = true;
-      else uploadAllowedDirs[x++] = new File(val[i]);
-    }
-    if (x != i) {
-      uploadAllowedDirs = Arrays.copyOf(uploadAllowedDirs, x);
-    }
+    transferPolicy.setUploadAllowedDirs(val);
   }
 
   /**
@@ -1338,914 +1065,6 @@ public class NodeClientCore implements Persistable {
   }
 
   /**
-   * Generates a random UID for requests.
-   *
-   * <p>Note: {@code -1} is reserved internally and is never returned. If a peer uses {@code -1} it
-   * is merely scheduled more slowly (round-robin with no-UID messages).
-   */
-  long makeUID() {
-    while (true) {
-      long uid = random.nextLong();
-      if (uid != -1) return uid;
-    }
-  }
-
-  /**
-   * Starts an asynchronous fetch for a key.
-   *
-   * <p>If the data is found locally the listener is notified and no network request is started.
-   * Otherwise, a request sender is created and the listener receives completion or failure
-   * callbacks; some successful outcomes may be delivered via the pending-keys mechanism instead of
-   * the listener. The call is non-blocking and returns after scheduling work using a freshly
-   * generated UID. Store access is controlled by {@code localOnly} and {@code ignoreStore}; when
-   * both are {@code false} the datastore is checked first and routing proceeds on miss.
-   *
-   * @param key key to fetch; typically a {@code CHK} or {@link NodeSSK}.
-   * @param offersOnly when true, fetch only from offered-key sources.
-   * @param listener callback notified on completion or failure of the request.
-   * @param canReadClientCache whether this request may read from the client cache.
-   * @param canWriteClientCache whether this request may write into the client cache.
-   * @param realTimeFlag true for latency-optimized routing; false for bulk throughput.
-   * @param localOnly true to check only local store and skip routing.
-   * @param ignoreStore true to bypass datastore and always create a request.
-   */
-  public void asyncGet(
-      final Key key,
-      boolean offersOnly,
-      final RequestCompletionListener listener,
-      boolean canReadClientCache,
-      boolean canWriteClientCache,
-      final boolean realTimeFlag,
-      boolean localOnly,
-      boolean ignoreStore) {
-    final long uid = makeUID();
-    final boolean isSSK = key instanceof NodeSSK;
-    final RequestTag tag =
-        new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, isSSK, false, false, true, realTimeFlag, tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
-      listener.onFailed(
-          new LowLevelGetException(
-              LowLevelGetException.INTERNAL_ERROR,
-              "Could not lock random UID - serious PRNG problem???"));
-      return;
-    }
-    tag.setAccepted();
-    short htl = node.maxHTL();
-    // If another node requested it within the ULPR period at a lower HTL, that may allow
-    // us to cache it in the datastore. Find the lowest HTL fetching the key in that period,
-    // and use that for purposes of deciding whether to cache it in the store.
-    if (offersOnly) {
-      htl = node.getFailureTable().minOfferedHTL(key, htl);
-      if (LOG.isDebugEnabled()) LOG.debug("Using old HTL for GetOfferedKey: {}", htl);
-    }
-    final long startTime = System.currentTimeMillis();
-    startAsyncGet(
-        key,
-        offersOnly,
-        uid,
-        listener,
-        tag,
-        canReadClientCache,
-        canWriteClientCache,
-        htl,
-        realTimeFlag,
-        localOnly,
-        ignoreStore,
-        isSSK,
-        startTime);
-  }
-
-  /**
-   * Start an asynchronous fetch of the key in question, which will complete to the datastore. It
-   * will not decode the data because we don't provide a ClientKey. It will not return anything and
-   * will run asynchronously. Caller is responsible for unlocking the UID.
-   *
-   * @param key The key being fetched.
-   * @param offersOnly If true, only fetch the key from nodes that have offered it, using
-   *     GetOfferedKeys, don't do a normal fetch for it.
-   * @param uid The UID of the request. This should already be locked before calling.
-   * @param requestTag The RequestTag for the request; used for request lifecycle callbacks.
-   * @param listener Will be called by the request sender, if a request is started. However, for
-   *     example, if we fetch it from the store, it will be returned via the tripPendingKeys
-   *     mechanism.
-   * @param canReadClientCache Can this request read the client-cache?
-   * @param canWriteClientCache Can this request write the client-cache?
-   * @param htl The HTL to start the request at. See the caller, this can be modified in the case of
-   *     fetching an offered key.
-   * @param realTimeFlag Is this a real-time request? False = this is a bulk request.
-   * @param localOnly If true, only check the datastore, don't create a request if nothing is found.
-   * @param ignoreStore If true, don't check the datastore, create a request immediately.
-   * @param isSSK Whether the request targets an SSK key type.
-   * @param startTime Start time in milliseconds since epoch for metrics.
-   */
-  @SuppressWarnings("java:S1181")
-  private void startAsyncGet(
-      Key key,
-      boolean offersOnly,
-      long uid,
-      RequestCompletionListener listener,
-      Object requestTag,
-      boolean canReadClientCache,
-      boolean canWriteClientCache,
-      short htl,
-      boolean realTimeFlag,
-      boolean localOnly,
-      boolean ignoreStore,
-      boolean isSSK,
-      long startTime) {
-    RequestTag tag = (RequestTag) requestTag;
-    RequestSenderListener senderListener =
-        new RequestSenderListener() {
-
-          private boolean rejectedOverload;
-
-          @Override
-          public void onCHKTransferBegins() {
-            // Ignore
-          }
-
-          @Override
-          public void onReceivedRejectOverload() {
-            synchronized (this) {
-              if (rejectedOverload) return;
-              rejectedOverload = true;
-            }
-            requestStarters.rejectedOverload(isSSK, false, realTimeFlag);
-          }
-
-          @Override
-          public void onDataFoundLocally() {
-            tag.unlockHandler();
-            listener.onSucceeded();
-          }
-
-          /**
-           * The RequestSender finished.
-           *
-           * @param status The completion status code reported by the sender.
-           * @param fromOfferedKey {@code true} if this completion originated from an offered-key
-           *     fetch path (GetOfferedKeys); {@code false} for a normal fetch.
-           * @param rs The sender that completed and reported the status.
-           */
-          @Override
-          public void onRequestSenderFinished(
-              int status, boolean fromOfferedKey, RequestSender rs) {
-            tag.unlockHandler();
-            boolean rejectedOverloadLocal;
-            synchronized (this) {
-              rejectedOverloadLocal = this.rejectedOverload;
-            }
-            handleAsyncGetFinished(
-                isSSK, listener, startTime, key, realTimeFlag, rs, rejectedOverloadLocal);
-          }
-
-          @Override
-          public void onNotStarted(boolean internalError) {
-            if (internalError)
-              listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
-            else
-              listener.onFailed(
-                  new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND_IN_STORE));
-          }
-        };
-    try {
-      Object o =
-          node.makeRequestSender(
-              key,
-              htl,
-              uid,
-              tag,
-              null,
-              Node.RequestSenderOptions.of(
-                  localOnly,
-                  ignoreStore,
-                  offersOnly,
-                  canReadClientCache,
-                  canWriteClientCache,
-                  realTimeFlag));
-      if (o instanceof KeyBlock) {
-        tag.setServedFromDatastore();
-        senderListener.onDataFoundLocally();
-        return; // Already have it.
-      }
-      if (o == null) {
-        senderListener.onNotStarted(false);
-        tag.unlockHandler();
-        return;
-      }
-      RequestSender rs = (RequestSender) o;
-      rs.addListener(senderListener);
-      if (rs.uid != uid) tag.unlockHandler();
-      // Else it has started a request.
-      if (LOG.isDebugEnabled()) LOG.debug("Started {} for {} for {}", o, uid, key);
-    } catch (RuntimeException | Error e) {
-      LOG.error("Caught error trying to start request: {}", e, e);
-      senderListener.onNotStarted(true);
-    }
-  }
-
-  /**
-   * Synchronously fetches a block for a client key.
-   *
-   * <p>This method blocks until the fetch completes or fails. Depending on {@code localOnly} and
-   * {@code ignoreStore}, it may read from the datastore or issue a routed request through the
-   * network. It returns a verified client block on success and throws a {@link
-   * LowLevelGetException} on any failure. The request uses an internally generated UID and releases
-   * tracking resources before returning.
-   *
-   * @param key client key to fetch; must be {@link ClientCHK} or {@link ClientSSK}.
-   * @param localOnly true to consult only the datastore and stop on miss.
-   * @param ignoreStore true to bypass datastore and route immediately.
-   * @param canWriteClientCache whether the request may write to the client cache.
-   * @param realTimeFlag true for latency-optimized routing; false for bulk routing.
-   * @return verified client block, owned by the caller for use.
-   * @throws LowLevelGetException when not found, verify fails, or internal errors occur.
-   */
-  public ClientKeyBlock realGetKey(
-      ClientKey key,
-      boolean localOnly,
-      boolean ignoreStore,
-      boolean canWriteClientCache,
-      boolean realTimeFlag)
-      throws LowLevelGetException {
-    return switch (key) {
-      case ClientCHK hK ->
-          realGetCHK(hK, localOnly, ignoreStore, canWriteClientCache, realTimeFlag);
-      case ClientSSK sK ->
-          realGetSSK(sK, localOnly, ignoreStore, canWriteClientCache, realTimeFlag);
-      default -> throw new IllegalArgumentException("Not a CHK or SSK: " + key);
-    };
-  }
-
-  /**
-   * Fetches a CHK block, optionally via the network.
-   *
-   * @param key the client CHK to fetch.
-   * @param localOnly when {@code true}, check only the datastore and do not create a network
-   *     request on miss.
-   * @param ignoreStore when {@code true}, skip the datastore and create a network request
-   *     immediately.
-   * @param canWriteClientCache whether the request may write the client cache. Reads from the
-   *     client cache are always allowed for local requests; some callers disable writes to avoid
-   *     cache pollution.
-   * @param realTimeFlag {@code true} for latency-optimized routing; {@code false} for bulk.
-   * @return the verified client block.
-   * @throws LowLevelGetException if the data is not found, recently failed, transfer fails, verify
-   *     fails, or on internal error.
-   */
-  ClientKeyBlock realGetCHK(
-      ClientCHK key,
-      boolean localOnly,
-      boolean ignoreStore,
-      boolean canWriteClientCache,
-      boolean realTimeFlag)
-      throws LowLevelGetException {
-    long startTime = System.currentTimeMillis();
-    long uid = makeUID();
-    RequestTag tag = new RequestTag(false, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, false, false, false, true, realTimeFlag, tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
-      throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
-    }
-    tag.setAccepted();
-    RequestSender rs;
-    try {
-      Object o =
-          node.makeRequestSender(
-              key.getNodeCHK(),
-              node.maxHTL(),
-              uid,
-              tag,
-              null,
-              Node.RequestSenderOptions.of(
-                  localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
-      if (o instanceof CHKBlock block)
-        try {
-          tag.setServedFromDatastore();
-          return NodeClientCoreSupport.buildClientChkBlock(block, key);
-        } catch (CHKVerifyException e) {
-          LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
-          throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
-        }
-      if (o == null) throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND_IN_STORE);
-      rs = (RequestSender) o;
-      return processChkRequestLoop(rs, key, startTime, realTimeFlag);
-    } finally {
-      tag.unlockHandler();
-    }
-  }
-
-  private ClientKeyBlock processChkRequestLoop(
-      RequestSender rs, ClientCHK key, long startTime, boolean realTimeFlag)
-      throws LowLevelGetException {
-    boolean rejectedOverload = false;
-    short waitStatus = 0;
-    while (true) {
-      waitStatus = rs.waitUntilStatusChange(waitStatus);
-      rejectedOverload =
-          checkAndReportRejectedOverload(rejectedOverload, waitStatus, false, realTimeFlag);
-
-      int status = rs.getStatus();
-      if (status == RequestSender.NOT_FINISHED) continue;
-
-      maybeReportFetchCosts(false, rs, status);
-
-      if (status == RequestSender.TIMED_OUT
-          || status == RequestSender.GENERATED_REJECTED_OVERLOAD
-          || (rs.hasForwarded() && isForwardedTerminalStatus(status))) {
-        maybeHandleTimeoutOrForwarded(
-            false, realTimeFlag, startTime, key.getNodeCHK(), rs, status, rejectedOverload);
-      }
-
-      ClientKeyBlock maybe = tryReturnChkBlock(rs, key, status);
-      if (maybe != null) return maybe;
-      throwForGetStatus(status, rs);
-    }
-  }
-
-  private boolean checkAndReportRejectedOverload(
-      boolean alreadyRejected, short waitStatus, boolean isSSK, boolean realTimeFlag) {
-    if (!alreadyRejected && (waitStatus & RequestSender.WAIT_REJECTED_OVERLOAD) != 0) {
-      requestStarters.rejectedOverload(isSSK, false, realTimeFlag);
-      return true;
-    }
-    return alreadyRejected;
-  }
-
-  private void maybeReportFetchCosts(boolean isSSK, RequestSender rs, int status) {
-    if (isNonErrorStatus(status)) {
-      reportFetchCosts(isSSK, rs, status);
-    }
-  }
-
-  private void maybeHandleTimeoutOrForwarded(
-      boolean isSSK,
-      boolean realTimeFlag,
-      long startTime,
-      Key key,
-      RequestSender rs,
-      int status,
-      boolean rejectedOverload) {
-    if (status == RequestSender.TIMED_OUT || status == RequestSender.GENERATED_REJECTED_OVERLOAD) {
-      handleTimeoutOrRejected(isSSK, realTimeFlag, startTime, key, rejectedOverload);
-    } else if (rs.hasForwarded() && isForwardedTerminalStatus(status)) {
-      handleForwardedStatuses(isSSK, realTimeFlag, startTime, key, status);
-    }
-  }
-
-  private ClientKeyBlock tryReturnChkBlock(RequestSender rs, ClientCHK key, int status)
-      throws LowLevelGetException {
-    if (status == RequestSender.SUCCESS)
-      try {
-        return NodeClientCoreSupport.buildClientChkBlock(
-            rs.getPRB().getBlock(), rs.getHeaders(), key);
-      } catch (CHKVerifyException e) {
-        LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
-        throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
-      } catch (AbortedException e) {
-        LOG.error("Impossible: {}", e, e);
-        throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
-      }
-    return null;
-  }
-
-  private void throwForGetStatus(int status, RequestSender rs) throws LowLevelGetException {
-    switch (status) {
-      case RequestSender.NOT_FINISHED:
-        LOG.error("RS still running in get!: {}", rs);
-        throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
-      case RequestSender.DATA_NOT_FOUND:
-        throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND);
-      case RequestSender.RECENTLY_FAILED:
-        throw new LowLevelGetException(LowLevelGetException.RECENTLY_FAILED);
-      case RequestSender.ROUTE_NOT_FOUND:
-        throw new LowLevelGetException(LowLevelGetException.ROUTE_NOT_FOUND);
-      case RequestSender.TRANSFER_FAILED, RequestSender.GET_OFFER_TRANSFER_FAILED:
-        throw new LowLevelGetException(LowLevelGetException.TRANSFER_FAILED);
-      case RequestSender.VERIFY_FAILURE, RequestSender.GET_OFFER_VERIFY_FAILURE:
-        throw new LowLevelGetException(LowLevelGetException.VERIFY_FAILED);
-      case RequestSender.GENERATED_REJECTED_OVERLOAD, RequestSender.TIMED_OUT:
-        throw new LowLevelGetException(LowLevelGetException.REJECTED_OVERLOAD);
-      case RequestSender.INTERNAL_ERROR:
-      default:
-        LOG.error("Unknown RequestSender code in get: {} on {}", status, rs);
-        throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
-    }
-  }
-
-  ClientKeyBlock realGetSSK(
-      ClientSSK key,
-      boolean localOnly,
-      boolean ignoreStore,
-      boolean canWriteClientCache,
-      boolean realTimeFlag)
-      throws LowLevelGetException {
-    long startTime = System.currentTimeMillis();
-    long uid = makeUID();
-    RequestTag tag = new RequestTag(true, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, true, false, false, true, realTimeFlag, tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
-      throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
-    }
-    tag.setAccepted();
-    RequestSender rs;
-    try {
-      Object o =
-          node.makeRequestSender(
-              key.getNodeKey(true),
-              node.maxHTL(),
-              uid,
-              tag,
-              null,
-              Node.RequestSenderOptions.of(
-                  localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
-      if (o instanceof SSKBlock block)
-        try {
-          tag.setServedFromDatastore();
-          key.setPublicKey(block.getPubKey());
-          return NodeClientCoreSupport.buildClientSskBlock(block, key);
-        } catch (SSKVerifyException e) {
-          LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
-          throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
-        }
-      if (o == null) throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND_IN_STORE);
-      rs = (RequestSender) o;
-      return processSskRequestLoop(rs, key, startTime, realTimeFlag);
-    } finally {
-      tag.unlockHandler();
-    }
-  }
-
-  private ClientKeyBlock processSskRequestLoop(
-      RequestSender rs, ClientSSK key, long startTime, boolean realTimeFlag)
-      throws LowLevelGetException {
-    boolean rejectedOverload = false;
-    short waitStatus = 0;
-    while (true) {
-      waitStatus = rs.waitUntilStatusChange(waitStatus);
-      rejectedOverload =
-          checkAndReportRejectedOverload(rejectedOverload, waitStatus, true, realTimeFlag);
-
-      int status = rs.getStatus();
-      if (status == RequestSender.NOT_FINISHED) continue;
-
-      maybeReportFetchCosts(true, rs, status);
-
-      if (status == RequestSender.TIMED_OUT
-          || status == RequestSender.GENERATED_REJECTED_OVERLOAD
-          || (rs.hasForwarded() && isForwardedTerminalStatus(status))) {
-        maybeHandleTimeoutOrForwarded(
-            true, realTimeFlag, startTime, key.getNodeKey(true), rs, status, rejectedOverload);
-      }
-
-      if (status == RequestSender.SUCCESS) {
-        try {
-          SSKBlock block = rs.getSSKBlock();
-          key.setPublicKey(block.getPubKey());
-          return NodeClientCoreSupport.buildClientSskBlock(block, key);
-        } catch (SSKVerifyException e) {
-          LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
-          throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
-        }
-      }
-      if (status == RequestSender.TRANSFER_FAILED
-          || status == RequestSender.GET_OFFER_TRANSFER_FAILED) {
-        LOG.error("Unexpected transfer failure on an SSK for uid {}", (Object) null);
-      }
-      throwForGetStatus(status, rs);
-    }
-  }
-
-  /**
-   * Inserts a block into the network.
-   *
-   * <p>This entry point accepts either CHK or SSK blocks and dispatches to the appropriate insert
-   * path. It performs local bookkeeping, records costs, and may store the block locally according
-   * to caching rules. The call blocks until the insert completes or fails. Failures are mapped to
-   * {@link LowLevelPutException} codes describing routing, overload, or collision outcomes.
-   *
-   * @param block block to insert; must be a {@link CHKBlock} or {@link SSKBlock}.
-   * @param canWriteClientCache whether the insert may update the client cache.
-   * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert when multiple strategies apply.
-   * @param ignoreLowBackoff whether to ignore low backoff during routing.
-   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
-   * @throws LowLevelPutException when routing fails, overload occurs, or an internal error arises.
-   */
-  public void realPut(
-      KeyBlock block,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      boolean preferInsert,
-      boolean ignoreLowBackoff,
-      boolean realTimeFlag)
-      throws LowLevelPutException {
-    switch (block) {
-      case CHKBlock kBlock1 ->
-          realPutCHK(
-              kBlock1,
-              canWriteClientCache,
-              forkOnCacheable,
-              preferInsert,
-              ignoreLowBackoff,
-              realTimeFlag);
-      case SSKBlock kBlock ->
-          realPutSSK(
-              kBlock,
-              canWriteClientCache,
-              forkOnCacheable,
-              preferInsert,
-              ignoreLowBackoff,
-              realTimeFlag);
-      default -> throw new IllegalArgumentException("Unknown put type " + block.getClass());
-    }
-  }
-
-  /**
-   * Inserts a CHK block into the network and optionally caches it locally.
-   *
-   * <p>This variant constructs a CHK insert sender, waits for completion, reports costs, and stores
-   * the block according to cache policy. It blocks until the insert completes and throws a {@link
-   * LowLevelPutException} on routing failure, overload, or internal errors. The method generates
-   * and locks a request UID internally and releases it before returning.
-   *
-   * @param block CHK block to insert and potentially store locally.
-   * @param canWriteClientCache whether the insert may update the client cache.
-   * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert when multiple strategies apply.
-   * @param ignoreLowBackoff whether to ignore low backoff during routing.
-   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
-   * @throws LowLevelPutException when routing fails, overload occurs, or internal errors arise.
-   */
-  public void realPutCHK(
-      CHKBlock block,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      boolean preferInsert,
-      boolean ignoreLowBackoff,
-      boolean realTimeFlag)
-      throws LowLevelPutException {
-    byte[] data = block.getData();
-    byte[] headers = block.getHeaders();
-    PartiallyReceivedBlock prb =
-        new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, data);
-    CHKInsertSender is;
-    long uid = makeUID();
-    InsertTag tag = new InsertTag(false, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, false, true, false, true, realTimeFlag, tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
-      throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
-    }
-    tag.setAccepted();
-    try {
-      long startTime = System.currentTimeMillis();
-      is =
-          node.makeInsertSender(
-              block.getKey(),
-              node.maxHTL(),
-              uid,
-              tag,
-              null,
-              Node.ChkInsertOptions.of(headers, prb)
-                  .withFromStore(false)
-                  .withCanWriteClientCache(canWriteClientCache)
-                  .withForkOnCacheable(forkOnCacheable)
-                  .withPreferInsert(preferInsert)
-                  .withIgnoreLowBackoff(ignoreLowBackoff)
-                  .withRealTimeFlag(realTimeFlag));
-      boolean hasReceivedRejectedOverload = awaitChkCompletion(is, realTimeFlag);
-
-      if (LOG.isDebugEnabled())
-        LOG.debug(
-            "Completed {} overload={} {}", uid, hasReceivedRejectedOverload, is.getStatusString());
-
-      maybeReportChkCompleted(is, uid, startTime, realTimeFlag, block);
-
-      // Get status explicitly, *after* completed(), so that it will be RECEIVE_FAILED if the
-      // receive failed.
-      int status = is.getStatus();
-      reportChkInsertCosts(status, is);
-      storeChkLocally(is, block, canWriteClientCache);
-
-      logChkInsertResult(status, is, block);
-      if (status != CHKInsertSender.SUCCESS) {
-        throwForChkPutStatus(is);
-      }
-    } finally {
-      tag.unlockHandler();
-    }
-  }
-
-  private void maybeReportChkCompleted(
-      CHKInsertSender is, long uid, long startTime, boolean realTimeFlag, CHKBlock block) {
-    if (is.sentRequest()
-        && (is.uid == uid)
-        && ((is.getStatus() == CHKInsertSender.ROUTE_NOT_FOUND)
-            || (is.getStatus() == CHKInsertSender.SUCCESS))) {
-      long endTime = System.currentTimeMillis();
-      long len = endTime - startTime;
-      requestStarters.getThrottle(false, true, realTimeFlag).successfulCompletion(len);
-      requestStarters.requestCompleted(false, true, block.getKey(), realTimeFlag);
-    }
-  }
-
-  private void reportChkInsertCosts(int status, CHKInsertSender is) {
-    if (status != CHKInsertSender.TIMED_OUT
-        && status != CHKInsertSender.GENERATED_REJECTED_OVERLOAD
-        && status != CHKInsertSender.INTERNAL_ERROR
-        && status != CHKInsertSender.ROUTE_REALLY_NOT_FOUND) {
-      int sent = is.getTotalSentBytes();
-      int received = is.getTotalReceivedBytes();
-      if (LOG.isDebugEnabled())
-        LOG.debug("Local CHK insert cost {}/{}" + LOG_BYTES_OPEN + "{})", sent, received, status);
-      node.getNodeStats().localChkInsertBytesSentAverage.report(sent);
-      node.getNodeStats().localChkInsertBytesReceivedAverage.report(received);
-      if (status == CHKInsertSender.SUCCESS)
-        node.getNodeStats().successfulChkInsertBytesSentAverage.report(sent);
-    }
-  }
-
-  private void storeChkLocally(CHKInsertSender is, CHKBlock block, boolean canWriteClientCache) {
-    boolean deep =
-        node.shouldStoreDeep(block.getKey(), null, is == null ? new PeerNode[0] : is.getRoutedTo());
-    try {
-      node.store(block, deep, canWriteClientCache, false, false);
-    } catch (KeyCollisionException _) {
-      // CHKs don't collide
-    }
-  }
-
-  private void logChkInsertResult(int status, CHKInsertSender is, CHKBlock block) {
-    if (status == CHKInsertSender.SUCCESS) {
-      LOG.info("Succeeded inserting {}", block);
-    } else {
-      String msg = "Failed inserting " + block + " : " + is.getStatusString();
-      if (status == CHKInsertSender.ROUTE_NOT_FOUND)
-        msg +=
-            " - this is normal on small networks; the data will still be propagated, but it can't"
-                + " find the 20+ nodes needed for full success";
-      if (is.getStatus() != CHKInsertSender.ROUTE_NOT_FOUND) LOG.error(msg);
-      else LOG.info(msg);
-    }
-  }
-
-  private boolean awaitChkCompletion(CHKInsertSender is, boolean realTimeFlag) {
-    boolean overloaded = awaitChkInitialStatus(is, realTimeFlag);
-    return awaitChkFinalCompletion(is, realTimeFlag, overloaded);
-  }
-
-  private boolean awaitChkInitialStatus(CHKInsertSender is, boolean realTimeFlag) {
-    boolean hasReceivedRejectedOverload = false;
-    while (true) {
-      if (is.getStatus() == CHKInsertSender.NOT_FINISHED) {
-        is.waitIfNotFinished(SECONDS.toMillis(5));
-      }
-      if (is.getStatus() != CHKInsertSender.NOT_FINISHED) break;
-      if ((!hasReceivedRejectedOverload) && is.receivedRejectedOverload()) {
-        hasReceivedRejectedOverload = true;
-        requestStarters.rejectedOverload(false, true, realTimeFlag);
-      }
-    }
-    return hasReceivedRejectedOverload;
-  }
-
-  private boolean awaitChkFinalCompletion(
-      CHKInsertSender is, boolean realTimeFlag, boolean hasReceivedRejectedOverload) {
-    while (!is.completed()) {
-      is.waitIfNotCompleted(SECONDS.toMillis(10));
-      if (is.anyTransfersFailed() && (!hasReceivedRejectedOverload)) {
-        hasReceivedRejectedOverload = true; // not strictly true but same effect
-        requestStarters.rejectedOverload(false, true, realTimeFlag);
-      }
-    }
-    return hasReceivedRejectedOverload;
-  }
-
-  private void throwForChkPutStatus(CHKInsertSender is) throws LowLevelPutException {
-    switch (is.getStatus()) {
-      case CHKInsertSender.NOT_FINISHED:
-        LOG.error("IS still running in putCHK!: {}", is);
-        throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
-      case CHKInsertSender.GENERATED_REJECTED_OVERLOAD, CHKInsertSender.TIMED_OUT:
-        throw new LowLevelPutException(LowLevelPutException.REJECTED_OVERLOAD);
-      case CHKInsertSender.ROUTE_NOT_FOUND:
-        throw new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND);
-      case CHKInsertSender.ROUTE_REALLY_NOT_FOUND:
-        throw new LowLevelPutException(LowLevelPutException.ROUTE_REALLY_NOT_FOUND);
-      case CHKInsertSender.INTERNAL_ERROR:
-      default:
-        LOG.error("Unknown CHKInsertSender code in putCHK: {} on {}", is.getStatus(), is);
-        throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
-    }
-  }
-
-  /**
-   * Inserts an SSK block.
-   *
-   * <p>This method performs a local collision check using the client cache, then starts an SSK
-   * insert sender and waits for completion. It reports costs, stores the block when appropriate,
-   * and throws {@link LowLevelPutException} for collisions, routing failures, overload, or internal
-   * errors. The call blocks until the insert completes and always releases the request UID.
-   *
-   * @param block SSK block to insert and potentially store locally.
-   * @param canWriteClientCache whether the insert may update the client cache.
-   * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert when multiple strategies apply.
-   * @param ignoreLowBackoff whether to ignore low backoff during routing.
-   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
-   * @throws LowLevelPutException on collision, routing failure, overload, or internal error.
-   */
-  public void realPutSSK(
-      SSKBlock block,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      boolean preferInsert,
-      boolean ignoreLowBackoff,
-      boolean realTimeFlag)
-      throws LowLevelPutException {
-    SSKInsertSender is;
-    long uid = makeUID();
-    InsertTag tag = new InsertTag(true, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, true, true, false, true, realTimeFlag, tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
-      throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
-    }
-    tag.setAccepted();
-    try {
-      long startTime = System.currentTimeMillis();
-      // Be consistent: use the client cache to check for collisions as this is a local insert.
-      SSKBlock altBlock =
-          node.fetch(block.getKey(), false, true, canWriteClientCache, false, false, null);
-      if (altBlock != null && !altBlock.equals(block)) throw new LowLevelPutException(altBlock);
-      is =
-          node.makeInsertSender(
-              block,
-              node.maxHTL(),
-              uid,
-              tag,
-              null,
-              Node.SskInsertOptions.of()
-                  .withFromStore(false)
-                  .withCanWriteClientCache(canWriteClientCache)
-                  .withCanWriteDatastore(false)
-                  .withForkOnCacheable(forkOnCacheable)
-                  .withPreferInsert(preferInsert)
-                  .withIgnoreLowBackoff(ignoreLowBackoff)
-                  .withRealTimeFlag(realTimeFlag));
-      boolean hasReceivedRejectedOverload = awaitSskCompletion(is, realTimeFlag);
-
-      if (LOG.isDebugEnabled())
-        LOG.debug(
-            "Completed {} overload={} {}", uid, hasReceivedRejectedOverload, is.getStatusString());
-
-      // Finished?
-      maybeReportSskCompleted(is, uid, startTime, realTimeFlag, block, hasReceivedRejectedOverload);
-
-      int status = is.getStatus();
-
-      reportSskInsertCosts(status, is);
-      handleSskCollisionOrStore(is, block, canWriteClientCache);
-
-      logSskInsertResult(status, is, block);
-      if (status != SSKInsertSender.SUCCESS) {
-        throwForSskPutStatus(is);
-      }
-    } finally {
-      tag.unlockHandler();
-    }
-  }
-
-  private boolean awaitSskCompletion(SSKInsertSender is, boolean realTimeFlag) {
-    boolean overloaded = awaitSskInitialStatus(is, realTimeFlag);
-    return awaitSskFinalCompletion(is, overloaded);
-  }
-
-  private boolean awaitSskInitialStatus(SSKInsertSender is, boolean realTimeFlag) {
-    boolean hasReceivedRejectedOverload = false;
-    while (true) {
-      if (is.getStatus() == SSKInsertSender.NOT_FINISHED) {
-        is.waitIfNotFinished(SECONDS.toMillis(5));
-      }
-      if (is.getStatus() != SSKInsertSender.NOT_FINISHED) break;
-      if ((!hasReceivedRejectedOverload) && is.receivedRejectedOverload()) {
-        hasReceivedRejectedOverload = true;
-        requestStarters.rejectedOverload(true, true, realTimeFlag);
-      }
-    }
-    return hasReceivedRejectedOverload;
-  }
-
-  private boolean awaitSskFinalCompletion(SSKInsertSender is, boolean hasReceivedRejectedOverload) {
-    while (is.getStatus() == SSKInsertSender.NOT_FINISHED) {
-      is.waitIfNotFinished(SECONDS.toMillis(10));
-    }
-    return hasReceivedRejectedOverload;
-  }
-
-  private void throwForSskPutStatus(SSKInsertSender is) throws LowLevelPutException {
-    switch (is.getStatus()) {
-      case SSKInsertSender.NOT_FINISHED:
-        LOG.error("IS still running in putCHK!: {}", is);
-        throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
-      case SSKInsertSender.GENERATED_REJECTED_OVERLOAD, SSKInsertSender.TIMED_OUT:
-        throw new LowLevelPutException(LowLevelPutException.REJECTED_OVERLOAD);
-      case SSKInsertSender.ROUTE_NOT_FOUND:
-        throw new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND);
-      case SSKInsertSender.ROUTE_REALLY_NOT_FOUND:
-        throw new LowLevelPutException(LowLevelPutException.ROUTE_REALLY_NOT_FOUND);
-      case SSKInsertSender.INTERNAL_ERROR:
-      default:
-        LOG.error("Unknown CHKInsertSender code in putSSK: {} on {}", is.getStatus(), is);
-        throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
-    }
-  }
-
-  private void reportSskInsertCosts(int status, SSKInsertSender is) {
-    if (status != CHKInsertSender.TIMED_OUT
-        && status != CHKInsertSender.GENERATED_REJECTED_OVERLOAD
-        && status != CHKInsertSender.INTERNAL_ERROR
-        && status != CHKInsertSender.ROUTE_REALLY_NOT_FOUND) {
-      int sent = is.getTotalSentBytes();
-      int received = is.getTotalReceivedBytes();
-      if (LOG.isDebugEnabled())
-        LOG.debug("Local SSK insert cost {}/{}" + LOG_BYTES_OPEN + "{})", sent, received, status);
-      node.getNodeStats().localSskInsertBytesSentAverage.report(sent);
-      node.getNodeStats().localSskInsertBytesReceivedAverage.report(received);
-      if (status == SSKInsertSender.SUCCESS)
-        node.getNodeStats().successfulSskInsertBytesSentAverage.report(sent);
-    }
-  }
-
-  private void maybeReportSskCompleted(
-      SSKInsertSender is,
-      long uid,
-      long startTime,
-      boolean realTimeFlag,
-      SSKBlock block,
-      boolean hasReceivedRejectedOverload) {
-    if (!hasReceivedRejectedOverload
-        && is.sentRequest()
-        && (is.uid == uid)
-        && ((is.getStatus() == SSKInsertSender.ROUTE_NOT_FOUND)
-            || (is.getStatus() == SSKInsertSender.SUCCESS))) {
-      long endTime = System.currentTimeMillis();
-      long rtt = endTime - startTime;
-      requestStarters.requestCompleted(true, true, block.getKey(), realTimeFlag);
-      requestStarters.getThrottle(true, true, realTimeFlag).successfulCompletion(rtt);
-    }
-  }
-
-  private void handleSskCollisionOrStore(
-      SSKInsertSender is, SSKBlock block, boolean canWriteClientCache) throws LowLevelPutException {
-    boolean deep =
-        node.shouldStoreDeep(block.getKey(), null, is == null ? new PeerNode[0] : is.getRoutedTo());
-
-    if (is != null && is.hasCollided()) {
-      SSKBlock collided = is.getBlock();
-      try {
-        node.storeInsert(collided, deep, true, canWriteClientCache, false);
-      } catch (KeyCollisionException e) {
-        LOG.info("collision race? is={}", is, e);
-      }
-      throw new LowLevelPutException(collided);
-    }
-    try {
-      node.storeInsert(block, deep, false, canWriteClientCache, false);
-    } catch (KeyCollisionException e) {
-      NodeSSK key = block.getKey();
-      KeyBlock collided = node.fetch(key, true, canWriteClientCache, false, false, null);
-      if (collided == null) {
-        LOG.error("Collided but no key?!");
-        try {
-          node.store(block, false, canWriteClientCache, false, false);
-        } catch (KeyCollisionException _) {
-          LOG.error("Collided but no key and still collided!");
-          throw new LowLevelPutException(
-              LowLevelPutException.INTERNAL_ERROR,
-              "Collided, can't find block, but still collides!",
-              e);
-        }
-      }
-      throw new LowLevelPutException(collided);
-    }
-  }
-
-  private void logSskInsertResult(int status, SSKInsertSender is, SSKBlock block) {
-    if (status == SSKInsertSender.SUCCESS) {
-      LOG.info("Succeeded inserting {}", block);
-    } else {
-      String msg = "Failed inserting " + block + " : " + is.getStatusString();
-      if (status == CHKInsertSender.ROUTE_NOT_FOUND)
-        msg +=
-            " - this is normal on small networks; the data will still be propagated, but it can't"
-                + " find the 20+ nodes needed for full success";
-      if (is.getStatus() != SSKInsertSender.ROUTE_NOT_FOUND) LOG.error(msg);
-      else LOG.info(msg);
-    }
-  }
-
-  /**
    * Creates a high-level client bound to this core.
    *
    * <p>The returned client shares this core's {@link ClientContext}, bucket factories, and random
@@ -2262,7 +1081,7 @@ public class NodeClientCore implements Persistable {
    */
   public HighLevelSimpleClient makeClient(
       short prioClass, boolean forceDontIgnoreTooManyPathComponents, boolean realTimeFlag) {
-    return new HighLevelSimpleClientImpl(
+    return NodeClientCoreSupport.createHighLevelClient(
         this,
         tempBucketFactory,
         random,
@@ -2296,23 +1115,6 @@ public class NodeClientCore implements Persistable {
    */
   public File getDownloadsDir() {
     return downloadsDir;
-  }
-
-  /**
-   * Queues a low-priority reinsert of a key block.
-   *
-   * <p>The block is wrapped in a {@link SimpleSendableInsert} and scheduled on the request starters
-   * at the maximum priority class for reinserts. The operation is asynchronous; it enqueues work
-   * and returns immediately without waiting for completion. Use it to refresh availability for
-   * already known data.
-   *
-   * @param block key block to reinsert and schedule for background routing.
-   */
-  public void queueRandomReinsert(KeyBlock block) {
-    SimpleSendableInsert ssi =
-        new SimpleSendableInsert(this, block, RequestStarter.MAXIMUM_PRIORITY_CLASS);
-    if (LOG.isDebugEnabled()) LOG.debug("Queueing random reinsert for {} : {}", block, ssi);
-    ssi.schedule();
   }
 
   /**
@@ -2410,21 +1212,7 @@ public class NodeClientCore implements Persistable {
    * @return {@code true} if the path is allowed under current policy.
    */
   public boolean allowDownloadTo(File filename) {
-    PHYSICAL_THREAT_LEVEL physicalThreatLevel = node.getSecurityLevels().getPhysicalThreatLevel();
-    if (physicalThreatLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM) return false;
-    synchronized (this) {
-      if (downloadAllowedEverywhere) return true;
-      if (includeDownloadDir && FileUtil.isParent(getDownloadsDir(), filename)) return true;
-      for (File dir : downloadAllowedDirs) {
-        if (dir == null) {
-          // Debug mysterious NPE...
-          LOG.error("Null in upload allowed dirs???");
-          continue;
-        }
-        if (FileUtil.isParent(dir, filename)) return true;
-      }
-      return false;
-    }
+    return transferPolicy.allowDownloadTo(filename);
   }
 
   /**
@@ -2439,16 +1227,7 @@ public class NodeClientCore implements Persistable {
    * @return {@code true} if the path is allowed as an upload source.
    */
   public synchronized boolean allowUploadFrom(File filename) {
-    if (uploadAllowedEverywhere) return true;
-    for (File dir : uploadAllowedDirs) {
-      if (dir == null) {
-        // Debug mysterious NPE...
-        LOG.error("Null in upload allowed dirs???");
-        continue;
-      }
-      if (FileUtil.isParent(dir, filename)) return true;
-    }
-    return false;
+    return transferPolicy.allowUploadFrom(filename);
   }
 
   /**
@@ -2461,7 +1240,7 @@ public class NodeClientCore implements Persistable {
    * @return current allowlist array; entries are internal references, not copies.
    */
   public synchronized File[] getAllowedDownloadDirs() {
-    return downloadAllowedDirs;
+    return transferPolicy.getAllowedDownloadDirs();
   }
 
   /**
@@ -2474,7 +1253,7 @@ public class NodeClientCore implements Persistable {
    * @return current allowlist array; entries are internal references, not copies.
    */
   public synchronized File[] getAllowedUploadDirs() {
-    return uploadAllowedDirs;
+    return transferPolicy.getAllowedUploadDirs();
   }
 
   /**
@@ -2719,6 +1498,18 @@ public class NodeClientCore implements Persistable {
    */
   public USKManager getUskManager() {
     return uskManager;
+  }
+
+  /**
+   * Returns the client transfer operations for fetch/insert paths.
+   *
+   * <p>The returned {@link NodeClientCoreTransfers} instance encapsulates key transfer logic and is
+   * bound to this core. Callers should treat it as core-owned state.
+   *
+   * @return shared transfer operations instance.
+   */
+  public NodeClientCoreTransfers getTransfers() {
+    return transfers;
   }
 
   /**

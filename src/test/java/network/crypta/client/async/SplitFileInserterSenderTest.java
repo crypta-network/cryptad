@@ -23,6 +23,7 @@ import network.crypta.keys.ClientCHK;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeClientCoreTransfers;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestScheduler;
 import network.crypta.node.SendableRequestItem;
@@ -340,6 +341,8 @@ class SplitFileInserterSenderTest {
     when(sched.getContext()).thenReturn(ctx);
 
     NodeClientCore core = mock(NodeClientCore.class);
+    NodeClientCoreTransfers transfers = mock(NodeClientCoreTransfers.class);
+    when(core.getTransfers()).thenReturn(transfers);
 
     // Build chosen block with localRequestOnly=false, canWriteClientCache=false,
     // forkOnCacheable=true
@@ -352,7 +355,7 @@ class SplitFileInserterSenderTest {
 
     // Assert
     assertTrue(accepted);
-    verify(core, times(1))
+    verify(transfers, times(1))
         .realPut(
             chkBlock,
             false,

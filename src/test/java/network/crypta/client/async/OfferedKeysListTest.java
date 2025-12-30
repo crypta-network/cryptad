@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -23,6 +24,7 @@ import network.crypta.node.KeysFetchingLocally;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeClientCoreTransfers;
 import network.crypta.node.RequestCompletionListener;
 import network.crypta.node.RequestScheduler;
 import network.crypta.node.SendableRequestItem;
@@ -40,12 +42,15 @@ class OfferedKeysListTest {
   private static final short PRIO = 7;
 
   private NodeClientCore core;
+  private NodeClientCoreTransfers transfers;
   private KeysFetchingLocally fetching;
   private RequestScheduler scheduler;
 
   @BeforeEach
   void setUp() {
     core = mock(NodeClientCore.class);
+    transfers = mock(NodeClientCoreTransfers.class);
+    lenient().when(core.getTransfers()).thenReturn(transfers);
     fetching = mock(KeysFetchingLocally.class);
     scheduler = mock(RequestScheduler.class);
   }
@@ -171,7 +176,7 @@ class OfferedKeysListTest {
               // No-op stub: we drive completion via captured listener after verification.
               return null;
             })
-        .when(core)
+        .when(transfers)
         .asyncGet(
             any(Key.class),
             any(Boolean.class),
@@ -196,7 +201,7 @@ class OfferedKeysListTest {
     ArgumentCaptor<Boolean> rtCap = ArgumentCaptor.forClass(Boolean.class);
     ArgumentCaptor<Boolean> localOnlyCap = ArgumentCaptor.forClass(Boolean.class);
     ArgumentCaptor<Boolean> ignoreStoreCap = ArgumentCaptor.forClass(Boolean.class);
-    verify(core, times(1))
+    verify(transfers, times(1))
         .asyncGet(
             keyCaptor.capture(),
             offersOnlyCap.capture(),

@@ -242,9 +242,9 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
   /**
    * Provides a sender that performs a short-lived asynchronous get for a chosen offered key.
    *
-   * <p>The sender invokes {@code NodeClientCore.asyncGet(...)} with parameters suitable for an
-   * opportunistic attempt: it checks the datastore and briefly accepts peer offers; it does not
-   * escalate into a full client request and does not write to the client cache. Upon completion
+   * <p>The sender invokes {@code NodeClientCoreTransfers.asyncGet(...)} with parameters suitable
+   * for an opportunistic attempt: it checks the datastore and briefly accepts peer offers; it does
+   * not escalate into a full client request and does not write to the client cache. Upon completion
    * (success or failure) the sender removes the key from the fetching set and wakes the starter so
    * other work can proceed.
    *
@@ -268,35 +268,36 @@ public class OfferedKeysList extends BaseSendableGet implements RequestClient {
         // We check the datastore, take up offers if any (on a short timeout), and then quit if we
         // still haven't fetched the data.
         // Obviously this may have a marginal impact on load, but it should only be marginal.
-        core.asyncGet(
-            key,
-            true,
-            new RequestCompletionListener() {
+        core.getTransfers()
+            .asyncGet(
+                key,
+                true,
+                new RequestCompletionListener() {
 
-              @Override
-              public void onSucceeded() {
-                // We don't use ChosenBlockImpl so have to remove the keys from the fetching set
-                // ourselves.
-                sched.removeFetchingKey(key);
-                sched.wakeStarter();
-              }
+                  @Override
+                  public void onSucceeded() {
+                    // We don't use ChosenBlockImpl so have to remove the keys from the fetching set
+                    // ourselves.
+                    sched.removeFetchingKey(key);
+                    sched.wakeStarter();
+                  }
 
-              @Override
-              public void onFailed(LowLevelGetException e) {
-                // We don't use ChosenBlockImpl so have to remove the keys from the fetching set
-                // ourselves.
-                sched.removeFetchingKey(key);
-                // Something might be waiting for a request to complete (e.g. if we have two
-                // requests for the same key),
-                // so wake the starter thread.
-                sched.wakeStarter();
-              }
-            },
-            true,
-            false,
-            realTimeFlag,
-            false,
-            false);
+                  @Override
+                  public void onFailed(LowLevelGetException e) {
+                    // We don't use ChosenBlockImpl so have to remove the keys from the fetching set
+                    // ourselves.
+                    sched.removeFetchingKey(key);
+                    // Something might be waiting for a request to complete (e.g. if we have two
+                    // requests for the same key),
+                    // so wake the starter thread.
+                    sched.wakeStarter();
+                  }
+                },
+                true,
+                false,
+                realTimeFlag,
+                false,
+                false);
         // canWriteClientCache remains false intentionally here.
         return true;
       }

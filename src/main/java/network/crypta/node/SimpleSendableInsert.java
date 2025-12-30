@@ -136,10 +136,10 @@ public class SimpleSendableInsert extends SendableInsert {
   /**
    * Handles a successful completion of the single insert attempt.
    *
-   * <p>This callback is invoked by the sender after {@link NodeClientCore#realPut} returns without
-   * throwing. It does not notify any {@link ClientRequester} and performs no state changes; the
-   * finished flag is managed by the sender. The only observable effect is a debug log entry, making
-   * this method safe to call multiple times but ordinarily invoked once per insert.
+   * <p>This callback is invoked by the sender after {@link NodeClientCoreTransfers#realPut} returns
+   * without throwing. It does not notify any {@link ClientRequester} and performs no state changes;
+   * the finished flag is managed by the sender. The only observable effect is a debug log entry,
+   * making this method safe to call multiple times but ordinarily invoked once per insert.
    *
    * @param keyNum token identifying the scheduled item; used for logging only
    * @param key client key associated with the insert; ignored and may be null
@@ -154,7 +154,7 @@ public class SimpleSendableInsert extends SendableInsert {
   /**
    * Handles a failed insert attempt.
    *
-   * <p>This callback is invoked when {@link NodeClientCore#realPut} throws a {@link
+   * <p>This callback is invoked when {@link NodeClientCoreTransfers#realPut} throws a {@link
    * LowLevelPutException}. The method logs the failure at debug level and does not request retries
    * or propagate the exception. Completion state is still finalized by the sender, so this method
    * focuses solely on recording the outcome for diagnostics.
@@ -185,9 +185,9 @@ public class SimpleSendableInsert extends SendableInsert {
   /**
    * Creates a sender that performs the single blocking insert attempt.
    *
-   * <p>The returned {@link SendableRequestSender} issues {@link NodeClientCore#realPut} for the
-   * configured block, records completion by setting {@code finished}, and forwards success or
-   * failure to {@link #onSuccess} or {@link #onFailure}. On success, it also removes the running
+   * <p>The returned {@link SendableRequestSender} issues {@link NodeClientCoreTransfers#realPut}
+   * for the configured block, records completion by setting {@code finished}, and forwards success
+   * or failure to {@link #onSuccess} or {@link #onFailure}. On success, it also removes the running
    * insert from the scheduler. The sender reports blocking behavior and is intended for one-shot
    * use by the scheduler.
    *
@@ -206,13 +206,14 @@ public class SimpleSendableInsert extends SendableInsert {
         try {
           if (LOG.isDebugEnabled()) LOG.debug("Starting request: {}", this);
           // Background inserts run as bulk (realTimeFlag=false).
-          core.realPut(
-              block,
-              req.canWriteClientCache,
-              Node.FORK_ON_CACHEABLE_DEFAULT,
-              Node.PREFER_INSERT_DEFAULT,
-              Node.IGNORE_LOW_BACKOFF_DEFAULT,
-              false);
+          core.getTransfers()
+              .realPut(
+                  block,
+                  req.canWriteClientCache,
+                  Node.FORK_ON_CACHEABLE_DEFAULT,
+                  Node.PREFER_INSERT_DEFAULT,
+                  Node.IGNORE_LOW_BACKOFF_DEFAULT,
+                  false);
           succeeded = true;
         } catch (LowLevelPutException e) {
           onFailure(e, req.token, context);

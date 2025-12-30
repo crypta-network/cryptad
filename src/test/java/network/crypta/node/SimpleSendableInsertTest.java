@@ -82,9 +82,11 @@ class SimpleSendableInsertTest {
     SimpleSendableInsert insert = spy(real);
 
     NodeClientCore core = mock(NodeClientCore.class);
+    NodeClientCoreTransfers transfers = mock(NodeClientCoreTransfers.class);
+    when(core.getTransfers()).thenReturn(transfers);
     // Make realPut succeed (do nothing)
     doNothing()
-        .when(core)
+        .when(transfers)
         .realPut(
             chkBlock,
             true,
@@ -128,7 +130,7 @@ class SimpleSendableInsertTest {
 
     // Assert
     assertTrue(sent);
-    verify(core, times(1))
+    verify(transfers, times(1))
         .realPut(
             chkBlock,
             true,
@@ -152,8 +154,10 @@ class SimpleSendableInsertTest {
     SimpleSendableInsert insert = spy(real);
 
     NodeClientCore core = mock(NodeClientCore.class);
+    NodeClientCoreTransfers transfers = mock(NodeClientCoreTransfers.class);
+    when(core.getTransfers()).thenReturn(transfers);
     doThrow(new LowLevelPutException(LowLevelPutException.REJECTED_OVERLOAD))
-        .when(core)
+        .when(transfers)
         .realPut(
             eq(sskBlock),
             any(Boolean.class),

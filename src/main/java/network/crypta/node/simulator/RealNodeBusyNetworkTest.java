@@ -245,6 +245,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       try {
         randomNode
             .getClientCore()
+            .getTransfers()
             .realPut(chkBlock, false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
         LOG.error("Inserted to {}", nodeIndex);
         logBlockPayloadDetails(chkBlock);

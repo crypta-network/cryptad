@@ -62,6 +62,7 @@ class NodeClientCoreTest {
     when(node.getSecurityLevels()).thenReturn(securityLevels);
 
     setField(core, "downloadsDir", tempDir.toFile());
+    setField(core, "transferPolicy", new NodeClientCoreTransferPolicy(node, tempDir.toFile()));
 
     ClientEndpoints endpoints = new ClientEndpoints(Mockito.mock(FCPServer.class), null, toadlets);
     setField(core, "endpoints", endpoints);

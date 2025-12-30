@@ -5,15 +5,21 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.HashSet;
 import network.crypta.client.ArchiveManager;
+import network.crypta.client.FECCodec;
+import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.HealingDecisionSupplier;
 import network.crypta.client.async.SimpleHealingQueue;
 import network.crypta.client.events.SimpleEventProducer;
+import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.SubConfig;
+import network.crypta.crypt.RandomSource;
 import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
+import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKVerifyException;
 import network.crypta.keys.ClientCHK;
@@ -30,6 +36,8 @@ import network.crypta.node.useralerts.DiskSpaceUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.support.SizeUtil;
+import network.crypta.support.api.LongCallback;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.TempBucketFactory;
@@ -116,6 +124,94 @@ public final class NodeClientCoreSupport {
     return new ClientContextResources(archiveManager, healingQueue);
   }
 
+  /**
+   * Creates a high-level client bound to the provided core.
+   *
+   * <p>The returned client shares the core's context and bucket factories and honors the provided
+   * priority class and real-time flag.
+   */
+  public static HighLevelSimpleClient createHighLevelClient(
+      NodeClientCore core,
+      TempBucketFactory tempBucketFactory,
+      RandomSource random,
+      short prioClass,
+      boolean forceDontIgnoreTooManyPathComponents,
+      boolean realTimeFlag) {
+    return new HighLevelSimpleClientImpl(
+        core,
+        tempBucketFactory,
+        random,
+        prioClass,
+        forceDontIgnoreTooManyPathComponents,
+        realTimeFlag);
+  }
+
+  /**
+   * Computes the default memory limit for memory-limited jobs given the overall JVM memory limit.
+   *
+   * <p>The default starts at the minimum required by FEC decoding and scales with available memory
+   * beyond 512 MiB. This mirrors the previous in-core calculation and keeps the same effective
+   * defaults.
+   *
+   * @param overallMemoryLimit total memory limit in bytes.
+   * @return computed default memory limit for memory-limited jobs.
+   */
+  public static long computeDefaultMemoryLimitedJobMemoryLimit(long overallMemoryLimit) {
+    long limit = FECCodec.MIN_MEMORY_ALLOCATION;
+    if (overallMemoryLimit > 512L * 1024 * 1024) {
+      limit += (overallMemoryLimit - 512L * 1024 * 1024) / 20;
+    }
+    return limit;
+  }
+
+  /**
+   * Registers the memory-limited job memory cap setting.
+   *
+   * <p>Validation enforces the minimum FEC allocation and updates the shared runner at runtime.
+   *
+   * @param init initialization context containing node configuration.
+   * @param sortOrder current config sort order.
+   * @param defaultMemoryLimitedJobMemoryLimit default memory cap in bytes.
+   * @param core owning core used to access the shared runner.
+   * @return updated sort order.
+   */
+  public static int registerMemoryLimitedJobMemoryLimit(
+      NodeClientCoreInit init,
+      int sortOrder,
+      long defaultMemoryLimitedJobMemoryLimit,
+      NodeClientCore core) {
+    init.nodeConfig()
+        .register(
+            "memoryLimitedJobMemoryLimit",
+            defaultMemoryLimitedJobMemoryLimit,
+            sortOrder,
+            true,
+            false,
+            "NodeClientCore.memoryLimitedJobMemoryLimit",
+            "NodeClientCore.memoryLimitedJobMemoryLimitLong",
+            new LongCallback() {
+
+              @Override
+              public Long get() {
+                return core.memoryLimitedJobRunner.getCapacity();
+              }
+
+              @Override
+              public void set(Long val) throws InvalidConfigValueException {
+                if (val < FECCodec.MIN_MEMORY_ALLOCATION)
+                  throw new InvalidConfigValueException(
+                      NodeL10n.getBase()
+                          .getString(
+                              "NodeClientCore.memoryLimitedJobMemoryLimitMustBeAtLeast",
+                              "min",
+                              SizeUtil.formatSize(FECCodec.MIN_MEMORY_ALLOCATION)));
+                core.memoryLimitedJobRunner.setCapacity(val);
+              }
+            },
+            true);
+    return sortOrder + 1;
+  }
+
   /** Builds a client CHK block from an encoded block and key. */
   public static ClientKeyBlock buildClientChkBlock(CHKBlock block, ClientCHK key)
       throws CHKVerifyException {
@@ -132,6 +228,31 @@ public final class NodeClientCoreSupport {
   public static ClientKeyBlock buildClientSskBlock(SSKBlock block, ClientSSK key)
       throws SSKVerifyException {
     return ClientSSKBlock.construct(block, key);
+  }
+
+  /**
+   * Builds CHK insert options for the local insert path.
+   *
+   * <p>This creates the {@link PartiallyReceivedBlock} wrapper and applies the same option
+   * configuration previously assembled in {@link NodeClientCore}.
+   */
+  public static Node.ChkInsertOptions buildChkInsertOptions(
+      byte[] headers,
+      byte[] data,
+      boolean canWriteClientCache,
+      boolean forkOnCacheable,
+      boolean preferInsert,
+      boolean ignoreLowBackoff,
+      boolean realTimeFlag) {
+    PartiallyReceivedBlock prb =
+        new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, data);
+    return Node.ChkInsertOptions.of(headers, prb)
+        .withFromStore(false)
+        .withCanWriteClientCache(canWriteClientCache)
+        .withForkOnCacheable(forkOnCacheable)
+        .withPreferInsert(preferInsert)
+        .withIgnoreLowBackoff(ignoreLowBackoff)
+        .withRealTimeFlag(realTimeFlag);
   }
 
   /**
@@ -190,6 +311,15 @@ public final class NodeClientCoreSupport {
   public static void registerStorageAlerts(UserAlertManager alerts, NodeClientCore core) {
     alerts.register(new DiskSpaceUserAlert(core));
     alerts.register(new DatastoreTooSmallAlert(core));
+  }
+
+  /**
+   * Returns a localized string for NodeClientCore settings.
+   *
+   * <p>Use {@link NodeL10n#getBase()} directly when parameter substitution is required.
+   */
+  public static String l10n(String key) {
+    return NodeL10n.getBase().getString("NodeClientCore." + key);
   }
 
   private static UserAlert createPersistenceBrokenAlert(NodeClientCore core) {

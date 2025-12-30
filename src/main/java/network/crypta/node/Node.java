@@ -5665,7 +5665,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   public void queueRandomReinsert(KeyBlock block) {
-    clientCore.queueRandomReinsert(block);
+    clientCore.getTransfers().queueRandomReinsert(block);
   }
 
   public String getExtraPeerDataDir() {
