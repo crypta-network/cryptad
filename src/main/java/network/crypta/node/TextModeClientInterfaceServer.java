@@ -233,7 +233,8 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getEndpoints().getTextModeClientInterface() != null;
+      ClientEndpoints endpoints = core.getEndpoints();
+      return endpoints != null && endpoints.getTextModeClientInterface() != null;
     }
 
     @Override
@@ -286,7 +287,8 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getEndpoints().getDirectTMCI() != null;
+      ClientEndpoints endpoints = core.getEndpoints();
+      return endpoints != null && endpoints.getDirectTMCI() != null;
     }
 
     @Override
@@ -312,9 +314,13 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getEndpoints().getTextModeClientInterface() != null)
-        return core.getEndpoints().getTextModeClientInterface().bindTo;
-      else return NetworkInterface.DEFAULT_BIND_TO;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.bindTo;
+      }
+      return NetworkInterface.DEFAULT_BIND_TO;
     }
 
     @Override
@@ -343,8 +349,11 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getEndpoints().getTextModeClientInterface() != null) {
-        return core.getEndpoints().getTextModeClientInterface().allowedHosts;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.allowedHosts;
       }
       return NetworkInterface.DEFAULT_BIND_TO;
     }
@@ -377,9 +386,13 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Integer get() {
-      if (core.getEndpoints().getTextModeClientInterface() != null)
-        return core.getEndpoints().getTextModeClientInterface().port;
-      else return 2323;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.port;
+      }
+      return 2323;
     }
 
     // Not implemented: port updates handled elsewhere
