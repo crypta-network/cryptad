@@ -364,10 +364,10 @@ public final class NodeClientPersistence {
         storeChecker,
         persistentRoot,
         cryptoSecretTransient,
-        init.getToadlets(),
+        init.toadlets(),
         defaultFetchContext,
         defaultInsertContext,
-        init.getConfig());
+        init.config());
   }
 
   private DiskSpaceCheckingRandomAccessBufferFactory requireDiskChecker() {

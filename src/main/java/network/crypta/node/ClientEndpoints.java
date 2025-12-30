@@ -101,12 +101,12 @@ public final class ClientEndpoints {
       NodeClientPersistence persistence,
       ClientContext clientContext) {
     TextModeClientInterfaceServer tmci =
-        TextModeClientInterfaceServer.maybeCreate(node, core, init.getConfig());
+        TextModeClientInterfaceServer.maybeCreate(node, core, init.config());
     FCPServer fcpServer = persistence.createFcpServer(node, core);
     clientContext.setDownloadCache(fcpServer);
     if (!core.killedDatabase()) {
       fcpServer.load();
     }
-    return new ClientEndpoints(fcpServer, tmci, init.getToadlets());
+    return new ClientEndpoints(fcpServer, tmci, init.toadlets());
   }
 }

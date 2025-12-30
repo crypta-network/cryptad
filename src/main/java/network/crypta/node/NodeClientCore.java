@@ -194,7 +194,7 @@ public class NodeClientCore implements Persistable {
       throws NodeInitException {
     this.node = node;
     this.random = node.getRandom();
-    this.pluginStores = new PluginStores(node, init.getInstallConfig());
+    this.pluginStores = new PluginStores(node, init.installConfig());
 
     sortOrder = registerLazyStartDatastoreChecker(init, sortOrder);
 
@@ -206,7 +206,7 @@ public class NodeClientCore implements Persistable {
     compressor = new RealCompressor();
     this.formPassword = Base64.encode(pwdBuf);
     alerts = new UserAlertManager(this);
-    persistence = new NodeClientPersistence(this, init.getNodeConfig(), node, sortOrder);
+    persistence = new NodeClientPersistence(this, init.nodeConfig(), node, sortOrder);
     sortOrder = persistence.getSortOrderAfter();
 
     SimpleFieldSet throttleFS = persistence.readThrottle();
@@ -223,7 +223,7 @@ public class NodeClientCore implements Persistable {
     this.tempDir =
         NodeClientCoreSupport.setupProgramDirFile(
             node,
-            init.getInstallConfig(),
+            init.installConfig(),
             "tempDir",
             new File(defaultCacheDir, "tmp").getPath(),
             "NodeClientCore.tempDir",
@@ -244,7 +244,7 @@ public class NodeClientCore implements Persistable {
     this.persistentTempDir =
         NodeClientCoreSupport.setupProgramDirFile(
             node,
-            init.getInstallConfig(),
+            init.installConfig(),
             "persistentTempDir",
             new File(defaultCacheDir, "persistent-temp").getPath(),
             "NodeClientCore.persistentTempDir",
@@ -276,9 +276,9 @@ public class NodeClientCore implements Persistable {
         new TempBucketFactory(
             node.getExecutor(),
             tempFilenameGenerator,
-            init.getNodeConfig().getLong("maxRAMBucketSize"),
-            init.getNodeConfig().getLong("RAMBucketPoolSize"),
-            init.getNodeConfig().getBoolean("encryptTempBuckets"),
+            init.nodeConfig().getLong("maxRAMBucketSize"),
+            init.nodeConfig().getLong("RAMBucketPoolSize"),
+            init.nodeConfig().getBoolean("encryptTempBuckets"),
             minDiskFreeShortTerm,
             cryptoSecretTransient);
 
@@ -309,7 +309,7 @@ public class NodeClientCore implements Persistable {
         persistentTempDir,
         minDiskFreeLongTerm,
         tempBucketFactory,
-        init.getNodeConfig().getBoolean(CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS));
+        init.nodeConfig().getBoolean(CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS));
     persistence.installDiskChecker(persistentTempBucketFactory);
     HighLevelSimpleClient client = makeClient((short) 0, false, false);
     FetchContext defaultFetchContext = client.getFetchContext();
@@ -323,8 +323,8 @@ public class NodeClientCore implements Persistable {
         registerMemoryLimitedJobMemoryLimit(init, sortOrder, defaultMemoryLimitedJobMemoryLimit);
     memoryLimitedJobRunner =
         new MemoryLimitedJobRunner(
-            init.getNodeConfig().getLong("memoryLimitedJobMemoryLimit"),
-            init.getNodeConfig().getInt("memoryLimitedJobThreadLimit"),
+            init.nodeConfig().getLong("memoryLimitedJobMemoryLimit"),
+            init.nodeConfig().getInt("memoryLimitedJobThreadLimit"),
             node.getExecutor(),
             RequestStarter.NUMBER_OF_PRIORITY_CLASSES);
     installFecShutdownHooks(shutdownHook);
@@ -369,7 +369,7 @@ public class NodeClientCore implements Persistable {
     this.downloadsDir =
         NodeClientCoreSupport.setupProgramDirFile(
             node,
-            init.getNodeConfig(),
+            init.nodeConfig(),
             "downloadsDir",
             new File(defaultDataDir, DOWNLOADS_DIR_NAME).getPath(),
             "NodeClientCore.downloadsDir",
@@ -400,7 +400,7 @@ public class NodeClientCore implements Persistable {
     endpoints.configureBucketFactory(tempBucketFactory);
 
     registerAlwaysCommit(init, sortOrder);
-    alwaysCommit = init.getNodeConfig().getBoolean("alwaysCommit");
+    alwaysCommit = init.nodeConfig().getBoolean("alwaysCommit");
     NodeClientCoreSupport.registerStorageAlerts(alerts, this);
   }
 
@@ -424,7 +424,7 @@ public class NodeClientCore implements Persistable {
   }
 
   private void initDiskSpaceLimits(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "minDiskFreeLongTerm",
             "1G",
@@ -453,9 +453,9 @@ public class NodeClientCore implements Persistable {
               }
             },
             true);
-    minDiskFreeLongTerm = init.getNodeConfig().getLong("minDiskFreeLongTerm");
+    minDiskFreeLongTerm = init.nodeConfig().getLong("minDiskFreeLongTerm");
 
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "minDiskFreeShortTerm",
             "512M",
@@ -484,7 +484,7 @@ public class NodeClientCore implements Persistable {
               }
             },
             true);
-    minDiskFreeShortTerm = init.getNodeConfig().getLong("minDiskFreeShortTerm");
+    minDiskFreeShortTerm = init.nodeConfig().getLong("minDiskFreeShortTerm");
     // Do not register the UserAlert yet, since we haven't finished constructing stuff it uses.
   }
 
@@ -636,7 +636,7 @@ public class NodeClientCore implements Persistable {
           persistentTempDir,
           "freenet-temp-",
           node.getFastWeakRandom(),
-          init.getNodeConfig().getBoolean(CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS));
+          init.nodeConfig().getBoolean(CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS));
     } catch (IOException e) {
       String msg = "Could not find or create persistent temporary directory: " + e;
       LOG.error(msg, e);
@@ -753,7 +753,7 @@ public class NodeClientCore implements Persistable {
       throws NodeInitException {
     try {
       return new RequestStarterGroup(
-          node, this, portNumber, random, init.getConfig(), throttleFS, clientContext);
+          node, this, portNumber, random, init.config(), throttleFS, clientContext);
     } catch (InvalidConfigValueException e1) {
       throw new NodeInitException(NodeInitException.EXIT_BAD_CONFIG, e1.toString());
     }
@@ -857,7 +857,7 @@ public class NodeClientCore implements Persistable {
   }
 
   private static int registerMaxBackgroundUSKFetchers(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "maxBackgroundUSKFetchers",
             64,
@@ -882,12 +882,12 @@ public class NodeClientCore implements Persistable {
               }
             },
             false);
-    maxBackgroundUSKFetchers = init.getNodeConfig().getInt("maxBackgroundUSKFetchers");
+    maxBackgroundUSKFetchers = init.nodeConfig().getInt("maxBackgroundUSKFetchers");
     return sortOrder + 1;
   }
 
   private int registerDownloadAllowedDirs(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "downloadAllowedDirs",
             new String[] {"all"},
@@ -916,12 +916,12 @@ public class NodeClientCore implements Persistable {
                 setDownloadAllowedDirs(val);
               }
             });
-    setDownloadAllowedDirs(init.getNodeConfig().getStringArr("downloadAllowedDirs"));
+    setDownloadAllowedDirs(init.nodeConfig().getStringArr("downloadAllowedDirs"));
     return sortOrder + 1;
   }
 
   private int registerUploadAllowedDirs(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "uploadAllowedDirs",
             new String[] {"all"},
@@ -948,13 +948,13 @@ public class NodeClientCore implements Persistable {
                 setUploadAllowedDirs(val);
               }
             });
-    setUploadAllowedDirs(init.getNodeConfig().getStringArr("uploadAllowedDirs"));
+    setUploadAllowedDirs(init.nodeConfig().getStringArr("uploadAllowedDirs"));
     return sortOrder + 1;
   }
 
   private int registerMemoryLimitedJobThreadLimit(
       NodeClientCoreInit init, int sortOrder, int maxMemoryLimitedJobThreads) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "memoryLimitedJobThreadLimit",
             maxMemoryLimitedJobThreads,
@@ -984,7 +984,7 @@ public class NodeClientCore implements Persistable {
 
   private int registerMemoryLimitedJobMemoryLimit(
       NodeClientCoreInit init, int sortOrder, long defaultMemoryLimitedJobMemoryLimit) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "memoryLimitedJobMemoryLimit",
             defaultMemoryLimitedJobMemoryLimit,
@@ -1018,7 +1018,7 @@ public class NodeClientCore implements Persistable {
 
   @SuppressWarnings("UnusedReturnValue")
   private int registerAlwaysCommit(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "alwaysCommit",
             false,
@@ -1043,7 +1043,7 @@ public class NodeClientCore implements Persistable {
   }
 
   private int registerMaxRamBucketSize(NodeClientCoreInit init, int sortOrder, long maxBucketSize) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "maxRAMBucketSize",
             SizeUtil.formatSizeWithoutSpace(maxBucketSize),
@@ -1071,7 +1071,7 @@ public class NodeClientCore implements Persistable {
 
   private int registerRamBucketPoolSize(
       NodeClientCoreInit init, int sortOrder, int defaultRamBucketPoolSize) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "RAMBucketPoolSize",
             defaultRamBucketPoolSize + "MiB",
@@ -1099,7 +1099,7 @@ public class NodeClientCore implements Persistable {
   }
 
   private int registerEncryptTempBuckets(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "encryptTempBuckets",
             true,
@@ -1125,7 +1125,7 @@ public class NodeClientCore implements Persistable {
   }
 
   private int registerEncryptPersistentTempBuckets(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS,
             true,
@@ -1165,7 +1165,7 @@ public class NodeClientCore implements Persistable {
   }
 
   private int registerLazyStartDatastoreChecker(NodeClientCoreInit init, int sortOrder) {
-    init.getNodeConfig()
+    init.nodeConfig()
         .register(
             "lazyStartDatastoreChecker",
             false,
@@ -1195,7 +1195,7 @@ public class NodeClientCore implements Persistable {
                 }
               }
             });
-    lazyStartDatastoreChecker = init.getNodeConfig().getBoolean("lazyStartDatastoreChecker");
+    lazyStartDatastoreChecker = init.nodeConfig().getBoolean("lazyStartDatastoreChecker");
     return sortOrder + 1;
   }
 
