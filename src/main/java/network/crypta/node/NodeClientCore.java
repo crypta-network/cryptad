@@ -57,17 +57,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Bridges the {@link Node} and the client layer.
+ * Coordinates the client-facing services layered on top of a {@link Node}.
  *
- * <p>This component wires and coordinates client-facing services such as request scheduling,
- * client-layer persistence, USK management, healing, FCP/TMCI endpoints, and the HTTP toadlet
- * container. It owns factories for temporary and persistent buckets, exposes a {@link
- * ClientContext} for higher-level APIs, and reports per-request costs to {@link NodeStats}.
+ * <p>{@code NodeClientCore} wires persistence, request scheduling, USK management, client
+ * endpoints, and temporary storage so higher-level APIs can operate against a single, consistent
+ * context. It builds and exposes a {@link ClientContext}, configures bucket factories for in-memory
+ * and on-disk use, and integrates with {@link NodeStats} to report per-request costs. Startup is
+ * multiphase: construction performs registration and wiring, while {@link #start()} activates
+ * background services and resumes persisted requests on a separate executor task. Most entry points
+ * run on node executor threads; accessors that expose mutable configuration state are synchronized
+ * to provide a stable snapshot.
  *
- * <p>Threading: methods are generally invoked from the node's executor threads; selected getters
- * are synchronized where they expose mutable state. Startup is multiphased: the constructor
- * performs wiring, {@link #start()} activates services and resumes persistent requests on a
- * background task.
+ * <ul>
+ *   <li>Provide client-layer factories and shared services for request handlers.
+ *   <li>Gate disk usage and security policy for downloads and uploads.
+ *   <li>Bridge persistence and throttling with node lifecycle events.
+ * </ul>
+ *
+ * @see Node
+ * @see ClientContext
+ * @see ClientEndpoints
+ * @see RequestStarterGroup
  */
 public class NodeClientCore implements Persistable {
   private static final Logger LOG = LoggerFactory.getLogger(NodeClientCore.class);
@@ -93,8 +103,9 @@ public class NodeClientCore implements Persistable {
   private final RequestStarterGroup requestStarters;
 
   /**
-   * Runs memory-bound background jobs (e.g., FEC decode) within a configured capacity and thread
-   * limit. Exposed for components that need to schedule such work explicitly.
+   * Runs memory-bounded background jobs such as FEC decoding within configured capacity and thread
+   * limits. The runner is shared by client operations, so callers should treat it as a long-lived
+   * service and avoid shutting it down directly; lifecycle is owned by the core.
    */
   public final MemoryLimitedJobRunner memoryLimitedJobRunner;
 
@@ -115,12 +126,6 @@ public class NodeClientCore implements Persistable {
   private boolean downloadDisabled;
   private File[] uploadAllowedDirs;
   private boolean uploadAllowedEverywhere;
-
-  /** Temp filename generator for ephemeral bucket file names. */
-  private final FilenameGenerator tempFilenameGenerator;
-
-  /** Persistent filename generator for restart-safe bucket file names. */
-  private final FilenameGenerator persistentFilenameGenerator;
 
   /** Temp bucket factory. Access via {@link #getTempBucketFactory()}. */
   private final TempBucketFactory tempBucketFactory;
@@ -149,7 +154,12 @@ public class NodeClientCore implements Persistable {
   /** Client-facing endpoints (TMCI, FCP, and FProxy wiring). */
   private final ClientEndpoints endpoints;
 
-  /** Compressor implementation used for network transfers and storage. */
+  /**
+   * Compressor used for network transfers and stored blocks.
+   *
+   * <p>The instance is created during construction and is shared across requests. Callers should
+   * treat it as a core-owned component and avoid reconfiguring it outside managed setup.
+   */
   public final RealCompressor compressor;
 
   /** Datastore consistency checker. Access via {@link #getStoreChecker()}. */
@@ -234,7 +244,8 @@ public class NodeClientCore implements Persistable {
 
     FileUtil.setOwnerRWX(getTempDir());
 
-    tempFilenameGenerator = createTempFilenameGeneratorOrThrow();
+    // Temp filename generator for ephemeral bucket file names.
+    FilenameGenerator tempFilenameGenerator = createTempFilenameGeneratorOrThrow();
 
     uskManager = new USKManager(this);
 
@@ -252,7 +263,8 @@ public class NodeClientCore implements Persistable {
 
     PersistentTempBucketFactory ptbf = createPersistentTempBucketFactory(init);
     this.persistentTempBucketFactory = ptbf;
-    this.persistentFilenameGenerator = ptbf.fg;
+    // Persistent filename generator for restart-safe bucket file names.
+    FilenameGenerator persistentFilenameGenerator = ptbf.fg;
 
     // Remove legacy persistent-blob file to reclaim space for migration.
     deleteOldPersistentBlobIfPresent();
@@ -407,8 +419,10 @@ public class NodeClientCore implements Persistable {
   /**
    * Recomputes the minimum free-disk threshold for the persistent RAF factory.
    *
-   * <p>Includes RAM-backed temp usage in the persistent threshold to account for possible migration
-   * of temporary data to disk.
+   * <p>The calculation adds the current RAM-backed temp bucket allowance to the configured
+   * long-term free-space requirement so the persistent RAF factory can accommodate a migration of
+   * temporary data to disk. It updates the persisted factory only when one is present and uses the
+   * current in-memory configuration snapshot to compute the threshold.
    */
   protected void updatePersistentRAFSpaceLimit() {
     // The temp bucket factory may have to migrate everything to disk.
@@ -1202,9 +1216,12 @@ public class NodeClientCore implements Persistable {
   /**
    * Returns whether downloads are globally disabled by configuration.
    *
-   * <p>When disabled, no target directory is considered eligible, regardless of the allowlist.
+   * <p>This flag is derived from the current allowlist configuration. When disabled, directory
+   * checks are short-circuited and no target is considered eligible, even if it matches an
+   * allowlisted path. The value is a snapshot and can change when configuration is updated at
+   * runtime.
    *
-   * @return {@code true} when all downloads are disabled.
+   * @return {@code true} if downloads are disabled and all targets are rejected.
    */
   public boolean isDownloadDisabled() {
     return downloadDisabled;
@@ -1213,12 +1230,12 @@ public class NodeClientCore implements Persistable {
   /**
    * Configures directories where downloads may be written.
    *
-   * <p>Recognized entries: - {@code "all"}: allow any destination. - {@code downloads}: allow the
-   * configured downloads directory. - any other string is treated as a filesystem path.
+   * <p>Recognized entries include {@code "all"} to allow any destination and {@code "downloads"} to
+   * allow the configured downloads directory. Any other string is treated as a filesystem path and
+   * stored as a {@link File}. Passing an empty array disables downloads entirely. The configuration
+   * is applied immediately and affects subsequent permission checks.
    *
-   * <p>Passing an empty array disables downloads.
-   *
-   * @param val allowlist entries as described above.
+   * @param val allowlist entries describing special tokens or absolute/relative paths.
    */
   protected synchronized void setDownloadAllowedDirs(String[] val) {
     int x = 0;
@@ -1244,10 +1261,12 @@ public class NodeClientCore implements Persistable {
   /**
    * Configures directories from which uploads may read.
    *
-   * <p>Recognized entries: - {@code "all"}: allow any source. - any other string is treated as a
-   * filesystem path.
+   * <p>Recognized entries include {@code "all"} to allow any source. Any other string is treated as
+   * a filesystem path and stored as a {@link File}. The configuration is applied immediately and
+   * affects subsequent permission checks for upload sources. The method performs no I/O and updates
+   * in-memory policy.
    *
-   * @param val allowlist entries as described above.
+   * @param val allowlist entries describing special tokens or filesystem paths.
    */
   protected synchronized void setUploadAllowedDirs(String[] val) {
     int x = 0;
@@ -1267,9 +1286,11 @@ public class NodeClientCore implements Persistable {
   /**
    * Starts client-layer services and resumes persisted requests.
    *
-   * <p>Side effects: - Starts request starters, the datastore checker, FCP/TMCI servers (when
-   * configured), and plugins. - Schedules asynchronous completion to migrate legacy buckets and
-   * resume pending requests.
+   * <p>This method activates request starters, the datastore checker, client endpoints, and
+   * plugins, then schedules a low-priority completion task to migrate persistent temporary buckets
+   * and resume pending requests. Call it during node startup after construction has finished
+   * wiring. Exceptions during migration are logged and do not prevent the remaining services from
+   * running.
    */
   public void start() {
 
@@ -1325,21 +1346,21 @@ public class NodeClientCore implements Persistable {
   /**
    * Starts an asynchronous fetch for a key.
    *
-   * <p>If the data is found locally the listener is notified and no network request is started. If
-   * a request is started, the listener receives completion or failure callbacks; some successful
-   * outcomes may be delivered via the pending-keys mechanism instead of the listener.
+   * <p>If the data is found locally the listener is notified and no network request is started.
+   * Otherwise, a request sender is created and the listener receives completion or failure
+   * callbacks; some successful outcomes may be delivered via the pending-keys mechanism instead of
+   * the listener. The call is non-blocking and returns after scheduling work using a freshly
+   * generated UID. Store access is controlled by {@code localOnly} and {@code ignoreStore}; when
+   * both are {@code false} the datastore is checked first and routing proceeds on miss.
    *
-   * @param key key to fetch.
-   * @param offersOnly when {@code true}, fetch only from nodes that have offered the key (via
-   *     GetOfferedKeys); no regular routing is used.
-   * @param listener callback for completion and most failure cases.
-   * @param canReadClientCache whether the request may read the client cache.
-   * @param canWriteClientCache whether the request may write the client cache.
-   * @param realTimeFlag {@code true} for latency-optimized requests; {@code false} for
-   *     throughput-optimized (bulk) requests.
-   * @param localOnly when {@code true}, check only the datastore and do not create a network
-   *     request on miss.
-   * @param ignoreStore when {@code true}, skip the datastore and create a request immediately.
+   * @param key key to fetch; typically a {@code CHK} or {@link NodeSSK}.
+   * @param offersOnly when true, fetch only from offered-key sources.
+   * @param listener callback notified on completion or failure of the request.
+   * @param canReadClientCache whether this request may read from the client cache.
+   * @param canWriteClientCache whether this request may write into the client cache.
+   * @param realTimeFlag true for latency-optimized routing; false for bulk throughput.
+   * @param localOnly true to check only local store and skip routing.
+   * @param ignoreStore true to bypass datastore and always create a request.
    */
   public void asyncGet(
       final Key key,
@@ -1408,6 +1429,8 @@ public class NodeClientCore implements Persistable {
    * @param realTimeFlag Is this a real-time request? False = this is a bulk request.
    * @param localOnly If true, only check the datastore, don't create a request if nothing is found.
    * @param ignoreStore If true, don't check the datastore, create a request immediately.
+   * @param isSSK Whether the request targets an SSK key type.
+   * @param startTime Start time in milliseconds since epoch for metrics.
    */
   @SuppressWarnings("java:S1181")
   private void startAsyncGet(
@@ -1456,6 +1479,7 @@ public class NodeClientCore implements Persistable {
            * @param status The completion status code reported by the sender.
            * @param fromOfferedKey {@code true} if this completion originated from an offered-key
            *     fetch path (GetOfferedKeys); {@code false} for a normal fetch.
+           * @param rs The sender that completed and reported the status.
            */
           @Override
           public void onRequestSenderFinished(
@@ -1517,17 +1541,19 @@ public class NodeClientCore implements Persistable {
   /**
    * Synchronously fetches a block for a client key.
    *
-   * <p>Depending on {@code localOnly} and {@code ignoreStore}, this may read from the datastore or
-   * perform a network request. On success, returns a verified client block.
+   * <p>This method blocks until the fetch completes or fails. Depending on {@code localOnly} and
+   * {@code ignoreStore}, it may read from the datastore or issue a routed request through the
+   * network. It returns a verified client block on success and throws a {@link
+   * LowLevelGetException} on any failure. The request uses an internally generated UID and releases
+   * tracking resources before returning.
    *
-   * @param key client key (CHK or SSK).
-   * @param localOnly when {@code true}, check only the datastore and do not create a network
-   *     request on miss.
-   * @param ignoreStore when {@code true}, skip the datastore and create a request immediately.
-   * @param canWriteClientCache whether the request may write the client cache.
-   * @param realTimeFlag {@code true} for latency-optimized requests; {@code false} for bulk.
-   * @return verified client block.
-   * @throws LowLevelGetException on not found, transfer failure, verify failure, or internal error.
+   * @param key client key to fetch; must be {@link ClientCHK} or {@link ClientSSK}.
+   * @param localOnly true to consult only the datastore and stop on miss.
+   * @param ignoreStore true to bypass datastore and route immediately.
+   * @param canWriteClientCache whether the request may write to the client cache.
+   * @param realTimeFlag true for latency-optimized routing; false for bulk routing.
+   * @return verified client block, owned by the caller for use.
+   * @throws LowLevelGetException when not found, verify fails, or internal errors occur.
    */
   public ClientKeyBlock realGetKey(
       ClientKey key,
@@ -1787,16 +1813,18 @@ public class NodeClientCore implements Persistable {
   /**
    * Inserts a block into the network.
    *
-   * <p>Accepts either CHK or SSK blocks. Reinserts may be performed depending on the block type and
-   * flags.
+   * <p>This entry point accepts either CHK or SSK blocks and dispatches to the appropriate insert
+   * path. It performs local bookkeeping, records costs, and may store the block locally according
+   * to caching rules. The call blocks until the insert completes or fails. Failures are mapped to
+   * {@link LowLevelPutException} codes describing routing, overload, or collision outcomes.
    *
-   * @param block block to insert.
+   * @param block block to insert; must be a {@link CHKBlock} or {@link SSKBlock}.
    * @param canWriteClientCache whether the insert may update the client cache.
    * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert to other strategies when applicable.
+   * @param preferInsert whether to prefer insert when multiple strategies apply.
    * @param ignoreLowBackoff whether to ignore low backoff during routing.
-   * @param realTimeFlag {@code true} for latency-optimized; {@code false} for bulk.
-   * @throws LowLevelPutException on route failure, overload, or internal error.
+   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
+   * @throws LowLevelPutException when routing fails, overload occurs, or an internal error arises.
    */
   public void realPut(
       KeyBlock block,
@@ -1827,6 +1855,22 @@ public class NodeClientCore implements Persistable {
     }
   }
 
+  /**
+   * Inserts a CHK block into the network and optionally caches it locally.
+   *
+   * <p>This variant constructs a CHK insert sender, waits for completion, reports costs, and stores
+   * the block according to cache policy. It blocks until the insert completes and throws a {@link
+   * LowLevelPutException} on routing failure, overload, or internal errors. The method generates
+   * and locks a request UID internally and releases it before returning.
+   *
+   * @param block CHK block to insert and potentially store locally.
+   * @param canWriteClientCache whether the insert may update the client cache.
+   * @param forkOnCacheable whether to fork when the block is cacheable.
+   * @param preferInsert whether to prefer insert when multiple strategies apply.
+   * @param ignoreLowBackoff whether to ignore low backoff during routing.
+   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
+   * @throws LowLevelPutException when routing fails, overload occurs, or internal errors arise.
+   */
   public void realPutCHK(
       CHKBlock block,
       boolean canWriteClientCache,
@@ -1992,13 +2036,18 @@ public class NodeClientCore implements Persistable {
   /**
    * Inserts an SSK block.
    *
-   * @param block SSK block to insert.
+   * <p>This method performs a local collision check using the client cache, then starts an SSK
+   * insert sender and waits for completion. It reports costs, stores the block when appropriate,
+   * and throws {@link LowLevelPutException} for collisions, routing failures, overload, or internal
+   * errors. The call blocks until the insert completes and always releases the request UID.
+   *
+   * @param block SSK block to insert and potentially store locally.
    * @param canWriteClientCache whether the insert may update the client cache.
    * @param forkOnCacheable whether to fork when the block is cacheable.
-   * @param preferInsert whether to prefer insert to other strategies when applicable.
+   * @param preferInsert whether to prefer insert when multiple strategies apply.
    * @param ignoreLowBackoff whether to ignore low backoff during routing.
-   * @param realTimeFlag {@code true} for latency-optimized; {@code false} for bulk.
-   * @throws LowLevelPutException on collision, route failure, overload, or internal error.
+   * @param realTimeFlag true for latency-optimized inserts; false for bulk routing.
+   * @throws LowLevelPutException on collision, routing failure, overload, or internal error.
    */
   public void realPutSSK(
       SSKBlock block,
@@ -2192,13 +2241,17 @@ public class NodeClientCore implements Persistable {
   /**
    * Creates a high-level client bound to this core.
    *
-   * @param prioClass priority class for requests started by the client.
+   * <p>The returned client shares this core's {@link ClientContext}, bucket factories, and random
+   * source so its requests are scheduled and accounted for with the node. The client respects the
+   * provided priority class and real-time flag, which influence routing and throttling behavior.
+   * This method does not start network activity by itself; it only constructs a configured client
+   * instance.
+   *
+   * @param prioClass priority class assigned to requests from the client.
    * @param forceDontIgnoreTooManyPathComponents whether to disable path-component pruning for
-   *     requests that would otherwise ignore excessive path components.
-   * @param realTimeFlag {@code true} for latency-optimized requests; {@code false} for
-   *     throughput-optimized (bulk) requests. Fewer latency-optimized requests are accepted, but
-   *     they tend to complete faster; bulk requests may run more continuously.
-   * @return a configured {@link HighLevelSimpleClient} instance.
+   *     overly long paths.
+   * @param realTimeFlag true for latency-optimized requests; false for bulk requests.
+   * @return configured {@link HighLevelSimpleClient} bound to this core and context.
    */
   public HighLevelSimpleClient makeClient(
       short prioClass, boolean forceDontIgnoreTooManyPathComponents, boolean realTimeFlag) {
@@ -2211,16 +2264,43 @@ public class NodeClientCore implements Persistable {
         realTimeFlag);
   }
 
-  /** Returns client endpoints (FCP, TMCI, and HTTP toadlet container). */
+  /**
+   * Returns client endpoints (FCP, TMCI, and HTTP toadlet container).
+   *
+   * <p>The returned {@link ClientEndpoints} instance owns the lifecycle of the FCP and TMCI servers
+   * and the HTTP toadlet container for this node. It is created during construction and remains
+   * shared across the node lifecycle. Callers should treat it as core-owned and avoid stopping
+   * endpoints outside managed shutdown paths.
+   *
+   * @return the shared {@link ClientEndpoints} instance for this node.
+   */
   public ClientEndpoints getEndpoints() {
     return endpoints;
   }
 
-  /** Returns the configured downloads directory. */
+  /**
+   * Returns the configured downloads directory.
+   *
+   * <p>The directory is resolved during initialization and represents the default location used
+   * when downloads are permitted. The returned {@link File} is the internal instance used by the
+   * core, so callers should treat it as shared and avoid mutating configuration through it.
+   *
+   * @return configured downloads directory {@link File} used by permission checks.
+   */
   public File getDownloadsDir() {
     return downloadsDir;
   }
 
+  /**
+   * Queues a low-priority reinsert of a key block.
+   *
+   * <p>The block is wrapped in a {@link SimpleSendableInsert} and scheduled on the request starters
+   * at the maximum priority class for reinserts. The operation is asynchronous; it enqueues work
+   * and returns immediately without waiting for completion. Use it to refresh availability for
+   * already known data.
+   *
+   * @param block key block to reinsert and schedule for background routing.
+   */
   public void queueRandomReinsert(KeyBlock block) {
     SimpleSendableInsert ssi =
         new SimpleSendableInsert(this, block, RequestStarter.MAXIMUM_PRIORITY_CLASS);
@@ -2228,34 +2308,84 @@ public class NodeClientCore implements Persistable {
     ssi.schedule();
   }
 
-  /** Persists the current configuration to disk. */
+  /**
+   * Persists the current configuration to disk.
+   *
+   * <p>This triggers the node configuration store to write its current values to the configured
+   * storage location. The operation invokes the write immediately, but the underlying storage
+   * subsystem controls any buffering or durability semantics. Call it after changing configuration
+   * values that must survive restart.
+   */
   public void storeConfig() {
     LOG.info("Trying to write config to disk");
     node.getConfig().store();
   }
 
-  /** Returns whether the node runs in testnet mode. */
+  /**
+   * Returns whether the node runs in testnet mode.
+   *
+   * <p>This is a global setting that affects network compatibility and routing behavior. The value
+   * is determined by node configuration and is not modified by this method. Use it to gate features
+   * that should only operate on a test network. The accessor performs no I/O and does not modify
+   * state.
+   *
+   * @return {@code true} if the node is configured for testnet operation.
+   */
   @SuppressWarnings("unused")
   public boolean isTestnetEnabled() {
     return Node.isTestnetEnabled();
   }
 
-  /** Returns whether advanced-mode UI features are enabled in FProxy. */
+  /**
+   * Returns whether advanced-mode UI features are enabled in FProxy.
+   *
+   * <p>This flag is provided by the client endpoints configuration and controls whether advanced UI
+   * features are exposed in the HTTP interface. It reflects the current configuration snapshot and
+   * may change at runtime if settings are updated. The accessor performs no I/O and simply returns
+   * the current flag.
+   *
+   * @return {@code true} if advanced-mode UI features are enabled in FProxy.
+   */
   public boolean isAdvancedModeEnabled() {
     return endpoints.isAdvancedModeEnabled();
   }
 
-  /** Returns whether JavaScript is enabled in FProxy. */
+  /**
+   * Returns whether JavaScript is enabled in FProxy.
+   *
+   * <p>This flag reflects HTTP UI configuration and indicates whether the toadlet container should
+   * render pages that depend on client-side scripting. It is a snapshot of current settings and may
+   * change at runtime when configuration is updated. The accessor performs no I/O and simply
+   * returns the current flag.
+   *
+   * @return {@code true} if JavaScript is enabled for the HTTP UI.
+   */
   public boolean isFProxyJavascriptEnabled() {
     return endpoints.isFProxyJavascriptEnabled();
   }
 
-  /** Returns the node's user-visible name. */
+  /**
+   * Returns the node's user-visible name.
+   *
+   * <p>The name is managed by the {@link Node} configuration and can be displayed in UI surfaces or
+   * status messages. The value is a snapshot and may be empty if the user has not configured a
+   * custom name. The accessor performs no I/O and returns the current in-memory value.
+   *
+   * @return current user-visible node name, which may be empty.
+   */
   public String getMyName() {
     return node.getMyName();
   }
 
-  /** Returns the configured maximum number of background USK fetchers. */
+  /**
+   * Returns the configured maximum number of background USK fetchers.
+   *
+   * <p>This limit is loaded from configuration and is used by USK scheduling to cap concurrent
+   * background fetch activity. The value is a snapshot and can change if configuration is updated
+   * at runtime. Callers can use it to size background queues and avoid oversubscription.
+   *
+   * @return configured maximum number of concurrent background USK fetchers.
+   */
   @SuppressWarnings("unused")
   public int maxBackgroundUSKFetchers() {
     return maxBackgroundUSKFetchers;
@@ -2264,11 +2394,13 @@ public class NodeClientCore implements Persistable {
   /**
    * Returns whether a file path is permitted as a download target.
    *
-   * <p>Respects the physical threat level (denies at {@code MAXIMUM}) and the configured allowlist
-   * including the downloads directory when enabled.
+   * <p>This check enforces the current physical threat level and the configured download allowlist,
+   * including the downloads directory when enabled. If downloads are disabled by configuration, no
+   * target is accepted. The check uses parent-path matching and does not create directories or
+   * touch the filesystem beyond path comparisons.
    *
-   * @param filename target file path.
-   * @return {@code true} when writing under {@code filename} is allowed.
+   * @param filename target file path to validate against download allowlist.
+   * @return {@code true} if the path is allowed under current policy.
    */
   public boolean allowDownloadTo(File filename) {
     PHYSICAL_THREAT_LEVEL physicalThreatLevel = node.getSecurityLevels().getPhysicalThreatLevel();
@@ -2289,11 +2421,15 @@ public class NodeClientCore implements Persistable {
   }
 
   /**
-   * Returns whether a file path is permitted as an upload source according to the configured
-   * allowlist.
+   * Returns whether a file path is permitted as an upload source.
    *
-   * @param filename source file path.
-   * @return {@code true} when reading from {@code filename} is allowed.
+   * <p>This check uses the configured upload allowlist and does not verify file existence. The
+   * result is a snapshot of current configuration and is used to gate upload requests before any
+   * I/O occurs. Paths are matched by parent-directory containment. The method does not read file
+   * contents and only evaluates path hierarchy.
+   *
+   * @param filename source file path to validate against upload allowlist.
+   * @return {@code true} if the path is allowed as an upload source.
    */
   public synchronized boolean allowUploadFrom(File filename) {
     if (uploadAllowedEverywhere) return true;
@@ -2308,12 +2444,28 @@ public class NodeClientCore implements Persistable {
     return false;
   }
 
-  /** Returns the current allowlist for download destinations. */
+  /**
+   * Returns the current allowlist for download destinations.
+   *
+   * <p>The returned array contains the configured directories used for permission checks. It is a
+   * direct reference to internal state, so callers should not modify the array or its elements. The
+   * allowlist may be empty when downloads are disabled. No defensive copy is made.
+   *
+   * @return current allowlist array; entries are internal references, not copies.
+   */
   public synchronized File[] getAllowedDownloadDirs() {
     return downloadAllowedDirs;
   }
 
-  /** Returns the current allowlist for upload sources. */
+  /**
+   * Returns the current allowlist for upload sources.
+   *
+   * <p>The returned array contains the configured directories used for permission checks. It is a
+   * direct reference to internal state, so callers should not modify the array or its elements. The
+   * allowlist may be empty when no explicit sources are configured. No defensive copy is made.
+   *
+   * @return current allowlist array; entries are internal references, not copies.
+   */
   public synchronized File[] getAllowedUploadDirs() {
     return uploadAllowedDirs;
   }
@@ -2321,19 +2473,42 @@ public class NodeClientCore implements Persistable {
   /**
    * Serializes client throttle state to a field set for persistence.
    *
-   * @return throttles encoded as a {@link SimpleFieldSet}.
+   * <p>The returned {@link SimpleFieldSet} captures the current throttling configuration for
+   * request starters and schedulers so it can be written to persistent storage. The snapshot is
+   * intended for persistence and reload, not for direct mutation by callers. The method performs no
+   * I/O and only builds an in-memory structure.
+   *
+   * @return throttles encoded as a {@link SimpleFieldSet} snapshot for persistence.
    */
   @Override
   public SimpleFieldSet persistThrottlesToFieldSet() {
     return requestStarters.persistToFieldSet();
   }
 
-  /** Returns the directory used for persistent temporary buckets. */
+  /**
+   * Returns the directory used for persistent temporary buckets.
+   *
+   * <p>This directory is created during initialization and is used for restart-safe temporary
+   * storage. The returned {@link File} is the internal instance used by the core, so callers should
+   * treat it as shared and avoid changing its contents outside managed cleanup. The accessor
+   * performs no I/O and returns the current configuration value.
+   *
+   * @return directory used for persistent temporary bucket storage.
+   */
   public File getPersistentTempDir() {
     return persistentTempDir;
   }
 
-  /** Returns the directory used for ephemeral temporary buckets. */
+  /**
+   * Returns the directory used for ephemeral temporary buckets.
+   *
+   * <p>This directory is created during initialization and is used for short-lived temporary
+   * storage. The returned {@link File} is the internal instance used by the core, so callers should
+   * treat it as shared and avoid changing its contents outside managed cleanup. The accessor
+   * performs no I/O and returns the current configuration value.
+   *
+   * @return directory used for non-persistent temporary bucket storage.
+   */
   public File getTempDir() {
     return tempDir;
   }
@@ -2341,8 +2516,12 @@ public class NodeClientCore implements Persistable {
   /**
    * Queues a key that has been offered by peers to be fetched opportunistically.
    *
-   * @param key key to queue.
-   * @param realTime whether to queue on the real-time scheduler.
+   * <p>The key is placed on the scheduler corresponding to its type (SSK vs CHK) and the selected
+   * real-time or bulk queue. This operation is asynchronous; it only enqueues the key and returns.
+   * It is typically used when peers advertise availability via offered-key mechanisms.
+   *
+   * @param key offered key to enqueue for opportunistic fetching.
+   * @param realTime whether to enqueue on the real-time scheduler.
    */
   public void queueOfferedKey(Key key, boolean realTime) {
     requestStarters
@@ -2350,18 +2529,43 @@ public class NodeClientCore implements Persistable {
         .queueOfferedKey(key, realTime);
   }
 
-  /** Removes a previously queued offered key from both bulk and real-time schedulers. */
+  /**
+   * Removes a previously queued offered key from both bulk and real-time schedulers.
+   *
+   * <p>The removal is applied to both queue variants to avoid stale scheduling. If the key is not
+   * present, the operation has no observable effect and returns immediately. The method does not
+   * block on network activity or disk I/O. It only updates scheduler queues in memory.
+   *
+   * @param key offered key to remove from scheduler queues.
+   */
   public void dequeueOfferedKey(Key key) {
     requestStarters.getScheduler(key instanceof NodeSSK, false, false).dequeueOfferedKey(key);
     requestStarters.getScheduler(key instanceof NodeSSK, false, true).dequeueOfferedKey(key);
   }
 
-  /** Returns the total number of requests currently queued across schedulers. */
+  /**
+   * Returns the total number of requests currently queued across schedulers.
+   *
+   * <p>The count includes both real-time and bulk queues for CHK and SSK schedulers. The value is a
+   * snapshot of current state and can change immediately as requests are queued or completed. The
+   * method performs no blocking operations and returns immediately.
+   *
+   * @return total queued request count across all schedulers.
+   */
   public long countQueuedRequests() {
     return requestStarters.countQueuedRequests();
   }
 
-  /** Returns the global cap on background USK fetchers. */
+  /**
+   * Returns the global cap on background USK fetchers.
+   *
+   * <p>This static value is loaded from configuration during initialization. It is used by USK
+   * scheduling to limit concurrent background fetch activity across the node. The accessor performs
+   * no I/O and returns the current configured value. Callers typically use it to size background
+   * queues and avoid oversubscription.
+   *
+   * @return configured maximum number of background USK fetchers.
+   */
   public static int getMaxBackgroundUSKFetchers() {
     return maxBackgroundUSKFetchers;
   }
@@ -2371,8 +2575,12 @@ public class NodeClientCore implements Persistable {
   /**
    * Returns whether any fetch scheduler wants the given key.
    *
-   * @param key key to test.
-   * @return {@code true} if either real-time or bulk scheduler wants the key.
+   * <p>The method checks both real-time and bulk fetch schedulers for the key type (SSK vs CHK). It
+   * is used to decide whether to keep or forward offered keys and to avoid redundant work. The
+   * result is a snapshot and may change as scheduling state evolves.
+   *
+   * @param key key to test for scheduler interest.
+   * @return {@code true} if any scheduler currently wants the key.
    */
   public boolean wantKey(Key key) {
     boolean isSSK = key instanceof NodeSSK;
@@ -2383,28 +2591,55 @@ public class NodeClientCore implements Persistable {
   /**
    * Estimates the recency of failures for routing decisions.
    *
-   * <p>Performs a local probe equivalent to how {@link RequestSender} considers recent failures for
-   * a key at the originator, ensuring comparable behavior to running requests.
+   * <p>This performs a local probe equivalent to how {@link RequestSender} considers recent
+   * failures for a key at the originator, ensuring comparable behavior to running requests. The
+   * returned value is an internal metric and should only be used for relative comparisons in
+   * routing heuristics, not for display.
    *
-   * @param key target key.
-   * @param realTime when {@code true}, use real-time routing heuristics; otherwise bulk.
-   * @return a non-negative value indicating how recently the key failed (units are internal).
+   * @param key target key to probe for recent failures.
+   * @param realTime whether to use real-time routing heuristics or bulk.
+   * @return non-negative value indicating how recently the key failed.
    */
   public long checkRecentlyFailed(Key key, boolean realTime) {
     return NodeClientCoreSupport.checkRecentlyFailed(node, key, realTime);
   }
 
-  /** Returns the plugin stores accessor for this node. */
+  /**
+   * Returns the plugin stores accessor for this node.
+   *
+   * <p>The returned {@link PluginStores} instance provides access to plugin-managed storage and is
+   * created during core initialization. It is shared across the node lifecycle, so callers should
+   * treat it as core-owned and avoid replacing or shutting it down directly. The accessor performs
+   * no I/O and returns the existing instance.
+   *
+   * @return shared {@link PluginStores} instance used for plugin storage.
+   */
   public PluginStores getPluginStores() {
     return pluginStores;
   }
 
-  /** Minimum free-disk threshold for long-running jobs, in bytes. */
+  /**
+   * Returns the minimum free-disk threshold for long-running jobs, in bytes.
+   *
+   * <p>This value is configured via node settings and is used to gate operations with unpredictable
+   * duration, such as large downloads. The value is a snapshot and may change when configuration is
+   * updated at runtime. The accessor performs no I/O and returns the current threshold.
+   *
+   * @return minimum free-disk threshold for long-running jobs, in bytes.
+   */
   public synchronized long getMinDiskFreeLongTerm() {
     return minDiskFreeLongTerm;
   }
 
-  /** Minimum free-disk threshold for short, disk-heavy jobs, in bytes. */
+  /**
+   * Returns the minimum free-disk threshold for short, disk-heavy jobs, in bytes.
+   *
+   * <p>This value is configured via node settings and is used to gate operations such as completing
+   * downloads. The value is a snapshot and may change when configuration is updated at runtime. The
+   * accessor performs no I/O and returns the current threshold.
+   *
+   * @return minimum free-disk threshold for short disk-heavy jobs, in bytes.
+   */
   public synchronized long getMinDiskFreeShortTerm() {
     return minDiskFreeShortTerm;
   }
@@ -2412,13 +2647,26 @@ public class NodeClientCore implements Persistable {
   /**
    * Returns whether the client-layer database has been killed or not loaded.
    *
-   * @return {@code true} if persistence is unavailable.
+   * <p>This reflects the {@link ClientLayerPersister} state and indicates whether persistence is
+   * unavailable for client-layer data. It can be used to gate operations that require persisted
+   * state or to display warnings in UI surfaces. The accessor performs no I/O and simply reflects
+   * persister state.
+   *
+   * @return {@code true} if persistence is unavailable for client-layer data.
    */
   public boolean killedDatabase() {
     return this.getClientLayerPersister().isKilledOrNotLoaded();
   }
 
-  /** Returns the set of currently persisted FCP requests. */
+  /**
+   * Returns the set of currently persisted FCP requests.
+   *
+   * <p>The returned array is a snapshot of persisted request state at the time of the call. It may
+   * be empty if persistence is disabled or if no requests are stored. Callers should treat the
+   * array as read-only. The accessor performs no I/O and returns the in-memory snapshot.
+   *
+   * @return snapshot array of persisted {@link ClientRequest} entries.
+   */
   public ClientRequest[] getPersistentRequests() {
     return persistence.getPersistentRequests();
   }
@@ -2426,7 +2674,11 @@ public class NodeClientCore implements Persistable {
   /**
    * Installs the persistent master secret for encrypted resources and factories.
    *
-   * @param persistentSecret master secret to use.
+   * <p>If the client context does not already have a persistent secret, this method installs the
+   * provided secret and wires it into the persistent temp bucket factory and RAF persistence. It
+   * does not generate a secret; callers must supply one that is already initialized.
+   *
+   * @param persistentSecret master secret to use for persistent encryption state.
    */
   public void setupMasterSecret(MasterSecret persistentSecret) {
     if (getClientContext().getPersistentMasterSecret() == null)
@@ -2435,63 +2687,168 @@ public class NodeClientCore implements Persistable {
     persistence.setPersistentRafMasterSecret(persistentSecret);
   }
 
-  /** Returns whether the client-layer database has been loaded. */
+  /**
+   * Returns whether the client-layer database has been loaded.
+   *
+   * <p>This reflects whether the {@link ClientLayerPersister} has completed loading persistent
+   * state. It can be used to gate operations that depend on restored request queues or throttles.
+   * The accessor performs no I/O and simply reflects persister state. It does not trigger loading
+   * and does not alter persistence state.
+   *
+   * @return {@code true} if the client-layer database has been loaded.
+   */
   public boolean loadedDatabase() {
     return getClientLayerPersister().hasLoaded();
   }
 
-  /** Returns the component that persists bandwidth statistics. */
-  /** Returns the USK manager. */
+  /**
+   * Returns the USK manager.
+   *
+   * <p>The returned {@link USKManager} instance coordinates USK state and scheduling for this core.
+   * It is initialized during construction and is shared for the life of the node, so callers should
+   * treat it as core-owned. The accessor performs no I/O and returns the existing instance.
+   *
+   * @return shared {@link USKManager} instance for this core.
+   */
   public USKManager getUskManager() {
     return uskManager;
   }
 
-  /** Returns the group of request starters and schedulers. */
+  /**
+   * Returns the group of request starters and schedulers.
+   *
+   * <p>The {@link RequestStarterGroup} coordinates routing, throttling, and queue management for
+   * both fetch and insert operations. The returned instance is shared and should be treated as
+   * core-owned state managed by the node lifecycle. The accessor performs no I/O and returns the
+   * existing instance.
+   *
+   * @return shared {@link RequestStarterGroup} coordinating request starts.
+   */
   public RequestStarterGroup getRequestStarters() {
     return requestStarters;
   }
 
-  /** Returns the anti-CSRF token expected by HTTP handlers. */
+  /**
+   * Returns the anti-CSRF token expected by HTTP handlers.
+   *
+   * <p>The token is generated during initialization and is used by HTTP forms to protect
+   * state-changing requests. Callers should treat it as sensitive within UI contexts and avoid
+   * exposing it outside expected request handling flows. The accessor performs no I/O and returns
+   * the stored token.
+   *
+   * @return anti-CSRF token string used by HTTP handlers and forms.
+   */
   public String getFormPassword() {
     return formPassword;
   }
 
-  /** Returns the factory for ephemeral temporary buckets. */
+  /**
+   * Returns the factory for ephemeral temporary buckets.
+   *
+   * <p>The returned {@link TempBucketFactory} manages non-persistent temporary storage for client
+   * operations. It is configured during initialization and shared across requests, so callers
+   * should avoid modifying its lifecycle outside managed shutdown. The accessor performs no I/O and
+   * returns the existing instance.
+   *
+   * @return shared {@link TempBucketFactory} for ephemeral buckets.
+   */
   public TempBucketFactory getTempBucketFactory() {
     return tempBucketFactory;
   }
 
-  /** Returns the factory for persistent temporary buckets. */
+  /**
+   * Returns the factory for persistent temporary buckets.
+   *
+   * <p>The returned {@link PersistentTempBucketFactory} manages restart-safe temporary storage for
+   * client operations. It is configured during initialization and shared across requests, so
+   * callers should avoid modifying its lifecycle outside managed shutdown. The accessor performs no
+   * I/O and returns the existing instance.
+   *
+   * @return shared {@link PersistentTempBucketFactory} for persistent buckets.
+   */
   public PersistentTempBucketFactory getPersistentTempBucketFactory() {
     return persistentTempBucketFactory;
   }
 
-  /** Returns the client-layer persister. */
+  /**
+   * Returns the client-layer persister.
+   *
+   * <p>The {@link ClientLayerPersister} is responsible for loading and saving client-layer state
+   * such as throttles and persistent requests. The returned instance is shared and should be
+   * treated as core-owned service infrastructure. The accessor performs no I/O and returns the
+   * existing instance.
+   *
+   * @return shared {@link ClientLayerPersister} instance for persistence.
+   */
   public ClientLayerPersister getClientLayerPersister() {
     return clientLayerPersister;
   }
 
-  /** Returns the owning node. */
+  /**
+   * Returns the owning node.
+   *
+   * <p>This provides access to the {@link Node} that created and owns this core. The node manages
+   * lifecycle and executor resources, so callers should treat it as shared and avoid altering its
+   * state except through supported APIs. The accessor performs no I/O and returns the existing
+   * instance.
+   *
+   * @return owning {@link Node} instance for this core.
+   */
   public Node getNode() {
     return node;
   }
 
-  /** Returns the non-cryptographic random source used by this component. */
+  /**
+   * Returns the non-cryptographic random source used by this component.
+   *
+   * <p>The returned {@link RandomSource} is used for request IDs and other non-cryptographic needs.
+   * It is shared across the core and should not be replaced or reseeded by callers. The accessor
+   * performs no I/O and returns the existing instance. Use it only for non-cryptographic purposes.
+   *
+   * @return shared non-cryptographic {@link RandomSource} used by the core.
+   */
   public RandomSource getRandom() {
     return random;
   }
 
-  /** Returns the user-alert manager. */
+  /**
+   * Returns the user-alert manager.
+   *
+   * <p>The returned {@link UserAlertManager} coordinates user-facing alerts emitted by client
+   * components. It is created during initialization and shared for the life of the node. The
+   * accessor performs no I/O and returns the existing instance. Use it to register or clear alerts
+   * as needed by client-facing components.
+   *
+   * @return shared {@link UserAlertManager} instance used for alerts.
+   */
   public UserAlertManager getAlerts() {
     return alerts;
   }
 
-  /** Returns the datastore consistency checker. */
+  /**
+   * Returns the datastore consistency checker.
+   *
+   * <p>The {@link DatastoreChecker} validates datastore health and is started during core startup.
+   * The returned instance is shared and should be treated as core-owned service state. The accessor
+   * performs no I/O and returns the existing instance. Use it to coordinate datastore checking
+   * tasks when needed.
+   *
+   * @return shared {@link DatastoreChecker} instance for datastore checks.
+   */
   public DatastoreChecker getStoreChecker() {
     return storeChecker;
   }
 
-  /** Returns the client context shared with higher-level client APIs. */
+  /**
+   * Returns the client context shared with higher-level client APIs.
+   *
+   * <p>The {@link ClientContext} bundles shared configuration, caches, and schedulers used by
+   * client requests. It is created during construction and is central to request execution, so
+   * callers should treat it as shared, mutable state managed by the core. The accessor performs no
+   * I/O and returns the existing instance.
+   *
+   * @return shared {@link ClientContext} instance used by client APIs.
+   */
   public ClientContext getClientContext() {
     return clientContext;
   }
