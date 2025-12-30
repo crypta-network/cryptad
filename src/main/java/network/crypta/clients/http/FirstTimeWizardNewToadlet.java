@@ -168,7 +168,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
   private void showForm(ToadletContext ctx, Map<String, Object> model)
       throws IOException, ToadletContextClosedException {
-    model.put("formPassword", core.getToadletContainer().getFormPassword());
+    model.put("formPassword", core.getEndpoints().getToadletContainer().getFormPassword());
     PageNode page =
         ctx.getPageMaker()
             .getPageNode(

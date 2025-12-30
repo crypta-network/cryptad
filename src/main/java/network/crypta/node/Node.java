@@ -2217,17 +2217,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeStats = new NodeStats(this, sortOrder, config.createSubConfig("node.load"));
 
     // clientCore needs new load management and other settings from stats.
+    NodeClientCoreInit clientCoreInit =
+        new NodeClientCoreInit(config, nodeConfig, installConfig, toadlets);
     clientCore =
         new NodeClientCore(
-            this,
-            config,
-            nodeConfig,
-            installConfig,
-            getDarknetPortNumber(),
-            sortOrder,
-            toadlets,
-            databaseKey,
-            persistentSecret);
+            this, clientCoreInit, getDarknetPortNumber(), sortOrder, databaseKey, persistentSecret);
     toadlets.setCore(clientCore);
 
     if (JVMVersion.isEOL()) {
@@ -3625,7 +3619,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
         public HTMLNode getHTMLText() {
           HTMLNode content = new HTMLNode("div");
           SecurityLevelsToadlet.generatePasswordFormPage(
-              false, clientCore.getToadletContainer(), content, false, false, false, null, null);
+              false,
+              clientCore.getEndpoints().getToadletContainer(),
+              content,
+              false,
+              false,
+              false,
+              null,
+              null);
           return content;
         }
 

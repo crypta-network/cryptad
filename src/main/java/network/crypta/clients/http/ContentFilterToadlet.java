@@ -540,7 +540,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
         null,
         null,
         null,
-        core.getLinkFilterExceptionProvider());
+        core.getEndpoints().getToadletContainer());
   }
 
   private void validateOperation(FilterOperation operation) {

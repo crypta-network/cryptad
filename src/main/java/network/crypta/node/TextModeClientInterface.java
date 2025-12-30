@@ -417,7 +417,7 @@ public class TextModeClientInterface implements Runnable {
     sb.append("SHUTDOWN - exit the program\r\n");
     sb.append("ANNOUNCE[:<location>] - announce to the specified location\r\n");
     if (n.isUsingWrapper()) sb.append("RESTART - restart the program\r\n");
-    if (core != null && core.getDirectTMCI() != this) {
+    if (core != null && core.getEndpoints().getDirectTMCI() != this) {
       sb.append("QUIT - close the socket\r\n");
     }
     if (Node.isTestnetEnabled()) {
@@ -694,7 +694,7 @@ public class TextModeClientInterface implements Runnable {
           null,
           null,
           null,
-          core.getLinkFilterExceptionProvider());
+          core.getEndpoints().getToadletContainer());
       outsb.append(outputStream.toString(StandardCharsets.UTF_8));
     } catch (IOException e) {
       outsb.append("Bucket error?: ").append(e.getMessage());
@@ -749,7 +749,7 @@ public class TextModeClientInterface implements Runnable {
 
   private boolean handleQuit(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
-    if (core.getDirectTMCI() == this) {
+    if (core.getEndpoints().getDirectTMCI() == this) {
       outsb.append("QUIT command not available in console mode.");
       return false;
     }

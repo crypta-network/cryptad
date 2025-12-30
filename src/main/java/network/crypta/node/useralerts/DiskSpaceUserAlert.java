@@ -6,7 +6,6 @@ import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.io.FilenameGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,11 +71,12 @@ public class DiskSpaceUserAlert implements UserAlert {
   Status evaluate() {
     long shortTermLimit = core.getMinDiskFreeShortTerm();
     long longTermLimit = core.getMinDiskFreeLongTerm();
-    File tempDir = core.getTempFilenameGenerator().getDir();
-    if (tempDir.getUsableSpace() < shortTermLimit) return Status.TRANSIENT; // Takes precedence.
-    FilenameGenerator fg = core.getPersistentFilenameGenerator();
-    if (fg != null) {
-      File persistentTempDir = fg.getDir();
+    File tempDir = core.getTempDir();
+    if (tempDir != null && tempDir.getUsableSpace() < shortTermLimit) {
+      return Status.TRANSIENT; // Takes precedence.
+    }
+    File persistentTempDir = core.getPersistentTempDir();
+    if (persistentTempDir != null) {
       long space = persistentTempDir.getUsableSpace();
       if (space < shortTermLimit) return Status.PERSISTENT_COMPLETION;
       if (space < longTermLimit) return Status.PERSISTENT;
@@ -159,12 +159,12 @@ public class DiskSpaceUserAlert implements UserAlert {
     // (e.g., a mount point) would require java.nio.file APIs.
     if (status == Status.PERSISTENT || status == Status.PERSISTENT_COMPLETION) {
       // Be very careful about race conditions!
-      FilenameGenerator fg = core.getPersistentFilenameGenerator();
-      if (fg != null) {
-        return fg.getDir();
+      File persistentTempDir = core.getPersistentTempDir();
+      if (persistentTempDir != null) {
+        return persistentTempDir;
       }
     }
-    return core.getTempFilenameGenerator().getDir();
+    return core.getTempDir();
   }
 
   private synchronized Status getStatus() {

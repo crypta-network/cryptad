@@ -35,6 +35,7 @@ import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -182,7 +183,9 @@ class ModifyPersistentRequestTest {
 
     when(handler.getRebootRequest(false, handler, "req-7")).thenReturn(rebootRequest);
     when(node.getClientCore()).thenReturn(core);
-    when(core.getFCPServer()).thenReturn(server);
+    ClientEndpoints endpoints = mock(ClientEndpoints.class);
+    when(core.getEndpoints()).thenReturn(endpoints);
+    when(endpoints.getFCPServer()).thenReturn(server);
 
     message.run(handler, node);
 
@@ -333,7 +336,9 @@ class ModifyPersistentRequestTest {
 
     ClientLayerPersister jobRunner = mock(ClientLayerPersister.class);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(core.getFCPServer()).thenReturn(mock(FCPServer.class));
+    ClientEndpoints endpoints = mock(ClientEndpoints.class);
+    when(core.getEndpoints()).thenReturn(endpoints);
+    when(endpoints.getFCPServer()).thenReturn(mock(FCPServer.class));
     Node node = mock(Node.class);
     when(node.getClientCore()).thenReturn(core);
 

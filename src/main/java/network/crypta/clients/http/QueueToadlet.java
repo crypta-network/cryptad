@@ -4541,7 +4541,9 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
 
     private void saveCompletedIdentifiersOffThread() {
-      core.getExecutor().execute(this::saveCompletedIdentifiers, "Save completed identifiers");
+      core.getNode()
+          .getExecutor()
+          .execute(this::saveCompletedIdentifiers, "Save completed identifiers");
     }
 
     private void loadCompletedIdentifiers() throws PersistenceDisabledException {

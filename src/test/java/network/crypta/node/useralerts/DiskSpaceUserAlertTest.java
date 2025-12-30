@@ -18,7 +18,6 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
-import network.crypta.support.io.FilenameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -48,16 +47,12 @@ class DiskSpaceUserAlertTest {
     lenient().when(core.getMinDiskFreeShortTerm()).thenReturn(shortLimit);
     lenient().when(core.getMinDiskFreeLongTerm()).thenReturn(longLimit);
 
-    FilenameGenerator tempFg = mock(FilenameGenerator.class);
-    lenient().when(tempFg.getDir()).thenReturn(tempDir);
-    lenient().when(core.getTempFilenameGenerator()).thenReturn(tempFg);
+    lenient().when(core.getTempDir()).thenReturn(tempDir);
 
     if (persistentDirOrNull == null) {
-      lenient().when(core.getPersistentFilenameGenerator()).thenReturn(null);
+      lenient().when(core.getPersistentTempDir()).thenReturn(null);
     } else {
-      FilenameGenerator pfg = mock(FilenameGenerator.class);
-      lenient().when(pfg.getDir()).thenReturn(persistentDirOrNull);
-      lenient().when(core.getPersistentFilenameGenerator()).thenReturn(pfg);
+      lenient().when(core.getPersistentTempDir()).thenReturn(persistentDirOrNull);
     }
     return new DiskSpaceUserAlert(core);
   }
@@ -207,8 +202,8 @@ class DiskSpaceUserAlertTest {
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getMinDiskFreeShortTerm()).thenReturn(100L);
     when(core.getMinDiskFreeLongTerm()).thenReturn(200L);
-    // Cause evaluate() to throw via getTempFilenameGenerator()
-    when(core.getTempFilenameGenerator()).thenThrow(new RuntimeException("boom"));
+    // Cause evaluate() to throw via getTempDir()
+    when(core.getTempDir()).thenThrow(new RuntimeException("boom"));
 
     DiskSpaceUserAlert alert = new DiskSpaceUserAlert(core);
 

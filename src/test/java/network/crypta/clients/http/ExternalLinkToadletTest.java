@@ -25,6 +25,7 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.http.PageMaker.RenderParameters;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.HTMLNode;
@@ -61,7 +62,9 @@ class ExternalLinkToadletTest {
 
     when(context.getPageMaker()).thenReturn(pageMaker);
     when(node.getClientCore()).thenReturn(nodeClientCore);
-    when(nodeClientCore.getToadletContainer()).thenReturn(toadletContainer);
+    ClientEndpoints endpoints = mock(ClientEndpoints.class);
+    when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
+    when(endpoints.getToadletContainer()).thenReturn(toadletContainer);
 
     doNothing()
         .when(context)

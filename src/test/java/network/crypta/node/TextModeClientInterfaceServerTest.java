@@ -36,6 +36,7 @@ class TextModeClientInterfaceServerTest {
 
   @Mock private Node node;
   @Mock private NodeClientCore core;
+  @Mock private ClientEndpoints endpoints;
 
   @TempDir File tempDir;
 
@@ -51,6 +52,7 @@ class TextModeClientInterfaceServerTest {
     setStaticField(SSL.class, "ssf", null);
     // Reset TMCI SSL flag to a known state.
     setStaticField(TextModeClientInterfaceServer.class, "ssl", false);
+    Mockito.lenient().when(core.getEndpoints()).thenReturn(endpoints);
   }
 
   @Test
@@ -81,7 +83,8 @@ class TextModeClientInterfaceServerTest {
     // Direct TMCI should be started and registered on the core.
     ArgumentCaptor<TextModeClientInterface> tmciCaptor =
         ArgumentCaptor.forClass(TextModeClientInterface.class);
-    Mockito.verify(core).setDirectTMCI(tmciCaptor.capture());
+    Mockito.verify(core).getEndpoints();
+    Mockito.verify(endpoints).setDirectTMCI(tmciCaptor.capture());
     assertNotNull(tmciCaptor.getValue());
 
     // Sub-config should be finalized.
@@ -127,7 +130,7 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TMCIEnabledCallback_getAndSet_behaviour() {
     TextModeClientInterfaceServer serverMock = Mockito.mock(TextModeClientInterfaceServer.class);
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(serverMock);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(serverMock);
     TextModeClientInterfaceServer.TMCIEnabledCallback cb =
         new TextModeClientInterfaceServer.TMCIEnabledCallback(core);
 
@@ -139,7 +142,7 @@ class TextModeClientInterfaceServerTest {
     assertThrows(InvalidConfigValueException.class, () -> cb.set(false));
 
     // Now with no server
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     assertFalse(cb.get());
     assertDoesNotThrow(() -> cb.set(false));
     assertThrows(InvalidConfigValueException.class, () -> cb.set(true));
@@ -148,7 +151,7 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TMCIDirectEnabledCallback_getAndSet_behaviour() {
     // Direct TMCI present
-    Mockito.when(core.getDirectTMCI()).thenReturn(Mockito.mock(TextModeClientInterface.class));
+    Mockito.when(endpoints.getDirectTMCI()).thenReturn(Mockito.mock(TextModeClientInterface.class));
     TextModeClientInterfaceServer.TMCIDirectEnabledCallback cb =
         new TextModeClientInterfaceServer.TMCIDirectEnabledCallback(core);
 
@@ -156,7 +159,7 @@ class TextModeClientInterfaceServerTest {
     assertDoesNotThrow(() -> cb.set(true));
     assertThrows(InvalidConfigValueException.class, () -> cb.set(false));
 
-    Mockito.when(core.getDirectTMCI()).thenReturn(null);
+    Mockito.when(endpoints.getDirectTMCI()).thenReturn(null);
     assertFalse(cb.get());
     assertDoesNotThrow(() -> cb.set(false));
     assertThrows(InvalidConfigValueException.class, () -> cb.set(true));
@@ -190,7 +193,7 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TMCIBindtoCallback_getDefaultsAndSetNoopWhenEqual() {
     // No server -> get() returns default
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     TextModeClientInterfaceServer.TMCIBindtoCallback cb =
         new TextModeClientInterfaceServer.TMCIBindtoCallback(core);
 
@@ -201,7 +204,7 @@ class TextModeClientInterfaceServerTest {
 
   @Test
   void TMCIAllowedHostsCallback_getDefaultsAndSetWhenDisabled_throws() {
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     TextModeClientInterfaceServer.TMCIAllowedHostsCallback cb =
         new TextModeClientInterfaceServer.TMCIAllowedHostsCallback(core);
 
@@ -214,14 +217,14 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TCMIPortNumberCallback_getDefaultAndSetDelegates() throws InvalidConfigValueException {
     // With no server, get() returns default 2323
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     TextModeClientInterfaceServer.TCMIPortNumberCallback cb =
         new TextModeClientInterfaceServer.TCMIPortNumberCallback(core);
     assertEquals(2323, cb.get());
 
     // With a server present, set() delegates to setPort()
     TextModeClientInterfaceServer serverMock = Mockito.mock(TextModeClientInterfaceServer.class);
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(serverMock);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(serverMock);
     cb.set(12345);
     Mockito.verify(serverMock).setPort(12345);
   }

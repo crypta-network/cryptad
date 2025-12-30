@@ -184,7 +184,7 @@ class QueueToadletTest {
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
     when(core.getAlerts()).thenReturn(alerts);
-    when(core.getExecutor()).thenReturn(executor);
+    when(node.getExecutor()).thenReturn(executor);
 
     ClientContext context = createClientContext();
     context.init(starters, alerts);

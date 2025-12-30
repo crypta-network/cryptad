@@ -204,7 +204,7 @@ public class TextModeClientInterfaceServer implements Runnable {
               TextModeClientInterfaceConsole.in(),
               TextModeClientInterfaceConsole.out());
       node.getExecutor().execute(directTMCI, "Direct text mode interface");
-      core.setDirectTMCI(directTMCI);
+      core.getEndpoints().setDirectTMCI(directTMCI);
     }
 
     tmciConfig.finishedInitialization();
@@ -222,7 +222,7 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getTextModeClientInterface() != null;
+      return core.getEndpoints().getTextModeClientInterface() != null;
     }
 
     @Override
@@ -275,7 +275,7 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getDirectTMCI() != null;
+      return core.getEndpoints().getDirectTMCI() != null;
     }
 
     @Override
@@ -301,8 +301,8 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getTextModeClientInterface() != null)
-        return core.getTextModeClientInterface().bindTo;
+      if (core.getEndpoints().getTextModeClientInterface() != null)
+        return core.getEndpoints().getTextModeClientInterface().bindTo;
       else return NetworkInterface.DEFAULT_BIND_TO;
     }
 
@@ -310,7 +310,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     public void set(String val) throws InvalidConfigValueException {
       if (val.equals(get())) return;
       String[] failedAddresses =
-          core.getTextModeClientInterface().networkInterface.setBindTo(val, false);
+          core.getEndpoints().getTextModeClientInterface().networkInterface.setBindTo(val, false);
       if (failedAddresses != null) {
         // This is an advanced option for reasons of reducing clutter,
         // but it is expected to be used by regular users, not devs.
@@ -318,7 +318,7 @@ public class TextModeClientInterfaceServer implements Runnable {
         throw new InvalidConfigValueException(
             "could not change bind to: " + Arrays.toString(failedAddresses));
       }
-      core.getTextModeClientInterface().bindTo = val;
+      core.getEndpoints().getTextModeClientInterface().bindTo = val;
     }
   }
 
@@ -332,8 +332,8 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getTextModeClientInterface() != null) {
-        return core.getTextModeClientInterface().allowedHosts;
+      if (core.getEndpoints().getTextModeClientInterface() != null) {
+        return core.getEndpoints().getTextModeClientInterface().allowedHosts;
       }
       return NetworkInterface.DEFAULT_BIND_TO;
     }
@@ -341,7 +341,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (!val.equals(get())) {
-        TextModeClientInterfaceServer server = core.getTextModeClientInterface();
+        TextModeClientInterfaceServer server = core.getEndpoints().getTextModeClientInterface();
         if (server != null) {
           try {
             server.networkInterface.setAllowedHosts(val);
@@ -366,7 +366,8 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Integer get() {
-      if (core.getTextModeClientInterface() != null) return core.getTextModeClientInterface().port;
+      if (core.getEndpoints().getTextModeClientInterface() != null)
+        return core.getEndpoints().getTextModeClientInterface().port;
       else return 2323;
     }
 
@@ -374,7 +375,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     @Override
     public void set(Integer val) throws InvalidConfigValueException {
       if (get().equals(val)) return;
-      core.getTextModeClientInterface().setPort(val);
+      core.getEndpoints().getTextModeClientInterface().setPort(val);
     }
   }
 

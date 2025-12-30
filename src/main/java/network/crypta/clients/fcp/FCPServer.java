@@ -288,7 +288,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
     @Override
     public Integer get() {
-      return node.getFCPServer().port;
+      return node.getEndpoints().getFCPServer().port;
     }
 
     @Override
@@ -314,7 +314,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
     @Override
     public Boolean get() {
-      return node.getFCPServer().enabled;
+      return node.getEndpoints().getFCPServer().enabled;
     }
 
     // Changing the enabled flag at runtime is not supported.
@@ -374,14 +374,14 @@ public class FCPServer implements Runnable, DownloadCache {
 
     @Override
     public String get() {
-      return node.getFCPServer().bindTo;
+      return node.getEndpoints().getFCPServer().bindTo;
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       String oldValue = get();
       if (!val.equals(oldValue)) {
-        FCPServer server = node.getFCPServer();
+        FCPServer server = node.getEndpoints().getFCPServer();
 
         String[] failedAddresses = server.networkInterface.setBindTo(val, true);
         if (failedAddresses != null) {
@@ -413,7 +413,7 @@ public class FCPServer implements Runnable, DownloadCache {
 
     @Override
     public String get() {
-      FCPServer server = node.getFCPServer();
+      FCPServer server = node.getEndpoints().getFCPServer();
       if (server == null) return NetworkInterface.DEFAULT_BIND_TO;
       NetworkInterface netIface = server.networkInterface;
       return (netIface == null ? NetworkInterface.DEFAULT_BIND_TO : netIface.getAllowedHosts());
@@ -423,7 +423,7 @@ public class FCPServer implements Runnable, DownloadCache {
     public void set(String val) throws InvalidConfigValueException {
       if (!val.equals(get())) {
         try {
-          node.getFCPServer().networkInterface.setAllowedHosts(val);
+          node.getEndpoints().getFCPServer().networkInterface.setAllowedHosts(val);
         } catch (IllegalArgumentException e) {
           throw new InvalidConfigValueException(e);
         }
@@ -440,14 +440,14 @@ public class FCPServer implements Runnable, DownloadCache {
 
     @Override
     public String get() {
-      return node.getFCPServer().allowedHostsFullAccess.getAllowedHosts();
+      return node.getEndpoints().getFCPServer().allowedHostsFullAccess.getAllowedHosts();
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (!val.equals(get())) {
         try {
-          node.getFCPServer().allowedHostsFullAccess.setAllowedHosts(val);
+          node.getEndpoints().getFCPServer().allowedHostsFullAccess.setAllowedHosts(val);
         } catch (IllegalArgumentException e) {
           throw new InvalidConfigValueException(e);
         }

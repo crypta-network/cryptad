@@ -269,7 +269,8 @@ public class PluginManager {
 
     final Semaphore startingPlugins = new Semaphore(0);
     for (final String name : toStart) {
-      core.getExecutor()
+      core.getNode()
+          .getExecutor()
           .execute(
               () -> {
                 startPluginAuto(name, false);
@@ -277,7 +278,8 @@ public class PluginManager {
               });
     }
 
-    core.getExecutor()
+    core.getNode()
+        .getExecutor()
         .execute(
             () -> {
               startingPlugins.acquireUninterruptibly(toStart.length);
@@ -832,7 +834,8 @@ public class PluginManager {
             pi.getFilename());
       } else {
         Toadlet toadlet = pi.getConfigToadlet();
-        core.getToadletContainer()
+        core.getEndpoints()
+            .getToadletContainer()
             .register(
                 toadlet,
                 "FProxyToadlet.categoryConfig",
@@ -2107,7 +2110,7 @@ public class PluginManager {
   public void unregisterPlugin(PluginInfoWrapper wrapper, FredPlugin plug, boolean reloading) {
     unregisterPluginToadlet(wrapper);
     if (wrapper.isConfigurablePlugin()) {
-      core.getToadletContainer().unregister(wrapper.getConfigToadlet());
+      core.getEndpoints().getToadletContainer().unregister(wrapper.getConfigToadlet());
     }
     if (wrapper.isIPDetectorPlugin())
       node.getIpDetector().unregisterIPDetectorPlugin((FredPluginIPDetector) plug);
