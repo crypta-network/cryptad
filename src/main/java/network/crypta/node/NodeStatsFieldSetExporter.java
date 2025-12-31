@@ -8,12 +8,49 @@ import network.crypta.support.SimpleFieldSet;
 /**
  * Builds volatile statistics snapshots for node and peer reporting.
  *
- * <p>Extracted from {@link NodeStats} to keep the core collector focused on accumulation logic.
+ * <p>This helper assembles a short-lived {@link SimpleFieldSet} by pulling current counters and
+ * running averages from {@link NodeStats} and its collaborators. Callers use it when rendering UI
+ * panels or exporting peer-visible snapshots; each invocation recomputes values using the current
+ * wall clock time and does not cache or persist the result. The snapshot is best-effort: values are
+ * read independently and may reflect slightly different instants, but no mutation occurs within
+ * this exporter. Uptime-derived rates are normalized with a minimum of one second to avoid division
+ * by zero, and empty recent windows fall back to zero-rate outputs.
+ *
+ * <p>Responsibilities include:
+ *
+ * <ul>
+ *   <li>Computing uptime, ping/delay, and network size estimate fields.
+ *   <li>Counting peer connection states and routing backoff reasons.
+ *   <li>Aggregating I/O, swap, datastore, and success-rate metrics.
+ * </ul>
+ *
+ * @see NodeStats
+ * @see SimpleFieldSet
  */
 final class NodeStatsFieldSetExporter {
 
+  /** Prevents instantiation; this class is a static helper for snapshots. */
   private NodeStatsFieldSetExporter() {}
 
+  /**
+   * Creates a new snapshot field set containing volatile runtime metrics.
+   *
+   * <p>The method reads counters and running averages from {@code stats} and its {@link Node},
+   * {@link PeerManager}, and {@link RequestTracker} collaborators, computes derived rates and
+   * percentages, and stores the results as string values in a short-lived {@link SimpleFieldSet}.
+   * It uses {@link System#currentTimeMillis()} to calculate uptime and recent rates; uptime is
+   * clamped to at least one second, recent I/O rates fall back to {@code 0.0} when the window is
+   * empty, and payload percent is {@code -1} when total output is zero. The snapshot is not atomic
+   * and may mix values from adjacent instants; callers should treat it as an approximate view.
+   *
+   * <pre>{@code
+   * SimpleFieldSet snapshot =
+   *     NodeStatsFieldSetExporter.exportVolatileFieldSet(node.getNodeStats());
+   * }</pre>
+   *
+   * @param stats source statistics holder; must be non-null and fully initialized.
+   * @return a new short-lived field set containing computed snapshot values.
+   */
   static SimpleFieldSet exportVolatileFieldSet(NodeStats stats) {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     long now = System.currentTimeMillis();
@@ -197,16 +234,28 @@ final class NodeStatsFieldSetExporter {
     return fs;
   }
 
+  /**
+   * Adds startup time and uptime seconds to the field set.
+   *
+   * @param stats source statistics providing the node startup time.
+   * @param fs destination field set receiving uptime-related keys.
+   * @param now current time in milliseconds since the epoch.
+   */
   private static void putUptime(NodeStats stats, SimpleFieldSet fs, long now) {
     long nodeUptimeSeconds;
-    synchronized (stats) {
-      fs.put("startupTime", stats.node.getStartupTime());
-      nodeUptimeSeconds = (now - stats.node.getStartupTime()) / 1000;
-      if (nodeUptimeSeconds == 0) nodeUptimeSeconds = 1; // prevent division by zero
-      fs.put("uptimeSeconds", nodeUptimeSeconds);
-    }
+    long startupTime = stats.node.getStartupTime();
+    fs.put("startupTime", startupTime);
+    nodeUptimeSeconds = (now - startupTime) / 1000;
+    if (nodeUptimeSeconds == 0) nodeUptimeSeconds = 1; // prevent division by zero
+    fs.put("uptimeSeconds", nodeUptimeSeconds);
   }
 
+  /**
+   * Adds ping and bandwidth delay metrics to the field set.
+   *
+   * @param stats source statistics providing ping and delay averages.
+   * @param fs destination field set receiving ping and delay keys.
+   */
   private static void putPingAndDelays(NodeStats stats, SimpleFieldSet fs) {
     fs.put("averagePingTime", stats.getNodeAveragePingTime());
     fs.put("bwlimitDelayTime", stats.getBwlimitDelayTime());
@@ -214,6 +263,13 @@ final class NodeStatsFieldSetExporter {
     fs.put("bwlimitDelayTimeBulk", stats.getBwlimitDelayTimeBulk());
   }
 
+  /**
+   * Adds the most recent network size estimate fields to the field set.
+   *
+   * @param stats source statistics providing dark/opennet estimates.
+   * @param fs destination field set receiving estimate keys.
+   * @param now current time in milliseconds since the epoch.
+   */
   private static void putNetworkSizeEstimates(NodeStats stats, SimpleFieldSet fs, long now) {
     fs.put("opennetSizeEstimateSession", stats.getOpennetSizeEstimate(-1));
     fs.put("networkSizeEstimateSession", stats.getDarknetSizeEstimate(-1));
@@ -225,6 +281,12 @@ final class NodeStatsFieldSetExporter {
     }
   }
 
+  /**
+   * Adds routing miss distance averages to the field set.
+   *
+   * @param stats source statistics holding running averages.
+   * @param fs destination field set receiving routing miss fields.
+   */
   private static void putRoutingMissDistances(NodeStats stats, SimpleFieldSet fs) {
     fs.put("routingMissDistanceLocal", stats.routingMissDistanceLocal.currentValue());
     fs.put("routingMissDistanceRemote", stats.routingMissDistanceRemote.currentValue());
@@ -233,6 +295,13 @@ final class NodeStatsFieldSetExporter {
     fs.put("routingMissDistanceRT", stats.routingMissDistanceRT.currentValue());
   }
 
+  /**
+   * Adds total and recent I/O counters and rates to the field set.
+   *
+   * @param stats source statistics providing counters and recent deltas.
+   * @param fs destination field set receiving I/O-related keys.
+   * @param nodeUptimeSecondsLocal uptime seconds used to normalize totals.
+   */
   private static void putTotalAndRecentIOMetrics(
       NodeStats stats, SimpleFieldSet fs, long nodeUptimeSecondsLocal) {
     long[] total = stats.node.getCollector().getTotalIO();
@@ -264,6 +333,12 @@ final class NodeStatsFieldSetExporter {
     fs.put("announceSentBytes", stats.getAnnounceBytesSent());
   }
 
+  /**
+   * Adds routing backoff reason counters for real-time and bulk traffic.
+   *
+   * @param stats source statistics exposing backoff reason snapshots.
+   * @param fs destination field set receiving reason count fields.
+   */
   private static void putRoutingBackoffCounters(NodeStats stats, SimpleFieldSet fs) {
     String[] routingBackoffReasons = stats.peers.getPeerNodeRoutingBackoffReasons(true);
     for (String routingBackoffReason : routingBackoffReasons) {
@@ -280,6 +355,13 @@ final class NodeStatsFieldSetExporter {
     }
   }
 
+  /**
+   * Adds swap, location-change, and store/cache metrics to the field set.
+   *
+   * @param stats source statistics providing node swap and store counters.
+   * @param fs destination field set receiving swap and store keys.
+   * @param nodeUptimeSecondsLocal uptime seconds used to normalize rates.
+   */
   private static void putSwapAndStoreMetrics(
       NodeStats stats, SimpleFieldSet fs, long nodeUptimeSecondsLocal) {
     double swaps = stats.node.getSwaps();
