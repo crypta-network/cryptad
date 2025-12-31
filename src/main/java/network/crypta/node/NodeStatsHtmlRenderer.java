@@ -15,8 +15,24 @@ import network.crypta.support.math.RunningAverage;
 /**
  * Renders {@link NodeStats} metrics into HTML views.
  *
- * <p>Splitting this renderer out keeps {@link NodeStats} focused on data collection while isolating
- * UI formatting concerns.
+ * <p>This utility converts live node statistics into human-readable tables and paragraphs for
+ * status pages. Callers supply a {@link NodeStats} instance plus an {@link HTMLNode} container, and
+ * each method appends structured rows instead of returning a standalone document. The renderer
+ * keeps no state and performs only formatting; it reflects whatever snapshot values are exposed by
+ * {@code NodeStats} at call time, so repeated calls will show updated counters and averages.
+ *
+ * <p>Thread-safety follows the inputs: the class itself is stateless, but callers should avoid
+ * mutating the same {@link HTMLNode} from multiple threads and should ensure the supplied {@link
+ * NodeStats} supports concurrent reads.
+ *
+ * <ul>
+ *   <li>Responsibility: format rates, timing averages, and per-reason counts.
+ *   <li>Output: tables and paragraphs appended to an existing HTML tree.
+ *   <li>No side effects beyond HTML node construction.
+ * </ul>
+ *
+ * @see NodeStats
+ * @see HTMLNode
  */
 public final class NodeStatsHtmlRenderer {
   private static final String HTML_TABLE = "table";
@@ -27,8 +43,14 @@ public final class NodeStatsHtmlRenderer {
   /**
    * Renders high-level success-rate statistics into the given HTML container.
    *
-   * @param stats data source for metrics.
-   * @param parent container node to append a table to; must not be {@code null}.
+   * <p>The method appends a table that summarizes overall request success rates, per-key-type
+   * rates, and transfer outcomes. Each {@link RunningAverage} is rendered as a percentage with
+   * three decimal places and a formatted count; if an average has no reports, the table shows a
+   * dash and zero. A final row reports bulk transfer success based on {@link BulkTransmitter}
+   * counters. The call is not idempotent: invoking it multiple times will append multiple tables.
+   *
+   * @param stats data source providing running averages and counters; must be non-null.
+   * @param parent container node that receives a new table child.
    */
   public static void fillSuccessRateBox(NodeStats stats, HTMLNode parent) {
     HTMLNode list = parent.addChild(HTML_TABLE, HTML_BORDER, "0");
@@ -58,7 +80,7 @@ public final class NodeStatsHtmlRenderer {
         };
     DecimalFormat fix3p3pct = new DecimalFormat("##0.000%");
     NumberFormat thousandPoint = NumberFormat.getInstance();
-    addSuccessRateHeaderRow(stats, list);
+    addSuccessRateHeaderRow(list);
     addSuccessRateRows(list, averages, names, fix3p3pct, thousandPoint);
 
     long[] bulkSuccess = BulkTransmitter.transferSuccess();
@@ -68,7 +90,7 @@ public final class NodeStatsHtmlRenderer {
     row.addChild("td", Long.toString(bulkSuccess[0]));
   }
 
-  private static void addSuccessRateHeaderRow(NodeStats stats, HTMLNode list) {
+  private static void addSuccessRateHeaderRow(HTMLNode list) {
     HTMLNode row = list.addChild("tr");
     row.addChild("th", l10n("group"));
     row.addChild("th", l10n("pSuccess"));
@@ -97,9 +119,14 @@ public final class NodeStatsHtmlRenderer {
   /**
    * Appends rows describing remote preemptive-reject reasons.
    *
-   * @param stats data source for reject counters.
-   * @param table an HTML table node to append rows to; must not be {@code null}.
-   * @return {@code true} if any rows were added.
+   * <p>The rows are derived from the current reject counters and are appended to the provided table
+   * in descending count order, with a stable alphabetical tie-breaker. This method does not clear
+   * or replace existing table content, so callers typically create or position the table header
+   * before invoking it. The call has no effect when no reject reasons are recorded.
+   *
+   * @param stats data source providing reject counters; must be non-null.
+   * @param table HTML table node that receives new reject rows.
+   * @return {@code true} when at least one reject-reason row is appended.
    */
   public static boolean getRejectReasonsTable(NodeStats stats, HTMLNode table) {
     return addRejectReasonRows(stats.preemptiveRejectReasons, table) > 0;
@@ -108,9 +135,14 @@ public final class NodeStatsHtmlRenderer {
   /**
    * Appends rows describing local preemptive-reject reasons.
    *
-   * @param stats data source for reject counters.
-   * @param table an HTML table node to append rows to; must not be {@code null}.
-   * @return {@code true} if any rows were added.
+   * <p>The rows are derived from the current local reject counters and are appended to the provided
+   * table in descending count order, with a stable alphabetical tie-breaker. The method does not
+   * clear or replace existing content, so callers should add headers up front. If no local rejects
+   * are present, the table is left unchanged.
+   *
+   * @param stats data source providing reject counters; must be non-null.
+   * @param table HTML table node that receives new reject rows.
+   * @return {@code true} when at least one reject-reason row is appended.
    */
   public static boolean getLocalRejectReasonsTable(NodeStats stats, HTMLNode table) {
     return addRejectReasonRows(stats.localPreemptiveRejectReasons, table) > 0;
@@ -138,6 +170,18 @@ public final class NodeStatsHtmlRenderer {
     return items.size();
   }
 
+  /**
+   * Appends a detailed timing table for CHK/SSK local fetch durations.
+   *
+   * <p>The table includes separate columns for CHK and SSK timings and rows for successful,
+   * unsuccessful, and overall averages. Values are formatted as human-readable durations using
+   * {@link TimeUtil}, based on the current running averages held in {@code stats}. Each call
+   * appends a fresh table to the supplied container; repeated calls will create multiple tables
+   * rather than updating existing ones.
+   *
+   * @param stats data source providing timing averages; must be non-null.
+   * @param html container node that receives the timing table.
+   */
   public static void fillDetailedTimingsBox(NodeStats stats, HTMLNode html) {
     HTMLNode table = html.addChild(HTML_TABLE);
     HTMLNode row = table.addChild("tr");
@@ -194,19 +238,31 @@ public final class NodeStatsHtmlRenderer {
         "td", TimeUtil.formatTime((long) stats.localSSKFetchTimeAverageRT.currentValue(), 2, true));
   }
 
-  /** Renders NLM delay and timeout fractions to HTML. */
+  /**
+   * Renders NLM delay and timeout fractions to HTML.
+   *
+   * <p>The method adds a brief paragraph describing how many requests are waiting for slots, then
+   * renders a table of delay snapshots for real-time and bulk traffic, split into local and remote
+   * columns. When slot timeout counts are available, an additional table is appended that expresses
+   * fatal timeouts as fractions of allocated slots. All values are derived from snapshot methods on
+   * {@code stats} and are formatted for display; no state is cached.
+   *
+   * @param stats data source providing delay snapshots and slot counters.
+   * @param content container node that receives paragraphs and tables.
+   */
   public static void drawNewLoadManagementDelayTimes(NodeStats stats, HTMLNode content) {
     WaitingForSlots waitingSlots = stats.node.getTracker().countRequestsWaitingForSlots();
     content
         .addChild("p")
         .addChild(
             "#",
-            l10n(
-                "slotsWaiting",
-                new String[] {"local", "remote"},
-                new String[] {
-                  Integer.toString(waitingSlots.local), Integer.toString(waitingSlots.remote)
-                }));
+            NodeL10n.getBase()
+                .getString(
+                    "NodeStats.slotsWaiting",
+                    new String[] {"local", "remote"},
+                    new String[] {
+                      Integer.toString(waitingSlots.local), Integer.toString(waitingSlots.remote)
+                    }));
     HTMLNode table = content.addChild(HTML_TABLE, HTML_BORDER, "0");
     HTMLNode header = table.addChild("tr");
     header.addChild("th", l10n("delayTimes"));
@@ -252,15 +308,23 @@ public final class NodeStatsHtmlRenderer {
     }
   }
 
+  /**
+   * Appends the remote-request HTL summary for the selected traffic class.
+   *
+   * <p>This method delegates to the hourly statistics view, selecting either real-time or bulk
+   * counters based on {@code realTime}. The delegate writes its output into the provided HTML
+   * container, so callers should pass an initialized node and manage any surrounding headers. The
+   * call is additive and does not clear or reuse prior content.
+   *
+   * @param stats data source providing hourly statistics; must be non-null.
+   * @param html container node that receives the HTL summary.
+   * @param realTime {@code true} for real-time traffic, {@code false} for bulk.
+   */
   public static void fillRemoteRequestHTLsBox(NodeStats stats, HTMLNode html, boolean realTime) {
     stats.getHourlyStats(realTime).fillRemoteRequestHTLsBox(html);
   }
 
   private static String l10n(String key) {
     return NodeL10n.getBase().getString("NodeStats." + key);
-  }
-
-  private static String l10n(String key, String[] patterns, String[] values) {
-    return NodeL10n.getBase().getString("NodeStats." + key, patterns, values);
   }
 }
