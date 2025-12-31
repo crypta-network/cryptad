@@ -34,10 +34,16 @@ class TextModeClientInterfaceTest {
   @Mock Node node;
   @Mock NodeClientCore core;
   @Mock HighLevelSimpleClient client;
+  @Mock ClientEndpoints endpoints;
 
   @Captor ArgumentCaptor<Boolean> getChkOnlyCaptor;
 
   @TempDir Path tmpDir;
+
+  @org.junit.jupiter.api.BeforeEach
+  void setUp() {
+    when(core.getEndpoints()).thenReturn(endpoints);
+  }
 
   private String runWithInput(String input) throws Exception {
     // Arrange IO
@@ -45,7 +51,7 @@ class TextModeClientInterfaceTest {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     // Minimal stubbing used by header/QUIT path
-    when(core.getDirectTMCI()).thenReturn(null); // enable QUIT on header and command
+    when(endpoints.getDirectTMCI()).thenReturn(null); // enable QUIT on header and command
 
     // Construct SUT
     TextModeClientInterface tmci =
@@ -78,7 +84,7 @@ class TextModeClientInterfaceTest {
   @Test
   void put_singleLine_expectInsertCalledAndUriPrinted() throws Exception {
     // Arrange
-    when(core.getDirectTMCI()).thenReturn(null);
+    when(endpoints.getDirectTMCI()).thenReturn(null);
     when(client.insert(any(), any(Boolean.class), any())).thenReturn(FreenetURI.EMPTY_CHK_URI);
 
     String output = runWithInput("PUT:Hello world!\nQUIT\n");
@@ -96,7 +102,7 @@ class TextModeClientInterfaceTest {
   @Test
   void getchk_multiline_expectInsertCalledWithChkOnlyTrue() throws Exception {
     // Arrange
-    when(core.getDirectTMCI()).thenReturn(null);
+    when(endpoints.getDirectTMCI()).thenReturn(null);
     when(client.insert(any(), any(Boolean.class), any())).thenReturn(FreenetURI.EMPTY_CHK_URI);
 
     String input = "GETCHK:\nLine 1\nLine 2\n.\nQUIT\n";

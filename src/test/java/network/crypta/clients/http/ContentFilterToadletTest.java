@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -27,6 +28,7 @@ import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
+import network.crypta.node.ClientEndpoints;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
@@ -46,7 +48,7 @@ class ContentFilterToadletTest {
 
   private HighLevelSimpleClient client;
   private NodeClientCore core;
-  private ToadletContainer container;
+  private SimpleToadletServer container;
   private ToadletContext ctx;
   private BucketFactory bucketFactory;
 
@@ -54,9 +56,12 @@ class ContentFilterToadletTest {
   void setUp() {
     client = mock(HighLevelSimpleClient.class);
     core = mock(NodeClientCore.class);
-    container = mock(ToadletContainer.class);
+    container = mock(SimpleToadletServer.class);
     ctx = mock(ToadletContext.class);
     bucketFactory = mock(BucketFactory.class);
+    ClientEndpoints endpoints = mock(ClientEndpoints.class);
+    lenient().when(core.getEndpoints()).thenReturn(endpoints);
+    lenient().when(endpoints.getToadletContainer()).thenReturn(container);
   }
 
   @Test

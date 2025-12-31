@@ -31,6 +31,7 @@ import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeIPDetector;
@@ -78,7 +79,9 @@ class FirstTimeWizardNewToadletTest {
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     when(pageMaker.getPageNode(anyString(), eq(ctx), any(PageMaker.RenderParameters.class)))
         .thenReturn(pageNode);
-    when(core.getToadletContainer()).thenReturn(toadletContainer);
+    ClientEndpoints endpoints = mock(ClientEndpoints.class);
+    when(core.getEndpoints()).thenReturn(endpoints);
+    when(endpoints.getToadletContainer()).thenReturn(toadletContainer);
     when(toadletContainer.getFormPassword()).thenReturn("form-pass");
     lenient().when(config.get("node")).thenReturn(nodeSubConfig);
     lenient().when(config.get("fproxy")).thenReturn(fproxySubConfig);

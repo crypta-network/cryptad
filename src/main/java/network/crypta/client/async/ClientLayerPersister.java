@@ -145,6 +145,29 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     this.bandwidthStatsPutter = stats;
   }
 
+  /**
+   * Constructs a persistence coordinator using a new bandwidth stats collector.
+   *
+   * <p>This overload creates a dedicated {@link PersistentStatsPutter} instance so callers do not
+   * need to supply one explicitly.
+   */
+  public ClientLayerPersister(
+      PriorityAwareExecutor executor,
+      Ticker ticker,
+      Node node,
+      NodeClientCore core,
+      PersistentTempBucketFactory persistentTempFactory,
+      TempBucketFactory tempBucketFactory) {
+    this(
+        executor,
+        ticker,
+        node,
+        core,
+        persistentTempFactory,
+        tempBucketFactory,
+        new PersistentStatsPutter());
+  }
+
   private void loadAllVariants(
       PartialLoad loaded,
       File dir,
@@ -932,6 +955,16 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    */
   public synchronized File getWriteFilename() {
     return writeToFilename;
+  }
+
+  /**
+   * Returns the persistent bandwidth statistics collector.
+   *
+   * <p>The returned instance accumulates bandwidth and uptime data across restarts when the client
+   * persistence layer is enabled.
+   */
+  public PersistentStatsPutter getBandwidthStatsPutter() {
+    return bandwidthStatsPutter;
   }
 
   /**

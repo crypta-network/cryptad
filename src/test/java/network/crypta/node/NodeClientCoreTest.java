@@ -3,9 +3,7 @@ package network.crypta.node;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
@@ -17,8 +15,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.client.async.ClientRequestScheduler;
-import network.crypta.client.filter.FilterCallback;
-import network.crypta.client.filter.GenericReadFilterCallback;
+import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.clients.http.bookmark.BookmarkManager;
@@ -64,12 +61,11 @@ class NodeClientCoreTest {
     setField(core, "node", node);
     when(node.getSecurityLevels()).thenReturn(securityLevels);
 
-    ProgramDirectory downloads = new ProgramDirectory();
-    // ProgramDirectory.dir is protected s, and we are in the same package — set directly
-    downloads.dir = tempDir.toFile();
-    setField(core, "downloadsDir", downloads);
+    setField(core, "downloadsDir", tempDir.toFile());
+    setField(core, "transferPolicy", new NodeClientCoreTransferPolicy(node, tempDir.toFile()));
 
-    setField(core, "toadletContainer", toadlets);
+    ClientEndpoints endpoints = new ClientEndpoints(Mockito.mock(FCPServer.class), null, toadlets);
+    setField(core, "endpoints", endpoints);
     setField(core, "requestStarters", requestStarters);
 
     // sensible default unless a test overrides
@@ -200,9 +196,9 @@ class NodeClientCoreTest {
     when(toadlets.isAdvancedModeEnabled()).thenReturn(true);
     when(toadlets.isFProxyJavascriptEnabled()).thenReturn(true);
 
-    assertSame(toadlets, core.getLinkFilterExceptionProvider());
-    assertSame(bm, core.getBookmarkManager());
-    assertEquals(0, core.getBookmarkURIs().length);
+    assertSame(toadlets, core.getEndpoints().getToadletContainer());
+    assertSame(bm, core.getEndpoints().getToadletContainer().getBookmarks());
+    assertEquals(0, core.getEndpoints().getToadletContainer().getBookmarkURIs().length);
     assertTrue(core.isAdvancedModeEnabled());
     assertTrue(core.isFProxyJavascriptEnabled());
   }
@@ -210,21 +206,11 @@ class NodeClientCoreTest {
   @Test
   void fproxySetterGetter_and_myName_delegations_work() {
     FProxyToadlet fproxy = Mockito.mock(FProxyToadlet.class);
-    core.setFProxy(fproxy);
-    assertSame(fproxy, core.getFProxy());
+    core.getEndpoints().setFProxy(fproxy);
+    assertSame(fproxy, core.getEndpoints().getFProxy());
 
     when(node.getMyName()).thenReturn("MyNode");
     assertEquals("MyNode", core.getMyName());
-  }
-
-  @Test
-  void createFilterCallback_whenCalled_returnsGenericReadFilterCallback() throws Exception {
-    java.net.URI uri = new java.net.URI("http://example/");
-    network.crypta.client.filter.FoundURICallback cb =
-        Mockito.mock(network.crypta.client.filter.FoundURICallback.class);
-    FilterCallback fc = core.createFilterCallback(uri, cb);
-    assertNotNull(fc);
-    assertInstanceOf(GenericReadFilterCallback.class, fc);
   }
 
   // --- helpers ---

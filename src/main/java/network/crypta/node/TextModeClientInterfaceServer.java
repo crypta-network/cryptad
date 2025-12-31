@@ -64,6 +64,19 @@ public class TextModeClientInterfaceServer implements Runnable {
   private static boolean ssl = false;
   final NetworkInterface networkInterface;
 
+  /**
+   * Result returned from {@link #maybeCreate(Node, NodeClientCore, Config)}.
+   *
+   * <p>The returned direct TMCI is created but not started. Callers should register it with {@link
+   * ClientEndpoints#setDirectTMCI(TextModeClientInterface)} and schedule it on the node executor
+   * only after {@link NodeClientCore#getEndpoints()} is fully initialized.
+   *
+   * @param server TMCI server instance, or {@code null} when TMCI is disabled.
+   * @param directTMCI direct text-mode interface instance, or {@code null} when disabled.
+   */
+  public record InitResult(
+      TextModeClientInterfaceServer server, TextModeClientInterface directTMCI) {}
+
   TextModeClientInterfaceServer(
       Node node, NodeClientCore core, int port, String bindTo, String allowedHosts) {
     this.n = node;
@@ -91,21 +104,21 @@ public class TextModeClientInterfaceServer implements Runnable {
   }
 
   /**
-   * Creates a TMCI server according to the provided configuration, or returns {@code null} when the
-   * feature is disabled.
+   * Creates TMCI endpoints according to the provided configuration.
    *
    * <p>This method wires the {@code console} sub-configuration, registers relevant options ({@code
    * enabled}, {@code ssl}, {@code bindTo}, {@code allowedHosts}, {@code port}, and {@code
-   * directEnabled}), and conditionally instantiates the network-backed server. When {@code
-   * directEnabled} is set, a direct in-process text interface is also started using the process
-   * input/output streams; this is independent of the network listener. The returned server is not
-   * started automatically; callers should invoke {@link #start()} when a non-null value is
-   * returned.
+   * directEnabled}), and conditionally instantiates the network-backed server. The returned init
+   * result includes a server instance when TMCI is enabled, or {@code null} when disabled. When
+   * {@code directEnabled} is set, a direct in-process text interface is created using the process
+   * input/output streams; callers are responsible for registering and starting it after the core
+   * endpoints are assigned. The returned server is not started automatically; callers should invoke
+   * {@link #start()} when a non-null value is returned.
    *
    * <pre>{@code
-   * var server = TextModeClientInterfaceServer.maybeCreate(node, core, config);
-   * if (server != null) {
-   *   server.start();
+   * var init = TextModeClientInterfaceServer.maybeCreate(node, core, config);
+   * if (init.server() != null) {
+   *   init.server().start();
    * }
    * }</pre>
    *
@@ -115,12 +128,12 @@ public class TextModeClientInterfaceServer implements Runnable {
    *     must not be {@code null}.
    * @param config the root {@link Config} used to obtain the {@code console} sub-config and read
    *     options that control TMCI behavior; must not be {@code null}.
-   * @return a configured server when TMCI is enabled in the configuration; otherwise {@code null}.
+   * @return a result containing the configured server and optional direct TMCI instance.
    */
-  public static TextModeClientInterfaceServer maybeCreate(
-      Node node, NodeClientCore core, Config config) {
+  public static InitResult maybeCreate(Node node, NodeClientCore core, Config config) {
 
     TextModeClientInterfaceServer server = null;
+    TextModeClientInterface directTMCI = null;
 
     SubConfig tmciConfig = config.createSubConfig("console");
 
@@ -195,7 +208,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     if (direct) {
       HighLevelSimpleClient client =
           core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, false);
-      TextModeClientInterface directTMCI =
+      directTMCI =
           new TextModeClientInterface(
               node,
               core,
@@ -203,13 +216,11 @@ public class TextModeClientInterfaceServer implements Runnable {
               core.getDownloadsDir(),
               TextModeClientInterfaceConsole.in(),
               TextModeClientInterfaceConsole.out());
-      node.getExecutor().execute(directTMCI, "Direct text mode interface");
-      core.setDirectTMCI(directTMCI);
     }
 
     tmciConfig.finishedInitialization();
 
-    return server; // caller must call start()
+    return new InitResult(server, directTMCI); // caller must call start()
   }
 
   static class TMCIEnabledCallback extends BooleanCallback {
@@ -222,7 +233,8 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getTextModeClientInterface() != null;
+      ClientEndpoints endpoints = core.getEndpoints();
+      return endpoints != null && endpoints.getTextModeClientInterface() != null;
     }
 
     @Override
@@ -275,7 +287,8 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Boolean get() {
-      return core.getDirectTMCI() != null;
+      ClientEndpoints endpoints = core.getEndpoints();
+      return endpoints != null && endpoints.getDirectTMCI() != null;
     }
 
     @Override
@@ -301,16 +314,20 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getTextModeClientInterface() != null)
-        return core.getTextModeClientInterface().bindTo;
-      else return NetworkInterface.DEFAULT_BIND_TO;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.bindTo;
+      }
+      return NetworkInterface.DEFAULT_BIND_TO;
     }
 
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (val.equals(get())) return;
       String[] failedAddresses =
-          core.getTextModeClientInterface().networkInterface.setBindTo(val, false);
+          core.getEndpoints().getTextModeClientInterface().networkInterface.setBindTo(val, false);
       if (failedAddresses != null) {
         // This is an advanced option for reasons of reducing clutter,
         // but it is expected to be used by regular users, not devs.
@@ -318,7 +335,7 @@ public class TextModeClientInterfaceServer implements Runnable {
         throw new InvalidConfigValueException(
             "could not change bind to: " + Arrays.toString(failedAddresses));
       }
-      core.getTextModeClientInterface().bindTo = val;
+      core.getEndpoints().getTextModeClientInterface().bindTo = val;
     }
   }
 
@@ -332,8 +349,11 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public String get() {
-      if (core.getTextModeClientInterface() != null) {
-        return core.getTextModeClientInterface().allowedHosts;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.allowedHosts;
       }
       return NetworkInterface.DEFAULT_BIND_TO;
     }
@@ -341,7 +361,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     @Override
     public void set(String val) throws InvalidConfigValueException {
       if (!val.equals(get())) {
-        TextModeClientInterfaceServer server = core.getTextModeClientInterface();
+        TextModeClientInterfaceServer server = core.getEndpoints().getTextModeClientInterface();
         if (server != null) {
           try {
             server.networkInterface.setAllowedHosts(val);
@@ -366,15 +386,20 @@ public class TextModeClientInterfaceServer implements Runnable {
 
     @Override
     public Integer get() {
-      if (core.getTextModeClientInterface() != null) return core.getTextModeClientInterface().port;
-      else return 2323;
+      ClientEndpoints endpoints = core.getEndpoints();
+      TextModeClientInterfaceServer server =
+          endpoints == null ? null : endpoints.getTextModeClientInterface();
+      if (server != null) {
+        return server.port;
+      }
+      return 2323;
     }
 
     // Not implemented: port updates handled elsewhere
     @Override
     public void set(Integer val) throws InvalidConfigValueException {
       if (get().equals(val)) return;
-      core.getTextModeClientInterface().setPort(val);
+      core.getEndpoints().getTextModeClientInterface().setPort(val);
     }
   }
 

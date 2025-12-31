@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.UUID;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.filter.FilterCallback;
+import network.crypta.client.filter.GenericReadFilterCallback;
+import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.clients.fcp.FCPPluginMessage;
 import network.crypta.clients.http.PageMaker;
@@ -130,7 +132,10 @@ public class PluginRespirator {
    */
   public FilterCallback makeFilterCallback(String path) {
     try {
-      return node.getClientCore().createFilterCallback(URIPreEncoder.encodeURI(path), null);
+      ToadletContainer container = getToadletContainer();
+      LinkFilterExceptionProvider provider =
+          container instanceof LinkFilterExceptionProvider linkProvider ? linkProvider : null;
+      return new GenericReadFilterCallback(URIPreEncoder.encodeURI(path), null, null, provider);
     } catch (URISyntaxException e) {
       throw new AssertionError("Invalid filter callback path: " + path, e);
     }
@@ -259,6 +264,7 @@ public class PluginRespirator {
     // pluginName being null will be handled by createFCPPluginConnectionForIntraNodeFCP().
 
     return node.getClientCore()
+        .getEndpoints()
         .getFCPServer()
         .createFCPPluginConnectionForIntraNodeFCP(pluginName, messageHandler);
   }
@@ -298,7 +304,7 @@ public class PluginRespirator {
    *     discard it.
    */
   public FCPPluginConnection getPluginConnectionByID(UUID connectionID) throws IOException {
-    return node.getClientCore().getFCPServer().getPluginConnectionByID(connectionID);
+    return node.getClientCore().getEndpoints().getFCPServer().getPluginConnectionByID(connectionID);
   }
 
   /**
@@ -316,7 +322,7 @@ public class PluginRespirator {
    * @return the node {@link ToadletContainer}, or {@code null} if HTTP is not available.
    */
   public ToadletContainer getToadletContainer() {
-    return node.getClientCore().getToadletContainer();
+    return node.getClientCore().getEndpoints().getToadletContainer();
   }
 
   /**

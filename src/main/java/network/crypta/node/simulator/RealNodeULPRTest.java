@@ -335,6 +335,7 @@ public class RealNodeULPRTest extends RealNodeTest {
       try {
         nodes[i % nodes.length]
             .getClientCore()
+            .getTransfers()
             .realGetKey(fetchKey, false, false, false, REAL_TIME_FLAG);
         LOG.error("TEST FAILED: KEY ALREADY PRESENT!!!");
         System.exit(EXIT_KEY_EXISTS);

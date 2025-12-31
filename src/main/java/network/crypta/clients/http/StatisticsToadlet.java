@@ -251,7 +251,7 @@ public class StatisticsToadlet extends Toadlet {
       return;
     }
 
-    node.getClientCore().getBandwidthStatsPutter().updateData(node);
+    node.getClientCore().getClientLayerPersister().getBandwidthStatsPutter().updateData(node);
 
     PageNode page = ctx.getPageMaker().getPageNode(l10n("fullTitle"), ctx);
 
@@ -460,7 +460,11 @@ public class StatisticsToadlet extends Toadlet {
       drawOverviewBox(
           overviewInfobox,
           nodeUptimeSeconds,
-          node.getClientCore().getBandwidthStatsPutter().getLatestUptimeData().getTotalUptime(),
+          node.getClientCore()
+              .getClientLayerPersister()
+              .getBandwidthStatsPutter()
+              .getLatestUptimeData()
+              .getTotalUptime(),
           now,
           swaps,
           noSwaps);
@@ -1030,7 +1034,11 @@ public class StatisticsToadlet extends Toadlet {
     if (totalAccess == null) {
       return 0;
     }
-    return node.getClientCore().getBandwidthStatsPutter().getLatestUptimeData().getTotalUptime();
+    return node.getClientCore()
+        .getClientLayerPersister()
+        .getBandwidthStatsPutter()
+        .getLatestUptimeData()
+        .getTotalUptime();
   }
 
   private String formatTotalValue(StoreAccessStats totalAccess, long totalValue) {
@@ -1411,7 +1419,7 @@ public class StatisticsToadlet extends Toadlet {
     long totalPayloadRate = totalPayload / nodeUptimeSeconds;
     if (node.getClientCore() == null) throw new NullPointerException();
     BandwidthStatsContainer stats =
-        node.getClientCore().getBandwidthStatsPutter().getLatestBWData();
+        node.getClientCore().getClientLayerPersister().getBandwidthStatsPutter().getLatestBWData();
     if (stats == null) throw new NullPointerException();
     long overallTotalOut = stats.getTotalBytesOut();
     long overallTotalIn = stats.getTotalBytesIn();

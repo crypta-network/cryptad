@@ -1267,8 +1267,8 @@ public class DarknetPeerNode extends PeerNode {
     public void accept() {
       acceptedOrRejected = true;
       final String baseFilename = "direct-" + FileUtil.sanitize(getName()) + "-" + filename;
-      final File dest = node.getClientCore().downloadsDir().file(baseFilename + ".part");
-      destination = node.getClientCore().downloadsDir().file(baseFilename);
+      final File dest = new File(node.getClientCore().getDownloadsDir(), baseFilename + ".part");
+      destination = new File(node.getClientCore().getDownloadsDir(), baseFilename);
       try {
         data = new FileRandomAccessBuffer(dest, size, false);
       } catch (IOException e) {
@@ -1292,7 +1292,8 @@ public class DarknetPeerNode extends PeerNode {
                       onReceiveFailure();
                     } else {
                       data.close();
-                      if (!dest.renameTo(node.getClientCore().downloadsDir().file(baseFilename))) {
+                      if (!dest.renameTo(
+                          new File(node.getClientCore().getDownloadsDir(), baseFilename))) {
                         LOG.error("Failed to rename {} to remove .part suffix.", dest.getName());
                       }
                       onReceiveSuccess();
@@ -1571,6 +1572,7 @@ public class DarknetPeerNode extends PeerNode {
           // Hopefully we will have a container when this function is called!
           HTMLNode form =
               node.getClientCore()
+                  .getEndpoints()
                   .getToadletContainer()
                   .addFormChild(div, "/friends/", "f2fFileOfferAcceptForm");
 

@@ -79,7 +79,7 @@ final class FProxyRegistrar {
             new RequestClientBuilder().realTime().build());
 
     FProxyToadlet fproxy = new FProxyToadlet(client, core, fetchTracker);
-    core.setFProxy(fproxy);
+    core.getEndpoints().setFProxy(fproxy);
 
     server.registerMenu(
         "/", FProxyToadlet.CATEGORY_BROWSING, "FProxyToadlet.categoryTitleBrowsing", null);
@@ -135,7 +135,8 @@ final class FProxyRegistrar {
         true,
         null);
 
-    QueueToadlet downloadToadlet = new QueueToadlet(core, core.getFCPServer(), client, false);
+    QueueToadlet downloadToadlet =
+        new QueueToadlet(core, core.getEndpoints().getFCPServer(), client, false);
     server.register(
         downloadToadlet,
         FProxyToadlet.CATEGORY_QUEUE,
@@ -149,7 +150,8 @@ final class FProxyRegistrar {
         new LocalDownloadDirectoryToadlet(core, client, QueueToadlet.PATH_DOWNLOADS);
     server.register(
         localDownloadDirectoryToadlet, null, localDownloadDirectoryToadlet.path(), true, false);
-    QueueToadlet uploadToadlet = new QueueToadlet(core, core.getFCPServer(), client, true);
+    QueueToadlet uploadToadlet =
+        new QueueToadlet(core, core.getEndpoints().getFCPServer(), client, true);
     server.register(
         uploadToadlet,
         FProxyToadlet.CATEGORY_QUEUE,
@@ -315,7 +317,8 @@ final class FProxyRegistrar {
         true,
         null);
 
-    DiagnosticToadlet diagnosticToadlet = new DiagnosticToadlet(node, core.getFCPServer(), client);
+    DiagnosticToadlet diagnosticToadlet =
+        new DiagnosticToadlet(node, core.getEndpoints().getFCPServer(), client);
     server.register(
         diagnosticToadlet,
         FProxyToadlet.CATEGORY_STATUS,

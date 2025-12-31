@@ -97,7 +97,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
       boolean isSSK,
       boolean realTime) {
     this.core = node;
-    this.stats = core.getNodeStats();
+    this.stats = node.getNode().getNodeStats();
     this.throttle = throttle;
     this.name = name + (realTime ? " (realtime)" : " (bulk)");
     this.averageOutputBytesPerRequest = averageOutputBytesPerRequest;
@@ -112,7 +112,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   }
 
   void start() {
-    core.getExecutor().execute(this, name);
+    core.getNode().getExecutor().execute(this, name);
   }
 
   final String name;
@@ -289,7 +289,8 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
     }
     if (LOG.isDebugEnabled())
       LOG.debug("Start request {} with priority {}", req, req.getPriority());
-    core.getExecutor()
+    core.getNode()
+        .getExecutor()
         .execute(new SenderThread(req, req.key), "RequestStarter$SenderThread for " + req);
     return true;
   }

@@ -247,13 +247,14 @@ public class SplitFileInserterSender extends SendableInsert {
         if (request.localRequestOnly) {
           storeLocally(node, block, request.canWriteClientCache);
         } else {
-          node.realPut(
-              block,
-              request.canWriteClientCache,
-              request.forkOnCacheable,
-              Node.PREFER_INSERT_DEFAULT,
-              Node.IGNORE_LOW_BACKOFF_DEFAULT,
-              request.realTimeFlag);
+          node.getTransfers()
+              .realPut(
+                  block,
+                  request.canWriteClientCache,
+                  request.forkOnCacheable,
+                  Node.PREFER_INSERT_DEFAULT,
+                  Node.IGNORE_LOW_BACKOFF_DEFAULT,
+                  request.realTimeFlag);
         }
         request.onInsertSuccess(key, context);
       } catch (final LowLevelPutException e) {

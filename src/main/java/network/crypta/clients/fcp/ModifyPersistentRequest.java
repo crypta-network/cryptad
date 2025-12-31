@@ -188,7 +188,8 @@ public class ModifyPersistentRequest extends FCPMessage {
         handler.send(msg);
       }
     } else {
-      req.modifyRequest(clientToken, priorityClass, node.getClientCore().getFCPServer());
+      req.modifyRequest(
+          clientToken, priorityClass, node.getClientCore().getEndpoints().getFCPServer());
     }
   }
 }

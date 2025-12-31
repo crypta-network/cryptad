@@ -17,6 +17,7 @@ import network.crypta.node.LowLevelGetException;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.NodeClientCoreTransfers;
 import network.crypta.node.RequestTracker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +31,10 @@ class RealNodeRequestInsertTestTest {
   void insertRequestTest_whenFetchReturnsMatchingData_expectExitZeroOnTarget() throws Exception {
     NodeClientCore insertCore = mock(NodeClientCore.class);
     NodeClientCore fetchCore = mock(NodeClientCore.class);
+    NodeClientCoreTransfers insertTransfers = mock(NodeClientCoreTransfers.class);
+    NodeClientCoreTransfers fetchTransfers = mock(NodeClientCoreTransfers.class);
+    when(insertCore.getTransfers()).thenReturn(insertTransfers);
+    when(fetchCore.getTransfers()).thenReturn(fetchTransfers);
 
     Node insertNode = mock(Node.class);
     Node fetchNode = mock(Node.class);
@@ -41,7 +46,8 @@ class RealNodeRequestInsertTestTest {
 
     RealNodeRequestInsertTest tester = new RealNodeRequestInsertTest(nodes, random, 1);
 
-    when(fetchCore.realGetKey(any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
+    when(fetchTransfers.realGetKey(
+            any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
         .thenAnswer(
             invocation -> {
               ClientKey key = invocation.getArgument(0);
@@ -55,7 +61,7 @@ class RealNodeRequestInsertTestTest {
     int result = tester.insertRequestTest();
 
     assertEquals(0, result);
-    verify(insertCore)
+    verify(insertTransfers)
         .realPut(
             any(KeyBlock.class),
             eq(false),
@@ -63,14 +69,17 @@ class RealNodeRequestInsertTestTest {
             eq(false),
             eq(false),
             eq(RealNodeRequestInsertTest.REAL_TIME_FLAG));
-    verify(fetchCore).realGetKey(any(ClientKey.class), eq(false), eq(false), eq(false), eq(false));
+    verify(fetchTransfers)
+        .realGetKey(any(ClientKey.class), eq(false), eq(false), eq(false), eq(false));
   }
 
   @Test
   void insertRequestTest_whenInsertThrowsException_expectInsertFailedExitCode() throws Exception {
     NodeClientCore insertCore = mock(NodeClientCore.class);
+    NodeClientCoreTransfers insertTransfers = mock(NodeClientCoreTransfers.class);
+    when(insertCore.getTransfers()).thenReturn(insertTransfers);
     doThrow(new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR))
-        .when(insertCore)
+        .when(insertTransfers)
         .realPut(
             any(KeyBlock.class),
             eq(false),
@@ -99,7 +108,12 @@ class RealNodeRequestInsertTestTest {
 
     NodeClientCore insertCore = mock(NodeClientCore.class);
     NodeClientCore fetchCore = mock(NodeClientCore.class);
-    when(fetchCore.realGetKey(any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
+    NodeClientCoreTransfers insertTransfers = mock(NodeClientCoreTransfers.class);
+    NodeClientCoreTransfers fetchTransfers = mock(NodeClientCoreTransfers.class);
+    when(insertCore.getTransfers()).thenReturn(insertTransfers);
+    when(fetchCore.getTransfers()).thenReturn(fetchTransfers);
+    when(fetchTransfers.realGetKey(
+            any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
         .thenThrow(new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND));
 
     Node insertNode = mock(Node.class);
@@ -115,7 +129,7 @@ class RealNodeRequestInsertTestTest {
     int result = tester.insertRequestTest();
 
     assertEquals(-1, result);
-    verify(insertCore)
+    verify(insertTransfers)
         .realPut(
             any(KeyBlock.class),
             eq(false),
@@ -129,10 +143,15 @@ class RealNodeRequestInsertTestTest {
   void insertRequestTest_whenFetchReturnsMismatchedData_expectBadDataExitCode() throws Exception {
     NodeClientCore insertCore = mock(NodeClientCore.class);
     NodeClientCore fetchCore = mock(NodeClientCore.class);
+    NodeClientCoreTransfers insertTransfers = mock(NodeClientCoreTransfers.class);
+    NodeClientCoreTransfers fetchTransfers = mock(NodeClientCoreTransfers.class);
+    when(insertCore.getTransfers()).thenReturn(insertTransfers);
+    when(fetchCore.getTransfers()).thenReturn(fetchTransfers);
 
     ClientKeyBlock returnedBlock = mock(ClientKeyBlock.class);
     when(returnedBlock.memoryDecode()).thenReturn("mismatch".getBytes(StandardCharsets.UTF_8));
-    when(fetchCore.realGetKey(any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
+    when(fetchTransfers.realGetKey(
+            any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
         .thenReturn(returnedBlock);
 
     Node insertNode = mock(Node.class);

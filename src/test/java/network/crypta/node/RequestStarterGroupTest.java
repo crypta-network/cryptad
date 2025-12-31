@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -53,9 +54,9 @@ class RequestStarterGroupTest {
 
   private RequestStarterGroup newGroup() throws InvalidConfigValueException {
     // portNumber only affects thread names; pick a stable value
-    when(core.getNodeStats()).thenReturn(nodeStats);
-    when(core.getStoreChecker())
-        .thenReturn(mock(network.crypta.client.async.DatastoreChecker.class));
+    when(core.getNode()).thenReturn(node);
+    lenient().when(node.getExecutor()).thenReturn(executor);
+    when(node.getNodeStats()).thenReturn(nodeStats);
     return new RequestStarterGroup(node, core, 12345, random, config, null, clientContext);
   }
 
@@ -65,7 +66,6 @@ class RequestStarterGroupTest {
     RequestStarterGroup group = newGroup();
 
     List<String> jobNames = new ArrayList<>();
-    when(core.getExecutor()).thenReturn(executor);
     doAnswer(
             inv -> {
               String name = inv.getArgument(1);

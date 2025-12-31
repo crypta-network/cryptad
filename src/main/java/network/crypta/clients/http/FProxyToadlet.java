@@ -803,7 +803,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       }
       if (container.isFProxyWebPushingEnabled()) {
         fctx.setTagReplacer(
-            new PushingTagReplacerCallback(core.getFProxy().fetchTracker, defaultMaxSize, ctx));
+            new PushingTagReplacerCallback(
+                core.getEndpoints().getFProxy().fetchTracker, defaultMaxSize, ctx));
       }
     }
 

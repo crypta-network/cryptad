@@ -10,10 +10,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Sends GET requests to the node asynchronously.
  *
- * <p>This implementation submits the request to {@link NodeClientCore#asyncGet(Key, boolean,
- * RequestCompletionListener, boolean, boolean, boolean, boolean, boolean)} and returns immediately.
- * It delivers results via the provided {@link RequestCompletionListener} callbacks which, in turn,
- * notify the originating {@link SendableRequest}.
+ * <p>This implementation submits the request to {@link NodeClientCoreTransfers#asyncGet(Key,
+ * boolean, RequestCompletionListener, boolean, boolean, boolean, boolean, boolean)} and returns
+ * immediately. It delivers results via the provided {@link RequestCompletionListener} callbacks
+ * which, in turn, notify the originating {@link SendableRequest}.
  *
  * <p>Threading: this class does not block the caller; completion occurs on whatever thread the core
  * uses to invoke the listener. Callers should not assume callbacks run on the scheduler thread.
@@ -44,7 +44,7 @@ public class SendableGetRequestSender implements SendableRequestSender {
   /**
    * Submits an asynchronous GET for the provided block.
    *
-   * <p>Validates the request, then calls {@link NodeClientCore#asyncGet(Key, boolean,
+   * <p>Validates the request, then calls {@link NodeClientCoreTransfers#asyncGet(Key, boolean,
    * RequestCompletionListener, boolean, boolean, boolean, boolean, boolean)}. Completion is
    * reported via the supplied listener which delegates to {@code req.onFetchSuccess(context)} or
    * {@code req.onFailure(e, context)}.
@@ -95,26 +95,27 @@ public class SendableGetRequestSender implements SendableRequestSender {
        * and whether the request is local-only; they are forwarded unchanged.
        */
       final Key k = key.getNodeKey();
-      core.asyncGet(
-          k,
-          false,
-          new RequestCompletionListener() {
+      core.getTransfers()
+          .asyncGet(
+              k,
+              false,
+              new RequestCompletionListener() {
 
-            @Override
-            public void onSucceeded() {
-              req.onFetchSuccess(context);
-            }
+                @Override
+                public void onSucceeded() {
+                  req.onFetchSuccess(context);
+                }
 
-            @Override
-            public void onFailed(LowLevelGetException e) {
-              req.onFailure(e, context);
-            }
-          },
-          !req.ignoreStore,
-          req.canWriteClientCache,
-          req.realTimeFlag,
-          req.localRequestOnly,
-          req.ignoreStore);
+                @Override
+                public void onFailed(LowLevelGetException e) {
+                  req.onFailure(e, context);
+                }
+              },
+              !req.ignoreStore,
+              req.canWriteClientCache,
+              req.realTimeFlag,
+              req.localRequestOnly,
+              req.ignoreStore);
     } catch (RuntimeException | Error t) {
       // Convert unexpected throwables into a failure callback to keep the scheduler healthy.
       LOG.error("Unhandled throwable in send: {}", t, t);

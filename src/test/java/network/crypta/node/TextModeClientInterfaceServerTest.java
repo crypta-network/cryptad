@@ -25,7 +25,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -36,6 +35,7 @@ class TextModeClientInterfaceServerTest {
 
   @Mock private Node node;
   @Mock private NodeClientCore core;
+  @Mock private ClientEndpoints endpoints;
 
   @TempDir File tempDir;
 
@@ -51,10 +51,11 @@ class TextModeClientInterfaceServerTest {
     setStaticField(SSL.class, "ssf", null);
     // Reset TMCI SSL flag to a known state.
     setStaticField(TextModeClientInterfaceServer.class, "ssl", false);
+    Mockito.lenient().when(core.getEndpoints()).thenReturn(endpoints);
   }
 
   @Test
-  void maybeCreate_whenDirectEnabled_executesAndSetsDirectTMCI() {
+  void maybeCreate_whenDirectEnabled_returnsDirectTMCI() {
     Config cfg = Mockito.mock(Config.class);
     SubConfig sub = Mockito.mock(SubConfig.class);
     Mockito.when(cfg.createSubConfig("console")).thenReturn(sub);
@@ -66,23 +67,18 @@ class TextModeClientInterfaceServerTest {
     Mockito.when(sub.getBoolean("directEnabled")).thenReturn(true);
 
     // Node + core wiring
-    PriorityAwareExecutor exec = new CapturingExecutor();
-    Mockito.when(node.getExecutor()).thenReturn(exec);
     Mockito.when(core.getDownloadsDir()).thenReturn(tempDir);
     Mockito.when(core.makeClient(Mockito.anyShort(), Mockito.eq(true), Mockito.eq(false)))
         .thenReturn(Mockito.mock(network.crypta.client.HighLevelSimpleClient.class));
 
-    TextModeClientInterfaceServer server =
+    TextModeClientInterfaceServer.InitResult init =
         TextModeClientInterfaceServer.maybeCreate(node, core, cfg);
 
     // TMCI is disabled in config, so no server instance is created.
-    assertNull(server);
+    assertNull(init.server());
 
-    // Direct TMCI should be started and registered on the core.
-    ArgumentCaptor<TextModeClientInterface> tmciCaptor =
-        ArgumentCaptor.forClass(TextModeClientInterface.class);
-    Mockito.verify(core).setDirectTMCI(tmciCaptor.capture());
-    assertNotNull(tmciCaptor.getValue());
+    // Direct TMCI should be created for later registration/start.
+    assertNotNull(init.directTMCI());
 
     // Sub-config should be finalized.
     Mockito.verify(sub).finishedInitialization();
@@ -127,7 +123,7 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TMCIEnabledCallback_getAndSet_behaviour() {
     TextModeClientInterfaceServer serverMock = Mockito.mock(TextModeClientInterfaceServer.class);
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(serverMock);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(serverMock);
     TextModeClientInterfaceServer.TMCIEnabledCallback cb =
         new TextModeClientInterfaceServer.TMCIEnabledCallback(core);
 
@@ -139,7 +135,7 @@ class TextModeClientInterfaceServerTest {
     assertThrows(InvalidConfigValueException.class, () -> cb.set(false));
 
     // Now with no server
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     assertFalse(cb.get());
     assertDoesNotThrow(() -> cb.set(false));
     assertThrows(InvalidConfigValueException.class, () -> cb.set(true));
@@ -148,7 +144,7 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TMCIDirectEnabledCallback_getAndSet_behaviour() {
     // Direct TMCI present
-    Mockito.when(core.getDirectTMCI()).thenReturn(Mockito.mock(TextModeClientInterface.class));
+    Mockito.when(endpoints.getDirectTMCI()).thenReturn(Mockito.mock(TextModeClientInterface.class));
     TextModeClientInterfaceServer.TMCIDirectEnabledCallback cb =
         new TextModeClientInterfaceServer.TMCIDirectEnabledCallback(core);
 
@@ -156,7 +152,7 @@ class TextModeClientInterfaceServerTest {
     assertDoesNotThrow(() -> cb.set(true));
     assertThrows(InvalidConfigValueException.class, () -> cb.set(false));
 
-    Mockito.when(core.getDirectTMCI()).thenReturn(null);
+    Mockito.when(endpoints.getDirectTMCI()).thenReturn(null);
     assertFalse(cb.get());
     assertDoesNotThrow(() -> cb.set(false));
     assertThrows(InvalidConfigValueException.class, () -> cb.set(true));
@@ -190,7 +186,7 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TMCIBindtoCallback_getDefaultsAndSetNoopWhenEqual() {
     // No server -> get() returns default
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     TextModeClientInterfaceServer.TMCIBindtoCallback cb =
         new TextModeClientInterfaceServer.TMCIBindtoCallback(core);
 
@@ -201,7 +197,7 @@ class TextModeClientInterfaceServerTest {
 
   @Test
   void TMCIAllowedHostsCallback_getDefaultsAndSetWhenDisabled_throws() {
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     TextModeClientInterfaceServer.TMCIAllowedHostsCallback cb =
         new TextModeClientInterfaceServer.TMCIAllowedHostsCallback(core);
 
@@ -214,19 +210,19 @@ class TextModeClientInterfaceServerTest {
   @Test
   void TCMIPortNumberCallback_getDefaultAndSetDelegates() throws InvalidConfigValueException {
     // With no server, get() returns default 2323
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(null);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(null);
     TextModeClientInterfaceServer.TCMIPortNumberCallback cb =
         new TextModeClientInterfaceServer.TCMIPortNumberCallback(core);
     assertEquals(2323, cb.get());
 
     // With a server present, set() delegates to setPort()
     TextModeClientInterfaceServer serverMock = Mockito.mock(TextModeClientInterfaceServer.class);
-    Mockito.when(core.getTextModeClientInterface()).thenReturn(serverMock);
+    Mockito.when(endpoints.getTextModeClientInterface()).thenReturn(serverMock);
     cb.set(12345);
     Mockito.verify(serverMock).setPort(12345);
   }
 
-  // Minimal executor used to capture tasks submitted by start() and maybeCreate(direct)
+  // Minimal executor used to capture tasks submitted by start().
   private static final class CapturingExecutor implements PriorityAwareExecutor {
     Runnable lastRunnable;
     String lastJobName;

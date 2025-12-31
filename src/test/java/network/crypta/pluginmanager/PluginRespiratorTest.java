@@ -9,18 +9,19 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.UUID;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.filter.FilterCallback;
+import network.crypta.client.filter.GenericReadFilterCallback;
 import network.crypta.clients.fcp.FCPPluginConnection;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.http.PageMaker;
@@ -28,11 +29,11 @@ import network.crypta.clients.http.SessionManager;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.Config;
 import network.crypta.config.SubConfig;
+import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.URIPreEncoder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,6 +67,7 @@ class PluginRespiratorTest {
   @Mock private PluginInfoWrapper pluginInfoWrapper;
   @Mock private FilterCallback filterCallback;
   @Mock private SimpleToadletServer toadletContainer;
+  @Mock private ClientEndpoints endpoints;
   @Mock private PageMaker pageMaker;
   @Mock private FCPServer fcpServer;
   @Mock private FCPPluginConnection pluginConnection;
@@ -81,6 +83,7 @@ class PluginRespiratorTest {
 
     when(pluginInfoWrapper.getPlugin()).thenReturn(plugin);
     when(node.getClientCore()).thenReturn(nodeClientCore);
+    lenient().when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
     when(nodeClientCore.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, false, false))
         .thenReturn(highLevelSimpleClient);
     when(nodeClientCore.getPluginStores()).thenReturn(pluginStores);
@@ -113,16 +116,14 @@ class PluginRespiratorTest {
     // Arrange
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
     String rawPath = "http://example.invalid/a b?q=c d";
-    URI encodedUri = URIPreEncoder.encodeURI(rawPath);
-
-    when(nodeClientCore.createFilterCallback(encodedUri, null)).thenReturn(filterCallback);
+    when(endpoints.getToadletContainer()).thenReturn(toadletContainer);
 
     // Act
     FilterCallback result = respirator.makeFilterCallback(rawPath);
 
     // Assert
-    assertSame(filterCallback, result);
-    verify(nodeClientCore).createFilterCallback(encodedUri, null);
+    assertNotNull(result);
+    assertInstanceOf(GenericReadFilterCallback.class, result);
   }
 
   @Test
@@ -142,7 +143,7 @@ class PluginRespiratorTest {
   @Test
   void getPageMaker_whenToadletContainerNull_returnsNull() {
     // Arrange
-    when(nodeClientCore.getToadletContainer()).thenReturn(null);
+    when(endpoints.getToadletContainer()).thenReturn(null);
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
 
     // Act
@@ -155,7 +156,7 @@ class PluginRespiratorTest {
   @Test
   void getPageMaker_whenToadletContainerPresent_returnsItsPageMaker() {
     // Arrange
-    when(nodeClientCore.getToadletContainer()).thenReturn(toadletContainer);
+    when(endpoints.getToadletContainer()).thenReturn(toadletContainer);
     when(toadletContainer.getPageMaker()).thenReturn(pageMaker);
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
 
@@ -170,7 +171,7 @@ class PluginRespiratorTest {
   @Test
   void getToadletContainer_whenAvailable_returnsContainerFromCore() {
     // Arrange
-    when(nodeClientCore.getToadletContainer()).thenReturn(toadletContainer);
+    when(endpoints.getToadletContainer()).thenReturn(toadletContainer);
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
 
     // Act
@@ -226,7 +227,7 @@ class PluginRespiratorTest {
   @Test
   void connectToOtherPlugin_whenPluginNameNull_delegatesToFcpServerWithNullName() throws Exception {
     // Arrange
-    when(nodeClientCore.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFCPServer()).thenReturn(fcpServer);
     when(fcpServer.createFCPPluginConnectionForIntraNodeFCP(null, messageHandler))
         .thenReturn(pluginConnection);
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
@@ -242,7 +243,7 @@ class PluginRespiratorTest {
   @Test
   void connectToOtherPlugin_whenValid_delegatesToFcpServer() throws Exception {
     // Arrange
-    when(nodeClientCore.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFCPServer()).thenReturn(fcpServer);
     when(fcpServer.createFCPPluginConnectionForIntraNodeFCP("serverPlugin", messageHandler))
         .thenReturn(pluginConnection);
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
@@ -259,7 +260,7 @@ class PluginRespiratorTest {
   void getPluginConnectionByID_whenFound_delegatesToFcpServer() throws Exception {
     // Arrange
     UUID id = UUID.fromString("01234567-89ab-cdef-0123-456789abcdef");
-    when(nodeClientCore.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFCPServer()).thenReturn(fcpServer);
     when(fcpServer.getPluginConnectionByID(id)).thenReturn(pluginConnection);
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
 
@@ -276,7 +277,7 @@ class PluginRespiratorTest {
     // Arrange
     UUID id = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     IOException failure = new IOException("missing");
-    when(nodeClientCore.getFCPServer()).thenReturn(fcpServer);
+    when(endpoints.getFCPServer()).thenReturn(fcpServer);
     when(fcpServer.getPluginConnectionByID(id)).thenThrow(failure);
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
 

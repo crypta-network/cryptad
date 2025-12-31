@@ -55,15 +55,17 @@ class HighLevelSimpleClientImplTest {
   @BeforeEach
   void setUp() {
     NodeClientCore core = mock(NodeClientCore.class);
+    network.crypta.node.Node node = mock(network.crypta.node.Node.class);
     bucketFactory = mock(BucketFactory.class);
     PersistentTempBucketFactory persistentTempBucketFactory =
         mock(PersistentTempBucketFactory.class);
     clientContext = mock(ClientContext.class);
     ticker = mock(Ticker.class);
 
+    when(core.getNode()).thenReturn(node);
     when(core.getPersistentTempBucketFactory()).thenReturn(persistentTempBucketFactory);
     when(core.getClientContext()).thenReturn(clientContext);
-    when(core.getTicker()).thenReturn(ticker);
+    when(node.getTicker()).thenReturn(ticker);
 
     // Deterministic RandomSource for key generation tests
     RandomSource random = new DeterministicRandomSource(123456789L);

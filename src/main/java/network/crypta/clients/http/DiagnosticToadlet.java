@@ -137,7 +137,7 @@ public class DiagnosticToadlet extends Toadlet {
       return;
     }
 
-    node.getClientCore().getBandwidthStatsPutter().updateData(node);
+    node.getClientCore().getClientLayerPersister().getBandwidthStatsPutter().updateData(node);
 
     final SubConfig nodeConfig = node.getConfig().get("node");
 
@@ -532,7 +532,7 @@ public class DiagnosticToadlet extends Toadlet {
       throw new NullPointerException();
     }
     BandwidthStatsContainer bandwidthStats =
-        node.getClientCore().getBandwidthStatsPutter().getLatestBWData();
+        node.getClientCore().getClientLayerPersister().getBandwidthStatsPutter().getLatestBWData();
     if (bandwidthStats == null) {
       throw new NullPointerException();
     }

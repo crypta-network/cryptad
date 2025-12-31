@@ -326,6 +326,7 @@ class USKManagerTest {
   }
 
   @Mock private network.crypta.node.NodeClientCore core;
+  @Mock private network.crypta.node.Node node;
   @Mock private ClientContext context;
 
   private USKManager manager;
@@ -336,7 +337,8 @@ class USKManagerTest {
     // Provide stub client and direct executor for the manager
     when(core.makeClient(RequestStarter.UPDATE_PRIORITY_CLASS, false, false))
         .thenReturn(new HLClientStub());
-    when(core.getExecutor()).thenReturn(direct);
+    when(core.getNode()).thenReturn(node);
+    when(node.getExecutor()).thenReturn(direct);
     manager = new USKManager(core);
     manager.init(context);
     when(context.getMainExecutor()).thenReturn(direct);

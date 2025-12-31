@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import network.crypta.node.ClientEndpoints;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.SimpleFieldSet;
@@ -27,6 +28,7 @@ class WatchGlobalTest {
   @Mock private PersistentRequestClient foreverClient;
   @Mock private Node node;
   @Mock private NodeClientCore nodeClientCore;
+  @Mock private ClientEndpoints endpoints;
   @Mock private FCPServer nodeFcpServer;
   @Mock private FCPServer handlerFcpServer;
 
@@ -113,7 +115,8 @@ class WatchGlobalTest {
     verify(handler).getRebootClient();
     verify(handler).getForeverClient();
     verify(node).getClientCore();
-    verify(nodeClientCore).getFCPServer();
+    verify(nodeClientCore).getEndpoints();
+    verify(endpoints).getFCPServer();
     verifyNoMoreInteractions(handler, rebootClient, node, nodeClientCore, nodeFcpServer);
   }
 
@@ -136,7 +139,8 @@ class WatchGlobalTest {
   private void prepareSharedMocks() {
     when(handler.getRebootClient()).thenReturn(rebootClient);
     when(node.getClientCore()).thenReturn(nodeClientCore);
-    when(nodeClientCore.getFCPServer()).thenReturn(nodeFcpServer);
+    when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
+    when(endpoints.getFCPServer()).thenReturn(nodeFcpServer);
   }
 
   private SimpleFieldSet fieldSet(boolean enabled, int verbosityMask) {
