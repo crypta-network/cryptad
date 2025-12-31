@@ -19,7 +19,6 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.IOStatisticCollector;
 import network.crypta.io.comm.Message;
-import network.crypta.node.NodeStats.PeerLoadStats;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import org.jetbrains.annotations.NotNull;
@@ -88,7 +87,8 @@ class NodeStatsTest {
 
   private NodeStats createNodeStats() throws NodeInitException {
     // obw/ibw limits and lastVersion are not exercised by these tests
-    return new NodeStats(node, SORT_ORDER_BASE, statsConfig);
+    NodeStatsConfig nodeStatsConfig = new NodeStatsConfig(statsConfig);
+    return new NodeStats(node, SORT_ORDER_BASE, nodeStatsConfig);
   }
 
   @Test
@@ -251,11 +251,11 @@ class NodeStatsTest {
 
     // Int variant
     Message mi = getMi();
-    PeerLoadStats pli = stats.parseLoadStats(src, mi);
+    PeerLoadStats pli = new PeerLoadStats(src, mi);
 
     // Short variant
     Message ms = getMs();
-    PeerLoadStats pls = stats.parseLoadStats(src, ms);
+    PeerLoadStats pls = new PeerLoadStats(src, ms);
 
     // Byte variant
     Message mb = new Message(DMT.FNPPeerLoadStatusByte);
@@ -275,7 +275,7 @@ class NodeStatsTest {
     mb.set(DMT.INPUT_BANDWIDTH_UPPER_LIMIT, 14);
     mb.set(DMT.INPUT_BANDWIDTH_PEER_LIMIT, 15);
     mb.set(DMT.REAL_TIME_FLAG, true);
-    PeerLoadStats plb = stats.parseLoadStats(src, mb);
+    PeerLoadStats plb = new PeerLoadStats(src, mb);
 
     // All 3 should be equal when coerced to int fields inside PeerLoadStats
     assertEquals(pli, pls);

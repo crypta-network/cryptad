@@ -28,6 +28,7 @@ import network.crypta.node.Location;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStats;
+import network.crypta.node.NodeStatsHtmlRenderer;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
@@ -426,22 +427,22 @@ public class StatisticsToadlet extends Toadlet {
     HTMLNode successRateBox = leftColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
     successRateBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("successRate"));
     HTMLNode successRateContent = successRateBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    stats.fillSuccessRateBox(successRateContent);
+    NodeStatsHtmlRenderer.fillSuccessRateBox(stats, successRateContent);
 
     HTMLNode timeDetailBox = leftColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
     timeDetailBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("chkDetailTiming"));
     HTMLNode timingsContent = timeDetailBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    stats.fillDetailedTimingsBox(timingsContent);
+    NodeStatsHtmlRenderer.fillDetailedTimingsBox(stats, timingsContent);
 
     HTMLNode byHTLBox = leftColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
     byHTLBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("successByHTLBulk"));
     HTMLNode byHTLContent = byHTLBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    stats.fillRemoteRequestHTLsBox(byHTLContent, false);
+    NodeStatsHtmlRenderer.fillRemoteRequestHTLsBox(stats, byHTLContent, false);
 
     byHTLBox = leftColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
     byHTLBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("successByHTLRT"));
     byHTLContent = byHTLBox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    stats.fillRemoteRequestHTLsBox(byHTLContent, true);
+    NodeStatsHtmlRenderer.fillRemoteRequestHTLsBox(stats, byHTLContent, true);
   }
 
   private void addActivityAndPeerBoxes(
@@ -698,7 +699,7 @@ public class StatisticsToadlet extends Toadlet {
     overviewTableRow = overviewTable.addChild("tr");
     nextTableCell = overviewTableRow.addChild("td", ATTR_CLASS, CLASS_FIRST);
 
-    int[] locationSuccessRatesArray = stats.chkSuccessRatesByLocation.getPercentageArray(1000);
+    int[] locationSuccessRatesArray = stats.getChkSuccessRatesByLocationPercentages(1000);
     HTMLNode nodeSpecialisationInfobox = nextTableCell.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
     nodeSpecialisationInfobox.addChild(
         "div",
@@ -769,7 +770,7 @@ public class StatisticsToadlet extends Toadlet {
   private void drawNewLoadManagementBox(HTMLNode infobox) {
     infobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("newLoadManagementTitle"));
     HTMLNode content = infobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    node.getNodeStats().drawNewLoadManagementDelayTimes(content);
+    NodeStatsHtmlRenderer.drawNewLoadManagementDelayTimes(node.getNodeStats(), content);
   }
 
   private void drawRejectReasonsBox(HTMLNode nextTableCell, boolean local) {
@@ -777,8 +778,8 @@ public class StatisticsToadlet extends Toadlet {
     NodeStats nodeStats = node.getNodeStats();
     boolean success =
         local
-            ? nodeStats.getLocalRejectReasonsTable(rejectReasonsTable)
-            : nodeStats.getRejectReasonsTable(rejectReasonsTable);
+            ? NodeStatsHtmlRenderer.getLocalRejectReasonsTable(nodeStats, rejectReasonsTable)
+            : NodeStatsHtmlRenderer.getRejectReasonsTable(nodeStats, rejectReasonsTable);
     if (!success) return;
     HTMLNode rejectReasonsInfobox = nextTableCell.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
     rejectReasonsInfobox.addChild(

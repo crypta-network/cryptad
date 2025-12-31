@@ -128,10 +128,8 @@ class NodePingerTest {
       PeerNode.OutputLoadTracker rt = peer.outputLoadTracker(true);
       PeerNode.OutputLoadTracker bulk = peer.outputLoadTracker(false);
 
-      NodeStats.PeerLoadStats statsRt =
-          Mockito.mock(NodeStats.PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
-      NodeStats.PeerLoadStats statsBulk =
-          Mockito.mock(NodeStats.PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
+      PeerLoadStats statsRt = Mockito.mock(PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
+      PeerLoadStats statsBulk = Mockito.mock(PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
 
       // Stub the method used by NodePinger
       when(statsRt.peerLimit(true)).thenReturn(rtInput[i]);
@@ -166,12 +164,9 @@ class NodePingerTest {
     when(peerManager.connectedPeers()).thenReturn(new PeerNode[] {p1, p2, p3, p4});
 
     // Prepare stats only for three peers on realtime tracker; the fourth returns null
-    NodeStats.PeerLoadStats s1 =
-        Mockito.mock(NodeStats.PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
-    NodeStats.PeerLoadStats s2 =
-        Mockito.mock(NodeStats.PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
-    NodeStats.PeerLoadStats s3 =
-        Mockito.mock(NodeStats.PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
+    PeerLoadStats s1 = Mockito.mock(PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
+    PeerLoadStats s2 = Mockito.mock(PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
+    PeerLoadStats s3 = Mockito.mock(PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
 
     when(s1.peerLimit(true)).thenReturn(5.0);
     when(s2.peerLimit(true)).thenReturn(10.0);
