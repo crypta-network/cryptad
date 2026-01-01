@@ -105,8 +105,8 @@ public class BitArray implements WritableToDataOutputStream {
    *
    * <p>Valid positions are zero-based. This implementation currently permits {@code pos == size},
    * which writes just beyond the logical range; that bit is ignored by {@link #toString()} and
-   * serialization and may be cleared by resizing. {@code TODO:} clarify whether {@code pos == size}
-   * should be rejected.
+   * serialization and may be cleared by resizing. This behavior is retained for compatibility with
+   * historical callers.
    *
    * @param pos bit index (zero-based)
    * @param f value to set
@@ -230,8 +230,8 @@ public class BitArray implements WritableToDataOutputStream {
   /**
    * Returns the index of the first set bit at or after {@code start} or {@code -1} if none.
    *
-   * @param start starting index (inclusive). {@code TODO:} behavior for negative values is
-   *     unspecified.
+   * @param start starting index (inclusive). Negative values will trigger {@link
+   *     IndexOutOfBoundsException} from {@link BitSet#nextSetBit(int)}.
    * @return index of next set bit, or {@code -1}
    */
   public int firstOne(int start) {
@@ -251,8 +251,8 @@ public class BitArray implements WritableToDataOutputStream {
    * Returns the index of the first clear bit at or after {@code start}, or {@code -1} if all bits
    * in the logical range are set.
    *
-   * @param start starting index (inclusive). {@code TODO:} behavior for negative values is
-   *     unspecified.
+   * @param start starting index (inclusive). Negative values will trigger {@link
+   *     IndexOutOfBoundsException} from {@link BitSet#nextClearBit(int)}.
    * @return index of next clear bit in {@code [start, size)}, or {@code -1}
    */
   public int firstZero(int start) {
@@ -300,7 +300,7 @@ public class BitArray implements WritableToDataOutputStream {
   }
 
   private void checkPos(int pos) {
-    // Note: this intentionally allows pos == size; see setBit/bitAt docs. (TODO: reconsider)
+    // Note: this intentionally allows pos == size; see setBit/bitAt docs.
     if (pos > size || pos < 0) {
       throw new ArrayIndexOutOfBoundsException();
     }
