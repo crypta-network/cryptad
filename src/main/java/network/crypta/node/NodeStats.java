@@ -22,34 +22,91 @@ import network.crypta.support.math.DecayingKeyspaceAverage;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.TimeDecayingRunningAverage;
 import network.crypta.support.math.TrivialRunningAverage;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Collects and reports node-wide runtime statistics and load-admission decisions.
  *
- * <p>This class aggregates metrics from networking, request scheduling, block transfers, and
- * datastore interactions to guide admission control (for example, {@link
- * #shouldRejectRequest(boolean, boolean, boolean, boolean, boolean, PeerNode, boolean, boolean,
- * boolean, UIDTag)}). It also exposes snapshots for UIs and remote peers, persists decaying
- * averages, and emits diagnostic counters used by bandwidth and fairness logic.
+ * <p>This class centralizes counters and decaying averages for networking, request scheduling,
+ * block transfers, and datastore interactions. Hot-path components report events (bytes sent,
+ * request outcomes, backoff delays), while diagnostics and admission control query aggregated
+ * snapshots. Typical usage is "report as events occur" and "poll periodically," supporting UI
+ * panels, peer exchanges, and policies such as {@link #shouldRejectRequest(boolean, boolean,
+ * boolean, boolean, boolean, PeerNode, boolean, boolean, boolean, UIDTag)}.
+ *
+ * <p>Invariants and trade-offs: counters are monotonic within a process, averages are time-decayed
+ * views of recent behavior, and several thresholds are intentionally conservative to avoid
+ * overload. The implementation favors short synchronized sections and atomic arrays to keep
+ * contention low; callers should avoid expensive work while holding NodeStats locks.
+ *
+ * <ul>
+ *   <li>Compute admission inputs from ping, bandwidth liability, and request outcomes.
+ *   <li>Track per-type byte costs, success rates, and request locations.
+ *   <li>Expose snapshot data for UI panels and persistence.
+ * </ul>
  *
  * <p>Thread-safety: methods that read or update shared counters are synchronized or use atomic
  * structures. Callers should avoid long-running work while holding NodeStats locks.
  *
  * <p>Units: unless stated otherwise, byte counters are in bytes, times are in milliseconds, and
  * probabilities are in the {@code [0.0, 1.0]} range.
+ *
+ * @see Node
+ * @see NodeStatsFieldSetExporter
  */
 public class NodeStats implements Persistable, BlockTimeCallback {
   private static final Logger LOG = LoggerFactory.getLogger(NodeStats.class);
 
   /** Kinds of requests and inserts tracked by NodeStats. */
   public enum RequestType {
+    /**
+     * CHK fetch request traffic recorded for admission and accounting decisions.
+     *
+     * <p>Represents a retrieval request (not an insert) and is tracked separately from SSK to keep
+     * byte-cost and rejection statistics accurate.
+     */
     CHK_REQUEST,
+
+    /**
+     * SSK fetch request traffic recorded separately from CHK for accounting.
+     *
+     * <p>Represents a retrieval request (not an insert) whose byte costs and rejection rates are
+     * tracked independently for policy decisions.
+     */
     SSK_REQUEST,
+
+    /**
+     * CHK insert traffic, tracked separately from fetches for overhead estimation.
+     *
+     * <p>Inserts affect stored data placement and use distinct admission assumptions compared with
+     * retrieval requests.
+     */
     CHK_INSERT,
+
+    /**
+     * SSK insert traffic, tracked separately from fetches for overhead estimation.
+     *
+     * <p>Inserts affect stored data placement and use distinct admission assumptions compared with
+     * retrieval requests.
+     */
     SSK_INSERT,
+
+    /**
+     * Offered-key CHK fetches, handled outside normal routing and tracked independently.
+     *
+     * <p>These direct retrievals from recent offers are counted separately to avoid skewing
+     * standard fetch success metrics.
+     */
     CHK_OFFER_FETCH,
+
+    /**
+     * Offered-key SSK fetches, handled outside normal routing and tracked independently.
+     *
+     * <p>These direct retrievals from recent offers are counted separately to avoid skewing
+     * standard fetch success metrics.
+     */
     SSK_OFFER_FETCH
   }
 
@@ -151,6 +208,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   private volatile long maxPingTime;
 
   final Node node;
+
+  /**
+   * Peer manager associated with this node for connection and peer-count statistics.
+   *
+   * <p>This reference is final and non-null, while the manager itself maintains mutable peer state
+   * that is updated concurrently by networking components.
+   */
   public final PeerManager peers;
 
   // static initializer intentionally removed (no-op)
@@ -167,17 +231,71 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /** nodeAveragePing PeerManagerUserAlert should happen if true */
   private boolean nodeAveragePingAlertRelevant;
 
-  /** Average proportion of requests rejected immediately due to overload */
+  /**
+   * Decaying average fraction of incoming requests rejected immediately due to overload.
+   *
+   * <p>Values are in {@code [0.0, 1.0]} and updated on admission decisions to provide a
+   * coarse-grained signal for UI and diagnostics.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingOverall;
 
+  /**
+   * Decaying probability that an incoming realtime CHK request is rejected immediately.
+   *
+   * <p>Updated for each admission decision; used for realtime request diagnostics and load
+   * reporting.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingCHKRequestRT;
+
+  /**
+   * Decaying probability that an incoming realtime SSK request is rejected immediately.
+   *
+   * <p>Reported as a {@code [0.0, 1.0]} fraction for UI and load-tracking decisions.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingSSKRequestRT;
+
+  /**
+   * Decaying probability that an incoming realtime CHK insert is rejected immediately.
+   *
+   * <p>Helps distinguish insert pressure from fetch pressure in realtime mode.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingCHKInsertRT;
+
+  /**
+   * Decaying probability that an incoming realtime SSK insert is rejected immediately.
+   *
+   * <p>Used for tracking insert overload behavior in realtime traffic.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingSSKInsertRT;
+
+  /**
+   * Decaying probability that an incoming bulk CHK request is rejected immediately.
+   *
+   * <p>Used to characterize bulk-mode admission pressure for CHK fetches.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingCHKRequestBulk;
+
+  /**
+   * Decaying probability that an incoming bulk SSK request is rejected immediately.
+   *
+   * <p>Used to characterize bulk-mode admission pressure for SSK fetches.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingSSKRequestBulk;
+
+  /**
+   * Decaying probability that an incoming bulk CHK insert is rejected immediately.
+   *
+   * <p>Reflects insert load in bulk mode, distinct from fetch rejection rates.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingCHKInsertBulk;
+
+  /**
+   * Decaying probability that an incoming bulk SSK insert is rejected immediately.
+   *
+   * <p>Reflects insert load in bulk mode, distinct from fetch rejection rates.
+   */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingSSKInsertBulk;
+
   private boolean ignoreLocalVsRemoteBandwidthLiability;
 
   /** Average delay caused by throttling for sending a packet */
@@ -316,6 +434,12 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   double furthestSlashdotCacheSSKSuccess = 0.0;
   private final Persister persister;
 
+  /**
+   * Decaying average of request locations across the keyspace.
+   *
+   * <p>Values are normalized to {@code [0.0, 1.0]} and persisted to capture recent request
+   * distribution for diagnostics and trend reporting.
+   */
   protected final DecayingKeyspaceAverage avgRequestLocation;
 
   // ThreadCounting stuffs
@@ -444,7 +568,6 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     initIoStatsDefaults();
 
     NodeStatsConfig.Result configResult = statsConfig.configure(this, node, sortOrder);
-    sortOrder = configResult.sortOrder();
 
     // This is a *network* level setting, because it affects the rate at which we initiate local
     // requests, which could be seen by distant nodes.
@@ -836,7 +959,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   record RejectReason(String name, boolean soft) {
 
     @Override
-    public String toString() {
+    public @NotNull String toString() {
       return (soft ? "SOFT" : "HARD") + ":" + name;
     }
   }
@@ -854,7 +977,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    *
    * @param canAcceptAnyway Periodically we ignore the ping time and accept a request anyway. This
    *     is because the ping time partly depends on whether we have accepted any requests... This
-   *     behaviour may warrant reconsideration.
+   *     behavior may warrant reconsideration.
    * @param isInsert Whether this is an insert.
    * @param isSSK Whether this is a request/insert for an SSK.
    * @param isLocal Is this request originated locally? This can affect our estimate of likely
@@ -1376,7 +1499,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     if (peerOutTransfers > maxOutputTransfers && !isLocal) {
       // Can't handle that many transfers with current bandwidth.
       rejected(
-          "TooManyTransfers: Congestion control", isLocal, isInsert, isSSK, isOfferReply, realTime);
+          "TooManyTransfers: Congestion control", false, isInsert, isSSK, isOfferReply, realTime);
       return "TooManyTransfers: Congestion control";
     }
     if (totalOutTransfers <= maxTransfersOutLowerLimit) {
@@ -1576,18 +1699,54 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         successfulSskOfferReplyBytesReceivedAverage.currentValue());
   }
 
+  /**
+   * Returns the decaying average throttling delay for realtime packet sends.
+   *
+   * <p>The value represents the delay introduced by bandwidth throttling, measured in milliseconds.
+   * It is derived from {@link #blockTime(long, boolean)} reports and reflects recent behavior
+   * rather than a lifetime mean. It does not include additional scheduling or queueing time outside
+   * the throttle.
+   *
+   * @return average realtime throttling delay in milliseconds.
+   */
   public double getBwlimitDelayTimeRT() {
     return throttledPacketSendAverageRT.currentValue();
   }
 
+  /**
+   * Returns the decaying average throttling delay for bulk packet sends.
+   *
+   * <p>The value is measured in milliseconds and reflects recent bulk-channel behavior as reported
+   * by {@link #blockTime(long, boolean)}. It is a throttling-only signal used by alerting and
+   * admission logic, not a full end-to-end latency metric.
+   *
+   * @return average bulk throttling delay in milliseconds.
+   */
   public double getBwlimitDelayTimeBulk() {
     return throttledPacketSendAverageBulk.currentValue();
   }
 
+  /**
+   * Returns the decaying average throttling delay across all packet sends.
+   *
+   * <p>This aggregate includes both realtime and bulk observations and is used by alerting logic
+   * that does not distinguish channels. Values are in milliseconds and represent the throttle delay
+   * only.
+   *
+   * @return average throttling delay across all channels in milliseconds.
+   */
   public double getBwlimitDelayTime() {
     return throttledPacketSendAverage.currentValue();
   }
 
+  /**
+   * Returns the node-wide average ping time reported by the {@link NodePinger}.
+   *
+   * <p>The result is used for overload and alerting decisions and represents a recent average, not
+   * an instantaneous sample. The time unit is milliseconds.
+   *
+   * @return average ping time in milliseconds.
+   */
   public double getNodeAveragePingTime() {
     return nodePinger.averagePingTime();
   }
@@ -1921,6 +2080,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return result;
   }
 
+  /**
+   * Blocks the caller until the node is no longer considered overloaded.
+   *
+   * <p>This method waits while the approximate active-thread count exceeds {@link
+   * #getThreadLimit()} and wakes periodically to re-check, even if no notification arrives. It is
+   * safe to call from worker threads that need backpressure. If interrupted, it restores the
+   * interrupt flag and returns immediately.
+   */
   public void waitUntilNotOverloaded() {
     // Wait with timeout so callers re-check periodically even if no signals arrive.
     synchronized (overloadSync) {
@@ -2096,6 +2263,15 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return result;
   }
 
+  /**
+   * Exports a volatile snapshot of node statistics for UI and remote reporting.
+   *
+   * <p>The returned {@link SimpleFieldSet} captures dynamic, non-persisted values such as bandwidth
+   * counters and current averages. The snapshot is a point-in-time view and may lag concurrent
+   * updates by a small amount.
+   *
+   * @return a field set containing volatile statistics; never {@code null}.
+   */
   public SimpleFieldSet exportVolatileFieldSet() {
     return NodeStatsFieldSetExporter.exportVolatileFieldSet(this);
   }
@@ -2170,6 +2346,16 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     else chkRequestSentBytes += x;
   }
 
+  /**
+   * Records received bytes for CHK/SSK requests.
+   *
+   * <p>This implementation currently ignores the values because only sent overhead is tracked for
+   * requests. The method is retained for symmetry with send counters and to keep call sites
+   * uniform.
+   *
+   * @param ssk {@code true} for SSK, {@code false} for CHK.
+   * @param x number of bytes received (ignored).
+   */
   @SuppressWarnings("unused")
   public synchronized void requestReceivedBytes(boolean ssk, int x) {
     // no-op: received request bytes are not tracked
@@ -2187,6 +2373,15 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     else chkInsertSentBytes += x;
   }
 
+  /**
+   * Records received bytes for CHK/SSK inserts.
+   *
+   * <p>This implementation currently ignores the values because only sent overhead is tracked for
+   * inserts. The method is retained for symmetry with send counters and to keep call sites uniform.
+   *
+   * @param ssk {@code true} for SSK, {@code false} for CHK.
+   * @param x number of bytes received (ignored).
+   */
   @SuppressWarnings("unused")
   public synchronized void insertReceivedBytes(boolean ssk, int x) {
     // no-op: received insert bytes are not tracked
@@ -2291,6 +2486,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for offered-key replies.
+   *
+   * <p>This counter tracks protocol overhead for {@code FNPGetOfferedKey} responses and is
+   * cumulative since process start. It does not include payload bytes recorded elsewhere.
+   *
+   * @return cumulative offered-key reply bytes sent.
+   */
   public synchronized long getOffersSentBytesSent() {
     return offerKeysSentBytes;
   }
@@ -2298,29 +2501,76 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   private long swappingRcvdBytes;
   private long swappingSentBytes;
 
+  /**
+   * Records bytes received for key swapping traffic.
+   *
+   * <p>This method updates a cumulative counter used for overhead reporting. The value is measured
+   * in bytes and is expected to be called on the networking hot path.
+   *
+   * @param x bytes received for swap messages.
+   */
   public synchronized void swappingReceivedBytes(int x) {
     swappingRcvdBytes += x;
   }
 
+  /**
+   * Records bytes sent for key swapping traffic.
+   *
+   * <p>This method updates a cumulative counter used for overhead reporting. The value is measured
+   * in bytes and is expected to be called on the networking hot path.
+   *
+   * @param x bytes sent for swap messages.
+   */
   public synchronized void swappingSentBytes(int x) {
     swappingSentBytes += x;
   }
 
+  /**
+   * Returns total bytes received for key swapping traffic.
+   *
+   * <p>The value is cumulative since process start and is intended for diagnostics and bandwidth
+   * accounting. It does not include request payloads.
+   *
+   * @return cumulative swap bytes received.
+   */
   @SuppressWarnings("unused")
   public synchronized long getSwappingTotalBytesReceived() {
     return swappingRcvdBytes;
   }
 
+  /**
+   * Returns total bytes sent for key swapping traffic.
+   *
+   * <p>The value is cumulative since process start and is intended for diagnostics and bandwidth
+   * accounting. It does not include request payloads.
+   *
+   * @return cumulative swap bytes sent.
+   */
   public synchronized long getSwappingTotalBytesSent() {
     return swappingSentBytes;
   }
 
   private long totalAuthBytesSent;
 
+  /**
+   * Adds bytes sent for authentication and connection setup.
+   *
+   * <p>This counter tracks protocol overhead for link establishment and handshake traffic. It is
+   * cumulative since process start and used in overhead summaries.
+   *
+   * @param x bytes sent for authentication/setup.
+   */
   public synchronized void reportAuthBytes(int x) {
     totalAuthBytesSent += x;
   }
 
+  /**
+   * Returns cumulative bytes sent for authentication and connection setup.
+   *
+   * <p>This value is protocol overhead only and does not include request payloads.
+   *
+   * @return total authentication/setup bytes sent.
+   */
   public synchronized long getTotalAuthBytesSent() {
     return totalAuthBytesSent;
   }
@@ -2349,16 +2599,39 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns cumulative bytes sent due to resend activity.
+   *
+   * <p>This countermeasures protocol overhead associated with retransmissions and is used in
+   * overhead summaries.
+   *
+   * @return total resend bytes sent.
+   */
   public synchronized long getResendBytesSent() {
     return resendBytesSent;
   }
 
   private long uomBytesSent;
 
+  /**
+   * Adds bytes sent for update-over-mandatory (UOM) traffic.
+   *
+   * <p>This counter tracks protocol overhead for update mechanisms. It is cumulative since process
+   * start and included in overhead summaries.
+   *
+   * @param x bytes sent for UOM traffic.
+   */
   public synchronized void reportUOMBytesSent(int x) {
     uomBytesSent += x;
   }
 
+  /**
+   * Returns cumulative bytes sent for update-over-mandatory (UOM) traffic.
+   *
+   * <p>The value includes protocol overhead only and is used for bandwidth accounting.
+   *
+   * @return total UOM bytes sent.
+   */
   public synchronized long getUOMBytesSent() {
     return uomBytesSent;
   }
@@ -2393,10 +2666,26 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for opennet announcements.
+   *
+   * <p>This includes overhead and payload recorded by {@link #announceByteCounter}. Values are
+   * cumulative since process start.
+   *
+   * @return total announcement bytes sent.
+   */
   public synchronized long getAnnounceBytesSent() {
     return announceBytesSent;
   }
 
+  /**
+   * Returns payload bytes sent for opennet announcements.
+   *
+   * <p>This is the payload-only subset of {@link #getAnnounceBytesSent()} recorded by {@link
+   * #announceByteCounter}.
+   *
+   * @return announcement payload bytes sent.
+   */
   public synchronized long getAnnounceBytesPayloadSent() {
     return announceBytesPayload;
   }
@@ -2425,37 +2714,87 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for routing status updates.
+   *
+   * <p>The counter is cumulative since process start and is intended for overhead reporting.
+   *
+   * @return total routing-status bytes sent.
+   */
   public synchronized long getRoutingStatusBytes() {
     return routingStatusBytesSent;
   }
 
   private long networkColoringSentBytesCounter;
 
+  /**
+   * Records bytes received for network-coloring traffic.
+   *
+   * <p>This implementation currently ignores the value because only sent bytes are tracked for this
+   * counter.
+   *
+   * @param x bytes received for network-coloring messages (ignored).
+   */
   @SuppressWarnings("unused")
   public synchronized void networkColoringReceivedBytes(int x) {
     // Intentionally empty: received bytes are not tracked for this counter
   }
 
+  /**
+   * Records bytes sent for network-coloring traffic.
+   *
+   * <p>The counter is cumulative and contributes to overhead reporting.
+   *
+   * @param x bytes sent for network-coloring messages.
+   */
   @SuppressWarnings("unused")
   public synchronized void networkColoringSentBytes(int x) {
     networkColoringSentBytesCounter += x;
   }
 
+  /**
+   * Returns total bytes sent for network-coloring traffic.
+   *
+   * <p>This is a cumulative counter since process start.
+   *
+   * @return total network-coloring bytes sent.
+   */
   public synchronized long getNetworkColoringSentBytes() {
     return networkColoringSentBytesCounter;
   }
 
   private long pingBytesSent;
 
+  /**
+   * Records bytes received for ping traffic.
+   *
+   * <p>This implementation ignores the value because only sent ping bytes are tracked.
+   *
+   * @param x bytes received for ping messages (ignored).
+   */
   @SuppressWarnings("unused")
   public synchronized void pingCounterReceived(int x) {
     // Intentionally empty: received ping bytes are not tracked
   }
 
+  /**
+   * Records bytes sent for ping traffic.
+   *
+   * <p>The counter is cumulative and contributes to overhead reporting.
+   *
+   * @param x bytes sent for ping messages.
+   */
   public synchronized void pingCounterSent(int x) {
     pingBytesSent += x;
   }
 
+  /**
+   * Returns total bytes sent for ping traffic.
+   *
+   * <p>This counter is cumulative since process start and is used in overhead summaries.
+   *
+   * @return total ping bytes sent.
+   */
   public synchronized long getPingSentBytes() {
     return pingBytesSent;
   }
@@ -2572,6 +2911,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for probe requests.
+   *
+   * <p>This counter tracks protocol overhead for probe traffic and is cumulative since process
+   * start.
+   *
+   * @return total probe-request bytes sent.
+   */
   public synchronized long getProbeRequestSentBytes() {
     return probeRequestSentBytes;
   }
@@ -2600,6 +2947,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for routed test messages.
+   *
+   * <p>The value is cumulative since process start and contributes to overhead reporting.
+   *
+   * @return total routed-message bytes sent.
+   */
   public synchronized long getRoutedMessageSentBytes() {
     return routedMessageBytesSent;
   }
@@ -2615,6 +2969,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     this.disconnBytesSent += x;
   }
 
+  /**
+   * Returns total bytes sent for disconnect-related traffic.
+   *
+   * <p>The counter is cumulative since process start and is intended for overhead diagnostics.
+   *
+   * @return total disconnect bytes sent.
+   */
   public long getDisconnBytesSent() {
     return disconnBytesSent;
   }
@@ -2642,6 +3003,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for initial peer messages.
+   *
+   * <p>The counter is cumulative since process start and used for overhead reporting.
+   *
+   * @return total initial-message bytes sent.
+   */
   public synchronized long getInitialMessagesBytesSent() {
     return initialMessagesBytesSent;
   }
@@ -2669,6 +3037,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for IP-change notifications.
+   *
+   * <p>The counter is cumulative since process start and contributes to overhead reporting.
+   *
+   * @return total changed-IP bytes sent.
+   */
   public long getChangedIPBytesSent() {
     return changedIPBytesSent;
   }
@@ -2696,6 +3071,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for node-to-node (n2n) messages.
+   *
+   * <p>This counter tracks protocol overhead for n2n traffic and is cumulative since process start.
+   *
+   * @return total node-to-node bytes sent.
+   */
   public long getNodeToNodeBytesSent() {
     return nodeToNodeSentBytes;
   }
@@ -2724,6 +3106,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for allocation notice traffic.
+   *
+   * <p>This counter is cumulative since process start and contributes to overhead reporting.
+   *
+   * @return total allocation-notice bytes sent.
+   */
   public long getAllocationNoticesBytesSent() {
     return allocationNoticesCounterBytesSent;
   }
@@ -2751,6 +3140,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         }
       };
 
+  /**
+   * Returns total bytes sent for FOAF traffic.
+   *
+   * <p>This counter tracks protocol overhead for friend-of-a-friend exchanges and is cumulative
+   * since process start.
+   *
+   * @return total FOAF bytes sent.
+   */
   public long getFOAFBytesSent() {
     return foafCounterBytesSent;
   }
@@ -2807,6 +3204,16 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return (double) (getSentOverhead() * SECONDS.toMillis(1)) / uptime;
   }
 
+  /**
+   * Records a successful block receive and updates success-rate averages.
+   *
+   * <p>This method updates the realtime or bulk success average and, when {@code isLocal} is {@code
+   * true}, also updates the local-only success metric. It is safe to call frequently from transfer
+   * paths and does not perform any I/O.
+   *
+   * @param realTimeFlag {@code true} for realtime transfers, {@code false} for bulk.
+   * @param isLocal {@code true} if the transfer was for a local request.
+   */
   public synchronized void successfulBlockReceive(boolean realTimeFlag, boolean isLocal) {
     RunningAverage blockTransferPSuccess =
         realTimeFlag ? blockTransferPSuccessRT : blockTransferPSuccessBulk;
@@ -2820,6 +3227,18 @@ public class NodeStats implements Persistable, BlockTimeCallback {
           realTimeFlag);
   }
 
+  /**
+   * Records a failed block receive and updates failure and success-rate averages.
+   *
+   * <p>When {@code normalFetch} is {@code true}, timeout information contributes to the timeout
+   * failure metric. The per-channel success average is updated with a failure sample, and the
+   * local-only metric is updated when {@code isLocal} is {@code true}.
+   *
+   * @param normalFetch {@code true} if the failure was for a normal fetch operation.
+   * @param timeout {@code true} if the failure was due to a timeout.
+   * @param realTimeFlag {@code true} for realtime transfers, {@code false} for bulk.
+   * @param isLocal {@code true} if the transfer was for a local request.
+   */
   public synchronized void failedBlockReceive(
       boolean normalFetch, boolean timeout, boolean realTimeFlag, boolean isLocal) {
     if (normalFetch) {
@@ -2837,34 +3256,103 @@ public class NodeStats implements Persistable, BlockTimeCallback {
           realTimeFlag);
   }
 
+  /**
+   * Records the location of an incoming request in the location histogram.
+   *
+   * <p>The location is expected to be in {@code [0.0, 1.0)}. The histogram is cumulative over the
+   * process lifetime and is used for diagnostics and UI display.
+   *
+   * @param loc normalized request location in the keyspace.
+   */
   public void reportIncomingRequestLocation(double loc) {
     incomingRequests.report(loc);
   }
 
+  /**
+   * Returns the histogram counts for incoming request locations.
+   *
+   * <p>The array length equals the configured number of bins. Counts are cumulative since process
+   * start and are safe to read without external synchronization.
+   *
+   * @return histogram bin counts for incoming requests.
+   */
   public int[] getIncomingRequestLocation() {
     return incomingRequests.getCounts();
   }
 
+  /**
+   * Records the location of an outgoing local request in the location histogram.
+   *
+   * <p>The location is expected to be in {@code [0.0, 1.0)}. The histogram is cumulative and used
+   * for diagnostics and UI display.
+   *
+   * @param loc normalized request location in the keyspace.
+   */
   public void reportOutgoingLocalRequestLocation(double loc) {
     outgoingLocalRequests.report(loc);
   }
 
+  /**
+   * Returns the histogram counts for outgoing local request locations.
+   *
+   * <p>The array length equals the configured number of bins. Counts are cumulative since process
+   * start and are safe to read without external synchronization.
+   *
+   * @return histogram bin counts for outgoing local requests.
+   */
   public int[] getOutgoingLocalRequestLocation() {
     return outgoingLocalRequests.getCounts();
   }
 
+  /**
+   * Records the location of an outgoing request in the location histogram.
+   *
+   * <p>The location is expected to be in {@code [0.0, 1.0)}. The histogram is cumulative and used
+   * for diagnostics and UI display.
+   *
+   * @param loc normalized request location in the keyspace.
+   */
   public void reportOutgoingRequestLocation(double loc) {
     outgoingRequests.report(loc);
   }
 
+  /**
+   * Returns the histogram counts for outgoing request locations.
+   *
+   * <p>The array length equals the configured number of bins. Counts are cumulative since process
+   * start and are safe to read without external synchronization.
+   *
+   * @return histogram bin counts for outgoing requests.
+   */
   public int[] getOutgoingRequestLocation() {
     return outgoingRequests.getCounts();
   }
 
+  /**
+   * Returns CHK success-rate buckets scaled to the provided maximum.
+   *
+   * <p>Each bucket contains a scaled percentage value representing the average success rate for
+   * that location range. The caller chooses the scale (for example, {@code 100} for percentages).
+   *
+   * @param scale maximum value used for scaling the percentages.
+   * @return scaled success-rate values per location bucket.
+   */
   public int[] getChkSuccessRatesByLocationPercentages(int scale) {
     return chkSuccessRatesByLocation.getPercentageArray(scale);
   }
 
+  /**
+   * Records the outcome and timing for a local CHK fetch.
+   *
+   * <p>The method updates success and failure timing averages for the specified channel and records
+   * a per-location success sample when a location is provided. Values are expected to be reported
+   * in milliseconds and a normalized keyspace location.
+   *
+   * @param rtt round-trip time for the fetch in milliseconds.
+   * @param successful {@code true} if the fetch succeeded.
+   * @param location normalized keyspace location in {@code [0.0, 1.0)}.
+   * @param isRealtime {@code true} for realtime fetches, {@code false} for bulk.
+   */
   public void reportCHKOutcome(long rtt, boolean successful, double location, boolean isRealtime) {
     if (successful) {
       (isRealtime ? successfulLocalCHKFetchTimeAverageRT : successfulLocalCHKFetchTimeAverageBulk)
@@ -2880,6 +3368,16 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     (isRealtime ? localCHKFetchTimeAverageRT : localCHKFetchTimeAverageBulk).report(rtt);
   }
 
+  /**
+   * Records the outcome and timing for a local SSK fetch.
+   *
+   * <p>The method updates success and failure timing averages for the specified channel. Values are
+   * expected to be reported in milliseconds and are used for diagnostics and UI reporting.
+   *
+   * @param rtt round-trip time for the fetch in milliseconds.
+   * @param successful {@code true} if the fetch succeeded.
+   * @param isRealtime {@code true} for realtime fetches, {@code false} for bulk.
+   */
   public void reportSSKOutcome(long rtt, boolean successful, boolean isRealtime) {
     if (successful) {
       (isRealtime ? successfulLocalSSKFetchTimeAverageRT : successfulLocalSSKFetchTimeAverageBulk)
@@ -2938,22 +3436,62 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return jobType.substring(typeBeginIndex, typeEndIndex);
   }
 
+  /**
+   * Records execution time for a database job type.
+   *
+   * <p>The job type is sanitized to a stable label (class name or wrapper prefix) and the timing is
+   * recorded in a running average. These statistics are used for diagnostics and do not affect
+   * admission decisions.
+   *
+   * @param jobType job type identifier or class name used for grouping.
+   * @param executionTimeMiliSeconds duration in milliseconds for the job execution.
+   */
   public void reportDatabaseJob(String jobType, long executionTimeMiliSeconds) {
     avgDatabaseJobExecutionTimes
-        .computeIfAbsent(sanitizeDBJobType(jobType), k -> new TrivialRunningAverage())
+        .computeIfAbsent(sanitizeDBJobType(jobType), _ -> new TrivialRunningAverage())
         .report(executionTimeMiliSeconds);
   }
 
+  /**
+   * Records a mandatory backoff event and its duration.
+   *
+   * <p>The event is grouped by the provided backoff type and by mode (realtime or bulk) for
+   * aggregate reporting. Values are accumulated as running averages.
+   *
+   * @param backoffType stable label describing the mandatory backoff reason.
+   * @param backoffTimeMilliSeconds duration of the backoff in milliseconds.
+   * @param realtime {@code true} for realtime mode; {@code false} for bulk.
+   */
   public void reportMandatoryBackoff(
       String backoffType, long backoffTimeMilliSeconds, boolean realtime) {
     mandatoryBackoffStats.report(backoffType, backoffTimeMilliSeconds, realtime);
   }
 
+  /**
+   * Records a routing backoff event and its duration.
+   *
+   * <p>The event is grouped by the provided backoff type and by mode (realtime or bulk) for
+   * aggregate reporting. Values are accumulated as running averages.
+   *
+   * @param backoffType stable label describing the routing backoff reason.
+   * @param backoffTimeMilliSeconds duration of the backoff in milliseconds.
+   * @param realtime {@code true} for realtime mode; {@code false} for bulk.
+   */
   public void reportRoutingBackoff(
       String backoffType, long backoffTimeMilliSeconds, boolean realtime) {
     routingBackoffStats.report(backoffType, backoffTimeMilliSeconds, realtime);
   }
 
+  /**
+   * Records a transfer backoff event and its duration.
+   *
+   * <p>The event is grouped by the provided backoff type and by mode (realtime or bulk) for
+   * aggregate reporting. Values are accumulated as running averages.
+   *
+   * @param backoffType stable label describing the transfer backoff reason.
+   * @param backoffTimeMilliSeconds duration of the backoff in milliseconds.
+   * @param realtime {@code true} for realtime mode; {@code false} for bulk.
+   */
   public void reportTransferBackoff(
       String backoffType, long backoffTimeMilliSeconds, boolean realtime) {
     transferBackoffStats.report(backoffType, backoffTimeMilliSeconds, realtime);
@@ -2962,38 +3500,20 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Aggregated timing statistics for a labeled activity.
    *
-   * <p>Fields are immutable snapshots: {@link #count} (samples), {@link #avgTime} (mean duration in
-   * milliseconds), and {@link #totalTime} (sum in milliseconds). Natural ordering sorts descending
-   * by {@code totalTime}.
+   * <p>Fields are immutable snapshots: {@link #count()} (samples), {@link #avgTime()} (mean
+   * duration in milliseconds), and {@link #totalTime()} (sum in milliseconds). Natural ordering
+   * sorts descending by {@code totalTime}.
+   *
+   * @param keyStr stable label for the measured activity or job type.
+   * @param count number of samples included in the statistics.
+   * @param avgTime mean duration per sample, in milliseconds.
+   * @param totalTime total duration across samples, in milliseconds.
    */
-  public static class TimedStats implements Comparable<TimedStats> {
-    public final String keyStr;
-    public final long count;
-    public final long avgTime;
-    public final long totalTime;
-
-    public TimedStats(String myKeyStr, long myCount, long myAvgTime, long myTotalTime) {
-      keyStr = myKeyStr;
-      count = myCount;
-      avgTime = myAvgTime;
-      totalTime = myTotalTime;
-    }
-
+  public record TimedStats(String keyStr, long count, long avgTime, long totalTime)
+      implements Comparable<TimedStats> {
     @Override
     public int compareTo(TimedStats o) {
       return Long.compare(o.totalTime, totalTime);
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-      if (this == obj) return true;
-      if (!(obj instanceof TimedStats other)) return false;
-      return this.totalTime == other.totalTime;
-    }
-
-    @Override
-    public int hashCode() {
-      return Long.hashCode(totalTime);
     }
   }
 
@@ -3027,7 +3547,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return transferBackoffStats.getStatistics(realtime);
   }
 
-  /** Returns timing stats for database job execution, grouped by sanitized job type. */
+  /**
+   * Returns timing stats for database job execution, grouped by sanitized job type.
+   *
+   * <p>The job type labels are sanitized to a stable short name, and the results are sorted by
+   * total time descending to highlight the heaviest contributors.
+   *
+   * @return array of timing statistics for database jobs.
+   */
   @SuppressWarnings("unused")
   public TimedStats[] getDatabaseJobExecutionStatistics() {
     return getStatistics(avgDatabaseJobExecutionTimes);
@@ -3039,8 +3566,12 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * Returns the current setting for treating local requests as remote when computing bandwidth
-   * liability.
+   * Returns whether local requests are treated as remote for bandwidth liability.
+   *
+   * <p>When enabled, local traffic is accounted as if it were remote to reduce information leakage.
+   * The flag is updated by security-level listeners and affects admission decisions.
+   *
+   * @return {@code true} if local requests are treated as remote.
    */
   public boolean ignoreLocalVsRemoteBandwidthLiability() {
     return ignoreLocalVsRemoteBandwidthLiability;
@@ -3071,7 +3602,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       om.getSeedTracker().completedAnnounce(peerNode, forwardedRefs);
   }
 
-  /** Estimated transfers per announce, rounded up to at least 1. */
+  /**
+   * Returns the estimated transfers per announce, rounded up to at least one.
+   *
+   * <p>The value is derived from recent announcement statistics and is used when computing
+   * liability-style limits for concurrent announcements.
+   *
+   * @return estimated transfers per announce, always {@code >= 1}.
+   */
   public synchronized int getTransfersPerAnnounce() {
     if (totalAnnouncements == 0) return 1;
     return (int) Math.max(1, Math.ceil((totalAnnounceForwards * 1.0) / totalAnnouncements));
@@ -3120,6 +3658,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     }
   }
 
+  /**
+   * Marks an announcement as complete and releases its slot.
+   *
+   * <p>Call this after {@link #shouldAcceptAnnouncement(long)} returns {@code ACCEPT} to ensure the
+   * running-announcement count is accurate.
+   *
+   * @param uid unique identifier for the announcement being finished.
+   */
   public synchronized void endAnnouncement(long uid) {
     runningAnnouncements.remove(uid);
   }
@@ -3137,7 +3683,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     else throttledPacketSendAverageBulk.report(interval);
   }
 
-  /** If a peer's ping exceeds this threshold, consider it backed off. */
+  /**
+   * Returns the ping threshold above which a peer is considered backed off.
+   *
+   * <p>The threshold is derived from the configured maximum ping time and is used by routing and
+   * admission logic to apply backoff behavior.
+   *
+   * @return ping time threshold in milliseconds.
+   */
   public synchronized long maxPeerPingTime() {
     return 2 * maxPingTime;
   }
@@ -3194,6 +3747,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     }
   }
 
+  /**
+   * Records a fatal timeout while waiting for a new-load-management slot.
+   *
+   * <p>Counts are tracked separately for local and remote requests to aid diagnostics.
+   *
+   * @param local {@code true} for local requests, {@code false} for remote.
+   */
   public void reportFatalTimeoutInWait(boolean local) {
     synchronized (slotTimeoutsSync) {
       if (local) fatalTimeoutsInWaitLocal++;
@@ -3201,6 +3761,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     }
   }
 
+  /**
+   * Records a successful new-load-management slot allocation.
+   *
+   * <p>Counts are tracked separately for local and remote requests to aid diagnostics.
+   *
+   * @param local {@code true} for local requests, {@code false} for remote.
+   */
   public void reportAllocatedSlot(boolean local) {
     synchronized (slotTimeoutsSync) {
       if (local) allocatedSlotLocal++;
@@ -3208,6 +3775,15 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     }
   }
 
+  /**
+   * Indicates whether new-load-management is enabled for the given mode.
+   *
+   * <p>This method currently returns {@code false} for both realtime and bulk, preserving the call
+   * site contract while the feature remains disabled.
+   *
+   * @param realTimeFlag {@code true} for realtime mode, {@code false} for bulk.
+   * @return {@code true} if new-load-management is enabled for the mode.
+   */
   public boolean enableNewLoadManagement(boolean realTimeFlag) {
     boolean enableNewLoadManagementBulk = false;
     boolean enableNewLoadManagementRT = false;
@@ -3256,7 +3832,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /** How often to update the reject stats */
   private final long rejectStatsUpdateInterval;
 
-  /** If positive, the level of fuzz (size of 1 standard deviation for gauss in percent) to use */
+  /** If positive, the level of fuzz (size of 1 standard deviation for Gauss in percent) to use */
   private final double rejectStatsFuzz;
 
   private final byte[] noisyRejectStats;
@@ -3320,7 +3896,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
     void report(String backoffType, long backoffTimeMilliSeconds, boolean realtime) {
       getMap(realtime)
-          .computeIfAbsent(backoffType, k -> new TrivialRunningAverage())
+          .computeIfAbsent(backoffType, _ -> new TrivialRunningAverage())
           .report(backoffTimeMilliSeconds);
     }
 

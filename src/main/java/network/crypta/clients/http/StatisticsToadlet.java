@@ -585,10 +585,10 @@ public class StatisticsToadlet extends Toadlet {
 
     for (NodeStats.TimedStats entry : entries) {
       HTMLNode entryRow = table.addChild("tr");
-      entryRow.addChild("td", entry.keyStr);
-      entryRow.addChild("td", Long.toString(entry.count));
-      entryRow.addChild("td", TimeUtil.formatTime(entry.avgTime, 2, true));
-      entryRow.addChild("td", TimeUtil.formatTime(entry.totalTime, 2, true));
+      entryRow.addChild("td", entry.keyStr());
+      entryRow.addChild("td", Long.toString(entry.count()));
+      entryRow.addChild("td", TimeUtil.formatTime(entry.avgTime(), 2, true));
+      entryRow.addChild("td", TimeUtil.formatTime(entry.totalTime(), 2, true));
     }
   }
 
