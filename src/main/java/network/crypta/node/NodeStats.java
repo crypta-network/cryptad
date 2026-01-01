@@ -444,14 +444,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     initIoStatsDefaults();
 
     NodeStatsConfig.Result configResult = statsConfig.configure(this, node, sortOrder);
-    sortOrder = configResult.sortOrder;
+    sortOrder = configResult.sortOrder();
 
     // This is a *network* level setting, because it affects the rate at which we initiate local
     // requests, which could be seen by distant nodes.
     registerSecurityListener();
 
-    persister = configResult.persister;
-    SimpleFieldSet throttleFS = configResult.throttleFS;
+    persister = configResult.persister();
+    SimpleFieldSet throttleFS = configResult.throttleFS();
 
     // Guesstimates. Hopefully well over the reality.
     localChkFetchBytesSentAverage =
