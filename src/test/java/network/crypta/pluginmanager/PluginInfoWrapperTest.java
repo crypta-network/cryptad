@@ -430,7 +430,7 @@ class PluginInfoWrapperTest {
             Proxy.newProxyInstance(
                 loader,
                 new Class<?>[] {FredPlugin.class},
-                (proxy, method, args) -> {
+                (_, method, _) -> {
                   if (method.getName().equals("terminate")) {
                     return null;
                   }
