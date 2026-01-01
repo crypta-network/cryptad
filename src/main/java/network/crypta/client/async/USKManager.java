@@ -22,7 +22,6 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.LRUMap;
 import network.crypta.support.PriorityAwareExecutor;
-import network.crypta.support.api.Bucket;
 import network.crypta.support.io.NullBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -649,7 +648,7 @@ public class USKManager {
       public void onSuccess(FetchResult result, ClientGetter state) {
         if (LOG.isDebugEnabled()) LOG.debug("Prefetch succeeded for {}", key);
         //noinspection EmptyTryBlock
-        try (Bucket ignored = result.asBucket()) {
+        try (var _ = result.asBucket()) {
           // release via AutoCloseable
         }
         updateKnownGood(key, edition, ctx);
@@ -747,7 +746,7 @@ public class USKManager {
       callbacks = subscribersByClearUSK.get(clear);
       temporaryBackgroundFetchersPrefetch.computeIfPresent(
           clear,
-          (k, v) -> {
+          (_, _) -> {
             schedulePrefetchChecker();
             return System.currentTimeMillis();
           });

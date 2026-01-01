@@ -96,7 +96,7 @@ class TesterElementTest {
     try (MockedConstruction<Timer> timerConstruction =
         mockConstruction(
             Timer.class,
-            (mock, context) -> assertEquals(List.of(true), List.copyOf(context.arguments())))) {
+            (_, context) -> assertEquals(List.of(true), List.copyOf(context.arguments())))) {
       // Act
       new TesterElement(ctx, ELEMENT_ID, 1);
 
@@ -110,7 +110,7 @@ class TesterElementTest {
     // Arrange
     stubContext();
 
-    try (MockedConstruction<Timer> ignored = mockConstruction(Timer.class)) {
+    try (var _ = mockConstruction(Timer.class)) {
       TesterElement element = new TesterElement(ctx, ELEMENT_ID, 1);
 
       // Act
@@ -126,7 +126,7 @@ class TesterElementTest {
     // Arrange
     stubContext();
 
-    try (MockedConstruction<Timer> ignored = mockConstruction(Timer.class)) {
+    try (var _ = mockConstruction(Timer.class)) {
       TesterElement element = new TesterElement(ctx, ELEMENT_ID, 1);
 
       // Act
@@ -209,7 +209,7 @@ class TesterElementTest {
     // Arrange
     stubContext();
 
-    try (MockedConstruction<Timer> ignored = mockConstruction(Timer.class)) {
+    try (var _ = mockConstruction(Timer.class)) {
       TesterElement element = new TesterElement(ctx, ELEMENT_ID, 999);
       element.addChild(new HTMLNode("span", "old"));
       setStatus(element, 500);
@@ -230,7 +230,7 @@ class TesterElementTest {
     // Arrange
     stubContext();
 
-    try (MockedConstruction<Timer> ignored = mockConstruction(Timer.class)) {
+    try (var _ = mockConstruction(Timer.class)) {
       TesterElement element = new TesterElement(ctx, ELEMENT_ID, 999);
       setStatus(element, 250);
 

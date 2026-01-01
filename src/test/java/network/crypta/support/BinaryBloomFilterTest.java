@@ -238,7 +238,7 @@ class BinaryBloomFilterTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (BloomFilter ignored = BloomFilter.createFilter(-8, 1, false)) {
+          try (var _ = BloomFilter.createFilter(-8, 1, false)) {
             fail("Filter creation should have thrown before entering try block");
           }
         });

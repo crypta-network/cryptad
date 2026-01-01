@@ -1,6 +1,13 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -19,7 +26,10 @@ import network.crypta.support.io.TempBucketFactory.TempBucket;
 import network.crypta.support.io.TempBucketFactory.TempRandomAccessBuffer;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.jetbrains.annotations.NotNull;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -58,7 +68,7 @@ class TempBucketFactoryTest {
       for (File f : files) {
         try {
           Files.deleteIfExists(f.toPath());
-        } catch (IOException ignore) {
+        } catch (IOException _) {
           // best-effort cleanup in tests
         }
       }
@@ -143,7 +153,7 @@ class TempBucketFactoryTest {
     assertThrows(
         InsufficientDiskSpaceException.class,
         () -> {
-          try (TempBucket ignored = (TempBucket) f.makeBucket(4096)) {
+          try (var _ = (TempBucket) f.makeBucket(4096)) {
             fail("Expected InsufficientDiskSpaceException");
           }
         });
@@ -174,7 +184,7 @@ class TempBucketFactoryTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = f.makeRAF(-1)) {
+          try (var _ = f.makeRAF(-1)) {
             fail("Expected IllegalArgumentException");
           }
         });
@@ -290,7 +300,7 @@ class TempBucketFactoryTest {
     assertThrows(
         InsufficientDiskSpaceException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = f.getUnderlyingRAFFactory().makeRAF(1)) {
+          try (var _ = f.getUnderlyingRAFFactory().makeRAF(1)) {
             fail("Expected InsufficientDiskSpaceException");
           }
         });

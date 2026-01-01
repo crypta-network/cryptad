@@ -185,7 +185,7 @@ class SingleFileFetcherTest {
     when(bucketFactory.makeBucket(20L)).thenReturn(copy);
 
     // Static mock for BucketTools.copy to avoid needing real streams.
-    try (MockedStatic<BucketTools> ignored = Mockito.mockStatic(BucketTools.class)) {
+    try (var _ = Mockito.mockStatic(BucketTools.class)) {
       ClientMetadata md = new ClientMetadata("text/plain");
       FetchResult result = new FetchResult(md, original);
 
@@ -260,7 +260,7 @@ class SingleFileFetcherTest {
     RandomAccessBucket copy = mock(RandomAccessBucket.class);
     when(bucketFactory.makeBucket(20L)).thenReturn(copy);
 
-    try (MockedStatic<BucketTools> ignored = Mockito.mockStatic(BucketTools.class)) {
+    try (var _ = Mockito.mockStatic(BucketTools.class)) {
       // Execute job immediately when queued
       doAnswer(
               inv -> {

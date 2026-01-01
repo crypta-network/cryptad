@@ -45,7 +45,7 @@ class FileBucketTest {
         NullPointerException.class,
         () -> {
           //noinspection EmptyTryBlock
-          try (FileBucket ignored = new FileBucket(null, false, false, false, false)) {
+          try (var _ = new FileBucket(null, false, false, false, false)) {
             // no-op
           }
         });

@@ -600,9 +600,7 @@ public class SplitFileFetcherSegmentStorage {
 
   private void handleInsufficientBlocksAndReturn() {
     writeMetadata();
-    boolean wasCorrupt;
     synchronized (this) {
-      wasCorrupt = corruptMetadata;
       corruptMetadata = false;
     }
     parent.restartedAfterDataCorruption();
@@ -1025,7 +1023,7 @@ public class SplitFileFetcherSegmentStorage {
           parent,
           res.slotNumber());
     parent.jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           parent.fetcher.onFetchedBlock();
           return false;
         });
@@ -1242,6 +1240,7 @@ public class SplitFileFetcherSegmentStorage {
    *
    * @return {@code true} if decoding is active or the segment has finished.
    */
+  @SuppressWarnings("unused")
   public synchronized boolean isDecodingOrFinished() {
     return finished || failed || succeeded || tryDecode;
   }

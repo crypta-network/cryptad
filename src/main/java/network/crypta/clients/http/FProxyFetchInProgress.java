@@ -59,7 +59,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Concurrency: all externally visible state is guarded by the instance monitor; callbacks may
  *       arrive from worker threads.
  *   <li>Lifecycle: constructed with immutable fetch parameters, started once, and then either
- *       finishes, fails, or is cancelled by the tracker.
+ *       finishes, fails, or is canceled by the tracker.
  * </ul>
  *
  * <p>LOCKING: The lock on this object is always taken last.
@@ -84,7 +84,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     ACCEPT_OLD,
     /**
      * Discard any cached representation and perform a fresh fetch from the network to avoid stale
-     * filter artefacts at the cost of extra latency and bandwidth.
+     * filter artifacts at the cost of extra latency and bandwidth.
      */
     RE_FETCH
   }
@@ -520,7 +520,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
             if (!(req > 1024 && oldReq <= 1024)) return;
           }
         }
-        case SendingToNetworkEvent ignored -> {
+        case SendingToNetworkEvent _ -> {
           synchronized (this) {
             if (goneToNetwork) return;
             goneToNetwork = true;
@@ -617,7 +617,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * stored {@link FetchException} through {@link #innerGetResult(boolean)} for details before
    * deciding whether to retry.
    *
-   * @return {@code true} once data has arrived, an error was set, or the fetch was cancelled
+   * @return {@code true} once data has arrived, an error was set, or the fetch was canceled
    */
   public synchronized boolean finished() {
     return finished;
@@ -627,7 +627,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * Releases a waiter and schedules cancellation if no other observers remain.
    *
    * <p>FProxy pages typically close waiters when the user navigates away. The method checks
-   * remaining waiters and previously created results to decide whether the fetch can be cancelled
+   * remaining waiters and previously created results to decide whether the fetch can be canceled
    * immediately or should continue running for other subscribers.
    *
    * @param waiter the waiter to remove from the active list; ignored if already absent
@@ -645,7 +645,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   static final long LIFETIME = SECONDS.toMillis(30);
 
   /**
-   * Determines whether the fetch can be cancelled safely without racing active observers.
+   * Determines whether the fetch can be canceled safely without racing active observers.
    *
    * <p>Callers must first hold the outer {@code FProxyToadlet.fetchers} lock to avoid conflicts
    * with concurrent additions. A {@code true} return signals that no waiters, listeners, or
@@ -669,8 +669,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   /**
-   * Completes cancellation by signalling the getter, marking the fetch as cancelled, and freeing
-   * any held data bucket.
+   * Completes cancellation by signaling the getter, marking the fetch as canceled, and freeing any
+   * held data bucket.
    *
    * <p>The tracker must remove this instance before calling to ensure no future waiters reuse it.
    * Errors during cancellation are logged but do not prevent resource cleanup.
@@ -760,7 +760,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * Placeholder indicating that failure notifications have been emitted to interested parties.
    *
    * <p>The current implementation always returns {@code true}; the method exists to mirror historic
-   * behaviour expected by callers and may be expanded in future when finer-grained notification
+   * behavior expected by callers and may be expanded in future when finer-grained notification
    * tracking is required.
    *
    * @return {@code true} because failures are treated as already communicated
@@ -786,7 +786,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   /**
    * Marks that a waiter has waited at least once, avoiding duplicate throttling.
    *
-   * <p>The flag reduces spurious UI refreshes by signalling that the associated browser request has
+   * <p>The flag reduces spurious UI refreshes by signaling that the associated browser request has
    * already paused for progress. Subsequent calls are idempotent and keep the fetch state intact,
    * ensuring race-free cooperation between multiple waiter threads that may report waits
    * concurrently.
@@ -884,7 +884,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    *
    * <p>Resume callbacks are part of the {@link ClientGetCallback} contract for persistent requests.
    * Because FProxy fetches are transient and tied to browser interactions, persistence is disabled
-   * and any attempt to resume would indicate a misuse. The exception keeps this behaviour explicit
+   * and any attempt to resume would indicate a misuse. The exception keeps this behavior explicit
    * for maintainers.
    *
    * @param context unused context supplied by the persistence mechanism

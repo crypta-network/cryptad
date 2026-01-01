@@ -77,7 +77,6 @@ import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.WeakHashSet;
-import network.crypta.support.api.Bucket;
 import network.crypta.support.math.RunningAverage;
 import network.crypta.support.math.SimpleRunningAverage;
 import network.crypta.support.math.TimeDecayingRunningAverage;
@@ -4332,7 +4331,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
 
   @Override
   public void onFound(USK origUSK, long edition, FetchResult result) {
-    try (Bucket ignored = result.asBucket()) {
+    try (var _ = result.asBucket()) {
       if (isConnected() || myARK.suggestedEdition > edition) {
         return;
       }

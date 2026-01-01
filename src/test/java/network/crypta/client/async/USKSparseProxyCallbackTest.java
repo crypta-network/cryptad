@@ -129,8 +129,6 @@ class USKSparseProxyCallbackTest {
 
   private static FetchContext newFetchContext() {
     // Copied pattern from existing tests to match constructor signature
-    network.crypta.support.api.BucketFactory bf =
-        new network.crypta.support.io.ArrayBucketFactory();
     return new FetchContext(
         64 * 1024,
         64 * 1024,

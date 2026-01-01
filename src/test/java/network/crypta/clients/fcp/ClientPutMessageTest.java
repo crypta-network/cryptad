@@ -161,7 +161,7 @@ class ClientPutMessageTest {
     assertThrows(
         PersistenceDisabledException.class,
         () -> {
-          try (RandomAccessBucket ignored = message.createBucket(transientFactory, 16L, server)) {
+          try (var _ = message.createBucket(transientFactory, 16L, server)) {
             fail("PersistenceDisabledException expected before bucket allocation");
           }
         });

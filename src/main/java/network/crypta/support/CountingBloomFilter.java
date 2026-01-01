@@ -218,7 +218,7 @@ public class CountingBloomFilter extends BloomFilter {
    */
   @Override
   public void fork(int k) {
-    try (LockResource ignored = new LockResource(lock.writeLock())) {
+    try (var _ = new LockResource(lock.writeLock())) {
       try {
         File tempFile = createSecureTempFile();
         tempFile.deleteOnExit();

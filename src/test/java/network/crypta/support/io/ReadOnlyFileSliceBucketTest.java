@@ -405,7 +405,7 @@ class ReadOnlyFileSliceBucketTest {
     assertThrows(
         NullPointerException.class,
         () -> {
-          try (ReadOnlyFileSliceBucket ignored = new ReadOnlyFileSliceBucket(null, 0, 0)) {
+          try (var _ = new ReadOnlyFileSliceBucket(null, 0, 0)) {
             fail("Expected NPE before entering try-with-resources");
           }
         });

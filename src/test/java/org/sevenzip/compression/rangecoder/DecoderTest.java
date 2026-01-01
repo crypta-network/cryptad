@@ -55,7 +55,7 @@ class DecoderTest {
     decoder.init();
 
     List<Integer> decoded = new ArrayList<>();
-    for (int ignored : symbols) {
+    for (var _ : symbols) {
       decoded.add(decoder.decodeBit(probabilities, 0));
     }
 

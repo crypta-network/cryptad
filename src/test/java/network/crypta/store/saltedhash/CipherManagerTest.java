@@ -13,9 +13,6 @@ import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.store.BlockMetadata;
 import network.crypta.store.StorableBlock;
 import network.crypta.store.StoreCallback;
-import network.crypta.support.PooledExecutor;
-import network.crypta.support.Ticker;
-import network.crypta.support.TrivialTicker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,7 +48,6 @@ class CipherManagerTest {
   private SaltedHashFreenetStore<StubBlock> newStore(String name) throws Exception {
     StoreCallback<StubBlock> cb = new StubCallback();
     Random weak = new Random(1234);
-    Ticker ticker = new TrivialTicker(new PooledExecutor());
     // Minimal store, not started; used only to instantiate Entry via reflection.
     return SaltedHashFreenetStore.construct(
         tmp, name, cb, weak, 2, false, SemiOrderedShutdownHook.get(), false, false, null);

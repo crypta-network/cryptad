@@ -1,6 +1,12 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -8,7 +14,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import network.crypta.client.async.ClientContext;
-import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -487,7 +492,7 @@ class ByteArrayRandomAccessBufferTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(-1)) {
+          try (var _ = factory.makeRAF(-1)) {
             fail(UNREACHABLE_MESSAGE);
           }
         });
@@ -507,8 +512,7 @@ class ByteArrayRandomAccessBufferTest {
         assertThrows(
             IOException.class,
             () -> {
-              try (LockableRandomAccessBuffer ignored =
-                  factory.makeRAF((long) Integer.MAX_VALUE + 1)) {
+              try (var _ = factory.makeRAF((long) Integer.MAX_VALUE + 1)) {
                 fail(UNREACHABLE_MESSAGE);
               }
             });
@@ -559,7 +563,7 @@ class ByteArrayRandomAccessBufferTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(src, 0, -1, false)) {
+          try (var _ = factory.makeRAF(src, 0, -1, false)) {
             fail(UNREACHABLE_MESSAGE);
           }
         });
@@ -576,7 +580,7 @@ class ByteArrayRandomAccessBufferTest {
     assertThrows(
         ArrayIndexOutOfBoundsException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(src, -1, 2, false)) {
+          try (var _ = factory.makeRAF(src, -1, 2, false)) {
             fail(UNREACHABLE_MESSAGE);
           }
         });
@@ -593,7 +597,7 @@ class ByteArrayRandomAccessBufferTest {
     assertThrows(
         ArrayIndexOutOfBoundsException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(src, 5, 1, false)) {
+          try (var _ = factory.makeRAF(src, 5, 1, false)) {
             fail(UNREACHABLE_MESSAGE);
           }
         });

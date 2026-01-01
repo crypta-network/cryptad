@@ -299,7 +299,7 @@ class NoFreeBucketTest {
       assertThat(restored, is(instanceOf(NoFreeBucket.class)));
       // Verify that the restored wrapper delegates getName() to the inner FileBucket we stored
       String expectedName = anyPath.getName();
-      try (Bucket ignored = restored) {
+      try (var _ = restored) {
         assertEquals(expectedName, restored.getName());
       }
     }

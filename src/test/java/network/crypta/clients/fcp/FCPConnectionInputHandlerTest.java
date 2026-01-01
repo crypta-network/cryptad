@@ -43,7 +43,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
-import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -109,7 +108,7 @@ class FCPConnectionInputHandlerTest {
     FakeSimpleMessage unexpected = new FakeSimpleMessage();
     List<String> lines = List.of("Custom", "Field=Value", "EndMessage");
 
-    try (MockedStatic<FCPMessage> ignored = mockFactory(unexpected, "Custom")) {
+    try (var _ = mockFactory(unexpected, "Custom")) {
       withLineSequence(lines, ctx.inputHandler::realRun);
     }
 
@@ -176,7 +175,7 @@ class FCPConnectionInputHandlerTest {
             "EndMessage",
             "StubData",
             "EndMessage");
-    try (MockedStatic<FCPMessage> ignored = mockFactory(failingData, "StubData")) {
+    try (var _ = mockFactory(failingData, "StubData")) {
       withLineSequence(lines, ctx.inputHandler::realRun);
     }
 
@@ -202,7 +201,7 @@ class FCPConnectionInputHandlerTest {
             "EndMessage",
             "AfterHello",
             "EndMessage");
-    try (MockedStatic<FCPMessage> ignored = mockFactory(throwingMessage, "AfterHello")) {
+    try (var _ = mockFactory(throwingMessage, "AfterHello")) {
       withLineSequence(lines, ctx.inputHandler::realRun);
     }
 
@@ -218,7 +217,7 @@ class FCPConnectionInputHandlerTest {
         createContext(
             clientHello("One"), message("Stop", "EndMessage"), message("NeverRead", "EndMessage"));
 
-    lenient().when(ctx.handler.isClosed()).thenAnswer(invocation -> closed.get());
+    lenient().when(ctx.handler.isClosed()).thenAnswer(_ -> closed.get());
     List<String> lines =
         List.of(
             "ClientHello",
@@ -304,12 +303,12 @@ class FCPConnectionInputHandlerTest {
 
   private void withLineSequence(List<String> lines, ThrowingRunnable runnable) throws Exception {
     Deque<String> queue = new ArrayDeque<>(lines);
-    try (MockedConstruction<LineReadingInputStream> ignored =
+    try (var _ =
         mockConstruction(
             LineReadingInputStream.class,
-            (mock, context) ->
+            (mock, _) ->
                 when(mock.readLine(anyInt(), anyInt(), anyBoolean()))
-                    .thenAnswer(invocation -> queue.isEmpty() ? null : queue.removeFirst()))) {
+                    .thenAnswer(_ -> queue.isEmpty() ? null : queue.removeFirst()))) {
       runnable.run();
     }
   }

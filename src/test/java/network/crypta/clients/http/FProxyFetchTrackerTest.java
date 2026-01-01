@@ -25,7 +25,6 @@ import network.crypta.support.MultiValueTable;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @SuppressWarnings("java:S100")
@@ -133,7 +132,7 @@ class FProxyFetchTrackerTest {
     FreenetURI key = mock(FreenetURI.class);
     FetchException failure = new FetchException(FetchExceptionMode.INTERNAL_ERROR, "boom");
 
-    try (MockedConstruction<FProxyFetchInProgress> ignoredConstruction =
+    try (var _ =
         mockConstruction(
             FProxyFetchInProgress.class,
             (mock, settings) -> {

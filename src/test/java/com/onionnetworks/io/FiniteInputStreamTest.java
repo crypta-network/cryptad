@@ -31,15 +31,14 @@ class FiniteInputStreamTest {
 
   private static void createStreamWithNullParent() throws IOException {
     //noinspection EmptyTryBlock
-    try (FiniteInputStream ignored = new FiniteInputStream(null, 1)) {
+    try (var _ = new FiniteInputStream(null, 1)) {
       // no-op
     }
   }
 
   private static void createStreamWithNegativeCount() throws IOException {
     //noinspection EmptyTryBlock
-    try (FiniteInputStream ignored =
-        new FiniteInputStream(new ByteArrayInputStream(new byte[0]), -1)) {
+    try (var _ = new FiniteInputStream(new ByteArrayInputStream(new byte[0]), -1)) {
       // no-op
     }
   }

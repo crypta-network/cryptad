@@ -119,7 +119,7 @@ class ReadBucketAndFreeInputStreamTest {
     when(bucket.getInputStream()).thenReturn(underlying);
     // Act via try-with-resources implicit close
     //noinspection EmptyTryBlock
-    try (InputStream ignored = ReadBucketAndFreeInputStream.create(bucket)) {
+    try (var _ = ReadBucketAndFreeInputStream.create(bucket)) {
       // no-op
     }
 
@@ -142,7 +142,7 @@ class ReadBucketAndFreeInputStreamTest {
             IOException.class,
             () -> {
               //noinspection EmptyTryBlock
-              try (InputStream ignored = ReadBucketAndFreeInputStream.create(bucket)) {
+              try (var _ = ReadBucketAndFreeInputStream.create(bucket)) {
                 // no-op
               }
             });
@@ -182,7 +182,7 @@ class ReadBucketAndFreeInputStreamTest {
         NullPointerException.class,
         () -> {
           //noinspection EmptyTryBlock
-          try (InputStream ignored = ReadBucketAndFreeInputStream.create(null)) {
+          try (var _ = ReadBucketAndFreeInputStream.create(null)) {
             // no-op
           }
         });

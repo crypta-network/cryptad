@@ -58,28 +58,28 @@ class DefaultFECCodeFactoryTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (FECCode ignored = factory.createFECCode(0, 1)) {
+          try (var _ = factory.createFECCode(0, 1)) {
             // unreachable
           }
         });
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (FECCode ignored = factory.createFECCode(4, 3)) {
+          try (var _ = factory.createFECCode(4, 3)) {
             // unreachable
           }
         });
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (FECCode ignored = factory.createFECCode(1, 70000)) {
+          try (var _ = factory.createFECCode(1, 70000)) {
             // unreachable
           }
         });
     assertThrows(
         IllegalArgumentException.class,
         () -> {
-          try (FECCode ignored = factory.createFECCode(70000, 70000)) {
+          try (var _ = factory.createFECCode(70000, 70000)) {
             // unreachable
           }
         });

@@ -229,7 +229,7 @@ public class PluginJarUpdater extends NodeUpdater {
     }
     if (oldResult != null) {
       //noinspection EmptyTryBlock
-      try (Bucket ignored = oldResult) {
+      try (var _ = oldResult) {
         // release previous result bucket
       }
     }
