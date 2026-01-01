@@ -211,7 +211,7 @@ class NodeStatsTest {
 
     long t0 = 1L; // use a non-zero timestamp to avoid edge-case equality
     stats.maybeUpdatePeerManagerUserAlertStats(t0);
-    // Intermediate state is implementation-defined when thresholds were already exceeded earlier;
+    // Intermediate state is implementation-defined when thresholds were already exceeded earlier
     // the important property is that sustained exceedance flips to true after the delay.
 
     // Not enough time yet (just below 10 minutes)
@@ -245,8 +245,7 @@ class NodeStatsTest {
 
   @Test
   @DisplayName("PeerLoadStats parses FNPPeerLoadStatus in int/short/byte variants")
-  void parseLoadStats_forAllVariants_expectEqualFieldMapping() throws Exception {
-    NodeStats stats = createNodeStats();
+  void parseLoadStats_forAllVariants_expectEqualFieldMapping() {
     PeerNode src = mock(PeerNode.class);
 
     // Int variant
