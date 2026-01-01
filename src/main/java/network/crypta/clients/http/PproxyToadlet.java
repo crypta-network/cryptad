@@ -19,9 +19,7 @@ import java.util.TreeMap;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
-import network.crypta.pluginmanager.AccessDeniedPluginHTTPException;
 import network.crypta.pluginmanager.DownloadPluginHTTPException;
-import network.crypta.pluginmanager.NotFoundPluginHTTPException;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.pluginmanager.PluginHTTPException;
 import network.crypta.pluginmanager.PluginInfoWrapper;
@@ -185,10 +183,6 @@ public class PproxyToadlet extends Toadlet {
       writeHTMLReply(ctx, 200, "OK", pluginManager.handleHTTPPost(plugin, request));
     } catch (RedirectPluginHTTPException e) {
       writeTemporaryRedirect(ctx, e.message, e.newLocation);
-    } catch (NotFoundPluginHTTPException e) {
-      sendErrorPage(ctx, e.code(), e.message, e.location);
-    } catch (AccessDeniedPluginHTTPException e) {
-      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (DownloadPluginHTTPException e) {
       MultiValueTable<String, String> head =
           MultiValueTable.from("Content-Disposition", "attachment; filename=\"" + e.filename + '"');
@@ -511,10 +505,6 @@ public class PproxyToadlet extends Toadlet {
       }
     } catch (RedirectPluginHTTPException e) {
       writeTemporaryRedirect(ctx, e.message, e.newLocation);
-    } catch (NotFoundPluginHTTPException e) {
-      sendErrorPage(ctx, e.code(), e.message, e.location);
-    } catch (AccessDeniedPluginHTTPException e) {
-      sendErrorPage(ctx, e.code(), e.message, e.location);
     } catch (DownloadPluginHTTPException e) {
       // Handles download responses inline rather than delegating to sendErrorPage.
 
@@ -602,7 +592,7 @@ public class PproxyToadlet extends Toadlet {
       }
       String translatedGroup = l10n("pluginGroup." + pluginDescription.group);
       groupedAvailablePlugins
-          .computeIfAbsent(translatedGroup, key -> new ArrayList<>())
+          .computeIfAbsent(translatedGroup, _ -> new ArrayList<>())
           .add(pluginDescription);
     }
     for (List<OfficialPluginDescription> pluginDescriptions : groupedAvailablePlugins.values()) {
