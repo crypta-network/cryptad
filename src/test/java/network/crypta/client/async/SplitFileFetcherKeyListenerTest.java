@@ -485,7 +485,7 @@ class SplitFileFetcherKeyListenerTest {
     while (t != null) {
       try {
         return t.getDeclaredField("segments");
-      } catch (NoSuchFieldException ignored) {
+      } catch (NoSuchFieldException _) {
         t = t.getSuperclass();
       }
     }

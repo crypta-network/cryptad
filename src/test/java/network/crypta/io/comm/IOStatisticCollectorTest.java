@@ -146,7 +146,7 @@ class IOStatisticCollectorTest {
                 for (int i = 0; i < incrementsPerThread; i++) {
                   collector.reportSentBytes(remote, bytesPerIncrement);
                 }
-              } catch (InterruptedException e) {
+              } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
               } finally {
                 done.countDown();
@@ -181,7 +181,7 @@ class IOStatisticCollectorTest {
                 for (int i = 0; i < incrementsPerThread; i++) {
                   collector.reportReceivedBytes(remote, bytesPerIncrement);
                 }
-              } catch (InterruptedException e) {
+              } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
               } finally {
                 done.countDown();

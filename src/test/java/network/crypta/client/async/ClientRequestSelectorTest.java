@@ -219,7 +219,7 @@ class ClientRequestSelectorTest {
         checkFailed();
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }
@@ -236,7 +236,7 @@ class ClientRequestSelectorTest {
         checkFailed();
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }

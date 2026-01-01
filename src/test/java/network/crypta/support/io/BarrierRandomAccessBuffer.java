@@ -26,7 +26,7 @@ public class BarrierRandomAccessBuffer implements LockableRandomAccessBuffer {
       while (waiting == 0) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }
@@ -109,7 +109,7 @@ public class BarrierRandomAccessBuffer implements LockableRandomAccessBuffer {
       while (!proceed) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }

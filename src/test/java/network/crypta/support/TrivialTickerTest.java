@@ -48,7 +48,7 @@ class TrivialTickerTest {
     if (ticker != null) {
       try {
         ticker.shutdown();
-      } catch (RuntimeException | Error ignored) {
+      } catch (RuntimeException | Error _) {
         // Some tests call shutdown explicitly; ignore repeated shutdown side effects.
       }
     }

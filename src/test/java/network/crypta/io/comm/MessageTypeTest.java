@@ -23,7 +23,7 @@ class MessageTypeTest {
     for (MessageType mt : toCleanup) {
       try {
         mt.unregister();
-      } catch (Throwable ignored) {
+      } catch (Throwable _) {
         // best-effort cleanup
       }
     }

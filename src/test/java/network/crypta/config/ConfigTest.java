@@ -51,7 +51,7 @@ class ConfigTest {
     /* test if it prevents multiple registrations */
     try {
       conf.register(sc);
-    } catch (IllegalArgumentException ie) {
+    } catch (IllegalArgumentException _) {
       return;
     }
     fail();

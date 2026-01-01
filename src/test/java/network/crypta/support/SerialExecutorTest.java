@@ -93,7 +93,7 @@ class SerialExecutorTest {
               // Timed out: allow test to proceed; runner will block on next poll
               return;
             }
-          } catch (InterruptedException ignored) {
+          } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
           }
           seq.compareAndSet(0, 1);

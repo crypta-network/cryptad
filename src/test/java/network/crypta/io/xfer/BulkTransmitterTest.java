@@ -95,7 +95,7 @@ class BulkTransmitterTest {
     for (int b = 0; b < BLOCKS; b++) {
       try {
         rab.pwrite((long) b * BLOCK_SIZE, pattern, 0, BLOCK_SIZE);
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         // ByteArrayRandomAccessBuffer bounds are correct for our input; no exception expected.
       }
     }

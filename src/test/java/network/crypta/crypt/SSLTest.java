@@ -60,7 +60,7 @@ class SSLTest {
     // If already disabled this is a no-op.
     try {
       sslConfig.set(OPT_ENABLE, false);
-    } catch (InvalidConfigValueException | NodeNeedRestartException ignored) {
+    } catch (InvalidConfigValueException | NodeNeedRestartException _) {
       // Ignore: we only need SSL disabled; failures here would surface in assertions anyway.
     }
   }
@@ -70,7 +70,7 @@ class SSLTest {
     // Return SSL to a disabled state so tests are independent.
     try {
       sslConfig.set(OPT_ENABLE, false);
-    } catch (InvalidConfigValueException | NodeNeedRestartException ignored) {
+    } catch (InvalidConfigValueException | NodeNeedRestartException _) {
       // Ignore on cleanup
     }
   }

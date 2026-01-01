@@ -333,7 +333,7 @@ class DefaultManifestPutterTest {
         Field f = cls.getDeclaredField(fieldName);
         f.setAccessible(true);
         return f.get(target);
-      } catch (NoSuchFieldException ignored) {
+      } catch (NoSuchFieldException _) {
         cls = cls.getSuperclass();
       }
     }

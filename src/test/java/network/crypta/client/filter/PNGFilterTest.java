@@ -86,7 +86,7 @@ class PNGFilterTest {
                       ib.getInputStream(), out.getOutputStream(), "", null, null, null),
               filename + " should not be valid");
         }
-      } catch (IOException e) {
+      } catch (IOException _) {
         // Resource missing in test data; skip silently
       }
     }
@@ -383,7 +383,7 @@ class PNGFilterTest {
     try (FileBucket bucket = new FileBucket(pngFile, true, false, false, false);
         FileOutputStream outputStream = new FileOutputStream(filteredPngFile)) {
       filter.readFilter(bucket.getInputStream(), outputStream, "", null, null, null);
-    } catch (DataFilterException e) {
+    } catch (DataFilterException _) {
       return emptyList();
     }
     return PngUtil.getChunks(filteredPngFile);

@@ -83,7 +83,7 @@ class AEADStreamsTest {
       BucketTools.copyFrom(decoded, cis, -1);
       cis.close();
       fail("Checksum error should have been seen");
-    } catch (AEADVerificationFailedException e) {
+    } catch (AEADVerificationFailedException _) {
       // Expected.
     }
     assertEquals(decoded.size(), input.size());
@@ -166,7 +166,7 @@ class AEADStreamsTest {
     try {
       cis.close();
       fail("Hash should be bogus due to garbage data at end");
-    } catch (AEADVerificationFailedException e) {
+    } catch (AEADVerificationFailedException _) {
       // Expected.
     }
   }

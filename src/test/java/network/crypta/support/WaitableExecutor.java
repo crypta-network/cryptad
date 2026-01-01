@@ -51,7 +51,7 @@ public class WaitableExecutor implements PriorityAwareExecutor {
     while (count > 0) {
       try {
         wait();
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         // Ignore.
       }
     }

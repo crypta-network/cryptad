@@ -62,7 +62,7 @@ class WrapperConfigTest {
       Files.deleteIfExists(wrapperDir.resolve("wrapper.conf"));
       Files.deleteIfExists(wrapperDir.resolve("wrapper.conf.new"));
       Files.deleteIfExists(wrapperDir.resolve("wrapper.conf.old"));
-    } catch (IOException ignore) {
+    } catch (IOException _) {
       // ignore cleanup errors
     }
   }

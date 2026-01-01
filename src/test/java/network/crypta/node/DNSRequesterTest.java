@@ -82,7 +82,7 @@ class DNSRequesterTest {
                 waiting.countDown();
                 try {
                   requester.wait(5000);
-                } catch (InterruptedException ignored) {
+                } catch (InterruptedException _) {
                   Thread.currentThread().interrupt();
                 }
               }

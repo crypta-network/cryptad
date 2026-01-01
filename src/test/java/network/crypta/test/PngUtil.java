@@ -80,7 +80,7 @@ public class PngUtil {
           dataInputStream.readFully(data);
           int crc = dataInputStream.readInt();
           chunks.add(new Chunk(new String(type, StandardCharsets.UTF_8), data, crc));
-        } catch (EOFException e) {
+        } catch (EOFException _) {
           break;
         }
       }

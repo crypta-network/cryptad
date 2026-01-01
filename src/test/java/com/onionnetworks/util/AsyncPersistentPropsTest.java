@@ -27,7 +27,7 @@ class AsyncPersistentPropsTest {
     if (props != null) {
       try {
         props.close();
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // Ignore to allow cleanup when the writer thread already failed.
       }
     }

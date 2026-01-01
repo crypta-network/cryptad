@@ -114,7 +114,7 @@ class PrioritizedTickerTest {
       while (!proceed) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }

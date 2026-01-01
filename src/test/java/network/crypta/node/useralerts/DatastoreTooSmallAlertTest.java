@@ -65,7 +65,7 @@ class DatastoreTooSmallAlertTest {
     int initVal;
     try {
       initVal = Integer.parseInt(initial);
-    } catch (NumberFormatException e) {
+    } catch (NumberFormatException _) {
       initVal = 0;
     }
     nodeConfig.register(
