@@ -3,7 +3,6 @@ package network.crypta.node;
 import static java.util.concurrent.TimeUnit.DAYS;
 
 import java.util.Arrays;
-import network.crypta.node.NodeStats.PeerLoadStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

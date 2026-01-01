@@ -2214,7 +2214,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     failureTable = new FailureTable(this);
 
-    nodeStats = new NodeStats(this, sortOrder, config.createSubConfig("node.load"));
+    NodeStatsConfig nodeStatsConfig = new NodeStatsConfig(config.createSubConfig("node.load"));
+    nodeStats = new NodeStats(this, sortOrder, nodeStatsConfig);
 
     // clientCore needs new load management and other settings from stats.
     NodeClientCoreInit clientCoreInit =
@@ -4699,32 +4700,33 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    */
   public Map<DataStoreInstanceType, DataStoreStats> getDataStoreStats() {
     Map<DataStoreInstanceType, DataStoreStats> map = new LinkedHashMap<>();
+    NodeStoreStatsProvider storeStatsProvider = new NodeStoreStatsProvider(nodeStats);
 
     map.put(
         new DataStoreInstanceType(CHK, STORE),
-        new StoreCallbackStats(chkDatastore, nodeStats.chkStoreStats()));
+        new StoreCallbackStats(chkDatastore, storeStatsProvider.chkStoreStats()));
     map.put(
         new DataStoreInstanceType(CHK, CACHE),
-        new StoreCallbackStats(chkDatacache, nodeStats.chkCacheStats()));
+        new StoreCallbackStats(chkDatacache, storeStatsProvider.chkCacheStats()));
     map.put(
         new DataStoreInstanceType(CHK, SLASHDOT),
-        new StoreCallbackStats(chkSlashdotcache, nodeStats.chkSlashDotCacheStats()));
+        new StoreCallbackStats(chkSlashdotcache, storeStatsProvider.chkSlashDotCacheStats()));
     map.put(
         new DataStoreInstanceType(CHK, CLIENT),
-        new StoreCallbackStats(chkClientcache, nodeStats.chkClientCacheStats()));
+        new StoreCallbackStats(chkClientcache, storeStatsProvider.chkClientCacheStats()));
 
     map.put(
         new DataStoreInstanceType(SSK, STORE),
-        new StoreCallbackStats(sskDatastore, nodeStats.sskStoreStats()));
+        new StoreCallbackStats(sskDatastore, storeStatsProvider.sskStoreStats()));
     map.put(
         new DataStoreInstanceType(SSK, CACHE),
-        new StoreCallbackStats(sskDatacache, nodeStats.sskCacheStats()));
+        new StoreCallbackStats(sskDatacache, storeStatsProvider.sskCacheStats()));
     map.put(
         new DataStoreInstanceType(SSK, SLASHDOT),
-        new StoreCallbackStats(sskSlashdotcache, nodeStats.sskSlashDotCacheStats()));
+        new StoreCallbackStats(sskSlashdotcache, storeStatsProvider.sskSlashDotCacheStats()));
     map.put(
         new DataStoreInstanceType(SSK, CLIENT),
-        new StoreCallbackStats(sskClientcache, nodeStats.sskClientCacheStats()));
+        new StoreCallbackStats(sskClientcache, storeStatsProvider.sskClientCacheStats()));
 
     map.put(
         new DataStoreInstanceType(PUB_KEY, STORE),

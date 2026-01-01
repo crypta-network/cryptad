@@ -22,7 +22,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import network.crypta.keys.Key;
-import network.crypta.node.NodeStats.PeerLoadStats;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

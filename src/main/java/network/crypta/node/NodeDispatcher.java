@@ -17,7 +17,6 @@ import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeCHK;
 import network.crypta.keys.NodeSSK;
-import network.crypta.node.NodeStats.PeerLoadStats;
 import network.crypta.node.NodeStats.RejectReason;
 import network.crypta.node.probe.Probe;
 import network.crypta.store.BlockMetadata;
@@ -545,7 +544,7 @@ public class NodeDispatcher implements Dispatcher, Runnable {
   }
 
   private boolean handlePeerLoadStatus(Message m, PeerNode source) {
-    PeerLoadStats stat = node.getNodeStats().parseLoadStats(source, m);
+    PeerLoadStats stat = new PeerLoadStats(source, m);
     source.reportLoadStatus(stat);
     return true;
   }

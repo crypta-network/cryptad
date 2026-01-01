@@ -19,7 +19,6 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.IOStatisticCollector;
 import network.crypta.io.comm.Message;
-import network.crypta.node.NodeStats.PeerLoadStats;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
 import org.jetbrains.annotations.NotNull;
@@ -88,7 +87,8 @@ class NodeStatsTest {
 
   private NodeStats createNodeStats() throws NodeInitException {
     // obw/ibw limits and lastVersion are not exercised by these tests
-    return new NodeStats(node, SORT_ORDER_BASE, statsConfig);
+    NodeStatsConfig nodeStatsConfig = new NodeStatsConfig(statsConfig);
+    return new NodeStats(node, SORT_ORDER_BASE, nodeStatsConfig);
   }
 
   @Test
@@ -211,7 +211,7 @@ class NodeStatsTest {
 
     long t0 = 1L; // use a non-zero timestamp to avoid edge-case equality
     stats.maybeUpdatePeerManagerUserAlertStats(t0);
-    // Intermediate state is implementation-defined when thresholds were already exceeded earlier;
+    // Intermediate state is implementation-defined when thresholds were already exceeded earlier
     // the important property is that sustained exceedance flips to true after the delay.
 
     // Not enough time yet (just below 10 minutes)
@@ -245,17 +245,16 @@ class NodeStatsTest {
 
   @Test
   @DisplayName("PeerLoadStats parses FNPPeerLoadStatus in int/short/byte variants")
-  void parseLoadStats_forAllVariants_expectEqualFieldMapping() throws Exception {
-    NodeStats stats = createNodeStats();
+  void parseLoadStats_forAllVariants_expectEqualFieldMapping() {
     PeerNode src = mock(PeerNode.class);
 
     // Int variant
     Message mi = getMi();
-    PeerLoadStats pli = stats.parseLoadStats(src, mi);
+    PeerLoadStats pli = new PeerLoadStats(src, mi);
 
     // Short variant
     Message ms = getMs();
-    PeerLoadStats pls = stats.parseLoadStats(src, ms);
+    PeerLoadStats pls = new PeerLoadStats(src, ms);
 
     // Byte variant
     Message mb = new Message(DMT.FNPPeerLoadStatusByte);
@@ -275,7 +274,7 @@ class NodeStatsTest {
     mb.set(DMT.INPUT_BANDWIDTH_UPPER_LIMIT, 14);
     mb.set(DMT.INPUT_BANDWIDTH_PEER_LIMIT, 15);
     mb.set(DMT.REAL_TIME_FLAG, true);
-    PeerLoadStats plb = stats.parseLoadStats(src, mb);
+    PeerLoadStats plb = new PeerLoadStats(src, mb);
 
     // All 3 should be equal when coerced to int fields inside PeerLoadStats
     assertEquals(pli, pls);
