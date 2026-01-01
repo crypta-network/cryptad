@@ -777,7 +777,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     return true;
   }
 
-  private boolean updateNewBlockFlagIfNeeded(
+  private void updateNewBlockFlagIfNeeded(
       Entry oldEntry, byte[] digestedKey, byte[] routingKey, long oldOffset, boolean isOldBlock)
       throws IOException {
     if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {
@@ -787,16 +787,14 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       if (oldEntry == null) {
         // Entry no longer matches or could not be decrypted; skip flag update safely.
         if (LOG.isDebugEnabled()) LOG.debug("Skipping flag update; entry could not be verified");
-        return false; // no change performed
+        return; // no change performed
       }
       // Currently flagged as an old block; update and persist.
       oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
       if (LOG.isDebugEnabled()) LOG.debug("Setting old block to new block");
       oldEntry.storeSize = storeSize;
       writeEntry(oldEntry, digestedKey, oldOffset);
-      return true; // updated
     }
-    return false; // already new or explicitly old: nothing to do
   }
 
   private boolean handleAlreadyStored(
@@ -1894,10 +1892,10 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         // remove from store, prepare for relocation
         if (oldGeneration == generation) {
           // should be impossible
-          LOG.error(
-              "new generation object with wrong storeSize. DigestedRoutingKey={}, Offset={}",
-              HexUtil.bytesToHex(entry.getDigestedRoutingKey()),
-              entry.curOffset);
+          LOG.atError()
+              .addArgument(() -> HexUtil.bytesToHex(entry.getDigestedRoutingKey()))
+              .addArgument(() -> entry.curOffset)
+              .log("new generation object with wrong storeSize. DigestedRoutingKey={}, Offset={}");
         }
         try {
           entry.setHD(readHD(entry.curOffset));
