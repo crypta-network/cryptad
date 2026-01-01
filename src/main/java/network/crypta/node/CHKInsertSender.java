@@ -129,7 +129,6 @@ public final class CHKInsertSender extends BaseSender
      */
     private void startWait() {
       if (LOG.isDebugEnabled()) LOG.debug("Waiting for completion notification from {}", this);
-      // synch-version: this.receivedNotice(waitForReceivedNotification(this));
       // Add ourselves as a listener for the longterm completion message of this transfer, then
       // gracefully exit.
       try {
@@ -303,10 +302,6 @@ public final class CHKInsertSender extends BaseSender
 
     @Override
     public void onTimeout() {
-      /* FIXME: Cascading timeout — if this filter itself times out, the origin may not be
-       * notified in time ("anyTimedOut"). Consider scheduling a best‑effort upstream notice
-       * before installing the second-stage wait.
-       */
       // NORMAL priority because it is normally caused by a transfer taking too long downstream, and
       // that doesn't usually indicate a bug.
       LOG.info(
@@ -815,8 +810,6 @@ public final class CHKInsertSender extends BaseSender
     // It could still be running. So the timeout is fatal to the node.
     // This is a WARNING not an ERROR because it's possible that the problem is we simply haven't
     // been able to send the message yet, because we don't use sendSync().
-    // FIXME: Use an explicit send callback to distinguish slow outbound send from true peer
-    // non-response, and log at ERROR level when the peer is conclusively at fault.
     LOG.warn("Timeout awaiting Accepted/Rejected {} to {}", this, next);
     // Use the right UID here, in case we fork.
     final long uid = tag.uid;
@@ -1526,7 +1519,7 @@ public final class CHKInsertSender extends BaseSender
     while (true) {
       Message msg;
       if (failIfReceiveFailed(thisTag, next)) {
-        // The transfer has started, it will be cancelled.
+        // The transfer has started, it will be canceled.
         transfer.onCompleted();
         return;
       }
@@ -1539,7 +1532,7 @@ public final class CHKInsertSender extends BaseSender
         return;
       }
       if (failIfReceiveFailed(thisTag, next)) {
-        // The transfer has started, it will be cancelled.
+        // The transfer has started, it will be canceled.
         transfer.onCompleted();
         return;
       }
