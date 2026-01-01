@@ -88,7 +88,7 @@ class TempFileBucketTest extends BucketTestBase {
     assertThrows(
         NullPointerException.class,
         () -> {
-          try (TempFileBucket ignored = new TempFileBucket(1L, null)) {
+          try (var _ = new TempFileBucket(1L, null)) {
             fail("unreachable");
           }
         });

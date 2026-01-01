@@ -42,7 +42,7 @@ class PubkeyStoreTest {
     // Arrange
     final int keys = 10;
     PubkeyStore pk = new PubkeyStore();
-    try (FreenetStore<DSAPublicKey> ignored = new RAMFreenetStore<>(pk, keys)) {
+    try (var _ = new RAMFreenetStore<>(pk, keys)) {
       DSAGroup group = Global.DSAgroupBigA;
       Random random = new MersenneTwister(1010101);
       HashMap<ByteArrayWrapper, DSAPublicKey> map = new HashMap<>();

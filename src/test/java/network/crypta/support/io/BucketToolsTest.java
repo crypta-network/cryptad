@@ -176,14 +176,14 @@ class BucketToolsTest {
   void makeBuckets_whenCountAndSize_createsRequestedNumber() throws Exception {
     // Arrange
     BucketFactory bf = mock(BucketFactory.class);
-    when(bf.makeBucket(anyLong())).thenAnswer(inv -> mock(RandomAccessBucket.class));
+    when(bf.makeBucket(anyLong())).thenAnswer(_ -> mock(RandomAccessBucket.class));
 
     // Act
     Bucket[] buckets = BucketTools.makeBuckets(bf, 3, 123);
 
     // Assert
     assertEquals(3, buckets.length);
-    try (RandomAccessBucket ignored = verify(bf, times(3)).makeBucket(123)) {
+    try (var _ = verify(bf, times(3)).makeBucket(123)) {
       // Keep body non-empty to satisfy linters.
       assertEquals(3, buckets.length);
     }

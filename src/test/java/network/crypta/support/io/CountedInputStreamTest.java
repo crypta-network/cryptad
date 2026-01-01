@@ -3,8 +3,15 @@ package network.crypta.support.io;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,7 +26,7 @@ class CountedInputStreamTest {
     assertThrows(
         IllegalStateException.class,
         () -> {
-          try (CountedInputStream ignored = new CountedInputStream(null)) {
+          try (var _ = new CountedInputStream(null)) {
             fail("unreachable");
           }
         });
@@ -98,6 +105,7 @@ class CountedInputStreamTest {
     InputStream in = mock(InputStream.class);
     when(in.read((byte[]) isNull())).thenThrow(new NullPointerException("buf"));
     try (CountedInputStream cis = new CountedInputStream(in)) {
+      //noinspection DataFlowIssue
       assertThrows(NullPointerException.class, () -> cis.read(null));
       assertEquals(0L, cis.count());
     }

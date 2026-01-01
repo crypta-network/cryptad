@@ -34,7 +34,7 @@ class DelayedFreeBucketTest {
     assertThrows(
         NullPointerException.class,
         () -> {
-          try (DelayedFreeBucket ignored = new DelayedFreeBucket(pft, null)) {
+          try (var _ = new DelayedFreeBucket(pft, null)) {
             fail("constructor should have thrown before entering try block");
           }
         });

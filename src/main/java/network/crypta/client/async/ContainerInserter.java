@@ -575,7 +575,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       switch (o) {
         case Map<?, ?> sub -> resumeMetadata(Metadata.forceMap(sub), context);
         case ManifestElement e -> e.onResume(context);
-        case Metadata ignored -> {
+        case Metadata _ -> {
           // Ignore
         }
         case PutHandler handler -> handler.onResume(context);

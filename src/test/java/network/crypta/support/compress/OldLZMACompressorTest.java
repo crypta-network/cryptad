@@ -1,9 +1,17 @@
 package network.crypta.support.compress;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.Mockito.when;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -200,7 +208,7 @@ class OldLZMACompressorTest {
       int n = compressor.decompress(compressed.toByteArray(), 0, compressed.size(), outBuf);
       assertEquals(outLen, n);
       assertArrayEquals(copyOf(original, outLen), outBuf);
-    } catch (ArrayIndexOutOfBoundsException ignored) {
+    } catch (ArrayIndexOutOfBoundsException _) {
       // Expected for some buffer lengths due to overshoot
     }
   }
@@ -234,7 +242,7 @@ class OldLZMACompressorTest {
       assertThrows(
           NullPointerException.class,
           () -> {
-            try (Bucket ignored = compressor.compress(null, bf, 0, 0)) {
+            try (var _ = compressor.compress(null, bf, 0, 0)) {
               fail("Expected NullPointerException");
             }
           });

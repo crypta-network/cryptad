@@ -20,8 +20,6 @@ import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.USK;
 import network.crypta.node.RequestStarter;
-import network.crypta.support.api.BucketFactory;
-import network.crypta.support.io.ArrayBucketFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,7 +60,6 @@ class USKFetcherTest {
     usk = new USK(pubKeyHash, cryptoKey, extras, "testsite", 0L);
 
     // Minimal real FetchContext (used/cloned by USKFetcher)
-    BucketFactory bf = new ArrayBucketFactory();
     fetchContext =
         new FetchContext(
             64 * 1024,

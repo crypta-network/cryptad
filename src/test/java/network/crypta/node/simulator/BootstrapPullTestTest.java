@@ -103,7 +103,7 @@ class BootstrapPullTestTest {
     byte[] data = deterministicBytes(testSize);
     File dataFile = writeTempFile("no-nodehello", data);
 
-    try (FcpServer ignored = FcpServer.notNodeHello()) {
+    try (var _ = FcpServer.notNodeHello()) {
       SubprocessResult result = runInsertDataInSubprocess(dataFile, testSize);
       assertEquals(
           expectedOsExitCode(BootstrapPullTest.EXIT_INSERTER_PROBLEM),
@@ -119,7 +119,7 @@ class BootstrapPullTestTest {
     byte[] data = deterministicBytes(testSize);
     File dataFile = writeTempFile("put-failed", data);
 
-    try (FcpServer ignored = FcpServer.putFailed(data)) {
+    try (var _ = FcpServer.putFailed(data)) {
       SubprocessResult result = runInsertDataInSubprocess(dataFile, testSize);
       assertEquals(
           expectedOsExitCode(BootstrapPullTest.EXIT_INSERT_FAILED),
@@ -135,7 +135,7 @@ class BootstrapPullTestTest {
     byte[] data = deterministicBytes(testSize);
     File dataFile = writeTempFile("protocol-error", data);
 
-    try (FcpServer ignored = FcpServer.protocolErrorAfterData(data)) {
+    try (var _ = FcpServer.protocolErrorAfterData(data)) {
       SubprocessResult result = runInsertDataInSubprocess(dataFile, testSize);
       assertEquals(
           expectedOsExitCode(BootstrapPullTest.EXIT_INSERTER_PROBLEM),
@@ -263,7 +263,7 @@ class BootstrapPullTestTest {
    * runtime (Security Manager is disabled).
    */
   public static final class InsertDataRunner {
-    public static void main(String[] args) throws IOException, ReflectiveOperationException {
+    static void main(String[] args) throws IOException, ReflectiveOperationException {
       if (args.length != 2) {
         throw new IllegalArgumentException("Expected args: <testSize> <dataFile>");
       }

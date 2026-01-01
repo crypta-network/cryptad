@@ -356,6 +356,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         blobFilenamePrefix + availableVersion + ".fblob");
   }
 
+  @SuppressWarnings("unused")
   RandomAccessBucket getBlobBucket(int availableVersion) {
     File f = getBlobFile(availableVersion);
     return new FileBucket(f, true, false, false, false);
@@ -410,7 +411,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     if (result != null) {
       Bucket toFree = result.asBucket();
       if (toFree != null) {
-        try (Bucket ignored = toFree) {
+        try (var _ = toFree) {
           if (LOG.isDebugEnabled()) LOG.debug("Releasing fetched result bucket");
         }
       }

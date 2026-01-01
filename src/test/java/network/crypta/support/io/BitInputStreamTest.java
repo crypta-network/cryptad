@@ -24,7 +24,7 @@ class BitInputStreamTest {
     assertThrows(
         NullPointerException.class,
         () -> {
-          try (BitInputStream ignored = new BitInputStream(null)) {
+          try (var _ = new BitInputStream(null)) {
             // Should not reach here, constructor must throw
             fail("Expected NullPointerException");
           }

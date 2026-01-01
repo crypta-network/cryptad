@@ -1,9 +1,19 @@
 package network.crypta.support.compress;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,7 +38,7 @@ class DecompressorThreadManagerTest {
     if (sourceOut != null) {
       try {
         sourceOut.close();
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // Best-effort cleanup in tests: stream may already be closed.
       }
       sourceOut = null;
@@ -222,7 +232,7 @@ class DecompressorThreadManagerTest {
     Compressor failing = mock(Compressor.class);
     RuntimeException failure = new RuntimeException("decompress failed");
     doAnswer(
-            invocation -> {
+            _ -> {
               throw failure;
             })
         .when(failing)
@@ -232,7 +242,7 @@ class DecompressorThreadManagerTest {
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, 1024);
 
     // Act
-    try (PipedInputStream ignored = manager.execute()) {
+    try (var _ = manager.execute()) {
       sourceOut.write("irrelevant".getBytes(StandardCharsets.UTF_8));
       sourceOut.flush();
       sourceOut.close();
@@ -263,7 +273,7 @@ class DecompressorThreadManagerTest {
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, maxLen);
 
     // Act
-    try (PipedInputStream ignored = manager.execute()) {
+    try (var _ = manager.execute()) {
       // Close source immediately since decompressor does no reads in this stub.
       sourceOut.close();
       sourceOut = null;

@@ -57,7 +57,7 @@ class TempBucketFactoryTempBucketTest {
       for (int i = resources.size() - 1; i >= 0; i--) {
         try {
           resources.get(i).close();
-        } catch (Exception ignored) {
+        } catch (Exception _) {
           // Intentionally ignore close failures in tests
         }
       }
@@ -333,7 +333,7 @@ class TempBucketFactoryTempBucketTest {
       assertThrows(
           InsufficientDiskSpaceException.class,
           () -> {
-            try (TempBucket ignored = (TempBucket) tbf.makeBucket(8192)) {
+            try (var _ = (TempBucket) tbf.makeBucket(8192)) {
               fail("Expected InsufficientDiskSpaceException");
             }
           });

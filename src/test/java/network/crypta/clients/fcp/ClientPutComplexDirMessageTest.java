@@ -61,7 +61,7 @@ class ClientPutComplexDirMessageTest {
     lenient().when(core.allowUploadFrom(any(File.class))).thenReturn(true);
     lenient()
         .when(persistentBucketFactory.makeBucket(anyLong()))
-        .thenAnswer(invocation -> new ArrayBucket());
+        .thenAnswer(_ -> new ArrayBucket());
   }
 
   @Test
@@ -101,7 +101,7 @@ class ClientPutComplexDirMessageTest {
     new ClientPutComplexDirMessage(fs, tempFactory, persistentFactory);
 
     //noinspection EmptyTryBlock
-    try (RandomAccessBucket ignored = verify(persistentFactory).makeBucket(9L)) {
+    try (var _ = verify(persistentFactory).makeBucket(9L)) {
       // release the bucket immediately; only the side effect of verify() is needed
     }
     verifyNoInteractions(tempFactory);

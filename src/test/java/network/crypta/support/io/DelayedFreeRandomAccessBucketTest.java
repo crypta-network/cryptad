@@ -60,8 +60,7 @@ class DelayedFreeRandomAccessBucketTest {
     assertThrows(
         NullPointerException.class,
         () -> {
-          try (DelayedFreeRandomAccessBucket ignored =
-              new DelayedFreeRandomAccessBucket(factory, null)) {
+          try (var _ = new DelayedFreeRandomAccessBucket(factory, null)) {
             fail("unreachable");
           }
         });
@@ -74,8 +73,7 @@ class DelayedFreeRandomAccessBucketTest {
     assertThrows(
         NullPointerException.class,
         () -> {
-          try (DelayedFreeRandomAccessBucket ignored =
-              new DelayedFreeRandomAccessBucket(null, underlying)) {
+          try (var _ = new DelayedFreeRandomAccessBucket(null, underlying)) {
             fail("unreachable");
           }
         });

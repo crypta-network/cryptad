@@ -108,7 +108,7 @@ class PooledFileRandomAccessBufferFactoryTest {
     assertThrows(
         IOException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(1L)) {
+          try (var _ = factory.makeRAF(1L)) {
             fail("expected IOException");
           }
         });
@@ -186,7 +186,7 @@ class PooledFileRandomAccessBufferFactoryTest {
     assertThrows(
         NullPointerException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(null, 0, 1, false)) {
+          try (var _ = factory.makeRAF(null, 0, 1, false)) {
             fail("expected NPE");
           }
         });
@@ -209,7 +209,7 @@ class PooledFileRandomAccessBufferFactoryTest {
     assertThrows(
         IndexOutOfBoundsException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(data, 2, 2, false)) {
+          try (var _ = factory.makeRAF(data, 2, 2, false)) {
             fail("expected IndexOutOfBoundsException");
           }
         });

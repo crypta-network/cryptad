@@ -45,7 +45,7 @@ class PlainDatagramSocketFactoryTest {
           BindException.class,
           () -> {
             //noinspection EmptyTryBlock
-            try (DatagramSocket ignored = factory.createDatagramSocket(portInUse)) {
+            try (var _ = factory.createDatagramSocket(portInUse)) {
               // unreachable when exception is thrown
             }
           });
@@ -58,7 +58,7 @@ class PlainDatagramSocketFactoryTest {
         IllegalArgumentException.class,
         () -> {
           //noinspection EmptyTryBlock
-          try (DatagramSocket ignored = factory.createDatagramSocket(-1)) {
+          try (var _ = factory.createDatagramSocket(-1)) {
             // unreachable when exception is thrown
           }
         });

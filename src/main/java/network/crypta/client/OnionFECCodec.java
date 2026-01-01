@@ -93,8 +93,7 @@ public class OnionFECCodec extends FECCodec {
         dataBlocks, checkBlocks, checkBlocksPresent, blockLength, buffers, blockNumbers);
 
     // Now do the decoding.
-    try (PureCode ignored =
-        codec) { // PureCode close() is a no-op; enables try-with-resources usage
+    try (var _ = codec) { // PureCode close() is a no-op; enables try-with-resources usage
       codec.decode(buffers, blockNumbers);
     }
     // The data blocks are now decoded and in the correct locations.
@@ -256,8 +255,7 @@ public class OnionFECCodec extends FECCodec {
       check[x] = new Buffer(checkBlocks[i]);
       toEncode[x++] = i + dataBlocks.length;
     }
-    try (PureCode ignored =
-        codec) { // PureCode close() is a no-op; enables try-with-resources usage
+    try (var _ = codec) { // PureCode close() is a no-op; enables try-with-resources usage
       codec.encode(data, check, toEncode);
     }
   }

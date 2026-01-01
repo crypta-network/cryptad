@@ -658,7 +658,7 @@ public class ClientGetter extends BaseClientGetter
         LOG.error(CAUGHT_MESSAGE, e, e);
         return new FetchException(FetchExceptionMode.TOO_BIG, e);
       }
-      case InsufficientDiskSpaceException ignored -> {
+      case InsufficientDiskSpaceException _ -> {
         return new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
       }
       case FetchException e -> {

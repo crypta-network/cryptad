@@ -496,9 +496,8 @@ public class NodeStarter implements WrapperListener {
       return -1;
     }
 
-    LoggingConfigHandler logConfigHandler;
     try {
-      logConfigHandler = setupLogging(cfg);
+      setupLogging(cfg);
     } catch (InvalidConfigValueException e) {
       LOG.error("Logging setup failed: {}", e.getMessage(), e);
       return -2;
@@ -600,11 +599,11 @@ public class NodeStarter implements WrapperListener {
     return new FreenetFilePersistentConfig(sfs, configFilename, tmp);
   }
 
-  private static LoggingConfigHandler setupLogging(FreenetFilePersistentConfig cfg)
+  private static void setupLogging(FreenetFilePersistentConfig cfg)
       throws InvalidConfigValueException {
     LOG.info("Creating logger configuration...");
     SubConfig loggingConfig = cfg.createSubConfig("logger");
-    return new LoggingConfigHandler(loggingConfig);
+    new LoggingConfigHandler(loggingConfig);
   }
 
   private static PooledExecutor startExecutor() {

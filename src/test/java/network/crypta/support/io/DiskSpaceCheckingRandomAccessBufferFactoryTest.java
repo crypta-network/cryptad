@@ -36,7 +36,7 @@ class DiskSpaceCheckingRandomAccessBufferFactoryTest {
     try (LockableRandomAccessBuffer raf = factory.makeRAF(size)) {
       // Assert
       assertSame(expected, raf);
-      try (LockableRandomAccessBuffer ignored = verify(underlying).makeRAF(size)) {
+      try (var _ = verify(underlying).makeRAF(size)) {
         assertTrue(true);
       }
       verifyNoMoreInteractions(underlying);
@@ -58,8 +58,8 @@ class DiskSpaceCheckingRandomAccessBufferFactoryTest {
     assertThrows(
         InsufficientDiskSpaceException.class,
         () -> {
-          try (LockableRandomAccessBuffer ignored = factory.makeRAF(size)) {
-            assertNotNull(ignored);
+          try (var _ = factory.makeRAF(size)) {
+            assertTrue(true);
           }
         });
     verifyNoInteractions(underlying);
@@ -84,8 +84,7 @@ class DiskSpaceCheckingRandomAccessBufferFactoryTest {
     try (LockableRandomAccessBuffer raf = factory.makeRAF(data, offset, size, readOnly)) {
       // Assert
       assertSame(expected, raf);
-      try (LockableRandomAccessBuffer ignored =
-          verify(underlying).makeRAF(data, offset, size, readOnly)) {
+      try (var _ = verify(underlying).makeRAF(data, offset, size, readOnly)) {
         assertTrue(true);
       }
       verifyNoMoreInteractions(underlying);
@@ -129,7 +128,7 @@ class DiskSpaceCheckingRandomAccessBufferFactoryTest {
     try (LockableRandomAccessBuffer raf = factory.makeRAF(null, 0, 0, true)) {
       // Assert
       assertSame(expected, raf);
-      try (LockableRandomAccessBuffer ignored = verify(underlying).makeRAF(null, 0, 0, true)) {
+      try (var _ = verify(underlying).makeRAF(null, 0, 0, true)) {
         assertTrue(true);
       }
     }

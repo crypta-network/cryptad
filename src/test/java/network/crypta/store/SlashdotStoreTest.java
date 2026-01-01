@@ -65,7 +65,7 @@ class SlashdotStoreTest {
   @Test
   void testSimple() throws IOException, CHKEncodeException, CHKVerifyException, CHKDecodeException {
     CHKStore store = new CHKStore();
-    try (SlashdotStore<CHKBlock> ignored =
+    try (var _ =
         new SlashdotStore<>(store, 10, 30 * 1000, 5 * 1000, new TrivialTicker(exec), tbf)) {
       // Encode a block
       String test = "test";
