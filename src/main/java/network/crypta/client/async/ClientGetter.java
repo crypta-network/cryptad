@@ -458,8 +458,8 @@ public class ClientGetter extends BaseClientGetter
           processStreams(streamGenerator, clientMetadata, decompressors, maxLen, context);
       context.getJobRunner(persistent()).setCheckpointASAP();
       clientCallback.onSuccess(result, ClientGetter.this);
-    } catch (Throwable t) {
-      FetchException ex = mapToFetchException(t);
+    } catch (Exception e) {
+      FetchException ex = mapToFetchException(e);
       onFailure(ex, state, context, true);
     }
   }
@@ -522,44 +522,46 @@ public class ClientGetter extends BaseClientGetter
     return maxLen;
   }
 
-  @SuppressWarnings("java:S1181")
   private FetchResult processStreams(
       StreamGenerator streamGenerator,
       ClientMetadata clientMetadata,
       List<? extends Compressor> decompressors,
       long maxLen,
       ClientContext context)
-      throws Throwable {
+      throws IOException, URISyntaxException {
+    Bucket finalResult = null;
+    boolean createdTempResult = false;
+    boolean completed = false;
     try (PipedOutputStream dataOutput = new PipedOutputStream();
         PipedInputStream dataInput = new PipedInputStream()) {
-      Bucket finalResult =
-          (returnBucket == null)
+      createdTempResult = (returnBucket == null);
+      finalResult =
+          createdTempResult
               ? context.getBucketFactory(persistent()).makeBucket(maxLen)
               : returnBucket;
-      boolean createdTempResult = (returnBucket == null);
       if (LOG.isDebugEnabled())
         LOG.debug("Writing final data to {} return bucket is {}", finalResult, returnBucket);
       dataOutput.connect(dataInput);
 
       DecompressionSetup dec = setupDecompression(dataInput, decompressors, maxLen);
-      try {
-        return runWorkerAndStream(
-            streamGenerator,
-            clientMetadata,
-            finalResult,
-            dec.processedInput,
-            dataOutput,
-            dec.manager,
-            context);
-      } catch (Throwable t) {
-        if (createdTempResult && finalResult != null) {
-          try {
-            finalResult.free();
-          } catch (Throwable freeErr) {
-            LOG.warn("Failed to free temporary result bucket after error: {}", freeErr, freeErr);
-          }
+      FetchResult result =
+          runWorkerAndStream(
+              streamGenerator,
+              clientMetadata,
+              finalResult,
+              dec.processedInput,
+              dataOutput,
+              dec.manager,
+              context);
+      completed = true;
+      return result;
+    } finally {
+      if (!completed && createdTempResult && finalResult != null) {
+        try {
+          finalResult.free();
+        } catch (Exception freeErr) {
+          LOG.warn("Failed to free temporary result bucket after error: {}", freeErr, freeErr);
         }
-        throw t;
       }
     }
   }
@@ -594,7 +596,7 @@ public class ClientGetter extends BaseClientGetter
       PipedOutputStream dataOutput,
       DecompressorThreadManager decompressorManager,
       ClientContext context)
-      throws Throwable {
+      throws IOException, URISyntaxException {
     FetchResult result = new FetchResult(initialMetadata, finalResult);
     try (OutputStream output = finalResult.getOutputStream()) {
       ClientGetWorkerThread worker =
@@ -694,9 +696,9 @@ public class ClientGetter extends BaseClientGetter
           completeViaTruncationInternal(tempFile, length, metadata, completionFile, context);
       context.getJobRunner(persistent()).setCheckpointASAP();
       clientCallback.onSuccess(result, ClientGetter.this);
-    } catch (Throwable t) {
-      LOG.error("Failed while completing via truncation: {}", t, t);
-      FetchException ex = mapToFetchException(t);
+    } catch (Exception e) {
+      LOG.error("Failed while completing via truncation: {}", e, e);
+      FetchException ex = mapToFetchException(e);
       onFailure(ex, state, context, true);
       try {
         java.nio.file.Files.delete(tempFile.toPath());
@@ -712,7 +714,7 @@ public class ClientGetter extends BaseClientGetter
       ClientMetadata metadata,
       File completionFile,
       ClientContext context)
-      throws Throwable {
+      throws IOException, FetchException, URISyntaxException {
     try (RandomAccessFile raf = new RandomAccessFile(tempFile, "rw");
         InputStream is = new BufferedInputStream(new FileInputStream(raf.getFD()))) {
       if (raf.length() < length)
