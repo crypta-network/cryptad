@@ -40,7 +40,7 @@ class PrependLengthOutputStreamTest {
       // Safe double-close to assert idempotency across tests
       try {
         underTest.close();
-      } catch (Throwable ignore) {
+      } catch (Throwable _) {
         // Some tests intentionally provoke errors during close; ignore here
       }
     }

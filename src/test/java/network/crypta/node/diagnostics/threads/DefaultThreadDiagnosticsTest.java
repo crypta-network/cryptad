@@ -39,7 +39,7 @@ class DefaultThreadDiagnosticsTest {
     if (bean.isThreadCpuTimeSupported() && !bean.isThreadCpuTimeEnabled()) {
       try {
         bean.setThreadCpuTimeEnabled(true);
-      } catch (UnsupportedOperationException ignored) {
+      } catch (UnsupportedOperationException _) {
         // If the platform forbids enabling, tests still run asserting non-negative deltas where
         // possible.
       }

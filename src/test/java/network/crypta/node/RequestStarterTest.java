@@ -130,7 +130,7 @@ class RequestStarterTest {
                 enteredWait.countDown();
                 try {
                   starter.wait(5000L); // Will be interrupted by notifyAll()
-                } catch (InterruptedException ignored) {
+                } catch (InterruptedException _) {
                   // not expected in this test
                 }
               }

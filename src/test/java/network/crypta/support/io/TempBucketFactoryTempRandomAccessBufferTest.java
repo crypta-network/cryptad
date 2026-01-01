@@ -80,7 +80,7 @@ class TempBucketFactoryTempRandomAccessBufferTest {
       for (File f : files) {
         try {
           Files.deleteIfExists(f.toPath());
-        } catch (IOException ignore) {
+        } catch (IOException _) {
           // ignore: best-effort cleanup in tests
         }
       }

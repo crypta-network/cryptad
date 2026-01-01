@@ -442,7 +442,7 @@ class HighLevelSimpleClientImplTest {
       Field f;
       try {
         f = getter.getClass().getDeclaredField("ctx");
-      } catch (NoSuchFieldException nsf) {
+      } catch (NoSuchFieldException _) {
         f = getter.getClass().getSuperclass().getDeclaredField("ctx");
       }
       f.setAccessible(true);

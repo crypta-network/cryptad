@@ -442,7 +442,7 @@ class ClientContextTest {
       Field f = target.getClass().getDeclaredField(fieldName);
       f.setAccessible(true);
       f.set(target, value);
-    } catch (NoSuchFieldException e) {
+    } catch (NoSuchFieldException _) {
       // Try superclass (useful for mocks)
       try {
         Field f = target.getClass().getSuperclass().getDeclaredField(fieldName);

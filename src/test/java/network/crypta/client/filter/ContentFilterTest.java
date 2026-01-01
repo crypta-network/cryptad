@@ -363,7 +363,7 @@ class ContentFilterTest {
       failures.add(
           new RuntimeException(
               "Filter accepted dangerous UTF8 text with BOM as UTF16! (HTMLFilter)"));
-    } catch (DataFilterException e) {
+    } catch (DataFilterException _) {
       // Assert (expected rejection)
       // no logging needed in tests
     }
@@ -382,7 +382,7 @@ class ContentFilterTest {
               "Filter accepted dangerous UTF8 text with BOM as UTF16! (ContentFilter) - Detected "
                   + "charset: "
                   + (fo == null ? "<null>" : fo.charset)));
-    } catch (DataFilterException e) {
+    } catch (DataFilterException _) {
       // Assert (expected rejection)
       // no logging needed in tests
     }
@@ -394,7 +394,7 @@ class ContentFilterTest {
         () -> {
           try (FileOutputStream fos = new FileOutputStream("unfiltered")) {
             fos.write(total);
-          } catch (IOException ignored) {
+          } catch (IOException _) {
             // best-effort debug write; ignore secondary I/O errors
           }
           RuntimeException first = failures.getFirst();

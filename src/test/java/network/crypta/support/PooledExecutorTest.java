@@ -101,14 +101,14 @@ class PooledExecutorTest {
     try {
       exec.execute(badLow, "badLow");
       fail("expected IllegalArgumentException for low priority");
-    } catch (IllegalArgumentException expected) {
+    } catch (IllegalArgumentException _) {
       // ok
     }
 
     try {
       exec.execute(badHigh, "badHigh");
       fail("expected IllegalArgumentException for high priority");
-    } catch (IllegalArgumentException expected) {
+    } catch (IllegalArgumentException _) {
       // ok
     }
   }
@@ -300,7 +300,7 @@ class PooledExecutorTest {
     while (!done && System.nanoTime() < deadline) {
       try {
         done = latch.await(5, TimeUnit.MILLISECONDS);
-      } catch (InterruptedException ignored) {
+      } catch (InterruptedException _) {
         // retry until deadline
       }
     }

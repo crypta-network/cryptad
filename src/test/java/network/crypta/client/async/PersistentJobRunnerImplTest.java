@@ -74,7 +74,7 @@ class PersistentJobRunnerImplTest {
         while (!wake) {
           try {
             wait();
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             // Ignore.
           }
         }
@@ -97,7 +97,7 @@ class PersistentJobRunnerImplTest {
       while (!started) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }
@@ -163,7 +163,7 @@ class PersistentJobRunnerImplTest {
       while (!finished) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }
@@ -173,7 +173,7 @@ class PersistentJobRunnerImplTest {
       while (!started) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           // Ignore.
         }
       }

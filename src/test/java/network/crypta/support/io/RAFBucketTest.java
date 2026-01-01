@@ -61,7 +61,7 @@ class RAFBucketTest {
           PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"));
       Path p = Files.createTempDirectory(prefix, attr);
       return p.toFile();
-    } catch (UnsupportedOperationException e) {
+    } catch (UnsupportedOperationException _) {
       // Non-POSIX (e.g., Windows). Create under user.home instead of public tmp.
       File base = new File(System.getProperty("user.home"));
       File dir = new File(base, prefix + System.nanoTime());

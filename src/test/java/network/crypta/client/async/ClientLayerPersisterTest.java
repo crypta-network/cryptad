@@ -328,7 +328,7 @@ class ClientLayerPersisterTest {
       InMemoryBucket copy = new InMemoryBucket();
       try (OutputStream os = copy.getOutputStream()) {
         os.write(baos.toByteArray(), 0, baos.size());
-      } catch (IOException ignored) {
+      } catch (IOException _) {
         // Best-effort in test helper: if copying fails, return an empty-shadow bucket.
       }
       return copy;

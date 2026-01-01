@@ -259,7 +259,7 @@ class RAFInputStreamTest {
           for (int i = 0; i < n; i++) {
             collected.add(buf[i]);
           }
-        } catch (EOFException eof) {
+        } catch (EOFException _) {
           break; // expected at the end
         }
       }

@@ -433,7 +433,7 @@ class OpennetPeerNodeTest {
     while (t != null) {
       try {
         return t.getDeclaredField(name);
-      } catch (NoSuchFieldException ignore) {
+      } catch (NoSuchFieldException _) {
         t = t.getSuperclass();
       }
     }

@@ -288,7 +288,7 @@ class NetworkInterfaceTest {
         Socket s = queue.poll(wait, TimeUnit.MILLISECONDS);
         if (s == null) throw new SocketTimeoutException("timeout");
         return s;
-      } catch (InterruptedException ie) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
         throw new SocketException("interrupted");
       }

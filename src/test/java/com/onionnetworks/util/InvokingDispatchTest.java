@@ -66,12 +66,12 @@ class InvokingDispatchTest {
                         if (!awaited) {
                           timedOutAwaitingFinish.set(true);
                         }
-                      } catch (InterruptedException e) {
+                      } catch (InterruptedException _) {
                         Thread.currentThread().interrupt();
                       }
                     });
                 returned.set(true);
-              } catch (InterruptedException e) {
+              } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
               }
             },

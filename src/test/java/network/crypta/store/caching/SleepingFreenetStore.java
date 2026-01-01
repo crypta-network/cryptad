@@ -24,7 +24,7 @@ public class SleepingFreenetStore<T extends StorableBlock> extends ProxyFreenetS
       throws IOException, KeyCollisionException {
     try {
       Thread.sleep(delay);
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       // Ignore.
     }
     super.put(block, data, header, overwrite, oldBlock);

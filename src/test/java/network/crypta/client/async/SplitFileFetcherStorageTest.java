@@ -958,7 +958,7 @@ class SplitFileFetcherStorageTest {
       Object chooser = f.get(segment);
       java.lang.reflect.Method m = chooser.getClass().getMethod("clearCooldown");
       m.invoke(chooser);
-    } catch (ReflectiveOperationException ignored) {
+    } catch (ReflectiveOperationException _) {
       // Best effort: if reflection fails, tests remain as before.
     }
   }
@@ -1550,7 +1550,7 @@ class SplitFileFetcherStorageTest {
       while (!(succeeded || failed)) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           Assertions.fail("Interrupted while waiting for finished");
         }
@@ -1561,7 +1561,7 @@ class SplitFileFetcherStorageTest {
       while (!(succeeded || failed)) {
         try {
           wait();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
           Assertions.fail("Interrupted while waiting for failure");
         }
@@ -1574,7 +1574,7 @@ class SplitFileFetcherStorageTest {
         while (!closed) {
           try {
             wait();
-          } catch (InterruptedException e) {
+          } catch (InterruptedException _) {
             Thread.currentThread().interrupt();
             Assertions.fail("Interrupted while waiting for free");
           }

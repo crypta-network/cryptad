@@ -59,9 +59,9 @@ class M3UFilterTest {
             bucketToString(expectedBucket),
             result,
             original + " should be filtered as " + expected + " but was filtered as\n" + result);
-      } catch (DataFilterException dfe) {
+      } catch (DataFilterException _) {
         fail("Filtering " + original + " failed");
-      } catch (URISyntaxException use) {
+      } catch (URISyntaxException _) {
         fail("Creating URI from BASE_URI " + BASE_URI + " failed");
       } catch (IOException ioe) {
         fail("I/O failure while filtering " + original + ": " + ioe.getMessage());

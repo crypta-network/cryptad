@@ -204,7 +204,7 @@ class UpdatedVersionAvailableUserAlertTest {
                 p -> {
                   try {
                     Files.deleteIfExists(p);
-                  } catch (IOException ignore) {
+                  } catch (IOException _) {
                     // best-effort cleanup
                   }
                 });

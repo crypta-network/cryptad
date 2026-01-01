@@ -55,7 +55,7 @@ class TheoraBitstreamFilterTest {
           }
 
           page = OggPage.readPage(input);
-        } catch (EOFException e) {
+        } catch (EOFException _) {
           break;
         }
       }

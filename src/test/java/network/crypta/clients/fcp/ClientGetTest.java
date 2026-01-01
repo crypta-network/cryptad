@@ -250,7 +250,7 @@ class ClientGetTest {
     while (current != null) {
       try {
         return current.getDeclaredField(fieldName);
-      } catch (NoSuchFieldException ignore) {
+      } catch (NoSuchFieldException _) {
         current = current.getSuperclass();
       }
     }

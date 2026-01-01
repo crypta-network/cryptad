@@ -158,7 +158,7 @@ class PrioritizedSerialExecutorTest {
       try {
         onThreadFlags.put(exec.onThread());
         completingJob.put(name);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
     }
@@ -201,7 +201,7 @@ class PrioritizedSerialExecutorTest {
         boolean ok = release.await(1, TimeUnit.SECONDS);
         awaitFlags.put(ok);
         completingJob.put(name);
-      } catch (InterruptedException e) {
+      } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }
     }
@@ -357,7 +357,7 @@ class PrioritizedSerialExecutorTest {
           try {
             boolean ok = release.await(1, TimeUnit.SECONDS);
             jobAwaited.set(ok);
-          } catch (InterruptedException ie) {
+          } catch (InterruptedException _) {
             // Preserve interrupt status so the test runner can react if needed.
             Thread.currentThread().interrupt();
           }

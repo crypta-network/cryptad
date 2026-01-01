@@ -244,7 +244,7 @@ class FProxyFetchTrackerTest {
     while (current != null) {
       try {
         return current.getDeclaredField(name);
-      } catch (NoSuchFieldException ignored) {
+      } catch (NoSuchFieldException _) {
         current = current.getSuperclass();
       }
     }

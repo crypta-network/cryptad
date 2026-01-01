@@ -258,7 +258,7 @@ class TrivialRunningAverageTest {
                 for (int i = 1; i <= itemsPerThread; i++) {
                   avg.report(base + i);
                 }
-              } catch (InterruptedException e) {
+              } catch (InterruptedException _) {
                 Thread.currentThread().interrupt();
                 fail("Interrupted during test execution");
               } finally {

@@ -126,7 +126,7 @@ class BlockCiphersTest {
       try {
         cipher.processBlock(in, 0, out, 0);
         throw new AssertionError("Expected an exception for too-short input");
-      } catch (ArrayIndexOutOfBoundsException | IllegalArgumentException expected) {
+      } catch (ArrayIndexOutOfBoundsException | IllegalArgumentException _) {
         // acceptable for various JCE providers
       }
     } else {

@@ -183,7 +183,7 @@ class JceLoaderTest {
           ecdhOk = true;
           ecdsaOk = true;
         }
-      } catch (Exception ignored) {
+      } catch (Exception _) {
         // keep flags false
       }
       System.out.println("BC_ECDH_ALG_OK=" + ecdhOk);

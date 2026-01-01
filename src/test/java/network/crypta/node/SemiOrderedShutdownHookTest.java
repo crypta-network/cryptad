@@ -102,7 +102,7 @@ class SemiOrderedShutdownHookTest {
               events.add("earlySlow-start");
               try {
                 allowEarlySlowToFinish.await();
-              } catch (InterruptedException ignored) {
+              } catch (InterruptedException _) {
                 // ignored for test: we want deterministic completion ordering
               }
               events.add("earlySlow-done");
