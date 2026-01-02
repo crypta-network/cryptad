@@ -12,7 +12,32 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Load tracking, slot waiting, and load-based routing helpers for {@link PeerNode}. */
+/**
+ * Tracks per-peer load state and coordinates slot waiting for outbound routing decisions.
+ *
+ * <p>This class aggregates incoming load reports from a {@link PeerNode}, maintains lightweight
+ * counters for recent allocation outcomes, and arbitrates whether new requests should be routed or
+ * queued for a slot. It is consulted by routing paths that need to decide between immediate
+ * acceptance, waiting for capacity, or rejecting a route based on current bandwidth and transfer
+ * limits. The tracker keeps separate accounting for real-time and bulk traffic so that different
+ * scheduling policies can be applied without duplicating state.
+ *
+ * <p>State is mutable and updated by multiple code paths; synchronization is internal and relies on
+ * a dedicated lock for shared load data plus per-waiter monitors for blocking waits. Callers should
+ * avoid holding unrelated locks when invoking methods that can block. The tracker does not manage
+ * lifecycle itself; it expects the owning {@link PeerNode} to create, keep, and tear it down
+ * alongside other routing structures.
+ *
+ * <ul>
+ *   <li>Evaluates load stats to compute a likely acceptance state for a route.
+ *   <li>Queues {@link SlotWaiter} instances when a request must wait for capacity.
+ *   <li>Wakes waiters when updated load stats indicate capacity has freed.
+ * </ul>
+ *
+ * @see PeerNode
+ * @see PeerLoadStats
+ * @see SlotWaiter
+ */
 public final class PeerNodeLoadTracker {
   private static final Logger LOG = LoggerFactory.getLogger(PeerNodeLoadTracker.class);
   private static final String STR_FOR = " for ";
@@ -33,7 +58,27 @@ public final class PeerNodeLoadTracker {
     this.outputLoadTrackerBulk = new OutputLoadTracker(false);
   }
 
+  /**
+   * Summary of incoming load and capacity numbers for a peer at a point in time.
+   *
+   * <p>This value object is derived from the most recent {@link PeerLoadStats} plus a snapshot of
+   * local running requests. It normalizes the mixed sources into byte-based capacity and usage
+   * figures so callers can render status or make higher-level decisions without re-reading the raw
+   * structures. All fields are immutable and expressed in bytes unless otherwise stated.
+   */
   public static class IncomingLoadSummaryStats {
+    /**
+     * Creates a summary from raw limits and usage data.
+     *
+     * <p>The constructor performs only unit normalization and assignment. It does not validate
+     * ranges, and it assumes the provided limits and usage values were computed from the same
+     * sampling window.
+     *
+     * @param totalRequests total number of running requests in the snapshot; non-negative count
+     * @param limits capacity limits for peer and total scopes, in bytes per second
+     * @param used locally observed usage for this peer, in bytes per second
+     * @param othersUsed usage attributed to other peers, in bytes per second
+     */
     public IncomingLoadSummaryStats(
         int totalRequests, Limits limits, Usage used, Usage othersUsed) {
       runningRequestsTotal = totalRequests;
@@ -47,21 +92,104 @@ public final class PeerNodeLoadTracker {
       othersUsedCapacityInputBytes = (int) othersUsed.input;
     }
 
+    /**
+     * Total number of running requests observed in the snapshot.
+     *
+     * <p>This count includes local activity directed at the peer and is used for higher-level
+     * diagnostics rather than routing thresholds.
+     */
     public final int runningRequestsTotal;
+
+    /**
+     * Per-peer output capacity limit in bytes per second.
+     *
+     * <p>This is the limit that applies to outbound traffic directed at the peer itself, not the
+     * aggregate network. It is immutable after construction.
+     */
     public final int peerCapacityOutputBytes;
+
+    /**
+     * Per-peer input capacity limit in bytes per second.
+     *
+     * <p>This reflects inbound capacity as reported by the peer and is used alongside output limits
+     * when estimating acceptance.
+     */
     public final int peerCapacityInputBytes;
+
+    /**
+     * Aggregate output capacity limit in bytes per second.
+     *
+     * <p>This represents total outbound capacity across peers, used for "likely" acceptance when
+     * per-peer limits are exceeded but global capacity remains.
+     */
     public final int totalCapacityOutputBytes;
+
+    /**
+     * Aggregate input capacity limit in bytes per second.
+     *
+     * <p>This mirrors {@link #totalCapacityOutputBytes} for inbound traffic and is based on the
+     * peer's reported limits.
+     */
     public final int totalCapacityInputBytes;
+
+    /**
+     * Local output usage attributed to this peer, in bytes per second.
+     *
+     * <p>The value is derived from a running request snapshot and is used when comparing against
+     * per-peer output limits.
+     */
     public final int usedCapacityOutputBytes;
+
+    /**
+     * Local input usage attributed to this peer, in bytes per second.
+     *
+     * <p>This is the inbound counterpart to {@link #usedCapacityOutputBytes} and reflects local
+     * demand.
+     */
     public final int usedCapacityInputBytes;
+
+    /**
+     * Output usage reported for other peers, in bytes per second.
+     *
+     * <p>This is an aggregate from the peer's own load reports and is used to evaluate total
+     * capacity thresholds.
+     */
     public final int othersUsedCapacityOutputBytes;
+
+    /**
+     * Input usage reported for other peers, in bytes per second.
+     *
+     * <p>This is combined with {@link #usedCapacityInputBytes} when evaluating total input
+     * capacity.
+     */
     public final int othersUsedCapacityInputBytes;
   }
 
   // Small containers to reduce constructor parameter count
+  /**
+   * Capacity limits expressed in bytes per second.
+   *
+   * <p>The fields are copied directly from {@link PeerLoadStats} and represent both per-peer and
+   * overall limits. Values are expected to be non-negative and may be fractional if derived from
+   * averaged measurements.
+   *
+   * @param peerOutput per-peer output limit in bytes per second, for this peer only
+   * @param peerInput per-peer input limit in bytes per second, for this peer only
+   * @param totalOutput aggregate output limit in bytes per second across all peers
+   * @param totalInput aggregate input limit in bytes per second across all peers
+   */
   public record Limits(
       double peerOutput, double peerInput, double totalOutput, double totalInput) {}
 
+  /**
+   * Usage counters expressed in bytes per second.
+   *
+   * <p>Values are derived from running request snapshots and are used to compare against capacity
+   * limits when deciding whether to accept or queue a request.
+   *
+   * @param output outbound usage in bytes per second
+   * @param input inbound usage in bytes per second
+   */
   public record Usage(double output, double input) {}
 
   enum RequestLikelyAcceptedState {
@@ -129,6 +257,19 @@ public final class PeerNodeLoadTracker {
     return new SlotWaiter(tag, type, realTime, source);
   }
 
+  /**
+   * Tracks a request waiting for a routing slot on one or more peers.
+   *
+   * <p>A {@code SlotWaiter} represents a pending routing attempt for a single {@link UIDTag} and
+   * {@link RequestType}. Callers enqueue it on candidate peers and then either block waiting for a
+   * wake-up or query its current state. The waiter encapsulates the coordination needed to
+   * unregister from peers once one accepts the request, and it records whether a failure occurred
+   * while waiting. The ordering counter preserves fairness across retries by keeping the original
+   * enqueue order.
+   *
+   * <p>Instances are stateful and synchronized internally. Callers should not hold unrelated locks
+   * while invoking methods that can block or that unregister other waiters.
+   */
   public static class SlotWaiter {
 
     final PeerNode source;
@@ -163,9 +304,13 @@ public final class PeerNodeLoadTracker {
     /**
      * Adds a peer to the set being waited on for a slot.
      *
-     * @param peer peer to add
-     * @return {@code true} if the peer was added or already satisfied; {@code false} if it could
-     *     not be queued
+     * <p>If the waiter has already been accepted or failed, the peer is treated as already
+     * satisfied and the method returns {@code true}. Otherwise, the peer is queued unless it is not
+     * routable or is currently in mandatory backoff. The method is idempotent for the same peer and
+     * sets the tag's waiting-for-slot flag when a new peer is queued.
+     *
+     * @param peer candidate peer to wait on; must be routable and not in backoff
+     * @return {@code true} if queued or already satisfied; {@code false} if queuing is not viable
      */
     public boolean addWaitingFor(PeerNode peer) {
       boolean cantQueue =
@@ -274,6 +419,15 @@ public final class PeerNodeLoadTracker {
       }
     }
 
+    /**
+     * Returns a snapshot of peers this waiter is currently waiting on.
+     *
+     * <p>The returned set is a defensive copy and is safe to iterate without holding any locks. It
+     * reflects the state at the moment of the call and will not update as new peers are queued or
+     * removed.
+     *
+     * @return snapshot set of peers still being waited on, possibly empty
+     */
     public java.util.Set<PeerNode> waitingForList() {
       synchronized (this) {
         return new HashSet<>(waitingFor);
@@ -286,8 +440,8 @@ public final class PeerNodeLoadTracker {
      *
      * @param maxWait The time to wait for. Can be 0, but if it is 0, this is a "peek", i.e. if we
      *     return null, the queued slots remain live. Whereas if maxWait is not 0, we will
-     *     unregister when we timeout.
-     * @param timeOutIsFatal If true, if we timeout, count it for each node involved as a fatal
+     *     unregister when we time out.
+     * @param timeOutIsFatal If true, if we time out, count it for each node involved as a fatal
      *     timeout.
      * @return A matched node, or null.
      * @throws SlotWaiterFailedException If a peer actually failed.
@@ -601,6 +755,14 @@ public final class PeerNodeLoadTracker {
       return super.toString() + ":" + counter + ":" + requestType + ":" + realTime;
     }
 
+    /**
+     * Returns the current number of peers being waited on.
+     *
+     * <p>This count is derived from the internal wait list and reflects the moment of the call. It
+     * is useful for diagnostics and does not imply that all peers remain routable.
+     *
+     * @return number of peers in the wait list at call time
+     */
     public synchronized int waitingForCount() {
       return waitingFor.size();
     }
@@ -623,7 +785,7 @@ public final class PeerNodeLoadTracker {
 
     public synchronized void put(SlotWaiter waiter) {
       PeerNode source = waiter.source;
-      TreeMap<Long, SlotWaiter> map = lru.computeIfAbsent(source, k -> new TreeMap<>());
+      TreeMap<Long, SlotWaiter> map = lru.computeIfAbsent(source, _ -> new TreeMap<>());
       map.put(waiter.counter, waiter);
     }
 
@@ -898,7 +1060,7 @@ public final class PeerNodeLoadTracker {
     }
 
     private SlotWaiterList makeSlotWaiters(RequestType requestType) {
-      return slotWaiters.computeIfAbsent(requestType, k -> new SlotWaiterList());
+      return slotWaiters.computeIfAbsent(requestType, _ -> new SlotWaiterList());
     }
 
     void unqueueSlotWaiter(SlotWaiter waiter) {
