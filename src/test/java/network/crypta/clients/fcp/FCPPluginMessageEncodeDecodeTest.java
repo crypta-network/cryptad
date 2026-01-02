@@ -117,7 +117,7 @@ final class FCPPluginMessageEncodeDecodeTest {
     } else {
       // Not implemented yet because the parsing of the data is higher level FCP code; i.e.
       // it is not implemented in FCPPluginClientMessage, but one of its parent classes.
-      throw new UnsupportedOperationException("TODO: Implement");
+      throw new UnsupportedOperationException("Data parsing is not implemented here.");
     }
 
     assertEquals(message.success, decodedMessage.success);

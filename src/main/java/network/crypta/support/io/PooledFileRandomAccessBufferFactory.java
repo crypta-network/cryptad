@@ -16,12 +16,12 @@ import network.crypta.support.api.LockableRandomAccessBufferFactory;
  * created file before rethrowing the original exception.
  *
  * <p>Lifecycle: the returned buffer controls the lifetime of its backing file. This factory only
- * intervenes when construction fails. TODO: Document precise deletion semantics when the buffer is
- * closed or discarded.
+ * intervenes when construction fails. Deletion semantics are governed by {@link
+ * PooledFileRandomAccessBuffer#free()} and the {@code deleteOnFree} flag supplied at construction.
  *
  * <p>Thread-safety: this class performs no internal synchronization and delegates filename
- * generation to the supplied {@link FilenameGenerator}. TODO: Clarify whether instances are safe
- * for concurrent use and whether the generator must be thread-safe.
+ * generation to the supplied {@link FilenameGenerator}. Callers should ensure that concurrent
+ * access is safe for both this factory and the generator.
  */
 public class PooledFileRandomAccessBufferFactory implements LockableRandomAccessBufferFactory {
 

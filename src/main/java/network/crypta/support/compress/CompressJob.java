@@ -28,8 +28,7 @@ public interface CompressJob {
    * resources.
    *
    * <p>Threading: called on a background thread. Callers must not block indefinitely; jobs should
-   * be responsive to shutdown via {@link ClientContext} facilities where applicable. TODO: Document
-   * the exact cancellation/interrupt contract once defined.
+   * be responsive to shutdown via {@link ClientContext} facilities where applicable.
    *
    * @param context execution context providing schedulers, persistence, and configuration; non-null
    * @throws InsertException if compression cannot proceed or complete successfully; the caller

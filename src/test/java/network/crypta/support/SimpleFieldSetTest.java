@@ -651,8 +651,6 @@ class SimpleFieldSetTest {
   /**
    * Tests the toplevelIterator given for the SimpleFieldSet class. It tests hasNext() and next()
    * methods.
-   *
-   * <p>TODO: improve the test
    */
   @Test
   void testToplevelKeyIterator() {

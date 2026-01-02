@@ -91,7 +91,7 @@ public class DiskDirPutFile extends DirPutFile {
    * Supplying an absolute or manifest-relative path is acceptable, but the chosen location must
    * remain stable until the upload finalizes so retries see identical bytes. Use {@link
    * #guessMIME(String, File)} to align MIME selection with the factory when creating instances
-   * manually. TODO: implement FileHash support.
+   * manually. FileHash metadata is not currently used for disk-backed directory entries.
    *
    * @param name manifest-relative entry name recorded inside the directory manifest.
    * @param mimeType MIME declaration already validated by callers, never {@code null}.

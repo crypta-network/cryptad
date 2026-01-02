@@ -65,8 +65,8 @@ public interface PersistentFileTracker extends DiskSpaceChecker {
    * {@link DelayedFree#realFree()} immediately because no commit barrier is required. Otherwise,
    * they queue the resource and perform the release only after the next successful persistence
    * commit. Implementations also typically treat {@code createdCommitID == 0} as “created before
-   * the last restart”, which always requires deferral until after a commit. TODO: Confirm the exact
-   * semantics for {@code 0} across all implementations.
+   * the last restart”, which requires deferral until after a commit. Restored wrappers use {@code
+   * 0} to signal this pre-restart state.
    *
    * <p>Concurrency: callers may invoke this from I/O threads. Implementations should synchronize
    * their internal state as needed.

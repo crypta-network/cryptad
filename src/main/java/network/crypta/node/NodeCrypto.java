@@ -596,7 +596,7 @@ public class NodeCrypto {
    */
   public boolean allowConnection(PeerNode pn, FreenetInetAddress addr) {
     // Disallow multiple connections to the same address.
-    // TODO: For IPv6 consider a configurable same-/64 subnet rule instead of exact match.
+    // For IPv6, a configurable same-/64 subnet rule may be more appropriate than exact match.
     if (config.oneConnectionPerAddress()
         && node.getPeers().roster().anyConnectedPeerHasAddress(addr, pn)
         && !detector.includes(addr)

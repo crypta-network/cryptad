@@ -12,7 +12,8 @@ import java.io.OutputStream;
  * <p>Implementations in this package may use {@link #checkCompressionEffect(long, long, int)} to
  * validate that compression achieves a caller-specified minimum percentage.
  *
- * <p>Thread-safety: TODO: Document whether implementations are safe for concurrent use.
+ * <p>Thread-safety: implementation-specific; callers should not assume concurrent safety unless
+ * documented by the concrete compressor.
  */
 abstract class AbstractCompressor implements Compressor {
 

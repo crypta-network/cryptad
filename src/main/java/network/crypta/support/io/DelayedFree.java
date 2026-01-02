@@ -38,8 +38,7 @@ public interface DelayedFree {
    * <p>Threading: callers may invoke this from a background thread owned by the persistence layer.
    * Implementations should avoid long blocking operations.
    *
-   * <p>Idempotency: TODO: Clarify whether repeated calls must be tolerated. Current usage expects a
-   * single call per lifecycle.
+   * <p>Idempotency: callers invoke this once per lifecycle; repeated calls are not expected.
    */
   void realFree();
 }

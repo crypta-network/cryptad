@@ -245,7 +245,7 @@ public class NullBasePeerNode implements BasePeerNode {
 
   @Override
   public double averagePingTimeCorrected() {
-    // TODO Auto-generated method stub
+    // Return a deterministic value for tests.
     return 0;
   }
 

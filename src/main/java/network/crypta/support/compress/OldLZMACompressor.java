@@ -197,7 +197,7 @@ public class OldLZMACompressor implements Compressor {
     CountedOutputStream cos = new CountedOutputStream(os);
     Decoder decoder = new Decoder();
     decoder.setDecoderProperties(PROPS);
-    decoder.code(is, cos, maxLength); // TODO: clarify behavior at the exact {@code maxLength}.
+    decoder.code(is, cos, maxLength);
     return cos.written();
   }
 

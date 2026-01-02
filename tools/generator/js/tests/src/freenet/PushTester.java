@@ -384,8 +384,7 @@ public class PushTester {
 
 		@Override
 		public void write(int b) throws IOException {
-			// TODO Auto-generated method stub
-
+			// Intentionally ignored.
 		}
 
 	}

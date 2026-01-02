@@ -21,9 +21,9 @@ import network.crypta.support.api.RandomAccessBucket;
  * is immutable.
  *
  * <p><strong>Size and immutability:</strong> the logical size reported by {@link #size()} is
- * captured at construction time from the underlying buffer. Callers should consider the underlying
- * buffer length stable for the lifetime of this bucket. TODO: clarify whether readers should rely
- * on the captured size or the underlying buffer length at stream creation time.
+ * captured at construction time from the underlying buffer. Input streams are created with the
+ * underlying buffer size at stream creation time. Callers should treat the buffer length as stable
+ * for the lifetime of this bucket.
  *
  * <p><strong>Thread-safety:</strong> this class is a thin wrapper and does not add synchronization
  * beyond what the underlying buffer provides. Multiple readers should create separate input

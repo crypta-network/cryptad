@@ -74,8 +74,8 @@ public class BooleanLastTrueTracker {
    * @param value the new state to set.
    * @param now the caller-supplied current time, used only when transitioning {@code false ->
    *     true}. The unit/epoch is not enforced by this class; callers must supply values consistent
-   *     with those used elsewhere for the same instance. TODO: Clarify required time base across
-   *     the codebase (epoch vs. monotonic).
+   *     with those used elsewhere for the same instance (for example, wall-clock or monotonic
+   *     time).
    * @return the previous state of the condition.
    */
   public synchronized boolean set(boolean value, long now) {

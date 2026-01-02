@@ -30,8 +30,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Statistics: When {@link NodeStats} is provided, the implementation emits an immediate
  * monitoring hook right before running a job. The current behavior reports a duration of {@code 0L}
- * at that point. TODO: Consider also publishing the real elapsed duration after the job finishes if
- * consumers require accurate timings.
+ * at that point; consumers should treat it as a start marker rather than an elapsed duration.
  *
  * @since 2
  */
@@ -140,8 +139,8 @@ public class PrioritizedSerialExecutor implements PriorityAwareExecutor {
      * <p>Synchronization: Must be called by the runner. This method acquires the queue lock and
      * releases it only when returning.
      *
-     * @return the next runnable to execute, or {@code null} on timeout or interrupt TODO: none
-     *     (checked exceptions are handled internally)
+     * @return the next runnable to execute, or {@code null} on timeout or interrupt; checked
+     *     exceptions are handled internally
      */
     private Runnable waitForNextJob() {
       synchronized (jobs) {
