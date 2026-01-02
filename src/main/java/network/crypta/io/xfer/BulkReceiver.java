@@ -30,7 +30,7 @@ import network.crypta.support.ShortBuffer;
  *   <li>Construction records the peer's boot id and sets {@code prb.recv = this} for callbacks.
  *   <li>{@link #receive()} blocks in a loop until the transfer completes (returns {@code true}) or
  *       fails (returns {@code false}).
- *   <li>{@link #onAborted()} may be invoked to inform the peer that the receiver cancelled; it is
+ *   <li>{@link #onAborted()} may be invoked to inform the peer that the receiver canceled; it is
  *       idempotent and safe to call more than once.
  * </ul>
  *
@@ -177,17 +177,29 @@ public class BulkReceiver {
         prb.abort(RetrievalException.TIMED_OUT, "Sender timeout");
         return false;
       }
-      if (m.getSpec() == DMT.FNPBulkSendAborted) {
-        // Sender explicitly cancelled this transfer.
-        prb.abort(RetrievalException.SENDER_DIED, "Sender cancelled send");
+      if (!handleMessage(m)) {
         return false;
       }
-      if (m.getSpec() == DMT.FNPBulkPacketSend) {
-        int packetNo = m.getInt(DMT.PACKET_NO);
-        byte[] data = ((ShortBuffer) m.getObject(DMT.DATA)).getData();
-        // Commit the packet payload to storage. Length is validated by PartiallyReceivedBulk.
-        prb.received(packetNo, data, 0, data.length);
-      }
     }
+  }
+
+  /**
+   * Processes a single bulk transfer message.
+   *
+   * @return {@code true} to continue receiving; {@code false} if the sender canceled the transfer.
+   */
+  private boolean handleMessage(Message m) {
+    if (m.getSpec() == DMT.FNPBulkSendAborted) {
+      // Sender explicitly canceled this transfer.
+      prb.abort(RetrievalException.SENDER_DIED, "Sender cancelled send");
+      return false;
+    }
+    if (m.getSpec() == DMT.FNPBulkPacketSend) {
+      int packetNo = m.getInt(DMT.PACKET_NO);
+      byte[] data = ((ShortBuffer) m.getObject(DMT.DATA)).getData();
+      // Commit the packet payload to storage. Length is validated by PartiallyReceivedBulk.
+      prb.received(packetNo, data, 0, data.length);
+    }
+    return true;
   }
 }
