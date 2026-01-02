@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Random;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.KeyAgreementSchemeContext;
+import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.Peer.LocalAddressException;
 import network.crypta.io.comm.PeerContext;
@@ -1584,6 +1585,24 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       updateShortToString();
     }
     return detectedPeer;
+  }
+
+  /**
+   * Determines whether the supplied address matches this peer's detected or nominal addresses.
+   *
+   * <p>This method synchronizes on {@code this} to ensure a consistent view of peer addresses.
+   *
+   * @param addr address to compare against this peer's known addresses
+   * @param strict whether to use strict or relaxed comparison semantics
+   * @return {@code true} if the address matches; {@code false} otherwise
+   */
+  boolean matchesIP(FreenetInetAddress addr, boolean strict) {
+    synchronized (this) {
+      if (strict) {
+        return PeerNodeAddressManager.strictMatch(this, addr);
+      }
+      return PeerNodeAddressManager.nonStrictMatch(this, addr);
+    }
   }
 
   private void sortNominalPeer() {
