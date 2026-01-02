@@ -7,7 +7,7 @@ import network.crypta.clients.http.DarknetConnectionsToadlet;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.xfer.PacketThrottle;
-import network.crypta.node.PeerNode.IncomingLoadSummaryStats;
+import network.crypta.node.PeerNodeLoadTracker.IncomingLoadSummaryStats;
 
 /**
  * Immutable snapshot of a {@link PeerNode}'s observable state.
