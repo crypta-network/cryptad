@@ -27,7 +27,7 @@ import network.crypta.support.SimpleFieldSet;
  */
 public class SubscribedUSKUpdate extends FCPMessage {
 
-  final String identifier;
+  final String requestIdentifier;
   final long edition;
   final USK key;
   final boolean newKnownGood;
@@ -53,7 +53,7 @@ public class SubscribedUSKUpdate extends FCPMessage {
    */
   public SubscribedUSKUpdate(
       String identifier, long l, USK key, boolean newKnownGood, boolean newSlotToo) {
-    this.identifier = identifier;
+    this.requestIdentifier = identifier;
     this.edition = l;
     this.key = key;
     this.newKnownGood = newKnownGood;
@@ -74,7 +74,7 @@ public class SubscribedUSKUpdate extends FCPMessage {
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle("Identifier", identifier);
+    fs.putSingle("Identifier", requestIdentifier);
     fs.put("Edition", edition);
     fs.putSingle("URI", key.getURI().toString());
     fs.put("NewKnownGood", newKnownGood);
@@ -113,7 +113,7 @@ public class SubscribedUSKUpdate extends FCPMessage {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "SubscribedUSKUpdate goes from server to client not the other way around",
-        identifier,
+        requestIdentifier,
         false);
   }
 }

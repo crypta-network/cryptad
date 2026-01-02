@@ -28,12 +28,12 @@ import network.crypta.support.SimpleFieldSet;
 public class PutFetchableMessage extends FCPMessage {
 
   PutFetchableMessage(String ident, boolean global, FreenetURI uri) {
-    this.identifier = ident;
+    this.requestIdentifier = ident;
     this.global = global;
     this.uri = uri;
   }
 
-  final String identifier;
+  final String requestIdentifier;
   final boolean global;
   final FreenetURI uri;
 
@@ -53,7 +53,7 @@ public class PutFetchableMessage extends FCPMessage {
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle("Identifier", identifier);
+    fs.putSingle("Identifier", requestIdentifier);
     fs.put("Global", global);
     if (uri != null) fs.putSingle("URI", uri.toString(false, false));
     return fs;
@@ -93,7 +93,7 @@ public class PutFetchableMessage extends FCPMessage {
     throw new MessageInvalidException(
         ProtocolErrorMessage.INVALID_MESSAGE,
         "PutFetchable goes from server to client not the other way around",
-        identifier,
+        requestIdentifier,
         global);
   }
 }
