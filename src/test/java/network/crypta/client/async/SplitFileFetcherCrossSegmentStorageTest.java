@@ -142,7 +142,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
         .when(codec)
         .maxMemoryOverheadEncode(any(Integer.class), any(Integer.class));
     org.mockito.Mockito.lenient()
-        .doAnswer(inv -> null)
+        .doAnswer(_ -> null)
         .when(codec)
         .decode(
             any(byte[][].class),
@@ -151,7 +151,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
             any(boolean[].class),
             eq(CHKBlock.DATA_LENGTH));
     org.mockito.Mockito.lenient()
-        .doAnswer(inv -> null)
+        .doAnswer(_ -> null)
         .when(codec)
         .encode(
             any(byte[][].class),
@@ -253,7 +253,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
   void restart_whenAllBlocksPresent_runsJobAndFinishes() throws Exception {
     // Arrange
     PersistentJobRunner pjr = mock(PersistentJobRunner.class);
-    doAnswer(inv -> (CheckpointLock) (forceWrite, threadPriority) -> {}).when(pjr).lock();
+    doAnswer(_ -> (CheckpointLock) (_, _) -> {}).when(pjr).lock();
 
     // Run jobs inline with plenty of capacity so the decode job starts immediately.
     MemoryLimitedJobRunner mlr = newInlineRunner(10L * CHKBlock.DATA_LENGTH);
@@ -318,7 +318,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
   void innerDecode_whenDiskError_callsFailOnDiskError() throws Exception {
     // Arrange
     PersistentJobRunner pjr = mock(PersistentJobRunner.class);
-    doAnswer(inv -> (CheckpointLock) (forceWrite, threadPriority) -> {}).when(pjr).lock();
+    doAnswer(_ -> (CheckpointLock) (_, _) -> {}).when(pjr).lock();
     // Run queued jobs (failOffThread/failDiskOffThread) immediately
     doAnswer(
             inv -> {
@@ -344,7 +344,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
 
     // Simulate disk I/O failure when reading the block
     doAnswer(
-            inv -> {
+            _ -> {
               throw new IOException("disk error");
             })
         .when(s0)
@@ -364,7 +364,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
   void innerDecode_whenCheckBlockDiskError_exitsEarlyAndFailsGracefully() throws Exception {
     // Arrange
     PersistentJobRunner pjr = mock(PersistentJobRunner.class);
-    doAnswer(inv -> (CheckpointLock) (forceWrite, threadPriority) -> {}).when(pjr).lock();
+    doAnswer(_ -> (CheckpointLock) (_, _) -> {}).when(pjr).lock();
     // Run queued jobs (failOffThread/failDiskOffThread) immediately
     doAnswer(
             inv -> {
@@ -397,7 +397,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
     doReturn(new byte[CHKBlock.DATA_LENGTH]).when(s0).checkAndGetBlockData(10);
     doReturn(new byte[CHKBlock.DATA_LENGTH]).when(s1).checkAndGetBlockData(20);
     doAnswer(
-            inv -> {
+            _ -> {
               throw new IOException("disk error check block");
             })
         .when(s2)
