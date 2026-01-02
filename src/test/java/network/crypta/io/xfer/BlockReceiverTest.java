@@ -246,7 +246,7 @@ class BlockReceiverTest {
     org.mockito.Mockito.lenient().when(sender.isConnected()).thenReturn(true);
     org.mockito.Mockito.lenient().when(sender.getBootID()).thenReturn(7L);
     org.mockito.Mockito.lenient().when(sender.shortToString()).thenReturn("peer");
-    WeakReference<PeerNode> ref = new WeakReference<>(sender);
+    WeakReference<PeerContext> ref = new WeakReference<>(sender);
     org.mockito.Mockito.lenient().when(sender.getWeakRef()).thenReturn(ref);
 
     // Avoid invoking real bookkeeping on the abstract PeerNode

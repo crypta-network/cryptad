@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import network.crypta.clients.fcp.BookmarkFeed;
 import network.crypta.clients.fcp.FCPMessage;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.HTMLNode;
@@ -34,7 +35,7 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
 
     String name = "My Site";
     String description = "Line1\nLine2";
@@ -107,7 +108,7 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Bob");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
 
     String name = "Site";
     FreenetURI uri = new FreenetURI("KSK@file.txt");
@@ -133,7 +134,7 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Carol");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@x.txt");
     BookmarkFeedUserAlert alert =
         new BookmarkFeedUserAlert(peer, "X", "", false, 3, uri, -1L, -1L, -1L);
@@ -152,7 +153,7 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Dave");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@offer.txt");
     int fileNumber = 99;
     BookmarkFeedUserAlert alert =
@@ -171,7 +172,7 @@ class BookmarkFeedUserAlertTest {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Eve");
     // The weak reference resolves to null
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(null));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(null));
     FreenetURI uri = new FreenetURI("KSK@abc.txt");
     BookmarkFeedUserAlert alert =
         new BookmarkFeedUserAlert(peer, "S", null, false, 5, uri, -1L, -1L, -1L);
@@ -188,7 +189,7 @@ class BookmarkFeedUserAlertTest {
     // Arrange: first call returns initial name (constructor), second call returns updated name
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice", "Mallory");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@z.txt");
     BookmarkFeedUserAlert alert =
         new BookmarkFeedUserAlert(peer, "S", null, false, 1, uri, -1L, -1L, -1L);
@@ -209,7 +210,7 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Frank");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@data.bin");
     String description = "hello"; // 5 bytes in UTF-8
     String name = "Title";

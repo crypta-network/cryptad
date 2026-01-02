@@ -313,7 +313,7 @@ class MessageTest {
 
   // Minimal stub PeerContext for decode paths. Only getWeakRef() is used by Message.
   private static final class TestPeerContext implements PeerContext {
-    private final WeakReference<TestPeerContext> ref = new WeakReference<>(this);
+    private final WeakReference<PeerContext> ref = new WeakReference<>(this);
 
     @Override
     public Peer getPeer() {
@@ -367,7 +367,7 @@ class MessageTest {
     }
 
     @Override
-    public WeakReference<? extends PeerContext> getWeakRef() {
+    public WeakReference<PeerContext> getWeakRef() {
       return ref;
     }
 

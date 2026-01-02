@@ -19,6 +19,7 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.NodeCHK;
 import network.crypta.node.NodeDispatcher.NodeDispatcherCallback;
 import network.crypta.node.updater.NodeUpdateManager;
@@ -113,7 +114,7 @@ class NodeDispatcherTest {
     org.mockito.Mockito.lenient().when(pn.isConnected()).thenReturn(true);
     org.mockito.Mockito.lenient().when(pn.isRoutable()).thenReturn(true);
     org.mockito.Mockito.lenient().when(pn.isRealConnection()).thenReturn(true);
-    java.lang.ref.WeakReference<PeerNode> ref = new java.lang.ref.WeakReference<>(pn);
+    java.lang.ref.WeakReference<PeerContext> ref = new java.lang.ref.WeakReference<>(pn);
     org.mockito.Mockito.lenient().when(pn.getWeakRef()).thenReturn(ref);
     return pn;
   }
@@ -223,7 +224,7 @@ class NodeDispatcherTest {
     org.mockito.Mockito.lenient().when(src.isConnected()).thenReturn(true);
     org.mockito.Mockito.lenient().when(src.isRoutable()).thenReturn(true);
     org.mockito.Mockito.lenient().when(src.isRealConnection()).thenReturn(true);
-    java.lang.ref.WeakReference<PeerNode> ref = new java.lang.ref.WeakReference<>(src);
+    java.lang.ref.WeakReference<PeerContext> ref = new java.lang.ref.WeakReference<>(src);
     org.mockito.Mockito.lenient().when(src.getWeakRef()).thenReturn(ref);
 
     Message m = withSource(DMT.createFNPVisibility((short) 1), src);

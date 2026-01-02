@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import java.lang.ref.WeakReference;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.Key;
 
 /**
@@ -44,15 +45,15 @@ interface PeerNodeUnlocked {
   void offer(Key key);
 
   /**
-   * Returns a weak reference to the backing {@link PeerNode} instance.
+   * Returns a weak reference to the backing peer context.
    *
    * <p>Use a weak reference when storing handles in auxiliary tables to avoid prolonging the
    * lifetime of the underlying peer. The reference may be cleared at any time by the garbage
    * collector.
    *
-   * @return a {@link WeakReference} to the underlying {@link PeerNode}.
+   * @return a {@link WeakReference} to the underlying {@link PeerContext}.
    */
-  WeakReference<PeerNode> getWeakRef();
+  WeakReference<PeerContext> getWeakRef();
 
   /**
    * Returns a concise, human-readable description of the peer intended for logs and metrics.
