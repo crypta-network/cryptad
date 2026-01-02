@@ -248,8 +248,11 @@ class PeerManagerTest {
     assertEquals(pn, pm.roster().getByPeer(peer));
 
     when(pn.matchesPeerAndPort(peer)).thenReturn(false);
-    when(pn.matchesIP(addr, false)).thenReturn(true);
-    assertEquals(pn, pm.roster().getByPeer(peer));
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(pn, addr, false)).thenReturn(true);
+      assertEquals(pn, pm.roster().getByPeer(peer));
+    }
   }
 
   @Test
@@ -277,8 +280,11 @@ class PeerManagerTest {
     // Fallback by IP + matching mangler
     when(pn1.matchesPeerAndPort(peer)).thenReturn(false);
     when(pn2.matchesPeerAndPort(peer)).thenReturn(false);
-    when(pn1.matchesIP(addr, false)).thenReturn(true);
-    assertEquals(pn1, pm.roster().getByPeer(peer, mangler));
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(pn1, addr, false)).thenReturn(true);
+      assertEquals(pn1, pm.roster().getByPeer(peer, mangler));
+    }
   }
 
   @Test
@@ -286,18 +292,22 @@ class PeerManagerTest {
   void getAllConnectedByAddress_filters() {
     FreenetInetAddress addr = mock(FreenetInetAddress.class);
     PeerNode p1 = peer(true, true, true, true, 0.1);
-    when(p1.matchesIP(addr, true)).thenReturn(true);
     PeerNode p2 = peer(false, true, true, true, 0.2);
     PeerNode p3 = peer(true, true, false, true, 0.3);
     PeerNode p4 = peer(true, true, true, true, 0.4);
-    when(p4.matchesIP(addr, true)).thenReturn(false);
 
     pm.addPeer(p1);
     pm.addPeer(p2);
     pm.addPeer(p3);
     pm.addPeer(p4);
 
-    List<PeerNode> found = pm.roster().getAllConnectedByAddress(addr, true);
+    List<PeerNode> found;
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(p1, addr, true)).thenReturn(true);
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(p4, addr, true)).thenReturn(false);
+      found = pm.roster().getAllConnectedByAddress(addr, true);
+    }
     assertNotNull(found);
     assertEquals(1, found.size());
     assertEquals(p1, found.getFirst());

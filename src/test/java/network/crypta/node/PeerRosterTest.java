@@ -252,11 +252,17 @@ class PeerRosterTest {
     PeerNode peerNode = mock(PeerNode.class);
     when(peerNode.isDisabled()).thenReturn(false);
     when(peerNode.matchesPeerAndPort(peer)).thenReturn(false);
-    when(peerNode.matchesIP(address, false)).thenReturn(true);
     addPeers(roster, peerNode);
 
     // Act
-    PeerNode found = roster.getByPeer(peer);
+    PeerNode found;
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock
+          .when(() -> PeerNodeAddressManager.matchesIP(peerNode, address, false))
+          .thenReturn(true);
+      found = roster.getByPeer(peer);
+    }
 
     // Assert
     assertSame(peerNode, found);
@@ -290,14 +296,22 @@ class PeerRosterTest {
     PeerNode noMatch = mock(PeerNode.class);
     when(match.isConnected()).thenReturn(true);
     when(match.isRoutable()).thenReturn(true);
-    when(match.matchesIP(address, true)).thenReturn(true);
     when(noMatch.isConnected()).thenReturn(true);
     when(noMatch.isRoutable()).thenReturn(true);
-    when(noMatch.matchesIP(address, true)).thenReturn(false);
     addPeers(roster, match, noMatch);
 
     // Act
-    List<PeerNode> found = roster.getAllConnectedByAddress(address, true);
+    List<PeerNode> found;
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock
+          .when(() -> PeerNodeAddressManager.matchesIP(match, address, true))
+          .thenReturn(true);
+      addressMock
+          .when(() -> PeerNodeAddressManager.matchesIP(noMatch, address, true))
+          .thenReturn(false);
+      found = roster.getAllConnectedByAddress(address, true);
+    }
 
     // Assert
     assertEquals(1, found.size());

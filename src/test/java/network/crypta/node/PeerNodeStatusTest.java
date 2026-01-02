@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -16,19 +15,11 @@ import java.util.Hashtable;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.xfer.PacketThrottle;
-import network.crypta.support.math.RunningAverage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @SuppressWarnings("java:S100")
-@ExtendWith(MockitoExtension.class)
 class PeerNodeStatusTest {
-
-  @Mock RunningAverage rtAvg;
-  @Mock RunningAverage bulkAvg;
 
   private <T extends PeerNode> T basePeerNodeMock(Class<T> type) {
     // Common, safe defaults to avoid NPEs in the PeerNodeStatus constructor
@@ -68,10 +59,8 @@ class PeerNodeStatusTest {
     when(pn.publicReverseInvalidVersion()).thenReturn(false);
 
     // Backoff percentages
-    when(pn.getBackedOffPercentRT()).thenReturn(rtAvg);
-    when(pn.getBackedOffPercentBulk()).thenReturn(bulkAvg);
-    lenient().when(rtAvg.currentValue()).thenReturn(0.1);
-    lenient().when(bulkAvg.currentValue()).thenReturn(0.2);
+    when(pn.getBackedOffPercentRT()).thenReturn(0.1);
+    when(pn.getBackedOffPercentBulk()).thenReturn(0.2);
 
     // Backoff reasons
     when(pn.getLastBackoffReason(true)).thenReturn("reason-rt");

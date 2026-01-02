@@ -201,7 +201,8 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private NodeProcessResult routeOnce(HashSet<PeerNode> nodesRoutedTo, PeerNode next) {
     if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
     if (onlyNode == null)
-      next.reportRoutedTo(target, source == null, false, source, nodesRoutedTo, htl);
+      PeerNodeRoutingReporter.reportRoutedTo(
+          node, next, target, source == null, false, source, nodesRoutedTo, htl);
     nodesRoutedTo.add(next);
 
     long transferUID = sendTo(next);

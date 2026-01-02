@@ -651,29 +651,26 @@ public class LocationManager implements ByteCounter {
     private boolean shouldRandomizeLocationDueToDuplicatePeer() {
       double myLoc = getLocation();
       for (PeerNode pn : node.getPeers().connectedPeers()) {
-        PeerLocation l = pn.location;
         if (!pn.isRoutable()) {
           continue;
         }
-        synchronized (l) {
-          double ploc = l.getLocation();
-          if (Location.equals(ploc, myLoc)) {
-            // Don't reset location unless we're SURE there is a problem.
-            // If the node has had its location equal to ours for at least 2 minutes,
-            // and ours has been likewise...
-            long now = System.currentTimeMillis();
-            if (now - l.getLocationSetTime() > MINUTES.toMillis(2)
-                && now - timeLocSet > MINUTES.toMillis(2)) {
-              // As this is an ERROR, it results from either a bug or malicious action.
-              // If it happens very frequently, it indicates either an attack or a serious bug.
-              LOG.error("Randomizing location: my loc={} but loc={} for {}", myLoc, ploc, pn);
-              return true;
-            } else {
-              LOG.info(
-                  "Node {} has identical location to us, waiting until this has persisted for 2"
-                      + " minutes...",
-                  pn);
-            }
+        long[] snap = pn.getLocationSnapshot();
+        double ploc = Double.longBitsToDouble(snap[0]);
+        if (Location.equals(ploc, myLoc)) {
+          // Don't reset location unless we're SURE there is a problem.
+          // If the node has had its location equal to ours for at least 2 minutes,
+          // and ours has been likewise...
+          long now = System.currentTimeMillis();
+          if (now - snap[1] > MINUTES.toMillis(2) && now - timeLocSet > MINUTES.toMillis(2)) {
+            // As this is an ERROR, it results from either a bug or malicious action.
+            // If it happens very frequently, it indicates either an attack or a serious bug.
+            LOG.error("Randomizing location: my loc={} but loc={} for {}", myLoc, ploc, pn);
+            return true;
+          } else {
+            LOG.info(
+                "Node {} has identical location to us, waiting until this has persisted for 2"
+                    + " minutes...",
+                pn);
           }
         }
       }

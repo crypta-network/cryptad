@@ -99,6 +99,23 @@ public final class PeerNodeLoadTracker {
     return outputLoadTracker(realTime).getIncomingLoadStats();
   }
 
+  void postUnlock(Object tag) {
+    if (!(tag instanceof UIDTag uidTag)) {
+      throw new IllegalArgumentException("Expected UIDTag");
+    }
+    maybeNotifySlotWaiter(uidTag.realTimeFlag);
+  }
+
+  void noLongerRoutingTo(Object tag, boolean offeredKey) {
+    if (!(tag instanceof UIDTag uidTag)) {
+      throw new IllegalArgumentException("Expected UIDTag");
+    }
+    if (offeredKey && !(uidTag instanceof RequestTag)) {
+      throw new IllegalArgumentException("Only requests can have offeredKey=true");
+    }
+    noLongerRoutingTo(uidTag, offeredKey);
+  }
+
   void noLongerRoutingTo(UIDTag tag, boolean offeredKey) {
     synchronized (routedToLock) {
       if (offeredKey) tag.removeFetchingOfferedKeyFrom(peer);

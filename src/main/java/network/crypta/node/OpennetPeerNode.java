@@ -5,7 +5,6 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
-import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.node.OpennetManager.LinkLengthClass;
 import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.node.updater.UpdateOverMandatoryManager;
@@ -29,7 +28,7 @@ public class OpennetPeerNode extends PeerNode {
   private long timeLastSuccess;
   // Not persisted across restarts: startup resets grace semantics (disconnection handling is
   // managed separately).
-  private ConnectionType opennetNodeAddedReason;
+  private int opennetNodeAddedReason = ADDED_REASON_UNKNOWN;
 
   /**
    * Creates a new Opennet peer instance from a noderef.
@@ -161,7 +160,7 @@ public class OpennetPeerNode extends PeerNode {
     } else {
       synchronized (this) {
         peerAddedTime = 0;
-        opennetNodeAddedReason = null;
+        opennetNodeAddedReason = ADDED_REASON_UNKNOWN;
       }
     }
     if (now - node.getUSM().getStartedTime() < OpennetManager.DROP_STARTUP_DELAY)
@@ -341,13 +340,13 @@ public class OpennetPeerNode extends PeerNode {
 
   /** Remembers why the node was added to enforce the initial grace period. */
   @Override
-  public synchronized void setAddedReason(ConnectionType connectionType) {
-    opennetNodeAddedReason = connectionType;
+  public synchronized void setAddedReason(int addedReason) {
+    opennetNodeAddedReason = addedReason;
   }
 
   /** Returns the reason recorded when the node was added, or {@code null} if unknown. */
   @Override
-  public synchronized ConnectionType getAddedReason() {
+  public synchronized int getAddedReason() {
     return opennetNodeAddedReason;
   }
 

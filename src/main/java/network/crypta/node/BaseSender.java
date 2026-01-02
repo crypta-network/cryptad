@@ -241,8 +241,15 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       // - sendAsync would increase ACCEPTED_TIMEOUT risk and leave many hanging requests, further
       //   overloading peers. Hence, we do NOT use sendAsync here.
       next.transport().sendSync(req, this, realTimeFlag);
-      next.reportRoutedTo(
-          key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
+      PeerNodeRoutingReporter.reportRoutedTo(
+          node,
+          next,
+          key.toNormalizedDouble(),
+          source == null,
+          realTimeFlag,
+          source,
+          nodesRoutedTo,
+          htl);
       node.getPeers().incrementSelectionSamples(next);
     } catch (NotConnectedException _) {
       LOG.debug("Not connected");
@@ -495,7 +502,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     LOG.debug("Cannot send to {} realtime={}", state.next, realTimeFlag);
     state.waitedForLoadManagement = true;
     if (state.waiter == null) {
-      state.waiter = PeerNode.createSlotWaiter(origTag, state.type, realTimeFlag, source);
+      state.waiter =
+          PeerNodeLoadTracker.createSlotWaiter(origTag, state.type, realTimeFlag, source);
     }
     if (!state.waiter.addWaitingFor(state.next)) {
       dontDecrementHTLThisTime = true;
@@ -619,8 +627,15 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     }
     try {
       state.next.transport().sendSync(req, this, realTimeFlag);
-      state.next.reportRoutedTo(
-          key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
+      PeerNodeRoutingReporter.reportRoutedTo(
+          node,
+          state.next,
+          key.toNormalizedDouble(),
+          source == null,
+          realTimeFlag,
+          source,
+          nodesRoutedTo,
+          htl);
       node.getPeers().incrementSelectionSamples(state.next);
       return true;
     } catch (NotConnectedException _) {

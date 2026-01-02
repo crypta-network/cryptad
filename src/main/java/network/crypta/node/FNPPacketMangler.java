@@ -324,7 +324,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    */
   private boolean tryProcessAuth(
       byte[] buf, int offset, int length, PeerNode pn, Peer peer, boolean oldOpennetPeer) {
-    BlockCipher authKey = pn.incomingSetupCipher;
+    BlockCipher authKey = pn.handshake().incomingSetupCipher();
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Decrypt key: {}" + FOR_STR + "{} : {} in tryProcessAuth",
@@ -496,7 +496,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    */
   private boolean tryProcessAuthAnonReply(
       byte[] buf, int offset, int length, PeerNode pn, Peer peer) {
-    BlockCipher authKey = pn.anonymousInitiatorSetupCipher;
+    BlockCipher authKey = pn.handshake().anonymousInitiatorSetupCipher();
     // Does the packet match IV E( H(data) data ) ?
     int ivLength = PCFBMode.lengthIV(authKey);
     int digestLength = HASH_LENGTH;
@@ -1168,13 +1168,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     int modulusLength = getModulusLength();
     // Pre negtype 9 we were sending Ni as opposed to Ni'
 
-    KeyAgreementSchemeContext ctx = pn.getKeyAgreementSchemeContext();
+    KeyAgreementSchemeContext ctx = pn.handshake().getKeyAgreementSchemeContext();
     if (!(ctx instanceof ECDHLightContext)
         || ((pn.jfkContextLifetime + DH_GENERATION_INTERVAL * DH_CONTEXT_BUFFER_SIZE) < now)) {
       pn.jfkContextLifetime = now;
       KeyAgreementSchemeContext newCtx = getECDHLightContext();
       ctx = newCtx;
-      pn.setKeyAgreementSchemeContext(newCtx);
+      pn.handshake().setKeyAgreementSchemeContext(newCtx);
     }
 
     int offset = 0;
@@ -1182,10 +1182,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     byte[] myExponential = ctx.getPublicKeyNetworkFormat();
     node.getRandom().nextBytes(nonce);
 
-    synchronized (pn.jfkNoncesSent) {
-      pn.jfkNoncesSent.add(nonce);
-      if (pn.jfkNoncesSent.size() > MAX_NONCES_PER_PEER) pn.jfkNoncesSent.removeFirst();
-    }
+    pn.rememberJfkNonce(nonce, MAX_NONCES_PER_PEER);
 
     int nonceSizeHashed = HASH_LENGTH;
     byte[] message1 =
@@ -1200,7 +1197,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       offset += modulusLength;
       System.arraycopy(pn.identityHash, 0, message1, offset, pn.identityHash.length);
       sendAnonAuthPacket(
-          negType, 0, setupType, message1, pn, replyTo, pn.anonymousInitiatorSetupCipher);
+          negType,
+          0,
+          setupType,
+          message1,
+          pn,
+          replyTo,
+          pn.handshake().anonymousInitiatorSetupCipher());
     } else {
       sendAuthPacket(negType, 0, message1, pn, replyTo);
     }
@@ -1374,12 +1377,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
 
     // sanity check
-    byte[] myNi = null;
-    synchronized (pn.jfkNoncesSent) {
-      for (byte[] buf : pn.jfkNoncesSent) {
-        if (MessageDigest.isEqual(nonceInitiator, SHA256.digest(buf))) myNi = buf;
-      }
-    }
+    byte[] myNi = pn.findOriginalJfkNonceByHash(nonceInitiator);
     if (myNi == null) {
       if (shouldLogErrorInHandshake(t1)) {
         LOG.info(
@@ -1673,28 +1671,30 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     dontWant = computeDontWantForDuplicateIP(dontWant, pnLocal, ctx.replyTo);
 
     long newTrackerID =
-        pnLocal.completedHandshake(
-            bootID,
-            hisRef,
-            0,
-            hisRef.length,
-            outgoingCipher,
-            outgoingKey,
-            incommingCipher,
-            incommingKey,
-            ctx.replyTo,
-            true,
-            negType,
-            trackerID,
-            false,
-            false,
-            hmacKey,
-            ivCipher,
-            ivNonce,
-            ourInitialSeqNum,
-            theirInitialSeqNum,
-            ourInitialMsgID,
-            theirInitialMsgID);
+        pnLocal
+            .handshake()
+            .completedHandshake(
+                bootID,
+                hisRef,
+                0,
+                hisRef.length,
+                outgoingCipher,
+                outgoingKey,
+                incommingCipher,
+                incommingKey,
+                ctx.replyTo,
+                true,
+                negType,
+                trackerID,
+                false,
+                false,
+                hmacKey,
+                ivCipher,
+                ivNonce,
+                ourInitialSeqNum,
+                theirInitialSeqNum,
+                ourInitialMsgID,
+                theirInitialMsgID);
 
     Jfk4Params params = new Jfk4Params();
     params.negType = negType;
@@ -1935,28 +1935,29 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     ivCipher.initialize(pn.ivKey);
 
     long newTrackerID =
-        pn.completedHandshake(
-            s1.bootID,
-            s1.hisRef,
-            0,
-            s1.hisRef.length,
-            outgoingCipher,
-            pn.outgoingKey,
-            incommingCipher,
-            pn.incommingKey,
-            replyTo,
-            false,
-            negType,
-            s1.trackerID,
-            true,
-            s1.reusedTracker,
-            pn.hmacKey,
-            ivCipher,
-            pn.ivNonce,
-            pn.ourInitialSeqNum,
-            pn.theirInitialSeqNum,
-            pn.ourInitialMsgID,
-            pn.theirInitialMsgID);
+        pn.handshake()
+            .completedHandshake(
+                s1.bootID,
+                s1.hisRef,
+                0,
+                s1.hisRef.length,
+                outgoingCipher,
+                pn.outgoingKey,
+                incommingCipher,
+                pn.incommingKey,
+                replyTo,
+                false,
+                negType,
+                s1.trackerID,
+                true,
+                s1.reusedTracker,
+                pn.hmacKey,
+                ivCipher,
+                pn.ivNonce,
+                pn.ourInitialSeqNum,
+                pn.theirInitialSeqNum,
+                pn.ourInitialMsgID,
+                pn.theirInitialMsgID);
     postHandshakeActionsJFK4(newTrackerID, dontWant, pn);
 
     // cleanup
@@ -1975,13 +1976,10 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     pn.theirInitialMsgID = 0;
     // We want to clear it here so that new handshake requests
     // will be sent with a different DH pair
-    pn.setKeyAgreementSchemeContext(null);
-    synchronized (pn.jfkNoncesSent) {
-      // Note: TRUE MULTI-HOMING: winner-takes-all, kill all other connection attempts since we
-      // can't deal with multiple active connections
-      // Also avoids leaking
-      pn.jfkNoncesSent.clear();
-    }
+    pn.handshake().clearKeyAgreementSchemeContext();
+    // Note: TRUE MULTI-HOMING: winner-takes-all, kill all other connection attempts since we
+    // can't deal with multiple active connections. Also avoids leaking.
+    pn.clearJfkNoncesSent();
 
     final long t2 = System.currentTimeMillis();
     logMessage4TimeoutIfSlow(t1, t2, pn);
@@ -2032,7 +2030,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     } catch (UnsupportedCipherException e) {
       throw new IllegalStateException(e);
     }
-    KeyAgreementSchemeContext ctx = p.pn.getKeyAgreementSchemeContext();
+    KeyAgreementSchemeContext ctx = p.pn.handshake().getKeyAgreementSchemeContext();
     if (ctx == null) return;
     byte[] ourExponential = ctx.getPublicKeyNetworkFormat();
     p.pn.jfkMyRef =
@@ -2110,7 +2108,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     final long timeSent = System.currentTimeMillis();
     if (p.unknownInitiator) {
       sendAnonAuthPacket(
-          p.negType, 2, p.setupType, message3, p.pn, p.replyTo, p.pn.anonymousInitiatorSetupCipher);
+          p.negType,
+          2,
+          p.setupType,
+          message3,
+          p.pn,
+          p.replyTo,
+          p.pn.handshake().anonymousInitiatorSetupCipher());
     } else {
       sendAuthPacket(p.negType, 2, message3, p.pn, p.replyTo);
     }
@@ -2475,7 +2479,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
                       message3,
                       pn,
                       replyTo,
-                      pn.anonymousInitiatorSetupCipher);
+                      pn.handshake().anonymousInitiatorSetupCipher());
                 } else {
                   sendAuthPacket(negType, 2, message3, pn, replyTo);
                 }
@@ -2630,7 +2634,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
           data.length,
           replyTo);
     }
-    sendAuthPacket(output, pn.outgoingSetupCipher, pn, replyTo, false);
+    sendAuthPacket(output, pn.handshake().outgoingSetupCipher(), pn, replyTo, false);
   }
 
   /**
@@ -2728,7 +2732,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         replyTo,
         pn == null ? crypto.getConfig().alwaysAllowLocalAddresses() : pn.allowLocalAddresses());
     if (pn != null) pn.reportOutgoingBytes(data.length);
-    if (PeerNode.shouldThrottle(replyTo, node)) {
+    if (PeerNodeAddressManager.shouldThrottle(replyTo, node)) {
       node.getOutputThrottle().forceGrab(data.length);
     }
   }

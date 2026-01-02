@@ -379,30 +379,12 @@ public class PacketSender implements Runnable {
 
   private void performSelection(long now, Selection sel, PeerAggregation agg) {
     if (sel.toSendPacket != null) {
-      try {
-        if (sel.toSendPacket.maybeSendPacket(now, false)) {
-          agg.nextActionTime = now;
-        }
-      } catch (BlockedTooLongException e) {
-        LOG.error(
-            "Packet number allocation blocked {} (peer={}, version={}) - disconnecting",
-            TimeUtil.formatTime(e.delta),
-            sel.toSendPacket,
-            sel.toSendPacket.getBuildNumber());
-        sel.toSendPacket.forceDisconnect();
+      if (sel.toSendPacket.maybeSendPacket(now, false)) {
+        agg.nextActionTime = now;
       }
     } else if (sel.toSendAckOnly != null) {
-      try {
-        if (sel.toSendAckOnly.maybeSendPacket(now, true)) {
-          agg.nextActionTime = now;
-        }
-      } catch (BlockedTooLongException e) {
-        LOG.error(
-            "Packet number allocation blocked {} (peer={}, version={}) - disconnecting",
-            TimeUtil.formatTime(e.delta),
-            sel.toSendAckOnly,
-            sel.toSendAckOnly.getBuildNumber());
-        sel.toSendAckOnly.forceDisconnect();
+      if (sel.toSendAckOnly.maybeSendPacket(now, true)) {
+        agg.nextActionTime = now;
       }
     }
 

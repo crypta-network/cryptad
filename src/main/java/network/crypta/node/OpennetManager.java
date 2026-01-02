@@ -1034,7 +1034,10 @@ public class OpennetManager {
     WantPeerSyncState state = decideInitialSync(ctx, maxPeers, addAtLRU, justChecking);
     if (state.earlyReturn) return state.earlyReturnValue;
 
-    if (nodeToAddNow != null) nodeToAddNow.setAddedReason(connectionType);
+    if (nodeToAddNow != null) {
+      nodeToAddNow.setAddedReason(
+          connectionType == null ? PeerNode.ADDED_REASON_UNKNOWN : connectionType.ordinal());
+    }
     if (state.notMany) return addPeerIfPresent(nodeToAddNow);
 
     DropResult result = computeDropAndMaybeAdd(ctx, addAtLRU, justChecking, state.noDisconnect);
@@ -1068,7 +1071,7 @@ public class OpennetManager {
     }
     for (OpennetPeerNode pn : result.dropList) {
       if (LOG.isDebugEnabled()) LOG.debug("Drop LRU opennet peer: {}", pn);
-      pn.setAddedReason(null);
+      pn.setAddedReason(PeerNode.ADDED_REASON_UNKNOWN);
       node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
     }
   }
@@ -1142,9 +1145,10 @@ public class OpennetManager {
 
   private int countActivePeersOfType(LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type) {
     int count = 0;
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
-      if (pn.getAddedReason() == type && pn.isConnected() && !pn.isDroppable(false)) {
+      if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {
         count++;
       }
     }
@@ -1154,9 +1158,10 @@ public class OpennetManager {
   private boolean exceedsTypeLimit(
       LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type, int myLimit) {
     int count = 0;
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
-      if (pn.getAddedReason() == type && pn.isConnected() && !pn.isDroppable(false)) {
+      if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {
         count++;
         if (count >= myLimit) {
           if (LOG.isDebugEnabled())

@@ -176,6 +176,8 @@ class AnnounceSenderTest {
     // null
     when(node.getPeers()).thenReturn(peers);
     when(peers.routingSelector()).thenReturn(routingSelector);
+    when(node.isOpennetEnabled()).thenReturn(true);
+    when(node.maxHTL()).thenReturn((short) 3);
     when(node.decrementHTL(isNull(), anyShort())).thenReturn((short) 1);
     when(routingSelector.closerPeer(
             isNull(),

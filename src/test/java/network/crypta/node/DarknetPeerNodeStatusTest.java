@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
-import network.crypta.support.math.RunningAverage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -35,12 +34,8 @@ class DarknetPeerNodeStatusTest {
     when(peer.getRoutingBackoffLength(false)).thenReturn(0L);
     when(peer.getRoutingBackedOffUntil(true)).thenReturn(0L);
     when(peer.getRoutingBackedOffUntil(false)).thenReturn(0L);
-
-    // Avoid NPEs: PeerNodeStatus reads currentValue() from these averages.
-    RunningAverage avg = mock(RunningAverage.class);
-    when(avg.currentValue()).thenReturn(0.0);
-    when(peer.getBackedOffPercentRT()).thenReturn(avg);
-    when(peer.getBackedOffPercentBulk()).thenReturn(avg);
+    when(peer.getBackedOffPercentRT()).thenReturn(0.0);
+    when(peer.getBackedOffPercentBulk()).thenReturn(0.0);
 
     // Defaults for other primitive reads invoked by the constructor.
     when(peer.isConnected()).thenReturn(false);

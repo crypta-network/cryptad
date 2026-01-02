@@ -3,12 +3,10 @@ package network.crypta.node;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.Hashtable;
-import network.crypta.support.math.RunningAverage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,13 +26,8 @@ class OpennetPeerNodeStatusTest {
     when(transport.getThrottle()).thenReturn(null);
     when(node.transport()).thenReturn(transport);
 
-    // Backoff percent access requires non-null RunningAverage instances.
-    RunningAverage rt = mock(RunningAverage.class);
-    when(rt.currentValue()).thenReturn(0.0);
-    RunningAverage bulk = mock(RunningAverage.class);
-    when(bulk.currentValue()).thenReturn(0.0);
-    when(node.getBackedOffPercentRT()).thenReturn(rt);
-    when(node.getBackedOffPercentBulk()).thenReturn(bulk);
+    when(node.getBackedOffPercentRT()).thenReturn(0.0);
+    when(node.getBackedOffPercentBulk()).thenReturn(0.0);
 
     // Specific to OpennetPeerNodeStatus.
     when(node.timeLastSuccess()).thenReturn(timeLastSuccessValue);
@@ -64,14 +57,6 @@ class OpennetPeerNodeStatusTest {
     PeerTransport transport = mock(PeerTransport.class);
     when(transport.getThrottle()).thenReturn(null);
     when(base.transport()).thenReturn(transport);
-
-    RunningAverage rt = mock(RunningAverage.class);
-    when(rt.currentValue()).thenReturn(0.0);
-    RunningAverage bulk = mock(RunningAverage.class);
-    when(bulk.currentValue()).thenReturn(0.0);
-    // getBackedOffPercent* are package-private; the test lives in the same package
-    doReturn(rt).when(base).getBackedOffPercentRT();
-    doReturn(bulk).when(base).getBackedOffPercentBulk();
 
     // Act + Assert
     assertThrows(ClassCastException.class, () -> new OpennetPeerNodeStatus(base, true));
