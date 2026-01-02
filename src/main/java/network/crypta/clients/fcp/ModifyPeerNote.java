@@ -41,7 +41,7 @@ public class ModifyPeerNote extends FCPMessage {
   static final String NAME = "ModifyPeerNote";
 
   final SimpleFieldSet fs;
-  final String identifier;
+  final String requestIdentifier;
 
   /**
    * Creates a new {@code ModifyPeerNote} message wrapper from an incoming field set.
@@ -57,7 +57,7 @@ public class ModifyPeerNote extends FCPMessage {
    */
   public ModifyPeerNote(SimpleFieldSet fs) {
     this.fs = fs;
-    identifier = fs.get("Identifier");
+    requestIdentifier = fs.get("Identifier");
     fs.removeValue("Identifier");
   }
 
@@ -119,7 +119,7 @@ public class ModifyPeerNote extends FCPMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.ACCESS_DENIED,
           "ModifyPeerNote requires full access",
-          identifier,
+          requestIdentifier,
           false);
     }
     String nodeIdentifier = fs.get("NodeIdentifier");
@@ -127,12 +127,12 @@ public class ModifyPeerNote extends FCPMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD,
           "Error: NodeIdentifier field missing",
-          identifier,
+          requestIdentifier,
           false);
     }
     PeerNode pn = node.getPeerNode(nodeIdentifier);
     if (pn == null) {
-      FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, identifier);
+      FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, requestIdentifier);
       handler.send(msg);
       return;
     }
@@ -140,7 +140,7 @@ public class ModifyPeerNote extends FCPMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.DARKNET_ONLY,
           "ModifyPeerNote only available for darknet peers",
-          identifier,
+          requestIdentifier,
           false);
     }
     int peerNoteType;
@@ -150,13 +150,16 @@ public class ModifyPeerNote extends FCPMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
           "Error parsing PeerNoteType field: " + e.getMessage(),
-          identifier,
+          requestIdentifier,
           false);
     }
     String encodedNoteText = fs.get("NoteText");
     if (encodedNoteText == null) {
       throw new MessageInvalidException(
-          ProtocolErrorMessage.MISSING_FIELD, "Error: NoteText field missing", identifier, false);
+          ProtocolErrorMessage.MISSING_FIELD,
+          "Error: NoteText field missing",
+          requestIdentifier,
+          false);
     }
     String noteText;
     // **FIXME** this should be generalized for multiple peer notes per peer, after PeerNode is
@@ -172,10 +175,10 @@ public class ModifyPeerNote extends FCPMessage {
     if (peerNoteType == Node.PEER_NOTE_TYPE_PRIVATE_DARKNET_COMMENT) {
       dpn.setPrivateDarknetCommentNote(noteText);
     } else {
-      FCPMessage msg = new UnknownPeerNoteTypeMessage(peerNoteType, identifier);
+      FCPMessage msg = new UnknownPeerNoteTypeMessage(peerNoteType, requestIdentifier);
       handler.send(msg);
       return;
     }
-    handler.send(new PeerNote(nodeIdentifier, noteText, peerNoteType, identifier));
+    handler.send(new PeerNote(nodeIdentifier, noteText, peerNoteType, requestIdentifier));
   }
 }

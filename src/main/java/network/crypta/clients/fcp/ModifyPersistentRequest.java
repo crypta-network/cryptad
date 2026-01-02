@@ -42,7 +42,7 @@ public class ModifyPersistentRequest extends FCPMessage {
 
   static final String NAME = "ModifyPersistentRequest";
 
-  final String identifier;
+  final String requestIdentifier;
   final boolean global;
   // negative means don't change
   final short priorityClass;
@@ -50,9 +50,9 @@ public class ModifyPersistentRequest extends FCPMessage {
 
   ModifyPersistentRequest(SimpleFieldSet fs) throws MessageInvalidException {
     this.global = fs.getBoolean("Global", false);
-    this.identifier = fs.get("Identifier");
+    this.requestIdentifier = fs.get("Identifier");
     this.clientToken = fs.get("ClientToken");
-    if (identifier == null)
+    if (requestIdentifier == null)
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "Missing field: Identifier", null, global);
     String prio = fs.get("PriorityClass");
@@ -68,13 +68,13 @@ public class ModifyPersistentRequest extends FCPMessage {
                   + RequestStarter.PAUSED_PRIORITY_CLASS
                   + " to "
                   + RequestStarter.MAXIMUM_PRIORITY_CLASS,
-              identifier,
+              requestIdentifier,
               global);
       } catch (NumberFormatException e) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.ERROR_PARSING_NUMBER,
             "Could not parse PriorityClass: " + e.getMessage(),
-            identifier,
+            requestIdentifier,
             global);
       }
     } else priorityClass = -1;
@@ -101,7 +101,7 @@ public class ModifyPersistentRequest extends FCPMessage {
   @Override
   public SimpleFieldSet getFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
-    fs.putSingle("Identifier", identifier);
+    fs.putSingle("Identifier", requestIdentifier);
     fs.put("Global", global);
     fs.put("PriorityClass", priorityClass);
     if (clientToken != null) fs.putSingle("ClientToken", clientToken);
@@ -154,7 +154,7 @@ public class ModifyPersistentRequest extends FCPMessage {
   @Override
   public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
 
-    ClientRequest req = handler.getRebootRequest(global, handler, identifier);
+    ClientRequest req = handler.getRebootRequest(global, handler, requestIdentifier);
     if (req == null) {
       try {
         node.getClientCore()
@@ -163,7 +163,8 @@ public class ModifyPersistentRequest extends FCPMessage {
             .queue(
                 (PersistentJob)
                     context -> {
-                      ClientRequest req1 = handler.getForeverRequest(global, handler, identifier);
+                      ClientRequest req1 =
+                          handler.getForeverRequest(global, handler, requestIdentifier);
                       if (req1 == null) {
                         LOG.error("Huh ? the request is null!");
                         ProtocolErrorMessage msg =
@@ -171,7 +172,7 @@ public class ModifyPersistentRequest extends FCPMessage {
                                 ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
                                 false,
                                 null,
-                                identifier,
+                                requestIdentifier,
                                 global);
                         handler.send(msg);
                         return false;
@@ -184,7 +185,7 @@ public class ModifyPersistentRequest extends FCPMessage {
       } catch (PersistenceDisabledException _) {
         ProtocolErrorMessage msg =
             new ProtocolErrorMessage(
-                ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, identifier, global);
+                ProtocolErrorMessage.NO_SUCH_IDENTIFIER, false, null, requestIdentifier, global);
         handler.send(msg);
       }
     } else {

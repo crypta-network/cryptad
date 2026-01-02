@@ -115,7 +115,7 @@ class ModifyPersistentRequestTest {
 
     ModifyPersistentRequest message = new ModifyPersistentRequest(fs);
 
-    assertEquals("req-3", message.identifier);
+    assertEquals("req-3", message.requestIdentifier);
     assertTrue(message.global);
     assertEquals(-1, message.priorityClass);
     assertNull(message.clientToken);
