@@ -10,7 +10,6 @@ import java.io.Writer;
 import java.lang.ref.WeakReference;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.nio.charset.StandardCharsets;
 import java.security.interfaces.ECPublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,9 +22,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import network.crypta.client.FetchResult;
-import network.crypta.client.async.USKRetriever;
-import network.crypta.client.async.USKRetrieverCallback;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.KeyAgreementSchemeContext;
 import network.crypta.io.AddressTracker;
@@ -36,7 +32,6 @@ import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.keys.Key;
-import network.crypta.keys.USK;
 import network.crypta.node.NodeStats.RequestType;
 import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.support.BooleanLastTrueTracker;
@@ -60,7 +55,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author amphibian
  */
-public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, PeerNodeUnlocked {
+public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private static final Logger LOG = LoggerFactory.getLogger(PeerNode.class);
 
   // SFS keys used more than once: keep as constants to avoid duplication warnings
@@ -94,6 +89,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
       new PeerNodeReferenceSupport(selfPeerNode());
   private final PeerNodeOfferSupport offerSupport = new PeerNodeOfferSupport(selfPeerNode());
   private final PeerNodeTransport transport = new PeerNodeTransport(selfPeerNode());
+  private final PeerNodeArkManager arkManager = new PeerNodeArkManager(selfPeerNode());
 
   private String lastGoodVersion;
 
@@ -210,15 +206,6 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
    * needed.
    */
   private boolean removed;
-
-  /** ARK fetcher. */
-  private USKRetriever arkFetcher;
-
-  /**
-   * My ARK SSK public key; edition is the next one, not the current one, so this is what we want to
-   * fetch.
-   */
-  private USK myARK;
 
   /** Number of handshake attempts since last successful connection or ARK fetch */
   private int handshakeCount;
@@ -858,16 +845,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   protected abstract void maybeClearPeerAddedTimeOnRestart(long now);
 
   private boolean parseARK(SimpleFieldSet fs, boolean onStartup, boolean forDiffNodeRef) {
-    USK ark =
-        PeerNodeReferenceSupport.computeArk(selfPeerNode(), fs, onStartup, forDiffNodeRef, myARK);
-    if (ark == null) return false;
-    synchronized (this) {
-      if ((myARK == null) || ((myARK != ark) && !myARK.equals(ark))) {
-        myARK = ark;
-        return true;
-      }
-    }
-    return false;
+    return arkManager.parseArk(fs, onStartup, forDiffNodeRef);
   }
 
   /**
@@ -2436,59 +2414,21 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     return bootID.get();
   }
 
-  private final Object arkFetcherSync = new Object();
-
   void startARKFetcher() {
-    // Note: keep locking minimal; avoid holding locks across callbacks
-    if (!node.isEnableARKs()) return;
-    synchronized (arkFetcherSync) {
-      if (myARK == null) {
-        LOG.debug("No ARK for {} !!!!", this);
-        return;
-      }
-      if (arkFetcher == null) {
-        LOG.debug("Starting ARK fetcher for {} : {}", this, myARK);
-        arkFetcher =
-            node.getClientCore()
-                .getUskManager()
-                .subscribeContent(
-                    myARK,
-                    this,
-                    true,
-                    node.getArkFetcherContext(),
-                    RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
-                    node.getNonPersistentClientRT());
-      }
-    }
+    arkManager.startFetcher();
   }
 
   protected void stopARKFetcher() {
-    if (!node.isEnableARKs()) return;
-    LOG.debug("Stopping ARK fetcher for {} : {}", this, myARK);
-    // Note: keep locking minimal; avoid holding locks across callbacks
-    USKRetriever ret;
-    synchronized (arkFetcherSync) {
-      if (arkFetcher == null) {
-        if (LOG.isDebugEnabled()) LOG.debug("ARK fetcher not running for {}", this);
-        return;
-      }
-      ret = arkFetcher;
-      arkFetcher = null;
-    }
-    final USKRetriever unsub = ret;
-    node.getExecutor()
-        .execute(() -> node.getClientCore().getUskManager().unsubscribeContent(myARK, unsub, true));
+    arkManager.stopFetcher();
   }
 
   // Both at IMMEDIATE_SPLITFILE_PRIORITY_CLASS because we want to compete with FMS, not
   // wipe it out!
 
-  @Override
   public short getPollingPriorityNormal() {
     return RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
   }
 
-  @Override
   public short getPollingPriorityProgress() {
     return RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS;
   }
@@ -2969,11 +2909,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     fs.putSingle(SFS_KEY_VERSION, version);
     referenceSupport.putEcdsaFields(fs, peerECDSAPubKey);
 
-    if (myARK != null) {
-      // Decrement it because we keep the number we would like to fetch, not the last one fetched.
-      fs.put(SFS_KEY_ARK_NUMBER, myARK.suggestedEdition - 1);
-      fs.putSingle(SFS_KEY_ARK_PUBURI, myARK.getBaseSSK().toString(false, false));
-    }
+    arkManager.appendArkFields(fs);
     fs.put(SFS_KEY_OPENNET, isOpennetForNoderef());
     fs.put("seed", isSeed());
     fs.put("totalInput", getTotalInputBytes());
@@ -3544,26 +3480,35 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     }
   }
 
-  @SuppressWarnings("unused")
-  synchronized USK getARK() {
-    return myARK;
+  /**
+   * Applies an ARK noderef update obtained via USK retrieval.
+   *
+   * @param fs decoded noderef field set
+   * @param fetchedEdition edition that was fetched
+   */
+  public void gotARK(SimpleFieldSet fs, long fetchedEdition) {
+    arkManager.handleArkUpdate(fs, fetchedEdition);
   }
 
-  public void gotARK(SimpleFieldSet fs, long fetchedEdition) {
-    try {
-      synchronized (this) {
-        handshakeCount = 0;
-        // edition +1 because we store the ARK edition that we want to fetch.
-        if (myARK.suggestedEdition < fetchedEdition + 1) myARK = myARK.copy(fetchedEdition + 1);
-      }
-      processNewNoderef(fs, true, false, false);
-    } catch (FSParseException e) {
-      LOG.error("Invalid ARK update: {}", e, e);
-      // This is ok as ARKs are limited to 4K anyway.
-      LOG.error("Data was: \n{}", fs);
-      synchronized (this) {
-        handshakeCount = MAX_HANDSHAKE_COUNT;
-      }
+  /**
+   * Resets the handshake retry counter after a successful ARK fetch.
+   *
+   * <p>Invoked by {@link PeerNodeArkManager} to avoid embedding ARK state in this class.
+   */
+  void resetHandshakeCountAfterArkFetch() {
+    synchronized (this) {
+      handshakeCount = 0;
+    }
+  }
+
+  /**
+   * Marks the ARK fetch as failed so the next handshake cycle can retry.
+   *
+   * <p>Invoked by {@link PeerNodeArkManager} after a malformed ARK update.
+   */
+  void markHandshakeCountAfterArkFailure() {
+    synchronized (this) {
+      handshakeCount = MAX_HANDSHAKE_COUNT;
     }
   }
 
@@ -3783,7 +3728,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   }
 
   public boolean isFetchingARK() {
-    return arkFetcher != null;
+    return arkManager.isFetching();
   }
 
   public synchronized int getHandshakeCount() {
@@ -3845,39 +3790,6 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     if (om != null) {
       // OpennetManager must be notified of a new connection even if it is a darknet peer.
       om.onConnectedPeer(selfPeerNode());
-    }
-  }
-
-  @Override
-  public void onFound(USK origUSK, long edition, FetchResult result) {
-    try (var _ = result.asBucket()) {
-      if (isConnected() || myARK.suggestedEdition > edition) {
-        return;
-      }
-
-      byte[] data;
-      try {
-        data = result.asByteArray();
-      } catch (IOException e) {
-        LOG.error("I/O error reading fetched ARK: {}", e, e);
-        return;
-      }
-
-      String ref = new String(data, StandardCharsets.UTF_8);
-
-      try {
-        SimpleFieldSet fs = new SimpleFieldSet(ref, false, true, false);
-        if (LOG.isDebugEnabled()) LOG.debug("Got ARK for {}", this);
-        gotARK(fs, edition);
-      } catch (IOException e) {
-        // Corrupt ref.
-        LOG.error(
-            "Corrupt ARK reference? Fetched {} got while parsing: {} from:\n{}",
-            myARK.copy(edition),
-            e,
-            ref,
-            e);
-      }
     }
   }
 
