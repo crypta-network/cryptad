@@ -44,7 +44,8 @@ public interface PriorityAwareExecutor extends java.util.concurrent.Executor {
    * @param job the task to run; must be non-{@code null}
    * @throws RuntimeException implementations may throw unchecked exceptions at submission time
    *     (e.g., due to shut down or illegal state)
-   * @implNote TODO: Define the null-handling contract explicitly for {@code job}.
+   * @implNote Implementations should reject {@code null} jobs, typically by throwing {@link
+   *     NullPointerException}.
    */
   @Override
   void execute(@NotNull Runnable job);
@@ -58,8 +59,8 @@ public interface PriorityAwareExecutor extends java.util.concurrent.Executor {
    * @param job the task to run; must be non-{@code null}
    * @param jobName descriptive label for the task; may be {@code null} or empty
    * @throws RuntimeException implementations may throw unchecked exceptions at submission time
-   * @implNote TODO: Clarify whether {@code jobName} must be non-empty and how it should be
-   *     truncated or sanitized for thread names.
+   * @implNote Implementations should accept {@code null} or empty {@code jobName} values and may
+   *     sanitize or truncate them for display or thread naming.
    */
   void execute(Runnable job, String jobName);
 
@@ -78,7 +79,7 @@ public interface PriorityAwareExecutor extends java.util.concurrent.Executor {
    *     false}. This is a best-effort hint and does not change task semantics beyond
    *     implementation-specific scheduling behaviors.
    * @throws RuntimeException implementations may throw unchecked exceptions at submission time
-   * @implNote TODO: Specify the exact semantics of {@code fromTicker} across implementations.
+   * @implNote Implementations may treat {@code fromTicker} as a hint only and ignore it.
    */
   void execute(Runnable job, String jobName, boolean fromTicker);
 

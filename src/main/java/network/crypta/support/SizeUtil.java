@@ -121,8 +121,7 @@ public class SizeUtil {
     if (i < SUFFIXES.length) {
       return new String[] {o, SUFFIXES[i]};
     } else {
-      // TODO: Clarify expected behavior if values exceed all suffixes or if the computed mantissa
-      // becomes non-finite; current behavior returns an empty unit string.
+      // If values exceed all suffixes or the mantissa becomes non-finite, return an empty unit.
       return new String[] {o, ""};
     }
   }

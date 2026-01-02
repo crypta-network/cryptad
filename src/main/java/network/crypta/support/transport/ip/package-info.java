@@ -53,8 +53,8 @@
  *   <li>Bracketed IPv6 literals such as {@code [::1]} are not recognized by the hostname validator;
  *       supply raw address literals.
  *   <li>Top-level domains longer than six ASCII letters are rejected by {@code HostnameUtil}.
- *   <li>TODO: Clarify classification for IPv6-mapped IPv4 addresses to ensure consistent treatment
- *       across utilities.
+ *   <li>IPv6-mapped IPv4 addresses are not specially classified; callers should normalize them to
+ *       IPv4 if they require IPv4-specific handling.
  * </ul>
  */
 package network.crypta.support.transport.ip;

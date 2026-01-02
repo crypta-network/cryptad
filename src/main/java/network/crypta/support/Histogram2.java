@@ -91,7 +91,7 @@ public class Histogram2 {
    *   <li>Values are truncated toward zero due to the explicit cast to {@code int}.
    *   <li>If a bar's average is negative, the corresponding entry will be negative.
    *   <li>Precondition (not enforced): {@code max > 0}; otherwise the scale factor is undefined
-   *       (division by zero). TODO: consider validating {@code maxValue > 0} at construction time.
+   *       (division by zero). Callers must supply a positive {@code max}.
    * </ul>
    *
    * <p>Complexity: O(number of bars).

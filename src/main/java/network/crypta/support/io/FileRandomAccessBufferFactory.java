@@ -12,8 +12,9 @@ import java.util.Random;
  * on-disk file (e.g., when a higher layer has already chosen a location) rather than letting a
  * factory generate a temporary filename.
  *
- * <p>Thread-safety: TODO: Define whether implementations must be thread-safe. Some current
- * implementations serialize creation to provide accurate free-space checks.
+ * <p>Thread-safety: implementation-specific. Callers should not assume concurrent safety unless
+ * explicitly documented; some implementations serialize creation to provide accurate free-space
+ * checks.
  */
 public interface FileRandomAccessBufferFactory {
 
@@ -28,8 +29,8 @@ public interface FileRandomAccessBufferFactory {
    *
    * @param file The backing file. Must be writable when a writable buffer is created. The file’s
    *     lifecycle after creation (e.g., deleted on {@link PooledFileRandomAccessBuffer#free()}) is
-   *     implementation-specific. TODO: Clarify whether the file must already exist and be
-   *     zero-length or should be created by the implementation.
+   *     implementation-specific. Some implementations require the file to exist and be empty, while
+   *     others may create or truncate it.
    * @param size The desired logical length of the buffer in bytes. Must be non-negative. Some
    *     implementations may preallocate up to this amount of disk space to ensure predictable
    *     usage.

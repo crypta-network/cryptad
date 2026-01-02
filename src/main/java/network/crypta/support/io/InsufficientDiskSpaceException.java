@@ -20,8 +20,8 @@ import java.io.Serial;
  *   <li>Typical recovery strategies include freeing disk space and retrying the operation.
  * </ul>
  *
- * <p>TODO: Document concrete thresholds/units used by callers (e.g., required bytes vs. free space
- * percentage) once standardized.
+ * <p>Thresholds and units are decided by callers (for example, required bytes or free-space
+ * reserve) and are not carried by this exception.
  */
 public class InsufficientDiskSpaceException extends IOException {
   // Serialization compatibility identifier.

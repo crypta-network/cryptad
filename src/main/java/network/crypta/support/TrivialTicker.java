@@ -103,7 +103,7 @@ public class TrivialTicker implements Ticker {
    * @param job the task to execute; must be non-{@code null}
    * @param name a diagnostic name for executor submissions; may be {@code null} or empty
    * @param offset delay in milliseconds before run
-   * @param runOnTickerAnyway TODO: document precise semantics; ignored in this implementation
+   * @param runOnTickerAnyway hint that is ignored in this implementation
    * @param noDupes if {@code true}, suppress queuing when the same task instance is already pending
    * @throws NullPointerException if {@code job} is {@code null}
    * @throws IllegalArgumentException if {@code offset} is negative (thrown by {@link Timer})
@@ -264,7 +264,7 @@ public class TrivialTicker implements Ticker {
    * @param runner the task to execute; must be non-{@code null}
    * @param name a diagnostic name for executor submissions; may be {@code null} or empty
    * @param time absolute time in milliseconds since the epoch at which to run
-   * @param runOnTickerAnyway TODO: document precise semantics; ignored in this implementation
+   * @param runOnTickerAnyway hint that is ignored in this implementation
    * @param noDupes if {@code true}, suppress queuing when the same task instance is already pending
    * @throws NullPointerException if {@code runner} is {@code null}
    */

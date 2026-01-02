@@ -241,9 +241,8 @@ public final class FileUtil {
           // AppEnv groups all non-Windows/non-macOS here, which includes FreeBSD and other Unix.
           // Only return LINUX when the JVM reports actual Linux; otherwise fall through so
           // FreeBSD keeps its legacy mapping.
-          // TODO: Extend AppEnv to distinguish FreeBSD (e.g., add OsKind.BSD or an isFreeBSD())
-          // and then remove this legacy os.name fallback so FileUtil can rely solely on AppEnv
-          // without misclassifying BSD variants.
+          // Keep the legacy os.name fallback until AppEnv distinguishes BSD variants to avoid
+          // misclassifying FreeBSD as Linux.
           {
             final String n = String.valueOf(System.getProperty("os.name")).toLowerCase();
             if (n.contains("linux")) return OperatingSystem.LINUX;
@@ -647,7 +646,8 @@ public final class FileUtil {
    *
    * @param wd file or directory to delete
    * @return {@code true} on success; {@code false} if any deletion step failed
-   * @throws IOException TODO: reconcile the throws clause with current behavior
+   * @throws IOException retained for signature compatibility; current implementation logs and
+   *     returns {@code false} instead of propagating I/O failures
    */
   @SuppressWarnings("UnusedReturnValue")
   public static boolean secureDeleteAll(File wd) throws IOException {
@@ -727,13 +727,13 @@ public final class FileUtil {
    *
    * <p>This is the best‑effort mechanism. It may not prevent data recovery on certain storage or
    * filesystems (e.g., wear‑leveling SSDs, COW/journaling filesystems). Consider stronger
-   * mitigations when threat models require them.
+   * mitigations when threat models require them. This method performs a single-pass overwrite of
+   * file contents and does not attempt metadata scrubbing.
    *
    * @param file non‑directory file to delete; no effect if the file does not exist
    * @throws IOException if the file exists but cannot be deleted
    */
   public static void secureDelete(File file) throws IOException {
-    // TODO: Document platform‑specific guarantees and consider multi‑pass/metadata scrubbing.
     if (!file.exists()) return;
     long size = file.length();
     if (size > 0) {

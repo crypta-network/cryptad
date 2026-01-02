@@ -37,8 +37,8 @@ public class IPUtil {
       byte[] addr = i.getAddress();
       // The JVM returns 16 bytes for IPv6 addresses; assert to document the invariant.
       assert (addr.length == 128 / 8);
-      // TODO: Consider whether IPv6-mapped IPv4 addresses need special handling. IPv4 addresses
-      // are otherwise covered by the InetAddress path below.
+      // IPv6-mapped IPv4 addresses are treated as IPv6 here; callers should normalize if they
+      // require IPv4-specific handling.
       return ((addr[0] & (byte) 0xfe) == (byte) 0xfc
           /* Unique local (ULA): fc00::/7 */ )
           || (addr[0] == (byte) 0xfe && (addr[1] & (byte) 0xc0) == (byte) 0xc0

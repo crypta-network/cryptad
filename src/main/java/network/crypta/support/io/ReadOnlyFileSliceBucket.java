@@ -18,7 +18,8 @@ import org.jetbrains.annotations.NotNull;
  * MAGIC} and {@code VERSION}. The writer emits both, while the protected constructor expects the
  * caller to have consumed any outer framing and begins at {@code VERSION}.
  *
- * <p>TODO: Provide an optional hash-verifying variant to detect on-disk corruption while reading.
+ * <p>This class does not verify content hashes; callers should wrap it if integrity checks are
+ * required.
  */
 public class ReadOnlyFileSliceBucket implements Bucket, Serializable {
 
