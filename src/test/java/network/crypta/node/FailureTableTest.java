@@ -11,6 +11,7 @@ import java.lang.reflect.Field;
 import java.util.Random;
 import network.crypta.crypt.EntropySource;
 import network.crypta.crypt.RandomSource;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeCHK;
@@ -169,7 +170,7 @@ class FailureTableTest {
     PeerNode routedTo = Mockito.mock(PeerNode.class);
     Mockito.when(routedTo.getBootID()).thenReturn(100L);
     Mockito.when(routedTo.getLocation()).thenReturn(0.42);
-    Mockito.when(routedTo.getWeakRef()).thenReturn(new WeakReference<>(routedTo));
+    Mockito.when(routedTo.getWeakRef()).thenReturn(new WeakReference<PeerContext>(routedTo));
     Mockito.when(routedTo.isConnected()).thenReturn(true);
 
     long nowBefore = System.currentTimeMillis();
@@ -198,13 +199,13 @@ class FailureTableTest {
     PeerNode routedTo = Mockito.mock(PeerNode.class);
     Mockito.when(routedTo.getBootID()).thenReturn(200L);
     Mockito.when(routedTo.getLocation()).thenReturn(0.7);
-    Mockito.when(routedTo.getWeakRef()).thenReturn(new WeakReference<>(routedTo));
+    Mockito.when(routedTo.getWeakRef()).thenReturn(new WeakReference<PeerContext>(routedTo));
     Mockito.when(routedTo.isConnected()).thenReturn(true);
 
     PeerNode requestor = Mockito.mock(PeerNode.class);
     Mockito.when(requestor.getBootID()).thenReturn(300L);
     Mockito.when(requestor.getLocation()).thenReturn(0.1);
-    Mockito.when(requestor.getWeakRef()).thenReturn(new WeakReference<>(requestor));
+    Mockito.when(requestor.getWeakRef()).thenReturn(new WeakReference<PeerContext>(requestor));
     Mockito.when(requestor.isConnected()).thenReturn(true);
 
     ft.onFinalFailure(key, routedTo, (short) 5, (short) 7, 1_000L, 1_000L, requestor);
@@ -223,7 +224,7 @@ class FailureTableTest {
     PeerNode requestor = Mockito.mock(PeerNode.class);
     Mockito.when(requestor.getBootID()).thenReturn(111L);
     Mockito.when(requestor.getLocation()).thenReturn(0.33);
-    Mockito.when(requestor.getWeakRef()).thenReturn(new WeakReference<>(requestor));
+    Mockito.when(requestor.getWeakRef()).thenReturn(new WeakReference<PeerContext>(requestor));
     Mockito.when(requestor.isConnected()).thenReturn(true);
 
     // Record a requestor so offer() has a target
@@ -249,7 +250,7 @@ class FailureTableTest {
     PeerNode offeredBy = Mockito.mock(PeerNode.class);
     Mockito.when(offeredBy.getBootID()).thenReturn(55L);
     Mockito.when(offeredBy.getLocation()).thenReturn(0.21);
-    Mockito.when(offeredBy.getWeakRef()).thenReturn(new WeakReference<>(offeredBy));
+    Mockito.when(offeredBy.getWeakRef()).thenReturn(new WeakReference<PeerContext>(offeredBy));
     Mockito.when(offeredBy.isConnected()).thenReturn(true);
 
     // We "asked from" this peer earlier by recording a failure on it.
@@ -277,7 +278,8 @@ class FailureTableTest {
     PeerNode routedElsewhere = Mockito.mock(PeerNode.class);
     Mockito.when(routedElsewhere.getBootID()).thenReturn(777L);
     Mockito.when(routedElsewhere.getLocation()).thenReturn(0.9);
-    Mockito.when(routedElsewhere.getWeakRef()).thenReturn(new WeakReference<>(routedElsewhere));
+    Mockito.when(routedElsewhere.getWeakRef())
+        .thenReturn(new WeakReference<PeerContext>(routedElsewhere));
     Mockito.when(routedElsewhere.isConnected()).thenReturn(true);
 
     // We previously interacted with a different peer.
@@ -286,7 +288,7 @@ class FailureTableTest {
     PeerNode otherPeer = Mockito.mock(PeerNode.class);
     Mockito.when(otherPeer.getBootID()).thenReturn(888L);
     Mockito.when(otherPeer.getLocation()).thenReturn(0.1);
-    Mockito.when(otherPeer.getWeakRef()).thenReturn(new WeakReference<>(otherPeer));
+    Mockito.when(otherPeer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(otherPeer));
     Mockito.when(otherPeer.isConnected()).thenReturn(true);
 
     ft.innerOnOffer(key, otherPeer, new byte[] {9});
@@ -324,7 +326,7 @@ class FailureTableTest {
     try {
       Field f = PeerNode.class.getDeclaredField("myRef");
       f.setAccessible(true);
-      f.set(peer, new WeakReference<>(peer));
+      f.set(peer, new WeakReference<PeerContext>(peer));
     } catch (ReflectiveOperationException e) {
       throw new AssertionError("Failed to set PeerNode.myRef reflectively", e);
     }

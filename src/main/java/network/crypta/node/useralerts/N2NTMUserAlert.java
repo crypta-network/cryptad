@@ -5,9 +5,9 @@ import java.text.DateFormat;
 import java.util.Date;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.TextFeedMessage;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.PeerNode;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -15,7 +15,7 @@ import network.crypta.support.HTMLNode;
  *
  * <p>This alert encapsulates the text payload and a set of timestamps produced along the delivery
  * path (composed, sent, and received). It also carries lightweight identity information about the
- * source darknet peer and a reference to the originating {@link PeerNode}. The alert exposes
+ * source darknet peer and a reference to the originating {@link PeerContext}. The alert exposes
  * multiple readouts tailored to different front-ends: a localized plain-text title and body, a
  * concise short text for summaries, an {@link HTMLNode} fragment for HTML renderers, and an {@link
  * FCPMessage} view for programmatic consumption via FCP.
@@ -42,7 +42,7 @@ import network.crypta.support.HTMLNode;
  */
 public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessageUserAlert {
   private static final String L10N_PREFIX = "N2NTMUserAlert.";
-  private final WeakReference<PeerNode> peerRef;
+  private final WeakReference<PeerContext> peerRef;
   private final String messageText;
   private final int fileNumber;
   private final long composedTime;

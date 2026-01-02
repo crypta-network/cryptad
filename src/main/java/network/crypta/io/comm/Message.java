@@ -42,7 +42,7 @@ public class Message {
       "$Id: Message.java,v 1.11 2005/09/15 18:16:04 amphibian Exp $";
 
   private final MessageType spec;
-  private final WeakReference<? extends PeerContext> sourceRef;
+  private final WeakReference<PeerContext> sourceRef;
   private final boolean internal;
   private final HashMap<String, Object> payload = HashMap.newHashMap(8);
   private List<Message> subMessages;

@@ -112,7 +112,7 @@ public interface PeerContext {
    * <p>Implementations are encouraged to reuse a single weak reference per instance to avoid
    * allocation overhead.
    */
-  WeakReference<? extends PeerContext> getWeakRef();
+  WeakReference<PeerContext> getWeakRef();
 
   /** Returns a compact, log-friendly description of this peer. */
   String shortToString();

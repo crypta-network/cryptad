@@ -181,7 +181,7 @@ class BlockTransmitterTest {
     counter.highHtl = false;
 
     when(peer.getBootID()).thenReturn(1L);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
     when(peer.shortToString()).thenReturn("peer#manual");
     when(peer.isConnected()).thenReturn(true);
 
@@ -255,7 +255,7 @@ class BlockTransmitterTest {
 
     when(peer.getBootID()).thenReturn(1L);
     when(peer.isConnected()).thenReturn(true);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
     when(peer.shortToString()).thenReturn("peer#sendAborted");
 
     // Accumulate pending items so cancelItemsPending() will attempt to unqueue them on abort
@@ -334,7 +334,7 @@ class BlockTransmitterTest {
 
     when(peer.getBootID()).thenReturn(1L);
     when(peer.isConnected()).thenReturn(true);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
     when(peer.shortToString()).thenReturn("peer#disc");
 
     // Let the first send succeed, then immediately simulate a disconnect on filters
@@ -386,7 +386,7 @@ class BlockTransmitterTest {
 
     when(peer.getBootID()).thenReturn(1L);
     when(peer.isConnected()).thenReturn(true);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
     when(peer.shortToString()).thenReturn("peer#timeout");
 
     // Immediately acknowledge each send, but do NOT send allReceived

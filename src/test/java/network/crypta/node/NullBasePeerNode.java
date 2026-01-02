@@ -69,7 +69,7 @@ public class NullBasePeerNode implements BasePeerNode {
   }
 
   @Override
-  public WeakReference<? extends PeerContext> getWeakRef() {
+  public WeakReference<PeerContext> getWeakRef() {
     return new WeakReference<>(this);
   }
 

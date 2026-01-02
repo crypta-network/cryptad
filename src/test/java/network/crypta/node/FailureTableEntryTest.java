@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.ref.WeakReference;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeCHK;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,7 +51,7 @@ class FailureTableEntryTest {
     when(peer.getLocation()).thenReturn(loc);
     when(peer.isConnected()).thenReturn(true);
     when(peer.shortToString()).thenReturn("peer-" + bootId);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
   }
 
   @Test

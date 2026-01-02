@@ -15,6 +15,7 @@ import java.util.TimeZone;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.TextFeedMessage;
 import network.crypta.io.comm.Peer;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.l10n.BaseL10n.LANGUAGE;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
@@ -56,7 +57,7 @@ class N2NTMUserAlertTest {
   void getTitle_whenInitialized_expectLocalizedTitle() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("Alice");
     when(mockPeerNode.getPeer()).thenReturn(peer);
 
@@ -76,7 +77,7 @@ class N2NTMUserAlertTest {
   void getText_and_getShortText_whenInitialized_expectHeaderAndSummary() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("Alice");
     when(mockPeerNode.getPeer()).thenReturn(peer);
 
@@ -98,7 +99,7 @@ class N2NTMUserAlertTest {
   void getHTMLText_whenPeerPresent_expectReplyLinkAndLineBreaks() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("Alice");
     when(mockPeerNode.getPeer()).thenReturn(peer);
 
@@ -122,7 +123,7 @@ class N2NTMUserAlertTest {
   void getHTMLText_whenPeerMissing_expectNoReplyLink() throws Exception {
     // Arrange
     Peer peer = new Peer("example.net:4321", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(null));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(null));
     when(mockPeerNode.getName()).thenReturn("Bob");
     when(mockPeerNode.getPeer()).thenReturn(peer);
     N2NTMUserAlert alert = new N2NTMUserAlert(mockPeerNode, "Msg", 5, 0L, 1_000L, 2_000L, 111L);
@@ -141,7 +142,7 @@ class N2NTMUserAlertTest {
   void onDismiss_whenPeerPresent_expectDeleteCalled() throws Exception {
     // Arrange
     Peer peer = new Peer("node.local:5555", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("Carol");
     when(mockPeerNode.getPeer()).thenReturn(peer);
     N2NTMUserAlert alert = new N2NTMUserAlert(mockPeerNode, "X", 77, 0L, 1_000L, 2_000L, 1L);
@@ -157,7 +158,7 @@ class N2NTMUserAlertTest {
   void onDismiss_whenPeerMissing_expectDeleteNotCalled() throws Exception {
     // Arrange
     Peer peer = new Peer("node.local:5555", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(null));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(null));
     when(mockPeerNode.getName()).thenReturn("Carol");
     when(mockPeerNode.getPeer()).thenReturn(peer);
     N2NTMUserAlert alert = new N2NTMUserAlert(mockPeerNode, "X", 88, 0L, 1_000L, 2_000L, 1L);
@@ -173,7 +174,7 @@ class N2NTMUserAlertTest {
   void getFCPMessage_whenConstructed_expectFieldSetContainsSourceAndTimes() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("Alice");
     when(mockPeerNode.getPeer()).thenReturn(peer);
 
@@ -204,7 +205,7 @@ class N2NTMUserAlertTest {
   void getFCPMessage_whenMessageNull_expectZeroLengthMessageTextBucket() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("Alice");
     when(mockPeerNode.getPeer()).thenReturn(peer);
     N2NTMUserAlert alert = new N2NTMUserAlert(mockPeerNode, null, 7, 0L, 1_000L, 2_000L, 123L);
@@ -220,7 +221,7 @@ class N2NTMUserAlertTest {
   void isValid_whenPeerUpdates_expectTitleReflectsNewNameAndPeer() throws Exception {
     // Arrange
     Peer peer1 = new Peer("old.example:100", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("OldName");
     when(mockPeerNode.getPeer()).thenReturn(peer1);
     N2NTMUserAlert alert = new N2NTMUserAlert(mockPeerNode, "Msg", 3, 0L, 1_000L, 2_000L, 55L);
@@ -250,7 +251,7 @@ class N2NTMUserAlertTest {
   void constructor_withoutMsgId_expectMsgIdNegativeOne() throws Exception {
     // Arrange
     Peer peer = new Peer("example.com:1234", true);
-    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<>(mockPeerNode));
+    when(mockPeerNode.getWeakRef()).thenReturn(new WeakReference<PeerContext>(mockPeerNode));
     when(mockPeerNode.getName()).thenReturn("Alice");
     when(mockPeerNode.getPeer()).thenReturn(peer);
 

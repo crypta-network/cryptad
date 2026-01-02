@@ -6,6 +6,7 @@ import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.Key;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +49,7 @@ class FailureTableEntry implements TimedOutNodesList {
   long sentTime;
 
   /** Weak references to peers that have requested this key. */
-  WeakReference<? extends PeerNodeUnlocked>[] requestorNodes;
+  WeakReference<PeerContext>[] requestorNodes;
 
   /** Request times for {@link #requestorNodes} (ms since epoch). */
   long[] requestorTimes;
@@ -63,7 +64,7 @@ class FailureTableEntry implements TimedOutNodesList {
 
   // Membership does not imply DNF/RecentlyFailed; it includes all peers we routed to for this key.
   /** Weak references to peers we routed a request to. */
-  WeakReference<? extends PeerNodeUnlocked>[] requestedNodes;
+  WeakReference<PeerContext>[] requestedNodes;
 
   /**
    * Peer locations when the request was sent. Retained for potential routing heuristics (e.g.,
@@ -98,14 +99,19 @@ class FailureTableEntry implements TimedOutNodesList {
   public static final short[] EMPTY_SHORT_ARRAY = new short[0];
   public static final double[] EMPTY_DOUBLE_ARRAY = new double[0];
 
-  protected static final WeakReference<? extends PeerNodeUnlocked>[] EMPTY_WEAK_REFERENCE =
-      weakArrayOfSize(0);
+  protected static final WeakReference<PeerContext>[] EMPTY_WEAK_REFERENCE = weakArrayOfSize(0);
 
   @SuppressWarnings("unchecked")
-  private static WeakReference<? extends PeerNodeUnlocked>[] weakArrayOfSize(int size) {
-    // Arrays store WeakReference<PeerNodeUnlocked> (or subclasses). This localized cast centralizes
-    // the unchecked conversion and is safe because all assignments respect the element type.
-    return (WeakReference<? extends PeerNodeUnlocked>[]) new WeakReference<?>[size];
+  private static WeakReference<PeerContext>[] weakArrayOfSize(int size) {
+    // Arrays store WeakReference<PeerContext> that should point to PeerNodeUnlocked instances.
+    // This localized cast centralizes the unchecked conversion and is safe for our assignments.
+    return (WeakReference<PeerContext>[]) new WeakReference<?>[size];
+  }
+
+  private static PeerNodeUnlocked asPeerNodeUnlocked(WeakReference<PeerContext> ref) {
+    if (ref == null) return null;
+    PeerContext ctx = ref.get();
+    return (ctx instanceof PeerNodeUnlocked) ? (PeerNodeUnlocked) ctx : null;
   }
 
   FailureTableEntry(Key key) {
@@ -199,7 +205,7 @@ class FailureTableEntry implements TimedOutNodesList {
       int notIncluded,
       int nulls,
       int existingIndex) {
-    WeakReference<? extends PeerNodeUnlocked>[] newRequestorNodes =
+    WeakReference<PeerContext>[] newRequestorNodes =
         weakArrayOfSize(requestorNodes.length + notIncluded - nulls);
     long[] newRequestorTimes = new long[requestorNodes.length + notIncluded - nulls];
     long[] newRequestorBootIDs = new long[requestorNodes.length + notIncluded - nulls];
@@ -208,8 +214,8 @@ class FailureTableEntry implements TimedOutNodesList {
     int toIndex = 0;
     int ret = existingIndex;
     for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = ref == null ? null : ref.get();
+      WeakReference<PeerContext> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       if (pn != null) {
         if (pn == requestor) ret = toIndex;
         newRequestorNodes[toIndex] = requestorNodes[i];
@@ -247,7 +253,8 @@ class FailureTableEntry implements TimedOutNodesList {
       PeerNodeUnlocked requestor, long now, short origHTL, boolean includedAlready, int nulls) {
     if (nulls == 1 && !includedAlready) {
       for (int i = 0; i < requestorNodes.length; i++) {
-        if (requestorNodes[i] == null || requestorNodes[i].get() == null) {
+        PeerNodeUnlocked existing = asPeerNodeUnlocked(requestorNodes[i]);
+        if (existing == null) {
           requestorNodes[i] = requestor.getWeakRef();
           requestorTimes[i] = now;
           requestorBootIDs[i] = requestor.getBootID();
@@ -265,7 +272,7 @@ class FailureTableEntry implements TimedOutNodesList {
     int nulls = 0;
     int ret = -1;
     for (int i = 0; i < requestorNodes.length; i++) {
-      PeerNodeUnlocked got = requestorNodes[i] == null ? null : requestorNodes[i].get();
+      PeerNodeUnlocked got = asPeerNodeUnlocked(requestorNodes[i]);
       if (got == requestor) {
         includedAlready = true;
         requestorTimes[i] = now;
@@ -318,7 +325,7 @@ class FailureTableEntry implements TimedOutNodesList {
       int notIncluded,
       int nulls,
       int existingIndex) {
-    WeakReference<? extends PeerNodeUnlocked>[] newRequestedNodes =
+    WeakReference<PeerContext>[] newRequestedNodes =
         weakArrayOfSize(requestedNodes.length + notIncluded - nulls);
     double[] newRequestedLocs = new double[requestedNodes.length + notIncluded - nulls];
     long[] newRequestedBootIDs = new long[requestedNodes.length + notIncluded - nulls];
@@ -330,8 +337,8 @@ class FailureTableEntry implements TimedOutNodesList {
     int toIndex = 0;
     int ret = existingIndex;
     for (int i = 0; i < requestedNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestedNodes[i];
-      PeerNodeUnlocked pn = ref == null ? null : ref.get();
+      WeakReference<PeerContext> ref = requestedNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       if (pn != null) {
         if (pn == requestedFrom) ret = toIndex;
         newRequestedNodes[toIndex] = requestedNodes[i];
@@ -381,7 +388,8 @@ class FailureTableEntry implements TimedOutNodesList {
       PeerNodeUnlocked requestedFrom, long now, boolean includedAlready, int nulls) {
     if (nulls == 1 && !includedAlready) {
       for (int i = 0; i < requestedNodes.length; i++) {
-        if (requestedNodes[i] == null || requestedNodes[i].get() == null) {
+        PeerNodeUnlocked existing = asPeerNodeUnlocked(requestedNodes[i]);
+        if (existing == null) {
           requestedNodes[i] = requestedFrom.getWeakRef();
           requestedLocs[i] = requestedFrom.getLocation();
           requestedBootIDs[i] = requestedFrom.getBootID();
@@ -403,7 +411,7 @@ class FailureTableEntry implements TimedOutNodesList {
     int nulls = 0;
     int ret = -1;
     for (int i = 0; i < requestedNodes.length; i++) {
-      PeerNodeUnlocked got = requestedNodes[i] == null ? null : requestedNodes[i].get();
+      PeerNodeUnlocked got = asPeerNodeUnlocked(requestedNodes[i]);
       if (got == requestedFrom
           && (requestedTimeoutsRF[i] == -1
               || requestedTimeoutsFT[i] == -1
@@ -458,8 +466,8 @@ class FailureTableEntry implements TimedOutNodesList {
 
   private void collectRequestorOfferTargets(HashSet<PeerNodeUnlocked> set) {
     for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       boolean valid = pn != null && pn.getBootID() == requestorBootIDs[i];
       if (valid && !set.add(pn)) {
         LOG.error("Node is in requestorNodes twice: {}", pn);
@@ -469,8 +477,8 @@ class FailureTableEntry implements TimedOutNodesList {
 
   private void collectRequestedOfferTargets(HashSet<PeerNodeUnlocked> set) {
     for (int i = 0; i < requestedNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestedNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestedNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       boolean valid = pn != null && pn.getBootID() == requestedBootIDs[i];
       if (valid) {
         set.add(pn);
@@ -490,8 +498,8 @@ class FailureTableEntry implements TimedOutNodesList {
   public synchronized boolean othersWant() {
     boolean anyValid = false;
     for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       if (pn == null) {
         requestorNodes[i] = null;
       } else if (pn.getBootID() != requestorBootIDs[i]) {
@@ -523,8 +531,8 @@ class FailureTableEntry implements TimedOutNodesList {
     boolean anyValid = false;
     boolean anyOther = false;
     for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       if (pn == null) {
         requestorNodes[i] = null;
       } else if (pn.getBootID() != requestorBootIDs[i]) {
@@ -556,8 +564,8 @@ class FailureTableEntry implements TimedOutNodesList {
     boolean anyValid = false;
     boolean ret = false;
     for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       if (pn == null) {
         requestorNodes[i] = null;
       } else if (pn.getBootID() != requestorBootIDs[i]) {
@@ -588,8 +596,8 @@ class FailureTableEntry implements TimedOutNodesList {
     boolean anyValid = false;
     boolean ret = false;
     for (int i = 0; i < requestedNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestedNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestedNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       if (pn == null) {
         requestedNodes[i] = null;
       } else if (pn.getBootID() != requestedBootIDs[i]) {
@@ -641,8 +649,9 @@ class FailureTableEntry implements TimedOutNodesList {
   }
 
   private boolean matchesPeerAndHtl(int index, PeerNode peer, short htl) {
-    WeakReference<? extends PeerNodeUnlocked> ref = requestedNodes[index];
-    return ref != null && ref.get() == peer && requestedTimeoutHTLs[index] >= htl;
+    WeakReference<PeerContext> ref = requestedNodes[index];
+    PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
+    return pn == peer && requestedTimeoutHTLs[index] >= htl;
   }
 
   private long computeTimeout(int index, boolean forPerNodeFailureTables) {
@@ -672,8 +681,8 @@ class FailureTableEntry implements TimedOutNodesList {
     boolean empty = true;
     int x = 0;
     for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       boolean valid =
           pn != null
               && pn.getBootID() == requestorBootIDs[i]
@@ -702,8 +711,8 @@ class FailureTableEntry implements TimedOutNodesList {
     boolean empty = true;
     int x = 0;
     for (int i = 0; i < requestedNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestedNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestedNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       boolean valid =
           pn != null
               && pn.getBootID() == requestedBootIDs[i]
@@ -759,8 +768,8 @@ class FailureTableEntry implements TimedOutNodesList {
     long now = System.currentTimeMillis();
     boolean anyValid = false;
     for (int i = 0; i < requestorNodes.length; i++) {
-      WeakReference<? extends PeerNodeUnlocked> ref = requestorNodes[i];
-      PeerNodeUnlocked pn = (ref == null) ? null : ref.get();
+      WeakReference<PeerContext> ref = requestorNodes[i];
+      PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
       if (pn == null) {
         requestorNodes[i] = null;
       } else if (pn.getBootID() != requestorBootIDs[i]) {

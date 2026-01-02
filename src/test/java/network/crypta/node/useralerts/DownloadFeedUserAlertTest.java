@@ -16,6 +16,7 @@ import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.URIFeedMessage;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.HTMLNode;
@@ -34,7 +35,7 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
 
     FreenetURI uri = new FreenetURI("KSK@readme.txt");
     String description = "Line1\nLine2";
@@ -88,7 +89,7 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Bob");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
 
     FreenetURI uri = new FreenetURI("KSK@file.txt");
     DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, null, 7, uri, 1L, -1L, -1L);
@@ -111,7 +112,7 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Carol");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@x.txt");
     DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, "", 3, uri, -1L, -1L, -1L);
 
@@ -128,7 +129,7 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Dave");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@offer.txt");
     int fileNumber = 99;
     DownloadFeedUserAlert alert =
@@ -147,7 +148,7 @@ class DownloadFeedUserAlertTest {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Eve");
     // The weak reference resolves to null
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(null));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(null));
     FreenetURI uri = new FreenetURI("KSK@abc.txt");
     DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, null, 5, uri, -1L, -1L, -1L);
 
@@ -163,7 +164,7 @@ class DownloadFeedUserAlertTest {
     // Arrange: first call returns initial name (constructor), second call returns updated name
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice", "Mallory");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@z.txt");
     DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, null, 1, uri, -1L, -1L, -1L);
 
@@ -183,7 +184,7 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Frank");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
     FreenetURI uri = new FreenetURI("KSK@data.bin");
     String description = "hello"; // 5 bytes in UTF-8
     DownloadFeedUserAlert alert =

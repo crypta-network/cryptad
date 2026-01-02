@@ -59,6 +59,7 @@ import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.Peer.LocalAddressException;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.io.comm.SocketHandler;
@@ -475,6 +476,12 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
    */
   final WeakReference<PeerNode> myRef;
 
+  /**
+   * A {@link PeerContext}-typed view of {@link #myRef} for APIs that operate on the transport view.
+   * The reference object itself is shared to avoid additional allocations.
+   */
+  private final WeakReference<PeerContext> contextRef;
+
   /** The node is being disconnected, but it may take a while. */
   private boolean disconnecting;
 
@@ -529,6 +536,12 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     return false;
   }
 
+  @SuppressWarnings("unchecked")
+  private static WeakReference<PeerContext> castPeerContextRef(WeakReference<PeerNode> ref) {
+    // Safe because PeerNode implements PeerContext and the WeakReference only exposes get().
+    return (WeakReference<PeerContext>) (WeakReference<?>) ref;
+  }
+
   /**
    * Creates a PeerNode from a {@link SimpleFieldSet} node reference.
    *
@@ -554,6 +567,7 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
     boolean noSig = fromLocal || fromAnonymousInitiator();
     // Core finals
     myRef = new WeakReference<>(this);
+    contextRef = castPeerContextRef(myRef);
     this.checkStatusAfterBackoff = new PeerNodeBackoffStatusChecker(myRef);
     this.outgoingMangler = crypto.getPacketMangler();
     this.node = node2;
@@ -4765,8 +4779,8 @@ public abstract class PeerNode implements USKRetrieverCallback, BasePeerNode, Pe
   }
 
   @Override
-  public WeakReference<PeerNode> getWeakRef() {
-    return myRef;
+  public WeakReference<PeerContext> getWeakRef() {
+    return contextRef;
   }
 
   /**

@@ -3,10 +3,10 @@ package network.crypta.node.useralerts;
 import java.lang.ref.WeakReference;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.URIFeedMessage;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.DarknetPeerNode;
-import network.crypta.node.PeerNode;
 import network.crypta.support.HTMLNode;
 
 /**
@@ -40,7 +40,7 @@ import network.crypta.support.HTMLNode;
  * @see NodeToNodeMessageUserAlert
  */
 public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNodeMessageUserAlert {
-  private final WeakReference<PeerNode> peerRef;
+  private final WeakReference<PeerContext> peerRef;
   private final FreenetURI uri;
   private final int fileNumber;
   private final String description;
