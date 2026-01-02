@@ -679,7 +679,7 @@ public class Probe implements ByteCounter {
     try {
       node.getUSM().addAsyncFilter(filter, new ResultListener(listener), this);
       LOG.trace("Sending.");
-      candidate.sendAsync(message, null, this);
+      candidate.transport().sendAsync(message, null, this);
       return true;
     } catch (NotConnectedException e) {
       LOG.debug("Peer became disconnected between check and send attempt.", e);
@@ -1005,7 +1005,7 @@ public class Probe implements ByteCounter {
         LOG.debug("Relaying {} back to {}", message.getSpec().getName(), source.userToString());
       }
       try {
-        source.sendAsync(message, null, Probe.this);
+        source.transport().sendAsync(message, null, Probe.this);
       } catch (NotConnectedException e) {
         if (LOG.isDebugEnabled()) LOG.debug(SOURCE_DISCONNECT, e);
       }

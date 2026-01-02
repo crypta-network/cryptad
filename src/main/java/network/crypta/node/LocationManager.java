@@ -1415,7 +1415,7 @@ public class LocationManager implements ByteCounter {
       // Reject
       Message reject = DMT.createFNPSwapRejected(oldID);
       try {
-        pn.sendAsync(reject, null, this);
+        pn.transport().sendAsync(reject, null, this);
       } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(LOST_CONN_REJECT_LOCKED_MSG, pn);
       }
@@ -1470,7 +1470,7 @@ public class LocationManager implements ByteCounter {
       if (LOG.isDebugEnabled()) LOG.debug("Reject message {}", msg);
       Message rejected = DMT.createFNPSwapRejected(oldID);
       try {
-        pn.sendAsync(rejected, null, this);
+        pn.transport().sendAsync(rejected, null, this);
       } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(LOST_CONN_REJECT_LOCKED_MSG, pn);
       }
@@ -1535,7 +1535,7 @@ public class LocationManager implements ByteCounter {
     if (LOG.isDebugEnabled()) LOG.debug("Late reject {}", oldID);
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
-      pn.sendAsync(reject, null, this);
+      pn.transport().sendAsync(reject, null, this);
     } catch (NotConnectedException _) {
       LOG.info("Disconnected while sending late reject to {}", pn);
     }
@@ -1545,10 +1545,12 @@ public class LocationManager implements ByteCounter {
   private boolean attemptForward(
       Message m, long oldID, PeerNode pn, PeerNode randomPeer, RecentlyForwardedItem forwarded) {
     try {
-      randomPeer.sendAsync(
-          m.cloneAndDropSubMessages(),
-          new MyCallback(DMT.createFNPSwapRejected(oldID), pn, forwarded),
-          LocationManager.this);
+      randomPeer
+          .transport()
+          .sendAsync(
+              m.cloneAndDropSubMessages(),
+              new MyCallback(DMT.createFNPSwapRejected(oldID), pn, forwarded),
+              LocationManager.this);
       return true;
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Peer not connected");
@@ -1571,7 +1573,7 @@ public class LocationManager implements ByteCounter {
     if (LOG.isDebugEnabled()) LOG.debug("Reject duplicate request ID");
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
-      pn.sendAsync(reject, null, this);
+      pn.transport().sendAsync(reject, null, this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected while rejecting SwapRequest to {}", pn);
     }
@@ -1584,7 +1586,7 @@ public class LocationManager implements ByteCounter {
     if (LOG.isDebugEnabled()) LOG.debug("Peer advises rejection due to rate limit");
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
-      pn.sendAsync(reject, null, this);
+      pn.transport().sendAsync(reject, null, this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected while rejecting SwapRequest from {}", pn);
     }
@@ -1607,7 +1609,7 @@ public class LocationManager implements ByteCounter {
     }
     Message reject = DMT.createFNPSwapRejected(oldID);
     try {
-      pn.sendAsync(reject, null, this);
+      pn.transport().sendAsync(reject, null, this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONN_REJECT_LOCKED_MSG, pn);
     }
@@ -1659,7 +1661,7 @@ public class LocationManager implements ByteCounter {
     if (LOG.isDebugEnabled())
       LOG.debug("Forwarding SwapReply {} from {} to {}", uid, source, item.requestSender);
     try {
-      item.requestSender.sendAsync(fwd, null, this);
+      item.requestSender.transport().sendAsync(fwd, null, this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Lost connection forwarding SwapReply {} to {}", uid, item.requestSender);
@@ -1700,7 +1702,7 @@ public class LocationManager implements ByteCounter {
     // Returning to source - use incomingID
     m.set(DMT.UID, item.incomingID);
     try {
-      item.requestSender.sendAsync(m, null, this);
+      item.requestSender.transport().sendAsync(m, null, this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Lost connection forwarding SwapRejected {} to {}", uid, item.requestSender);
@@ -1733,11 +1735,13 @@ public class LocationManager implements ByteCounter {
     // Sending onwards - use outgoing ID
     m.set(DMT.UID, item.outgoingID);
     try {
-      item.routedTo.sendAsync(
-          m,
-          new SendMessageOnErrorCallback(
-              DMT.createFNPSwapRejected(item.incomingID), item.requestSender, this),
-          this);
+      item.routedTo
+          .transport()
+          .sendAsync(
+              m,
+              new SendMessageOnErrorCallback(
+                  DMT.createFNPSwapRejected(item.incomingID), item.requestSender, this),
+              this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Lost connection forwarding SwapCommit {} to {}", uid, item.routedTo);
@@ -1780,7 +1784,7 @@ public class LocationManager implements ByteCounter {
     // Returning to source - use incomingID
     m.set(DMT.UID, item.incomingID);
     try {
-      item.requestSender.sendAsync(m, null, this);
+      item.requestSender.transport().sendAsync(m, null, this);
     } catch (NotConnectedException _) {
       LOG.info("Disconnected while forwarding SwapComplete {} to {}", uid, item.requestSender);
     }
@@ -1885,7 +1889,7 @@ public class LocationManager implements ByteCounter {
       if (LOG.isDebugEnabled())
         LOG.debug("Reject in lostOrRestartedNode: {} from {}", item.incomingID, item.requestSender);
       try {
-        item.requestSender.sendAsync(msg, null, this);
+        item.requestSender.transport().sendAsync(msg, null, this);
       } catch (NotConnectedException _) {
         LOG.info("Both sender and receiver disconnected for {}", item);
       }

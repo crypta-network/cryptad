@@ -16,6 +16,7 @@ import network.crypta.io.xfer.PacketThrottle;
 
 /** Tests can override this to record specific events e.g. rekey */
 public class NullBasePeerNode implements BasePeerNode {
+  private final PeerTransport transport = new NullTransport();
 
   @Override
   public Peer getPeer() {
@@ -43,24 +44,13 @@ public class NullBasePeerNode implements BasePeerNode {
   }
 
   @Override
-  public MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr)
-      throws NotConnectedException {
-    throw new UnsupportedOperationException();
+  public PeerTransport transport() {
+    return transport;
   }
 
   @Override
   public long getBootID() {
     return 0;
-  }
-
-  @Override
-  public PacketThrottle getThrottle() {
-    return null;
-  }
-
-  @Override
-  public SocketHandler getSocketHandler() {
-    return null;
   }
 
   @Override
@@ -218,29 +208,8 @@ public class NullBasePeerNode implements BasePeerNode {
   }
 
   @Override
-  public void handleMessage(Message msg) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public void reportThrottledPacketSendTime(long time, boolean realTime) {
     // Ignore.
-  }
-
-  @Override
-  public DecodingMessageGroup startProcessingDecryptedMessages(int count) {
-    return new DecodingMessageGroup() {
-
-      @Override
-      public void processDecryptedMessage(byte[] data, int offset, int length, int overhead) {
-        NullBasePeerNode.this.processDecryptedMessage(data, offset, length, overhead);
-      }
-
-      @Override
-      public void complete() {
-        // Do nothing.
-      }
-    };
   }
 
   @Override
@@ -263,5 +232,56 @@ public class NullBasePeerNode implements BasePeerNode {
   public int getThrottleWindowSize() {
     // Arbitrary.
     return 10;
+  }
+
+  private final class NullTransport implements PeerTransport {
+
+    @Override
+    public MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr)
+        throws NotConnectedException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void sendSync(Message req, ByteCounter ctr, boolean realTime)
+        throws NotConnectedException, SyncSendWaitedTooLongException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean ping(int pingID) throws NotConnectedException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public PacketThrottle getThrottle() {
+      return null;
+    }
+
+    @Override
+    public SocketHandler getSocketHandler() {
+      return null;
+    }
+
+    @Override
+    public void handleMessage(Message msg) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DecodingMessageGroup startProcessingDecryptedMessages(int count) {
+      return new DecodingMessageGroup() {
+
+        @Override
+        public void processDecryptedMessage(byte[] data, int offset, int length, int overhead) {
+          NullBasePeerNode.this.processDecryptedMessage(data, offset, length, overhead);
+        }
+
+        @Override
+        public void complete() {
+          // Do nothing.
+        }
+      };
+    }
   }
 }

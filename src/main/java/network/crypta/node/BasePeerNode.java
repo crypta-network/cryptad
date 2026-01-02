@@ -108,7 +108,9 @@ public interface BasePeerNode extends PeerContext {
    * @param count expected number of messages in this batch (advisory hint)
    * @return a group used to decode and deliver messages from the current packet
    */
-  DecodingMessageGroup startProcessingDecryptedMessages(int count);
+  default DecodingMessageGroup startProcessingDecryptedMessages(int count) {
+    return transport().startProcessingDecryptedMessages(count);
+  }
 
   /**
    * Reports a measured round-trip time sample for this peer.
@@ -210,7 +212,9 @@ public interface BasePeerNode extends PeerContext {
    *
    * @param msg the decoded {@link Message}
    */
-  void handleMessage(Message msg);
+  default void handleMessage(Message msg) {
+    transport().handleMessage(msg);
+  }
 
   /**
    * Returns the current retransmission timeout (RTO) derived from SRTT/RTTVAR.

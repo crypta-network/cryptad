@@ -101,7 +101,7 @@ public class BulkReceiver {
       sentCancel = true;
     }
     try {
-      peer.sendAsync(DMT.createFNPBulkReceiveAborted(uid), null, ctr);
+      peer.transport().sendAsync(DMT.createFNPBulkReceiveAborted(uid), null, ctr);
     } catch (NotConnectedException _) {
       // Peer is already disconnected; there is nothing to notify.
     }
@@ -153,7 +153,7 @@ public class BulkReceiver {
       if (prb.hasWholeFile()) {
         try {
           // Fast-path: data may have arrived concurrently; acknowledge completion immediately.
-          peer.sendAsync(DMT.createFNPBulkReceivedAll(uid), null, ctr);
+          peer.transport().sendAsync(DMT.createFNPBulkReceivedAll(uid), null, ctr);
         } catch (NotConnectedException _) {
           // Acknowledge best-effort only. We already have the data locally.
         }

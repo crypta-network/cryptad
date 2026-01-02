@@ -1162,7 +1162,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     Message msg = DMT.createFNPGetOfferedKey(key, offer.authenticator, pubKey == null, uid);
     msg.addSubMessage(DMT.createFNPRealTimeFlag(realTimeFlag));
     try {
-      pn.sendSync(msg, this, realTimeFlag);
+      pn.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(DISCONNECTED + "{}" + GETTING_OFFER_FOR + "{}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
@@ -1934,7 +1934,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     Message msg = DMT.createFNPOpennetCompletedAck(uid);
     // We probably should set opennetFinished after the send completes.
     try {
-      next.sendAsync(msg, finishOpennetOnAck(next), this);
+      next.transport().sendAsync(msg, finishOpennetOnAck(next), this);
     } catch (NotConnectedException _) {
       // Ignore.
     }
@@ -2057,7 +2057,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       opennetTimedOut = true;
       opennetFinished = true;
       try {
-        next.sendAsync(DMT.createFNPOpennetCompletedTimeout(uid), finishOpennetOnAck(next), this);
+        next.transport()
+            .sendAsync(DMT.createFNPOpennetCompletedTimeout(uid), finishOpennetOnAck(next), this);
       } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) {
           LOG.debug("Not connected sending ConnectReply on {} to {}", this, next);

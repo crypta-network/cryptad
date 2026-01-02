@@ -274,7 +274,7 @@ public class BulkTransmitter {
       sentCancel = true;
     }
     try {
-      peer.sendAsync(DMT.createFNPBulkSendAborted(uid), null, ctr);
+      peer.transport().sendAsync(DMT.createFNPBulkSendAborted(uid), null, ctr);
     } catch (NotConnectedException _) {
       // Best-effort notification only; ignore if not connected.
     }
@@ -543,7 +543,7 @@ public class BulkTransmitter {
       if (LOG.isDebugEnabled()) LOG.debug("Sending packet {}", blockNo);
       Message msg = DMT.createFNPBulkPacketSend(uid, blockNo, buf);
       UnsentPacketTag tag = new UnsentPacketTag();
-      peer.sendAsync(msg, tag, ctr);
+      peer.transport().sendAsync(msg, tag, ctr);
       waitWhileCongested(max);
       synchronized (this) {
         blocksNotSentButPresent.setBit(blockNo, false);

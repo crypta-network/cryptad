@@ -16,7 +16,8 @@ import org.slf4j.LoggerFactory;
  * ByteCounter}.
  *
  * <p>Thread-safety: instances are typically used by transport code and may be invoked on I/O
- * threads. The forwarding call uses {@code PeerNode.sendAsync(...)} and returns immediately.
+ * threads. The forwarding call uses {@code PeerNode.transport().sendAsync(...)} and returns
+ * immediately.
  *
  * <p>Failure handling: if the destination is not connected, the attempt is ignored and a debug log
  * entry is written.
@@ -72,7 +73,7 @@ public class SendMessageOnErrorCallback implements AsyncMessageCallback {
   public void disconnected() {
     if (LOG.isDebugEnabled()) LOG.debug("Disconnect event for {}", this);
     try {
-      dest.sendAsync(msg, null, ctr);
+      dest.transport().sendAsync(msg, null, ctr);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Source and destination disconnected: {} for {}", msg, this);

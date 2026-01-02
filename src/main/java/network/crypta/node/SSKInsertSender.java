@@ -431,39 +431,43 @@ public class SSKInsertSender extends BaseSender
         LOG.debug(
             "Forked timed out insert but not going to send DataInsert on {} to {}", sender, next);
       try {
-        next.sendAsync(
-            DMT.createFNPDataInsertRejected(
-                uid, DMT.DATA_INSERT_REJECTED_TIMEOUT_WAITING_FOR_ACCEPTED),
-            new AsyncMessageCallback() {
-              @Override
-              public void sent() {
-                if (LOG.isDebugEnabled())
-                  LOG.debug("DataInsertRejected sent after accepted timeout on {}", sender);
-              }
+        next.transport()
+            .sendAsync(
+                DMT.createFNPDataInsertRejected(
+                    uid, DMT.DATA_INSERT_REJECTED_TIMEOUT_WAITING_FOR_ACCEPTED),
+                new AsyncMessageCallback() {
+                  @Override
+                  public void sent() {
+                    if (LOG.isDebugEnabled())
+                      LOG.debug("DataInsertRejected sent after accepted timeout on {}", sender);
+                  }
 
-              @Override
-              public void acknowledged() {
-                if (LOG.isDebugEnabled())
-                  LOG.debug("DataInsertRejected acknowledged after accepted timeout on {}", sender);
-                next.noLongerRoutingTo(tag, false);
-              }
+                  @Override
+                  public void acknowledged() {
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
+                          "DataInsertRejected acknowledged after accepted timeout on {}", sender);
+                    next.noLongerRoutingTo(tag, false);
+                  }
 
-              @Override
-              public void disconnected() {
-                if (LOG.isDebugEnabled())
-                  LOG.debug(
-                      "DataInsertRejected peer disconnected after accepted timeout on {}", sender);
-                next.noLongerRoutingTo(tag, false);
-              }
+                  @Override
+                  public void disconnected() {
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
+                          "DataInsertRejected peer disconnected after accepted timeout on {}",
+                          sender);
+                    next.noLongerRoutingTo(tag, false);
+                  }
 
-              @Override
-              public void fatalError() {
-                if (LOG.isDebugEnabled())
-                  LOG.debug("DataInsertRejected fatal error after accepted timeout on {}", sender);
-                next.noLongerRoutingTo(tag, false);
-              }
-            },
-            sender);
+                  @Override
+                  public void fatalError() {
+                    if (LOG.isDebugEnabled())
+                      LOG.debug(
+                          "DataInsertRejected fatal error after accepted timeout on {}", sender);
+                    next.noLongerRoutingTo(tag, false);
+                  }
+                },
+                sender);
       } catch (NotConnectedException _) {
         next.noLongerRoutingTo(tag, false);
       }
@@ -957,8 +961,8 @@ public class SSKInsertSender extends BaseSender
     Message headersMsg = DMT.createFNPSSKInsertRequestHeaders(uid, headers, realTimeFlag);
     Message dataMsg = DMT.createFNPSSKInsertRequestData(uid, data, realTimeFlag);
     try {
-      next.sendAsync(headersMsg, null, this);
-      next.sendSync(dataMsg, this, realTimeFlag);
+      next.transport().sendAsync(headersMsg, null, this);
+      next.transport().sendSync(dataMsg, this, realTimeFlag);
       sentPayload(data.length);
       return true;
     } catch (NotConnectedException _) {
@@ -977,7 +981,7 @@ public class SSKInsertSender extends BaseSender
   private boolean sendPubKeyAndAwaitAccepted(PeerNode next, InsertTag thisTag) {
     Message pkMsg = DMT.createFNPSSKPubKey(uid, pubKey, realTimeFlag);
     try {
-      next.sendSync(pkMsg, this, realTimeFlag);
+      next.transport().sendSync(pkMsg, this, realTimeFlag);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Node disconnected while sending pubkey: {}", next);
       next.noLongerRoutingTo(thisTag, false);

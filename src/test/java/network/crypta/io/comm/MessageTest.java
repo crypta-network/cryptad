@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.LinkedList;
 import java.util.List;
+import network.crypta.node.PeerTransport;
 import network.crypta.support.ShortBuffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -314,6 +315,7 @@ class MessageTest {
   // Minimal stub PeerContext for decode paths. Only getWeakRef() is used by Message.
   private static final class TestPeerContext implements PeerContext {
     private final WeakReference<PeerContext> ref = new WeakReference<>(this);
+    private final PeerTransport transport = new TestTransport();
 
     @Override
     public Peer getPeer() {
@@ -341,24 +343,8 @@ class MessageTest {
     }
 
     @Override
-    public network.crypta.node.MessageItem sendAsync(
-        Message msg, AsyncMessageCallback cb, ByteCounter ctr) {
-      return null;
-    }
-
-    @Override
     public long getBootID() {
       return 0;
-    }
-
-    @Override
-    public network.crypta.io.xfer.PacketThrottle getThrottle() {
-      return null;
-    }
-
-    @Override
-    public SocketHandler getSocketHandler() {
-      return null;
     }
 
     @Override
@@ -394,6 +380,51 @@ class MessageTest {
     @Override
     public int getThrottleWindowSize() {
       return 0;
+    }
+
+    @Override
+    public PeerTransport transport() {
+      return transport;
+    }
+
+    private static final class TestTransport implements PeerTransport {
+
+      @Override
+      public network.crypta.node.MessageItem sendAsync(
+          Message msg, AsyncMessageCallback cb, ByteCounter ctr) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public void sendSync(Message req, ByteCounter ctr, boolean realTime)
+          throws NotConnectedException, network.crypta.node.SyncSendWaitedTooLongException {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public boolean ping(int pingID) throws NotConnectedException {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public network.crypta.io.xfer.PacketThrottle getThrottle() {
+        return null;
+      }
+
+      @Override
+      public SocketHandler getSocketHandler() {
+        return null;
+      }
+
+      @Override
+      public void handleMessage(Message msg) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public network.crypta.node.DecodingMessageGroup startProcessingDecryptedMessages(int count) {
+        throw new UnsupportedOperationException();
+      }
     }
   }
 }

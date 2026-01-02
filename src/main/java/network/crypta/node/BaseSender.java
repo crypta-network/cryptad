@@ -240,7 +240,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       //   waiting in the peer’s send queue.
       // - sendAsync would increase ACCEPTED_TIMEOUT risk and leave many hanging requests, further
       //   overloading peers. Hence, we do NOT use sendAsync here.
-      next.sendSync(req, this, realTimeFlag);
+      next.transport().sendSync(req, this, realTimeFlag);
       next.reportRoutedTo(
           key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
       node.getPeers().incrementSelectionSamples(next);
@@ -618,7 +618,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       return false;
     }
     try {
-      state.next.sendSync(req, this, realTimeFlag);
+      state.next.transport().sendSync(req, this, realTimeFlag);
       state.next.reportRoutedTo(
           key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
       node.getPeers().incrementSelectionSamples(state.next);

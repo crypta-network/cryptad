@@ -13,7 +13,6 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
-import network.crypta.node.PeerNode;
 import network.crypta.node.SyncSendWaitedTooLongException;
 import network.crypta.support.BitArray;
 import network.crypta.support.Buffer;
@@ -403,7 +402,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
         private void sendAllReceivedSync(Message m) throws NotConnectedException {
           try {
-            ((PeerNode) sender).sendSync(m, ctr, realTime);
+            sender.transport().sendSync(m, ctr, realTime);
           } catch (SyncSendWaitedTooLongException _) {
             // Synchronous send exceeded wait threshold; proceed with completion regardless.
           }

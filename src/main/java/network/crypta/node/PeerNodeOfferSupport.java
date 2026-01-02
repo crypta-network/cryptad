@@ -21,7 +21,7 @@ final class PeerNodeOfferSupport {
         HMAC.macWithSHA256(peer.node.getFailureTable().offerAuthenticatorKey, keyBytes);
     Message msg = DMT.createFNPOfferKey(key, authenticator);
     try {
-      peer.sendAsync(msg, null, peer.node.getNodeStats().sendOffersCtr);
+      peer.transport().sendAsync(msg, null, peer.node.getNodeStats().sendOffersCtr);
     } catch (NotConnectedException _) {
       // Ignore
     }

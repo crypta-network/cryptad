@@ -263,7 +263,7 @@ public class RequestHandler
     if (LOG.isDebugEnabled()) LOG.debug("Handle request uid={}", uid);
 
     Message accepted = DMT.createFNPAccepted(uid);
-    source.sendAsync(accepted, null, this);
+    source.transport().sendAsync(accepted, null, this);
 
     Object o;
     if (passedInKeyBlock != null) {
@@ -337,7 +337,7 @@ public class RequestHandler
         // Note: This message is only discernible from the terminal messages by the IS_LOCAL flag
         // being false. (!IS_LOCAL)->!Terminal
         Message msg = DMT.createFNPRejectedOverload(uid, false);
-        source.sendAsync(msg, null, this);
+        source.transport().sendAsync(msg, null, this);
         // If the status changes (e.g. to SUCCESS), there is little need to send yet another reject
         // overload.
         sentRejectedOverload = true;
@@ -368,7 +368,7 @@ public class RequestHandler
     try {
       // Is a CHK.
       Message df = DMT.createFNPCHKDataFound(uid, rs.getHeaders());
-      source.sendAsync(df, null, this);
+      source.transport().sendAsync(df, null, this);
 
       PartiallyReceivedBlock prb = rs.getPRB();
       bt =
@@ -695,13 +695,13 @@ public class RequestHandler
           }
         };
     Message headersMsg = DMT.createFNPSSKDataFoundHeaders(uid, headers, realTimeFlag);
-    source.sendAsync(headersMsg, mcb.make(), this);
+    source.transport().sendAsync(headersMsg, mcb.make(), this);
     final Message dataMsg = DMT.createFNPSSKDataFoundData(uid, data, realTimeFlag);
     if (needsPubKey) {
       Message pk = DMT.createFNPSSKPubKey(uid, pubKey, realTimeFlag);
-      source.sendAsync(pk, mcb.make(), this);
+      source.transport().sendAsync(pk, mcb.make(), this);
     }
-    source.sendAsync(dataMsg, mcb.make(), this);
+    source.transport().sendAsync(dataMsg, mcb.make(), this);
     mcb.arm();
   }
 
@@ -717,9 +717,9 @@ public class RequestHandler
     // The pubKey will have been set on the SSK key, and the SSKBlock will have been constructed.
     WaitingMultiMessageCallback mcb = new WaitingMultiMessageCallback();
     Message headersMsg = DMT.createFNPSSKDataFoundHeaders(uid, headers, realTimeFlag);
-    source.sendAsync(headersMsg, mcb.make(), ctr);
+    source.transport().sendAsync(headersMsg, mcb.make(), ctr);
     final Message dataMsg = DMT.createFNPSSKDataFoundData(uid, data, realTimeFlag);
-    source.sendAsync(dataMsg, mcb.make(), ctr);
+    source.transport().sendAsync(dataMsg, mcb.make(), ctr);
 
     mcb.arm();
     mcb.waitFor();
@@ -773,7 +773,7 @@ public class RequestHandler
               realTimeFlag,
               node.getNodeStats());
       tag.handlerTransferBegins();
-      source.sendAsync(df, null, this);
+      source.transport().sendAsync(df, null, this);
       localBt.sendAsync();
     } else throw new IllegalStateException();
   }
@@ -805,7 +805,7 @@ public class RequestHandler
     // receives it, but we won't, so we may reject his requests and get a mandatory backoff.
     tag.unlockHandler();
     try {
-      source.sendAsync(msg, new TerminalMessageByteCountCollector(), this);
+      source.transport().sendAsync(msg, new TerminalMessageByteCountCollector(), this);
     } catch (NotConnectedException _) {
       // Will have called the callback, so caller doesn't need to worry about it.
     }
@@ -1117,10 +1117,12 @@ public class RequestHandler
     public void timedOut() {
       tag.unlockHandler();
       try {
-        dataSource.sendAsync(
-            DMT.createFNPOpennetCompletedTimeout(uid),
-            rs.finishOpennetOnAck(dataSource),
-            RequestHandler.this);
+        dataSource
+            .transport()
+            .sendAsync(
+                DMT.createFNPOpennetCompletedTimeout(uid),
+                rs.finishOpennetOnAck(dataSource),
+                RequestHandler.this);
       } catch (NotConnectedException _) {
         // Ignore
       }

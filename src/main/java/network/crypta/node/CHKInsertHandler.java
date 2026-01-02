@@ -179,7 +179,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       // Synchronous send here ensures the next message filter does not spuriously time out; we
       // either block here, or inside the filter, but we prefer to fail early on send.
-      source.sendSync(accepted, this, realTimeFlag);
+      source.transport().sendSync(accepted, this, realTimeFlag);
       return true;
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
@@ -199,10 +199,12 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
   private void forwardDataInsertRejected(Message msg) {
     try {
-      source.sendAsync(
-          DMT.createFNPDataInsertRejected(uid, msg.getShort(DMT.DATA_INSERT_REJECTED_REASON)),
-          null,
-          this);
+      source
+          .transport()
+          .sendAsync(
+              DMT.createFNPDataInsertRejected(uid, msg.getShort(DMT.DATA_INSERT_REJECTED_REASON)),
+              null,
+              this);
     } catch (NotConnectedException _) {
       // Upstream disconnected while we were notifying it; nothing more to do here.
     }
@@ -271,7 +273,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private boolean forwardNonTerminalOverloadIfNeeded(boolean alreadyForwarded) {
     if (!alreadyForwarded && sender.receivedRejectedOverload()) {
       try {
-        source.sendAsync(DMT.createFNPRejectedOverload(uid, false), null, this);
+        source.transport().sendAsync(DMT.createFNPRejectedOverload(uid, false), null, this);
       } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
         return true; // Treat as forwarded to avoid retrying endlessly.
@@ -329,7 +331,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private void handleFatalOverload(int status) {
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
-      source.sendSync(msg, this, realTimeFlag);
+      source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
       return;
@@ -346,7 +348,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private void handleRouteNotFound(int status) {
     Message msg = DMT.createFNPRouteNotFound(uid, sender.getHTL());
     try {
-      source.sendSync(msg, this, realTimeFlag);
+      source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
       return;
@@ -367,7 +369,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private void handleSuccess(int status) {
     Message msg = DMT.createFNPInsertReply(uid);
     try {
-      source.sendSync(msg, this, realTimeFlag);
+      source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
       LOG.debug(LOST_CONNECTION_TO_SOURCE);
       return;
@@ -387,7 +389,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     LOG.error("Unknown status code: {}", sender.getStatusString());
     Message msg = DMT.createFNPRejectedOverload(uid, true);
     try {
-      source.sendSync(msg, this, realTimeFlag);
+      source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
       // Ignore
     }
@@ -433,9 +435,9 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
           && (startTime > (source.timeLastConnectionCompleted() + Node.HANDSHAKE_TIMEOUT * 4L)))
         LOG.warn("Did not receive DataInsert on {}" + FROM_STRING + "{} !", uid, source);
       Message tooSlow = DMT.createFNPRejectedTimeout(uid);
-      source.sendAsync(tooSlow, null, this);
+      source.transport().sendAsync(tooSlow, null, this);
       Message m = DMT.createFNPInsertTransfersCompleted(uid, true);
-      source.sendAsync(m, null, this);
+      source.transport().sendAsync(m, null, this);
       prb = new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
       br =
           new BlockReceiver(
@@ -581,7 +583,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     if (routingTookTooLong) {
       tag.timedOutToHandlerButContinued();
       try {
-        source.sendAsync(DMT.createFNPInsertTransfersCompleted(uid, true), null, this);
+        source.transport().sendAsync(DMT.createFNPInsertTransfersCompleted(uid, true), null, this);
       } catch (NotConnectedException _) {
         // Ignore.
       }
@@ -631,7 +633,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private void sendCompletion(Message m) {
     try {
       // We do need to sendSync here so we have accurate byte counter totals.
-      source.sendSync(m, this, realTimeFlag);
+      source.transport().sendSync(m, this, realTimeFlag);
       if (LOG.isDebugEnabled()) LOG.debug("Sent completion: {}" + FOR_STRING + "{}", m, this);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Not connected: {}" + FOR_STRING + "{}", source, this);
@@ -700,7 +702,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     }
     if (toSend != null) {
       try {
-        source.sendAsync(toSend, null, this);
+        source.transport().sendAsync(toSend, null, this);
       } catch (NotConnectedException _) {
         // :(
         if (LOG.isDebugEnabled())
@@ -783,7 +785,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       // may however be waiting for the sendAborted downstream.
       Message msg = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED);
       try {
-        source.sendSync(msg, CHKInsertHandler.this, realTimeFlag);
+        source.transport().sendSync(msg, CHKInsertHandler.this, realTimeFlag);
       } catch (NotConnectedException ex) {
         // If they are not connected, that's probably why the receive failed!
         if (LOG.isDebugEnabled()) LOG.debug("Can't send {} to {}: {}", msg, source, ex, ex);

@@ -131,7 +131,8 @@ public class PeerMessenger {
     if (sendDisconnectMessage) {
       Message msg = createDisconnectMessage(remove, purge);
       try {
-        pn.sendAsync(msg, createDisconnectCallback(pn, remove, waitForAck), disconnCounter);
+        pn.transport()
+            .sendAsync(msg, createDisconnectCallback(pn, remove, waitForAck), disconnCounter);
       } catch (NotConnectedException _) {
         removePeerIfRequested(pn, remove);
         return;
@@ -200,7 +201,7 @@ public class PeerMessenger {
       if (!shouldSendLocal(peer, ignoreRoutability, onlyRealConnections, minVersion, maxVersion))
         continue;
       try {
-        peer.sendAsync(msg, null, ctr);
+        peer.transport().sendAsync(msg, null, ctr);
       } catch (NotConnectedException _) {
         // Ignore
       }

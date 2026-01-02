@@ -218,7 +218,7 @@ public class PeerNodeStatus {
     this.totalBytesInSinceStartup = peerNode.getTotalInputSinceStartup();
     this.totalBytesOutSinceStartup = peerNode.getTotalOutputSinceStartup();
     this.percentTimeRoutableConnection = peerNode.getPercentTimeRoutableConnection();
-    this.throttle = peerNode.getThrottle();
+    this.throttle = peerNode.transport().getThrottle();
     this.clockDelta = peerNode.getClockDelta();
     this.recordStatus = peerNode.recordStatus();
     this.isSeedClient = peerNode instanceof SeedClientPeerNode;
