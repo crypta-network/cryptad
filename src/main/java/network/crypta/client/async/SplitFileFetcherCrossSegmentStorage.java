@@ -31,9 +31,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This type encapsulates the life cycle of a cross‑segment decode attempt. It reacts to
  * notifications that relevant blocks have arrived, defers expensive work to memory‑limited jobs,
- * and ensures that completion or failure is signalled exactly once to the owning {@link
+ * and ensures that completion or failure is signaled exactly once to the owning {@link
  * SplitFileFetcherStorage}. Synchronization guards state transitions such as "decoding",
- * "cancelled", and "succeeded" so that concurrent arrivals do not trigger duplicate work.
+ * "canceled", and "succeeded" so that concurrent arrivals do not trigger duplicate work.
  *
  * <ul>
  *   <li>Tracks membership: which segment and block number provide each cross‑segment block.
@@ -60,7 +60,7 @@ public class SplitFileFetcherCrossSegmentStorage {
   /**
    * Owning storage that coordinates all segments for the overall split‑file request. The parent is
    * used to obtain priorities, schedule persistent jobs, and report success or fatal errors. The
-   * reference remains valid until the fetch completes or is cancelled.
+   * reference remains valid until the fetch completes or is canceled.
    */
   public final SplitFileFetcherStorage parent;
 
@@ -125,7 +125,7 @@ public class SplitFileFetcherCrossSegmentStorage {
    * <p>The method marks the corresponding cross‑segment position as available, updates internal
    * counters, and, when enough blocks are present to attempt recovery, schedules a bounded
    * decode/encode job. Calls are idempotent per block: reporting the same block more than once has
-   * no further effect. If the request is cancelled or has already succeeded, the call is ignored.
+   * no further effect. If the request is canceled or has already succeeded, the call is ignored.
    *
    * @param segment the originating {@link SplitFileFetcherSegmentStorage}; must match the segment
    *     recorded for this cross‑segment position and must not be {@code null}
@@ -333,7 +333,7 @@ public class SplitFileFetcherCrossSegmentStorage {
   private void reportBlockToSegmentOffThread(
       final int blockNo, final ClientCHK key, final ClientCHKBlock block, final byte[] data) {
     parent.jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           try {
             // Note: consider adding a segment API to avoid re-decoding and reduce CPU usage.
             SplitFileSegmentKeys keys = segments[blockNo].getSegmentKeys();
@@ -357,7 +357,7 @@ public class SplitFileFetcherCrossSegmentStorage {
 
   private void failOffThread(final FetchException e) {
     parent.jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           parent.fail(e);
           return true;
         });
@@ -365,7 +365,7 @@ public class SplitFileFetcherCrossSegmentStorage {
 
   private void failDiskOffThread(final IOException e) {
     parent.jobRunner.queueNormalOrDrop(
-        context -> {
+        _ -> {
           parent.failOnDiskError(e);
           return true;
         });
@@ -405,27 +405,41 @@ public class SplitFileFetcherCrossSegmentStorage {
     for (int i = start; i < end; i++) {
       try {
         byte[] block = segments[i].checkAndGetBlockData(blockNumbers[i]);
-        // Normalize: use null to represent missing/invalid blocks.
-        if (block == null || block.length == 0) {
-          blocks[i - start] = null;
-        } else {
-          blocks[i - start] = block;
-        }
-        synchronized (this) {
-          if (blocks[i - start] != null) {
-            if (!blocksFound[i]) totalFound++;
-            blocksFound[i] = true;
-          } else {
-            if (blocksFound[i]) totalFound--;
-            blocksFound[i] = false;
-          }
-        }
+        byte[] normalizedBlock = normalizeBlock(block);
+        blocks[i - start] = normalizedBlock;
+        updateBlockFound(i, normalizedBlock != null);
       } catch (IOException e) {
         failDiskOffThread(e);
         return null;
       }
     }
     return blocks;
+  }
+
+  /**
+   * Normalize a raw block by treating {@code null} or empty data as missing.
+   *
+   * @param block raw block data from disk
+   * @return the original block when valid, or {@code null} when missing/invalid
+   */
+  private static byte[] normalizeBlock(byte[] block) {
+    return (block == null || block.length == 0) ? null : block;
+  }
+
+  /**
+   * Update the found tracking and counters for a single block index.
+   *
+   * @param blockIndex the absolute block index in this cross-segment
+   * @param found {@code true} if the block is present and valid
+   */
+  private void updateBlockFound(int blockIndex, boolean found) {
+    synchronized (this) {
+      boolean wasFound = blocksFound[blockIndex];
+      if (wasFound != found) {
+        totalFound += found ? 1 : -1;
+        blocksFound[blockIndex] = found;
+      }
+    }
   }
 
   private static int count(boolean[] array) {
@@ -545,7 +559,7 @@ public class SplitFileFetcherCrossSegmentStorage {
    *
    * <p>If the cross‑segment has not yet succeeded and enough blocks are available to start, queues
    * a memory‑limited job that performs the FEC work. The method returns immediately; completion is
-   * signalled asynchronously via the parent.
+   * signaled asynchronously via the parent.
    */
   public void restart() {
     synchronized (this) {
@@ -574,6 +588,7 @@ public class SplitFileFetcherCrossSegmentStorage {
     parent.finishedEncoding(this);
   }
 
+  @SuppressWarnings("unused")
   int[] getSegmentNumbers() {
     int[] ret = new int[totalBlocks];
     for (int i = 0; i < totalBlocks; i++) ret[i] = segments[i].segNo;
