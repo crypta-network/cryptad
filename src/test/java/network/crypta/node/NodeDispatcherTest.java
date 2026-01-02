@@ -110,12 +110,14 @@ class NodeDispatcherTest {
 
   private static PeerNode peerMock() {
     PeerNode pn = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
     org.mockito.Mockito.lenient().when(pn.getPeer()).thenReturn(mock(Peer.class));
     org.mockito.Mockito.lenient().when(pn.isConnected()).thenReturn(true);
     org.mockito.Mockito.lenient().when(pn.isRoutable()).thenReturn(true);
     org.mockito.Mockito.lenient().when(pn.isRealConnection()).thenReturn(true);
     java.lang.ref.WeakReference<PeerContext> ref = new java.lang.ref.WeakReference<>(pn);
     org.mockito.Mockito.lenient().when(pn.getWeakRef()).thenReturn(ref);
+    org.mockito.Mockito.lenient().when(pn.transport()).thenReturn(transport);
     return pn;
   }
 
@@ -156,13 +158,14 @@ class NodeDispatcherTest {
   @Test
   void handleMessage_whenPing_expectPongSentAndTrue() throws NotConnectedException {
     PeerNode src = peerMock();
+    PeerTransport transport = src.transport();
     Message ping = withSource(DMT.createFNPPing(1234), src);
     org.junit.jupiter.api.Assertions.assertNotNull(ping.getSource());
 
     boolean handled = dispatcher.handleMessage(ping);
 
     assertTrue(handled);
-    verify(src).sendAsync(msgCaptor.capture(), eq(null), ctrCaptor.capture());
+    verify(transport).sendAsync(msgCaptor.capture(), eq(null), ctrCaptor.capture());
 
     Message reply = msgCaptor.getValue();
     assertEquals(DMT.FNPPong, reply.getSpec());
@@ -177,6 +180,7 @@ class NodeDispatcherTest {
   @Test
   void handleMessage_whenDetectedIP_expectPeerUpdatedAndRedetect() {
     PeerNode src = peerMock();
+    PeerTransport transport = src.transport();
     Peer detected = new Peer(java.net.InetAddress.getLoopbackAddress(), 12345);
     Message m = withSource(DMT.createFNPDetectedIPAddress(detected), src);
     org.junit.jupiter.api.Assertions.assertNotNull(m.getSource());
@@ -280,12 +284,13 @@ class NodeDispatcherTest {
   @Test
   void handleMessage_whenNonRoutableChkRequest_expectRejectAndTrue() throws NotConnectedException {
     PeerNode src = peerMock();
+    PeerTransport transport = src.transport();
     when(src.isRoutable()).thenReturn(false);
     NodeCHK key = new NodeCHK(new byte[NodeCHK.KEY_LENGTH], (byte) 1);
     Message m = withSource(DMT.createFNPCHKDataRequest(123L, (short) 3, key), src);
 
     assertTrue(dispatcher.handleMessage(m));
-    verify(src).sendAsync(msgCaptor.capture(), eq(null), eq(stats.chkRequestCtr));
+    verify(transport).sendAsync(msgCaptor.capture(), eq(null), eq(stats.chkRequestCtr));
     Message rejected = msgCaptor.getValue();
     assertEquals(DMT.FNPRejectedOverload, rejected.getSpec());
     assertEquals(123L, rejected.getLong(DMT.UID));
@@ -294,6 +299,7 @@ class NodeDispatcherTest {
   @Test
   void setHook_whenCallbackSet_expectSnoopInvokedOnMessage() {
     PeerNode src = peerMock();
+    PeerTransport transport = src.transport();
     Message m = withSource(DMT.createFNPVoid(), src);
 
     NodeDispatcherCallback cb = mock(NodeDispatcherCallback.class);
@@ -321,6 +327,7 @@ class NodeDispatcherTest {
     when(node.getLocationManager()).thenReturn(lm);
 
     PeerNode src = peerMock();
+    PeerTransport transport = src.transport();
     when(src.decrementHTL(anyShort())).thenAnswer(i -> (short) ((short) i.getArgument(0) - 1));
 
     long uid = 42L;
@@ -329,7 +336,7 @@ class NodeDispatcherTest {
 
     dispatcher.handleRouted(routedPing, src);
     // Expect immediate pong to the source with same uid/counter
-    verify(src).sendAsync(msgCaptor.capture(), eq(null), eq(stats.routedMessageCtr));
+    verify(transport).sendAsync(msgCaptor.capture(), eq(null), eq(stats.routedMessageCtr));
     Message sent = msgCaptor.getValue();
     assertEquals(DMT.FNPRoutedPong, sent.getSpec());
     assertEquals(uid, sent.getLong(DMT.UID));
@@ -344,6 +351,7 @@ class NodeDispatcherTest {
     when(node.getLocationManager()).thenReturn(lm);
 
     PeerNode src = peerMock();
+    PeerTransport transport = src.transport();
     long uid = 99L;
     Message first = DMT.createFNPRoutedPing(uid, 1.0, (short) 2, 1, new byte[] {1});
     first = withSource(first, src);
@@ -353,7 +361,8 @@ class NodeDispatcherTest {
     dup = withSource(dup, src);
     dispatcher.handleRouted(dup, src);
 
-    verify(src, times(2)).sendAsync(msgCaptor.capture(), eq(null), eq(stats.routedMessageCtr));
+    verify(transport, times(2))
+        .sendAsync(msgCaptor.capture(), eq(null), eq(stats.routedMessageCtr));
     Message last = msgCaptor.getAllValues().get(1);
     assertEquals(DMT.FNPRoutedRejected, last.getSpec());
     assertEquals(uid, last.getLong(DMT.UID));
@@ -367,6 +376,7 @@ class NodeDispatcherTest {
     when(node.getLocationManager()).thenReturn(lm);
 
     PeerNode src = peerMock();
+    PeerTransport transport = src.transport();
     long uid = 7L;
     Message routed = DMT.createFNPRoutedPing(uid, 0.5, (short) 2, 3, new byte[] {4});
     routed = withSource(routed, src);
@@ -374,7 +384,7 @@ class NodeDispatcherTest {
 
     Message reply = DMT.createFNPRoutedPong(uid, 3);
     assertTrue(dispatcher.handleRoutedReply(reply));
-    verify(src, times(2)).sendAsync(any(Message.class), eq(null), eq(stats.routedMessageCtr));
+    verify(transport, times(2)).sendAsync(any(Message.class), eq(null), eq(stats.routedMessageCtr));
   }
 
   // ---- UOM delegation ----

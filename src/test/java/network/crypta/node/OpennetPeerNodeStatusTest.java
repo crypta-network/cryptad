@@ -24,6 +24,10 @@ class OpennetPeerNodeStatusTest {
     // Keep address path in PeerNodeStatus constructor on the null branch.
     when(node.getPeer()).thenReturn(null);
 
+    PeerTransport transport = mock(PeerTransport.class);
+    when(transport.getThrottle()).thenReturn(null);
+    when(node.transport()).thenReturn(transport);
+
     // Backoff percent access requires non-null RunningAverage instances.
     RunningAverage rt = mock(RunningAverage.class);
     when(rt.currentValue()).thenReturn(0.0);
@@ -57,6 +61,9 @@ class OpennetPeerNodeStatusTest {
     // Arrange: minimal PeerNode stub so super(...) path succeeds
     PeerNode base = mock(PeerNode.class);
     when(base.getPeer()).thenReturn(null);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(transport.getThrottle()).thenReturn(null);
+    when(base.transport()).thenReturn(transport);
 
     RunningAverage rt = mock(RunningAverage.class);
     when(rt.currentValue()).thenReturn(0.0);

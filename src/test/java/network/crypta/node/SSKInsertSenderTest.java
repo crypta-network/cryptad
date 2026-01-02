@@ -268,7 +268,10 @@ class SSKInsertSenderTest {
 
     // Peer and its load tracker used by BaseSender on acceptance
     PeerNode next = Mockito.mock(PeerNode.class);
-    PeerNode.OutputLoadTracker olt = Mockito.mock(PeerNode.OutputLoadTracker.class);
+    PeerNodeLoadTracker.OutputLoadTracker olt =
+        Mockito.mock(PeerNodeLoadTracker.OutputLoadTracker.class);
+    PeerTransport transport = Mockito.mock(PeerTransport.class);
+    when(next.transport()).thenReturn(transport);
     when(next.outputLoadTracker(false)).thenReturn(olt);
     when(next.outputLoadTracker(true)).thenReturn(olt);
 
@@ -298,13 +301,13 @@ class SSKInsertSenderTest {
     sender.innerRouteRequests(next, tag);
 
     // Assert: onAccepted path executed — headers and data were sent
-    Mockito.verify(next)
+    Mockito.verify(transport)
         .sendAsync(
             ArgumentMatchers.argThat(m -> m.getSpec() == DMT.FNPSSKInsertRequestHeaders),
             ArgumentMatchers.isNull(),
             ArgumentMatchers.eq(sender));
 
-    Mockito.verify(next)
+    Mockito.verify(transport)
         .sendSync(
             ArgumentMatchers.argThat(m -> m.getSpec() == DMT.FNPSSKInsertRequestData),
             ArgumentMatchers.eq(sender),

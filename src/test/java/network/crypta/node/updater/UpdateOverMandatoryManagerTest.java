@@ -25,6 +25,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.PeerNode;
+import network.crypta.node.PeerTransport;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.BeforeEach;
@@ -123,6 +124,8 @@ class UpdateOverMandatoryManagerTest {
     // Arrange
     Message m = org.mockito.Mockito.mock(Message.class);
     PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
+    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
 
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(true);
@@ -145,7 +148,7 @@ class UpdateOverMandatoryManagerTest {
 
     // Do nothing on send; callback is not used for the success-path assertion here
     doAnswer(invocation -> null)
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
     // Act
@@ -207,6 +210,8 @@ class UpdateOverMandatoryManagerTest {
     // Arrange
     Message m = org.mockito.Mockito.mock(Message.class);
     PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
+    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
 
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(true);
@@ -227,7 +232,7 @@ class UpdateOverMandatoryManagerTest {
 
     // Simulate immediate NotConnected on send
     doThrow(new NotConnectedException())
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
     // Act
@@ -263,22 +268,28 @@ class UpdateOverMandatoryManagerTest {
     when(updateManager.getRevocationURI()).thenReturn(new FreenetURI("KSK@revoked"));
 
     PeerNode connected = org.mockito.Mockito.mock(PeerNode.class);
+    PeerTransport connectedTransport = org.mockito.Mockito.mock(PeerTransport.class);
+    when(connected.transport()).thenReturn(connectedTransport);
     when(connected.userToString()).thenReturn("connected");
     when(connected.getSimpleVersion()).thenReturn(10);
     when(connected.isConnected()).thenReturn(true);
     doAnswer(inv -> null)
-        .when(connected)
+        .when(connectedTransport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
     PeerNode disconnected = org.mockito.Mockito.mock(PeerNode.class);
+    PeerTransport disconnectedTransport = org.mockito.Mockito.mock(PeerTransport.class);
+    when(disconnected.transport()).thenReturn(disconnectedTransport);
     when(disconnected.userToString()).thenReturn("disconnected");
     when(disconnected.getSimpleVersion()).thenReturn(11);
     when(disconnected.isConnected()).thenReturn(false);
     doAnswer(inv -> null)
-        .when(disconnected)
+        .when(disconnectedTransport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
     PeerNode failed = org.mockito.Mockito.mock(PeerNode.class);
+    PeerTransport failedTransport = org.mockito.Mockito.mock(PeerTransport.class);
+    when(failed.transport()).thenReturn(failedTransport);
     when(failed.userToString()).thenReturn("failed");
     when(failed.getSimpleVersion()).thenReturn(12);
     when(failed.isConnected()).thenReturn(true);
@@ -289,7 +300,7 @@ class UpdateOverMandatoryManagerTest {
               if (cb != null) cb.disconnected();
               return null;
             })
-        .when(failed)
+        .when(failedTransport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
     // Act
@@ -334,13 +345,15 @@ class UpdateOverMandatoryManagerTest {
     when(m.getInt(DMT.BWLIMIT_DELAY_TIME)).thenReturn(0);
 
     PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
+    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.isConnected()).thenReturn(true);
     when(peer.isSeed()).thenReturn(false);
     // sendUOMRequest will set offered version on the peer and then read it; return the offered
     // value
     when(peer.getMainJarOfferedVersion()).thenReturn(5);
     doAnswer(invocation -> null)
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
     // Act

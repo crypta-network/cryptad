@@ -36,6 +36,7 @@ class PeerMessengerTest {
   @Mock private NodeStats nodeStats;
   @Mock private Ticker ticker;
   @Mock private PeerNode peerNode;
+  @Mock private PeerTransport transport;
   @Mock private Message message;
   @Mock private ByteCounter byteCounter;
 
@@ -47,6 +48,7 @@ class PeerMessengerTest {
   @BeforeEach
   void setUp() {
     messenger = new PeerMessenger(node, peerManager);
+    Mockito.lenient().when(peerNode.transport()).thenReturn(transport);
   }
 
   @Test
@@ -97,7 +99,8 @@ class PeerMessengerTest {
     verify(peerNode).notifyDisconnecting(true);
     verify(peerManager, never()).removePeer(peerNode);
     verify(peerManager, never()).writePeersUrgent(anyBoolean());
-    verify(peerNode, never()).sendAsync(any(Message.class), any(AsyncMessageCallback.class), any());
+    verify(transport, never())
+        .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any());
   }
 
   @Test
@@ -108,7 +111,7 @@ class PeerMessengerTest {
     when(peerNode.isSeed()).thenReturn(false);
     when(peerNode.isOpennet()).thenReturn(true);
     doThrow(new NotConnectedException())
-        .when(peerNode)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
     messenger.disconnect(peerNode, true, true, false, false, true, 1000L);
@@ -125,7 +128,7 @@ class PeerMessengerTest {
     when(peerNode.isSeed()).thenReturn(false);
     when(peerNode.isOpennet()).thenReturn(false);
     when(node.getTicker()).thenReturn(ticker);
-    when(peerNode.sendAsync(any(Message.class), callbackCaptor.capture(), any(ByteCounter.class)))
+    when(transport.sendAsync(any(Message.class), callbackCaptor.capture(), any(ByteCounter.class)))
         .thenReturn(null);
 
     messenger.disconnect(peerNode, true, false, false, false, true, 500L);
@@ -144,7 +147,7 @@ class PeerMessengerTest {
     when(peerNode.isSeed()).thenReturn(false);
     when(peerNode.isOpennet()).thenReturn(true);
     when(node.getTicker()).thenReturn(ticker);
-    when(peerNode.sendAsync(any(Message.class), callbackCaptor.capture(), any(ByteCounter.class)))
+    when(transport.sendAsync(any(Message.class), callbackCaptor.capture(), any(ByteCounter.class)))
         .thenReturn(null);
 
     messenger.disconnect(peerNode, true, true, false, false, true, 500L);
@@ -171,7 +174,8 @@ class PeerMessengerTest {
 
     verify(peerManager).removePeer(peerNode);
     verify(peerManager).writePeersUrgent(true);
-    verify(peerNode, never()).sendAsync(any(Message.class), any(AsyncMessageCallback.class), any());
+    verify(transport, never())
+        .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any());
   }
 
   @Test
@@ -182,7 +186,7 @@ class PeerMessengerTest {
     when(peerNode.isOpennet()).thenReturn(false);
     when(peerNode.isDisconnecting()).thenReturn(true);
     when(node.getTicker()).thenReturn(ticker);
-    when(peerNode.sendAsync(
+    when(transport.sendAsync(
             any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class)))
         .thenReturn(null);
 
@@ -202,6 +206,12 @@ class PeerMessengerTest {
     PeerNode eligible = Mockito.mock(PeerNode.class);
     PeerNode tooOld = Mockito.mock(PeerNode.class);
     PeerNode notRoutable = Mockito.mock(PeerNode.class);
+    PeerTransport eligibleTransport = Mockito.mock(PeerTransport.class);
+    PeerTransport tooOldTransport = Mockito.mock(PeerTransport.class);
+    PeerTransport notRoutableTransport = Mockito.mock(PeerTransport.class);
+    when(eligible.transport()).thenReturn(eligibleTransport);
+    Mockito.lenient().when(tooOld.transport()).thenReturn(tooOldTransport);
+    Mockito.lenient().when(notRoutable.transport()).thenReturn(notRoutableTransport);
     when(peerManager.myPeers()).thenReturn(new PeerNode[] {eligible, tooOld, notRoutable});
 
     when(eligible.getBuildNumber()).thenReturn(10);
@@ -217,9 +227,9 @@ class PeerMessengerTest {
 
     messenger.localBroadcast(message, false, true, byteCounter, 5, 15);
 
-    verify(eligible).sendAsync(message, null, byteCounter);
-    verify(tooOld, never()).sendAsync(any(Message.class), any(), any());
-    verify(notRoutable, never()).sendAsync(any(Message.class), any(), any());
+    verify(eligibleTransport).sendAsync(message, null, byteCounter);
+    verify(tooOldTransport, never()).sendAsync(any(Message.class), any(), any());
+    verify(notRoutableTransport, never()).sendAsync(any(Message.class), any(), any());
   }
 
   @Test
@@ -227,6 +237,12 @@ class PeerMessengerTest {
     PeerNode connectedReal = Mockito.mock(PeerNode.class);
     PeerNode connectedNotReal = Mockito.mock(PeerNode.class);
     PeerNode disconnected = Mockito.mock(PeerNode.class);
+    PeerTransport connectedRealTransport = Mockito.mock(PeerTransport.class);
+    PeerTransport connectedNotRealTransport = Mockito.mock(PeerTransport.class);
+    PeerTransport disconnectedTransport = Mockito.mock(PeerTransport.class);
+    when(connectedReal.transport()).thenReturn(connectedRealTransport);
+    Mockito.lenient().when(connectedNotReal.transport()).thenReturn(connectedNotRealTransport);
+    Mockito.lenient().when(disconnected.transport()).thenReturn(disconnectedTransport);
     when(peerManager.myPeers())
         .thenReturn(new PeerNode[] {connectedReal, connectedNotReal, disconnected});
 
@@ -242,14 +258,14 @@ class PeerMessengerTest {
     when(disconnected.isConnected()).thenReturn(false);
 
     doThrow(new NotConnectedException())
-        .when(connectedReal)
+        .when(connectedRealTransport)
         .sendAsync(any(Message.class), any(), any(ByteCounter.class));
 
     assertDoesNotThrow(() -> messenger.localBroadcast(message, true, true, byteCounter, 0, 100));
 
-    verify(connectedReal).sendAsync(message, null, byteCounter);
-    verify(connectedNotReal, never()).sendAsync(any(Message.class), any(), any());
-    verify(disconnected, never()).sendAsync(any(Message.class), any(), any());
+    verify(connectedRealTransport).sendAsync(message, null, byteCounter);
+    verify(connectedNotRealTransport, never()).sendAsync(any(Message.class), any(), any());
+    verify(disconnectedTransport, never()).sendAsync(any(Message.class), any(), any());
   }
 
   @Test

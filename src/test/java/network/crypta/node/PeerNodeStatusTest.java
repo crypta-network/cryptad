@@ -77,6 +77,10 @@ class PeerNodeStatusTest {
     when(pn.getLastBackoffReason(true)).thenReturn("reason-rt");
     when(pn.getLastBackoffReason(false)).thenReturn("reason-bulk");
 
+    PeerTransport transport = mock(PeerTransport.class);
+    when(transport.getThrottle()).thenReturn(mock(PacketThrottle.class));
+    when(pn.transport()).thenReturn(transport);
+
     // Times
     when(pn.timeLastRoutable()).thenReturn(111L);
     when(pn.timeLastConnectionCompleted()).thenReturn(222L);
@@ -89,7 +93,6 @@ class PeerNodeStatusTest {
     when(pn.getTotalInputSinceStartup()).thenReturn(33L);
     when(pn.getTotalOutputSinceStartup()).thenReturn(44L);
     when(pn.getPercentTimeRoutableConnection()).thenReturn(0.9);
-    when(pn.getThrottle()).thenReturn(mock(PacketThrottle.class));
     when(pn.getClockDelta()).thenReturn(9L);
     when(pn.recordStatus()).thenReturn(true);
     when(pn.getResendBytesSent()).thenReturn(777L);
@@ -98,18 +101,18 @@ class PeerNodeStatusTest {
     when(pn.getProbableSendQueueTime()).thenReturn(555L);
     when(pn.getIncomingLoadStats(true))
         .thenReturn(
-            new PeerNode.IncomingLoadSummaryStats(
+            new PeerNodeLoadTracker.IncomingLoadSummaryStats(
                 1,
-                new PeerNode.Limits(2, 3, 4, 5),
-                new PeerNode.Usage(6, 7),
-                new PeerNode.Usage(8, 9)));
+                new PeerNodeLoadTracker.Limits(2, 3, 4, 5),
+                new PeerNodeLoadTracker.Usage(6, 7),
+                new PeerNodeLoadTracker.Usage(8, 9)));
     when(pn.getIncomingLoadStats(false))
         .thenReturn(
-            new PeerNode.IncomingLoadSummaryStats(
+            new PeerNodeLoadTracker.IncomingLoadSummaryStats(
                 10,
-                new PeerNode.Limits(20, 30, 40, 50),
-                new PeerNode.Usage(60, 70),
-                new PeerNode.Usage(80, 90)));
+                new PeerNodeLoadTracker.Limits(20, 30, 40, 50),
+                new PeerNodeLoadTracker.Usage(60, 70),
+                new PeerNodeLoadTracker.Usage(80, 90)));
     when(pn.hasFullNoderef()).thenReturn(true);
     when(pn.selectionRate()).thenReturn(0.123);
 

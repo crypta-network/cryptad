@@ -22,6 +22,7 @@ import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.node.MessageItem;
 import network.crypta.node.PeerNode;
+import network.crypta.node.PeerTransport;
 import network.crypta.node.SyncSendWaitedTooLongException;
 import network.crypta.support.BitArray;
 import network.crypta.support.Buffer;
@@ -84,16 +85,28 @@ class BlockReceiverTest {
     messageCore = new MessageCore(inlineExecutor);
   }
 
+  private static final class ConnectedPeer {
+    private final PeerContext peer;
+    private final PeerTransport transport;
+
+    private ConnectedPeer(PeerContext peer, PeerTransport transport) {
+      this.peer = peer;
+      this.transport = transport;
+    }
+  }
+
   @Test
   void receive_whenAllPacketsArrive_expectCompleteAndAllReceivedSent() throws Exception {
     // Arrange
-    PeerContext sender = mockConnectedPeerContext();
+    ConnectedPeer sender = mockConnectedPeerContext();
+    PeerContext senderPeer = sender.peer;
+    PeerTransport transport = sender.transport;
 
     int packets = 3;
     int packetSize = 4;
     PartiallyReceivedBlock prb = new PartiallyReceivedBlock(packets, packetSize);
 
-    BlockReceiver receiver = newRealtimeReceiver(sender, prb, false);
+    BlockReceiver receiver = newRealtimeReceiver(senderPeer, prb, false);
 
     AtomicReference<byte[]> received = new AtomicReference<>();
     AtomicReference<RetrievalException> failed = new AtomicReference<>();
@@ -107,7 +120,7 @@ class BlockReceiverTest {
               // Return a minimal MessageItem to satisfy callers.
               return new MessageItem(msg, null, byteCounter);
             })
-        .when(sender)
+        .when(transport)
         .sendAsync(any(Message.class), eq(null), eq(byteCounter));
 
     // Act: start receive
@@ -132,7 +145,7 @@ class BlockReceiverTest {
       sent.setBit(packetNo, true);
       Buffer chunk = new Buffer(data, packetNo * packetSize, packetSize);
       Message tx = DMT.createPacketTransmit(UID, packetNo, sent, chunk, true);
-      deliverFrom(sender, tx);
+      deliverFrom(senderPeer, tx);
     }
 
     // Assert
@@ -140,7 +153,7 @@ class BlockReceiverTest {
     assertNotNull(received.get(), "Expected the full block to be delivered");
     assertArrayEquals(data, received.get(), "Assembled block mismatch");
     // allReceived must be sent exactly once on completion
-    verify(sender, times(1)).sendAsync(any(Message.class), eq(null), eq(byteCounter));
+    verify(transport, times(1)).sendAsync(any(Message.class), eq(null), eq(byteCounter));
     // Running receives counter is diagnostic-only and may be decremented by both
     // the immediate failure path and the listener-triggered completion; avoid asserting it.
   }
@@ -148,13 +161,15 @@ class BlockReceiverTest {
   @Test
   void receive_whenSenderAborts_expectFailureAndAckSentAndFlagTrue() throws Exception {
     // Arrange
-    PeerContext sender = mockConnectedPeerContext();
+    ConnectedPeer sender = mockConnectedPeerContext();
+    PeerContext senderPeer = sender.peer;
+    PeerTransport transport = sender.transport;
 
     PartiallyReceivedBlock prb = new PartiallyReceivedBlock(2, 3);
     BlockReceiver receiver =
         new BlockReceiver(
             messageCore,
-            sender,
+            senderPeer,
             UID,
             prb,
             byteCounter,
@@ -174,7 +189,7 @@ class BlockReceiverTest {
               ackMessage.set(msg);
               return new MessageItem(msg, null, byteCounter);
             })
-        .when(sender)
+        .when(transport)
         .sendAsync(any(Message.class), eq(null), eq(byteCounter));
 
     receiver.receive(
@@ -193,7 +208,7 @@ class BlockReceiverTest {
     int reason = RetrievalException.IO_ERROR;
     String description = "disk full";
     Message abort = DMT.createSendAborted(UID, reason, description);
-    deliverFrom(sender, abort);
+    deliverFrom(senderPeer, abort);
 
     // Assert
     assertNull(received.get(), "Should not have received a block");
@@ -243,23 +258,19 @@ class BlockReceiverTest {
       throws Exception {
     // Arrange: use a PeerNode (not just PeerContext) so the receiver uses sendSync
     PeerNode sender = org.mockito.Mockito.mock(PeerNode.class);
+    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
     org.mockito.Mockito.lenient().when(sender.isConnected()).thenReturn(true);
     org.mockito.Mockito.lenient().when(sender.getBootID()).thenReturn(7L);
     org.mockito.Mockito.lenient().when(sender.shortToString()).thenReturn("peer");
+    org.mockito.Mockito.lenient().when(sender.transport()).thenReturn(transport);
     WeakReference<PeerContext> ref = new WeakReference<>(sender);
     org.mockito.Mockito.lenient().when(sender.getWeakRef()).thenReturn(ref);
-
-    // Avoid invoking real bookkeeping on the abstract PeerNode
-    org.mockito.Mockito.lenient()
-        .doNothing()
-        .when(sender)
-        .addToLocalNodeReceivedMessagesFromStatistic(any(Message.class));
 
     // For all sends that happen outside sendSync (none expected here), return a MessageItem
 
     // Make sendSync throw the timeout to exercise the catch path; completion should still occur
     org.mockito.Mockito.doThrow(new SyncSendWaitedTooLongException())
-        .when(sender)
+        .when(transport)
         .sendSync(any(Message.class), eq(byteCounter), eq(true));
 
     PartiallyReceivedBlock prb = new PartiallyReceivedBlock(2, 2);
@@ -292,7 +303,7 @@ class BlockReceiverTest {
     // Assert: full block delivered and sendSync attempted once with allReceived
     assertNotNull(received.get(), "Expected block completion");
     assertArrayEquals(data, received.get());
-    verify(sender, times(1)).sendSync(any(Message.class), eq(byteCounter), eq(true));
+    verify(transport, times(1)).sendSync(any(Message.class), eq(byteCounter), eq(true));
     // Diagnostic counter not asserted; see note above.
   }
 
@@ -319,24 +330,28 @@ class BlockReceiverTest {
         completeAfterAcked);
   }
 
-  private PeerContext mockConnectedPeerContext() throws NotConnectedException {
+  private ConnectedPeer mockConnectedPeerContext() throws NotConnectedException {
     PeerContext sender = org.mockito.Mockito.mock(PeerContext.class);
+    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
     org.mockito.Mockito.lenient().when(sender.isConnected()).thenReturn(true);
     org.mockito.Mockito.lenient().when(sender.getBootID()).thenReturn(1L);
     org.mockito.Mockito.lenient().when(sender.shortToString()).thenReturn("peer");
+    org.mockito.Mockito.lenient().when(sender.transport()).thenReturn(transport);
     WeakReference<PeerContext> ref = new WeakReference<>(sender);
     org.mockito.Mockito.doReturn(ref).when(sender).getWeakRef();
     org.mockito.Mockito.lenient()
         .doAnswer(inv -> new MessageItem(inv.getArgument(0, Message.class), null, byteCounter))
-        .when(sender)
+        .when(transport)
         .sendAsync(any(Message.class), eq(null), eq(byteCounter));
-    return sender;
+    return new ConnectedPeer(sender, transport);
   }
 
   private PeerContext mockDisconnectedPeerContext() {
     PeerContext sender = org.mockito.Mockito.mock(PeerContext.class);
+    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
     org.mockito.Mockito.lenient().when(sender.isConnected()).thenReturn(false);
     org.mockito.Mockito.lenient().when(sender.shortToString()).thenReturn("peer");
+    org.mockito.Mockito.lenient().when(sender.transport()).thenReturn(transport);
     return sender;
   }
 

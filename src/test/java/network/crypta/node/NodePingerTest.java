@@ -25,20 +25,10 @@ class NodePingerTest {
     PeerNode peer = Mockito.mock(PeerNode.class, Answers.RETURNS_DEEP_STUBS);
     when(peer.averagePingTime()).thenReturn(pingMs);
     // For capacity calculations we return trackers whose last stats are null unless overridden
-    PeerNode.OutputLoadTracker rt =
-        Mockito.mock(
-            PeerNode.OutputLoadTracker.class,
-            Mockito.withSettings()
-                .useConstructor(true)
-                .outerInstance(peer)
-                .defaultAnswer(Answers.CALLS_REAL_METHODS));
-    PeerNode.OutputLoadTracker bulk =
-        Mockito.mock(
-            PeerNode.OutputLoadTracker.class,
-            Mockito.withSettings()
-                .useConstructor(false)
-                .outerInstance(peer)
-                .defaultAnswer(Answers.CALLS_REAL_METHODS));
+    PeerNodeLoadTracker.OutputLoadTracker rt =
+        Mockito.mock(PeerNodeLoadTracker.OutputLoadTracker.class);
+    PeerNodeLoadTracker.OutputLoadTracker bulk =
+        Mockito.mock(PeerNodeLoadTracker.OutputLoadTracker.class);
     Mockito.lenient().doReturn(null).when(rt).getLastIncomingLoadStats();
     Mockito.lenient().doReturn(null).when(bulk).getLastIncomingLoadStats();
     when(peer.outputLoadTracker(true)).thenReturn(rt);
@@ -125,8 +115,8 @@ class NodePingerTest {
     for (int i = 0; i < peers.length; i++) {
       PeerNode peer = peers[i];
 
-      PeerNode.OutputLoadTracker rt = peer.outputLoadTracker(true);
-      PeerNode.OutputLoadTracker bulk = peer.outputLoadTracker(false);
+      PeerNodeLoadTracker.OutputLoadTracker rt = peer.outputLoadTracker(true);
+      PeerNodeLoadTracker.OutputLoadTracker bulk = peer.outputLoadTracker(false);
 
       PeerLoadStats statsRt = Mockito.mock(PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
       PeerLoadStats statsBulk = Mockito.mock(PeerLoadStats.class, Answers.RETURNS_DEFAULTS);
@@ -172,10 +162,10 @@ class NodePingerTest {
     when(s2.peerLimit(true)).thenReturn(10.0);
     when(s3.peerLimit(true)).thenReturn(15.0);
 
-    PeerNode.OutputLoadTracker t1 = p1.outputLoadTracker(true);
-    PeerNode.OutputLoadTracker t2 = p2.outputLoadTracker(true);
-    PeerNode.OutputLoadTracker t3 = p3.outputLoadTracker(true);
-    PeerNode.OutputLoadTracker t4 = p4.outputLoadTracker(true);
+    PeerNodeLoadTracker.OutputLoadTracker t1 = p1.outputLoadTracker(true);
+    PeerNodeLoadTracker.OutputLoadTracker t2 = p2.outputLoadTracker(true);
+    PeerNodeLoadTracker.OutputLoadTracker t3 = p3.outputLoadTracker(true);
+    PeerNodeLoadTracker.OutputLoadTracker t4 = p4.outputLoadTracker(true);
     Mockito.doReturn(s1).when(t1).getLastIncomingLoadStats();
     Mockito.doReturn(s2).when(t2).getLastIncomingLoadStats();
     Mockito.doReturn(s3).when(t3).getLastIncomingLoadStats();
@@ -199,10 +189,10 @@ class NodePingerTest {
     when(peerManager.connectedPeers()).thenReturn(new PeerNode[] {p1, p2});
 
     // Ensure trackers have no stats
-    PeerNode.OutputLoadTracker p1rt = p1.outputLoadTracker(true);
-    PeerNode.OutputLoadTracker p1bulk = p1.outputLoadTracker(false);
-    PeerNode.OutputLoadTracker p2rt = p2.outputLoadTracker(true);
-    PeerNode.OutputLoadTracker p2bulk = p2.outputLoadTracker(false);
+    PeerNodeLoadTracker.OutputLoadTracker p1rt = p1.outputLoadTracker(true);
+    PeerNodeLoadTracker.OutputLoadTracker p1bulk = p1.outputLoadTracker(false);
+    PeerNodeLoadTracker.OutputLoadTracker p2rt = p2.outputLoadTracker(true);
+    PeerNodeLoadTracker.OutputLoadTracker p2bulk = p2.outputLoadTracker(false);
     Mockito.doReturn(null).when(p1rt).getLastIncomingLoadStats();
     Mockito.doReturn(null).when(p1bulk).getLastIncomingLoadStats();
     Mockito.doReturn(null).when(p2rt).getLastIncomingLoadStats();

@@ -633,7 +633,9 @@ class NewPacketFormatTest {
     // Minimal NPF with mocked peer reporting a tiny window.
     PacketThrottle throttle = Mockito.mock(PacketThrottle.class);
     Mockito.when(throttle.getWindowSize()).thenReturn(1.0);
-    Mockito.when(mockPeer.getThrottle()).thenReturn(throttle);
+    PeerTransport transport = Mockito.mock(PeerTransport.class);
+    Mockito.when(mockPeer.transport()).thenReturn(transport);
+    Mockito.when(transport.getThrottle()).thenReturn(throttle);
 
     NewPacketFormat npf = new NewPacketFormat(mockPeer, 0, 0);
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(0, 0);

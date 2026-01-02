@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -224,6 +225,8 @@ class LocationManagerTest {
     PeerNode sender = mock(PeerNode.class);
     PeerNode routedTo = mock(PeerNode.class);
     PeerNode otherRoute = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(sender.transport()).thenReturn(transport);
 
     LocationManager.RecentlyForwardedItem itemKept =
         new LocationManager.RecentlyForwardedItem(10L, 11L, sender, otherRoute);
@@ -240,7 +243,7 @@ class LocationManagerTest {
     lm.recentlyForwardedIDs.put(21L, itemRemoved);
 
     // Stub sender.sendAsync to succeed and return null
-    doReturn(null).when(sender).sendAsync(any(Message.class), any(), any());
+    doReturn(null).when(transport).sendAsync(any(Message.class), any(), any());
 
     // Act
     lm.lostOrRestartedNode(routedTo);
@@ -251,7 +254,7 @@ class LocationManagerTest {
     assertFalse(table.containsValue(itemRemoved));
 
     // And two rejections were sent back (duplicate map entries for the same item)
-    verify(sender, times(2)).sendAsync(any(Message.class), any(), any());
+    verify(transport, times(2)).sendAsync(any(Message.class), any(), any());
   }
 
   @Test

@@ -37,6 +37,7 @@ class SSKInsertHandlerTest {
 
   @Mock Node node;
   @Mock PeerNode source;
+  @Mock PeerTransport transport;
   @Mock MessageCore usm;
   @Mock NodeStats nodeStats;
   @Mock InsertTag tag;
@@ -80,6 +81,7 @@ class SSKInsertHandlerTest {
     when(node.getUSM()).thenReturn(usm);
     when(node.getNodeStats()).thenReturn(nodeStats);
     when(node.getGetPubKey()).thenReturn(getPubKey);
+    when(source.transport()).thenReturn(transport);
     // Minimal required stubbing for constructor path
     when(nodeSSK.getPubKeyHash()).thenReturn(new byte[32]);
   }
@@ -89,7 +91,7 @@ class SSKInsertHandlerTest {
   void run_whenSendAsyncNotConnected_returnsEarlyAndUnlocks() throws Exception {
     // Arrange: pubkey not in cache; initial Accepted send throws NotConnected
     when(getPubKey.getKey(any(byte[].class), eq(false), eq(false), eq(null))).thenReturn(null);
-    when(source.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
+    when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenThrow(new NotConnectedException());
 
     long uid = 123L;
@@ -111,7 +113,7 @@ class SSKInsertHandlerTest {
     handler.run();
 
     // Assert: attempted Accepted once, then bailed and unlocked; no waits
-    verify(source, times(1)).sendAsync(any(Message.class), any(), eq(handler));
+    verify(transport, times(1)).sendAsync(any(Message.class), any(), eq(handler));
     verify(usm, never()).waitFor(any(MessageFilter.class), any(ByteCounter.class));
     verify(tag, times(1)).unlockHandler();
   }
@@ -125,8 +127,8 @@ class SSKInsertHandlerTest {
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(null);
 
     // Allow sends
-    when(source.sendAsync(any(Message.class), any(), any(ByteCounter.class))).thenReturn(null);
-    doNothing().when(source).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class))).thenReturn(null);
+    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
 
     long uid = 777L;
     SSKInsertHandler handler =
@@ -147,7 +149,7 @@ class SSKInsertHandlerTest {
     handler.run();
 
     // Assert: sends FNPDataInsertRejected with RECEIVE_FAILED
-    verify(source, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(true));
+    verify(transport, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(true));
     Message rejected = messageCaptor.getValue();
     assertEquals(DMT.FNPDataInsertRejected, rejected.getSpec());
     assertEquals(uid, rejected.getLong(DMT.UID));
@@ -170,8 +172,8 @@ class SSKInsertHandlerTest {
     bogusPk.set(DMT.PUBKEY_AS_BYTES, new ShortBuffer(new byte[] {1, 2, 3}));
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(bogusPk);
 
-    when(source.sendAsync(any(Message.class), any(), any(ByteCounter.class))).thenReturn(null);
-    doNothing().when(source).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class))).thenReturn(null);
+    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
 
     SSKInsertHandler handler =
         newHandler(
@@ -191,7 +193,7 @@ class SSKInsertHandlerTest {
     handler.run();
 
     // Assert: sendSync with SSK_ERROR rejection
-    verify(source, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(false));
+    verify(transport, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(false));
     Message rej = messageCaptor.getValue();
     assertEquals(DMT.FNPDataInsertRejected, rej.getSpec());
     assertEquals(uid, rej.getLong(DMT.UID));

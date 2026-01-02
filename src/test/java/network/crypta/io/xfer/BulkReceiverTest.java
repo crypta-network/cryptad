@@ -20,6 +20,7 @@ import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.RetrievalException;
+import network.crypta.node.PeerTransport;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +35,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class BulkReceiverTest {
 
   @Mock PeerContext peer;
+  @Mock PeerTransport transport;
 
   @Mock MessageCore usm;
 
@@ -49,6 +51,7 @@ class BulkReceiverTest {
   @BeforeEach
   void setupPeerBootId() {
     when(peer.getBootID()).thenReturn(42L); // Default unless a test overrides with a sequence
+    when(peer.transport()).thenReturn(transport);
   }
 
   @Test
@@ -65,7 +68,7 @@ class BulkReceiverTest {
     // Assert
     assertTrue(result, "Expected receive() to return true when we already have the file");
     ArgumentCaptor<Message> msgCap = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
     Message sent = msgCap.getValue();
     assertEquals(DMT.FNPBulkReceivedAll, sent.getSpec());
     assertEquals(uid, sent.getLong(DMT.UID));
@@ -104,7 +107,7 @@ class BulkReceiverTest {
 
     // Acknowledgment that all packets were received
     ArgumentCaptor<Message> sent = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(sent.capture(), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(sent.capture(), eq(null), eq(ctr));
     assertEquals(DMT.FNPBulkReceivedAll, sent.getValue().getSpec());
     assertEquals(uid, sent.getValue().getLong(DMT.UID));
   }
@@ -129,7 +132,7 @@ class BulkReceiverTest {
     assertTrue(prb.isAborted(), "PRB should be aborted");
     assertEquals(RetrievalException.SENDER_DISCONNECTED, prb.getAbortReason());
     ArgumentCaptor<Message> msgCap = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
     assertEquals(DMT.FNPBulkReceiveAborted, msgCap.getValue().getSpec());
     assertEquals(uid, msgCap.getValue().getLong(DMT.UID));
   }
@@ -162,7 +165,7 @@ class BulkReceiverTest {
         .received(any(Integer.class), any(byte[].class), any(Integer.class), any(Integer.class));
     // Receiver notifies peer about abort
     ArgumentCaptor<Message> msgCap = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
     assertEquals(DMT.FNPBulkReceiveAborted, msgCap.getValue().getSpec());
   }
 
@@ -184,7 +187,7 @@ class BulkReceiverTest {
     assertTrue(prb.isAborted());
     assertEquals(RetrievalException.TIMED_OUT, prb.getAbortReason());
     ArgumentCaptor<Message> msgCap = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
     assertEquals(DMT.FNPBulkReceiveAborted, msgCap.getValue().getSpec());
   }
 
@@ -207,7 +210,7 @@ class BulkReceiverTest {
     assertTrue(prb.isAborted());
     assertEquals(RetrievalException.SENDER_DIED, prb.getAbortReason());
     ArgumentCaptor<Message> msgCap = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
     assertEquals(DMT.FNPBulkReceiveAborted, msgCap.getValue().getSpec());
   }
 
@@ -226,7 +229,7 @@ class BulkReceiverTest {
 
     // Assert
     ArgumentCaptor<Message> msgCap = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCap.capture(), eq(null), eq(ctr));
     assertEquals(DMT.FNPBulkReceiveAborted, msgCap.getValue().getSpec());
     assertEquals(uid, msgCap.getValue().getLong(DMT.UID));
   }
@@ -239,11 +242,11 @@ class BulkReceiverTest {
     PartiallyReceivedBulk prb = newPrb(usm, 8, 4, false);
     long uid = 321L;
     BulkReceiver recv = new BulkReceiver(prb, peer, uid, ctr);
-    when(peer.sendAsync(any(Message.class), eq(null), eq(ctr)))
+    when(transport.sendAsync(any(Message.class), eq(null), eq(ctr)))
         .thenThrow(new NotConnectedException());
 
     // Act & Assert: no exception should escape
     recv.onAborted();
-    verify(peer, times(1)).sendAsync(any(Message.class), eq(null), eq(ctr));
+    verify(transport, times(1)).sendAsync(any(Message.class), eq(null), eq(ctr));
   }
 }

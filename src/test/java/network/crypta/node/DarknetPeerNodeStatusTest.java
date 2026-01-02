@@ -60,7 +60,9 @@ class DarknetPeerNodeStatusTest {
     when(peer.getTotalInputSinceStartup()).thenReturn(0L);
     when(peer.getTotalOutputSinceStartup()).thenReturn(0L);
     when(peer.getPercentTimeRoutableConnection()).thenReturn(0.0);
-    when(peer.getThrottle()).thenReturn(null);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(transport.getThrottle()).thenReturn(null);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getClockDelta()).thenReturn(0L);
     when(peer.recordStatus()).thenReturn(false);
     when(peer.isRealConnection()).thenReturn(false);

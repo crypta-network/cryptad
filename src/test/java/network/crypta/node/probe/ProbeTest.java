@@ -30,6 +30,7 @@ class ProbeTest {
 
   @Mock private Node node;
   @Mock private PeerNode source;
+  @Mock private network.crypta.node.PeerTransport transport;
   @Mock private RandomSource random;
 
   private Probe probe;
@@ -55,6 +56,7 @@ class ProbeTest {
     when(source.isConnected()).thenReturn(true);
     when(source.userToString()).thenReturn("peer-1");
     when(source.getIdentityString()).thenReturn("id-1");
+    when(source.transport()).thenReturn(transport);
 
     probe = new Probe(node);
   }
@@ -74,7 +76,7 @@ class ProbeTest {
 
     // Assert
     ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
-    verify(source, atLeast(1)).sendAsync(captor.capture(), any(), any());
+    verify(transport, atLeast(1)).sendAsync(captor.capture(), any(), any());
     Message sent = captor.getAllValues().getLast();
     assertThat("Should relay a ProbeError", sent.getSpec(), is(DMT.ProbeError));
     assertThat(sent.getLong(DMT.UID), is(uid));
@@ -91,7 +93,7 @@ class ProbeTest {
     probe.request(msg, source);
 
     // Assert
-    verify(source, never()).sendAsync(any(), any(), any());
+    verify(transport, never()).sendAsync(any(), any(), any());
   }
 
   @Test
@@ -105,7 +107,7 @@ class ProbeTest {
 
     // Assert
     ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
-    verify(source, atLeast(1)).sendAsync(captor.capture(), any(), any());
+    verify(transport, atLeast(1)).sendAsync(captor.capture(), any(), any());
     Message sent = captor.getAllValues().getLast();
     assertThat(sent.getSpec(), is(DMT.ProbeError));
     assertThat(sent.getLong(DMT.UID), is(uid));
@@ -131,7 +133,7 @@ class ProbeTest {
 
     // Assert: ensure at least one ProbeError with OVERLOAD is relayed
     ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
-    verify(source, atLeast(1)).sendAsync(captor.capture(), any(), any());
+    verify(transport, atLeast(1)).sendAsync(captor.capture(), any(), any());
 
     boolean sawOverload =
         captor.getAllValues().stream()

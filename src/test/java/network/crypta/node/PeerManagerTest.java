@@ -76,6 +76,8 @@ class PeerManagerTest {
       boolean darknet,
       double location) {
     PeerNode pn = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(pn.transport()).thenReturn(transport);
     when(pn.isConnected()).thenReturn(connected);
     when(pn.isRealConnection()).thenReturn(realConnection);
     when(pn.isRoutable()).thenReturn(routable);
@@ -178,6 +180,7 @@ class PeerManagerTest {
 
     PeerNode p1 = peer(true, true, true, true, 0.1);
     when(p1.getBuildNumber()).thenReturn(100);
+    PeerTransport p1Transport = p1.transport();
     PeerNode p2 = peer(true, true, false, true, 0.2);
     when(p2.getBuildNumber()).thenReturn(100);
     PeerNode p3 = peer(true, false, true, false, 0.3);
@@ -192,14 +195,14 @@ class PeerManagerTest {
 
     // only p1 qualifies
     pm.messenger().localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
-    verify(p1, times(1)).sendAsync(msg, null, ctr);
+    verify(p1Transport, times(1)).sendAsync(msg, null, ctr);
 
     // minVersion excludes all (since min=101 and p1..p3 have 100; p4 not connected)
     pm.messenger().localBroadcast(msg, true, false, ctr, 101, Integer.MAX_VALUE);
-    verify(p1, times(1)).sendAsync(msg, null, ctr); // unchanged
+    verify(p1Transport, times(1)).sendAsync(msg, null, ctr); // unchanged
 
     // throwing NotConnectedException is ignored
-    doThrow(new NotConnectedException()).when(p1).sendAsync(msg, null, ctr);
+    doThrow(new NotConnectedException()).when(p1Transport).sendAsync(msg, null, ctr);
     pm.messenger().localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
     // no exception thrown
   }

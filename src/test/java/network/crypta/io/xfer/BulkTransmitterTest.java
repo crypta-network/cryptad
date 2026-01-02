@@ -27,6 +27,7 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PacketSocketHandler;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.node.MessageItem;
+import network.crypta.node.PeerTransport;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
 import org.junit.jupiter.api.BeforeEach;
@@ -107,6 +108,8 @@ class BulkTransmitterTest {
     PartiallyReceivedBulk prb = newPrb();
 
     PeerContext peer = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getBootID()).thenReturn(42L);
     when(peer.isConnected()).thenReturn(true);
     when(peer.getThrottleWindowSize()).thenReturn(2);
@@ -123,7 +126,7 @@ class BulkTransmitterTest {
               }
               return mock(MessageItem.class);
             })
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(ctr));
 
     // Capture baseline success counters
@@ -153,6 +156,8 @@ class BulkTransmitterTest {
     PartiallyReceivedBulk prb = newPrb();
 
     PeerContext peer = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getBootID()).thenReturn(7L);
     when(peer.isConnected()).thenReturn(true);
     when(peer.getThrottleWindowSize()).thenReturn(1);
@@ -164,7 +169,7 @@ class BulkTransmitterTest {
             inv -> {
               throw new NotConnectedException();
             })
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(ctr));
 
     BulkTransmitter bt = new BulkTransmitter(prb, peer, UID, true, ctr, false, null);
@@ -173,7 +178,8 @@ class BulkTransmitterTest {
     assertEquals("Disconnected", bt.getCancelReason());
 
     // A best-effort aborted notification is attempted; it may also throw and is ignored.
-    verify(peer, times(1)).sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(ctr));
+    verify(transport, times(1))
+        .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(ctr));
   }
 
   @Test
@@ -181,13 +187,15 @@ class BulkTransmitterTest {
     PartiallyReceivedBulk prb = newPrb();
 
     PeerContext peer = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getBootID()).thenReturn(9L);
     when(peer.isConnected()).thenReturn(true);
 
     // For data packets (not used in this test) we would ack immediately. Here the callback is
     // null for the aborted message, so just accept the call.
     doAnswer(inv -> mock(MessageItem.class))
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), isNull(), eq(ctr));
 
     BulkTransmitter bt = new BulkTransmitter(prb, peer, UID, true, ctr, false, null);
@@ -196,7 +204,7 @@ class BulkTransmitterTest {
     bt.onAborted();
 
     ArgumentCaptor<Message> msgCaptor = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCaptor.capture(), isNull(), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCaptor.capture(), isNull(), eq(ctr));
     assertEquals(DMT.FNPBulkSendAborted, msgCaptor.getValue().getSpec());
     assertEquals(UID, msgCaptor.getValue().getLong(DMT.UID));
     // Constructor interactions (e.g., getBootID) are expected; nothing else to assert here.
@@ -207,11 +215,13 @@ class BulkTransmitterTest {
     PartiallyReceivedBulk prb = newPrb();
 
     PeerContext peer = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getBootID()).thenReturn(111L);
     when(peer.isConnected()).thenReturn(true);
     // Only the null-callback variant is exercised by cancel()'s aborted notify in this test.
     doAnswer(inv -> mock(MessageItem.class))
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), isNull(), eq(ctr));
 
     BulkTransmitter.AllSentCallback allSent = mock(BulkTransmitter.AllSentCallback.class);
@@ -245,6 +255,8 @@ class BulkTransmitterTest {
     PartiallyReceivedBulk prb = new PartiallyReceivedBulk(usm, size, BLOCK_SIZE, rab, false);
 
     PeerContext peer = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getBootID()).thenReturn(222L);
     when(peer.isConnected()).thenReturn(true);
     when(peer.getThrottleWindowSize()).thenReturn(2); // Window allows 2 in flight
@@ -272,7 +284,7 @@ class BulkTransmitterTest {
               }
               return mock(MessageItem.class);
             })
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(ctr));
 
     BulkTransmitter bt = new BulkTransmitter(prb, peer, UID, true, ctr, false, null);
@@ -316,6 +328,8 @@ class BulkTransmitterTest {
     PartiallyReceivedBulk prb = new PartiallyReceivedBulk(usm, size, BLOCK_SIZE, rab, false);
 
     PeerContext peer = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getBootID()).thenReturn(333L);
     when(peer.isConnected()).thenReturn(true);
     when(peer.getThrottleWindowSize()).thenReturn(1);
@@ -330,7 +344,7 @@ class BulkTransmitterTest {
               sent.countDown();
               return mock(MessageItem.class);
             })
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(ctr));
 
     BulkTransmitter bt = new BulkTransmitter(prb, peer, UID, true, ctr, false, null);
@@ -364,6 +378,8 @@ class BulkTransmitterTest {
     PartiallyReceivedBulk prb = new PartiallyReceivedBulk(usm, size, BLOCK_SIZE, rab, false);
 
     PeerContext peer = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(peer.transport()).thenReturn(transport);
     when(peer.getBootID()).thenReturn(444L);
     when(peer.isConnected()).thenReturn(true);
     when(peer.getThrottleWindowSize()).thenReturn(1);
@@ -371,7 +387,7 @@ class BulkTransmitterTest {
 
     // For the aborted notification, BulkTransmitter sends FNPBulkSendAborted with a null callback.
     doAnswer(inv -> mock(MessageItem.class))
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), isNull(), eq(ctr));
 
     BulkTransmitter bt = new BulkTransmitter(prb, peer, UID, true, ctr, false, null);
@@ -394,7 +410,7 @@ class BulkTransmitterTest {
 
     // Verify the sender attempted to notify the peer once about the aborted send.
     ArgumentCaptor<Message> msgCaptor = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(msgCaptor.capture(), isNull(), eq(ctr));
+    verify(transport, times(1)).sendAsync(msgCaptor.capture(), isNull(), eq(ctr));
     Message aborted = msgCaptor.getValue();
     assertEquals(DMT.FNPBulkSendAborted, aborted.getSpec());
     assertEquals(UID, aborted.getLong(DMT.UID));
