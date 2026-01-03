@@ -1908,7 +1908,7 @@ public class OpennetManager {
       byte[] noderef, PeerNode from, boolean forceOpennetEnabled) {
     SimpleFieldSet ref;
     try {
-      ref = PeerNode.compressedNoderefToFieldSet(noderef, 0, noderef.length);
+      ref = PeerNode.compressedNoderefToFieldSet(noderef, noderef.length);
     } catch (FSParseException e) {
       LOG.error("Invalid noderef: {}", e, e);
       return null;

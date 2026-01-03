@@ -1676,7 +1676,6 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
             .completedHandshake(
                 bootID,
                 hisRef,
-                0,
                 hisRef.length,
                 outgoingCipher,
                 outgoingKey,
@@ -1939,7 +1938,6 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
             .completedHandshake(
                 s1.bootID,
                 s1.hisRef,
-                0,
                 s1.hisRef.length,
                 outgoingCipher,
                 pn.outgoingKey,
