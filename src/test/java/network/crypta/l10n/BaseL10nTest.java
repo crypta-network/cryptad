@@ -32,14 +32,14 @@ class BaseL10nTest {
 
   static BaseL10n createL10n(LANGUAGE lang) {
     File overrideFile =
-        new File(TestProperty.L10nPath_main, "crypta.l10n.${lang}.override.properties");
+        new File(TestProperty.L10N_PATH_MAIN, "crypta.l10n.${lang}.override.properties");
     return new BaseL10n(
         "network/crypta/l10n/", "crypta.l10n.${lang}.properties", overrideFile.getPath(), lang);
   }
 
   static BaseL10n createTestL10n(LANGUAGE lang) {
     File overrideFile =
-        new File(TestProperty.L10nPath_test, "crypta.l10n.${lang}.override.properties");
+        new File(TestProperty.L10N_PATH_TEST, "crypta.l10n.${lang}.override.properties");
     return new BaseL10n(
         "network/crypta/l10n/",
         "crypta.l10n.${lang}.test.properties",
