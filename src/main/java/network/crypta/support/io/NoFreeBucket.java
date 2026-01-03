@@ -28,6 +28,7 @@ import network.crypta.support.api.Bucket;
 public class NoFreeBucket implements Bucket, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
+  private static final String PROXY_FIELD_NAME = "proxy";
 
   // Delegate handle:
   // - transient: control Java serialization manually via writeObject/readObject because the
@@ -47,7 +48,7 @@ public class NoFreeBucket implements Bucket, Serializable {
   // ObjectInputStream.GetField, even though the runtime field is now transient.
   @Serial
   private static final ObjectStreamField[] serialPersistentFields = {
-    new ObjectStreamField("proxy", Bucket.class)
+    new ObjectStreamField(PROXY_FIELD_NAME, Bucket.class)
   };
 
   /**
@@ -266,7 +267,7 @@ public class NoFreeBucket implements Bucket, Serializable {
     ObjectOutputStream.PutField pf = out.putFields();
     Bucket current = proxyRef.get();
     if (current instanceof Serializable serializable) {
-      pf.put("proxy", serializable);
+      pf.put(PROXY_FIELD_NAME, serializable);
       out.writeFields();
       // Do NOT append another object; newer readers will fall back to the legacy field on EOF.
     } else {
@@ -292,7 +293,7 @@ public class NoFreeBucket implements Bucket, Serializable {
     ObjectInputStream.GetField fields = in.readFields();
     Bucket legacyProxy = null;
     try {
-      Object v = fields.get("proxy", null);
+      Object v = fields.get(PROXY_FIELD_NAME, null);
       if (v != null) legacyProxy = (Bucket) v;
     } catch (IllegalArgumentException _) {
       // Field not present in local descriptor; treat as absent.
