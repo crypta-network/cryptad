@@ -4,6 +4,7 @@ import java.lang.ref.WeakReference;
 import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.node.MessageItem;
 import network.crypta.node.OutgoingPacketMangler;
+import network.crypta.node.PeerTransport;
 
 /**
  * Lightweight view of a peer connection used by the messaging and transfer layers.
@@ -65,6 +66,16 @@ public interface PeerContext {
   int getBuildNumber();
 
   /**
+   * Returns the transport/messaging component for this peer.
+   *
+   * <p>Prefer routing message send/receive operations through this component (for example, {@code
+   * ctx.transport().sendAsync(...)}).
+   *
+   * @return the transport component for this peer
+   */
+  PeerTransport transport();
+
+  /**
    * Enqueues a message for asynchronous transmission to the peer.
    *
    * <p>The call does not block for I/O. The returned {@link MessageItem} can be used to track or
@@ -79,8 +90,10 @@ public interface PeerContext {
    * @return a handle representing the queued message.
    * @throws NotConnectedException if no active connection exists.
    */
-  MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr)
-      throws NotConnectedException;
+  default MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr)
+      throws NotConnectedException {
+    return transport().sendAsync(msg, cb, ctr);
+  }
 
   /**
    * Returns the current boot identifier for the remote peer.
@@ -98,10 +111,14 @@ public interface PeerContext {
    *
    * @return the throttle, or {@code null} if not available (for example, in tests).
    */
-  PacketThrottle getThrottle();
+  default PacketThrottle getThrottle() {
+    return transport().getThrottle();
+  }
 
   /** Returns the transport handler that receives packets from this peer. */
-  SocketHandler getSocketHandler();
+  default SocketHandler getSocketHandler() {
+    return transport().getSocketHandler();
+  }
 
   /** Returns the encoder that encrypts and formats outgoing packets for this peer. */
   OutgoingPacketMangler getOutgoingMangler();
@@ -149,5 +166,11 @@ public interface PeerContext {
    *
    * @return maximum number of packets to keep in flight.
    */
-  int getThrottleWindowSize();
+  default int getThrottleWindowSize() {
+    PacketThrottle throttle = transport().getThrottle();
+    if (throttle != null) {
+      return (int) Math.min(throttle.getWindowSize(), Integer.MAX_VALUE);
+    }
+    return Integer.MAX_VALUE;
+  }
 }

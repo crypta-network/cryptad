@@ -3,7 +3,7 @@ package network.crypta.node;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -160,7 +160,13 @@ class PacketSenderTest {
     when(pn.maxTimeBetweenReceivedAcks()).thenReturn(Long.MAX_VALUE);
     when(pn.isRoutable()).thenReturn(false);
 
-    doThrow(new BlockedTooLongException(5000L)).when(pn).maybeSendPacket(anyLong(), anyBoolean());
+    doAnswer(
+            inv -> {
+              pn.forceDisconnect();
+              return false;
+            })
+        .when(pn)
+        .maybeSendPacket(anyLong(), anyBoolean());
 
     PacketSender ps = new PacketSender(node);
 

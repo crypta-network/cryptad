@@ -589,7 +589,7 @@ public class DarknetPeerNode extends PeerNode {
     if (localRequest) {
       Message msg = DMT.createRoutingStatus(shouldRoute);
       try {
-        sendAsync(msg, null, node.getNodeStats().setRoutingStatusCtr);
+        transport().sendAsync(msg, null, node.getNodeStats().setRoutingStatusCtr);
       } catch (NotConnectedException _) {
         // ok
       }
@@ -866,7 +866,7 @@ public class DarknetPeerNode extends PeerNode {
       // the callback ensures that n2ns are only unqueued after being acknowledged
       UnqueueMessageOnAckCallback cb = new UnqueueMessageOnAckCallback(this, fileNumber);
       try {
-        sendAsync(n2nm, cb, null);
+        transport().sendAsync(n2nm, cb, null);
         LOG.info("Sending queued ({}) N2NM to '{}': {}", fileNumber, getName(), n2nm);
       } catch (NotConnectedException _) {
         fs.removeValue(SFS_KEY_SENT_TIME);
@@ -2078,7 +2078,9 @@ public class DarknetPeerNode extends PeerNode {
     if (fo == null) {
       LOG.error("No such offer: {}", uid);
       try {
-        sendAsync(DMT.createFNPBulkSendAborted(uid), null, node.getNodeStats().nodeToNodeCounter);
+        transport()
+            .sendAsync(
+                DMT.createFNPBulkSendAborted(uid), null, node.getNodeStats().nodeToNodeCounter);
       } catch (NotConnectedException _) {
         // Fine by me!
       }
@@ -2320,10 +2322,11 @@ public class DarknetPeerNode extends PeerNode {
   }
 
   private void sendVisibility() throws NotConnectedException {
-    sendAsync(
-        DMT.createFNPVisibility(getOurVisibility().code),
-        null,
-        node.getNodeStats().initialMessagesCtr);
+    transport()
+        .sendAsync(
+            DMT.createFNPVisibility(getOurVisibility().code),
+            null,
+            node.getNodeStats().initialMessagesCtr);
   }
 
   /** Applies a visibility update received from the peer. */
@@ -2437,7 +2440,8 @@ public class DarknetPeerNode extends PeerNode {
   }
 
   private void sendMyFullNoderefHeader(long uid, int length) throws NotConnectedException {
-    sendAsync(DMT.createFNPMyFullNoderef(uid, length), null, node.getNodeStats().foafCounter);
+    transport()
+        .sendAsync(DMT.createFNPMyFullNoderef(uid, length), null, node.getNodeStats().foafCounter);
   }
 
   private BulkTransmitter createBulkTransmitter(PartiallyReceivedBulk prb, long uid)
@@ -2557,7 +2561,8 @@ public class DarknetPeerNode extends PeerNode {
     }
     if (!dontKeepFullFieldSet()) {
       try {
-        sendAsync(DMT.createFNPGetYourFullNoderef(), null, node.getNodeStats().foafCounter);
+        transport()
+            .sendAsync(DMT.createFNPGetYourFullNoderef(), null, node.getNodeStats().foafCounter);
       } catch (NotConnectedException _) {
         // Ignore
       }

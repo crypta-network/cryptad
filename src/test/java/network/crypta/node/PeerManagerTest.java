@@ -76,6 +76,8 @@ class PeerManagerTest {
       boolean darknet,
       double location) {
     PeerNode pn = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(pn.transport()).thenReturn(transport);
     when(pn.isConnected()).thenReturn(connected);
     when(pn.isRealConnection()).thenReturn(realConnection);
     when(pn.isRoutable()).thenReturn(routable);
@@ -178,6 +180,7 @@ class PeerManagerTest {
 
     PeerNode p1 = peer(true, true, true, true, 0.1);
     when(p1.getBuildNumber()).thenReturn(100);
+    PeerTransport p1Transport = p1.transport();
     PeerNode p2 = peer(true, true, false, true, 0.2);
     when(p2.getBuildNumber()).thenReturn(100);
     PeerNode p3 = peer(true, false, true, false, 0.3);
@@ -192,14 +195,14 @@ class PeerManagerTest {
 
     // only p1 qualifies
     pm.messenger().localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
-    verify(p1, times(1)).sendAsync(msg, null, ctr);
+    verify(p1Transport, times(1)).sendAsync(msg, null, ctr);
 
     // minVersion excludes all (since min=101 and p1..p3 have 100; p4 not connected)
     pm.messenger().localBroadcast(msg, true, false, ctr, 101, Integer.MAX_VALUE);
-    verify(p1, times(1)).sendAsync(msg, null, ctr); // unchanged
+    verify(p1Transport, times(1)).sendAsync(msg, null, ctr); // unchanged
 
     // throwing NotConnectedException is ignored
-    doThrow(new NotConnectedException()).when(p1).sendAsync(msg, null, ctr);
+    doThrow(new NotConnectedException()).when(p1Transport).sendAsync(msg, null, ctr);
     pm.messenger().localBroadcast(msg, false, true, ctr, Integer.MIN_VALUE, Integer.MAX_VALUE);
     // no exception thrown
   }
@@ -245,8 +248,11 @@ class PeerManagerTest {
     assertEquals(pn, pm.roster().getByPeer(peer));
 
     when(pn.matchesPeerAndPort(peer)).thenReturn(false);
-    when(pn.matchesIP(addr, false)).thenReturn(true);
-    assertEquals(pn, pm.roster().getByPeer(peer));
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(pn, addr, false)).thenReturn(true);
+      assertEquals(pn, pm.roster().getByPeer(peer));
+    }
   }
 
   @Test
@@ -274,8 +280,11 @@ class PeerManagerTest {
     // Fallback by IP + matching mangler
     when(pn1.matchesPeerAndPort(peer)).thenReturn(false);
     when(pn2.matchesPeerAndPort(peer)).thenReturn(false);
-    when(pn1.matchesIP(addr, false)).thenReturn(true);
-    assertEquals(pn1, pm.roster().getByPeer(peer, mangler));
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(pn1, addr, false)).thenReturn(true);
+      assertEquals(pn1, pm.roster().getByPeer(peer, mangler));
+    }
   }
 
   @Test
@@ -283,18 +292,22 @@ class PeerManagerTest {
   void getAllConnectedByAddress_filters() {
     FreenetInetAddress addr = mock(FreenetInetAddress.class);
     PeerNode p1 = peer(true, true, true, true, 0.1);
-    when(p1.matchesIP(addr, true)).thenReturn(true);
     PeerNode p2 = peer(false, true, true, true, 0.2);
     PeerNode p3 = peer(true, true, false, true, 0.3);
     PeerNode p4 = peer(true, true, true, true, 0.4);
-    when(p4.matchesIP(addr, true)).thenReturn(false);
 
     pm.addPeer(p1);
     pm.addPeer(p2);
     pm.addPeer(p3);
     pm.addPeer(p4);
 
-    List<PeerNode> found = pm.roster().getAllConnectedByAddress(addr, true);
+    List<PeerNode> found;
+    try (org.mockito.MockedStatic<PeerNodeAddressManager> addressMock =
+        org.mockito.Mockito.mockStatic(PeerNodeAddressManager.class)) {
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(p1, addr, true)).thenReturn(true);
+      addressMock.when(() -> PeerNodeAddressManager.matchesIP(p4, addr, true)).thenReturn(false);
+      found = pm.roster().getAllConnectedByAddress(addr, true);
+    }
     assertNotNull(found);
     assertEquals(1, found.size());
     assertEquals(p1, found.getFirst());

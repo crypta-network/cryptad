@@ -727,7 +727,8 @@ class PeerRoutingSelectorTest {
   }
 
   private void stubLoadStats(PeerNode peer, PeerLoadStats statsOrNull) {
-    PeerNode.OutputLoadTracker tracker = mock(PeerNode.OutputLoadTracker.class);
+    PeerNodeLoadTracker.OutputLoadTracker tracker =
+        mock(PeerNodeLoadTracker.OutputLoadTracker.class);
     when(tracker.getLastIncomingLoadStats()).thenReturn(statsOrNull);
     when(peer.outputLoadTracker(true)).thenReturn(tracker);
   }

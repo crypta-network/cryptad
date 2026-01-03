@@ -7,7 +7,7 @@ import network.crypta.clients.http.DarknetConnectionsToadlet;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.xfer.PacketThrottle;
-import network.crypta.node.PeerNode.IncomingLoadSummaryStats;
+import network.crypta.node.PeerNodeLoadTracker.IncomingLoadSummaryStats;
 
 /**
  * Immutable snapshot of a {@link PeerNode}'s observable state.
@@ -193,8 +193,8 @@ public class PeerNodeStatus {
     this.averagePingTimeCorrected = peerNode.averagePingTimeCorrected();
     this.publicInvalidVersion = peerNode.publicInvalidVersion();
     this.publicReverseInvalidVersion = peerNode.publicReverseInvalidVersion();
-    this.backedOffPercentRT = peerNode.getBackedOffPercentRT().currentValue();
-    this.backedOffPercentBulk = peerNode.getBackedOffPercentBulk().currentValue();
+    this.backedOffPercentRT = peerNode.getBackedOffPercentRT();
+    this.backedOffPercentBulk = peerNode.getBackedOffPercentBulk();
     this.lastBackoffReasonRT = peerNode.getLastBackoffReason(true);
     this.lastBackoffReasonBulk = peerNode.getLastBackoffReason(false);
     this.timeLastRoutable = peerNode.timeLastRoutable();
@@ -218,7 +218,7 @@ public class PeerNodeStatus {
     this.totalBytesInSinceStartup = peerNode.getTotalInputSinceStartup();
     this.totalBytesOutSinceStartup = peerNode.getTotalOutputSinceStartup();
     this.percentTimeRoutableConnection = peerNode.getPercentTimeRoutableConnection();
-    this.throttle = peerNode.getThrottle();
+    this.throttle = peerNode.transport().getThrottle();
     this.clockDelta = peerNode.getClockDelta();
     this.recordStatus = peerNode.recordStatus();
     this.isSeedClient = peerNode instanceof SeedClientPeerNode;

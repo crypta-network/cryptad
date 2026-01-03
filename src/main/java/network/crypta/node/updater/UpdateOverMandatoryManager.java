@@ -388,43 +388,45 @@ public class UpdateOverMandatoryManager implements RequestClient {
     // Try to transfer it.
 
     Message msg = DMT.createUOMRequestRevocation(updateManager.getNode().getRandom().nextLong());
-    source.sendAsync(
-        msg,
-        new AsyncMessageCallback() {
+    source
+        .transport()
+        .sendAsync(
+            msg,
+            new AsyncMessageCallback() {
 
-          @Override
-          public void acknowledged() {
-            // Ok
-          }
+              @Override
+              public void acknowledged() {
+                // Ok
+              }
 
-          @Override
-          public void disconnected() {
-            // :(
-            LOG.warn(
-                "Failed to send request for revocation key to {}{}{}) because it disconnected!",
-                source.userToString(),
-                BUILD_NUM_PREFIX,
-                source.getSimpleVersion());
-            source.failedRevocationTransfer();
-            synchronized (UpdateOverMandatoryManager.this) {
-              nodesSayKeyRevokedFailedTransfer.add(source);
-            }
-          }
+              @Override
+              public void disconnected() {
+                // :(
+                LOG.warn(
+                    "Failed to send request for revocation key to {}{}{}) because it disconnected!",
+                    source.userToString(),
+                    BUILD_NUM_PREFIX,
+                    source.getSimpleVersion());
+                source.failedRevocationTransfer();
+                synchronized (UpdateOverMandatoryManager.this) {
+                  nodesSayKeyRevokedFailedTransfer.add(source);
+                }
+              }
 
-          @Override
-          public void fatalError() {
-            // Not good!
-            LOG.error(
-                "Failed to send request for revocation key to {} because of a fatal error.",
-                source.userToString());
-          }
+              @Override
+              public void fatalError() {
+                // Not good!
+                LOG.error(
+                    "Failed to send request for revocation key to {} because of a fatal error.",
+                    source.userToString());
+              }
 
-          @Override
-          public void sent() {
-            // Cool
-          }
-        },
-        updateManager.getByteCounter());
+              @Override
+              public void sent() {
+                // Cool
+              }
+            },
+            updateManager.getByteCounter());
 
     updateManager
         .getNode()
@@ -617,55 +619,58 @@ public class UpdateOverMandatoryManager implements RequestClient {
       if (LOG.isInfoEnabled()) {
         LOG.info("Fetching {} jar from {}", lname, source.userToString());
       }
-      source.sendAsync(
-          msg,
-          new AsyncMessageCallback() {
+      source
+          .transport()
+          .sendAsync(
+              msg,
+              new AsyncMessageCallback() {
 
-            @Override
-            public void acknowledged() {
-              // Cool! Wait for the actual transfer.
-            }
+                @Override
+                public void acknowledged() {
+                  // Cool! Wait for the actual transfer.
+                }
 
-            @Override
-            public void disconnected() {
-              if (LOG.isInfoEnabled()) {
-                LOG.info(
-                    "Disconnected from {} after sending UOMRequestMainJar", source.userToString());
-              }
-              synchronized (UpdateOverMandatoryManager.this) {
-                sendingJar.remove(source);
-              }
-              maybeRequestMainJar();
-            }
+                @Override
+                public void disconnected() {
+                  if (LOG.isInfoEnabled()) {
+                    LOG.info(
+                        "Disconnected from {} after sending UOMRequestMainJar",
+                        source.userToString());
+                  }
+                  synchronized (UpdateOverMandatoryManager.this) {
+                    sendingJar.remove(source);
+                  }
+                  maybeRequestMainJar();
+                }
 
-            @Override
-            public void fatalError() {
-              LOG.info(
-                  "Fatal error from {} after sending UOMRequestMainJar", source.userToString());
-              synchronized (UpdateOverMandatoryManager.this) {
-                askedSendJar.remove(source);
-              }
-              maybeRequestMainJar();
-            }
+                @Override
+                public void fatalError() {
+                  LOG.info(
+                      "Fatal error from {} after sending UOMRequestMainJar", source.userToString());
+                  synchronized (UpdateOverMandatoryManager.this) {
+                    askedSendJar.remove(source);
+                  }
+                  maybeRequestMainJar();
+                }
 
-            @Override
-            public void sent() {
-              // Timeout...
-              updateManager
-                  .getNode()
-                  .getTicker()
-                  .queueTimedJob(
-                      () -> {
-                        synchronized (UpdateOverMandatoryManager.this) {
-                          // free up a slot
-                          if (!askedSendJar.remove(source)) return;
-                        }
-                        maybeRequestMainJar();
-                      },
-                      REQUEST_MAIN_JAR_TIMEOUT);
-            }
-          },
-          updateManager.getByteCounter());
+                @Override
+                public void sent() {
+                  // Timeout...
+                  updateManager
+                      .getNode()
+                      .getTicker()
+                      .queueTimedJob(
+                          () -> {
+                            synchronized (UpdateOverMandatoryManager.this) {
+                              // free up a slot
+                              if (!askedSendJar.remove(source)) return;
+                            }
+                            maybeRequestMainJar();
+                          },
+                          REQUEST_MAIN_JAR_TIMEOUT);
+                }
+              },
+              updateManager.getByteCounter());
     } catch (NotConnectedException _) {
       synchronized (this) {
         askedSendJar.remove(source);
@@ -1061,48 +1066,54 @@ public class UpdateOverMandatoryManager implements RequestClient {
     Message msg =
         DMT.createUOMSendingRevocation(uid, length, updateManager.getRevocationURI().toString());
     try {
-      source.sendAsync(
-          msg,
-          new AsyncMessageCallback() {
+      source
+          .transport()
+          .sendAsync(
+              msg,
+              new AsyncMessageCallback() {
 
-            @Override
-            public void acknowledged() {
-              if (LOG.isDebugEnabled()) LOG.debug("Sending data...");
-              updateManager
-                  .getNode()
-                  .getExecutor()
-                  .execute(
-                      r,
-                      "Revocation key send" + FOR_LITERAL + uid + " to " + source.userToString());
-            }
+                @Override
+                public void acknowledged() {
+                  if (LOG.isDebugEnabled()) LOG.debug("Sending data...");
+                  updateManager
+                      .getNode()
+                      .getExecutor()
+                      .execute(
+                          r,
+                          "Revocation key send"
+                              + FOR_LITERAL
+                              + uid
+                              + " to "
+                              + source.userToString());
+                }
 
-            @Override
-            public void disconnected() {
-              LOG.error(
-                  "Peer {} asked us for the blob file for the revocation key, then disconnected"
-                      + " when we tried to send the UOMSendingRevocation",
-                  source);
-            }
+                @Override
+                public void disconnected() {
+                  LOG.error(
+                      "Peer {} asked us for the blob file for the revocation key, then disconnected"
+                          + " when we tried to send the UOMSendingRevocation",
+                      source);
+                }
 
-            @Override
-            public void fatalError() {
-              LOG.error(
-                  "Peer {} asked us for the blob file for the revocation key, then got a fatal"
-                      + " error when we tried to send the UOMSendingRevocation",
-                  source);
-            }
+                @Override
+                public void fatalError() {
+                  LOG.error(
+                      "Peer {} asked us for the blob file for the revocation key, then got a fatal"
+                          + " error when we tried to send the UOMSendingRevocation",
+                      source);
+                }
 
-            @Override
-            public void sent() {
-              if (LOG.isDebugEnabled()) LOG.debug("Message sent, data soon");
-            }
+                @Override
+                public void sent() {
+                  if (LOG.isDebugEnabled()) LOG.debug("Message sent, data soon");
+                }
 
-            @Override
-            public String toString() {
-              return super.toString() + "(" + uid + ":" + source.getPeer() + ")";
-            }
-          },
-          updateManager.getByteCounter());
+                @Override
+                public String toString() {
+                  return super.toString() + "(" + uid + ":" + source.getPeer() + ")";
+                }
+              },
+              updateManager.getByteCounter());
     } catch (NotConnectedException e) {
       LOG.error(
           "Peer {} asked us for the blob file for the revocation key, then disconnected when we"
@@ -1615,7 +1626,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private void cancelSend(PeerNode source, long uid) {
     Message msg = DMT.createFNPBulkReceiveAborted(uid);
     try {
-      source.sendAsync(msg, null, updateManager.getByteCounter());
+      source.transport().sendAsync(msg, null, updateManager.getByteCounter());
     } catch (NotConnectedException _) {
       // Ignore
     }
@@ -1698,55 +1709,57 @@ public class UpdateOverMandatoryManager implements RequestClient {
     final Runnable r = buildMainJarSender(source, data, uid, length);
 
     try {
-      source.sendAsync(
-          msg,
-          new AsyncMessageCallback() {
+      source
+          .transport()
+          .sendAsync(
+              msg,
+              new AsyncMessageCallback() {
 
-            @Override
-            public void acknowledged() {
-              if (LOG.isDebugEnabled()) LOG.debug("Sending data...");
-              // Send the data
+                @Override
+                public void acknowledged() {
+                  if (LOG.isDebugEnabled()) LOG.debug("Sending data...");
+                  // Send the data
 
-              updateManager
-                  .getNode()
-                  .getExecutor()
-                  .execute(r, name + " jar send for " + uid + " to " + source.userToString());
-            }
+                  updateManager
+                      .getNode()
+                      .getExecutor()
+                      .execute(r, name + " jar send for " + uid + " to " + source.userToString());
+                }
 
-            @Override
-            public void disconnected() {
-              // Argh
-              LOG.error(
-                  PEER_ASKED_BLOB_PREFIX
-                      + "{} jar, then disconnected when we tried to send the UOMSendingMainJar",
-                  source,
-                  name);
-              source.finishedSendingUOMJar(false);
-            }
+                @Override
+                public void disconnected() {
+                  // Argh
+                  LOG.error(
+                      PEER_ASKED_BLOB_PREFIX
+                          + "{} jar, then disconnected when we tried to send the UOMSendingMainJar",
+                      source,
+                      name);
+                  source.finishedSendingUOMJar(false);
+                }
 
-            @Override
-            public void fatalError() {
-              // Argh
-              LOG.error(
-                  PEER_ASKED_BLOB_PREFIX
-                      + "{} jar, then got a fatal error when we tried to send the"
-                      + " UOMSendingMainJar",
-                  source,
-                  name);
-              source.finishedSendingUOMJar(false);
-            }
+                @Override
+                public void fatalError() {
+                  // Argh
+                  LOG.error(
+                      PEER_ASKED_BLOB_PREFIX
+                          + "{} jar, then got a fatal error when we tried to send the"
+                          + " UOMSendingMainJar",
+                      source,
+                      name);
+                  source.finishedSendingUOMJar(false);
+                }
 
-            @Override
-            public void sent() {
-              if (LOG.isDebugEnabled()) LOG.debug("Message sent, data soon");
-            }
+                @Override
+                public void sent() {
+                  if (LOG.isDebugEnabled()) LOG.debug("Message sent, data soon");
+                }
 
-            @Override
-            public String toString() {
-              return super.toString() + "(" + uid + ":" + source.getPeer() + ")";
-            }
-          },
-          updateManager.getByteCounter());
+                @Override
+                public String toString() {
+                  return super.toString() + "(" + uid + ":" + source.getPeer() + ")";
+                }
+              },
+              updateManager.getByteCounter());
     } catch (NotConnectedException e) {
       LOG.error(
           "Peer {} asked us for the blob file for the {} jar, then disconnected when we tried to"
@@ -2608,10 +2621,12 @@ public class UpdateOverMandatoryManager implements RequestClient {
       try {
         LOG.info("Fetching {}{}{}", saveTo, FROM_LITERAL, fetchFrom);
         long uid = updateManager.getNode().getFastWeakRandom().nextLong();
-        fetchFrom.sendAsync(
-            DMT.createUOMFetchDependency(uid, expectedHash, size),
-            null,
-            updateManager.getByteCounter());
+        fetchFrom
+            .transport()
+            .sendAsync(
+                DMT.createUOMFetchDependency(uid, expectedHash, size),
+                null,
+                updateManager.getByteCounter());
         tmp =
             FileUtil.createTempFile(
                 saveTo.getName(), NodeUpdateManager.TEMP_FILE_SUFFIX, saveTo.getParentFile());

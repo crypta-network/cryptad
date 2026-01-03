@@ -181,7 +181,7 @@ public class RealNodePingTest {
             boolean success;
             boolean connected = true;
             try {
-              success = pn.ping(ping);
+              success = pn.transport().ping(ping);
             } catch (NotConnectedException _) {
               LOG.error("Not connected");
               connected = false;

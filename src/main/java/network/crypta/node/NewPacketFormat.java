@@ -164,7 +164,7 @@ public class NewPacketFormat implements PacketFormat {
     List<byte[]> finished = handleDecryptedPacket(dec.packet, dec.sessionKey);
     if (LOG.isDebugEnabled() && !finished.isEmpty())
       LOG.debug("Decoded {} message(s)", finished.size());
-    DecodingMessageGroup group = pn.startProcessingDecryptedMessages(finished.size());
+    DecodingMessageGroup group = pn.transport().startProcessingDecryptedMessages(finished.size());
     for (byte[] buffer : finished) {
       group.processDecryptedMessage(buffer, 0, buffer.length, 0);
     }
@@ -238,7 +238,7 @@ public class NewPacketFormat implements PacketFormat {
     }
     if (LOG.isDebugEnabled() && !lossyMessages.isEmpty())
       LOG.debug("Parsed {} lossy packet messages", lossyMessages.size());
-    for (Message msg : lossyMessages) pn.handleMessage(msg);
+    for (Message msg : lossyMessages) pn.transport().handleMessage(msg);
   }
 
   private boolean processFragments(NPFPacket packet, List<byte[]> fullyReceived) {
@@ -1157,9 +1157,10 @@ public class NewPacketFormat implements PacketFormat {
 
   private boolean underThrottleLimit(SessionKey tracker) {
     if (tracker == null || pn == null) return true;
-    PacketThrottle throttle = pn.getThrottle();
+    PacketThrottle throttle = pn.transport().getThrottle();
     if (throttle == null) return true;
-    int maxPackets = (int) Math.min(Integer.MAX_VALUE, pn.getThrottle().getWindowSize());
+    int maxPackets =
+        (int) Math.min(Integer.MAX_VALUE, pn.transport().getThrottle().getWindowSize());
     if (maxPackets < 1) maxPackets = 1;
     NewPacketFormatKeyContext packets = tracker.packetContext;
     if (maxPackets <= packets.countSentPackets()) {

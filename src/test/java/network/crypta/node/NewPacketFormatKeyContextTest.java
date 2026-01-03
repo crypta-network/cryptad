@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -218,7 +219,9 @@ class NewPacketFormatKeyContextTest {
     ctx.sent(sp2, /*seq*/ 2, /*len*/ 100);
     assertEquals(2, ctx.countSentPackets());
 
-    when(pn.getThrottle()).thenReturn(throttle);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(pn.transport()).thenReturn(transport);
+    when(transport.getThrottle()).thenReturn(throttle);
 
     // Ack the first packet; should remove one and notify throttle with (2*2)+10=14
     ctx.ack(1, pn, key);
@@ -262,7 +265,9 @@ class NewPacketFormatKeyContextTest {
     // Override sent time to be older than threshold
     sp.sentTime = now - maxDelay - 1; // package-private field; same package access
 
-    when(pn.getThrottle()).thenReturn(throttle);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(pn.transport()).thenReturn(transport);
+    when(transport.getThrottle()).thenReturn(throttle);
 
     ctx.checkForLostPackets(avgRtt, now, pn);
 

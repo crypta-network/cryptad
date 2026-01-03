@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.Map;
+import network.crypta.node.PeerTransport;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -297,16 +298,19 @@ class MessageCoreTest {
     MessageCore core = new MessageCore(executor);
 
     PeerContext dest = mock(PeerContext.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(dest.transport()).thenReturn(transport);
 
     // Non-internal message is sent via PeerContext.sendAsync.
     Message normal = DMT.createAllReceived(123L);
     ByteCounter ctr = mock(ByteCounter.class);
     core.send(dest, normal, ctr);
-    verify(dest).sendAsync(normal, null, ctr);
+    verify(transport).sendAsync(normal, null, ctr);
 
     // Internal-only message must be skipped.
     Message internal = DMT.createTestReceiveCompleted(1L, true, "ok");
+    clearInvocations(dest, transport);
     core.send(dest, internal, ctr);
-    verifyNoMoreInteractions(dest);
+    verifyNoInteractions(dest, transport);
   }
 }

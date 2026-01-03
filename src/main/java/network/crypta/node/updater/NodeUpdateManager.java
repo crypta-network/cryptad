@@ -542,7 +542,7 @@ public class NodeUpdateManager {
     long size = canAnnounceUOMNew();
     try {
       if (Version.isBuildAtLeast(peer.getNodeName(), peer.getBuildNumber(), TRANSITION_VERSION)) {
-        peer.sendAsync(getNewUOMAnnouncement(size), null, getByteCounter());
+        peer.transport().sendAsync(getNewUOMAnnouncement(size), null, getByteCounter());
       }
     } catch (NotConnectedException _) {
       // Sad, but ignore it

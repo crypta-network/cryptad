@@ -36,6 +36,7 @@ class CHKInsertHandlerTest {
 
   @Mock Node node;
   @Mock PeerNode source;
+  @Mock PeerTransport transport;
   @Mock MessageCore usm;
   @Mock NodeStats nodeStats;
   @Mock InsertTag tag;
@@ -78,6 +79,7 @@ class CHKInsertHandlerTest {
     // Source is considered connected for these tests
     when(source.isConnected()).thenReturn(true);
     when(source.timeLastConnectionCompleted()).thenReturn(System.currentTimeMillis());
+    when(source.transport()).thenReturn(transport);
   }
 
   private static long beyondHandshakeWindow() {
@@ -91,8 +93,8 @@ class CHKInsertHandlerTest {
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(null);
 
     // Peer interactions: allow sends without throwing
-    doNothing().when(source).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
-    when(source.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
+    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenAnswer(inv -> null);
 
     long uid = 42L;
@@ -111,14 +113,14 @@ class CHKInsertHandlerTest {
     handler.run();
 
     // Assert: 1) First, an FNPAccepted is sent synchronously
-    verify(source, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(false));
+    verify(transport, times(1)).sendSync(messageCaptor.capture(), eq(handler), eq(false));
     Message accepted = messageCaptor.getValue();
     assertEquals(DMT.FNPAccepted, accepted.getSpec(), "Expected FNPAccepted as first send");
     assertEquals(uid, accepted.getLong(DMT.UID));
 
     // 2) On timeout, a TooSlow (FNPRejectedTimeout) and then InsertTransfersCompleted(true) are
     // sent
-    verify(source, times(1))
+    verify(transport, times(1))
         .sendAsync(
             org.mockito.ArgumentMatchers.argThat(
                 m ->
@@ -128,7 +130,7 @@ class CHKInsertHandlerTest {
             any(),
             eq(handler));
 
-    verify(source, times(1))
+    verify(transport, times(1))
         .sendAsync(
             org.mockito.ArgumentMatchers.argThat(
                 m ->
@@ -159,8 +161,8 @@ class CHKInsertHandlerTest {
 
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(rejected);
 
-    doNothing().when(source).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
-    when(source.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
+    doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
+    when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenAnswer(inv -> null);
 
     CHKInsertHandler handler =
@@ -178,9 +180,9 @@ class CHKInsertHandlerTest {
     handler.run();
 
     // Assert: first, FNPAccepted; then echo FNPDataInsertRejected with the same reason
-    verify(source, times(1)).sendSync(any(Message.class), eq(handler), eq(true));
+    verify(transport, times(1)).sendSync(any(Message.class), eq(handler), eq(true));
 
-    verify(source, times(1)).sendAsync(messageCaptor.capture(), any(), eq(handler));
+    verify(transport, times(1)).sendAsync(messageCaptor.capture(), any(), eq(handler));
     Message echoed = messageCaptor.getValue();
     assertEquals(DMT.FNPDataInsertRejected, echoed.getSpec());
     assertEquals(uid, echoed.getLong(DMT.UID));

@@ -313,7 +313,7 @@ public class PeerRoster {
     FreenetInetAddress addr = peer.getFreenetAddress();
     for (PeerNode pn : peerList) {
       if (pn.isDisabled()) continue;
-      if (pn.matchesIP(addr, false)) return pn;
+      if (PeerNodeAddressManager.matchesIP(pn, addr, false)) return pn;
     }
     return null;
   }
@@ -338,7 +338,8 @@ public class PeerRoster {
     FreenetInetAddress addr = peer.getFreenetAddress();
     for (PeerNode pn : peerList) {
       if (pn.isDisabled()) continue;
-      if (pn.matchesIP(addr, false) && pn.getOutgoingMangler() == mangler) return pn;
+      if (PeerNodeAddressManager.matchesIP(pn, addr, false) && pn.getOutgoingMangler() == mangler)
+        return pn;
     }
     return null;
   }
@@ -359,7 +360,8 @@ public class PeerRoster {
     List<PeerNode> found = null;
     PeerNode[] peerList = myPeers();
     for (PeerNode pn : peerList) {
-      boolean eligible = pn.isConnected() && pn.isRoutable() && pn.matchesIP(addr, strict);
+      boolean eligible =
+          pn.isConnected() && pn.isRoutable() && PeerNodeAddressManager.matchesIP(pn, addr, strict);
       if (eligible) {
         if (found == null) found = new ArrayList<>();
         found.add(pn);

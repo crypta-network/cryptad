@@ -17,6 +17,7 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.NotConnectedException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,8 +33,14 @@ class OpennetManagerTest {
 
   @Mock private Node node;
   @Mock private PeerNode peer;
+  @Mock private PeerTransport transport;
   @Mock private MessageCore usm;
   @Mock private ByteCounter byteCounter;
+
+  @BeforeEach
+  void setUp() {
+    org.mockito.Mockito.lenient().when(peer.transport()).thenReturn(transport);
+  }
 
   @ParameterizedTest
   @CsvSource({
@@ -161,18 +168,19 @@ class OpennetManagerTest {
     // Case 1: send succeeds
     OpennetManager.rejectRef(uid, peer, reason, byteCounter);
     ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
-    verify(peer, times(1)).sendAsync(captor.capture(), any(), any());
+    verify(transport, times(1)).sendAsync(captor.capture(), any(), any());
     Message sent = captor.getValue();
     assertEquals(DMT.FNPOpennetNoderefRejected, sent.getSpec(), "message type");
     assertEquals(uid, sent.getLong(DMT.UID));
     assertEquals(reason, sent.getInt(DMT.REJECT_CODE));
 
     // Case 2: send throws NotConnectedException — must not propagate
-    org.mockito.Mockito.reset(peer);
-    org.mockito.Mockito.when(peer.sendAsync(any(Message.class), any(), any()))
+    org.mockito.Mockito.reset(peer, transport);
+    org.mockito.Mockito.when(peer.transport()).thenReturn(transport);
+    org.mockito.Mockito.when(transport.sendAsync(any(Message.class), any(), any()))
         .thenThrow(new NotConnectedException());
     OpennetManager.rejectRef(uid, peer, reason, byteCounter);
-    verify(peer, times(1)).sendAsync(any(Message.class), any(), any());
+    verify(transport, times(1)).sendAsync(any(Message.class), any(), any());
   }
 
   @Test

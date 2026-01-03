@@ -275,9 +275,17 @@ class SeedClientPeerNodeTest {
   // ---------- Helpers ----------
 
   private static void setConnected(SeedClientPeerNode c, long now) throws Exception {
-    Field f = PeerNode.class.getDeclaredField("isConnected");
-    f.setAccessible(true);
-    BooleanLastTrueTracker tracker = (BooleanLastTrueTracker) f.get(c);
+    Field internalsField = PeerNode.class.getDeclaredField("internals");
+    internalsField.setAccessible(true);
+    Object internals = internalsField.get(c);
+
+    Field connectionStateField = internals.getClass().getDeclaredField("connectionState");
+    connectionStateField.setAccessible(true);
+    Object connectionState = connectionStateField.get(internals);
+
+    Field trackerField = connectionState.getClass().getDeclaredField("connectedTracker");
+    trackerField.setAccessible(true);
+    BooleanLastTrueTracker tracker = (BooleanLastTrueTracker) trackerField.get(connectionState);
     tracker.set(true, now);
   }
 

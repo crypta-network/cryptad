@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -211,8 +210,8 @@ class OpennetPeerNodeTest {
   @Test
   void setAndGetAddedReason_roundTrip() throws Exception {
     OpennetPeerNode pn = newPeerLocal("0.25");
-    pn.setAddedReason(ConnectionType.ANNOUNCE);
-    assertEquals(ConnectionType.ANNOUNCE, pn.getAddedReason());
+    pn.setAddedReason(ConnectionType.ANNOUNCE.ordinal());
+    assertEquals(ConnectionType.ANNOUNCE.ordinal(), pn.getAddedReason());
   }
 
   @Test
@@ -240,7 +239,7 @@ class OpennetPeerNodeTest {
     OpennetPeerNode pn = newPeerLocal("0.25");
 
     // Age beyond min age should clear added fields and not return TOO_NEW_PEER
-    pn.setAddedReason(ConnectionType.PATH_FOLDING);
+    pn.setAddedReason(ConnectionType.PATH_FOLDING.ordinal());
     pn.peerAddedTime = System.currentTimeMillis() - (OpennetManager.DROP_MIN_AGE + 1000);
     setPrivateField(pn, FIELD_PEER_NODE_STATUS, PeerManager.PEER_NODE_STATUS_CONNECTED);
 
@@ -256,7 +255,7 @@ class OpennetPeerNodeTest {
     OpennetPeerNode.NOT_DROP_REASON res = pn.isDroppableWithReason(false);
     assertEquals(OpennetPeerNode.NOT_DROP_REASON.DROPPABLE, res);
     assertEquals(0L, pn.getPeerAddedTime());
-    assertNull(pn.getAddedReason());
+    assertEquals(PeerNode.ADDED_REASON_UNKNOWN, pn.getAddedReason());
   }
 
   @Test
@@ -423,9 +422,17 @@ class OpennetPeerNodeTest {
   @SuppressWarnings("java:S3011")
   private static BooleanLastTrueTracker getIsConnectedTracker(Object target)
       throws ReflectiveOperationException {
-    Field f = getDeclaredField(target.getClass(), "isConnected");
-    f.setAccessible(true);
-    return (BooleanLastTrueTracker) f.get(target);
+    Field internalsField = getDeclaredField(target.getClass(), "internals");
+    internalsField.setAccessible(true);
+    Object internals = internalsField.get(target);
+
+    Field connectionStateField = getDeclaredField(internals.getClass(), "connectionState");
+    connectionStateField.setAccessible(true);
+    Object connectionState = connectionStateField.get(internals);
+
+    Field trackerField = getDeclaredField(connectionState.getClass(), "connectedTracker");
+    trackerField.setAccessible(true);
+    return (BooleanLastTrueTracker) trackerField.get(connectionState);
   }
 
   private static Field getDeclaredField(Class<?> type, String name) throws NoSuchFieldException {

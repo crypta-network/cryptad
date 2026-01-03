@@ -23,6 +23,7 @@ import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.node.HighHtlAware;
 import network.crypta.node.MessageItem;
+import network.crypta.node.PeerTransport;
 import network.crypta.support.BitArray;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -151,10 +152,12 @@ class BlockTransmitterTest {
   private MessageCore usm;
 
   @Mock private PeerContext peer;
+  @Mock private PeerTransport transport;
 
   @BeforeEach
   void setupCore() {
     usm = new MessageCore(executor);
+    Mockito.lenient().when(peer.transport()).thenReturn(transport);
   }
 
   private static PartiallyReceivedBlock prbWithAllData(int packets, int packetSize) {
@@ -273,7 +276,7 @@ class BlockTransmitterTest {
               queued.add(item);
               return item;
             })
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(counter));
     when(peer.unqueueMessage(any()))
         .thenAnswer(inv -> queued.remove(inv.getArgument(0, MessageItem.class)));
@@ -344,7 +347,7 @@ class BlockTransmitterTest {
               AsyncMessageCallback c = inv.getArgument(1, AsyncMessageCallback.class);
               return new MessageItem(msg, new AsyncMessageCallback[] {c}, counter);
             })
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(counter));
 
     AtomicInteger callback = new AtomicInteger(-1);
@@ -400,7 +403,7 @@ class BlockTransmitterTest {
               }
               return new MessageItem(msg, new AsyncMessageCallback[] {c}, counter);
             })
-        .when(peer)
+        .when(transport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), eq(counter));
 
     AtomicInteger callback = new AtomicInteger(-1);

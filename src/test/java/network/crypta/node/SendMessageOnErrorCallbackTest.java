@@ -22,43 +22,47 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class SendMessageOnErrorCallbackTest {
 
   @Mock private PeerNode dest;
+  @Mock private PeerTransport transport;
   @Mock private Message msg;
   @Mock private ByteCounter ctr;
 
   @Test
   void disconnected_whenDestinationConnected_sendsMessageOnce() throws Exception {
     // Arrange
+    when(dest.transport()).thenReturn(transport);
     SendMessageOnErrorCallback cb = new SendMessageOnErrorCallback(msg, dest, ctr);
 
     // Act
     cb.disconnected();
 
     // Assert
-    verify(dest).sendAsync(eq(msg), isNull(), eq(ctr));
+    verify(transport).sendAsync(eq(msg), isNull(), eq(ctr));
   }
 
   @Test
   void disconnected_whenDestinationNotConnected_swallowsException() throws Exception {
     // Arrange
-    when(dest.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
+    when(dest.transport()).thenReturn(transport);
+    when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenThrow(new NotConnectedException());
     SendMessageOnErrorCallback cb = new SendMessageOnErrorCallback(msg, dest, ctr);
 
     // Act + Assert
     assertDoesNotThrow(cb::disconnected);
-    verify(dest).sendAsync(eq(msg), isNull(), eq(ctr));
+    verify(transport).sendAsync(eq(msg), isNull(), eq(ctr));
   }
 
   @Test
   void fatalError_alwaysDelegatesToDisconnected() throws Exception {
     // Arrange
+    when(dest.transport()).thenReturn(transport);
     SendMessageOnErrorCallback cb = new SendMessageOnErrorCallback(msg, dest, ctr);
 
     // Act
     cb.fatalError();
 
     // Assert
-    verify(dest).sendAsync(eq(msg), isNull(), eq(ctr));
+    verify(transport).sendAsync(eq(msg), isNull(), eq(ctr));
   }
 
   @Test

@@ -293,7 +293,7 @@ public class SeednodePingTest extends RealNodeTest {
       if (seednode.isRealConnection()) {
         return false;
       }
-      boolean ping = seednode.ping(pingId);
+      boolean ping = seednode.transport().ping(pingId);
       if (ping && LOG.isErrorEnabled()) {
         LOG.error(
             "{} uptime={} ping={} pingTime={} uptime={} timeDelta={}",

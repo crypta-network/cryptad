@@ -637,22 +637,48 @@ class PeerPersistence {
     List<PeerNode> created = new ArrayList<>();
     for (SimpleFieldSet fs : peerEntries) {
       try {
-        created.add(PeerNode.create(fs, node, crypto, opennet, peerManager));
+        created.add(createPeerNode(fs, crypto, opennet));
       } catch (FSParseException
           | PeerParseException
           | ReferenceSignatureVerificationException
+          | PeerTooOldException
           | RuntimeException e2) {
-        handlePeerCreationException(e2, fs);
-      } catch (PeerTooOldException e) {
-        if (crypto.isOpennet()) {
-          LOG.error("Dropping too-old opennet peer");
+        PeerTooOldException tooOld = unwrapPeerTooOld(e2);
+        if (tooOld != null) {
+          if (crypto.isOpennet()) {
+            LOG.error("Dropping too-old opennet peer");
+          } else {
+            droppedOldPeers.add(tooOld, fs.get("myName"));
+          }
         } else {
-          droppedOldPeers.add(e, fs.get("myName"));
+          handlePeerCreationException(e2, fs);
         }
       }
     }
     // Always return successfully parsed peers; callers decide whether some entries were broken.
     return created;
+  }
+
+  private static PeerTooOldException unwrapPeerTooOld(Throwable t) {
+    if (t instanceof PeerTooOldException peerTooOldException) {
+      return peerTooOldException;
+    }
+    if (t instanceof FSParseException fsParseException
+        && fsParseException.getCause() instanceof PeerTooOldException peerTooOldException) {
+      return peerTooOldException;
+    }
+    return null;
+  }
+
+  PeerNode createPeerNode(SimpleFieldSet fs, NodeCrypto crypto, OpennetManager opennet)
+      throws FSParseException,
+          PeerParseException,
+          ReferenceSignatureVerificationException,
+          PeerTooOldException {
+    if (crypto.isOpennet()) {
+      return new OpennetPeerNode(fs, node, crypto, opennet, true, peerManager);
+    }
+    return new DarknetPeerNode(fs, node, crypto, true, null, null, peerManager);
   }
 
   /**

@@ -14,9 +14,9 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeCHK;
 import network.crypta.keys.NodeSSK;
-import network.crypta.node.PeerNode.RequestLikelyAcceptedState;
-import network.crypta.node.PeerNode.SlotWaiter;
-import network.crypta.node.PeerNode.SlotWaiterFailedException;
+import network.crypta.node.PeerNodeLoadTracker.RequestLikelyAcceptedState;
+import network.crypta.node.PeerNodeLoadTracker.SlotWaiter;
+import network.crypta.node.PeerNodeLoadTracker.SlotWaiterFailedException;
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -240,9 +240,16 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       //   waiting in the peer’s send queue.
       // - sendAsync would increase ACCEPTED_TIMEOUT risk and leave many hanging requests, further
       //   overloading peers. Hence, we do NOT use sendAsync here.
-      next.sendSync(req, this, realTimeFlag);
-      next.reportRoutedTo(
-          key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
+      next.transport().sendSync(req, this, realTimeFlag);
+      PeerNodeRoutingReporter.reportRoutedTo(
+          node,
+          next,
+          key.toNormalizedDouble(),
+          source == null,
+          realTimeFlag,
+          source,
+          nodesRoutedTo,
+          htl);
       node.getPeers().incrementSelectionSamples(next);
     } catch (NotConnectedException _) {
       LOG.debug("Not connected");
@@ -495,7 +502,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     LOG.debug("Cannot send to {} realtime={}", state.next, realTimeFlag);
     state.waitedForLoadManagement = true;
     if (state.waiter == null) {
-      state.waiter = PeerNode.createSlotWaiter(origTag, state.type, realTimeFlag, source);
+      state.waiter =
+          PeerNodeLoadTracker.createSlotWaiter(origTag, state.type, realTimeFlag, source);
     }
     if (!state.waiter.addWaitingFor(state.next)) {
       dontDecrementHTLThisTime = true;
@@ -618,9 +626,16 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       return false;
     }
     try {
-      state.next.sendSync(req, this, realTimeFlag);
-      state.next.reportRoutedTo(
-          key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl);
+      state.next.transport().sendSync(req, this, realTimeFlag);
+      PeerNodeRoutingReporter.reportRoutedTo(
+          node,
+          state.next,
+          key.toNormalizedDouble(),
+          source == null,
+          realTimeFlag,
+          source,
+          nodesRoutedTo,
+          htl);
       node.getPeers().incrementSelectionSamples(state.next);
       return true;
     } catch (NotConnectedException _) {

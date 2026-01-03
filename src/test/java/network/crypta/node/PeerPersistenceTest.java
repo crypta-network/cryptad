@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,7 +19,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -132,8 +130,7 @@ class PeerPersistenceTest {
   }
 
   @Test
-  void tryReadPeers_whenOldOpennetPeers_addsOldOpennetNode(@TempDir Path tempDir)
-      throws IOException {
+  void tryReadPeers_whenOldOpennetPeers_addsOldOpennetNode(@TempDir Path tempDir) throws Exception {
     Path opennetFile = tempDir.resolve("opennet.peers");
     SimpleFieldSet peerFieldSet = simpleFieldSet("peer");
     Files.writeString(opennetFile, peerFieldSet.toOrderedString(), StandardCharsets.UTF_8);
@@ -143,26 +140,18 @@ class PeerPersistenceTest {
 
     OpennetManager opennetManager = org.mockito.Mockito.mock(OpennetManager.class);
     OpennetPeerNode opennetPeer = org.mockito.Mockito.mock(OpennetPeerNode.class);
-    try (MockedStatic<PeerNode> peerNodeMock = mockStatic(PeerNode.class)) {
-      peerNodeMock
-          .when(
-              () ->
-                  PeerNode.create(
-                      any(SimpleFieldSet.class),
-                      eq(node),
-                      eq(crypto),
-                      eq(opennetManager),
-                      eq(peerManager)))
-          .thenReturn(opennetPeer);
+    PeerPersistence spyPersistence = org.mockito.Mockito.spy(persistence);
+    org.mockito.Mockito.doReturn(opennetPeer)
+        .when(spyPersistence)
+        .createPeerNode(any(SimpleFieldSet.class), eq(crypto), eq(opennetManager));
 
-      persistence.tryReadPeers(opennetFile.toString(), crypto, opennetManager, true, true);
-    }
+    spyPersistence.tryReadPeers(opennetFile.toString(), crypto, opennetManager, true, true);
 
     verify(opennetManager).addOldOpennetNode(opennetPeer);
   }
 
   @Test
-  void tryReadPeers_whenPeerParseFails_createsBrokenCopy(@TempDir Path tempDir) throws IOException {
+  void tryReadPeers_whenPeerParseFails_createsBrokenCopy(@TempDir Path tempDir) throws Exception {
     Path opennetFile = tempDir.resolve("opennet.peers");
     SimpleFieldSet peerFieldSet = simpleFieldSet("peer");
     String peerContent = peerFieldSet.toOrderedString();
@@ -172,20 +161,12 @@ class PeerPersistenceTest {
     NodeCrypto crypto = org.mockito.Mockito.mock(NodeCrypto.class);
 
     OpennetManager opennetManager = org.mockito.Mockito.mock(OpennetManager.class);
-    try (MockedStatic<PeerNode> peerNodeMock = mockStatic(PeerNode.class)) {
-      peerNodeMock
-          .when(
-              () ->
-                  PeerNode.create(
-                      any(SimpleFieldSet.class),
-                      eq(node),
-                      eq(crypto),
-                      eq(opennetManager),
-                      eq(peerManager)))
-          .thenThrow(new network.crypta.io.comm.PeerParseException("bad"));
+    PeerPersistence spyPersistence = org.mockito.Mockito.spy(persistence);
+    org.mockito.Mockito.doThrow(new network.crypta.io.comm.PeerParseException("bad"))
+        .when(spyPersistence)
+        .createPeerNode(any(SimpleFieldSet.class), eq(crypto), eq(opennetManager));
 
-      persistence.tryReadPeers(opennetFile.toString(), crypto, opennetManager, true, false);
-    }
+    spyPersistence.tryReadPeers(opennetFile.toString(), crypto, opennetManager, true, false);
 
     Path brokenFile = tempDir.resolve("opennet.peers.broken");
     assertAll(

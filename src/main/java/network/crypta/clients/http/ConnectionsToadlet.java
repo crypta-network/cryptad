@@ -41,7 +41,7 @@ import network.crypta.node.NodeFile;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNode;
-import network.crypta.node.PeerNode.IncomingLoadSummaryStats;
+import network.crypta.node.PeerNodeLoadTracker.IncomingLoadSummaryStats;
 import network.crypta.node.PeerNodeStatus;
 import network.crypta.node.Version;
 import network.crypta.support.Fields;

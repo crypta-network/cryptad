@@ -42,8 +42,8 @@ import network.crypta.io.comm.AsyncMessageCallback;
  *     // All messages have been sent (or failed to send); see 'success'.
  *   }
  * };
- * pn.sendAsync(m1, mcb.make(), ctr);
- * pn.sendAsync(m2, mcb.make(), ctr);
+ * pn.transport().sendAsync(m1, mcb.make(), ctr);
+ * pn.transport().sendAsync(m2, mcb.make(), ctr);
  * mcb.arm();
  * </pre>
  */

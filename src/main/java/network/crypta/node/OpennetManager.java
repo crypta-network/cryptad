@@ -1034,7 +1034,10 @@ public class OpennetManager {
     WantPeerSyncState state = decideInitialSync(ctx, maxPeers, addAtLRU, justChecking);
     if (state.earlyReturn) return state.earlyReturnValue;
 
-    if (nodeToAddNow != null) nodeToAddNow.setAddedReason(connectionType);
+    if (nodeToAddNow != null) {
+      nodeToAddNow.setAddedReason(
+          connectionType == null ? PeerNode.ADDED_REASON_UNKNOWN : connectionType.ordinal());
+    }
     if (state.notMany) return addPeerIfPresent(nodeToAddNow);
 
     DropResult result = computeDropAndMaybeAdd(ctx, addAtLRU, justChecking, state.noDisconnect);
@@ -1068,7 +1071,7 @@ public class OpennetManager {
     }
     for (OpennetPeerNode pn : result.dropList) {
       if (LOG.isDebugEnabled()) LOG.debug("Drop LRU opennet peer: {}", pn);
-      pn.setAddedReason(null);
+      pn.setAddedReason(PeerNode.ADDED_REASON_UNKNOWN);
       node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
     }
   }
@@ -1142,9 +1145,10 @@ public class OpennetManager {
 
   private int countActivePeersOfType(LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type) {
     int count = 0;
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
-      if (pn.getAddedReason() == type && pn.isConnected() && !pn.isDroppable(false)) {
+      if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {
         count++;
       }
     }
@@ -1154,9 +1158,10 @@ public class OpennetManager {
   private boolean exceedsTypeLimit(
       LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type, int myLimit) {
     int count = 0;
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
-      if (pn.getAddedReason() == type && pn.isConnected() && !pn.isDroppable(false)) {
+      if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {
         count++;
         if (count >= myLimit) {
           if (LOG.isDebugEnabled())
@@ -1546,7 +1551,7 @@ public class OpennetManager {
             ? DMT.createFNPOpennetConnectReplyNew(uid, xferUID, noderef.length, padded.length)
             : DMT.createFNPOpennetConnectDestinationNew(
                 uid, xferUID, noderef.length, padded.length);
-    peer.sendAsync(msg2, null, ctr);
+    peer.transport().sendAsync(msg2, null, ctr);
     return innerSendOpennetRef(xferUID, padded, peer, ctr, cb);
   }
 
@@ -1594,7 +1599,7 @@ public class OpennetManager {
     Message msg =
         DMT.createFNPOpennetAnnounceRequest(
             uid, xferUID, noderef.length, paddedSize(noderef.length), target, htl);
-    peer.sendAsync(msg, null, ctr);
+    peer.transport().sendAsync(msg, null, ctr);
     return xferUID;
   }
 
@@ -1644,7 +1649,7 @@ public class OpennetManager {
     System.arraycopy(noderef, 0, padded, 0, noderef.length);
     long xferUID = node.getRandom().nextLong();
     Message msg = DMT.createFNPOpennetAnnounceReply(uid, xferUID, noderef.length, padded.length);
-    peer.sendAsync(msg, null, ctr);
+    peer.transport().sendAsync(msg, null, ctr);
     innerSendOpennetRef(xferUID, padded, peer, ctr, null);
   }
 
@@ -1885,7 +1890,7 @@ public class OpennetManager {
   public static void rejectRef(long uid, PeerNode source, int reason, ByteCounter ctr) {
     Message msg = DMT.createFNPOpennetNoderefRejected(uid, reason);
     try {
-      source.sendAsync(msg, null, ctr);
+      source.transport().sendAsync(msg, null, ctr);
     } catch (NotConnectedException _) {
       // Ignore
     }
@@ -1903,7 +1908,7 @@ public class OpennetManager {
       byte[] noderef, PeerNode from, boolean forceOpennetEnabled) {
     SimpleFieldSet ref;
     try {
-      ref = PeerNode.compressedNoderefToFieldSet(noderef, 0, noderef.length);
+      ref = PeerNode.compressedNoderefToFieldSet(noderef, noderef.length);
     } catch (FSParseException e) {
       LOG.error("Invalid noderef: {}", e, e);
       return null;

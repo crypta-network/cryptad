@@ -249,8 +249,8 @@ public class MessageCore {
 
   private void logInbound(Message m, PacketSocketHandler from) {
     if (LOG.isDebugEnabled()) LOG.debug("checkFilters: {} from {}", m, m.getSource());
-    if ((m.getSource()) instanceof PeerNode) {
-      ((PeerNode) m.getSource()).addToLocalNodeReceivedMessagesFromStatistic(m);
+    if ((m.getSource()) instanceof PeerNode peerNode) {
+      peerNode.incrementReceivedMessageType(m.getSpec().getName());
     }
     if (LOG.isDebugEnabled() && !(m.getSpec().equals(DMT.packetTransmit))) {
       LOG.debug("{} {} <- {} : {}", System.currentTimeMillis() % 60000, from, m.getSource(), m);
@@ -751,7 +751,7 @@ public class MessageCore {
           new Exception("debug"));
       return;
     }
-    destination.sendAsync(m, null, ctr);
+    destination.transport().sendAsync(m, null, ctr);
   }
 
   /**

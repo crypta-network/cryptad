@@ -633,10 +633,11 @@ public final class CHKInsertSender extends BaseSender
 
   private void sendReceiveFailedNotice(PeerNode next) {
     try {
-      next.sendAsync(
-          DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED),
-          null,
-          this);
+      next.transport()
+          .sendAsync(
+              DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED),
+              null,
+              this);
     } catch (NotConnectedException _) {
       // Ignore
     }
@@ -886,45 +887,47 @@ public final class CHKInsertSender extends BaseSender
 
   private void sendTimeoutRejectedAfterAccepted(PeerNode next, UIDTag tag, long uid) {
     try {
-      next.sendAsync(
-          DMT.createFNPDataInsertRejected(
-              uid, DMT.DATA_INSERT_REJECTED_TIMEOUT_WAITING_FOR_ACCEPTED),
-          new AsyncMessageCallback() {
-            @Override
-            public void sent() {
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "DataInsertRejected sent after accepted timeout on {}", CHKInsertSender.this);
-            }
+      next.transport()
+          .sendAsync(
+              DMT.createFNPDataInsertRejected(
+                  uid, DMT.DATA_INSERT_REJECTED_TIMEOUT_WAITING_FOR_ACCEPTED),
+              new AsyncMessageCallback() {
+                @Override
+                public void sent() {
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "DataInsertRejected sent after accepted timeout on {}",
+                        CHKInsertSender.this);
+                }
 
-            @Override
-            public void acknowledged() {
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "DataInsertRejected acknowledged after accepted timeout on {}",
-                    CHKInsertSender.this);
-              next.noLongerRoutingTo(tag, false);
-            }
+                @Override
+                public void acknowledged() {
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "DataInsertRejected acknowledged after accepted timeout on {}",
+                        CHKInsertSender.this);
+                  next.noLongerRoutingTo(tag, false);
+                }
 
-            @Override
-            public void disconnected() {
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "DataInsertRejected peer disconnected after accepted timeout on  {}",
-                    CHKInsertSender.this);
-              next.noLongerRoutingTo(tag, false);
-            }
+                @Override
+                public void disconnected() {
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "DataInsertRejected peer disconnected after accepted timeout on  {}",
+                        CHKInsertSender.this);
+                  next.noLongerRoutingTo(tag, false);
+                }
 
-            @Override
-            public void fatalError() {
-              if (LOG.isDebugEnabled())
-                LOG.debug(
-                    "DataInsertRejected fatal error after accepted timeout on {}",
-                    CHKInsertSender.this);
-              next.noLongerRoutingTo(tag, false);
-            }
-          },
-          CHKInsertSender.this);
+                @Override
+                public void fatalError() {
+                  if (LOG.isDebugEnabled())
+                    LOG.debug(
+                        "DataInsertRejected fatal error after accepted timeout on {}",
+                        CHKInsertSender.this);
+                  next.noLongerRoutingTo(tag, false);
+                }
+              },
+              CHKInsertSender.this);
     } catch (NotConnectedException _) {
       next.noLongerRoutingTo(tag, false);
     }
@@ -1492,7 +1495,7 @@ public final class CHKInsertSender extends BaseSender
 
     if (LOG.isDebugEnabled()) LOG.debug("Sending DataInsert");
     try {
-      next.sendSync(dataInsert, this, realTimeFlag);
+      next.transport().sendSync(dataInsert, this, realTimeFlag);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Not connected sending DataInsert: {}" + FOR + "{}", next, uid);

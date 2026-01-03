@@ -612,10 +612,12 @@ public class FailureTable {
       SSKBlock block = node.fetch((NodeSSK) key, false, false, false, false, true, null);
       if (block == null) {
         // Don't have the key
-        source.sendAsync(
-            DMT.createFNPGetOfferedKeyInvalid(uid, DMT.GET_OFFERED_KEY_REJECTED_NO_KEY),
-            null,
-            senderCounter);
+        source
+            .transport()
+            .sendAsync(
+                DMT.createFNPGetOfferedKeyInvalid(uid, DMT.GET_OFFERED_KEY_REJECTED_NO_KEY),
+                null,
+                senderCounter);
         tag.unlockHandler();
         return;
       }
@@ -624,7 +626,7 @@ public class FailureTable {
       Message headers = DMT.createFNPSSKDataFoundHeaders(uid, block.getRawHeaders(), realTimeFlag);
       final int dataLength = block.getRawData().length;
 
-      source.sendAsync(headers, null, senderCounter);
+      source.transport().sendAsync(headers, null, senderCounter);
 
       node.getExecutor()
           .execute(
@@ -638,7 +640,7 @@ public class FailureTable {
                 @Override
                 public void run() {
                   try {
-                    source.sendSync(data, senderCounter, realTimeFlag);
+                    source.transport().sendSync(data, senderCounter, realTimeFlag);
                     senderCounter.sentPayload(dataLength);
                   } catch (NotConnectedException | SyncSendWaitedTooLongException _) {
                     // Ignored
@@ -651,21 +653,23 @@ public class FailureTable {
 
       if (needPubKey) {
         Message pk = DMT.createFNPSSKPubKey(uid, block.getPubKey(), realTimeFlag);
-        source.sendAsync(pk, null, senderCounter);
+        source.transport().sendAsync(pk, null, senderCounter);
       }
     } else {
       CHKBlock block = node.fetch((NodeCHK) key, false, false, false, false, true, null);
       if (block == null) {
         // Don't have the key
-        source.sendAsync(
-            DMT.createFNPGetOfferedKeyInvalid(uid, DMT.GET_OFFERED_KEY_REJECTED_NO_KEY),
-            null,
-            senderCounter);
+        source
+            .transport()
+            .sendAsync(
+                DMT.createFNPGetOfferedKeyInvalid(uid, DMT.GET_OFFERED_KEY_REJECTED_NO_KEY),
+                null,
+                senderCounter);
         tag.unlockHandler();
         return;
       }
       Message df = DMT.createFNPCHKDataFound(uid, block.getRawHeaders());
-      source.sendAsync(df, null, senderCounter);
+      source.transport().sendAsync(df, null, senderCounter);
       PartiallyReceivedBlock prb =
           new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, block.getRawData());
       final BlockTransmitter bt =

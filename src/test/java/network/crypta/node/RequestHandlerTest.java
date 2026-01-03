@@ -33,6 +33,7 @@ class RequestHandlerTest {
 
   @Mock private Node node;
   @Mock private PeerNode source;
+  @Mock private PeerTransport transport;
   @Mock private RequestTag tag;
   @Mock private NodeStats nodeStats;
   @Mock private FailureTable failureTable;
@@ -53,6 +54,7 @@ class RequestHandlerTest {
   void setupNodeDefaults() {
     when(node.getNodeStats()).thenReturn(nodeStats);
     when(node.getFailureTable()).thenReturn(failureTable);
+    when(source.transport()).thenReturn(transport);
   }
 
   @Test
@@ -69,7 +71,7 @@ class RequestHandlerTest {
               if (cb != null) cb.sent();
               return null;
             })
-        .when(source)
+        .when(transport)
         .sendAsync(any(Message.class), any(), any());
 
     RequestHandler rh =
@@ -119,7 +121,7 @@ class RequestHandlerTest {
               sent.add(m);
               return null;
             })
-        .when(source)
+        .when(transport)
         .sendAsync(any(Message.class), any(), any());
 
     RequestHandler rh =
@@ -151,7 +153,7 @@ class RequestHandlerTest {
               if (cb != null) cb.sent();
               return null;
             })
-        .when(source)
+        .when(transport)
         .sendAsync(any(Message.class), any(), any());
     when(tag.hasSourceReallyRestarted()).thenReturn(false);
 

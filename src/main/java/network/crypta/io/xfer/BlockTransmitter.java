@@ -212,7 +212,7 @@ public class BlockTransmitter {
         MyAsyncMessageCallback cb = new MyAsyncMessageCallback();
         MessageItem item;
         // All sends are throttled via the shared ByteCounter.
-        item = destination.sendAsync(msg, cb, ctr);
+        item = destination.transport().sendAsync(msg, cb, ctr);
         synchronized (itemsPending) {
           itemsPending.add(item);
         }
@@ -369,7 +369,7 @@ public class BlockTransmitter {
             "Terminating send {} to {} from {} as we haven't heard from receiver in {}.",
             uid,
             destination,
-            destination.getSocketHandler(),
+            destination.transport().getSocketHandler(),
             timeString);
         abortReason = "Haven't heard from you (receiver) in " + timeString;
       }
@@ -694,7 +694,7 @@ public class BlockTransmitter {
         "Terminating send {} to {} from {} because node disconnected while waiting",
         uid,
         destination,
-        destination.getSocketHandler());
+        destination.transport().getSocketHandler());
     // Peer disconnected; an abort/ack cannot be sent back to them.
     Future fail;
     synchronized (senderThread) {

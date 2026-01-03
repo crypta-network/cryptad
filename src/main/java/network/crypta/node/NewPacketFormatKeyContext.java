@@ -173,7 +173,7 @@ public class NewPacketFormatKeyContext {
     int rt = (int) Math.min(rtt, Integer.MAX_VALUE);
     pn.reportPing(rt);
     if (validAck) pn.receivedAck(ackReceived);
-    PacketThrottle throttle = pn.getThrottle();
+    PacketThrottle throttle = pn.transport().getThrottle();
     if (throttle == null) return;
     throttle.setRoundTripTime(rt);
     if (validAck) throttle.notifyOfPacketAcknowledged(maxSize);
@@ -340,7 +340,7 @@ public class NewPacketFormatKeyContext {
     if (count > 0 && LOG.isDebugEnabled())
       LOG.debug("In-flight packets={}, retransmit threshold={} ms", count, maxDelay);
     if (bigLostCount != 0 && pn != null) {
-      PacketThrottle throttle = pn.getThrottle();
+      PacketThrottle throttle = pn.transport().getThrottle();
       if (throttle != null) {
         throttle.notifyOfPacketsLost(bigLostCount);
       }
