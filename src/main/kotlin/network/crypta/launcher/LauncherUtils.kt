@@ -10,14 +10,32 @@ import java.nio.file.Paths
 import javax.imageio.ImageIO
 import network.crypta.fs.AppEnv
 
-/** Small pure helpers used by the launcher controller and tests. */
+/**
+ * Collection of small, mostly pure helper functions used by the launcher controller and tests.
+ *
+ * These utilities focus on log parsing, wrapper configuration parsing, filesystem path
+ * normalization, and command construction for launching the daemon. Callers typically use them when
+ * wiring the Swing launcher, resolving the wrapper configuration, or extracting the FProxy port
+ * from log output. Most functions are deterministic and side-effect light; where they read
+ * environment variables or system properties, results can vary with the process environment.
+ */
 
 // --- Port parsing ---
 
 private val PORT_RE =
   Regex("""Starting\s+FProxy\s+on\s+.*:(\d{2,5})(?:\s*|$)""", RegexOption.IGNORE_CASE)
 
-/** Try to parse the FProxy HTTP port from a log line. */
+/**
+ * Try to parse the FProxy HTTP port from a single log line.
+ *
+ * This function first searches for the canonical "Starting FProxy on ..." pattern and then falls
+ * back to a lightweight heuristic that looks for a trailing `:<port>` segment. The port is accepted
+ * only when it is 2–5 digits long to avoid matching short or malformed values. The operation is
+ * idempotent and has no side effects; it simply returns a nullable port value.
+ *
+ * @param line raw log line to scan, typically emitted by the daemon or wrapper.
+ * @return parsed port number when a match is found, or `null` when no valid port is present.
+ */
 fun parseFProxyPortFromLine(line: String): Int? {
   PORT_RE.find(line)?.let { m ->
     return m.groupValues[1].toIntOrNull()
@@ -38,7 +56,16 @@ fun parseFProxyPortFromLine(line: String): Int? {
 
 // --- wrapper.conf helpers ---
 
-/** Return `key=value` map from wrapper.conf content lines (ignores comments and blanks). */
+/**
+ * Parse wrapper configuration lines into a `key=value` map.
+ *
+ * Blank lines and comment lines (those starting with `#` after trimming) are ignored. For matching
+ * lines, the first `=` is treated as the delimiter and both key and value are trimmed. If a key
+ * appears multiple times, the last value wins, which mirrors common configuration semantics.
+ *
+ * @param lines wrapper configuration lines, already split by newline.
+ * @return map of property keys to values, excluding comments and blank lines.
+ */
 fun parseWrapperProperties(lines: List<String>): Map<String, String> = buildMap {
   lines.forEach { raw ->
     val line = raw.trim()
@@ -52,35 +79,37 @@ fun parseWrapperProperties(lines: List<String>): Map<String, String> = buildMap 
 }
 
 /**
- * Pure helper to upsert (add or replace) a property line. Preserves existing file structure and
- * comments, modifying only the first occurrence or appending at the end.
+ * Upsert a single `key=value` line in a wrapper configuration file.
+ *
+ * The first existing occurrence of `key` (ignoring leading/trailing whitespace and comments) is
+ * replaced, and all other lines are preserved verbatim. If no matching key is found, a new line is
+ * appended at the end. This function does not validate the key or value beyond simple matching and
+ * does not alter comment or blank lines.
+ *
+ * @param lines original wrapper configuration lines in their existing order.
+ * @param key property key to upsert; compared after trimming whitespace.
+ * @param value property value to write as a single line after the `=` delimiter.
+ * @return new list of lines with the update applied, preserving unrelated content.
  */
 fun upsertWrapperProperty(lines: List<String>, key: String, value: String): List<String> {
-  var replaced = false
-  val out =
-    lines
-      .map { raw ->
-        if (!replaced) {
-          val trimmed = raw.trim()
-          if (trimmed.isNotEmpty() && !trimmed.startsWith('#')) {
-            val idx = trimmed.indexOf('=')
-            if (idx > 0) {
-              val k = trimmed.substringBefore('=', "").trim()
-              if (k == key) {
-                replaced = true
-                return@map "$key=$value"
-              }
-            }
-          }
-        }
-        raw
-      }
-      .toMutableList()
-  if (!replaced) out.add("$key=$value")
-  return out
+  val index = lines.indexOfFirst { matchesWrapperKey(it, key) }
+  if (index >= 0) {
+    return lines.mapIndexed { i, raw -> if (i == index) "$key=$value" else raw }
+  }
+  return lines + "$key=$value"
 }
 
-/** Compute the effective wrapper.logfile path given the wrapper.conf location and value. */
+/**
+ * Compute the effective `wrapper.logfile` path.
+ *
+ * When the provided spec is blank or null, a default relative path of `../logs/wrapper.log` is
+ * used. Relative paths are resolved against the parent directory of the wrapper configuration file,
+ * and the result is normalized. Absolute paths are returned as-is (after normalization).
+ *
+ * @param confPath path to the wrapper configuration file used as the base for relative values.
+ * @param logSpec value of `wrapper.logfile`, which may be null or blank.
+ * @return resolved filesystem path where the wrapper log file is expected to be written.
+ */
 fun computeWrapperLogPath(confPath: Path, logSpec: String?): Path {
   val spec = logSpec?.takeUnless { it.isBlank() } ?: "../logs/wrapper.log"
   val p = Paths.get(spec)
@@ -88,9 +117,17 @@ fun computeWrapperLogPath(confPath: Path, logSpec: String?): Path {
 }
 
 /**
- * Compute an effective file path declared in `wrapper.conf` taking into account
- * `wrapper.working.dir` when the specification is relative. If `fileSpec` is null or blank, returns
- * null.
+ * Compute an effective file path declared in `wrapper.conf`.
+ *
+ * If `fileSpec` is relative, it is resolved against `wrapper.working.dir` when provided. A relative
+ * working directory is itself resolved against the wrapper configuration directory. Absolute
+ * `fileSpec` values are normalized and returned directly. If `fileSpec` is null or blank, this
+ * function returns `null` to signal the absence of a configured file path.
+ *
+ * @param confPath path to the wrapper configuration file used as a base for relative paths.
+ * @param fileSpec property value that may be absolute, relative, or blank.
+ * @param workingDirSpec optional `wrapper.working.dir` value that influences relative resolution.
+ * @return normalized path for the configured file, or `null` when no file spec is provided.
  */
 fun computeWrapperFilePath(confPath: Path, fileSpec: String?, workingDirSpec: String?): Path? {
   val spec = fileSpec?.takeUnless { it.isBlank() } ?: return null
@@ -107,8 +144,15 @@ fun computeWrapperFilePath(confPath: Path, fileSpec: String?, workingDirSpec: St
 }
 
 /**
- * Guess wrapper.conf path for a `cryptad` wrapper script path. Tries `../conf/wrapper.conf` and
- * also scans the script for an explicit `-c ".../wrapper.conf"` or `CONF=".../wrapper.conf"`.
+ * Guess the `wrapper.conf` path for a given `cryptad` wrapper script.
+ *
+ * The method prefers the conventional `../conf/wrapper.conf` location relative to the script
+ * directory. If the script is present but the default file does not exist, it scans the first few
+ * lines for an explicit `-c ".../wrapper.conf"` or `CONF=".../wrapper.conf"` declaration. When
+ * reading the script fails, the default path is returned as a safe fallback.
+ *
+ * @param cryptadPath path to the wrapper script (`cryptad` or `cryptad.bat`).
+ * @return resolved wrapper configuration path, or `null` if the script path has no parent.
  */
 fun guessWrapperConfPathForCryptadScript(cryptadPath: Path): Path? {
   val scriptDir = cryptadPath.parent ?: return null
@@ -123,7 +167,16 @@ fun guessWrapperConfPathForCryptadScript(cryptadPath: Path): Path? {
   }
 }
 
-/** Pure scan for wrapper.conf inside a shell script's lines. */
+/**
+ * Scan shell script lines for an explicit `wrapper.conf` path.
+ *
+ * Only two simple patterns are recognized: `CONF=".../wrapper.conf"` and `-c ".../wrapper.conf"`.
+ * The scan stops after the first match and considers only the first 200 lines to keep parsing fast
+ * and deterministic.
+ *
+ * @param lines raw script lines, typically from the wrapper launch script.
+ * @return normalized path to `wrapper.conf` when found, or `null` when no match exists.
+ */
 fun scanWrapperConfPath(lines: List<String>): Path? {
   val re1 = Regex("""CONF="([^"]*wrapper\.conf)"""")
   val re2 = Regex("""-c\s+"([^"]*wrapper\.conf)"""")
@@ -141,17 +194,17 @@ fun scanWrapperConfPath(lines: List<String>): Path? {
 /**
  * Resolve the default wrapper launcher path (`cryptad` on Unix, `cryptad.bat` on Windows).
  *
- * If the `CRYPTAD_PATH` environment variable is set, that path is used first (absolute or resolved
- * relative to `cwd`). Otherwise the resolution order (first existing/executable wins):
- * - From the currently running `cryptad.jar` location (same directory), i.e. `<jarDir>/cryptad` on
- *   Unix or `<jarDir>/cryptad.bat` on Windows.
- * - From the distribution layout relative to `cryptad.jar`, i.e. `<jarDir>/../bin/cryptad` on Unix
- *   or `<jarDir>/../bin/cryptad.bat` on Windows.
+ * Resolution is ordered and stops at the first existing executable. If the `CRYPTAD_PATH`
+ * environment variable is set, it is used first (absolute or resolved against `cwd`). Otherwise:
+ * - From the currently running `cryptad.jar` location (same directory), then `../bin/`.
  * - From the current working directory: `bin/cryptad` (Unix) or `bin/cryptad.bat` (Windows), then
  *   `./cryptad` or `./cryptad.bat` respectively.
  *
  * This avoids relying on the user's home or working directory when launched from the assembled
  * distribution (bin/ + lib/).
+ *
+ * @param cwd base directory for relative path resolution, usually the current working directory.
+ * @return best-effort path to the wrapper script, even if it does not exist.
  */
 fun resolveCryptadPath(cwd: Path = Paths.get(System.getProperty("user.dir"))): Path =
   resolveCryptadPathWithEnv(cwd, System.getenv())
@@ -164,47 +217,18 @@ internal fun resolveCryptadPathWithEnv(
   env: Map<String, String> = System.getenv(),
 ): Path {
   // 0) Environment override (absolute or relative to cwd)
-  env[CRYPTAD_PATH_ENV]?.let { raw ->
-    val trimmed = raw.trim()
-    if (trimmed.isNotEmpty()) {
-      val p = Paths.get(trimmed)
-      return (if (p.isAbsolute) p else cwd.resolve(trimmed)).normalize()
-    }
+  resolveCryptadPathFromEnv(cwd, env)?.let {
+    return it
   }
 
   // 1) Try to resolve relative to the currently running cryptad.jar (preferred)
-  findCurrentCryptadJarPath()?.let { jar ->
-    val jarDir = jar.parent
-    if (jarDir != null) {
-      val isWindows = network.crypta.fs.AppEnv().isWindows()
-      val candidates = buildList {
-        if (isWindows) {
-          add(jarDir.resolve("cryptad.bat").normalize())
-          add(jarDir.resolve("../bin/cryptad.bat").normalize())
-        }
-        add(jarDir.resolve("cryptad").normalize())
-        add(jarDir.resolve("../bin/cryptad").normalize())
-      }
-      for (p in candidates) {
-        if (Files.isRegularFile(p) && Files.isExecutable(p)) return p
-      }
-    }
+  val isWindows = AppEnv().isWindows()
+  resolveCryptadPathFromJar(isWindows)?.let {
+    return it
   }
 
   // 2) Fallback to resolving from the working directory (legacy behavior)
-  run {
-    val isWindows = network.crypta.fs.AppEnv().isWindows()
-    val candidates = buildList {
-      if (isWindows) add(cwd.resolve("bin/cryptad.bat"))
-      add(cwd.resolve("bin/cryptad"))
-      if (isWindows) add(cwd.resolve("cryptad.bat"))
-      add(cwd.resolve("cryptad"))
-    }
-    for (p in candidates) {
-      if (Files.isRegularFile(p) && Files.isExecutable(p)) return p
-    }
-  }
-  return cwd.resolve("cryptad")
+  return resolveCryptadPathFromCwd(cwd, isWindows) ?: cwd.resolve("cryptad")
 }
 
 /** Attempt to locate the path to the currently running cryptad.jar. */
@@ -215,10 +239,7 @@ internal fun findCurrentCryptadJarPath(): Path? {
     try {
       val uri = loc.toURI()
       val decoded = Paths.get(URLDecoder.decode(uri.path, "UTF-8"))
-      if (Files.isRegularFile(decoded) && decoded.fileName.toString().endsWith(".jar")) {
-        // Typically .../lib/cryptad.jar in the assembled distribution
-        if (decoded.fileName.toString().startsWith("cryptad")) return decoded.normalize()
-      }
+      if (isCryptadJarFile(decoded)) return decoded.normalize()
     } catch (e: Exception) {
       logDebug("Failed to decode current jar path from protection domain", e)
     }
@@ -250,7 +271,64 @@ internal fun findCryptadJarInClassPath(classPath: String): Path? {
   return null
 }
 
-/** Build the command line for starting the daemon, keeping the PTY optimization for Unix. */
+private fun matchesWrapperKey(raw: String, key: String): Boolean {
+  val trimmed = raw.trim()
+  if (trimmed.isEmpty() || trimmed.startsWith('#')) return false
+  val idx = trimmed.indexOf('=')
+  if (idx <= 0) return false
+  val k = trimmed.substringBefore('=', "").trim()
+  return k == key
+}
+
+private fun resolveCryptadPathFromEnv(cwd: Path, env: Map<String, String>): Path? {
+  val raw = env[CRYPTAD_PATH_ENV] ?: return null
+  val trimmed = raw.trim()
+  if (trimmed.isEmpty()) return null
+  val p = Paths.get(trimmed)
+  return (if (p.isAbsolute) p else cwd.resolve(trimmed)).normalize()
+}
+
+private fun resolveCryptadPathFromJar(isWindows: Boolean): Path? {
+  val jar = findCurrentCryptadJarPath() ?: return null
+  val jarDir = jar.parent ?: return null
+  val candidates = buildList {
+    if (isWindows) {
+      add(jarDir.resolve("cryptad.bat").normalize())
+      add(jarDir.resolve("../bin/cryptad.bat").normalize())
+    }
+    add(jarDir.resolve("cryptad").normalize())
+    add(jarDir.resolve("../bin/cryptad").normalize())
+  }
+  return candidates.firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }
+}
+
+private fun resolveCryptadPathFromCwd(cwd: Path, isWindows: Boolean): Path? {
+  val candidates = buildList {
+    if (isWindows) add(cwd.resolve("bin/cryptad.bat"))
+    add(cwd.resolve("bin/cryptad"))
+    if (isWindows) add(cwd.resolve("cryptad.bat"))
+    add(cwd.resolve("cryptad"))
+  }
+  return candidates.firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }
+}
+
+private fun isCryptadJarFile(path: Path): Boolean {
+  if (!Files.isRegularFile(path)) return false
+  val name = path.fileName.toString()
+  return name.endsWith(".jar") && name.startsWith("cryptad")
+}
+
+/**
+ * Build the command line for starting the daemon, preserving the PTY optimization on Unix.
+ *
+ * On Unix-like systems, if `script(1)` is available, the command is wrapped to reduce line
+ * buffering and preserve interactive behavior. Linux and BSD/macOS variants are handled separately
+ * due to differing argument conventions. On Windows, or when `script` is not found, the command
+ * line is a single-element list containing the wrapper script path.
+ *
+ * @param cryptadPath path to the wrapper script executable to invoke.
+ * @return ordered command-line arguments suitable for `ProcessBuilder`.
+ */
 fun buildCryptadCommand(cryptadPath: Path): List<String> {
   val env = AppEnv()
   if (!env.isWindows()) {
@@ -274,6 +352,16 @@ fun buildCryptadCommand(cryptadPath: Path): List<String> {
 internal fun shellQuote(s: String): String =
   if (s.isEmpty()) "''" else "'" + s.replace("'", "'\"'\"'") + "'"
 
+/**
+ * Search the current `PATH` for an executable.
+ *
+ * This helper scans the `PATH` environment variable in order and returns the first matching,
+ * executable file. It does not expand file extensions, so callers should supply the exact command
+ * name for the host platform.
+ *
+ * @param cmd command name to locate, without additional arguments.
+ * @return absolute path to the first matching executable, or `null` when none is found.
+ */
 fun findOnPath(cmd: String): String? {
   val path = System.getenv("PATH") ?: return null
   val sep = File.pathSeparator
@@ -291,12 +379,12 @@ fun findOnPath(cmd: String): String? {
 /**
  * Load the application icon image.
  *
- * OS-specific classpath resources are preferred:
- * - macOS: `network/crypta/launcher/crypta-launcher-icon-macos.png`
- * - Windows: `network/crypta/launcher/crypta-launcher-icon-windows.png`
- * - Other OSes: fall back to macOS icon if present.
+ * OS-specific classpath resources are preferred, with macOS artwork used as a generic fallback for
+ * non-macOS platforms when available. When running from source without packaged resources, the
+ * README image under `docs/images/crypta_logo.png` is used as a development fallback. If no image
+ * can be loaded, this function returns `null` and callers should skip icon configuration.
  *
- * When running from source without resources, falls back to `docs/images/crypta_logo.png`.
+ * @return decoded icon image, or `null` when no resource can be loaded.
  */
 fun loadAppIconImage(): Image? {
   val cl = Thread.currentThread().contextClassLoader
