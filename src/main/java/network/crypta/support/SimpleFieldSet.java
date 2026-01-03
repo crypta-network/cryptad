@@ -70,6 +70,7 @@ public class SimpleFieldSet {
   private static final String TO_STRING_ERR_PREFIX = "WTF?!: ";
   private static final String TO_STRING_ERR_SUFFIX = " in toString()!";
   private static final String CANNOT_PARSE = "Cannot parse ";
+  private static final String PARSE_ERROR_SUFFIX = "{} : {}";
 
   private final Map<String, String> values;
   private Map<String, SimpleFieldSet> subsets;
@@ -612,7 +613,7 @@ public class SimpleFieldSet {
       return true;
     }
     boolean wasAbsent = !values.containsKey(key);
-    String existing = values.computeIfAbsent(key, k -> value);
+    String existing = values.computeIfAbsent(key, _ -> value);
     if (wasAbsent) return true; // was absent, now set to value
     if (!allowMultiple) return false;
     values.put(key, existing + MULTI_VALUE_CHAR + value);
@@ -1594,7 +1595,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Integer.parseInt(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + "{} : {}", strings[i], e, e);
+          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1614,7 +1615,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Short.parseShort(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + "{} : {}", strings[i], e, e);
+          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1634,7 +1635,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Long.parseLong(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + "{} : {}", strings[i], e, e);
+          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1654,7 +1655,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Double.parseDouble(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + "{} : {}", strings[i], e, e);
+          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1675,7 +1676,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Boolean.parseBoolean(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + "{} : {}", strings[i], e, e);
+          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
           parseFailed = true;
           break;
         }
