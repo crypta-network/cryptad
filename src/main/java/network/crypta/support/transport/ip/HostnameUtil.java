@@ -59,30 +59,11 @@ public class HostnameUtil {
    * @see AddressIdentifier#getAddressType(String, boolean)
    */
   public static boolean isValidHostname(String hn, boolean allowIPAddress) {
-    if (allowIPAddress) {
-      // Enable trace logging to aid diagnosis when {@link AddressIdentifier} does not classify
-      // certain IPv6 textual variants (e.g., "fe80::204:1234:dead:beef").
-      AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(hn, true);
-      if (LOG.isTraceEnabled())
-        LOG.trace("Address type of '{}' appears to be '{}'", hn, addressType);
-      // Treat only non-hostname types as immediate success. Compare the enum directly to avoid
-      // string-name regressions if enum constant names change (e.g., OTHER vs "Other").
-      if (addressType != AddressIdentifier.AddressType.OTHER) {
-        return true;
-      }
-
-      // Fallback: accept IPv6 literals that embed an IPv4 dotted-quad tail (e.g.,
-      // ::ffff:192.0.2.1), which may not be recognized by AddressIdentifier. This preserves prior
-      // behavior where these legitimate forms passed when IPs were allowed.
-      if (looksLikeIPv6WithEmbeddedIPv4(hn)) {
-        return true;
-      }
-    }
+    if (allowIPAddress && isValidIPAddressLiteral(hn)) return true;
     // NOTE: Accepts ACE (Punycode) labels commonly produced by IDNA processing; this path is not
     //       covered by exhaustive tests here.
-    if (!hn.matches("(?:[-!#$%&'*+\\\\/0-9=?A-Z^_`a-z{|}]++\\.)++[a-zA-Z]{2,6}")) {
-      if (LOG.isDebugEnabled())
-        LOG.debug("Rejected {} candidate: '{}'", allowIPAddress ? "host/IP" : "hostname", hn);
+    if (!matchesHostnamePattern(hn)) {
+      logRejectedHostname(hn, allowIPAddress);
       return false;
     }
     return true;
@@ -127,26 +108,58 @@ public class HostnameUtil {
     return hasDoubleColon ? hextets <= 6 : hextets == 6;
   }
 
+  private static boolean isValidIPAddressLiteral(String hn) {
+    // Enable trace logging to aid diagnosis when {@link AddressIdentifier} does not classify
+    // certain IPv6 textual variants (e.g., "fe80::204:1234:dead:beef").
+    AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(hn, true);
+    if (LOG.isTraceEnabled()) LOG.trace("Address type of '{}' appears to be '{}'", hn, addressType);
+    // Treat only non-hostname types as immediate success. Compare the enum directly to avoid
+    // string-name regressions if enum constant names change (e.g., OTHER vs "Other").
+    if (addressType != AddressIdentifier.AddressType.OTHER) {
+      return true;
+    }
+
+    // Fallback: accept IPv6 literals that embed an IPv4 dotted-quad tail (e.g.,
+    // ::ffff:192.0.2.1), which may not be recognized by AddressIdentifier. This preserves prior
+    // behavior where these legitimate forms passed when IPs were allowed.
+    return looksLikeIPv6WithEmbeddedIPv4(hn);
+  }
+
+  private static boolean matchesHostnamePattern(String hn) {
+    return hn.matches("(?:[-!#$%&'*+\\\\/0-9=?A-Z^_`a-z{|}]++\\.)++[a-zA-Z]{2,6}");
+  }
+
+  private static void logRejectedHostname(String hn, boolean allowIPAddress) {
+    if (LOG.isDebugEnabled())
+      LOG.debug("Rejected {} candidate: '{}'", allowIPAddress ? "host/IP" : "hostname", hn);
+  }
+
   private static String stripScopeAndRejectBracketed(String s) {
     if (s == null || s.isEmpty()) return null;
     if (s.indexOf('[') >= 0 || s.indexOf(']') >= 0) return null; // reject bracketed forms
     int pct = s.indexOf('%');
     if (pct < 0) return s;
     String scope = s.substring(pct + 1);
-    // Accept numeric and common interface-name scopes (1–32 of [0-9A-Za-z._-])
-    if (scope.isEmpty() || scope.length() > 32) return null;
-    for (int i = 0; i < scope.length(); i++) {
-      char c = scope.charAt(i);
-      boolean ok =
-          (c >= '0' && c <= '9')
-              || (c >= 'A' && c <= 'Z')
-              || (c >= 'a' && c <= 'z')
-              || c == '.'
-              || c == '_'
-              || c == '-';
-      if (!ok) return null;
-    }
+    if (!isValidScopeId(scope)) return null;
     return s.substring(0, pct);
+  }
+
+  private static boolean isValidScopeId(String scope) {
+    // Accept numeric and common interface-name scopes (1–32 of [0-9A-Za-z._-])
+    if (scope.isEmpty() || scope.length() > 32) return false;
+    for (int i = 0; i < scope.length(); i++) {
+      if (!isValidScopeChar(scope.charAt(i))) return false;
+    }
+    return true;
+  }
+
+  private static boolean isValidScopeChar(char c) {
+    return (c >= '0' && c <= '9')
+        || (c >= 'A' && c <= 'Z')
+        || (c >= 'a' && c <= 'z')
+        || c == '.'
+        || c == '_'
+        || c == '-';
   }
 
   /**
