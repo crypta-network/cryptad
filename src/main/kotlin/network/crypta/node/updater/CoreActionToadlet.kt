@@ -4,6 +4,7 @@ import java.io.File
 import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
 import network.crypta.clients.http.PageMaker
+import network.crypta.clients.http.PageNode
 import network.crypta.clients.http.Toadlet
 import network.crypta.clients.http.ToadletContext
 import network.crypta.fs.AppEnv
@@ -15,21 +16,32 @@ import network.crypta.support.api.HTTPRequest
 import org.slf4j.LoggerFactory
 
 /**
- * Lightweight HTTP endpoint that wires alert‑panel buttons to CoreUpdater actions.
+ * Lightweight HTTP endpoint that wires alert panel buttons to CoreUpdater actions.
  *
- * Path: `/core-update/`
- * - GET: 302 redirect to the Alerts page.
- * - POST: handles `action=download|install` (requires a valid form password in the request).
+ * This toadlet is a thin bridge between the Alerts UI and the core update workflow. It exposes a
+ * single, fixed mount path (`/core-update/`) that accepts browser posts initiated by the alert
+ * panel. The handler validates the form password, resolves the current [CoreUpdater], and
+ * dispatches to well-defined actions (download, install, openStore). Responses are kept
+ * intentionally small: most requests redirect back to Alerts, while install/openStore return a
+ * compact result page with guidance when an OS-specific manual step is required.
  *
- * Security:
- * - `install` action validates that the file path is under the node dir `updates/core/` subtree
- *   (canonical‑path check) to mitigate traversal/symlink games.
+ * Key invariants are defensive: file paths are canonicalized and required to live under the node's
+ * `updates/core` subtree, and installation helpers are selected by OS and sandbox state. The class
+ * is effectively stateless beyond its dependencies and does not perform blocking work itself;
+ * process launches are delegated to the OS and treated as "started" or "manual guidance" outcomes.
+ *
+ * Responsibilities:
+ * <ul>
+ * <li>Validate incoming actions and form passwords.</li>
+ * <li>Translate alert UI requests into CoreUpdater or installer intents.</li>
+ * <li>Render success/failure result pages with targeted guidance.</li>
+ * </ul>
  *
  * @param client HTTP client used by the base [Toadlet] implementation.
  * @param node backing node instance that exposes updater state.
  */
 class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) : Toadlet(client) {
-  private val LOG = LoggerFactory.getLogger(CoreActionToadlet::class.java)
+  private val log = LoggerFactory.getLogger(CoreActionToadlet::class.java)
 
   /** Shared environment detector used for installer heuristics. */
   private val appEnv = AppEnv()
@@ -80,32 +92,71 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     /** Argument requesting per-user scope for Flatpak installs. */
     private const val ARG_USER = "--user"
 
+    /** Argument used to target the host environment when bridging out of Flatpak sandboxes. */
+    private const val ARG_HOST = "--host"
+
     /** Marker string representing rpm-ostree systems. */
     private const val TAG_RPM_OSTREE = "RPM-OSTREE"
+
+    /** CSS class used for informational infoboxes. */
+    private const val INFOBOX_INFORMATION = "infobox-information"
   }
 
   /** Emits a minor-level log line for CoreActionToadlet operations. */
   private fun logInfo(message: String) {
-    LOG.info("$LOG_TAG $message")
+    log.info("$LOG_TAG $message")
   }
 
-  /** Exposes the HTTP mount point served by this toadlet. */
+  /**
+   * Exposes the HTTP mount point served by this toadlet.
+   *
+   * The mount path is stable (`/core-update/`) so the Alerts UI can post actions without needing to
+   * discover the URL at runtime. Callers should treat this as read-only metadata; it has no side
+   * effects and does not depend on node state. Tests and log statements can also rely on this value
+   * remaining constant across releases because alert wiring assumes a fixed endpoint.
+   *
+   * @return constant path segment used to route requests for this toadlet instance.
+   */
   override fun path(): String = CORE_UPDATE_PATH
 
-  /** Handles GET requests by redirecting users back to the Alerts page. */
+  /**
+   * Handles GET requests by redirecting users back to the Alerts page.
+   *
+   * This endpoint is not intended for direct browsing. A GET request is answered with a 302 to
+   * `/alerts/` so the user returns to the main status view. The handler does not read parameters
+   * and does not mutate state; it simply returns an HTTP redirect with a Location header.
+   *
+   * @param uri absolute request URI for logging/debugging context only.
+   * @param request HTTP request wrapper; ignored aside from standard toadlet dispatch.
+   * @param ctx context used to emit the redirect response.
+   */
   override fun handleMethodGET(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
     // Redirect to alerts page by default
     val headers = MultiValueTable.from("Location", "/alerts/")
     ctx.sendReplyHeaders(302, "Found", headers, null, 0)
   }
 
-  /** Handles download, install, and store-opening POST actions from the Alerts UI. */
+  /**
+   * Handles download, install, and store-opening POST actions from the Alerts UI.
+   *
+   * The request must include a valid form password; otherwise no action is taken and the call
+   * returns silently to avoid leaking status. The `action` field controls the dispatch path and is
+   * limited to a small whitelist (`download`, `install`, `openStore`). The implementation delegates
+   * to specific helpers that validate inputs and emit either a redirect or a small result page with
+   * user guidance. This method is not idempotent for download/install actions; callers should avoid
+   * automatic retries if the user already confirmed the action in the UI.
+   *
+   * @param uri absolute request URI used only for log context.
+   * @param request HTTP request providing action parameters and form password.
+   * @param ctx toadlet context used to send redirects or HTML result pages.
+   */
   fun handleMethodPOST(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
+    logInfo("POST /core-update uri=$uri")
     if (!ctx.checkFormPassword(request)) {
       logInfo("POST /core-update rejected: invalid form password")
       return
     }
-    val updater = node.getNodeUpdater().coreUpdater ?: return redirect(ctx)
+    val updater = node.nodeUpdater.coreUpdater ?: return redirect(ctx)
     when (request.getPartAsStringFailsafe("action", 32)) {
       "download" -> handleDownload(updater, ctx)
       "install" -> handleInstall(request, ctx)
@@ -182,7 +233,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Performs canonical path validation to ensure downloads reside under the node updates tree. */
   private fun validatePath(path: String): File? {
     if (path.isBlank()) return null
-    val base = File(node.getNodeDir(), "updates/core").canonicalFile
+    val base = File(node.nodeDir, "updates/core").canonicalFile
     val canonical = runCatching { File(path).canonicalFile }.getOrNull() ?: return null
     val basePath = base.toPath()
     val candidatePath = canonical.toPath()
@@ -313,7 +364,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         exec xdg-open '$path'
       """
         .trimIndent()
-    return ProcessBuilder("flatpak-spawn", "--host", "sh", "-lc", cmd)
+    return ProcessBuilder("flatpak-spawn", ARG_HOST, "sh", "-lc", cmd)
   }
 
   /** Represents how to carry out an installation action on Linux. */
@@ -337,17 +388,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    */
   /** Builds a GUI opener command for local files, considering sandbox constraints. */
   private fun guiOpenCommand(file: File, preferHost: Boolean): ProcessBuilder? {
-    val path = file.absolutePath
-    // In Flatpak, prefer opening via the portal from inside the sandbox (xdg-open), which will
-    // hand off to the host GUI safely. Fall back to host bridging only when needed.
-    if (preferHost && appEnv.onPath(CMD_XDG_OPEN)) {
-      return ProcessBuilder(CMD_XDG_OPEN, path)
-    }
-    val opener = pickGuiOpener() ?: return null
-    if (preferHost && appEnv.onPath(CMD_FLATPAK_SPAWN)) {
-      return ProcessBuilder(mutableListOf(CMD_FLATPAK_SPAWN, "--host") + opener + path)
-    }
-    return ProcessBuilder(opener + path)
+    return guiOpenCommandForTarget(file.absolutePath, preferHost)
   }
 
   /** Choose preferred GUI opener available on PATH, including subcommand args. */
@@ -363,15 +404,21 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Build a GUI opener for a URL (not a local file). */
   /** Builds a GUI opener for URLs, preferring portal-aware commands when sandboxed. */
   private fun guiOpenUrlCommand(url: String, preferHost: Boolean): ProcessBuilder? {
-    // Prefer portal from inside sandbox first
+    return guiOpenCommandForTarget(url, preferHost)
+  }
+
+  /** Builds a GUI opener command for an arbitrary target string. */
+  private fun guiOpenCommandForTarget(target: String, preferHost: Boolean): ProcessBuilder? {
+    // In Flatpak, prefer opening via the portal from inside the sandbox (xdg-open), which will
+    // hand off to the host GUI safely. Fall back to host bridging only when needed.
     if (preferHost && appEnv.onPath(CMD_XDG_OPEN)) {
-      return ProcessBuilder(CMD_XDG_OPEN, url)
+      return ProcessBuilder(CMD_XDG_OPEN, target)
     }
     val opener = pickGuiOpener() ?: return null
     if (preferHost && appEnv.onPath(CMD_FLATPAK_SPAWN)) {
-      return ProcessBuilder(mutableListOf(CMD_FLATPAK_SPAWN, "--host") + opener + url)
+      return ProcessBuilder(mutableListOf(CMD_FLATPAK_SPAWN, ARG_HOST) + opener + target)
     }
-    return ProcessBuilder(opener + url)
+    return ProcessBuilder(opener + target)
   }
 
   /** Cross‑distro fallback sequence for local DEB packages using PackageKit or apt/dpkg flows. */
@@ -566,31 +613,30 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   /** Renders a compact result page conveying success or failure for store actions. */
   private fun writeMessage(ctx: ToadletContext, success: Boolean, msg: String) {
-    val pm = ctx.pageMaker
-    val title = if (success) t("install.titleSuccess") else t("install.titleFailure")
-    val page =
-      pm.getPageNode(
-        title,
-        ctx,
-        PageMaker.RenderParameters().renderNavigationLinks(true).renderStatus(true),
-      )
-    val content: HTMLNode = page.contentNode
-    val box =
-      pm.getInfobox(
-        if (success) "infobox-success" else "infobox-warning",
-        title,
-        content,
-        "core-installer-result",
-        true,
-      )
-    box.addChild("p").addChild("#", msg)
-    addHomepageLink(content)
+    val view = renderResultPage(ctx, success, msg)
+    addHomepageLink(view.content)
     // Allow JS on result page; CSP was previously too strict here.
-    this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), false)
+    this.writeHTMLReply(ctx, 200, "OK", null, view.page.generate(), false)
   }
 
   /** Renders the installation result page, appending platform-specific guidance. */
   private fun writeInstallResult(ctx: ToadletContext, success: Boolean, msg: String, file: File) {
+    val view = renderResultPage(ctx, success, msg)
+
+    // Add OS/package-specific guidance below the result for a better UX.
+    addInstallGuidance(view.content, view.pageMaker, file)
+
+    addHomepageLink(view.content)
+    this.writeHTMLReply(ctx, 200, "OK", null, view.page.generate(), false)
+  }
+
+  private data class ResultPage(
+    val pageMaker: PageMaker,
+    val page: PageNode,
+    val content: HTMLNode,
+  )
+
+  private fun renderResultPage(ctx: ToadletContext, success: Boolean, msg: String): ResultPage {
     val pm = ctx.pageMaker
     val title = if (success) t("install.titleSuccess") else t("install.titleFailure")
     val page =
@@ -609,12 +655,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         true,
       )
     box.addChild("p").addChild("#", msg)
-
-    // Add OS/package-specific guidance below the result for a better UX.
-    addInstallGuidance(content, pm, file)
-
-    addHomepageLink(content)
-    this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), false)
+    return ResultPage(pm, page, content)
   }
 
   /** Appends guidance boxes for common edge cases (e.g., macOS Gatekeeper). */
@@ -634,7 +675,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun macDmgGuidance(content: HTMLNode, pm: PageMaker) {
     val box =
       pm.getInfobox(
-        "infobox-information",
+        INFOBOX_INFORMATION,
         t("macGuidance.title"),
         content,
         "core-install-guidance-macos",
@@ -659,7 +700,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun windowsExeGuidance(content: HTMLNode, pm: PageMaker) {
     val box =
       pm.getInfobox(
-        "infobox-information",
+        INFOBOX_INFORMATION,
         t("windowsGuidance.title"),
         content,
         "core-install-guidance-windows",
@@ -683,7 +724,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun linuxSnapGuidance(content: HTMLNode, pm: PageMaker, file: File, hasSnap: Boolean) {
     val box =
       pm.getInfobox(
-        "infobox-information",
+        INFOBOX_INFORMATION,
         t("linuxSnapGuidance.title"),
         content,
         "core-install-guidance-snap",
