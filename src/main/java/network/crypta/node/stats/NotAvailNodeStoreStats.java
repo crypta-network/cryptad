@@ -32,9 +32,10 @@ public class NotAvailNodeStoreStats implements StoreLocationStats {
    * <p>The class is stateless; constructing multiple instances has no observable effect beyond
    * allocating objects. Prefer reusing a single instance where convenient.
    */
-  public NotAvailNodeStoreStats() {}
+  public NotAvailNodeStoreStats() {
+    // Intentionally empty: this placeholder is stateless and requires no initialization.
+  }
 
-  @Override
   /**
    * Always throws because the average location metric is not available for this store.
    *
@@ -46,11 +47,11 @@ public class NotAvailNodeStoreStats implements StoreLocationStats {
    * @throws StatsNotAvailableException unconditionally, to indicate the metric cannot be provided
    *     by this implementation.
    */
+  @Override
   public double avgLocation() throws StatsNotAvailableException {
     throw new StatsNotAvailableException();
   }
 
-  @Override
   /**
    * Always throws because the average success metric is not available for this store.
    *
@@ -61,11 +62,11 @@ public class NotAvailNodeStoreStats implements StoreLocationStats {
    * @throws StatsNotAvailableException unconditionally, to indicate the metric cannot be provided
    *     by this implementation.
    */
+  @Override
   public double avgSuccess() throws StatsNotAvailableException {
     throw new StatsNotAvailableException();
   }
 
-  @Override
   /**
    * Always throws because the furthest success distance is not available for this store.
    *
@@ -76,11 +77,11 @@ public class NotAvailNodeStoreStats implements StoreLocationStats {
    * @throws StatsNotAvailableException unconditionally, to indicate the metric cannot be provided
    *     by this implementation.
    */
+  @Override
   public double furthestSuccess() throws StatsNotAvailableException {
     throw new StatsNotAvailableException();
   }
 
-  @Override
   /**
    * Always throws because the average distance metric is not available for this store.
    *
@@ -91,11 +92,11 @@ public class NotAvailNodeStoreStats implements StoreLocationStats {
    * @throws StatsNotAvailableException unconditionally, to indicate the metric cannot be provided
    *     by this implementation.
    */
+  @Override
   public double avgDist() throws StatsNotAvailableException {
     throw new StatsNotAvailableException();
   }
 
-  @Override
   /**
    * Always throws because composite distance statistics are not available for this store.
    *
@@ -107,6 +108,7 @@ public class NotAvailNodeStoreStats implements StoreLocationStats {
    * @throws StatsNotAvailableException unconditionally, to indicate the metric cannot be provided
    *     by this implementation.
    */
+  @Override
   public double distanceStats() throws StatsNotAvailableException {
     throw new StatsNotAvailableException();
   }
