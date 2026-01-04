@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
@@ -59,28 +60,15 @@ class SingleFileFetcherTest {
   private FetchContext newCtx(long maxOut, boolean ignoreTooMany) {
     // Use simple, valid values for all required constructor parameters.
     return new FetchContext(
-        maxOut, /* maxOutputLength */
-        Long.MAX_VALUE, /* maxTempLength */
-        1024 * 1024, /* maxMetadataSize */
-        8, /* maxRecursionLevel */
-        4, /* maxArchiveRestarts */
-        8, /* maxArchiveLevels */
-        false, /* dontEnterImplicitArchives */
-        0, /* maxSplitfileBlockRetries */
-        0, /* maxNonSplitfileRetries */
-        0, /* maxUSKRetries */
-        true, /* allowSplitfiles */
-        true, /* followRedirects */
-        false, /* localRequestOnly */
-        false, /* filterData */
-        0, /* maxDataBlocksPerSegment */
-        0, /* maxCheckBlocksPerSegment */
-        new SimpleEventProducer(),
-        ignoreTooMany, /* ignoreTooManyPathComponents */
-        true, /* canWriteClientCache */
-        null, /* charset */
-        null, /* overrideMIME */
-        null /* schemeHostAndPort */);
+        FetchContextOptions.builder()
+            .limits(maxOut, Long.MAX_VALUE, 1024 * 1024)
+            .archiveLimits(8, 4, 8, false)
+            .retryLimits(0, 0, 0)
+            .splitfileLimits(true, 0, 0)
+            .behavior(true, false, false)
+            .clientOptions(new SimpleEventProducer(), ignoreTooMany, true)
+            .filterOverrides(null, null, null)
+            .build());
   }
 
   @BeforeEach

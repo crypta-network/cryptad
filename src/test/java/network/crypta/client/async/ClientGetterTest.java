@@ -27,6 +27,7 @@ import java.util.Random;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
@@ -249,28 +250,15 @@ class ClientGetterTest {
   private static FetchContext newFetchContext(boolean filter) {
     // Use reasonable small limits; values are not critical for these tests.
     return new FetchContext(
-        16 * 1024,
-        16 * 1024,
-        4096,
-        4,
-        0,
-        2,
-        false,
-        1,
-        1,
-        0,
-        true,
-        true,
-        false,
-        filter,
-        0,
-        0,
-        new SimpleEventProducer(),
-        true,
-        true,
-        null,
-        null,
-        null);
+        FetchContextOptions.builder()
+            .limits(16 * 1024, 16 * 1024, 4096)
+            .archiveLimits(4, 0, 2, false)
+            .retryLimits(1, 1, 0)
+            .splitfileLimits(true, 0, 0)
+            .behavior(true, false, filter)
+            .clientOptions(new SimpleEventProducer(), true, true)
+            .filterOverrides(null, null, null)
+            .build());
   }
 
   private static InsertContext newInsertContext() {

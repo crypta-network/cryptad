@@ -224,114 +224,60 @@ public class FetchContext implements Serializable {
   private final String schemeHostAndPort;
 
   /**
-   * Construct a new fetch context with explicit limits and behavior flags.
+   * Construct a new fetch context from the supplied options bundle.
    *
-   * <p>Every numeric limit must be non‑negative unless documented to accept {@code -1} for
+   * <p>Every numeric limit must be non-negative unless documented to accept {@code -1} for
    * "unlimited". Values are validated and an {@link IllegalArgumentException} is thrown when a
-   * constraint is violated. The supplied {@code producer} is used for client events emitted during
-   * the request.
+   * constraint is violated.
    *
-   * @param curMaxLength Maximum size of the returned payload in bytes; must be non‑negative.
-   * @param curMaxTempLength Maximum size of intermediary data (metadata, containers) in bytes; must
-   *     be non‑negative.
-   * @param maxMetadataSize Maximum allowed metadata size in bytes; must be non‑negative.
-   * @param maxRecursionLevel Maximum recursion depth for redirects and container lookups; {@code 1}
-   *     means only a single block is fetched.
-   * @param maxArchiveRestarts Maximum number of archive restarts permitted; must be non‑negative.
-   * @param maxArchiveLevels Maximum number of manifest lookups within containers; must be
-   *     non‑negative.
-   * @param dontEnterImplicitArchives When {@code true}, do not descend into implicit archives on
-   *     the path.
-   * @param maxSplitfileBlockRetries Maximum retries for splitfile blocks; {@code -1} for unlimited,
-   *     otherwise non‑negative.
-   * @param maxNonSplitfileRetries Maximum retries for non‑splitfile blocks; {@code -1} for
-   *     unlimited, otherwise non‑negative.
-   * @param maxUSKRetries Maximum retries for USK requests; {@code -1} for unlimited, otherwise
-   *     non‑negative.
-   * @param allowSplitfiles Whether splitfiles are allowed to be downloaded.
-   * @param followRedirects Whether simple redirects may be followed by the fetcher.
-   * @param localRequestOnly Whether the request must be satisfied from local stores only.
-   * @param filterData Whether the content filter should be applied to fetched data.
-   * @param maxDataBlocksPerSegment Maximum allowed data blocks per splitfile segment; must be
-   *     within codec bounds.
-   * @param maxCheckBlocksPerSegment Maximum allowed check blocks per splitfile segment; must be
-   *     within codec bounds.
-   * @param producer Event producer to receive client events; must not be {@code null}.
-   * @param ignoreTooManyPathComponents Whether to ignore excess path components during resolution.
-   * @param canWriteClientCache Whether the client cache may be written by this request.
-   * @param charset Optional charset to assume for filtration when needed; {@code null} to use
-   *     defaults.
-   * @param overrideMIME Optional MIME type to force for the content filter; {@code null} to clear.
-   * @param schemeHostAndPort Optional forced URI prefix in the form {@code scheme://host:port}.
+   * @param options configuration bundle describing limits, retry policy, and behavior.
    */
-  public FetchContext(
-      long curMaxLength,
-      long curMaxTempLength,
-      int maxMetadataSize,
-      int maxRecursionLevel,
-      int maxArchiveRestarts,
-      int maxArchiveLevels,
-      boolean dontEnterImplicitArchives,
-      int maxSplitfileBlockRetries,
-      int maxNonSplitfileRetries,
-      int maxUSKRetries,
-      boolean allowSplitfiles,
-      boolean followRedirects,
-      boolean localRequestOnly,
-      boolean filterData,
-      int maxDataBlocksPerSegment,
-      int maxCheckBlocksPerSegment,
-      ClientEventProducer producer,
-      boolean ignoreTooManyPathComponents,
-      boolean canWriteClientCache,
-      String charset,
-      String overrideMIME,
-      String schemeHostAndPort) {
+  public FetchContext(FetchContextOptions options) {
     this.blocks = null;
-    this.maxOutputLength = curMaxLength;
+    this.maxOutputLength = options.maxOutputLength();
     if (maxOutputLength < 0) throw new IllegalArgumentException("Bad max output length");
-    this.maxTempLength = curMaxTempLength;
+    this.maxTempLength = options.maxTempLength();
     if (maxTempLength < 0) throw new IllegalArgumentException("Bad max temp length");
-    this.maxMetadataSize = maxMetadataSize;
+    this.maxMetadataSize = options.maxMetadataSize();
     if (maxMetadataSize < 0) throw new IllegalArgumentException("Bad max metadata size");
-    this.maxRecursionLevel = maxRecursionLevel;
+    this.maxRecursionLevel = options.maxRecursionLevel();
     if (maxRecursionLevel < 0) throw new IllegalArgumentException("Bad max recursion level");
-    this.maxArchiveRestarts = maxArchiveRestarts;
+    this.maxArchiveRestarts = options.maxArchiveRestarts();
     if (maxArchiveRestarts < 0) throw new IllegalArgumentException("Bad max archive restarts");
-    this.maxArchiveLevels = maxArchiveLevels;
+    this.maxArchiveLevels = options.maxArchiveLevels();
     if (maxArchiveLevels < 0) throw new IllegalArgumentException("Bad max archive levels");
-    this.dontEnterImplicitArchives = dontEnterImplicitArchives;
-    this.maxSplitfileBlockRetries = maxSplitfileBlockRetries;
+    this.dontEnterImplicitArchives = options.dontEnterImplicitArchives();
+    this.maxSplitfileBlockRetries = options.maxSplitfileBlockRetries();
     if (maxSplitfileBlockRetries < -1)
       throw new IllegalArgumentException("Bad max splitfile block retries");
-    this.maxNonSplitfileRetries = maxNonSplitfileRetries;
+    this.maxNonSplitfileRetries = options.maxNonSplitfileRetries();
     if (maxNonSplitfileRetries < -1)
       throw new IllegalArgumentException("Bad non-splitfile retries");
-    this.maxUSKRetries = maxUSKRetries;
+    this.maxUSKRetries = options.maxUSKRetries();
     if (maxUSKRetries < -1) throw new IllegalArgumentException("Bad max USK retries");
-    this.allowSplitfiles = allowSplitfiles;
-    this.followRedirects = followRedirects;
-    this.localRequestOnly = localRequestOnly;
-    this.eventProducer = producer;
-    this.maxDataBlocksPerSegment = maxDataBlocksPerSegment;
+    this.allowSplitfiles = options.allowSplitfiles();
+    this.followRedirects = options.followRedirects();
+    this.localRequestOnly = options.localRequestOnly();
+    this.eventProducer = options.eventProducer();
+    this.maxDataBlocksPerSegment = options.maxDataBlocksPerSegment();
     if (maxDataBlocksPerSegment < 0
         || maxDataBlocksPerSegment > FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT)
       throw new IllegalArgumentException("Bad max blocks per segment");
-    this.maxCheckBlocksPerSegment = maxCheckBlocksPerSegment;
+    this.maxCheckBlocksPerSegment = options.maxCheckBlocksPerSegment();
     if (maxCheckBlocksPerSegment < 0
         || maxCheckBlocksPerSegment > FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT)
       throw new IllegalArgumentException("Bad max blocks per segment");
-    this.filterData = filterData;
-    this.ignoreTooManyPathComponents = ignoreTooManyPathComponents;
-    this.canWriteClientCache = canWriteClientCache;
-    this.charset = charset;
-    this.overrideMIME = overrideMIME;
+    this.filterData = options.filterData();
+    this.ignoreTooManyPathComponents = options.ignoreTooManyPathComponents();
+    this.canWriteClientCache = options.canWriteClientCache();
+    this.charset = options.charset();
+    this.overrideMIME = options.overrideMIME();
     this.cooldownRetries = RequestScheduler.COOLDOWN_RETRIES;
     this.cooldownTime = RequestScheduler.COOLDOWN_PERIOD;
     // Default behavior: do not ignore USK DATEHINTs.
     this.ignoreUSKDatehints = false;
     hasOwnEventProducer = true;
-    this.schemeHostAndPort = schemeHostAndPort;
+    this.schemeHostAndPort = options.schemeHostAndPort();
   }
 
   /**
