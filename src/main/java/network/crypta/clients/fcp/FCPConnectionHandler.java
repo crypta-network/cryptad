@@ -13,7 +13,6 @@ import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestClientBuilder;
-import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.HexUtil;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
@@ -72,6 +71,10 @@ public class FCPConnectionHandler implements Closeable {
   final HashMap<String, ClientRequest> requestsByIdentifier;
 
   private final PluginConnectionRegistry pluginConnectionRegistry = new PluginConnectionRegistry();
+
+  PluginConnectionRegistry pluginConnectionRegistry() {
+    return pluginConnectionRegistry;
+  }
 
   private static final class CloseSnapshot {
     final ClientRequest[] requests;
@@ -285,7 +288,7 @@ public class FCPConnectionHandler implements Closeable {
           .jobRunner
           .queue(
               (PersistentJob)
-                  context -> {
+                  _ -> {
                     if ((rebootClient != null) && !rebootClient.hasPersistentRequests()) {
                       server.unregisterClient(rebootClient);
                     }
@@ -856,18 +859,6 @@ public class FCPConnectionHandler implements Closeable {
    */
   public PersistentRequestClient getRebootClient() {
     return rebootClient;
-  }
-
-  /**
-   * @return The {@link FCPPluginConnection} for the given serverPluginName. Atomically creates and
-   *     stores it if there does not exist one yet. This ensures that for each FCPConnectionHandler,
-   *     there can be only one {@link FCPPluginConnection} for a given serverPluginName.
-   * @throws PluginNotFoundException If the specified plugin is not loaded or does not provide an
-   *     FCP server.
-   */
-  FCPPluginConnection getFCPPluginConnection(String serverPluginName)
-      throws PluginNotFoundException {
-    return pluginConnectionRegistry.get(serverPluginName, server, this);
   }
 
   /**
