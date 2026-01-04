@@ -135,7 +135,7 @@ final class ClientGetEventHandling implements ClientEventListener {
       try {
         context.jobRunner.queue(
             (PersistentJob)
-                context1 -> {
+                _ -> {
                   request.mergeCompatibilityMode(
                       event.minCompatibilityMode,
                       event.maxCompatibilityMode,
