@@ -15,6 +15,8 @@ import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.DocumentType;
+import network.crypta.client.MetadataRedirectTarget;
+import network.crypta.client.MetadataTopLayerInfo;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.FinishedCompressionEvent;
@@ -868,36 +870,21 @@ class SingleFileInserter implements ClientPutState, Serializable {
       data = origDataLength;
       compressed = origCompressedDataLength;
     }
+    MetadataTopLayerInfo topLayer =
+        new MetadataTopLayerInfo(
+            data, compressed, req, total, topDontCompress, topCompatibilityMode, hashes, null);
     if (archiveType != null) {
       meta =
           new Metadata(
-              DocumentType.ARCHIVE_MANIFEST,
-              archiveType,
-              null,
-              uri,
-              block.clientMetadata,
-              data,
-              compressed,
-              req,
-              total,
-              topDontCompress,
-              topCompatibilityMode,
-              hashes);
+              new MetadataRedirectTarget(
+                  DocumentType.ARCHIVE_MANIFEST, archiveType, null, uri, block.clientMetadata),
+              topLayer);
     } else { // redirect
       meta =
           new Metadata(
-              DocumentType.SIMPLE_REDIRECT,
-              null,
-              null,
-              uri,
-              block.clientMetadata,
-              data,
-              compressed,
-              req,
-              total,
-              topDontCompress,
-              topCompatibilityMode,
-              hashes);
+              new MetadataRedirectTarget(
+                  DocumentType.SIMPLE_REDIRECT, null, null, uri, block.clientMetadata),
+              topLayer);
     }
     if (targetFilename != null) {
       HashMap<String, Object> hm = new HashMap<>();

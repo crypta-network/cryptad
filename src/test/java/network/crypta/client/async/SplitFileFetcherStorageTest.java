@@ -21,8 +21,11 @@ import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
 import network.crypta.client.MetadataParseException;
+import network.crypta.client.MetadataTopLayerInfo;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.OnionFECCodec;
+import network.crypta.client.SplitfileParams;
+import network.crypta.client.SplitfilePayload;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.CRCChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
@@ -1288,32 +1291,30 @@ class SplitFileFetcherStorageTest {
       byte cryptoAlgorithm = Key.ALGO_AES_CTR_256_SHA256;
       ClientCHK[] dataKeys = makeKeys(originalDataBlocks, cryptoKey, cryptoAlgorithm);
       ClientCHK[] checkKeys = makeKeys(originalCheckBlocks, cryptoKey, cryptoAlgorithm);
-      Metadata m =
-          new Metadata(
+      SplitfileParams params =
+          new SplitfileParams(
               SplitfileAlgorithm.ONION_STANDARD,
               dataKeys,
               checkKeys,
               dataBlocks,
               checkBlocks,
               0,
-              cm,
-              size,
-              null,
-              null,
-              size,
-              false,
-              null,
-              null,
+              0,
+              cryptoAlgorithm,
+              cryptoKey,
+              true);
+      SplitfilePayload payload = new SplitfilePayload(cm, size, null, null, size, false);
+      MetadataTopLayerInfo topLayer =
+          new MetadataTopLayerInfo(
               size,
               size,
               dataBlocks,
               dataBlocks + checkBlocks,
               false,
               COMPATIBILITY_MODE,
-              cryptoAlgorithm,
-              cryptoKey,
-              true,
-              0);
+              null,
+              null);
+      Metadata m = new Metadata(params, payload, topLayer);
       // Make sure the metadata is reusable.
       // Note: ensures metadata is reusable; the above constructor doesn't set segments.
       Bucket metaBucket = m.toBucket(bf);
@@ -1405,32 +1406,30 @@ class SplitFileFetcherStorageTest {
       byte cryptoAlgorithm = Key.ALGO_AES_CTR_256_SHA256;
       ClientCHK[] dataKeys = makeKeys(originalDataBlocks, cryptoKey, cryptoAlgorithm);
       ClientCHK[] checkKeys = makeKeys(originalCheckBlocks, cryptoKey, cryptoAlgorithm);
-      Metadata m =
-          new Metadata(
+      SplitfileParams params =
+          new SplitfileParams(
               SplitfileAlgorithm.ONION_STANDARD,
               dataKeys,
               checkKeys,
               segmentSize,
               checkSegmentSize,
               deductBlocksFromSegments,
-              cm,
-              size,
-              null,
-              null,
-              size,
-              false,
-              null,
-              null,
+              0,
+              cryptoAlgorithm,
+              cryptoKey,
+              true /* uses single-key splitfiles for tests */);
+      SplitfilePayload payload = new SplitfilePayload(cm, size, null, null, size, false);
+      MetadataTopLayerInfo topLayer =
+          new MetadataTopLayerInfo(
               size,
               size,
               dataBlocks,
               dataBlocks + checkBlocks,
               false,
               InsertContext.CompatibilityMode.COMPAT_1416,
-              cryptoAlgorithm,
-              cryptoKey,
-              true /* uses single-key splitfiles for tests */,
-              0);
+              null,
+              null);
+      Metadata m = new Metadata(params, payload, topLayer);
       // Make sure the metadata is reusable.
       // Note: ensures metadata is reusable; the above constructor doesn't set segments.
       Bucket metaBucket = m.toBucket(bf);
