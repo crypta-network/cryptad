@@ -17,7 +17,7 @@ import network.crypta.support.compress.Compressor;
  * inserts.
  *
  * <p>An {@code InsertContext} captures all tunable parameters that influence how data is prepared
- * for insertion into the network: compression behaviour, splitfile sizing, redundancy, cache
+ * for insertion into the network: compression behavior, splitfile sizing, redundancy, cache
  * policies, and compatibility rules for on-disk and on-wire formats. Higher-level clients typically
  * obtain a baseline instance from a helper or {@code ClientContext} and then adjust a small subset
  * of fields via the provided setters before starting an insert. The same context may be reused
@@ -80,7 +80,7 @@ public class InsertContext implements Serializable {
 
   /**
    * Can this insert write to the client-cache? We don't store all requests in the client cache, in
-   * particular big stuff usually isn't written to it, to maximise its effectiveness. Plus, local
+   * particular big stuff usually isn't written to it, to maximize its effectiveness. Plus, local
    * inserts are not written to the client-cache by default for privacy reasons.
    */
   private boolean canWriteClientCache;
@@ -284,7 +284,7 @@ public class InsertContext implements Serializable {
 
   /**
    * If true, try to find the final URI as quickly as possible, and insert the upper layers as soon
-   * as we can, rather than waiting for the lower layers. The default behaviour is safer, because an
+   * as we can, rather than waiting for the lower layers. The default behavior is safer, because an
    * attacker can usually only identify the datastream once he has the top block, or once you have
    * announced the key.
    */
@@ -353,65 +353,31 @@ public class InsertContext implements Serializable {
   }
 
   /**
-   * Creates a new insert context with the supplied tuning parameters.
+   * Creates a new insert context using the supplied options.
    *
-   * <p>Callers typically obtain baseline values from higher-level helpers and override only those
-   * fields that must differ for a particular request. No validation is performed here; the caller
-   * is responsible for supplying values that are meaningful for the surrounding system.
+   * <p>Callers typically build an {@link InsertContextOptions} instance by selecting a baseline
+   * configuration and then overriding only the fields that must differ for a particular request. No
+   * validation is performed here; the caller is responsible for supplying values that are
+   * meaningful for the surrounding system.
    *
-   * @param maxRetries maximum number of retries for each data block; negative values indicate
-   *     retrying indefinitely until either success or a fatal error occurs.
-   * @param rnfsToSuccess number of route-not-found outcomes that are tolerated and still counted as
-   *     overall success on very small networks.
-   * @param splitfileSegmentDataBlocks maximum number of data blocks per splitfile segment; affects
-   *     how large files are partitioned.
-   * @param splitfileSegmentCheckBlocks maximum number of check (parity) blocks per segment; may be
-   *     reduced when fewer data blocks are present.
-   * @param eventProducer producer that receives client-visible events such as progress updates; may
-   *     be shared between multiple contexts.
-   * @param canWriteClientCache whether this insert may write opaque data into the client cache;
-   *     large or privacy-sensitive inserts may disable this.
-   * @param forkOnCacheable whether the insert is permitted to fork into extra work when results are
-   *     cacheable, improving redundancy at the cost of additional traffic.
-   * @param localRequestOnly whether the insert should be restricted to local requests only instead
-   *     of being announced to the wider network.
-   * @param compressorDescriptor descriptor string listing compressors to try; a {@code null} value
-   *     falls back to implementation defaults.
-   * @param extraInsertsSingleBlock number of additional insert attempts for single-block inserts in
-   *     order to increase redundancy.
-   * @param extraInsertsSplitfileHeaderBlock number of extra insert attempts for splitfile header
-   *     blocks, which are critical for reconstructing the file.
-   * @param compatibilityMode initial compatibility mode used to shape metadata and block layout;
-   *     normalized via {@link CompatibilityMode#intern()}.
+   * @param options bundle of parameters that control insert behavior; must not be {@code null}.
    */
-  public InsertContext(
-      int maxRetries,
-      int rnfsToSuccess,
-      int splitfileSegmentDataBlocks,
-      int splitfileSegmentCheckBlocks,
-      ClientEventProducer eventProducer,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      boolean localRequestOnly,
-      String compressorDescriptor,
-      int extraInsertsSingleBlock,
-      int extraInsertsSplitfileHeaderBlock,
-      CompatibilityMode compatibilityMode) {
+  public InsertContext(InsertContextOptions options) {
     dontCompress = false;
     splitfileAlgo = SplitfileAlgorithm.ONION_STANDARD;
     splitfileAlgorithm = splitfileAlgo.code;
-    this.consecutiveRNFsCountAsSuccess = rnfsToSuccess;
-    this.maxInsertRetries = maxRetries;
-    this.eventProducer = eventProducer;
-    this.splitfileSegmentDataBlocks = splitfileSegmentDataBlocks;
-    this.splitfileSegmentCheckBlocks = splitfileSegmentCheckBlocks;
-    this.canWriteClientCache = canWriteClientCache;
-    this.forkOnCacheable = forkOnCacheable;
-    this.compressorDescriptor = compressorDescriptor;
-    this.extraInsertsSingleBlock = extraInsertsSingleBlock;
-    this.extraInsertsSplitfileHeaderBlock = extraInsertsSplitfileHeaderBlock;
-    this.realCompatMode = compatibilityMode.intern();
-    this.localRequestOnly = localRequestOnly;
+    this.consecutiveRNFsCountAsSuccess = options.consecutiveRNFsCountAsSuccess();
+    this.maxInsertRetries = options.maxInsertRetries();
+    this.eventProducer = options.eventProducer();
+    this.splitfileSegmentDataBlocks = options.splitfileSegmentDataBlocks();
+    this.splitfileSegmentCheckBlocks = options.splitfileSegmentCheckBlocks();
+    this.canWriteClientCache = options.canWriteClientCache();
+    this.forkOnCacheable = options.forkOnCacheable();
+    this.compressorDescriptor = options.compressorDescriptor();
+    this.extraInsertsSingleBlock = options.extraInsertsSingleBlock();
+    this.extraInsertsSplitfileHeaderBlock = options.extraInsertsSplitfileHeaderBlock();
+    this.realCompatMode = options.compatibilityMode().intern();
+    this.localRequestOnly = options.localRequestOnly();
     this.ignoreUSKDatehints = false;
   }
 
@@ -449,7 +415,7 @@ public class InsertContext implements Serializable {
    * #eventProducer} reference is copied as-is; if a new event stream is desired, use {@link
    * #InsertContext(InsertContext, SimpleEventProducer)} instead.
    *
-   * @param other source context whose configuration and behaviour should be duplicated.
+   * @param other source context whose configuration and behavior should be duplicated.
    */
   public InsertContext(InsertContext other) {
     this.dontCompress = other.dontCompress;
@@ -696,7 +662,7 @@ public class InsertContext implements Serializable {
   /**
    * Indicates whether inserts may fork additional work when results are cacheable.
    *
-   * @return {@code true} if fork-on-cacheable behaviour is enabled; otherwise {@code false}.
+   * @return {@code true} if fork-on-cacheable behavior is enabled; otherwise {@code false}.
    */
   public boolean isForkOnCacheable() {
     return forkOnCacheable;
@@ -706,7 +672,7 @@ public class InsertContext implements Serializable {
    * Sets whether inserts may fork additional work when results are cacheable.
    *
    * @param forkOnCacheable {@code true} to allow additional work for cacheable inserts; {@code
-   *     false} to disable this behaviour.
+   *     false} to disable this behavior.
    */
   public void setForkOnCacheable(boolean forkOnCacheable) {
     this.forkOnCacheable = forkOnCacheable;
@@ -774,7 +740,7 @@ public class InsertContext implements Serializable {
   /**
    * Indicates whether USK date hints are ignored for this insert.
    *
-   * @return {@code true} if USK date hints are ignored; {@code false} if they are honoured.
+   * @return {@code true} if USK date hints are ignored; {@code false} if they are honored.
    */
   public boolean isIgnoreUSKDatehints() {
     return ignoreUSKDatehints;
@@ -783,7 +749,7 @@ public class InsertContext implements Serializable {
   /**
    * Sets whether USK date hints should be ignored for this insert.
    *
-   * @param ignoreUSKDatehints {@code true} to ignore USK date hints; {@code false} to honour them
+   * @param ignoreUSKDatehints {@code true} to ignore USK date hints; {@code false} to honor them
    *     when polling for the maximum edition.
    */
   public void setIgnoreUSKDatehints(boolean ignoreUSKDatehints) {
@@ -813,8 +779,8 @@ public class InsertContext implements Serializable {
   /**
    * Indicates whether the insert should attempt to finalize the URI as early as possible.
    *
-   * @return {@code true} if early encode is enabled; {@code false} if the safer default behaviour
-   *     is used.
+   * @return {@code true} if early encode is enabled; {@code false} if the safer default behavior is
+   *     used.
    */
   public boolean isEarlyEncode() {
     return earlyEncode;
@@ -824,7 +790,7 @@ public class InsertContext implements Serializable {
    * Sets whether the insert should attempt to finalize the URI as early as possible.
    *
    * @param earlyEncode {@code true} to enable early URI determination; {@code false} to use the
-   *     safer default behaviour.
+   *     safer default behavior.
    */
   public void setEarlyEncode(boolean earlyEncode) {
     this.earlyEncode = earlyEncode;

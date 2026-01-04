@@ -15,11 +15,13 @@ import static org.mockito.Mockito.when;
 
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.BaseClientPutter;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutter;
+import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.io.comm.Peer;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
@@ -94,18 +96,14 @@ class NodeARKInserterTest {
     // Default: provide an InsertContext so ClientPutter constructor receives a non-null ctx
     InsertContext ctx =
         new InsertContext(
-            1,
-            1,
-            1,
-            1,
-            new network.crypta.client.events.SimpleEventProducer(),
-            true,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_DEFAULT);
+            InsertContextOptions.builder()
+                .retryLimits(1, 1)
+                .splitfileSegmentLimits(1, 1)
+                .clientOptions(new SimpleEventProducer(), true, false, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(InsertContext.CompatibilityMode.COMPAT_DEFAULT)
+                .build());
     org.mockito.Mockito.lenient().when(core.makeClient((short) 0, true, false)).thenReturn(hlsc);
     org.mockito.Mockito.lenient().when(hlsc.getInsertContext(true)).thenReturn(ctx);
 

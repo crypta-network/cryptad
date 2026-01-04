@@ -20,6 +20,7 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
@@ -109,18 +110,14 @@ class ClientContextTest {
 
     defaultInsertCtx =
         new InsertContext(
-            1, // maxRetries
-            0, // rnfsToSuccess
-            16, // data blocks per segment
-            16, // check blocks per segment
-            new SimpleEventProducer(),
-            true, // canWriteClientCache
-            false, // forkOnCacheable
-            false, // localRequestOnly
-            null, // compressorDescriptor
-            0, // extra inserts single block
-            0, // extra inserts for splitfile header
-            CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(1, 0)
+                .splitfileSegmentLimits(16, 16)
+                .clientOptions(new SimpleEventProducer(), true, false, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(CompatibilityMode.COMPAT_CURRENT)
+                .build());
 
     Config config = new Config();
 

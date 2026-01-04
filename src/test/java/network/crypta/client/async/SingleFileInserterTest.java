@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import java.io.OutputStream;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.SimpleEventProducer;
@@ -80,18 +81,14 @@ class SingleFileInserterTest {
     inlineExecutor = new InlineExecutor();
     insertCtx =
         new InsertContext(
-            0,
-            0,
-            128,
-            128,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(0, 0)
+                .splitfileSegmentLimits(128, 128)
+                .clientOptions(new SimpleEventProducer(), false, false, false)
+                .compressorDescriptor(Compressor.DEFAULT_COMPRESSORDESCRIPTOR)
+                .redundancy(0, 0)
+                .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+                .build());
   }
 
   // Helper for constructing a SingleFileInserter instance used by the
@@ -286,18 +283,14 @@ class SingleFileInserterTest {
     ClientEventProducer producer = mock(ClientEventProducer.class);
     insertCtx =
         new InsertContext(
-            0,
-            0,
-            128,
-            128,
-            producer,
-            false,
-            false,
-            false,
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(0, 0)
+                .splitfileSegmentLimits(128, 128)
+                .clientOptions(producer, false, false, false)
+                .compressorDescriptor(Compressor.DEFAULT_COMPRESSORDESCRIPTOR)
+                .redundancy(0, 0)
+                .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+                .build());
 
     SingleFileInserter sfi = buildSfiForStartCompression(parentAndCb, sameCb, insertCtx);
 

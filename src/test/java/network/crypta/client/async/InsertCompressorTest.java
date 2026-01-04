@@ -16,6 +16,7 @@ import java.util.Random;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.events.SimpleEventProducer;
@@ -176,35 +177,27 @@ class InsertCompressorTest {
                 .build()),
         /*defaultPersistentInsertContext*/
         new InsertContext(
-            0,
-            0,
-            128,
-            128,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT),
+            InsertContextOptions.builder()
+                .retryLimits(0, 0)
+                .splitfileSegmentLimits(128, 128)
+                .clientOptions(new SimpleEventProducer(), false, false, false)
+                .compressorDescriptor(Compressor.DEFAULT_COMPRESSORDESCRIPTOR)
+                .redundancy(0, 0)
+                .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+                .build()),
         /*config*/ config);
   }
 
   private static InsertContext makeInsertCtx(String compressorDescriptor) {
     return new InsertContext(
-        0,
-        0,
-        128,
-        128,
-        new SimpleEventProducer(),
-        false,
-        false,
-        false,
-        compressorDescriptor,
-        0,
-        0,
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(128, 128)
+            .clientOptions(new SimpleEventProducer(), false, false, false)
+            .compressorDescriptor(compressorDescriptor)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   private static RandomAccessBucket makeData(byte[] bytes) throws IOException {

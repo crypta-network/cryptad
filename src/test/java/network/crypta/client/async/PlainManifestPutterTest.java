@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import java.io.OutputStream;
 import java.util.HashMap;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.NullClientCallback;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.FreenetURI;
@@ -35,18 +36,14 @@ class PlainManifestPutterTest {
 
   private static InsertContext newInsertContextCurrent() {
     return new InsertContext(
-        /*maxRetries*/ 1,
-        /*rnfsToSuccess*/ 0,
-        /*segmentData*/ 128,
-        /*segmentCheck*/ 128,
-        new SimpleEventProducer(),
-        /*canWriteClientCache*/ false,
-        /*forkOnCacheable*/ false,
-        /*localRequestOnly*/ false,
-        /*compressorDescriptor*/ null,
-        /*extraInsertsSingleBlock*/ 0,
-        /*extraInsertsSplitfileHeaderBlock*/ 0,
-        network.crypta.client.InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(1, 0)
+            .splitfileSegmentLimits(128, 128)
+            .clientOptions(new SimpleEventProducer(), false, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(network.crypta.client.InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   // Helper to create a bucket with a specific size

@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.util.Random;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.DummyRandomSource;
@@ -54,18 +55,14 @@ class SingleBlockInserterTest {
   void setUp() {
     insertCtx =
         new InsertContext(
-            /*maxRetries*/ 5,
-            /*rnfsToSuccess*/ 2,
-            /*splitfileSegmentDataBlocks*/ 1,
-            /*splitfileSegmentCheckBlocks*/ 1,
-            /*eventProducer*/ new SimpleEventProducer(),
-            /*canWriteClientCache*/ true,
-            /*forkOnCacheable*/ true,
-            /*localRequestOnly*/ false,
-            /*compressorDescriptor*/ null,
-            /*extraInsertsSingleBlock*/ 0,
-            /*extraInsertsSplitfileHeaderBlock*/ 0,
-            /*compat*/ CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(5, 2)
+                .splitfileSegmentLimits(1, 1)
+                .clientOptions(new SimpleEventProducer(), true, true, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(CompatibilityMode.COMPAT_CURRENT)
+                .build());
     bucket = mock(Bucket.class);
 
     // Reasonable parent defaults used by callbacks (lenient to avoid strict stubbing violations)

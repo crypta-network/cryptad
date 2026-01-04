@@ -14,6 +14,7 @@ import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.PersistentRequestRoot;
@@ -144,18 +145,14 @@ class USKSparseProxyCallbackTest {
 
   private static InsertContext newInsertContext() {
     return new InsertContext(
-        0, // maxRetries
-        0, // rnfsToSuccess
-        0, // splitfileSegmentDataBlocks
-        0, // splitfileSegmentCheckBlocks
-        new SimpleEventProducer(),
-        true, // canWriteClientCache
-        false, // forkOnCacheable
-        false, // localRequestOnly
-        null, // compressorDescriptor
-        0, // extraInsertsSingleBlock
-        0, // extraInsertsSplitfileHeaderBlock
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(0, 0)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   private static ClientContext minimalContext(

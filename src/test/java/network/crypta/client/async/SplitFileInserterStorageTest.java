@@ -16,9 +16,11 @@ import java.util.Random;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FECCodec;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
+import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.CHKBlock;
 import network.crypta.node.KeysFetchingLocally;
@@ -72,18 +74,15 @@ class SplitFileInserterStorageTest {
     // Keep values small and deterministic. Blocks per segment defaults are in
     // HighLevelSimpleClientImpl.
     return new InsertContext(
-        /* maxRetries= */ 3,
-        /* rnfsToSuccess= */ 0,
-        /* splitfileSegmentDataBlocks= */ FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT,
-        /* splitfileSegmentCheckBlocks= */ FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT,
-        /* eventProducer= */ new network.crypta.client.events.SimpleEventProducer(),
-        /* canWriteClientCache= */ false,
-        /* forkOnCacheable= */ false,
-        /* localRequestOnly= */ false,
-        /* compressorDescriptor= */ null,
-        /* extraInsertsSingleBlock= */ 0,
-        /* extraInsertsSplitfileHeaderBlock= */ 0,
-        cmode);
+        InsertContextOptions.builder()
+            .retryLimits(3, 0)
+            .splitfileSegmentLimits(
+                FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT, FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT)
+            .clientOptions(new SimpleEventProducer(), false, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(cmode)
+            .build());
   }
 
   private SplitFileInserterStorage newStorage(

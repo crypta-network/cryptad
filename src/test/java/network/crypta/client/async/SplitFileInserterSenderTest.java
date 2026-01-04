@@ -16,8 +16,10 @@ import static org.mockito.Mockito.when;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.SplitFileInserterSegmentStorage.BlockInsert;
+import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.ClientCHK;
 import network.crypta.keys.ClientCHKBlock;
@@ -49,18 +51,14 @@ class SplitFileInserterSenderTest {
   void setup() throws Exception {
     insertCtx =
         new InsertContext(
-            /*maxRetries*/ 1,
-            /*rnfsToSuccess*/ 0,
-            /*splitfileSegmentDataBlocks*/ 128,
-            /*splitfileSegmentCheckBlocks*/ 128,
-            /*eventProducer*/ new network.crypta.client.events.SimpleEventProducer(),
-            /*canWriteClientCache*/ true,
-            /*forkOnCacheable*/ true,
-            /*localRequestOnly*/ false,
-            /*compressorDescriptor*/ null,
-            /*extraInsertsSingleBlock*/ 0,
-            /*extraInsertsSplitfileHeaderBlock*/ 0,
-            /*compatibilityMode*/ InsertContext.CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(1, 0)
+                .splitfileSegmentLimits(128, 128)
+                .clientOptions(new SimpleEventProducer(), true, true, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+                .build());
     // Default flags; individual tests may override
     insertCtx.setCanWriteClientCache(true);
     insertCtx.setLocalRequestOnly(false);

@@ -9,6 +9,7 @@ import network.crypta.client.FECCodec;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.async.HealingDecisionSupplier;
 import network.crypta.client.async.SimpleHealingQueue;
 import network.crypta.client.events.SimpleEventProducer;
@@ -194,18 +195,15 @@ public final class NodeClientCoreSupport {
     SimpleHealingQueue healingQueue =
         new SimpleHealingQueue(
             new InsertContext(
-                0,
-                2,
-                0,
-                0,
-                new SimpleEventProducer(),
-                false,
-                Node.FORK_ON_CACHEABLE_DEFAULT,
-                false,
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
-                0,
-                0,
-                InsertContext.CompatibilityMode.COMPAT_DEFAULT),
+                InsertContextOptions.builder()
+                    .retryLimits(0, 2)
+                    .splitfileSegmentLimits(0, 0)
+                    .clientOptions(
+                        new SimpleEventProducer(), false, Node.FORK_ON_CACHEABLE_DEFAULT, false)
+                    .compressorDescriptor(Compressor.DEFAULT_COMPRESSORDESCRIPTOR)
+                    .redundancy(0, 0)
+                    .compatibility(InsertContext.CompatibilityMode.COMPAT_DEFAULT)
+                    .build()),
             RequestStarter.PREFETCH_PRIORITY_CLASS,
             maxRunningHealingInserts,
             new HealingDecisionSupplier(node::getLocation, node::isOpennetEnabled));

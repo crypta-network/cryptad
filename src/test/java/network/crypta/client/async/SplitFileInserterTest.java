@@ -16,9 +16,11 @@ import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
+import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.RequestClient;
@@ -165,18 +167,14 @@ class SplitFileInserterTest {
     var fetchCtx = Mockito.mock(network.crypta.client.FetchContext.class);
     var insertCtx =
         new InsertContext(
-            0,
-            0,
-            128,
-            128,
-            new network.crypta.client.events.SimpleEventProducer(),
-            true,
-            false,
-            false,
-            null,
-            0,
-            0,
-            CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(0, 0)
+                .splitfileSegmentLimits(128, 128)
+                .clientOptions(new SimpleEventProducer(), true, false, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(CompatibilityMode.COMPAT_CURRENT)
+                .build());
     var config = Mockito.mock(network.crypta.config.Config.class);
 
     ClientContext ctx =
@@ -220,18 +218,14 @@ class SplitFileInserterTest {
 
   private InsertContext newInsertContext() {
     return new InsertContext(
-        0,
-        0,
-        128,
-        128,
-        new network.crypta.client.events.SimpleEventProducer(),
-        true,
-        false,
-        false,
-        null,
-        0,
-        0,
-        CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(128, 128)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   private SplitFileInserter newInserter(
