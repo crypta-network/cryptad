@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -116,17 +117,22 @@ class ArchiveHandlerImplTest {
     handler.extractToCache(bucket, archiveContext, "element.txt", callback, manager, clientContext);
 
     verify(manager).makeContext(key, archiveType, compressorType, false);
-    verify(manager)
-        .extractToCache(
-            key,
-            archiveType,
-            compressorType,
-            bucket,
-            archiveContext,
-            storeContext,
-            "element.txt",
-            callback,
-            clientContext);
+    ArgumentCaptor<ArchiveExtractionInput> inputCaptor =
+        ArgumentCaptor.forClass(ArchiveExtractionInput.class);
+    ArgumentCaptor<ArchiveElementRequest> elementCaptor =
+        ArgumentCaptor.forClass(ArchiveElementRequest.class);
+    verify(manager).extractToCache(inputCaptor.capture(), elementCaptor.capture());
+    ArchiveExtractionInput input = inputCaptor.getValue();
+    ArchiveElementRequest elementRequest = elementCaptor.getValue();
+    assertEquals(key, input.key);
+    assertEquals(archiveType, input.archiveType);
+    assertEquals(compressorType, input.compressorType);
+    assertSame(bucket, input.data);
+    assertSame(archiveContext, input.archiveContext);
+    assertSame(storeContext, input.storeContext);
+    assertEquals("element.txt", elementRequest.element);
+    assertSame(callback, elementRequest.callback);
+    assertSame(clientContext, elementRequest.clientContext);
 
     // Now forceRefetch should be cleared; a subsequent get should consult the manager
     when(manager.getCached(key, AFTER_TXT)).thenReturn(null);

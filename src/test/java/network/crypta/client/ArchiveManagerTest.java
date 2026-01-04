@@ -149,7 +149,7 @@ class ArchiveManagerTest {
     try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
       // Act
       mgr.extractToCache(
-          key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx, "a.txt", callback, clientContext);
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx), elementRequest("a.txt"));
 
       // Assert: callback got the requested entry
       ArgumentCaptor<Bucket> bucketCaptor = ArgumentCaptor.forClass(Bucket.class);
@@ -189,7 +189,8 @@ class ArchiveManagerTest {
     try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
       // Act
       mgr.extractToCache(
-          key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx, "missing.txt", callback, clientContext);
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+          elementRequest("missing.txt"));
 
       // Assert: callback says it's missing
       verify(callback, times(1)).notInArchive(clientContext);
@@ -214,7 +215,8 @@ class ArchiveManagerTest {
     try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
       // Act (request a non-existent element to avoid null gotElement)
       mgr.extractToCache(
-          key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx, "__unused__", callback, clientContext);
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+          elementRequest("__unused__"));
 
       // Assert: too big entry is represented as an error item; cache lookup yields null bucket
       assertNull(mgr.getCached(key, "big.bin"));
@@ -237,7 +239,7 @@ class ArchiveManagerTest {
     try (Bucket data = new SimpleReadOnlyArrayBucket(createStoredZip(entries))) {
       // Act: request the big element explicitly
       mgr.extractToCache(
-          key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx, "big.bin", callback, clientContext);
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx), elementRequest("big.bin"));
 
       // Assert: current implementation reports not-in-archive for too-big entries (no callback
       // data)
@@ -261,15 +263,8 @@ class ArchiveManagerTest {
     try (Bucket data = new SimpleReadOnlyArrayBucket(gzip(createTar(entries)))) {
       // Act
       mgr.extractToCache(
-          key,
-          ARCHIVE_TYPE.TAR,
-          COMPRESSOR_TYPE.GZIP,
-          data,
-          actx,
-          ctx,
-          "dir/a.txt",
-          callback,
-          clientContext);
+          extractionInput(key, ARCHIVE_TYPE.TAR, COMPRESSOR_TYPE.GZIP, data, actx, ctx),
+          elementRequest("dir/a.txt"));
 
       // Assert: the element is cached and callback invoked
       Bucket cached = mgr.getCached(key, "dir/a.txt");
@@ -305,15 +300,8 @@ class ArchiveManagerTest {
           ArchiveRestartException.class,
           () ->
               mgr.extractToCache(
-                  key,
-                  ARCHIVE_TYPE.ZIP,
-                  null,
-                  data,
-                  actx,
-                  ctx,
-                  "__unused__",
-                  callback,
-                  clientContext));
+                  extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+                  elementRequest("__unused__")));
 
       // But entries should be cached regardless
       Bucket cached = mgr.getCached(key, "a.txt");
@@ -341,7 +329,8 @@ class ArchiveManagerTest {
     try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
       // Act: extract; the manager will add entries in iteration order (.metadata, a then b)
       mgr.extractToCache(
-          key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx, "__unused__", callback, clientContext);
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+          elementRequest("__unused__"));
 
       // Assert: only the most recent (b.txt) remains due to maxCachedElements=1
       assertNull(mgr.getCached(key, ".metadata"));
@@ -367,15 +356,8 @@ class ArchiveManagerTest {
     try (Bucket data = new SimpleReadOnlyArrayBucket(createZip(entries))) {
       // Act
       mgr.extractToCache(
-          key,
-          ARCHIVE_TYPE.ZIP,
-          null,
-          data,
-          actx,
-          ctx,
-          expectedStoredName,
-          callback,
-          clientContext);
+          extractionInput(key, ARCHIVE_TYPE.ZIP, null, data, actx, ctx),
+          elementRequest(expectedStoredName));
 
       // Assert
       Bucket cached = mgr.getCached(key, expectedStoredName);
@@ -389,6 +371,21 @@ class ArchiveManagerTest {
   }
 
   // ----------------- Helpers -----------------
+
+  private ArchiveExtractionInput extractionInput(
+      FreenetURI key,
+      ARCHIVE_TYPE archiveType,
+      COMPRESSOR_TYPE compressorType,
+      Bucket data,
+      ArchiveContext archiveContext,
+      ArchiveStoreContext storeContext) {
+    return new ArchiveExtractionInput(
+        key, archiveType, compressorType, data, archiveContext, storeContext);
+  }
+
+  private ArchiveElementRequest elementRequest(String element) {
+    return new ArchiveElementRequest(element, callback, clientContext);
+  }
 
   private static byte[] createZip(Map<String, byte[]> entries) throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
