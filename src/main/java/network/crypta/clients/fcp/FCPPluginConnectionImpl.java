@@ -197,7 +197,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   /**
    * Shall be used to ensure thread-safety of {@link #synchronousSends}. <br>
-   * (Please read its JavaDoc before continuing to read this JavaDoc: It explains the mechanism of
+   * (Please read its Javadoc before continuing to read this Javadoc: It explains the mechanism of
    * synchronous sends, and it is assumed that you understand it in what follows here.)<br>
    * <br>
    * It is a {@link ReadWriteLock} because synchronous sends shall by design be used infrequently,
@@ -420,8 +420,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   }
 
   /**
-   * ATTENTION: Only for internal use in {@link FCPConnectionHandler#getFCPPluginConnection(
-   * String)}.<br>
+   * ATTENTION: Only for internal use by {@link PluginConnectionRegistry} when resolving plugin
+   * connections for a {@link FCPConnectionHandler}.<br>
    * Server / client code should instead always send messages, for example via {@link
    * #send(SendDirection, FCPPluginMessage)}, to check whether the connection is alive. This is to
    * ensure that the implementation of this class could safely be changed to allow the server to be
@@ -628,14 +628,14 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // sendSynchronous() is waiting for.
     // So it is our job to pass the reply to a possibly existing sendSynchronous() thread.
     // We do this through the Map FCPPluginConnectionImpl.synchronousSends, which is guarded by
-    // FCPPluginConnectionImpl.synchronousSendsLock. Also see the JavaDoc of the Map for an
+    // FCPPluginConnectionImpl.synchronousSendsLock. Also see the Javadoc of the Map for an
     // overview of this mechanism.
 
     if (!message.isReplyMessage()) {
       return false;
     }
 
-    // Since the JavaDoc of sendSynchronous() tells people to use it not very often due to
+    // Since the Javadoc of sendSynchronous() tells people to use it not very often due to
     // the impact upon thread count, we assume that the percentage of messages which pass
     // through here for which there is an actual sendSynchronous() thread waiting is small.
     // Thus, a ReadWriteLock is used, and we here only take the ReadLock, which can be taken
@@ -905,16 +905,16 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       final SynchronousSend synchronousSend = new SynchronousSend(completionSignal);
 
       // An assert() instead of a throwing is fine:
-      // - The constructor of FCPPluginMessage which we tell the user to use in the JavaDoc
+      // - The constructor of FCPPluginMessage which we tell the user to use in the Javadoc
       //   does generate a random identifier, so collisions will only happen if the user
-      //   ignores the JavaDoc or changes the constructor.
+      //   ignores the Javadoc or changes the constructor.
       // - If the assertion is not true, then the following put() will replace the old
       //   SynchronousSend, so its Condition will never get signaled, and its
       //   thread waiting in sendSynchronous() will timeout safely. It IS possible that this
       //   thread will then get a reply which does not belong to it. But the wrong reply will
       //   only affect the caller, the FCPPluginConnectionImpl will keep working fine,
       //   especially no threads will become stalled forever. As the caller is at fault for
-      //   the issue, it is fine if he breaks his own stuff :) The JavaDoc also documents this
+      //   the issue, it is fine if he breaks his own stuff :) The Javadoc also documents this
 
       if (synchronousSends.containsKey(message.identifier)) {
         throw new IllegalStateException("FCPPluginMessage.identifier should be unique");
