@@ -61,20 +61,17 @@ public class NullClientCallback implements ClientGetCallback, ClientPutCallback 
   /**
    * Handles a fetch failure without performing application-level recovery.
    *
-   * <p>This implementation logs the supplied {@link FetchException} together with the associated
-   * {@link ClientGetter} at trace level when tracing is enabled and otherwise does nothing. It does
-   * not attempt retries, modify the {@code state}, or rethrow the exception. The method is safe to
-   * use in scenarios where failures should be recorded for diagnostics but silently ignored at the
-   * caller boundary.
+   * <p>This implementation logs the supplied {@link FetchException} at trace level when tracing is
+   * enabled and otherwise does nothing. It does not attempt retries or rethrow the exception. The
+   * method is safe to use in scenarios where failures should be recorded for diagnostics but
+   * silently ignored at the caller boundary.
    *
    * @param e the failure description produced by the fetch logic; passed through to logging and
    *     never modified by this implementation.
-   * @param state the originating getter that reported the failure; used only for logging and may be
-   *     {@code null} when no concrete state object is available.
    */
   @Override
-  public void onFailure(FetchException e, ClientGetter state) {
-    if (LOG.isTraceEnabled()) LOG.trace("NullClientCallback#onFailure e={}, state={}", e, state, e);
+  public void onFailure(FetchException e) {
+    if (LOG.isTraceEnabled()) LOG.trace("NullClientCallback#onFailure e={}", e, e);
   }
 
   /**

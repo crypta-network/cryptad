@@ -458,12 +458,12 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    *
    * @param e the failure information, including the {@link FetchExceptionMode} and user‑friendly
    *     detail message; never {@code null}.
-   * @param state the associated request state supplied by the client framework; not used for logic
-   *     beyond diagnostics.
    */
   @Override
-  public void onFailure(FetchException e, ClientGetter state) {
-    onFailure(e, state, state.getBlobBucket());
+  public void onFailure(FetchException e) {
+    ClientGetter getter = revocationGetter;
+    Bucket blob = getter == null ? null : getter.getBlobBucket();
+    onFailure(e, getter, blob);
   }
 
   void onFailure(FetchException e, ClientGetter state, Bucket blob) {

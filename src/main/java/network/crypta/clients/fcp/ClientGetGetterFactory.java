@@ -109,8 +109,8 @@ final class ClientGetGetterFactory {
     }
 
     @Override
-    public void onFailure(FetchException e, ClientGetter state) {
-      request.onFailure(e, state);
+    public void onFailure(FetchException e) {
+      request.onFailure(e);
     }
 
     @Override

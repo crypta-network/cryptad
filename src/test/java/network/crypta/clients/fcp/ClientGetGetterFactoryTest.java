@@ -338,14 +338,14 @@ class ClientGetGetterFactoryTest {
     assertInstanceOf(PersistentClientCallback.class, callback);
 
     callback.onSuccess(fetchResult, getter);
-    callback.onFailure(fetchException, getter);
+    callback.onFailure(fetchException);
     callback.onResume(context);
     RequestClient resolvedClient = callback.getRequestClient();
     ((PersistentClientCallback) callback).getClientDetail(dos, checker);
 
     assertSame(requestClient, resolvedClient);
     verify(request).onSuccess(fetchResult, getter);
-    verify(request).onFailure(fetchException, getter);
+    verify(request).onFailure(fetchException);
     verify(request).onResume(context);
     verify(request).getClientDetail(dos, checker);
   }

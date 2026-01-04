@@ -800,7 +800,7 @@ public class ClientGetter extends BaseClientGetter
 
     e = normalizeFetchException(e);
     if (LOG.isDebugEnabled()) LOG.debug("onFailure({}, {}) on {} for {}", e, state, this, uri, e);
-    if (!alreadyFinished) clientCallback.onFailure(e, ClientGetter.this);
+    if (!alreadyFinished) clientCallback.onFailure(e);
   }
 
   private FetchException adjustTooBigForFilter(FetchException e) {
