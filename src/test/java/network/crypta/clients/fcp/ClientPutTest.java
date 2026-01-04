@@ -18,6 +18,7 @@ import java.lang.reflect.Field;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.ClientContext;
@@ -48,18 +49,14 @@ class ClientPutTest {
     clientPut = new ClientPut();
     insertContext =
         new InsertContext(
-            1,
-            0,
-            1,
-            1,
-            new SimpleEventProducer(),
-            true,
-            false,
-            false,
-            null,
-            0,
-            0,
-            CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(1, 0)
+                .splitfileSegmentLimits(1, 1)
+                .clientOptions(new SimpleEventProducer(), true, false, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(CompatibilityMode.COMPAT_CURRENT)
+                .build());
     setField(ClientPutBase.class, clientPut, "ctx", insertContext);
     setField(ClientPut.class, clientPut, "clientMetadata", new ClientMetadata("text/plain"));
     setField(ClientRequest.class, clientPut, "identifier", "test-id");

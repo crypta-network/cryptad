@@ -13,6 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.events.SimpleEventProducer;
@@ -74,18 +75,14 @@ class BinaryBlobInserterTest {
 
   private static InsertContext newInsertCtx(int maxRetries, int rnfsToSuccess) {
     return new InsertContext(
-        maxRetries,
-        rnfsToSuccess,
-        128,
-        128,
-        new SimpleEventProducer(),
-        true,
-        false,
-        false,
-        null,
-        0,
-        0,
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(maxRetries, rnfsToSuccess)
+            .splitfileSegmentLimits(128, 128)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   @Test

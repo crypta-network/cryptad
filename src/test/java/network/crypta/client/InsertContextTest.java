@@ -49,19 +49,14 @@ class InsertContextTest {
 
   private static InsertContext newContextWithDefaults(CompatibilityMode mode) {
     return new InsertContext(
-        3, // maxRetries
-        2, // rnfsToSuccess
-        128, // splitfileSegmentDataBlocks
-        96, // splitfileSegmentCheckBlocks
-        new SimpleEventProducer(), // eventProducer
-        true, // canWriteClientCache
-        true, // forkOnCacheable
-        false, // localRequestOnly
-        "GZIP", // compressorDescriptor
-        1, // extraInsertsSingleBlock
-        2, // extraInsertsSplitfileHeaderBlock
-        mode // compatibilityMode
-        );
+        InsertContextOptions.builder()
+            .retryLimits(3, 2)
+            .splitfileSegmentLimits(128, 96)
+            .clientOptions(new SimpleEventProducer(), true, true, false)
+            .compressorDescriptor("GZIP")
+            .redundancy(1, 2)
+            .compatibility(mode)
+            .build());
   }
 
   @Test
@@ -82,18 +77,14 @@ class InsertContextTest {
     // Act
     InsertContext ctx =
         new InsertContext(
-            maxRetries,
-            rnfsToSuccess,
-            dataBlocks,
-            checkBlocks,
-            mockProducer,
-            canWriteClientCache,
-            forkOnCacheable,
-            localRequestOnly,
-            descriptor,
-            extraSingle,
-            extraHeader,
-            mode);
+            InsertContextOptions.builder()
+                .retryLimits(maxRetries, rnfsToSuccess)
+                .splitfileSegmentLimits(dataBlocks, checkBlocks)
+                .clientOptions(mockProducer, canWriteClientCache, forkOnCacheable, localRequestOnly)
+                .compressorDescriptor(descriptor)
+                .redundancy(extraSingle, extraHeader)
+                .compatibility(mode)
+                .build());
 
     // Assert
     assertFalse(ctx.isDontCompress());

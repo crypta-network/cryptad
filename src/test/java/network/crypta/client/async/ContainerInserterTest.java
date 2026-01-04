@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.DocumentType;
@@ -279,18 +280,14 @@ class ContainerInserterTest {
 
   private static InsertContext newInsertContext() {
     return new InsertContext(
-        0,
-        0,
-        0,
-        0,
-        new SimpleEventProducer(),
-        true,
-        false,
-        false,
-        null,
-        0,
-        0,
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(0, 0)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   @Mock private PutCompletionCallback callback;

@@ -32,6 +32,7 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.PersistentRequestRoot;
@@ -263,18 +264,14 @@ class ClientGetterTest {
 
   private static InsertContext newInsertContext() {
     return new InsertContext(
-        0,
-        0,
-        0,
-        0,
-        new SimpleEventProducer(),
-        true,
-        false,
-        false,
-        null,
-        0,
-        0,
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(0, 0)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   @Mock private ClientGetCallback callback;
