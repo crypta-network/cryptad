@@ -19,9 +19,7 @@ import org.slf4j.LoggerFactory;
  * small piece of state indicating whether the next lookup should skip the cache ({@code
  * forceRefetchArchive}). This class does not perform any network I/O and does not parse container
  * formats by itself; it merely looks up previously extracted items and delegates extraction to
- * {@link ArchiveManager#extractToCache(FreenetURI, ARCHIVE_TYPE,
- * network.crypta.support.compress.Compressor.COMPRESSOR_TYPE, Bucket, ArchiveContext,
- * ArchiveStoreContext, String, ArchiveExtractCallback, ClientContext)}.
+ * {@link ArchiveManager#extractToCache(ArchiveExtractionInput, ArchiveElementRequest)}.
  *
  * <p>Typical usage is:
  *
@@ -159,9 +157,8 @@ class ArchiveHandlerImpl implements ArchiveHandler, Serializable {
    * lookups to proceed. The method constructs an {@link ArchiveStoreContext} for the key via {@link
    * ArchiveManager#makeContext(FreenetURI, ARCHIVE_TYPE,
    * network.crypta.support.compress.Compressor.COMPRESSOR_TYPE, boolean)} and delegates the heavy
-   * lifting to {@link ArchiveManager#extractToCache(FreenetURI, ARCHIVE_TYPE,
-   * network.crypta.support.compress.Compressor.COMPRESSOR_TYPE, Bucket, ArchiveContext,
-   * ArchiveStoreContext, String, ArchiveExtractCallback, ClientContext)}.
+   * lifting to {@link ArchiveManager#extractToCache(ArchiveExtractionInput,
+   * ArchiveElementRequest)}.
    *
    * @param bucket The raw bytes of the outer archive to unpack; must provide readable content for
    *     the duration of the call.
@@ -188,8 +185,10 @@ class ArchiveHandlerImpl implements ArchiveHandler, Serializable {
       throws ArchiveFailureException, ArchiveRestartException {
     forceRefetchArchive = false; // now we don't need to force refetch anymore
     ArchiveStoreContext ctx = manager.makeContext(key, archiveType, compressorType, false);
-    manager.extractToCache(
-        key, archiveType, compressorType, bucket, actx, ctx, element, callback, context);
+    ArchiveExtractionInput input =
+        new ArchiveExtractionInput(key, archiveType, compressorType, bucket, actx, ctx);
+    ArchiveElementRequest elementRequest = new ArchiveElementRequest(element, callback, context);
+    manager.extractToCache(input, elementRequest);
   }
 
   /**
