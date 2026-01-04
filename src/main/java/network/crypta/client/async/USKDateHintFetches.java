@@ -558,11 +558,12 @@ final class USKDateHintFetches {
      * @param context client context used to schedule the hint update; must not be null
      */
     private void handleHintFound(long hint, ClientContext context) {
+      if (owner.isFinished()) return;
+
       short prio = owner.refreshAndGetProgressPollPriority();
 
       List<DBRAttempt> toCancel = null;
       synchronized (USKDateHintFetches.this) {
-        if (owner.isFinished()) return;
         hintsFound++;
         for (Iterator<DBRAttempt> it = attempts.iterator(); it.hasNext(); ) {
           DBRAttempt attempt = it.next();
