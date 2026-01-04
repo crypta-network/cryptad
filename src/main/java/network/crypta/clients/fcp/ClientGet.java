@@ -5,7 +5,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
-import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.util.Date;
 import java.util.HashSet;
@@ -15,37 +14,17 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
-import network.crypta.client.async.BinaryBlob;
-import network.crypta.client.async.BinaryBlobWriter;
 import network.crypta.client.async.ClientContext;
-import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.CompatibilityAnalyser;
-import network.crypta.client.async.PersistenceDisabledException;
-import network.crypta.client.async.PersistentClientCallback;
-import network.crypta.client.async.PersistentJob;
-import network.crypta.client.events.ClientEvent;
-import network.crypta.client.events.ClientEventListener;
-import network.crypta.client.events.EnterFiniteCooldownEvent;
-import network.crypta.client.events.ExpectedFileSizeEvent;
-import network.crypta.client.events.ExpectedHashesEvent;
-import network.crypta.client.events.ExpectedMIMEEvent;
-import network.crypta.client.events.SendingToNetworkEvent;
-import network.crypta.client.events.SplitfileCompatibilityModeEvent;
-import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
-import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.Bucket;
-import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.BucketTools;
-import network.crypta.support.io.FileBucket;
-import network.crypta.support.io.NativeThread;
-import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
@@ -56,17 +35,17 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The request owns its {@link FetchContext}, {@link ClientGetter}, progress caches, and
  * persistence metadata so it can migrate cleanly between the connection queue, the global queue,
- * and durable storage across node restarts. It translates raw {@link ClientEvent}s into the
- * higher-level FCP messages required by remote clients, tracks retry policy, and resolves whatever
- * output strategy the caller selected (direct bucket, disk file, chunked stream, or acknowledgement
- * only). The class is therefore the boundary between long-lived persistent jobs and transient FCP
+ * and durable storage across node restarts. It translates raw client events into the higher-level
+ * FCP messages required by remote clients, tracks retry policy, and resolves whatever output
+ * strategy the caller selected (direct bucket, disk file, chunked stream, or acknowledgement only).
+ * The class is therefore the boundary between long-lived persistent jobs and transient FCP
  * sessions.
  *
  * <p>The implementation is largely thread-safe through fine-grained {@code synchronized} sections.
  * State transitions such as success, failure, or cancellation update cached progress snapshots and
- * immediately propagate notifications to any registered {@link ClientEventListener}. During
- * restarts, it rehydrates buckets, metadata, and compatibility hints from the serialized form
- * before delegating back to {@link ClientGetter}.
+ * immediately propagate notifications to any registered event listeners. During restarts, it
+ * rehydrates buckets, metadata, and compatibility hints from the serialized form before delegating
+ * back to {@link ClientGetter}.
  *
  * <ul>
  *   <li>Queueing and persistence: registers against either the connection-scoped or global queue.
@@ -76,10 +55,9 @@ import org.slf4j.LoggerFactory;
  *
  * @see ClientRequest
  * @see ClientGetter
- * @see ClientGetCallback
+ * @see network.crypta.client.async.ClientGetCallback
  */
-public class ClientGet extends ClientRequest
-    implements ClientGetCallback, ClientEventListener, PersistentClientCallback {
+public class ClientGet extends ClientRequest {
   private static final Logger LOG = LoggerFactory.getLogger(ClientGet.class);
 
   @Serial private static final long serialVersionUID = 1L;
@@ -114,13 +92,13 @@ public class ClientGet extends ClientRequest
   private final Bucket initialMetadata;
 
   // Verbosity bitmasks
-  private static final int VERBOSITY_SPLITFILE_PROGRESS = 1;
-  private static final int VERBOSITY_SENT_TO_NETWORK = 2;
-  private static final int VERBOSITY_COMPATIBILITY_MODE = 4;
-  private static final int VERBOSITY_EXPECTED_HASHES = 8;
-  private static final int VERBOSITY_EXPECTED_TYPE = 32;
-  private static final int VERBOSITY_EXPECTED_SIZE = 64;
-  private static final int VERBOSITY_ENTER_FINITE_COOLDOWN = 128;
+  static final int VERBOSITY_SPLITFILE_PROGRESS = 1;
+  static final int VERBOSITY_SENT_TO_NETWORK = 2;
+  static final int VERBOSITY_COMPATIBILITY_MODE = 4;
+  static final int VERBOSITY_EXPECTED_HASHES = 8;
+  static final int VERBOSITY_EXPECTED_TYPE = 32;
+  static final int VERBOSITY_EXPECTED_SIZE = 64;
+  static final int VERBOSITY_ENTER_FINITE_COOLDOWN = 128;
 
   // Stuff waiting for reconnection
   /** Did the request succeed? Valid if finished. */
@@ -212,8 +190,6 @@ public class ClientGet extends ClientRequest
 
   private record ReturnSetup(Bucket bucket, File targetFile, String extension) {}
 
-  private record EventProgress(FCPMessage message, int verbosityMask) {}
-
   /**
    * Builds a persistent GET request for callers that enqueue work outside live FCP sessions.
    *
@@ -283,7 +259,7 @@ public class ClientGet extends ClientRequest
 
     ensureGlobalIdentifierAvailable(globalClient, identifier);
     fctx = core.getClientContext().getDefaultPersistentFetchContext();
-    fctx.getEventProducer().addEventListener(this);
+    fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
     fctx.setLocalRequestOnly(dsOnly);
     fctx.setIgnoreStore(ignoreDS);
     fctx.setMaxNonSplitfileRetries(maxNonSplitfileRetries);
@@ -341,7 +317,7 @@ public class ClientGet extends ClientRequest
     // Create a Fetcher directly in order to get more fine-grained control,
     // since the client may override a few context elements.
     fctx = core.getClientContext().getDefaultPersistentFetchContext();
-    fctx.getEventProducer().addEventListener(this);
+    fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
     // ignoreDS
     fctx.setLocalRequestOnly(message.dsOnly);
     fctx.setIgnoreStore(message.ignoreDS);
@@ -384,7 +360,7 @@ public class ClientGet extends ClientRequest
         ensureDownloadAllowed(core, file);
         yield createDiskReturnSetup(file, filterData);
       }
-      case NONE -> new ReturnSetup(new NullBucket(), null, null);
+      case NONE -> new ReturnSetup(null, null, null);
       default -> new ReturnSetup(null, null, null);
     };
   }
@@ -394,7 +370,7 @@ public class ClientGet extends ClientRequest
       throws MessageInvalidException {
     return switch (message.returnType) {
       case DISK -> buildDiskSetupForMessage(message, core, handler);
-      case NONE -> new ReturnSetup(new NullBucket(), null, null);
+      case NONE -> new ReturnSetup(null, null, null);
       default -> new ReturnSetup(null, null, null);
     };
   }
@@ -437,7 +413,7 @@ public class ClientGet extends ClientRequest
   }
 
   private ReturnSetup createDiskReturnSetup(File file, boolean filterData) {
-    Bucket bucket = new FileBucket(file, false, true, false, false);
+    Bucket bucket = ClientGetGetterFactory.diskReturnBucket(file);
     return new ReturnSetup(bucket, file, filterData ? deriveExtension(file) : null);
   }
 
@@ -501,24 +477,18 @@ public class ClientGet extends ClientRequest
   }
 
   private ClientGetter makeGetter(NodeClientCore core, Bucket ret) throws IOException {
-    if (binaryBlob && ret == null) {
-      //noinspection resource
-      ret =
-          core.getClientContext()
-              .getBucketFactory(persistence == Persistence.FOREVER)
-              .makeBucket(fctx.getMaxOutputLength());
-    }
-
-    return new ClientGetter(
+    return ClientGetGetterFactory.createGetter(
         this,
         uri,
         fctx,
         priorityClass,
-        binaryBlob ? new NullBucket() : ret,
-        binaryBlob ? new BinaryBlobWriter(ret) : null,
-        false,
+        ret,
         initialMetadata,
-        extensionCheck);
+        extensionCheck,
+        returnType == ReturnType.NONE,
+        binaryBlob,
+        persistence == Persistence.FOREVER,
+        core);
   }
 
   /**
@@ -639,7 +609,6 @@ public class ClientGet extends ClientRequest
    * @param result Result wrapper exposing MIME metadata and bucket accessors.
    * @param state ClientGetter instance used for blob access during binary-blob transfers.
    */
-  @Override
   public void onSuccess(FetchResult result, ClientGetter state) {
     LOG.debug("Succeeded: {}", identifier);
     Bucket data = binaryBlob ? state.getBlobBucket() : result.asBucket();
@@ -650,7 +619,7 @@ public class ClientGet extends ClientRequest
       }
       started = true;
       if (!binaryBlob) this.foundDataMimeType = result.getMimeType();
-      else this.foundDataMimeType = BinaryBlob.MIME_TYPE;
+      else this.foundDataMimeType = ClientGetGetterFactory.binaryBlobMimeType();
 
       // completionTime is set here rather than in finish() for two reasons:
       // 1. It must be set inside the lock.
@@ -773,7 +742,7 @@ public class ClientGet extends ClientRequest
     }
   }
 
-  private void queueProgressMessageInner(FCPMessage msg, int verbosityMask) {
+  void queueProgressMessageInner(FCPMessage msg, int verbosityMask) {
     if (persistence == Persistence.CONNECTION) {
       if (origHandler != null) {
         origHandler.send(msg);
@@ -817,7 +786,7 @@ public class ClientGet extends ClientRequest
                 new SendingToNetworkMessage(identifier, global), listRequestIdentifier));
       if (finished) trySendDataFoundOrGetFailed(handler, listRequestIdentifier);
     } else if (returnType != ReturnType.DIRECT) {
-      ProtocolErrorMessage msg =
+      FCPMessage msg =
           new ProtocolErrorMessage(
               ProtocolErrorMessage.WRONG_RETURN_TYPE, false, "No AllData", identifier, global);
       handler.handler.send(msg);
@@ -895,7 +864,6 @@ public class ClientGet extends ClientRequest
    * @param e Detailed {@link FetchException} describing the failure classification.
    * @param state Optional getter supplying buckets to retain across restarts; may be {@code null}.
    */
-  @Override
   public void onFailure(FetchException e, ClientGetter state) {
     if (finished) return;
     synchronized (this) {
@@ -948,144 +916,39 @@ public class ClientGet extends ClientRequest
     super.requestWasRemoved(context);
   }
 
-  /**
-   * Consumes {@link ClientEvent}s streamed by the {@link ClientGetter} and forwards the relevant
-   * ones to the remote client according to verbosity flags.
-   *
-   * <p>Compatibility mode updates may need to be handled within the persistence job runner to avoid
-   * blocking IO threads, while other events are translated into {@link SimpleProgressMessage},
-   * {@link ExpectedHashes}, or size/type notifications. Verbosity masks ensure clients only see the
-   * signals they subscribed to, keeping reconnections lightweight. Unknown events are logged to aid
-   * diagnosis without breaking the stream.
-   *
-   * @param ce Event describing progress, compatibility hints, or splitter metadata.
-   * @param context Client context whose job runner may execute deferred compatibility processing.
-   */
-  @Override
-  public void receive(ClientEvent ce, ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Receiving {} on {}", ce, this);
-    if (ce instanceof SplitfileCompatibilityModeEvent compatibilityModeEvent) {
-      handleCompatibilityMode(compatibilityModeEvent, context);
-      return;
-    }
-    EventProgress eventProgress = createEventProgress(ce);
-    if (eventProgress == null) {
-      return;
-    }
-    if ((verbosity & eventProgress.verbosityMask()) == 0) {
-      return;
-    }
-    queueProgressMessageInner(eventProgress.message(), eventProgress.verbosityMask());
+  synchronized void markSentToNetwork() {
+    sentToNetwork = true;
   }
 
-  private EventProgress createEventProgress(ClientEvent event) {
-    if (event instanceof SplitfileProgressEvent progressEvent) {
-      return handleSplitfileProgress(progressEvent);
-    }
-    if (event instanceof SendingToNetworkEvent) {
-      synchronized (this) {
-        sentToNetwork = true;
-      }
-      return new EventProgress(
-          new SendingToNetworkMessage(identifier, global), VERBOSITY_SENT_TO_NETWORK);
-    }
-    if (event instanceof ExpectedHashesEvent hashesEvent) {
-      return handleExpectedHashes(hashesEvent);
-    }
-    if (event instanceof ExpectedMIMEEvent mimeEvent) {
-      return handleExpectedMime(mimeEvent);
-    }
-    if (event instanceof ExpectedFileSizeEvent sizeEvent) {
-      return handleExpectedSize(sizeEvent);
-    }
-    if (event instanceof EnterFiniteCooldownEvent cooldownEvent) {
-      return new EventProgress(
-          new EnterFiniteCooldown(identifier, global, cooldownEvent.wakeupTime),
-          VERBOSITY_ENTER_FINITE_COOLDOWN);
-    }
-    LOG.error("Unknown event {}", event);
-    return null;
+  synchronized void recordSplitfileProgress(SimpleProgressMessage message) {
+    progressPending = message;
   }
 
-  private EventProgress handleSplitfileProgress(SplitfileProgressEvent event) {
-    SimpleProgressMessage message;
-    synchronized (this) {
-      message = progressPending = new SimpleProgressMessage(identifier, global, event);
+  synchronized boolean trySetExpectedHashes(ExpectedHashes message) {
+    if (expectedHashes != null) {
+      LOG.warn("Got a new ExpectedHashes");
+      return false;
     }
-    if (client != null) {
-      RequestStatusCache cache = client.getRequestStatusCache();
-      if (cache != null) {
-        cache.updateStatus(identifier, progressPending.getEvent());
-      }
-    }
-    return new EventProgress(message, VERBOSITY_SPLITFILE_PROGRESS);
+    expectedHashes = message;
+    return true;
   }
 
-  private EventProgress handleExpectedHashes(ExpectedHashesEvent event) {
-    synchronized (this) {
-      if (expectedHashes != null) {
-        LOG.warn("Got a new ExpectedHashes");
-        return null;
-      }
-      expectedHashes = new ExpectedHashes(event, identifier, global);
-      return new EventProgress(expectedHashes, VERBOSITY_EXPECTED_HASHES);
-    }
+  synchronized void recordExpectedMimeType(String mimeType) {
+    foundDataMimeType = mimeType;
   }
 
-  private EventProgress handleExpectedMime(ExpectedMIMEEvent event) {
-    synchronized (this) {
-      foundDataMimeType = event.expectedMIMEType;
-    }
-    if (client != null) {
-      RequestStatusCache cache = client.getRequestStatusCache();
-      if (cache != null) {
-        cache.updateExpectedMIME(identifier, foundDataMimeType);
-      }
-    }
-    return new EventProgress(
-        new ExpectedMIME(identifier, global, event.expectedMIMEType), VERBOSITY_EXPECTED_TYPE);
+  synchronized void recordExpectedDataLength(long length) {
+    foundDataLength = length;
   }
 
-  private EventProgress handleExpectedSize(ExpectedFileSizeEvent event) {
-    synchronized (this) {
-      foundDataLength = event.expectedSize;
-    }
-    if (client != null) {
-      RequestStatusCache cache = client.getRequestStatusCache();
-      if (cache != null) {
-        cache.updateExpectedDataLength(identifier, foundDataLength);
-      }
-    }
-    return new EventProgress(
-        new ExpectedDataLength(identifier, global, event.expectedSize), VERBOSITY_EXPECTED_SIZE);
-  }
-
-  private void handleCompatibilityMode(
-      final SplitfileCompatibilityModeEvent ce, ClientContext context) {
-    if (persistence == Persistence.FOREVER && context.jobRunner.hasLoaded()) {
-      try {
-        context.jobRunner.queue(
-            (PersistentJob)
-                context1 -> {
-                  innerHandleCompatibilityMode(ce);
-                  return false;
-                },
-            NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-      } catch (PersistenceDisabledException _) {
-        // Not much we can do
-      }
-    } else {
-      innerHandleCompatibilityMode(ce);
-    }
-  }
-
-  private void innerHandleCompatibilityMode(SplitfileCompatibilityModeEvent ce) {
+  void mergeCompatibilityMode(
+      InsertContext.CompatibilityMode minCompatibilityMode,
+      InsertContext.CompatibilityMode maxCompatibilityMode,
+      byte[] splitfileCryptoKey,
+      boolean dontCompress,
+      boolean bottomLayer) {
     compatMode.merge(
-        ce.minCompatibilityMode,
-        ce.maxCompatibilityMode,
-        ce.splitfileCryptoKey,
-        ce.dontCompress,
-        ce.bottomLayer);
+        minCompatibilityMode, maxCompatibilityMode, splitfileCryptoKey, dontCompress, bottomLayer);
     if (client != null) {
       RequestStatusCache cache = client.getRequestStatusCache();
       if (cache != null) {
@@ -1096,9 +959,10 @@ public class ClientGet extends ClientRequest
             compatMode.dontCompress());
       }
     }
-    if ((verbosity & VERBOSITY_COMPATIBILITY_MODE) != 0)
+    if ((verbosity & VERBOSITY_COMPATIBILITY_MODE) != 0) {
       queueProgressMessageInner(
           new CompatibilityMode(identifier, global, compatMode), VERBOSITY_COMPATIBILITY_MODE);
+    }
   }
 
   @Override
@@ -1374,7 +1238,7 @@ public class ClientGet extends ClientRequest
           yield returnBucketDirect;
         }
       }
-      case DISK -> new FileBucket(targetFile, readOnly, false, false, false);
+      case DISK -> ClientGetGetterFactory.diskBucket(targetFile, readOnly);
       default -> null;
     };
   }
@@ -1602,8 +1466,7 @@ public class ClientGet extends ClientRequest
       dos.writeUTF(targetFile.toString());
     }
     dos.writeBoolean(binaryBlob);
-    try (DataOutputStream ctxStream =
-        new DataOutputStream(checker.checksumWriterWithLength(dos, new ArrayBucketFactory()))) {
+    try (DataOutputStream ctxStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
       fctx.writeTo(ctxStream);
     }
     if (extensionCheck != null) {
@@ -1615,7 +1478,7 @@ public class ClientGet extends ClientRequest
     if (initialMetadata != null) {
       dos.writeBoolean(true);
       try (DataOutputStream metadataStream =
-          new DataOutputStream(checker.checksumWriterWithLength(dos, new ArrayBucketFactory()))) {
+          ClientGetGetterFactory.checksummedWriter(dos, checker)) {
         initialMetadata.storeTo(metadataStream);
       }
     } else {
@@ -1628,15 +1491,13 @@ public class ClientGet extends ClientRequest
         if (succeeded) {
           if (returnType == ReturnType.DIRECT) {
             try (DataOutputStream bucketStream =
-                new DataOutputStream(
-                    checker.checksumWriterWithLength(dos, new ArrayBucketFactory()))) {
+                ClientGetGetterFactory.checksummedWriter(dos, checker)) {
               returnBucketDirect.storeTo(bucketStream);
             }
           }
         } else {
           try (DataOutputStream failureStream =
-              new DataOutputStream(
-                  checker.checksumWriterWithLength(dos, new ArrayBucketFactory()))) {
+              ClientGetGetterFactory.checksummedWriter(dos, checker)) {
             getFailedMessage.writeTo(failureStream);
           }
         }
@@ -1646,8 +1507,7 @@ public class ClientGet extends ClientRequest
     // Not finished, or was recently not finished.
     // Don't hold lock while calling getter.
     // If it's just finished we get a race and restart. That's okay.
-    try (DataOutputStream progressStream =
-        new DataOutputStream(checker.checksumWriterWithLength(dos, new ArrayBucketFactory()))) {
+    try (DataOutputStream progressStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
       if (getter.writeTrivialProgress(progressStream)) {
         writeTransientProgressFields(progressStream);
       }
@@ -1682,7 +1542,7 @@ public class ClientGet extends ClientRequest
     targetFile = returnType == ReturnType.DISK ? new File(dis.readUTF()) : null;
     binaryBlob = dis.readBoolean();
     this.fctx = readFetchContext(dis, context, checker);
-    fctx.getEventProducer().addEventListener(this);
+    fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
     extensionCheck = dis.readBoolean() ? dis.readUTF() : null;
     initialMetadata = readInitialMetadata(dis, context, checker);
     ClientGetter restoredGetter = restoreState(dis, reqID, context, checker);
@@ -1710,7 +1570,7 @@ public class ClientGet extends ClientRequest
   private FreenetURI parseUri(String serializedUri) throws StorageFormatException {
     try {
       return new FreenetURI(serializedUri);
-    } catch (MalformedURLException _) {
+    } catch (Exception _) {
       throw new StorageFormatException("Bad URI");
     }
   }
@@ -1844,12 +1704,7 @@ public class ClientGet extends ClientRequest
     if (dis.readBoolean()) foundDataMimeType = dis.readUTF();
     else foundDataMimeType = null;
     compatMode = new CompatibilityAnalyser(dis);
-    HashResult[] hashes = HashResult.readHashes(dis);
-    if (hashes == null || hashes.length == 0) {
-      expectedHashes = null;
-    } else {
-      expectedHashes = new ExpectedHashes(hashes, identifier, global);
-    }
+    expectedHashes = ClientGetGetterFactory.readExpectedHashes(dis, identifier, global);
   }
 
   private synchronized void writeTransientProgressFields(DataOutputStream dos) throws IOException {
@@ -1861,7 +1716,7 @@ public class ClientGet extends ClientRequest
       dos.writeBoolean(false);
     }
     compatMode.writeTo(dos);
-    HashResult.write(expectedHashes == null ? null : expectedHashes.hashes, dos);
+    ClientGetGetterFactory.writeExpectedHashes(dos, expectedHashes);
   }
 
   @Override
@@ -1891,10 +1746,7 @@ public class ClientGet extends ClientRequest
 
   @Override
   public boolean equals(Object obj) {
-    if (this == obj) {
-      return true;
-    }
-    return obj instanceof ClientGet && super.equals(obj);
+    return super.equals(obj);
   }
 
   @Override
