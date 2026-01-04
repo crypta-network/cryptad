@@ -1223,7 +1223,7 @@ class SplitFileFetcherStorageTest {
 
     public FetchContext makeFetchContext() {
       return HighLevelSimpleClientImpl.makeDefaultFetchContext(
-          Long.MAX_VALUE, Long.MAX_VALUE, bf, new SimpleEventProducer());
+          Long.MAX_VALUE, Long.MAX_VALUE, new SimpleEventProducer());
     }
 
     public void verifyOutput(SplitFileFetcherStorage storage) throws IOException {

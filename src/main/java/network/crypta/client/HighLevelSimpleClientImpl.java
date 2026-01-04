@@ -658,65 +658,69 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
       maxLength = overrideMaxSize;
       maxTempLength = overrideMaxSize;
     }
-    FetchContextOptions options =
-        FetchContextOptions.builder()
-            .limits(maxLength, maxTempLength, curMaxMetadataLength)
-            .archiveLimits(
-                MAX_RECURSION,
-                MAX_ARCHIVE_RESTARTS,
-                MAX_ARCHIVE_LEVELS,
-                DONT_ENTER_IMPLICIT_ARCHIVES)
-            .retryLimits(SPLITFILE_BLOCK_RETRIES, NON_SPLITFILE_RETRIES, USK_RETRIES)
-            .splitfileLimits(
-                FETCH_SPLITFILES,
-                MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
-                MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT)
-            .behavior(FOLLOW_REDIRECTS, LOCAL_REQUESTS_ONLY, FILTER_DATA)
-            .clientOptions(eventProducer, false, CAN_WRITE_CLIENT_CACHE)
-            .filterOverrides(null, null, schemeHostAndPort)
-            .build();
-    return new FetchContext(options);
+    return new FetchContext(
+        maxLength,
+        maxTempLength,
+        curMaxMetadataLength,
+        MAX_RECURSION,
+        MAX_ARCHIVE_RESTARTS,
+        MAX_ARCHIVE_LEVELS,
+        DONT_ENTER_IMPLICIT_ARCHIVES,
+        SPLITFILE_BLOCK_RETRIES,
+        NON_SPLITFILE_RETRIES,
+        USK_RETRIES,
+        FETCH_SPLITFILES,
+        FOLLOW_REDIRECTS,
+        LOCAL_REQUESTS_ONLY,
+        FILTER_DATA,
+        MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
+        MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
+        eventProducer,
+        false,
+        CAN_WRITE_CLIENT_CACHE,
+        null,
+        null,
+        schemeHostAndPort);
   }
 
   /**
    * Builds a {@link FetchContext} with defaults suitable for most interactive reads.
    *
    * <p>The returned context carries sensible retry counts and enables splitfile support and
-   * redirect following. The maximum output and temporary sizes are taken from the parameters. The
-   * supplied {@link BucketFactory} is used for any intermediate storage that the fetcher needs.
+   * redirect following. The maximum output and temporary sizes are taken from the parameters.
    *
    * @param maxLength maximum allowed size of the fetched payload in bytes; negative disables the
    *     limit.
    * @param maxTempLength maximum temporary storage in bytes for intermediate structures; negative
    *     disables the limit.
-   * @param bucketFactory factory used for intermediate buckets; must not be {@code null} when the
-   *     fetcher needs temporary storage.
    * @param eventProducer producer used to publish client events to listeners; may be shared.
    * @return a new {@link FetchContext} instance initialized with this class's defaults.
    */
   public static FetchContext makeDefaultFetchContext(
-      long maxLength,
-      long maxTempLength,
-      BucketFactory bucketFactory,
-      SimpleEventProducer eventProducer) {
-    FetchContextOptions options =
-        FetchContextOptions.builder()
-            .limits(maxLength, maxTempLength, 1024 * 1024)
-            .archiveLimits(
-                MAX_RECURSION,
-                MAX_ARCHIVE_RESTARTS,
-                MAX_ARCHIVE_LEVELS,
-                DONT_ENTER_IMPLICIT_ARCHIVES)
-            .retryLimits(SPLITFILE_BLOCK_RETRIES, NON_SPLITFILE_RETRIES, USK_RETRIES)
-            .splitfileLimits(
-                FETCH_SPLITFILES,
-                MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
-                MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT)
-            .behavior(FOLLOW_REDIRECTS, LOCAL_REQUESTS_ONLY, FILTER_DATA)
-            .clientOptions(eventProducer, false, CAN_WRITE_CLIENT_CACHE)
-            .filterOverrides(null, null, null)
-            .build();
-    return new FetchContext(options);
+      long maxLength, long maxTempLength, SimpleEventProducer eventProducer) {
+    return new FetchContext(
+        maxLength,
+        maxTempLength,
+        1024 * 1024,
+        MAX_RECURSION,
+        MAX_ARCHIVE_RESTARTS,
+        MAX_ARCHIVE_LEVELS,
+        DONT_ENTER_IMPLICIT_ARCHIVES,
+        SPLITFILE_BLOCK_RETRIES,
+        NON_SPLITFILE_RETRIES,
+        USK_RETRIES,
+        FETCH_SPLITFILES,
+        FOLLOW_REDIRECTS,
+        LOCAL_REQUESTS_ONLY,
+        FILTER_DATA,
+        MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
+        MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
+        eventProducer,
+        false,
+        CAN_WRITE_CLIENT_CACHE,
+        null,
+        null,
+        null);
   }
 
   @Override
