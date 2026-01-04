@@ -377,7 +377,7 @@ class ClientGetterTest {
 
     // Assert
     ArgumentCaptor<FetchException> exc = ArgumentCaptor.forClass(FetchException.class);
-    verify(callback, times(1)).onFailure(exc.capture(), eq(getter));
+    verify(callback, times(1)).onFailure(exc.capture());
     assertEquals(FetchExceptionMode.MIME_INCOMPATIBLE_WITH_EXTENSION, exc.getValue().mode);
     verify(callback, never()).onSuccess(any(FetchResult.class), any(ClientGetter.class));
   }
@@ -406,7 +406,7 @@ class ClientGetterTest {
 
     // Assert
     ArgumentCaptor<FetchException> exc = ArgumentCaptor.forClass(FetchException.class);
-    verify(callback, times(1)).onFailure(exc.capture(), eq(getter));
+    verify(callback, times(1)).onFailure(exc.capture());
     assertEquals(FetchExceptionMode.BUCKET_ERROR, exc.getValue().mode);
   }
 

@@ -395,7 +395,7 @@ class ClientContextTest {
 
     ctx.start(getter);
     jobRunner.runLast(ctx);
-    verify(cb, times(1)).onFailure(any(network.crypta.client.FetchException.class), any());
+    verify(cb, times(1)).onFailure(any(network.crypta.client.FetchException.class));
   }
 
   @Test

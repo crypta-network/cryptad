@@ -109,7 +109,7 @@ class FProxyFetchInProgressTest {
   void notFinishedOrFatallyFinished_whenFatalFailure_returnsTrue() {
     FProxyFetchInProgress progress = newProgress(newFetchContext());
 
-    progress.onFailure(new FetchException(FetchExceptionMode.TOO_BIG), null);
+    progress.onFailure(new FetchException(FetchExceptionMode.TOO_BIG));
 
     assertTrue(progress.notFinishedOrFatallyFinished());
   }
@@ -118,7 +118,7 @@ class FProxyFetchInProgressTest {
   void notFinishedOrFatallyFinished_whenNonFatalFailureEventuallyReturnsFalse() throws Exception {
     FProxyFetchInProgress progress = newProgress(newFetchContext());
 
-    progress.onFailure(new FetchException(FetchExceptionMode.DATA_NOT_FOUND), null);
+    progress.onFailure(new FetchException(FetchExceptionMode.DATA_NOT_FOUND));
     assertTrue(progress.notFinishedOrFatallyFinished());
 
     setField(progress, "timeFailed", System.currentTimeMillis() - 1500);

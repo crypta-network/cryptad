@@ -441,7 +441,7 @@ public class USKManager {
               }
 
               @Override
-              public void onFailure(FetchException e, ClientGetter state) {
+              public void onFailure(FetchException e) {
                 if (e.isDataFound()) cb.success(origURI, token);
                 else if (e.isDNF()) cb.dnf(origURI, token, e);
                 else cb.failed(origURI, token, e);
@@ -634,7 +634,7 @@ public class USKManager {
       final USK key, final long edition, final ClientContext ctx) {
     return new ClientGetCallback() {
       @Override
-      public void onFailure(FetchException e, ClientGetter state) {
+      public void onFailure(FetchException e) {
         if (e.newURI != null) {
           if (LOG.isDebugEnabled()) LOG.debug("Prefetch succeeded with redirect for {}", key);
           updateKnownGood(key, edition, ctx);

@@ -47,7 +47,7 @@ class FetchWaiterTest {
     FetchWaiter waiter = new FetchWaiter(requestClient);
     FetchException failure = new FetchException(FetchExceptionMode.INTERNAL_ERROR);
 
-    waiter.onFailure(failure, null);
+    waiter.onFailure(failure);
     FetchException thrown =
         assertThrows(
             FetchException.class,
@@ -111,7 +111,7 @@ class FetchWaiterTest {
     t.start();
 
     awaitWaiting(t, Duration.ofSeconds(2));
-    waiter.onFailure(failure, null);
+    waiter.onFailure(failure);
 
     assertTrue(done.await(2, TimeUnit.SECONDS), "Worker thread should complete after onFailure");
     assertSame(failure, thrownRef.get(), "Worker should observe the same exception instance");

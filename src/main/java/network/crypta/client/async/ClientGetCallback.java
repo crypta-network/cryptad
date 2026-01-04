@@ -57,8 +57,6 @@ public interface ClientGetCallback extends ClientBaseCallback {
    *
    * @param e The {@link FetchException} describing why the fetch did not complete successfully; it
    *     may include causes and structured error codes for diagnostics and policy decisions.
-   * @param state The original {@link ClientGetter} that initiated the fetch; useful for correlating
-   *     application state, logging, and potential retry logic.
    */
-  void onFailure(FetchException e, ClientGetter state);
+  void onFailure(FetchException e);
 }

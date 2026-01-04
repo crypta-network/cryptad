@@ -306,12 +306,12 @@ public class NodeUpdateManager {
       } catch (PersistenceDisabledException _) {
         // Impossible
       } catch (FetchException e) {
-        onFailure(e, null);
+        onFailure(e);
       }
     }
 
     @Override
-    public void onFailure(FetchException e, ClientGetter state) {
+    public void onFailure(FetchException e) {
       LOG.warn("Failed to fetch {}", filename, e);
     }
 
