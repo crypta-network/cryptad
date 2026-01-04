@@ -687,23 +687,17 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
    * Builds a {@link FetchContext} with defaults suitable for most interactive reads.
    *
    * <p>The returned context carries sensible retry counts and enables splitfile support and
-   * redirect following. The maximum output and temporary sizes are taken from the parameters. The
-   * supplied {@link BucketFactory} is used for any intermediate storage that the fetcher needs.
+   * redirect following. The maximum output and temporary sizes are taken from the parameters.
    *
    * @param maxLength maximum allowed size of the fetched payload in bytes; negative disables the
    *     limit.
    * @param maxTempLength maximum temporary storage in bytes for intermediate structures; negative
    *     disables the limit.
-   * @param bucketFactory factory used for intermediate buckets; must not be {@code null} when the
-   *     fetcher needs temporary storage.
    * @param eventProducer producer used to publish client events to listeners; may be shared.
    * @return a new {@link FetchContext} instance initialized with this class's defaults.
    */
   public static FetchContext makeDefaultFetchContext(
-      long maxLength,
-      long maxTempLength,
-      BucketFactory bucketFactory,
-      SimpleEventProducer eventProducer) {
+      long maxLength, long maxTempLength, SimpleEventProducer eventProducer) {
     return new FetchContext(
         maxLength,
         maxTempLength,
