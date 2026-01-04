@@ -104,28 +104,7 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                -1L,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder().limits(-1L, VALID_MAX_TEMP, VALID_MAX_METADATA).build()));
   }
 
   @Test
@@ -134,28 +113,7 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                -2L,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder().limits(VALID_MAX_OUTPUT, -2L, VALID_MAX_METADATA).build()));
   }
 
   @Test
@@ -164,28 +122,7 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                -1,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder().limits(VALID_MAX_OUTPUT, VALID_MAX_TEMP, -1).build()));
   }
 
   @Test
@@ -194,28 +131,9 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                -2,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder()
+                    .retryLimits(-2, VALID_NON_SPLIT_RETRIES, VALID_USK_RETRIES)
+                    .build()));
   }
 
   @Test
@@ -224,28 +142,9 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                -5,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder()
+                    .retryLimits(VALID_SPLIT_BLOCK_RETRIES, -5, VALID_USK_RETRIES)
+                    .build()));
   }
 
   @Test
@@ -254,28 +153,9 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                -2,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder()
+                    .retryLimits(VALID_SPLIT_BLOCK_RETRIES, VALID_NON_SPLIT_RETRIES, -2)
+                    .build()));
   }
 
   @Test
@@ -285,55 +165,20 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                -1,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder()
+                    .splitfileLimits(VALID_ALLOW_SPLIT, -1, VALID_MAX_CHECKBLOCKS)
+                    .build()));
     // Greater than allowed
     assertThrows(
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1,
-                VALID_MAX_CHECKBLOCKS,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder()
+                    .splitfileLimits(
+                        VALID_ALLOW_SPLIT,
+                        FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1,
+                        VALID_MAX_CHECKBLOCKS)
+                    .build()));
   }
 
   @Test
@@ -343,55 +188,20 @@ class FetchContextTest {
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                -1,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder()
+                    .splitfileLimits(VALID_ALLOW_SPLIT, VALID_MAX_DATABLOCKS, -1)
+                    .build()));
     // Greater than allowed
     assertThrows(
         IllegalArgumentException.class,
         () ->
             new FetchContext(
-                VALID_MAX_OUTPUT,
-                VALID_MAX_TEMP,
-                VALID_MAX_METADATA,
-                VALID_MAX_RECURSION,
-                VALID_MAX_ARCHIVE_RESTARTS,
-                VALID_MAX_ARCHIVE_LEVELS,
-                VALID_DONT_ENTER_IMPLICIT,
-                VALID_SPLIT_BLOCK_RETRIES,
-                VALID_NON_SPLIT_RETRIES,
-                VALID_USK_RETRIES,
-                VALID_ALLOW_SPLIT,
-                VALID_FOLLOW_REDIRECTS,
-                VALID_LOCAL_ONLY,
-                VALID_FILTER_DATA,
-                VALID_MAX_DATABLOCKS,
-                FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1,
-                producerMock,
-                VALID_IGNORE_TOO_MANY,
-                VALID_CAN_WRITE_CLIENT_CACHE,
-                VALID_CHARSET,
-                VALID_OVERRIDE_MIME,
-                VALID_SCHEME));
+                validOptionsBuilder()
+                    .splitfileLimits(
+                        VALID_ALLOW_SPLIT,
+                        VALID_MAX_DATABLOCKS,
+                        FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1)
+                    .build()));
   }
 
   @Test
@@ -693,29 +503,22 @@ class FetchContextTest {
     assertNotEquals(a, b);
   }
 
+  private FetchContextOptions.Builder validOptionsBuilder() {
+    return FetchContextOptions.builder()
+        .limits(VALID_MAX_OUTPUT, VALID_MAX_TEMP, VALID_MAX_METADATA)
+        .archiveLimits(
+            VALID_MAX_RECURSION,
+            VALID_MAX_ARCHIVE_RESTARTS,
+            VALID_MAX_ARCHIVE_LEVELS,
+            VALID_DONT_ENTER_IMPLICIT)
+        .retryLimits(VALID_SPLIT_BLOCK_RETRIES, VALID_NON_SPLIT_RETRIES, VALID_USK_RETRIES)
+        .splitfileLimits(VALID_ALLOW_SPLIT, VALID_MAX_DATABLOCKS, VALID_MAX_CHECKBLOCKS)
+        .behavior(VALID_FOLLOW_REDIRECTS, VALID_LOCAL_ONLY, VALID_FILTER_DATA)
+        .clientOptions(producerMock, VALID_IGNORE_TOO_MANY, VALID_CAN_WRITE_CLIENT_CACHE)
+        .filterOverrides(VALID_CHARSET, VALID_OVERRIDE_MIME, VALID_SCHEME);
+  }
+
   private FetchContext createValidContext() {
-    return new FetchContext(
-        VALID_MAX_OUTPUT,
-        VALID_MAX_TEMP,
-        VALID_MAX_METADATA,
-        VALID_MAX_RECURSION,
-        VALID_MAX_ARCHIVE_RESTARTS,
-        VALID_MAX_ARCHIVE_LEVELS,
-        VALID_DONT_ENTER_IMPLICIT,
-        VALID_SPLIT_BLOCK_RETRIES,
-        VALID_NON_SPLIT_RETRIES,
-        VALID_USK_RETRIES,
-        VALID_ALLOW_SPLIT,
-        VALID_FOLLOW_REDIRECTS,
-        VALID_LOCAL_ONLY,
-        VALID_FILTER_DATA,
-        VALID_MAX_DATABLOCKS,
-        VALID_MAX_CHECKBLOCKS,
-        producerMock,
-        VALID_IGNORE_TOO_MANY,
-        VALID_CAN_WRITE_CLIENT_CACHE,
-        VALID_CHARSET,
-        VALID_OVERRIDE_MIME,
-        VALID_SCHEME);
+    return new FetchContext(validOptionsBuilder().build());
   }
 }

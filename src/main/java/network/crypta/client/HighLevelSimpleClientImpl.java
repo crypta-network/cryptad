@@ -658,29 +658,24 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
       maxLength = overrideMaxSize;
       maxTempLength = overrideMaxSize;
     }
-    return new FetchContext(
-        maxLength,
-        maxTempLength,
-        curMaxMetadataLength,
-        MAX_RECURSION,
-        MAX_ARCHIVE_RESTARTS,
-        MAX_ARCHIVE_LEVELS,
-        DONT_ENTER_IMPLICIT_ARCHIVES,
-        SPLITFILE_BLOCK_RETRIES,
-        NON_SPLITFILE_RETRIES,
-        USK_RETRIES,
-        FETCH_SPLITFILES,
-        FOLLOW_REDIRECTS,
-        LOCAL_REQUESTS_ONLY,
-        FILTER_DATA,
-        MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
-        MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
-        eventProducer,
-        false,
-        CAN_WRITE_CLIENT_CACHE,
-        null,
-        null,
-        schemeHostAndPort);
+    FetchContextOptions options =
+        FetchContextOptions.builder()
+            .limits(maxLength, maxTempLength, curMaxMetadataLength)
+            .archiveLimits(
+                MAX_RECURSION,
+                MAX_ARCHIVE_RESTARTS,
+                MAX_ARCHIVE_LEVELS,
+                DONT_ENTER_IMPLICIT_ARCHIVES)
+            .retryLimits(SPLITFILE_BLOCK_RETRIES, NON_SPLITFILE_RETRIES, USK_RETRIES)
+            .splitfileLimits(
+                FETCH_SPLITFILES,
+                MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
+                MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT)
+            .behavior(FOLLOW_REDIRECTS, LOCAL_REQUESTS_ONLY, FILTER_DATA)
+            .clientOptions(eventProducer, false, CAN_WRITE_CLIENT_CACHE)
+            .filterOverrides(null, null, schemeHostAndPort)
+            .build();
+    return new FetchContext(options);
   }
 
   /**
@@ -704,29 +699,24 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
       long maxTempLength,
       BucketFactory bucketFactory,
       SimpleEventProducer eventProducer) {
-    return new FetchContext(
-        maxLength,
-        maxTempLength,
-        1024 * 1024,
-        MAX_RECURSION,
-        MAX_ARCHIVE_RESTARTS,
-        MAX_ARCHIVE_LEVELS,
-        DONT_ENTER_IMPLICIT_ARCHIVES,
-        SPLITFILE_BLOCK_RETRIES,
-        NON_SPLITFILE_RETRIES,
-        USK_RETRIES,
-        FETCH_SPLITFILES,
-        FOLLOW_REDIRECTS,
-        LOCAL_REQUESTS_ONLY,
-        FILTER_DATA,
-        MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
-        MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT,
-        eventProducer,
-        false,
-        CAN_WRITE_CLIENT_CACHE,
-        null,
-        null,
-        null);
+    FetchContextOptions options =
+        FetchContextOptions.builder()
+            .limits(maxLength, maxTempLength, 1024 * 1024)
+            .archiveLimits(
+                MAX_RECURSION,
+                MAX_ARCHIVE_RESTARTS,
+                MAX_ARCHIVE_LEVELS,
+                DONT_ENTER_IMPLICIT_ARCHIVES)
+            .retryLimits(SPLITFILE_BLOCK_RETRIES, NON_SPLITFILE_RETRIES, USK_RETRIES)
+            .splitfileLimits(
+                FETCH_SPLITFILES,
+                MAX_SPLITFILE_BLOCKS_PER_SEGMENT,
+                MAX_SPLITFILE_CHECK_BLOCKS_PER_SEGMENT)
+            .behavior(FOLLOW_REDIRECTS, LOCAL_REQUESTS_ONLY, FILTER_DATA)
+            .clientOptions(eventProducer, false, CAN_WRITE_CLIENT_CACHE)
+            .filterOverrides(null, null, null)
+            .build();
+    return new FetchContext(options);
   }
 
   @Override

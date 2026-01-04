@@ -23,6 +23,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -486,28 +487,15 @@ class SplitFileFetcherTest {
     // Prepare a FetchContext instance with localRequestOnly=true
     FetchContext fc =
         new FetchContext(
-            1L,
-            1L,
-            1,
-            1,
-            0,
-            0,
-            true,
-            0,
-            0,
-            0,
-            true,
-            true,
-            true,
-            false,
-            0,
-            0,
-            new network.crypta.client.events.SimpleEventProducer(),
-            true,
-            true,
-            null,
-            null,
-            null);
+            FetchContextOptions.builder()
+                .limits(1L, 1L, 1)
+                .archiveLimits(1, 0, 0, true)
+                .retryLimits(0, 0, 0)
+                .splitfileLimits(true, 0, 0)
+                .behavior(true, true, false)
+                .clientOptions(new network.crypta.client.events.SimpleEventProducer(), true, true)
+                .filterOverrides(null, null, null)
+                .build());
     // Set parent.ctx reflectively so resume ctor copies it into blockFetchContext
     setParentCtx(parent, fc);
 

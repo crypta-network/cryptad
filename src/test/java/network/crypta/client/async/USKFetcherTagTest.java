@@ -22,6 +22,7 @@ import java.net.MalformedURLException;
 import java.util.Arrays;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
@@ -127,29 +128,15 @@ class USKFetcherTagTest {
   private static FetchContext newFetchContext() {
     // Small, deterministic limits; context is forwarded only.
     return new FetchContext(
-        16L * 1024, // maxOutputLength
-        16L * 1024, // maxTempLength
-        4096, // maxMetadataSize
-        4, // maxRecursionLevel
-        0, // maxArchiveRestarts
-        2, // maxArchiveLevels
-        false, // dontEnterImplicitArchives
-        1, // maxSplitfileBlockRetries
-        1, // maxNonSplitfileRetries
-        1, // maxUSKRetries
-        true, // allowSplitfiles
-        true, // followRedirects
-        false, // localRequestOnly
-        false, // filterData
-        0, // maxDataBlocksPerSegment
-        0, // maxCheckBlocksPerSegment
-        new SimpleEventProducer(),
-        true, // ignoreTooManyPathComponents
-        true, // canWriteClientCache
-        null, // charset
-        null, // overrideMIME
-        null // schemeHostAndPort
-        );
+        FetchContextOptions.builder()
+            .limits(16L * 1024, 16L * 1024, 4096)
+            .archiveLimits(4, 0, 2, false)
+            .retryLimits(1, 1, 1)
+            .splitfileLimits(true, 0, 0)
+            .behavior(true, false, false)
+            .clientOptions(new SimpleEventProducer(), true, true)
+            .filterOverrides(null, null, null)
+            .build());
   }
 
   private static InsertContext newInsertContext() {

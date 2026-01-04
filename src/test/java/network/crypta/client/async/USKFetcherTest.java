@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigInteger;
 import java.util.Random;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.crypt.Global;
@@ -62,28 +63,15 @@ class USKFetcherTest {
     // Minimal real FetchContext (used/cloned by USKFetcher)
     fetchContext =
         new FetchContext(
-            64 * 1024,
-            64 * 1024,
-            1024,
-            1,
-            0,
-            0,
-            true,
-            0,
-            0,
-            3,
-            true,
-            false,
-            false,
-            false,
-            0,
-            0,
-            new SimpleEventProducer(),
-            true,
-            false,
-            null,
-            null,
-            null);
+            FetchContextOptions.builder()
+                .limits(64 * 1024, 64 * 1024, 1024)
+                .archiveLimits(1, 0, 0, true)
+                .retryLimits(0, 0, 3)
+                .splitfileLimits(true, 0, 0)
+                .behavior(false, false, false)
+                .clientOptions(new SimpleEventProducer(), true, false)
+                .filterOverrides(null, null, null)
+                .build());
 
     // Common requester stubs
     when(requester.realTimeFlag()).thenReturn(false);

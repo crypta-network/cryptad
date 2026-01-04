@@ -17,6 +17,7 @@ import java.lang.reflect.Field;
 import java.util.Random;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.InsertException;
@@ -96,28 +97,15 @@ class ClientContextTest {
     // Minimal default contexts used by accessors under test
     defaultFetchCtx =
         new FetchContext(
-            1024L,
-            2048L,
-            4096,
-            2,
-            3,
-            1,
-            false,
-            1,
-            1,
-            0,
-            true,
-            true,
-            false,
-            true,
-            16,
-            16,
-            new SimpleEventProducer(),
-            false,
-            true,
-            null,
-            null,
-            null);
+            FetchContextOptions.builder()
+                .limits(1024L, 2048L, 4096)
+                .archiveLimits(2, 3, 1, false)
+                .retryLimits(1, 1, 0)
+                .splitfileLimits(true, 16, 16)
+                .behavior(true, false, true)
+                .clientOptions(new SimpleEventProducer(), false, true)
+                .filterOverrides(null, null, null)
+                .build());
 
     defaultInsertCtx =
         new InsertContext(

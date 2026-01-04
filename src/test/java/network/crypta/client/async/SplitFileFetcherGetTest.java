@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
@@ -70,28 +71,15 @@ class SplitFileFetcherGetTest {
     // Build a basic FetchContext and then a masked copy that carries a BlockSet
     FetchContext base =
         new FetchContext(
-            1024L,
-            1024L,
-            1024,
-            1,
-            0,
-            0,
-            true,
-            1,
-            1,
-            1,
-            false,
-            false,
-            false,
-            false,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            true,
-            null,
-            null,
-            null);
+            FetchContextOptions.builder()
+                .limits(1024L, 1024L, 1024)
+                .archiveLimits(1, 0, 0, true)
+                .retryLimits(1, 1, 1)
+                .splitfileLimits(false, 0, 0)
+                .behavior(false, false, false)
+                .clientOptions(new SimpleEventProducer(), false, true)
+                .filterOverrides(null, null, null)
+                .build());
     blockSet = new SimpleBlockSet();
     blockFetchContext =
         new FetchContext(base, FetchContext.SPLITFILE_DEFAULT_BLOCK_MASK, false, blockSet);

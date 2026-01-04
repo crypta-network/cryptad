@@ -16,6 +16,7 @@ import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
@@ -159,28 +160,15 @@ class USKInserterTest {
             // exercised
             // in these tests.
             new FetchContext(
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                true,
-                0,
-                0,
-                0,
-                false,
-                false,
-                false,
-                false,
-                0,
-                0,
-                new SimpleEventProducer(),
-                false,
-                false,
-                null,
-                null,
-                null),
+                FetchContextOptions.builder()
+                    .limits(0, 0, 0)
+                    .archiveLimits(1, 0, 0, true)
+                    .retryLimits(0, 0, 0)
+                    .splitfileLimits(false, 0, 0)
+                    .behavior(false, false, false)
+                    .clientOptions(new SimpleEventProducer(), false, false)
+                    .filterOverrides(null, null, null)
+                    .build()),
             new InsertContext(
                 0,
                 0,

@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.Random;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
@@ -164,28 +165,15 @@ class InsertCompressorTest {
         /*linkFilterExceptionProvider*/ null,
         /*defaultPersistentFetchContext*/
         new network.crypta.client.FetchContext(
-            0L,
-            0L,
-            0,
-            1,
-            0,
-            0,
-            false,
-            0,
-            0,
-            0,
-            false,
-            false,
-            false,
-            false,
-            0,
-            0,
-            new SimpleEventProducer(),
-            true,
-            false,
-            null,
-            null,
-            null),
+            FetchContextOptions.builder()
+                .limits(0L, 0L, 0)
+                .archiveLimits(1, 0, 0, false)
+                .retryLimits(0, 0, 0)
+                .splitfileLimits(false, 0, 0)
+                .behavior(false, false, false)
+                .clientOptions(new SimpleEventProducer(), true, false)
+                .filterOverrides(null, null, null)
+                .build()),
         /*defaultPersistentInsertContext*/
         new InsertContext(
             0,
