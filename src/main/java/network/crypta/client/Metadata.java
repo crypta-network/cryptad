@@ -608,7 +608,7 @@ public class Metadata implements Serializable {
   static final short FLAGS_HASHES = 512;
   // If parsed version = 1 and splitfile is set and hashes exist, we create the splitfile key from
   // the hashes.
-  // This flag overrides this behaviour and reads a key anyway.
+  // This flag overrides this behavior and reads a key anyway.
   static final short FLAGS_SPECIFY_SPLITFILE_KEY = 1024;
   // We can specify a hash just for this layer as well as hashes for the final content in a
   // multi-layer splitfile.
@@ -1334,9 +1334,9 @@ public class Metadata implements Serializable {
       throw new IllegalArgumentException("Invalid top compatibility mode: COMPAT_CURRENT");
     }
     hashCode = super.hashCode();
-    HashResult[] hashes = topLayer.hashes();
-    if (hashes != null && hashes.length == 0) throw new IllegalArgumentException();
-    this.hashes = hashes;
+    HashResult[] topHashes = topLayer.hashes();
+    if (topHashes != null && topHashes.length == 0) throw new IllegalArgumentException();
+    this.hashes = topHashes;
     initSimpleRedirectOrArchive(target);
     TopLayerInit tli = computeTopLayerInit(topLayer);
     this.topSize = tli.size;
@@ -1604,16 +1604,16 @@ public class Metadata implements Serializable {
     if (clientMetadata != null) setMIMEType(clientMetadata.getMIMEType());
     else setMIMEType(DefaultMIMETypes.DEFAULT_MIME_TYPE);
     CompatibilityMode topCompatibilityModeParam = topLayer.topCompatibilityMode();
-    HashResult[] hashes = topLayer.hashes();
-    byte[] splitfileCryptoKey = params.splitfileCryptoKey();
-    int deductBlocksFromSegments = params.deductBlocksFromSegments();
+    HashResult[] topHashes = topLayer.hashes();
+    byte[] splitfileCryptoKeyValue = params.splitfileCryptoKey();
+    int deductBlocksFromSegmentsValue = params.deductBlocksFromSegments();
     if (topCompatibilityModeParam.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
-      if (splitfileCryptoKey != null) throw new IllegalArgumentException();
-      if (hashes != null) throw new IllegalArgumentException();
-      if (deductBlocksFromSegments != 0) throw new IllegalArgumentException();
+      if (splitfileCryptoKeyValue != null) throw new IllegalArgumentException();
+      if (topHashes != null) throw new IllegalArgumentException();
+      if (deductBlocksFromSegmentsValue != 0) throw new IllegalArgumentException();
       parsedVersion = 0;
     } else {
-      if (splitfileCryptoKey == null) throw new IllegalArgumentException();
+      if (splitfileCryptoKeyValue == null) throw new IllegalArgumentException();
       parsedVersion = 1;
     }
   }
@@ -1623,16 +1623,16 @@ public class Metadata implements Serializable {
   private void buildSplitfileParamsBytes(SplitfileParams params) {
     int segmentSize = params.segmentSize();
     int checkSegmentSize = params.checkSegmentSize();
-    int deductBlocksFromSegments = params.deductBlocksFromSegments();
+    int deductBlocksFromSegmentsValue = params.deductBlocksFromSegments();
     int crossSegmentBlocks = params.crossSegmentBlocks();
     byte splitfileCryptoAlgorithm = params.splitfileCryptoAlgorithm();
     byte[] splitfileCryptoKey = params.splitfileCryptoKey();
-    boolean specifySplitfileKey = params.specifySplitfileKey();
+    boolean specifySplitfileKeyValue = params.specifySplitfileKey();
     if (parsedVersion == 0) {
       splitfileParams = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
       return;
     }
-    boolean deductBlocks = (deductBlocksFromSegments != 0);
+    boolean deductBlocks = (deductBlocksFromSegmentsValue != 0);
     short mode;
     int len = 10;
     if (crossSegmentBlocks == 0) {
@@ -1652,17 +1652,17 @@ public class Metadata implements Serializable {
           case SPLITFILE_PARAMS_CROSS_SEGMENT ->
               Fields.intsToBytes(
                   new int[] {
-                    segmentSize, checkSegmentSize, deductBlocksFromSegments, crossSegmentBlocks
+                    segmentSize, checkSegmentSize, deductBlocksFromSegmentsValue, crossSegmentBlocks
                   });
           case SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS ->
               Fields.intsToBytes(
-                  new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegments});
+                  new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegmentsValue});
           default -> Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
         };
     System.arraycopy(b, 0, splitfileParams, 2, b.length);
     this.splitfileSingleCryptoAlgorithm = splitfileCryptoAlgorithm;
     this.splitfileSingleCryptoKey = splitfileCryptoKey;
-    this.specifySplitfileKey = specifySplitfileKey;
+    this.specifySplitfileKey = specifySplitfileKeyValue;
     if (splitfileCryptoKey == null)
       throw new IllegalArgumentException("Splitfile with parsed version 1 must have a crypto key");
     // Segments layout is managed elsewhere when needed.

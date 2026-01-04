@@ -322,34 +322,32 @@ class MetadataTest {
     var data = new ClientCHK[] {};
     var check = new ClientCHK[] {};
     ClientMetadata cm = new ClientMetadata("application/octet-stream");
+    SplitfileParams params =
+        new SplitfileParams(
+            SplitfileAlgorithm.NONREDUNDANT,
+            data,
+            check,
+            1,
+            0,
+            0,
+            0,
+            Key.ALGO_AES_PCFB_256_SHA256,
+            // splitfileCryptoKey must be null for version 0; pass non-null to trigger exception
+            new byte[32],
+            false);
+    SplitfilePayload payload = new SplitfilePayload(cm, 1L, null, null, 1L, false);
+    MetadataTopLayerInfo topLayer =
+        new MetadataTopLayerInfo(
+            0L,
+            0L,
+            0,
+            0,
+            false,
+            CompatibilityMode.COMPAT_1250, // < 1255 → parsedVersion 0
+            null,
+            null);
 
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new Metadata(
-                new SplitfileParams(
-                    SplitfileAlgorithm.NONREDUNDANT,
-                    data,
-                    check,
-                    1,
-                    0,
-                    0,
-                    0,
-                    Key.ALGO_AES_PCFB_256_SHA256,
-                    // splitfileCryptoKey must be null for version 0; pass non-null to trigger
-                    // exception
-                    new byte[32],
-                    false),
-                new SplitfilePayload(cm, 1L, null, null, 1L, false),
-                new MetadataTopLayerInfo(
-                    0L,
-                    0L,
-                    0,
-                    0,
-                    false,
-                    CompatibilityMode.COMPAT_1250, // < 1255 → parsedVersion 0
-                    null,
-                    null)));
+    assertThrows(IllegalArgumentException.class, () -> new Metadata(params, payload, topLayer));
   }
 
   @Test
