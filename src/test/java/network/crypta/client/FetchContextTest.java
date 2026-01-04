@@ -22,7 +22,6 @@ import network.crypta.client.events.ClientEventProducer;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.FoundURICallback;
 import network.crypta.node.RequestScheduler;
-import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.StorageFormatException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,7 +62,7 @@ class FetchContextTest {
       throws IOException, StorageFormatException {
     FetchContext context =
         HighLevelSimpleClientImpl.makeDefaultFetchContext(
-            Long.MAX_VALUE, Long.MAX_VALUE, new ArrayBucketFactory(), new SimpleEventProducer());
+            Long.MAX_VALUE, Long.MAX_VALUE, new SimpleEventProducer());
     byte[] bytes;
     try (var baos = new ByteArrayOutputStream();
         var dos = new DataOutputStream(baos)) {
