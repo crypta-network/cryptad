@@ -1,6 +1,7 @@
 package network.crypta.client;
 
 import network.crypta.client.events.ClientEventProducer;
+import network.crypta.client.events.SimpleEventProducer;
 
 /**
  * Immutable bundle of parameters used to construct a {@link FetchContext}.
@@ -177,7 +178,7 @@ public final class FetchContextOptions {
     private boolean filterData;
     private int maxDataBlocksPerSegment;
     private int maxCheckBlocksPerSegment;
-    private ClientEventProducer eventProducer;
+    private ClientEventProducer eventProducer = new SimpleEventProducer();
     private boolean ignoreTooManyPathComponents;
     private boolean canWriteClientCache;
     private String charset;
@@ -279,7 +280,9 @@ public final class FetchContextOptions {
     /**
      * Sets event and cache-related options.
      *
-     * @param eventProducer event producer to receive client events; may be {@code null}.
+     * <p>If this method is not called, the builder will use a new {@link SimpleEventProducer}.
+     *
+     * @param eventProducer event producer to receive client events; must not be {@code null}.
      * @param ignoreTooManyPathComponents whether to ignore excess path components during
      *     resolution.
      * @param canWriteClientCache whether the client cache may be written by this request.
@@ -289,6 +292,9 @@ public final class FetchContextOptions {
         ClientEventProducer eventProducer,
         boolean ignoreTooManyPathComponents,
         boolean canWriteClientCache) {
+      if (eventProducer == null) {
+        throw new IllegalArgumentException("eventProducer must not be null");
+      }
       this.eventProducer = eventProducer;
       this.ignoreTooManyPathComponents = ignoreTooManyPathComponents;
       this.canWriteClientCache = canWriteClientCache;
