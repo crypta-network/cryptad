@@ -46,9 +46,7 @@ class ChosenBlockImplTest {
     // Arrange
     SendableRequest req = org.mockito.Mockito.mock(SendableRequest.class);
     when(req.isCancelled()).thenReturn(true);
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            req, token, nodeKey, clientKey, false, false, false, false, false, sched, false);
+    ChosenBlockImpl block = newBlock(req, false, false, false, false, false, false);
 
     // Act + Assert
     Assertions.assertTrue(block.isCancelled());
@@ -58,12 +56,8 @@ class ChosenBlockImplTest {
   void isPersistent_whenConstructed_reflectsFlag() {
     SendableRequest req = org.mockito.Mockito.mock(SendableRequest.class);
 
-    ChosenBlockImpl ptrue =
-        new ChosenBlockImpl(
-            req, token, nodeKey, clientKey, false, false, false, false, false, sched, true);
-    ChosenBlockImpl pfalse =
-        new ChosenBlockImpl(
-            req, token, nodeKey, clientKey, false, false, false, false, false, sched, false);
+    ChosenBlockImpl ptrue = newBlock(req, false, false, false, false, false, true);
+    ChosenBlockImpl pfalse = newBlock(req, false, false, false, false, false, false);
 
     Assertions.assertTrue(ptrue.isPersistent());
     Assertions.assertFalse(pfalse.isPersistent());
@@ -73,9 +67,7 @@ class ChosenBlockImplTest {
   void getPriority_whenCalled_delegatesToRequest() {
     SendableRequest req = org.mockito.Mockito.mock(SendableRequest.class);
     when(req.getPriorityClass()).thenReturn((short) 42);
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            req, token, nodeKey, clientKey, false, false, false, false, true, sched, true);
+    ChosenBlockImpl block = newBlock(req, false, false, false, false, true, true);
 
     assertEquals(42, block.getPriority());
   }
@@ -85,9 +77,7 @@ class ChosenBlockImplTest {
     SendableRequest req = org.mockito.Mockito.mock(SendableRequest.class);
     SendableRequestSender sender = org.mockito.Mockito.mock(SendableRequestSender.class);
     when(req.getSender(clientContext)).thenReturn(sender);
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            req, token, nodeKey, clientKey, false, true, false, false, false, sched, false);
+    ChosenBlockImpl block = newBlock(req, false, true, false, false, false, false);
 
     SendableRequestSender got = block.getSender(clientContext);
     assertSame(sender, got);
@@ -101,9 +91,7 @@ class ChosenBlockImplTest {
     when(token.getKey()).thenReturn(tokenKey);
     when(clientContext.getJobRunner(true)).thenReturn(persistentRunner);
 
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            insert, token, nodeKey, clientKey, false, false, false, false, false, sched, true);
+    ChosenBlockImpl block = newBlock(insert, false, false, false, false, false, true);
 
     LowLevelPutException ex = new LowLevelPutException(LowLevelPutException.REJECTED_OVERLOAD);
 
@@ -130,9 +118,7 @@ class ChosenBlockImplTest {
     when(token.getKey()).thenReturn(tokenKey);
     when(clientContext.getJobRunner(true)).thenReturn(persistentRunner);
 
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            insert, token, nodeKey, clientKey, false, false, false, false, true, sched, true);
+    ChosenBlockImpl block = newBlock(insert, false, false, false, false, true, true);
 
     ArgumentCaptor<PersistentJob> captor = ArgumentCaptor.forClass(PersistentJob.class);
 
@@ -156,9 +142,7 @@ class ChosenBlockImplTest {
     SendableGet get = org.mockito.Mockito.mock(SendableGet.class);
     when(clientContext.getJobRunner(false)).thenReturn(transientRunner);
 
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            get, token, nodeKey, clientKey, true, false, false, false, false, sched, false);
+    ChosenBlockImpl block = newBlock(get, true, false, false, false, false, false);
 
     LowLevelGetException ex = new LowLevelGetException(LowLevelGetException.ROUTE_NOT_FOUND);
 
@@ -184,9 +168,7 @@ class ChosenBlockImplTest {
     SendableGet get = org.mockito.Mockito.mock(SendableGet.class);
     when(clientContext.getJobRunner(false)).thenReturn(transientRunner);
 
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            get, token, nodeKey, clientKey, false, true, false, false, false, sched, false);
+    ChosenBlockImpl block = newBlock(get, false, true, false, false, false, false);
 
     ArgumentCaptor<PersistentJob> captor = ArgumentCaptor.forClass(PersistentJob.class);
 
@@ -210,9 +192,7 @@ class ChosenBlockImplTest {
     SendableGet get = org.mockito.Mockito.mock(SendableGet.class);
     when(clientContext.getJobRunner(false)).thenReturn(transientRunner);
 
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            get, token, nodeKey, clientKey, false, false, false, false, false, sched, false);
+    ChosenBlockImpl block = newBlock(get, false, false, false, false, false, false);
 
     LowLevelGetException ex = new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR, "boom");
 
@@ -240,9 +220,7 @@ class ChosenBlockImplTest {
     when(token.getKey()).thenReturn(tokenKey);
     when(clientContext.getJobRunner(true)).thenReturn(persistentRunner);
 
-    ChosenBlockImpl block =
-        new ChosenBlockImpl(
-            insert, token, nodeKey, clientKey, false, false, false, false, false, sched, true);
+    ChosenBlockImpl block = newBlock(insert, false, false, false, false, false, true);
 
     LowLevelPutException ex = new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
 
@@ -258,5 +236,23 @@ class ChosenBlockImplTest {
     assertThrows(RuntimeException.class, () -> job.run(clientContext));
     verify(sched, times(1)).removeRunningInsert(same(insert), same(tokenKey));
     verify(sched, never()).wakeStarter();
+  }
+
+  private ChosenBlockImpl newBlock(
+      SendableRequest req,
+      boolean localRequestOnly,
+      boolean ignoreStore,
+      boolean canWriteClientCache,
+      boolean forkOnCacheable,
+      boolean realTimeFlag,
+      boolean persistent) {
+    return new ChosenBlockImpl(
+        req,
+        token,
+        new KeyAndClientKey(nodeKey, clientKey),
+        new ChosenBlock.Options(
+            localRequestOnly, ignoreStore, canWriteClientCache, forkOnCacheable, realTimeFlag),
+        sched,
+        persistent);
   }
 }

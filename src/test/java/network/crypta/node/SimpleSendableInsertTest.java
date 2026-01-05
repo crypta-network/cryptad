@@ -20,9 +20,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ChosenBlockImpl;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
+import network.crypta.client.async.KeyAndClientKey;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.SSKBlock;
@@ -114,13 +116,13 @@ class SimpleSendableInsertTest {
         new ChosenBlockImpl(
             insert,
             token,
-            null,
-            null,
-            false,
-            false,
-            true, // canWriteClientCache propagated into realPut
-            Node.FORK_ON_CACHEABLE_DEFAULT,
-            false,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(
+                false,
+                false,
+                true, // canWriteClientCache propagated into realPut
+                Node.FORK_ON_CACHEABLE_DEFAULT,
+                false),
             requestScheduler,
             false);
 
@@ -184,13 +186,8 @@ class SimpleSendableInsertTest {
         new ChosenBlockImpl(
             insert,
             token,
-            null,
-            null,
-            false,
-            false,
-            false,
-            Node.FORK_ON_CACHEABLE_DEFAULT,
-            false,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(false, false, false, Node.FORK_ON_CACHEABLE_DEFAULT, false),
             requestScheduler,
             false);
 

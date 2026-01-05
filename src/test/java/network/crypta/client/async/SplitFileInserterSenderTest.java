@@ -301,7 +301,12 @@ class SplitFileInserterSenderTest {
     // Build chosen block with localRequestOnly=true
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
-            sender, token, null, null, true, false, true, false, false, sched, true);
+            sender,
+            token,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(true, false, true, false, false),
+            sched,
+            true);
 
     // Act
     boolean accepted = chosen.send(core, sched);
@@ -346,7 +351,12 @@ class SplitFileInserterSenderTest {
     // forkOnCacheable=true
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
-            sender, token, null, null, false, false, false, true, false, sched, true);
+            sender,
+            token,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(false, false, false, true, false),
+            sched,
+            true);
 
     // Act
     boolean accepted = chosen.send(core, sched);
@@ -394,7 +404,12 @@ class SplitFileInserterSenderTest {
 
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
-            sender, token, null, null, true, false, true, false, false, sched, true);
+            sender,
+            token,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(true, false, true, false, false),
+            sched,
+            true);
 
     // Act
     boolean accepted = chosen.send(core, sched);
@@ -428,7 +443,12 @@ class SplitFileInserterSenderTest {
 
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
-            sender, token, null, null, false, false, false, false, false, sched, true);
+            sender,
+            token,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(false, false, false, false, false),
+            sched,
+            true);
 
     // Act
     boolean accepted = chosen.send(core, sched);
@@ -462,7 +482,12 @@ class SplitFileInserterSenderTest {
 
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
-            sender, token, null, null, false, false, false, false, false, sched, true);
+            sender,
+            token,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(false, false, false, false, false),
+            sched,
+            true);
 
     // Act
     boolean accepted = chosen.send(core, sched);
@@ -495,7 +520,12 @@ class SplitFileInserterSenderTest {
 
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
-            sender, token, null, null, false, false, false, false, false, sched, true);
+            sender,
+            token,
+            new KeyAndClientKey(null, null),
+            new ChosenBlock.Options(false, false, false, false, false),
+            sched,
+            true);
 
     // Act
     boolean accepted = chosen.send(core, sched);
