@@ -23,6 +23,9 @@ import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
 import network.crypta.client.MetadataParseException;
+import network.crypta.client.MetadataTopLayerInfo;
+import network.crypta.client.SplitfileParams;
+import network.crypta.client.SplitfilePayload;
 import network.crypta.client.async.SplitFileInserterSegmentStorage.BlockInsert;
 import network.crypta.client.async.SplitFileInserterSegmentStorage.MissingKeyException;
 import network.crypta.crypt.ChecksumChecker;
@@ -1894,31 +1897,37 @@ public class SplitFileInserterStorage {
     }
     assert (dataPtr == dataKeys.length);
     assert (checkPtr == checkKeys.length);
-    return new Metadata(
-        splitfileType,
-        dataKeys,
-        checkKeys,
-        segmentSize,
-        checkSegmentSize,
-        deductBlocksFromSegments,
-        clientMetadata,
-        dataLength,
-        archiveType,
-        compressionCodec,
-        decompressedLength,
-        isMetadata,
-        hashes,
-        hashThisLayerOnly,
-        origDataSize,
-        origCompressedDataSize,
-        topRequiredBlocks,
-        topTotalBlocks,
-        topDontCompress,
-        cmode,
-        splitfileCryptoAlgorithm,
-        splitfileCryptoKey,
-        specifySplitfileKeyInMetadata,
-        crossCheckBlocks);
+    SplitfileParams params =
+        new SplitfileParams(
+            splitfileType,
+            dataKeys,
+            checkKeys,
+            segmentSize,
+            checkSegmentSize,
+            deductBlocksFromSegments,
+            crossCheckBlocks,
+            splitfileCryptoAlgorithm,
+            splitfileCryptoKey,
+            specifySplitfileKeyInMetadata);
+    SplitfilePayload payload =
+        new SplitfilePayload(
+            clientMetadata,
+            dataLength,
+            archiveType,
+            compressionCodec,
+            decompressedLength,
+            isMetadata);
+    MetadataTopLayerInfo topLayer =
+        new MetadataTopLayerInfo(
+            origDataSize,
+            origCompressedDataSize,
+            topRequiredBlocks,
+            topTotalBlocks,
+            topDontCompress,
+            cmode,
+            hashes,
+            hashThisLayerOnly);
+    return new Metadata(params, payload, topLayer);
   }
 
   void innerWriteSegmentKey(int segNo, int blockNo, byte[] buf) throws IOException {
