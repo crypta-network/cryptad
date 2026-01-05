@@ -301,20 +301,8 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     }
 
     KeyAndClientKey keys = resolveKeys(req, token);
-    RequestFlags flags = resolveRequestFlags(req);
-    ChosenBlock ret =
-        new ChosenBlockImpl(
-            req,
-            token,
-            keys.key,
-            keys.ckey,
-            flags.localRequestOnly,
-            flags.ignoreStore,
-            flags.canWriteClientCache,
-            flags.forkOnCacheable,
-            flags.realTimeFlag,
-            sched,
-            req.persistent());
+    ChosenBlock.Options options = resolveRequestOptions(req);
+    ChosenBlock ret = new ChosenBlockImpl(req, token, keys, options, sched, req.persistent());
     if (LOG.isDebugEnabled()) LOG.debug("Created {}" + FOR + "{}", ret, req);
     return ret;
   }
@@ -344,47 +332,27 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     return new KeyAndClientKey(key, ckey);
   }
 
-  private RequestFlags resolveRequestFlags(SendableRequest req) {
+  private ChosenBlock.Options resolveRequestOptions(SendableRequest req) {
     return switch (req) {
       case SendableGet sg -> {
-        RequestFlags f = new RequestFlags();
         FetchContext ctx = sg.getContext();
-        f.localRequestOnly = ctx.getLocalRequestOnly();
-        f.ignoreStore = ctx.getIgnoreStore();
-        f.canWriteClientCache = ctx.getCanWriteClientCache();
-        f.realTimeFlag = sg.realTimeFlag();
-        f.forkOnCacheable = false;
-        yield f;
+        yield new ChosenBlock.Options(
+            ctx.getLocalRequestOnly(),
+            ctx.getIgnoreStore(),
+            ctx.getCanWriteClientCache(),
+            false,
+            sg.realTimeFlag());
       }
-      case SendableInsert insert -> {
-        RequestFlags f = new RequestFlags();
-        f.localRequestOnly = insert.localRequestOnly();
-        f.ignoreStore = false;
-        f.canWriteClientCache = insert.canWriteClientCache();
-        f.forkOnCacheable = insert.forkOnCacheable();
-        f.realTimeFlag = req.realTimeFlag();
-        yield f;
-      }
-      default -> {
-        RequestFlags f = new RequestFlags();
-        f.localRequestOnly = false;
-        f.ignoreStore = false;
-        f.canWriteClientCache = false;
-        f.forkOnCacheable = Node.FORK_ON_CACHEABLE_DEFAULT;
-        f.realTimeFlag = false;
-        yield f;
-      }
+      case SendableInsert insert ->
+          new ChosenBlock.Options(
+              insert.localRequestOnly(),
+              false,
+              insert.canWriteClientCache(),
+              insert.forkOnCacheable(),
+              req.realTimeFlag());
+      default ->
+          new ChosenBlock.Options(false, false, false, Node.FORK_ON_CACHEABLE_DEFAULT, false);
     };
-  }
-
-  private record KeyAndClientKey(Key key, ClientKey ckey) {}
-
-  private static final class RequestFlags {
-    boolean localRequestOnly;
-    boolean ignoreStore;
-    boolean canWriteClientCache;
-    boolean forkOnCacheable;
-    boolean realTimeFlag;
   }
 
   /**

@@ -1,7 +1,6 @@
 package network.crypta.client.async;
 
 import network.crypta.keys.ClientKey;
-import network.crypta.keys.Key;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.node.RequestScheduler;
@@ -71,20 +70,10 @@ public class ChosenBlockImpl extends ChosenBlock {
    *     success or failure.
    * @param token the scheduling token for the sub-request within the larger operation; not {@code
    *     null}.
-   * @param key the low-level key to fetch/insert; may be {@code null} for request types that do not
-   *     operate on a raw key.
-   * @param ckey the client-layer key associated with this operation; may be {@code null} when not
-   *     applicable.
-   * @param localRequestOnly when {@code true}, perform work using only local resources; do not
-   *     contact peers.
-   * @param ignoreStore when {@code true}, bypass normal on-disk store lookups for reads where
-   *     supported.
-   * @param canWriteClientCache when {@code true}, allow writing client-level caches when the result
-   *     is cacheable.
-   * @param forkOnCacheable when {@code true}, permit sender/scheduler to fork on cacheable results
-   *     to improve throughput.
-   * @param realTimeFlag when {@code true}, mark work as real-time to prefer lower-latency
-   *     strategies where possible.
+   * @param keys the resolved node and client keys for the chosen token; must not be {@code null},
+   *     though individual values may be {@code null} depending on request type.
+   * @param options execution flags controlling local-only behavior, store reads, cache writes, and
+   *     real-time hints; not {@code null}.
    * @param sched the {@link RequestScheduler} coordinating this block; not {@code null}.
    * @param persistent {@code true} for persistent requests queued on the persistent runner;
    *     otherwise use the transient runner.
@@ -92,21 +81,11 @@ public class ChosenBlockImpl extends ChosenBlock {
   public ChosenBlockImpl(
       SendableRequest req,
       SendableRequestItem token,
-      Key key,
-      ClientKey ckey,
-      boolean localRequestOnly,
-      boolean ignoreStore,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      boolean realTimeFlag,
+      KeyAndClientKey keys,
+      Options options,
       RequestScheduler sched,
       boolean persistent) {
-    super(
-        token,
-        key,
-        ckey,
-        new Options(
-            localRequestOnly, ignoreStore, canWriteClientCache, forkOnCacheable, realTimeFlag));
+    super(token, keys.key(), keys.ckey(), options);
     this.request = req;
     this.sched = sched;
     this.persistent = persistent;
@@ -239,7 +218,7 @@ public class ChosenBlockImpl extends ChosenBlock {
     context
         .getJobRunner(persistent)
         .queueNormalOrDrop(
-            context1 -> {
+            _ -> {
               try {
                 sched.succeeded((SendableGet) request, false);
               } finally {
