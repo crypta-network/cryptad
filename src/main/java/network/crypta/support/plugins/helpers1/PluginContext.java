@@ -16,7 +16,7 @@ public class PluginContext {
 
   public PluginContext(PluginRespirator pluginRespirator2) {
     this.pluginRespirator = pluginRespirator2;
-    this.clientCore = pluginRespirator.getNode().getClientCore();
+    this.clientCore = pluginRespirator.getNode().services().clientCore();
     this.pageMaker = pluginRespirator.getPageMaker();
     this.hlsc = pluginRespirator.getHLSimpleClient();
     this.node = pluginRespirator.getNode();

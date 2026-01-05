@@ -30,7 +30,10 @@ class ClientEndpointsTest {
   @Mock private FProxyToadlet fproxy;
   @Mock private TextModeClientInterface directTmci;
   @Mock private UserAlertManager userAlertManager;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private NodeClientPersistence persistence;
   @Mock private ClientContext clientContext;

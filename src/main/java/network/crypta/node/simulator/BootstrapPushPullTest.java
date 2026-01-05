@@ -263,12 +263,13 @@ public class BootstrapPushPullTest {
   }
 
   private static RandomAccessBucket createTestData(Node node) throws IOException {
-    RandomAccessBucket data = node.getClientCore().getTempBucketFactory().makeBucket(TEST_SIZE);
+    RandomAccessBucket data =
+        node.services().clientCore().getTempBucketFactory().makeBucket(TEST_SIZE);
     try (OutputStream os = data.getOutputStream()) {
       byte[] buf = new byte[4096];
       long written = 0;
       while (written < TEST_SIZE) {
-        node.getFastWeakRandom().nextBytes(buf);
+        node.bootstrap().fastWeakRandom().nextBytes(buf);
         int toWrite = (int) Math.min(TEST_SIZE - written, buf.length);
         os.write(buf, 0, toWrite);
         written += toWrite;
@@ -278,7 +279,7 @@ public class BootstrapPushPullTest {
   }
 
   private static FreenetURI insertTestData(Node node, RandomAccessBucket data) {
-    HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
+    HighLevelSimpleClient client = node.services().clientCore().makeClient((short) 0, false, false);
     InsertBlock block = new InsertBlock(data, new ClientMetadata(), FreenetURI.EMPTY_CHK_URI);
     try {
       return client.insert(block, false, null);
@@ -291,7 +292,7 @@ public class BootstrapPushPullTest {
   }
 
   private static void fetchTestData(Node node, FreenetURI uri) {
-    HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
+    HighLevelSimpleClient client = node.services().clientCore().makeClient((short) 0, false, false);
     try {
       client.fetch(uri);
     } catch (FetchException e) {

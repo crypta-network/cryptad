@@ -43,7 +43,10 @@ import org.mockito.quality.Strictness;
 class UpdateOverMandatoryManagerTest {
 
   @Mock private NodeUpdateManager updateManager;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore clientCore;
   @Mock private UserAlertManager alertManager;
   @Mock private Ticker ticker;
@@ -56,9 +59,9 @@ class UpdateOverMandatoryManagerTest {
     // Common node/updateManager wiring used across tests
     when(updateManager.getNode()).thenReturn(node);
     when(updateManager.getByteCounter()).thenReturn(byteCounter);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alertManager);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     // Do nothing when jobs are queued in tests to keep determinism
     doAnswer(invocation -> null).when(ticker).queueTimedJob(any(Runnable.class), anyLong());
     // Random used for message UIDs (RandomSource is required by Node API)
@@ -326,7 +329,7 @@ class UpdateOverMandatoryManagerTest {
     // Prepare a main-jar offer scenario to trigger sendUOMRequest() and fetching state
     when(updateManager.supportsJarUOM()).thenReturn(true);
     when(updateManager.isBlown()).thenReturn(false);
-    when(node.isOudated()).thenReturn(true); // intentionally spelled as in production code
+    when(node.isOutdated()).thenReturn(true); // intentionally spelled as in production code
     when(updateManager.getStartedFetchingNextMainJarTimestamp()).thenReturn(0L);
     when(updateManager.newMainJarVersion()).thenReturn(0);
     when(updateManager.getMainVersion()).thenReturn(0);

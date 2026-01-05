@@ -29,7 +29,11 @@ internal class CoreActionToadletTest {
 
   @Test
   internal fun path_whenCalled_expectCoreUpdatePath() {
-    val toadlet = CoreActionToadlet(mock(HighLevelSimpleClient::class.java), mock(Node::class.java))
+    val toadlet =
+      CoreActionToadlet(
+        mock(HighLevelSimpleClient::class.java),
+        mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS),
+      )
 
     assertEquals(CORE_UPDATE_PATH, toadlet.path())
   }
@@ -38,7 +42,11 @@ internal class CoreActionToadletTest {
   internal fun handleMethodGET_whenCalled_expectRedirectToAlerts() {
     val ctx = mock(ToadletContext::class.java)
     val request = mock(HTTPRequest::class.java)
-    val toadlet = CoreActionToadlet(mock(HighLevelSimpleClient::class.java), mock(Node::class.java))
+    val toadlet =
+      CoreActionToadlet(
+        mock(HighLevelSimpleClient::class.java),
+        mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS),
+      )
 
     doNothing().`when`(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L))
 
@@ -55,7 +63,7 @@ internal class CoreActionToadletTest {
   @Test
   internal fun handleMethodPOST_whenFormPasswordInvalid_expectNoRedirect() {
     val client = mock(HighLevelSimpleClient::class.java)
-    val node = mock(Node::class.java)
+    val node = mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
     val ctx = mock(ToadletContext::class.java)
     val request = mock(HTTPRequest::class.java)
     val toadlet = CoreActionToadlet(client, node)
@@ -64,7 +72,7 @@ internal class CoreActionToadletTest {
 
     toadlet.handleMethodPOST(URI("http://localhost/core-update/"), request, ctx)
 
-    verify(node, never()).nodeUpdater
+    verify(node, never()).services()
     verify(ctx, never()).sendReplyHeaders(anyInt(), anyString(), any(), any(), anyLong())
     verify(ctx, never())
       .sendReplyHeaders(anyInt(), anyString(), any(), any(), anyLong(), anyBoolean())
@@ -73,14 +81,16 @@ internal class CoreActionToadletTest {
   @Test
   internal fun handleMethodPOST_whenCoreUpdaterMissing_expectRedirect() {
     val client = mock(HighLevelSimpleClient::class.java)
-    val node = mock(Node::class.java)
+    val node = mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
+    val services = mock(network.crypta.node.subsystem.NodeServicesSubsystem::class.java)
     val nodeUpdater = mock(NodeUpdateManager::class.java)
     val ctx = mock(ToadletContext::class.java)
     val request = mock(HTTPRequest::class.java)
     val toadlet = CoreActionToadlet(client, node)
 
     `when`(ctx.checkFormPassword(request)).thenReturn(true)
-    `when`(node.nodeUpdater).thenReturn(nodeUpdater)
+    `when`(node.services()).thenReturn(services)
+    `when`(services.nodeUpdater()).thenReturn(nodeUpdater)
     `when`(nodeUpdater.coreUpdater).thenReturn(null)
     doNothing().`when`(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L))
 
@@ -97,7 +107,8 @@ internal class CoreActionToadletTest {
   @Test
   internal fun handleMethodPOST_whenDownloadAction_expectStartDownloadAndRedirect() {
     val client = mock(HighLevelSimpleClient::class.java)
-    val node = mock(Node::class.java)
+    val node = mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
+    val services = mock(network.crypta.node.subsystem.NodeServicesSubsystem::class.java)
     val nodeUpdater = mock(NodeUpdateManager::class.java)
     val coreUpdater = mock(CoreUpdater::class.java)
     val ctx = mock(ToadletContext::class.java)
@@ -105,7 +116,8 @@ internal class CoreActionToadletTest {
     val toadlet = CoreActionToadlet(client, node)
 
     `when`(ctx.checkFormPassword(request)).thenReturn(true)
-    `when`(node.nodeUpdater).thenReturn(nodeUpdater)
+    `when`(node.services()).thenReturn(services)
+    `when`(services.nodeUpdater()).thenReturn(nodeUpdater)
     `when`(nodeUpdater.coreUpdater).thenReturn(coreUpdater)
     `when`(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("download")
     doNothing().`when`(ctx).sendReplyHeaders(eq(302), eq("Found"), any(), isNull(), eq(0L))
@@ -124,7 +136,8 @@ internal class CoreActionToadletTest {
   @Test
   internal fun handleMethodPOST_whenInstallPathInvalid_expectFailurePage() {
     val client = mock(HighLevelSimpleClient::class.java)
-    val node = mock(Node::class.java)
+    val node = mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
+    val services = mock(network.crypta.node.subsystem.NodeServicesSubsystem::class.java)
     val nodeUpdater = mock(NodeUpdateManager::class.java)
     val coreUpdater = mock(CoreUpdater::class.java)
     val ctx = mock(ToadletContext::class.java)
@@ -135,7 +148,8 @@ internal class CoreActionToadletTest {
 
     baseDir.mkdirs()
     `when`(ctx.checkFormPassword(request)).thenReturn(true)
-    `when`(node.nodeUpdater).thenReturn(nodeUpdater)
+    `when`(node.services()).thenReturn(services)
+    `when`(services.nodeUpdater()).thenReturn(nodeUpdater)
     `when`(nodeUpdater.coreUpdater).thenReturn(coreUpdater)
     `when`(node.nodeDir).thenReturn(baseDir)
     `when`(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install")
@@ -153,7 +167,8 @@ internal class CoreActionToadletTest {
   @Test
   internal fun handleMethodPOST_whenInstallPathValidInServiceMode_expectFailurePage() {
     val client = mock(HighLevelSimpleClient::class.java)
-    val node = mock(Node::class.java)
+    val node = mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
+    val services = mock(network.crypta.node.subsystem.NodeServicesSubsystem::class.java)
     val nodeUpdater = mock(NodeUpdateManager::class.java)
     val coreUpdater = mock(CoreUpdater::class.java)
     val ctx = mock(ToadletContext::class.java)
@@ -166,7 +181,8 @@ internal class CoreActionToadletTest {
     updatesDir.mkdirs()
     installer.writeText("dummy")
     `when`(ctx.checkFormPassword(request)).thenReturn(true)
-    `when`(node.nodeUpdater).thenReturn(nodeUpdater)
+    `when`(node.services()).thenReturn(services)
+    `when`(services.nodeUpdater()).thenReturn(nodeUpdater)
     `when`(nodeUpdater.coreUpdater).thenReturn(coreUpdater)
     `when`(node.nodeDir).thenReturn(baseDir)
     `when`(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install")
@@ -190,7 +206,8 @@ internal class CoreActionToadletTest {
   @Test
   internal fun handleMethodPOST_whenOpenStoreUnknown_expectFailurePage() {
     val client = mock(HighLevelSimpleClient::class.java)
-    val node = mock(Node::class.java)
+    val node = mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
+    val services = mock(network.crypta.node.subsystem.NodeServicesSubsystem::class.java)
     val nodeUpdater = mock(NodeUpdateManager::class.java)
     val coreUpdater = mock(CoreUpdater::class.java)
     val ctx = mock(ToadletContext::class.java)
@@ -198,7 +215,8 @@ internal class CoreActionToadletTest {
     val toadlet = CoreActionToadlet(client, node)
 
     `when`(ctx.checkFormPassword(request)).thenReturn(true)
-    `when`(node.nodeUpdater).thenReturn(nodeUpdater)
+    `when`(node.services()).thenReturn(services)
+    `when`(services.nodeUpdater()).thenReturn(nodeUpdater)
     `when`(nodeUpdater.coreUpdater).thenReturn(coreUpdater)
     `when`(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("openStore")
     `when`(request.getPartAsStringFailsafe(eq("kind"), anyInt())).thenReturn("unknown")

@@ -102,7 +102,7 @@ public class PluginJarUpdater extends NodeUpdater {
       a = alert;
       alert = null;
     }
-    if (a != null) node.getClientCore().getAlerts().unregister(a);
+    if (a != null) node.services().clientCore().getAlerts().unregister(a);
     return false;
   }
 
@@ -236,7 +236,8 @@ public class PluginJarUpdater extends NodeUpdater {
 
     PluginInfoWrapper loaded = pluginManager.findPluginByIdentifier(pluginName);
 
-    if (loaded == null && !node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(pluginName)) {
+    if (loaded == null
+        && !node.services().pluginManager().isPluginLoadedOrLoadingOrWantLoad(pluginName)) {
       LOG.error("Don't want plugin: {}", pluginName);
       deleteTempBlobQuietly();
       return;
@@ -253,7 +254,7 @@ public class PluginJarUpdater extends NodeUpdater {
       if (alert != null) return;
       toRegister = alert = createUpdateAlert();
     }
-    node.getClientCore().getAlerts().register(toRegister);
+    node.services().clientCore().getAlerts().register(toRegister);
   }
 
   private void deleteTempBlobQuietly() {
@@ -300,7 +301,9 @@ public class PluginJarUpdater extends NodeUpdater {
             formNode.addChild(
                 INPUT,
                 new String[] {"type", "name", VALUE},
-                new String[] {"hidden", "formPassword", node.getClientCore().getFormPassword()});
+                new String[] {
+                  "hidden", "formPassword", node.services().clientCore().getFormPassword()
+                });
             formNode.addChild(
                 INPUT,
                 new String[] {"type", "name", VALUE},
@@ -372,7 +375,7 @@ public class PluginJarUpdater extends NodeUpdater {
       a = alert;
       alert = null;
     }
-    if (a != null) node.getClientCore().getAlerts().unregister(a);
+    if (a != null) node.services().clientCore().getAlerts().unregister(a);
   }
 
   @Override
@@ -383,7 +386,7 @@ public class PluginJarUpdater extends NodeUpdater {
       a = alert;
       alert = null;
     }
-    if (a != null) node.getClientCore().getAlerts().unregister(a);
+    if (a != null) node.services().clientCore().getAlerts().unregister(a);
   }
 
   /**

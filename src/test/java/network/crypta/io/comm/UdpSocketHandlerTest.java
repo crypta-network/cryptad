@@ -55,20 +55,23 @@ class UdpSocketHandlerTest {
 
   @BeforeEach
   void setUp() throws Exception {
-    node = Mockito.mock(Node.class);
+    node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     ProgramDirectory runDir = new ProgramDirectory();
     // Ensure ProgramDirectory has a backing filesystem path.
     runDir.move(tempDir.toString());
     ioStats = new IOStatisticCollector();
     tracker = Mockito.mock(AddressTracker.class);
 
-    when(node.getTrafficClass()).thenReturn(TrafficClass.DSCP_CS1);
-    when(node.getFastWeakRandom()).thenReturn(new java.security.SecureRandom());
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.trafficClass()).thenReturn(TrafficClass.DSCP_CS1);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(new java.security.SecureRandom());
     when(node.getLastBootId()).thenReturn(42L);
     when(node.getBootId()).thenReturn(43L);
     when(node.runDir()).thenReturn(runDir);
     when(node.getMinimumMTU()).thenReturn(1492);
-    when(node.getExecutor()).thenReturn(new NewThreadExecutor());
+    when(network.executor()).thenReturn(new NewThreadExecutor());
 
     // Default: AddressTracker.create(...) returns our tracker instance for predictable behavior.
     try (MockedStatic<AddressTracker> mocked = Mockito.mockStatic(AddressTracker.class)) {

@@ -497,14 +497,14 @@ class PluginInfoWrapperTest {
   }
 
   private Node mockNode(boolean needsCfgDir) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
     HighLevelSimpleClient client = mock(HighLevelSimpleClient.class);
 
     if (needsCfgDir) {
       when(node.getCfgDir()).thenReturn(tempDir.toFile());
     }
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.makeClient(anyShort(), anyBoolean(), anyBoolean())).thenReturn(client);
     when(core.getPluginStores()).thenReturn(mock(PluginStores.class));
     return node;

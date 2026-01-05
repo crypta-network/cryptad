@@ -6,10 +6,10 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.util.ArrayList;
+import java.util.Random;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
-import network.crypta.support.math.MersenneTwister;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,18 +55,18 @@ public class PacketSender implements Runnable {
   NodeStats stats;
   long lastReportedNoPackets;
   long lastReceivedPacketFromAnyNode;
-  private final MersenneTwister localRandom;
+  private final Random localRandom;
 
-  PacketSender(Node node) {
+  public PacketSender(Node node) {
     this.node = node;
     myThread =
         new NativeThread(
             this,
-            "PacketSender thread for " + node.getDarknetPortNumber(),
+            "PacketSender thread for " + node.network().darknetPortNumber(),
             NativeThread.PriorityLevel.MAX_PRIORITY.value,
             false);
     myThread.setDaemon(true);
-    localRandom = node.createRandom();
+    localRandom = node.bootstrap().createRandom();
   }
 
   /**
@@ -74,7 +74,12 @@ public class PacketSender implements Runnable {
    *
    * @param stats destination for periodic statistics updates; must be non‑{@code null}
    */
-  void start(NodeStats stats) {
+  /**
+   * Starts the packet sender thread using the provided stats counters.
+   *
+   * @param stats node statistics collector for bandwidth accounting
+   */
+  public void start(NodeStats stats) {
     this.stats = stats;
     LOG.info("Start PacketSender");
     myThread.start();
@@ -82,7 +87,8 @@ public class PacketSender implements Runnable {
 
   private void schedulePeriodicJob() {
 
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             new Runnable() {
 
@@ -91,7 +97,7 @@ public class PacketSender implements Runnable {
                 try {
                   long now = System.currentTimeMillis();
                   if (LOG.isDebugEnabled()) LOG.debug("Start schedulePeriodicJob at {}", now);
-                  PeerManager pm = node.getPeers();
+                  PeerManager pm = node.network().peers();
                   pm.maybeLogPeerNodeStatusSummary(now);
                   pm.maybeUpdateOldestNeverConnectedDarknetPeerAge(now);
                   stats.maybeUpdatePeerManagerUserAlertStats(now);
@@ -101,7 +107,7 @@ public class PacketSender implements Runnable {
                   if (LOG.isDebugEnabled())
                     LOG.debug("Complete schedulePeriodicJob at {}", System.currentTimeMillis());
                 } finally {
-                  node.getTicker().queueTimedJob(this, 1000);
+                  node.network().ticker().queueTimedJob(this, 1000);
                 }
               }
             },
@@ -146,7 +152,7 @@ public class PacketSender implements Runnable {
    */
   private void realRun() {
     long now = System.currentTimeMillis();
-    PeerManager pm = node.getPeers();
+    PeerManager pm = node.network().peers();
     PeerNode[] nodes = pm.myPeers();
 
     RunState state = initRunState(now);
@@ -176,12 +182,12 @@ public class PacketSender implements Runnable {
     long nextActionTime = Long.MAX_VALUE;
     boolean canSendThrottled;
 
-    int maxPacketSize = node.getDarknetCrypto().getSocket().getMaxPacketSize();
-    long count = node.getOutputThrottle().getCount();
+    int maxPacketSize = node.network().darknetCrypto().getSocket().getMaxPacketSize();
+    long count = node.network().outputThrottle().getCount();
     if (count > maxPacketSize) {
       canSendThrottled = true;
     } else {
-      long canSendAt = node.getOutputThrottle().getNanosPerTick() * (maxPacketSize - count);
+      long canSendAt = node.network().outputThrottle().getNanosPerTick() * (maxPacketSize - count);
       canSendAt = MILLISECONDS.convert(canSendAt + MILLISECONDS.toNanos(1) - 1, NANOSECONDS);
       if (LOG.isDebugEnabled()) LOG.debug("Can send throttled packets in {} ms", canSendAt);
       nextActionTime = Math.min(nextActionTime, now + canSendAt);
@@ -223,7 +229,7 @@ public class PacketSender implements Runnable {
         Math.max(pn.lastReceivedPacketTime(), lastReceivedPacketFromAnyNode);
     pn.maybeOnConnect();
     if (pn.shouldDisconnectAndRemoveNow() && !pn.isDisconnecting()) {
-      node.getPeers().messenger().disconnectAndRemove(pn, true, true, false);
+      node.network().peers().messenger().disconnectAndRemove(pn, true, true, false);
     }
   }
 
@@ -237,7 +243,8 @@ public class PacketSender implements Runnable {
       return;
     }
     if (shouldDisconnectDueToAcks(now, pn)) {
-      node.getPeers()
+      node.network()
+          .peers()
           .messenger()
           .disconnect(pn, true, true, false, true, false, SECONDS.toMillis(5));
       return;
@@ -410,8 +417,8 @@ public class PacketSender implements Runnable {
   private void processOldOpennetPeers(long now) {
     // If we send something we will have to go around the loop again.
     // Optimisation possibility: Track the second best, and check how many are in the array.
-    OpennetManager om = node.getOpennet();
-    if (om == null || node.getUptime() <= SECONDS.toMillis(30)) return;
+    OpennetManager om = node.network().opennet();
+    if (om == null || node.network().uptime() <= SECONDS.toMillis(30)) return;
 
     OpennetPeerNode[] peers = om.getOldPeers();
     for (OpennetPeerNode pn : peers) {

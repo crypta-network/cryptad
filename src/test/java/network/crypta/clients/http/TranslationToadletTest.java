@@ -61,7 +61,10 @@ class TranslationToadletTest {
         .thenAnswer(invocation -> invocation.getArgument(0, String.class));
 
     when(core.getNode()).thenReturn(node);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(pluginManager.getPlugins()).thenReturn(Collections.emptySet());
 
     toadlet = new TranslationToadlet(client, core);

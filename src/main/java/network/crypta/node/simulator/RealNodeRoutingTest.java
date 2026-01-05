@@ -189,7 +189,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
 
   private static void logNodeLocations(int cycleNumber, Node[] nodes) {
     for (int i = 0; i < nodes.length; i++) {
-      LOG.info("Cycle {} node {}: {}", cycleNumber, i, nodes[i].getLocation());
+      LOG.info("Cycle {} node {}: {}", cycleNumber, i, nodes[i].network().location());
     }
   }
 
@@ -225,8 +225,8 @@ public class RealNodeRoutingTest extends RealNodeTest {
     double totalSwapInterval = 0.0;
     double totalSwapTime = 0.0;
     for (Node node : nodes) {
-      totalSwapInterval += node.getLocationManager().getSendSwapInterval();
-      totalSwapTime += node.getLocationManager().getAverageSwapTime();
+      totalSwapInterval += node.network().locationManager().getSendSwapInterval();
+      totalSwapTime += node.network().locationManager().getAverageSwapTime();
     }
     LOG.info("Average swap time: {}", totalSwapTime / nodes.length);
     LOG.info("Average swap sender interval: {}", totalSwapInterval / nodes.length);
@@ -248,15 +248,16 @@ public class RealNodeRoutingTest extends RealNodeTest {
         while (randomNode2 == randomNode) {
           randomNode2 = nodes[random.nextInt(nodes.length)];
         }
-        double loc2 = randomNode2.getLocation();
+        double loc2 = randomNode2.network().location();
         LOG.info(
             "Pinging {} @ {} from {} @ {}",
-            randomNode2.getDarknetPortNumber(),
+            randomNode2.network().darknetPortNumber(),
             loc2,
-            randomNode.getDarknetPortNumber(),
-            randomNode.getLocation());
+            randomNode.network().darknetPortNumber(),
+            randomNode.network().location());
 
-        int hopsTaken = randomNode.routedPing(loc2, randomNode2.getDarknetPubKeyHash());
+        int hopsTaken =
+            randomNode.network().routedPing(loc2, randomNode2.network().darknetPubKeyHash());
         counters.pings++;
         if (hopsTaken < 0) {
           counters.failures++;
@@ -267,8 +268,8 @@ public class RealNodeRoutingTest extends RealNodeTest {
           LOG.warn(
               "Routed ping {} FAILED from {} to {} (long:{}, short:{}, vague:{})",
               counters.pings,
-              randomNode.getDarknetPortNumber(),
-              randomNode2.getDarknetPortNumber(),
+              randomNode.network().darknetPortNumber(),
+              randomNode2.network().darknetPortNumber(),
               ratio,
               avg.currentValue(),
               avg2.currentValue());
@@ -283,8 +284,8 @@ public class RealNodeRoutingTest extends RealNodeTest {
               "Routed ping {} success: {} {} to {} (long:{}, short:{}, vague:{})",
               counters.pings,
               hopsTaken,
-              randomNode.getDarknetPortNumber(),
-              randomNode2.getDarknetPortNumber(),
+              randomNode.network().darknetPortNumber(),
+              randomNode2.network().darknetPortNumber(),
               ratio,
               avg.currentValue(),
               avg2.currentValue());

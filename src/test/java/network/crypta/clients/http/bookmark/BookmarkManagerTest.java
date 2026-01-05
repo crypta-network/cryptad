@@ -391,7 +391,7 @@ class BookmarkManagerTest {
 
     NodeClientCore core = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     network.crypta.node.ProgramDirectory userDir = new network.crypta.node.ProgramDirectory();
     try {
       userDir.move(tmp.toString());
@@ -400,7 +400,10 @@ class BookmarkManagerTest {
     }
 
     when(node.userDir()).thenReturn(userDir);
-    lenient().when(node.getTicker()).thenReturn(ticker);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    lenient().when(network.ticker()).thenReturn(ticker);
     when(core.getNode()).thenReturn(node);
     lenient().when(core.getUskManager()).thenReturn(uskManager);
     lenient().when(core.getAlerts()).thenReturn(alerts);

@@ -19,7 +19,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PersistentRequestRemovedMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @ParameterizedTest
   @CsvSource({"req-123,true", "another-id,false"})

@@ -33,7 +33,8 @@ class ModifyConfigTest {
 
   @Mock FCPConnectionHandler handler;
 
-  @Mock Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
 
   @Mock NodeClientCore clientCore;
 
@@ -91,7 +92,10 @@ class ModifyConfigTest {
         new StringOption(subConfig, "maxPeers", "5", 0, false, false, null, null, callback);
     subConfig.register(option);
     when(node.getConfig()).thenReturn(config);
-    when(node.getClientCore()).thenReturn(clientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(clientCore);
     when(handler.hasFullAccess()).thenReturn(true);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "cfg-1");
@@ -121,7 +125,10 @@ class ModifyConfigTest {
         new StringOption(subConfig, "theme", "light", 0, false, false, null, null, callback);
     subConfig.register(option);
     when(node.getConfig()).thenReturn(config);
-    when(node.getClientCore()).thenReturn(clientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(clientCore);
     when(handler.hasFullAccess()).thenReturn(true);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "cfg-2");
@@ -145,7 +152,10 @@ class ModifyConfigTest {
         new StringOption(subConfig, "port", "8080", 0, false, false, null, null, callback);
     subConfig.register(failingOption);
     when(node.getConfig()).thenReturn(config);
-    when(node.getClientCore()).thenReturn(clientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(clientCore);
     when(handler.hasFullAccess()).thenReturn(true);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "cfg-3");

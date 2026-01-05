@@ -51,7 +51,7 @@ class DatastoreUtilTest {
 
   private static NodeClientCore coreWithFreeSpace(long freeSpaceBytes) {
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(core.getNode()).thenReturn(node);
     File f = mock(File.class);
     when(f.getUsableSpace()).thenReturn(freeSpaceBytes);
@@ -68,7 +68,7 @@ class DatastoreUtilTest {
     available = available / 2; // 50%
     long slots = available / 4; // 4 bytes/slot
     slots = slots / 3; // 3 key types
-    return slots * Node.SIZE_PER_KEY;
+    return slots * network.crypta.node.subsystem.NodeStorageSubsystem.SIZE_PER_KEY;
   }
 
   private static Path resolveDataDirPath() {

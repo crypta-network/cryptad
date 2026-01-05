@@ -24,22 +24,26 @@ class NodeDataTest {
 
   private static final String VOLATILE_KEY = "volatile";
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @ParameterizedTest
   @CsvSource({"true,true", "true,false", "false,true", "false,false"})
   void getFieldSet_whenFlagsCombination_selectsCorrectBaseFieldSet(
       boolean giveOpennetRef, boolean withPrivate) {
     SimpleFieldSet expected = new SimpleFieldSet(true);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
 
     if (giveOpennetRef && withPrivate) {
-      when(node.exportOpennetPrivateFieldSet()).thenReturn(expected);
+      when(network.exportOpennetPrivateFieldSet()).thenReturn(expected);
     } else if (giveOpennetRef) {
-      when(node.exportOpennetPublicFieldSet()).thenReturn(expected);
+      when(network.exportOpennetPublicFieldSet()).thenReturn(expected);
     } else if (withPrivate) {
-      when(node.exportDarknetPrivateFieldSet()).thenReturn(expected);
+      when(network.exportDarknetPrivateFieldSet()).thenReturn(expected);
     } else {
-      when(node.exportDarknetPublicFieldSet()).thenReturn(expected);
+      when(network.exportDarknetPublicFieldSet()).thenReturn(expected);
     }
 
     NodeData nodeData =
@@ -50,7 +54,7 @@ class NodeDataTest {
     assertSame(expected, result);
     assertNull(result.subset(VOLATILE_KEY));
     assertNull(result.get("Identifier"));
-    verify(node, never()).exportVolatileFieldSet();
+    verify(network, never()).exportVolatileFieldSet();
   }
 
   @Test
@@ -58,8 +62,11 @@ class NodeDataTest {
     SimpleFieldSet base = new SimpleFieldSet(true);
     SimpleFieldSet vol = new SimpleFieldSet(true);
     vol.putSingle("stat", "value");
-    when(node.exportOpennetPublicFieldSet()).thenReturn(base);
-    when(node.exportVolatileFieldSet()).thenReturn(vol);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.exportOpennetPublicFieldSet()).thenReturn(base);
+    when(network.exportVolatileFieldSet()).thenReturn(vol);
     NodeData nodeData =
         new NodeData(node, /* giveOpennetRef= */ true, /* withPrivate= */ false, true, null);
 
@@ -73,8 +80,11 @@ class NodeDataTest {
   void getFieldSet_whenWithVolatileAndEmpty_exportDoesNotAddVolatileSubset() {
     SimpleFieldSet base = new SimpleFieldSet(true);
     SimpleFieldSet emptyVol = new SimpleFieldSet(true);
-    when(node.exportDarknetPrivateFieldSet()).thenReturn(base);
-    when(node.exportVolatileFieldSet()).thenReturn(emptyVol);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.exportDarknetPrivateFieldSet()).thenReturn(base);
+    when(network.exportVolatileFieldSet()).thenReturn(emptyVol);
     NodeData nodeData =
         new NodeData(node, /* giveOpennetRef= */ false, /* withPrivate= */ true, true, null);
 
@@ -87,7 +97,10 @@ class NodeDataTest {
   @Test
   void getFieldSet_whenIdentifierProvided_addsIdentifierField() {
     SimpleFieldSet base = new SimpleFieldSet(true);
-    when(node.exportOpennetPrivateFieldSet()).thenReturn(base);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.exportOpennetPrivateFieldSet()).thenReturn(base);
     String identifier = "node-identifier-1";
     NodeData nodeData =
         new NodeData(node, /* giveOpennetRef= */ true, /* withPrivate= */ true, false, identifier);

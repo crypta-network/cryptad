@@ -163,13 +163,13 @@ class NodeStatsHtmlRendererTest {
   @Test
   void drawNewLoadManagementDelayTimes_whenTimeoutsPresent_rendersTimeoutTable() {
     NodeStats stats = mock(NodeStats.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     RequestTracker tracker = mock(RequestTracker.class);
     WaitingForSlots waiting = new WaitingForSlots();
     waiting.local = 2;
     waiting.remote = 4;
     when(tracker.countRequestsWaitingForSlots()).thenReturn(waiting);
-    when(node.getTracker()).thenReturn(tracker);
+    when(node.routing().tracker()).thenReturn(tracker);
     setField(stats, "node", node);
     when(stats.getNlmDelaySnapshot()).thenReturn(new double[] {1000, 2000, 3000, 4000});
     when(stats.getSlotTimeoutSnapshot()).thenReturn(new long[] {1, 3, 9, 7});
@@ -195,13 +195,13 @@ class NodeStatsHtmlRendererTest {
   @Test
   void drawNewLoadManagementDelayTimes_whenNoTimeouts_skipsTimeoutTable() {
     NodeStats stats = mock(NodeStats.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     RequestTracker tracker = mock(RequestTracker.class);
     WaitingForSlots waiting = new WaitingForSlots();
     waiting.local = 0;
     waiting.remote = 0;
     when(tracker.countRequestsWaitingForSlots()).thenReturn(waiting);
-    when(node.getTracker()).thenReturn(tracker);
+    when(node.routing().tracker()).thenReturn(tracker);
     setField(stats, "node", node);
     when(stats.getNlmDelaySnapshot()).thenReturn(new double[] {500, 600, 700, 800});
     when(stats.getSlotTimeoutSnapshot()).thenReturn(new long[] {0, 0, 0, 0});

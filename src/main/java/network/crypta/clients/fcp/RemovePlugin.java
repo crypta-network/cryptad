@@ -120,10 +120,12 @@ public class RemovePlugin extends FCPMessage {
           false);
     }
 
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             () -> {
-              PluginInfoWrapper pi = node.getPluginManager().findPluginByIdentifier(plugname);
+              PluginInfoWrapper pi =
+                  node.services().pluginManager().findPluginByIdentifier(plugname);
               if (pi == null) {
                 handler.send(
                     new ProtocolErrorMessage(
@@ -133,9 +135,9 @@ public class RemovePlugin extends FCPMessage {
                         messageIdentifier,
                         false));
               } else {
-                pi.stopPlugin(node.getPluginManager(), maxWaitTime, false);
+                pi.stopPlugin(node.services().pluginManager(), maxWaitTime, false);
                 if (purge) {
-                  node.getPluginManager().removeCachedCopy(pi.getFilename());
+                  node.services().pluginManager().removeCachedCopy(pi.getFilename());
                 }
                 handler.send(new PluginRemovedMessage(plugname, messageIdentifier));
               }

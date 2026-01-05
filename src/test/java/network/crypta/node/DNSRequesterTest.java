@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,7 +30,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class DNSRequesterTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
+  @Mock private NodeNetworkSubsystem network;
 
   // Track only threads started by this test instance.
   private final java.util.List<Thread> startedThreads =
@@ -56,8 +60,9 @@ class DNSRequesterTest {
   void start_whenCalled_executorExecuteWithName() {
     // Arrange
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
-    when(node.getExecutor()).thenReturn(executor);
-    when(node.getDarknetPortNumber()).thenReturn(12345);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
+    when(network.darknetPortNumber()).thenReturn(12345);
 
     DNSRequester requester = new DNSRequester(node);
 
@@ -113,8 +118,9 @@ class DNSRequesterTest {
     when(p1.isConnected()).thenReturn(true);
     when(p2.isConnected()).thenReturn(true);
     when(pm.myPeers()).thenReturn(new PeerNode[] {p1, p2});
-    when(node.getPeers()).thenReturn(pm);
-    when(node.getFastWeakRandom()).thenReturn(new FixedSequenceRandom(0));
+    when(node.network()).thenReturn(network);
+    when(network.peers()).thenReturn(pm);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(new FixedSequenceRandom(0));
 
     DNSRequester requester = new DNSRequester(node);
 
@@ -142,9 +148,10 @@ class DNSRequesterTest {
     when(p1.getLocation()).thenReturn(0.20);
     when(p2.getLocation()).thenReturn(0.30);
     when(pm.myPeers()).thenReturn(new PeerNode[] {p0, p1, p2});
-    when(node.getPeers()).thenReturn(pm);
+    when(node.network()).thenReturn(network);
+    when(network.peers()).thenReturn(pm);
     // Sequence: select index=1, then minimal wait; run only once
-    when(node.getFastWeakRandom()).thenReturn(new FixedSequenceRandom(1, 0));
+    when(node.bootstrap().fastWeakRandom()).thenReturn(new FixedSequenceRandom(1, 0));
 
     CountDownLatch called = new CountDownLatch(1);
     doAnswer(
@@ -184,13 +191,14 @@ class DNSRequesterTest {
       when(peers[i].getLocation()).thenReturn(10.0 + i);
     }
     when(pm.myPeers()).thenReturn(peers);
-    when(node.getPeers()).thenReturn(pm);
+    when(node.network()).thenReturn(network);
+    when(network.peers()).thenReturn(pm);
 
     // Random always selects index 0 of the current filtered list, then minimal wait.
     // For 7 runs we need 14 numbers: [0,0] * 7
     int[] seq = new int[14];
     Arrays.fill(seq, 0);
-    when(node.getFastWeakRandom()).thenReturn(new FixedSequenceRandom(seq));
+    when(node.bootstrap().fastWeakRandom()).thenReturn(new FixedSequenceRandom(seq));
 
     DNSRequester requester = new DNSRequester(node);
 
@@ -257,9 +265,10 @@ class DNSRequesterTest {
     when(unconnectedB.getLocation()).thenReturn(2.2);
 
     when(pm.myPeers()).thenReturn(new PeerNode[] {connected, unconnectedA, unconnectedB});
-    when(node.getPeers()).thenReturn(pm);
+    when(node.network()).thenReturn(network);
+    when(network.peers()).thenReturn(pm);
     // Choose the first eligible (index 0 of filtered -> unconnectedA)
-    when(node.getFastWeakRandom()).thenReturn(new FixedSequenceRandom(0, 0));
+    when(node.bootstrap().fastWeakRandom()).thenReturn(new FixedSequenceRandom(0, 0));
 
     CountDownLatch called = new CountDownLatch(1);
     doAnswer(

@@ -96,7 +96,7 @@ public class HourlyStatsRecord {
     if (htl < 0) throw new IllegalArgumentException("Invalid HTL.");
     if (location < 0 || location > 1) throw new IllegalArgumentException("Invalid location.");
     htl = Math.min(htl, node.maxHTL());
-    double rawDist = Location.distance(node.getLocation(), location);
+    double rawDist = Location.distance(node.network().location(), location);
     // Avoid -Infinity when taking log2(distance) for identical locations.
     if (rawDist <= 0.0) rawDist = Double.MIN_VALUE;
     double logDist = Math.log(rawDist) / Math.log(2.0);
@@ -153,7 +153,7 @@ public class HourlyStatsRecord {
     StringBuilder s = new StringBuilder();
     s.append("HourlyStats: hour start (UTC) ");
     s.append(UTC_DATE_TIME.format(beginTime.toInstant())).append("\n");
-    s.append("HourlyStats: node uptime (ms)\t").append(node.getUptime()).append("\n");
+    s.append("HourlyStats: node uptime (ms)\t").append(node.network().uptime()).append("\n");
     s.append("HourlyStats: build number\t").append(Version.currentBuildNumber()).append("\n");
     s.append("HourlyStats: completeHour\t").append(completeHour);
     s.append("\tfinished\t").append(finishedReporting).append("\n");

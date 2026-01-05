@@ -121,7 +121,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    */
   @Override
   protected SimpleFieldSet getNoderef() {
-    return node.exportOpennetPublicFieldSet();
+    return node.network().exportOpennetPublicFieldSet();
   }
 
   /**
@@ -136,7 +136,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    */
   @Override
   protected PeerNodeStatus[] getPeerNodeStatuses(boolean noHeavy) {
-    return node.getPeers().statusBook().getOpennetPeerNodeStatuses(noHeavy);
+    return node.network().peers().statusBook().getOpennetPeerNodeStatuses(noHeavy);
   }
 
   /**
@@ -150,7 +150,7 @@ public class OpennetConnectionsToadlet extends ConnectionsToadlet implements Lin
    */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return node.isOpennetEnabled();
+    return node.network().isOpennetEnabled();
   }
 
   /**

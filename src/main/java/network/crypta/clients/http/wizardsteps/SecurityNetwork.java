@@ -337,7 +337,7 @@ public class SecurityNetwork implements Step {
    * @param level the new network threat level to set; must be a valid enum value
    */
   public void setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL level) {
-    core.getNode().getSecurityLevels().setThreatLevel(level);
+    core.getNode().services().securityLevels().setThreatLevel(level);
     core.storeConfig();
   }
 }

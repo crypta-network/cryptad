@@ -144,13 +144,14 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
         LOG.debug("Starting ARK fetcher for {} : {}", peer, myARK);
         arkFetcher =
             peer.node
-                .getClientCore()
+                .services()
+                .clientCore()
                 .getUskManager()
                 .subscribeContent(
                     myARK,
                     this,
                     true,
-                    peer.node.getArkFetcherContext(),
+                    peer.node.network().arkFetcherContext(),
                     RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
                     peer.node.getNonPersistentClientRT());
       }
@@ -179,9 +180,15 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
     }
     final USKRetriever unsub = ret;
     peer.node
-        .getExecutor()
+        .network()
+        .executor()
         .execute(
-            () -> peer.node.getClientCore().getUskManager().unsubscribeContent(myARK, unsub, true));
+            () ->
+                peer.node
+                    .services()
+                    .clientCore()
+                    .getUskManager()
+                    .unsubscribeContent(myARK, unsub, true));
   }
 
   /**

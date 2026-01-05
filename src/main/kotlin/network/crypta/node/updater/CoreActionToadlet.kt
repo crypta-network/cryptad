@@ -156,7 +156,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
       logInfo("POST /core-update rejected: invalid form password")
       return
     }
-    val updater = node.nodeUpdater.coreUpdater ?: return redirect(ctx)
+    val updater = node.services().nodeUpdater()?.coreUpdater ?: return redirect(ctx)
     when (request.getPartAsStringFailsafe("action", 32)) {
       "download" -> handleDownload(updater, ctx)
       "install" -> handleInstall(request, ctx)

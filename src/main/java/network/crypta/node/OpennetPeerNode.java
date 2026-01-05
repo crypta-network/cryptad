@@ -86,7 +86,7 @@ public class OpennetPeerNode extends PeerNode {
    */
   @Override
   public boolean isRoutingCompatible() {
-    if (!node.isOpennetEnabled()) return false;
+    if (!node.network().isOpennetEnabled()) return false;
     return super.isRoutingCompatible();
   }
 
@@ -163,7 +163,7 @@ public class OpennetPeerNode extends PeerNode {
         opennetNodeAddedReason = ADDED_REASON_UNKNOWN;
       }
     }
-    if (now - node.getUSM().getStartedTime() < OpennetManager.DROP_STARTUP_DELAY)
+    if (now - node.network().usm().getStartedTime() < OpennetManager.DROP_STARTUP_DELAY)
       return NOT_DROP_REASON.TOO_LOW_UPTIME; // Give them time to connect after we startup
     if (!ignoreDisconnect) {
       synchronized (this) {
@@ -295,7 +295,7 @@ public class OpennetPeerNode extends PeerNode {
       return false;
     // Paranoia guard: retain extra delay for safety
     if (uptime < HOURS.toMillis(1)) return false;
-    NodeUpdateManager updater = node.getNodeUpdater();
+    NodeUpdateManager updater = node.services().nodeUpdater();
     if (updater == null) return true; // Not going to UOM.
     UpdateOverMandatoryManager uom = updater.getUpdateOverMandatory();
     if (uom == null) return true; // Not going to UOM
@@ -360,7 +360,8 @@ public class OpennetPeerNode extends PeerNode {
   @Override
   protected void maybeClearPeerAddedTimeOnConnect() {
     // Ensure the markers are cleared after the grace window.
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             (FastRunnable) () -> isDroppableWithReason(false), OpennetManager.DROP_MIN_AGE + 1);
   }
@@ -412,8 +413,8 @@ public class OpennetPeerNode extends PeerNode {
       return LinkLengthClass.SHORT;
     }
     // Optimization: this should not change since we don't swap on opennet
-    if (Location.distance(this, opennet.getNode().getLocation()) > OpennetManager.LONG_DISTANCE)
-      return LinkLengthClass.LONG;
+    if (Location.distance(this, opennet.getNode().network().location())
+        > OpennetManager.LONG_DISTANCE) return LinkLengthClass.LONG;
     else return LinkLengthClass.SHORT;
   }
 

@@ -33,9 +33,9 @@ class RequestStarterTest {
   private RequestStarter newStarter(boolean isInsert, boolean realTime) {
     // Minimal wiring required by RequestStarter's constructor; scoped to callers to avoid
     // unnecessary stubbing on tests that don't construct a RequestStarter.
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(core.getNode()).thenReturn(node);
-    when(node.getNodeStats()).thenReturn(nodeStats);
+    when(node.network().stats()).thenReturn(nodeStats);
     RequestStarter starter =
         new RequestStarter(
             core, throttle, "starter", avgOut, avgIn, isInsert, /* isSSK= */ false, realTime);

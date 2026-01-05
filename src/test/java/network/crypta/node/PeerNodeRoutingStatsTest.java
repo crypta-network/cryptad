@@ -10,7 +10,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class PeerNodeRoutingStatsTest {
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   private PeerNodeRoutingStats newStats() {
     return new PeerNodeRoutingStats(node);

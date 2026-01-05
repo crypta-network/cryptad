@@ -60,25 +60,25 @@ class NodeStatsTest {
     statsConfig = cfg.createSubConfig("node");
 
     // Basic node and collaborators
-    node = mock(Node.class);
+    node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peerManager = mock(PeerManager.class);
     LocationManager locationManager = mock(LocationManager.class);
     PriorityAwareExecutor executor = new NoopExecutor();
     Ticker ticker = new NoopTicker(executor);
 
     // Common stubbing
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getLocationManager()).thenReturn(locationManager);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().locationManager()).thenReturn(locationManager);
     when(locationManager.getLocation()).thenReturn(0.42);
     when(node.getExecutor()).thenReturn(executor);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     when(node.getRunDir()).thenReturn(tmpDir.toFile());
     when(node.getRandom()).thenReturn(new DummyRandomSource(424242));
     when(node.getSecurityLevels()).thenReturn(mock(SecurityLevels.class));
-    when(node.getCollector()).thenReturn(new IOStatisticCollector());
-    when(node.getUptime()).thenReturn(100_000L);
-    when(node.getOutputBandwidthLimit()).thenReturn(1024);
-    when(node.getInputBandwidthLimit()).thenReturn(1024);
+    when(node.network().collector()).thenReturn(new IOStatisticCollector());
+    when(node.network().uptimeEstimator().getUptime()).thenReturn(100_000d);
+    when(node.network().outputBandwidthLimit()).thenReturn(1024);
+    when(node.network().inputBandwidthLimit()).thenReturn(1024);
 
     // Lenient stubs for methods we might touch indirectly
     lenient().when(peerManager.countConnectedPeers()).thenReturn(0);

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Set;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
@@ -170,6 +171,15 @@ public class NodeIPDetector {
   }
 
   /**
+   * Notifies detector plugins about changes in the public interface port set.
+   *
+   * @param ports current set of public interface ports to announce
+   */
+  public void notifyPortChange(Set<network.crypta.pluginmanager.ForwardPort> ports) {
+    ipDetectorManager.notifyPortChange(ports);
+  }
+
+  /**
    * Detects the current primary IP address candidates.
    *
    * <p>Combines local interface detection, plugin reports, peer inference, and configuration
@@ -186,7 +196,7 @@ public class NodeIPDetector {
 
     addedValidIP |= addOverrideIfPresent(addresses);
 
-    if (!node.dontDetect()) {
+    if (!node.network().dontDetect()) {
       addedValidIP |= innerDetect(addresses);
     }
 
@@ -213,7 +223,7 @@ public class NodeIPDetector {
   }
 
   private void updateValidIPAndAlerts(boolean addedValidIP) {
-    if (node.getClientCore() == null) {
+    if (node.services().clientCore() == null) {
       if (LOG.isDebugEnabled()) LOG.debug("Client core not initialized");
       synchronized (this) {
         hasValidIP = addedValidIP;
@@ -260,12 +270,12 @@ public class NodeIPDetector {
   }
 
   private void onAddedValidIP() {
-    node.getClientCore().getAlerts().unregister(primaryIPUndetectedAlert);
-    node.onAddedValidIP();
+    node.services().clientCore().getAlerts().unregister(primaryIPUndetectedAlert);
+    node.network().onAddedValidIP();
   }
 
   private void onNotAddedValidIP() {
-    node.getClientCore().getAlerts().register(primaryIPUndetectedAlert);
+    node.services().clientCore().getAlerts().register(primaryIPUndetectedAlert);
   }
 
   /**
@@ -340,9 +350,9 @@ public class NodeIPDetector {
 
   private PeerInferenceResult inferFromPeers(
       List<FreenetInetAddress> addresses, InetAddress[] detectedAddrs) {
-    if (node.getPeers() == null) return new PeerInferenceResult(0, false);
+    if (node.network().peers() == null) return new PeerInferenceResult(0, false);
 
-    PeerNode[] peerList = node.getPeers().myPeers();
+    PeerNode[] peerList = node.network().peers().myPeers();
     HashMap<FreenetInetAddress, Integer> countsByPeer = buildCountsByPeer(peerList);
 
     if (countsByPeer.isEmpty()) {
@@ -356,6 +366,7 @@ public class NodeIPDetector {
 
   private HashMap<FreenetInetAddress, Integer> buildCountsByPeer(PeerNode[] peerList) {
     HashMap<FreenetInetAddress, Integer> countsByPeer = new HashMap<>();
+    if (peerList == null) return countsByPeer;
     // Note: Could use a standard mutable int object
     for (PeerNode pn : peerList) {
       FreenetInetAddress addr = detectAddressFromPeer(pn);
@@ -482,7 +493,7 @@ public class NodeIPDetector {
   }
 
   public boolean hasDirectlyDetectedIP() {
-    InetAddress[] addrs = ipDetector.getAddress(node.getExecutor());
+    InetAddress[] addrs = ipDetector.getAddress(node.network().executor());
     if (addrs == null) return false;
     for (InetAddress addr : addrs) {
       if (IPUtil.isValidAddress(addr, false)) {
@@ -519,7 +530,7 @@ public class NodeIPDetector {
     if (forIPv6) mtuChanged |= minimumMTUIPv6.report(mtu);
     else mtuChanged |= minimumMTUIPv4.report(mtu);
 
-    if (mtuChanged) node.updateMTU();
+    if (mtuChanged) node.network().updateMTU();
   }
 
   /**
@@ -637,7 +648,7 @@ public class NodeIPDetector {
     }
 
     private void unregisterInvalidOverrideAlert() {
-      NodeClientCore cc = node.getClientCore();
+      NodeClientCore cc = node.services().clientCore();
       if (cc == null) return;
       network.crypta.node.useralerts.UserAlertManager alerts = cc.getAlerts();
       if (alerts == null) return;
@@ -752,11 +763,12 @@ public class NodeIPDetector {
     if (!haveValidAddressOverride) {
       onNotGetValidAddressOverride();
     }
-    node.getExecutor().execute(ipDetector, "IP address re-detector");
+    node.network().executor().execute(ipDetector, "IP address re-detector");
     redetectAddress();
     // Delay ARK insertion by 60 seconds to limit redundant inserts when IP detection lags startup.
     // Not a FastRunnable because the insert can take noticeable time to begin.
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             new Runnable() {
               @Override
@@ -780,7 +792,8 @@ public class NodeIPDetector {
     // Run off thread, but at high priority.
     // Initial messages don't need an up-to-date IP for the node itself, but
     // announcements do. However, announcements are not sent instantly.
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             new PrioRunnable() {
 
@@ -858,11 +871,11 @@ public class NodeIPDetector {
                 l10n("maybeSymmetricShort"),
                 UserAlert.ERROR);
       }
-      if (node.getClientCore() != null && node.getClientCore().getAlerts() != null)
-        node.getClientCore().getAlerts().register(maybeSymmetricAlert);
+      if (node.services().clientCore() != null && node.services().clientCore().getAlerts() != null)
+        node.services().clientCore().getAlerts().register(maybeSymmetricAlert);
     } else {
       if (maybeSymmetricAlert != null)
-        node.getClientCore().getAlerts().unregister(maybeSymmetricAlert);
+        node.services().clientCore().getAlerts().unregister(maybeSymmetricAlert);
     }
   }
 
@@ -918,7 +931,7 @@ public class NodeIPDetector {
   }
 
   private void onNotGetValidAddressOverride() {
-    node.getClientCore().getAlerts().register(invalidAddressOverrideAlert);
+    node.services().clientCore().getAlerts().register(invalidAddressOverrideAlert);
   }
 
   /** Adds the connection type UI box content via the plugin manager. */

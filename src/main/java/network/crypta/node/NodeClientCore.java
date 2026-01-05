@@ -186,14 +186,14 @@ public class NodeClientCore implements Persistable {
       MasterSecret persistentSecret)
       throws NodeInitException {
     this.node = node;
-    this.random = node.getRandom();
+    this.random = node.bootstrap().random();
     this.pluginStores = new PluginStores(node, init.installConfig());
 
     sortOrder = registerLazyStartDatastoreChecker(init, sortOrder);
 
     storeChecker =
         new DatastoreChecker(
-            node, lazyStartDatastoreChecker, node.getExecutor(), "Datastore checker");
+            node, lazyStartDatastoreChecker, node.network().executor(), "Datastore checker");
     byte[] pwdBuf = new byte[16];
     random.nextBytes(pwdBuf);
     compressor = new RealCompressor();
@@ -269,7 +269,7 @@ public class NodeClientCore implements Persistable {
     MasterSecret cryptoSecretTransient = new MasterSecret();
     tempBucketFactory =
         new TempBucketFactory(
-            node.getExecutor(),
+            node.network().executor(),
             tempFilenameGenerator,
             init.nodeConfig().getLong("maxRAMBucketSize"),
             init.nodeConfig().getLong("RAMBucketPoolSize"),
@@ -279,8 +279,8 @@ public class NodeClientCore implements Persistable {
 
     clientLayerPersister =
         new ClientLayerPersister(
-            node.getExecutor(),
-            node.getTicker(),
+            node.network().executor(),
+            node.network().ticker(),
             node,
             this,
             persistentTempBucketFactory,
@@ -321,21 +321,21 @@ public class NodeClientCore implements Persistable {
         new MemoryLimitedJobRunner(
             init.nodeConfig().getLong("memoryLimitedJobMemoryLimit"),
             init.nodeConfig().getInt("memoryLimitedJobThreadLimit"),
-            node.getExecutor(),
+            node.network().executor(),
             RequestStarter.NUMBER_OF_PRIORITY_CLASSES);
     installFecShutdownHooks(shutdownHook);
     clientContext =
         persistence.createClientContext(
             node,
             clientLayerPersister,
-            node.getExecutor(),
+            node.network().executor(),
             clientContextResources,
             persistentTempBucketFactory,
             tempBucketFactory,
             uskManager,
             random,
-            node.getFastWeakRandom(),
-            node.getTicker(),
+            node.bootstrap().fastWeakRandom(),
+            node.network().ticker(),
             memoryLimitedJobRunner,
             tempFilenameGenerator,
             persistentFilenameGenerator,
@@ -395,7 +395,7 @@ public class NodeClientCore implements Persistable {
     TextModeClientInterface directTMCI = endpointsInit.directTMCI();
     if (directTMCI != null) {
       endpoints.setDirectTMCI(directTMCI);
-      node.getExecutor().execute(directTMCI, "Direct text mode interface");
+      node.network().executor().execute(directTMCI, "Direct text mode interface");
     }
 
     // FProxy
@@ -503,7 +503,13 @@ public class NodeClientCore implements Persistable {
     // Do not register the UserAlert yet, since we haven't finished constructing stuff it uses.
   }
 
-  boolean lateInitDatabase(DatabaseKey databaseKey) {
+  /**
+   * Performs the late database initialization phase once a master key is available.
+   *
+   * @param databaseKey optional database encryption key
+   * @return {@code true} if initialization succeeded; {@code false} otherwise
+   */
+  public boolean lateInitDatabase(DatabaseKey databaseKey) {
     LOG.info("Late database initialisation: starting middle phase");
     if (initStorage(databaseKey)) {
       // Don't actually start the database thread yet, messy concurrency issues.
@@ -591,7 +597,7 @@ public class NodeClientCore implements Persistable {
       return new PersistentTempBucketFactory(
           persistentTempDir,
           "freenet-temp-",
-          node.getFastWeakRandom(),
+          node.bootstrap().fastWeakRandom(),
           init.nodeConfig().getBoolean(CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS));
     } catch (IOException e) {
       String msg = "Could not find or create persistent temporary directory: " + e;
@@ -631,7 +637,7 @@ public class NodeClientCore implements Persistable {
 
   private int computeMaxMemoryLimitedJobThreads() {
     int maxThreads = Runtime.getRuntime().availableProcessors() / 2;
-    maxThreads = Math.min(maxThreads, node.getNodeStats().getThreadLimit() / 20);
+    maxThreads = Math.min(maxThreads, node.network().stats().getThreadLimit() / 20);
     return Math.max(1, maxThreads);
   }
 
@@ -654,11 +660,12 @@ public class NodeClientCore implements Persistable {
       return;
     }
     LOG.warn("Cannot load persistent requests, awaiting password ...");
-    node.setDatabaseAwaitingPassword();
+    node.storage().setDatabaseAwaitingPassword();
   }
 
   private void installPhysicalThreatLevelListener() {
-    node.getSecurityLevels()
+    node.services()
+        .securityLevels()
         .addPhysicalThreatLevelListener((_, newLevel) -> onPhysicalThreatLevelChanged(newLevel));
   }
 
@@ -682,10 +689,10 @@ public class NodeClientCore implements Persistable {
   private void maybeReloadStorageAfterThreatChange() {
     if (!getClientLayerPersister().hasLoaded()) return;
     // May need to change filenames for client.dat* or even create them.
-    if (initStorage(NodeClientCore.this.getNode().getDatabaseKey())) {
+    if (initStorage(NodeClientCore.this.getNode().storage().getDatabaseKey())) {
       return;
     }
-    NodeClientCore.this.getNode().setDatabaseAwaitingPassword();
+    NodeClientCore.this.getNode().storage().setDatabaseAwaitingPassword();
   }
 
   private void installFecShutdownHooks(SemiOrderedShutdownHook shutdownHook) {
@@ -940,7 +947,7 @@ public class NodeClientCore implements Persistable {
   }
 
   private void deleteLegacyTempDirIfPresent(Node node) {
-    File oldTemp = node.runDir().file("temp-" + node.getDarknetPortNumber());
+    File oldTemp = node.runDir().file("temp-" + node.network().darknetPortNumber());
     if (oldTemp.exists() && oldTemp.isDirectory() && !FileUtil.equals(tempDir, oldTemp)) {
       LOG.info("Deleting old temporary dir: {}", oldTemp);
       try {
@@ -1050,17 +1057,18 @@ public class NodeClientCore implements Persistable {
 
     storeChecker.start();
     endpoints.maybeStart();
-    node.getPluginManager().start();
-    node.getIpDetector().ipDetectorManager.start();
+    node.services().pluginManager().start();
+    node.network().ipDetector().ipDetectorManager.start();
 
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             new PrioRunnable() {
 
               @Override
               public void run() {
                 LOG.info("Resuming persistent requests");
-                if (node.getDatabaseKey() != null) {
+                if (node.storage().getDatabaseKey() != null) {
                   try {
                     finishInitStorage();
                   } catch (Exception t) {

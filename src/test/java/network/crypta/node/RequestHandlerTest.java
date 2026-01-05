@@ -31,7 +31,9 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class RequestHandlerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerNode source;
   @Mock private PeerTransport transport;
   @Mock private RequestTag tag;
@@ -52,8 +54,8 @@ class RequestHandlerTest {
 
   @BeforeEach
   void setupNodeDefaults() {
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.getFailureTable()).thenReturn(failureTable);
+    when(node.network().stats()).thenReturn(nodeStats);
+    when(node.routing().failureTable()).thenReturn(failureTable);
     when(source.transport()).thenReturn(transport);
   }
 

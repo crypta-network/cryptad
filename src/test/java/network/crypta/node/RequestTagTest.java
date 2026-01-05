@@ -25,14 +25,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class RequestTagTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private RequestTracker tracker;
 
   private static final long UID = 1234L;
 
   @BeforeEach
   void setup() {
-    when(node.getTracker()).thenReturn(tracker);
+    when(node.routing().tracker()).thenReturn(tracker);
   }
 
   private static RequestTag newLocalTag(Node node) {

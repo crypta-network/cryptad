@@ -49,7 +49,10 @@ class UserAlertManagerTest {
   private static final XPath X_PATH = XPathFactory.newInstance().newXPath();
 
   @Mock private NodeClientCore nodeClientCore;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private ClientContext clientContext;
   @Mock private PriorityAwareExecutor executor;
 
@@ -59,7 +62,7 @@ class UserAlertManagerTest {
   void setUp() {
     L10nTestUtils.useTestTranslation();
     lenient().when(nodeClientCore.getNode()).thenReturn(node);
-    lenient().when(node.getDarknetPubKeyHash()).thenReturn(new byte[] {1, 2, 3, 4});
+    lenient().when(node.network().darknetPubKeyHash()).thenReturn(new byte[] {1, 2, 3, 4});
     lenient().when(nodeClientCore.getClientContext()).thenReturn(clientContext);
     lenient().when(clientContext.getMainExecutor()).thenReturn(executor);
     lenient().when(nodeClientCore.getFormPassword()).thenReturn("form-password");

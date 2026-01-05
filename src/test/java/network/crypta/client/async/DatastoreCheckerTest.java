@@ -80,7 +80,9 @@ class DatastoreCheckerTest {
     }
   }
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private ClientRequestScheduler scheduler;
 
   private TestExecutor executor;
@@ -468,12 +470,13 @@ class DatastoreCheckerTest {
             false);
 
     KeyBlock block = mock(KeyBlock.class);
-    when(node.fetch(any(Key.class), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any()))
+    when(node.storage()
+            .fetch(any(Key.class), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any()))
         .thenReturn(block);
 
     checker.queueRequest(getter, null);
 
-    verify(node, times(2))
+    verify(node.storage(), times(2))
         .fetch(any(Key.class), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any());
     verify(scheduler, times(2)).tripPendingKey(block);
     verify(scheduler, times(1))

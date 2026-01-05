@@ -50,14 +50,20 @@ class ClientPutComplexDirMessageTest {
   @Mock private PersistentTempBucketFactory persistentBucketFactory;
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
 
   @TempDir Path tempDir;
 
   @BeforeEach
   void setUp() throws IOException {
-    lenient().when(node.getClientCore()).thenReturn(core);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    lenient().when(node.services()).thenReturn(services);
+    lenient().when(services.clientCore()).thenReturn(core);
     lenient().when(core.allowUploadFrom(any(File.class))).thenReturn(true);
     lenient()
         .when(persistentBucketFactory.makeBucket(anyLong()))

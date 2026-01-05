@@ -312,7 +312,8 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       LOGGER.info("SEED-TIME:{}", seedTimeMillis);
       csvLine.add(String.valueOf(seedTimeMillis));
 
-      HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
+      HighLevelSimpleClient client =
+          node.services().clientCore().makeClient((short) 0, false, false);
       insertBlocksAndRecord(node, client, csvLine);
 
       FetchContext fctx = configureFetchContext(client);
@@ -772,12 +773,13 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
   }
 
   private static RandomAccessBucket randomData(Node node) throws IOException {
-    RandomAccessBucket data = node.getClientCore().getTempBucketFactory().makeBucket(TEST_SIZE);
+    RandomAccessBucket data =
+        node.services().clientCore().getTempBucketFactory().makeBucket(TEST_SIZE);
     try (OutputStream os = data.getOutputStream()) {
       byte[] buf = new byte[4096];
       long written = 0;
       while (written < TEST_SIZE) {
-        node.getFastWeakRandom().nextBytes(buf);
+        node.bootstrap().fastWeakRandom().nextBytes(buf);
         int toWrite = (int) Math.min(TEST_SIZE - written, buf.length);
         os.write(buf, 0, toWrite);
         written += toWrite;

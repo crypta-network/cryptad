@@ -153,7 +153,7 @@ public class PluginManager {
     // config
 
     this.node = node;
-    this.core = node.getClientCore();
+    this.core = node.services().clientCore();
 
     if (LOG.isTraceEnabled()) LOG.debug("Starting Plugin Manager");
 
@@ -163,7 +163,7 @@ public class PluginManager {
 
     // callback executor
     executor = new SerialExecutor(PriorityLevel.NORM_PRIORITY.value);
-    executor.start(node.getExecutor(), "PM callback executor");
+    executor.start(node.network().executor(), "PM callback executor");
 
     SubConfig pmconfig = node.getConfig().createSubConfig("pluginmanager");
     pmconfig.register(
@@ -270,7 +270,8 @@ public class PluginManager {
     final Semaphore startingPlugins = new Semaphore(0);
     for (final String name : toStart) {
       core.getNode()
-          .getExecutor()
+          .network()
+          .executor()
           .execute(
               () -> {
                 startPluginAuto(name, false);
@@ -279,7 +280,8 @@ public class PluginManager {
     }
 
     core.getNode()
-        .getExecutor()
+        .network()
+        .executor()
         .execute(
             () -> {
               startingPlugins.acquireUninterruptibly(toStart.length);
@@ -635,7 +637,7 @@ public class PluginManager {
     synchronized (this) {
       if (store) core.storeConfig();
     }
-    if (pi != null) node.getNodeUpdater().startPluginUpdater(filename);
+    if (pi != null) node.services().nodeUpdater().startPluginUpdater(filename);
     return pi;
   }
 
@@ -650,7 +652,7 @@ public class PluginManager {
     }
     // Retry forever...
     final PluginDownLoader<?> retry = pdl.getRetryDownloader();
-    node.getTicker().queueTimedJob(() -> realStartPlugin(retry, filename, store, true), 0);
+    node.network().ticker().queueTimedJob(() -> realStartPlugin(retry, filename, store, true), 0);
     return true;
   }
 
@@ -708,7 +710,7 @@ public class PluginManager {
     @Override
     public void onDismiss() {
       loadedPlugins.removeFailedPlugin(filename);
-      node.getExecutor().execute(() -> cancelRunningLoads(filename, null));
+      node.network().executor().execute(() -> cancelRunningLoads(filename, null));
     }
 
     @Override
@@ -745,7 +747,9 @@ public class PluginManager {
           reloadForm.addChild(
               HTML_TAG_INPUT,
               new String[] {"type", "name", HTML_ATTR_VALUE},
-              new String[] {"hidden", "formPassword", node.getClientCore().getFormPassword()});
+              new String[] {
+                "hidden", "formPassword", node.services().clientCore().getFormPassword()
+              });
           reloadForm.addChild(
               HTML_TAG_INPUT,
               new String[] {"type", "name", HTML_ATTR_VALUE},
@@ -850,11 +854,13 @@ public class PluginManager {
     }
 
     if (pi.isIPDetectorPlugin())
-      node.getIpDetector().registerIPDetectorPlugin((FredPluginIPDetector) plug);
+      node.network().ipDetector().registerIPDetectorPlugin((FredPluginIPDetector) plug);
     if (pi.isPortForwardPlugin())
-      node.getIpDetector().registerPortForwardPlugin((FredPluginPortForward) plug);
+      node.network().ipDetector().registerPortForwardPlugin((FredPluginPortForward) plug);
     if (pi.isBandwidthIndicator())
-      node.getIpDetector().registerBandwidthIndicatorPlugin((FredPluginBandwidthIndicator) plug);
+      node.network()
+          .ipDetector()
+          .registerBandwidthIndicatorPlugin((FredPluginBandwidthIndicator) plug);
   }
 
   /**
@@ -1804,7 +1810,7 @@ public class PluginManager {
   }
 
   Ticker getTicker() {
-    return node.getTicker();
+    return node.network().ticker();
   }
 
   /**
@@ -2113,12 +2119,14 @@ public class PluginManager {
       core.getEndpoints().getToadletContainer().unregister(wrapper.getConfigToadlet());
     }
     if (wrapper.isIPDetectorPlugin())
-      node.getIpDetector().unregisterIPDetectorPlugin((FredPluginIPDetector) plug);
+      node.network().ipDetector().unregisterIPDetectorPlugin((FredPluginIPDetector) plug);
     if (wrapper.isPortForwardPlugin())
-      node.getIpDetector().unregisterPortForwardPlugin((FredPluginPortForward) plug);
+      node.network().ipDetector().unregisterPortForwardPlugin((FredPluginPortForward) plug);
     if (wrapper.isBandwidthIndicator())
-      node.getIpDetector().unregisterBandwidthIndicatorPlugin((FredPluginBandwidthIndicator) plug);
-    if (!reloading) node.getNodeUpdater().stopPluginUpdater(wrapper.getFilename());
+      node.network()
+          .ipDetector()
+          .unregisterBandwidthIndicatorPlugin((FredPluginBandwidthIndicator) plug);
+    if (!reloading) node.services().nodeUpdater().stopPluginUpdater(wrapper.getFilename());
   }
 
   /**

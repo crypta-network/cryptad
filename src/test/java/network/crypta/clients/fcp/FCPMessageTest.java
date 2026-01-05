@@ -58,7 +58,7 @@ class FCPMessageTest {
   void wrappedMessageDelegatesRun() throws MessageInvalidException {
     FCPMessage wrappedMessage = FCPMessage.withListRequestIdentifier(originalMessage, IDENTIFIER);
     FCPConnectionHandler connectionHandler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     wrappedMessage.run(connectionHandler, node);
     verify(originalMessage).run(connectionHandler, node);
   }

@@ -35,7 +35,9 @@ import org.mockito.quality.Strictness;
 @SuppressWarnings("java:S100")
 class SSKInsertHandlerTest {
 
-  @Mock Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
   @Mock PeerNode source;
   @Mock PeerTransport transport;
   @Mock MessageCore usm;
@@ -78,9 +80,9 @@ class SSKInsertHandlerTest {
 
   @BeforeEach
   void setUp() {
-    when(node.getUSM()).thenReturn(usm);
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.getGetPubKey()).thenReturn(getPubKey);
+    when(node.network().usm()).thenReturn(usm);
+    when(node.network().stats()).thenReturn(nodeStats);
+    when(node.storage().getPubKey()).thenReturn(getPubKey);
     when(source.transport()).thenReturn(transport);
     // Minimal required stubbing for constructor path
     when(nodeSSK.getPubKeyHash()).thenReturn(new byte[32]);

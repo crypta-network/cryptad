@@ -166,7 +166,7 @@ class AddPeerTest {
 
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(false);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
@@ -186,16 +186,19 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetPeerNode peerNode = mock(OpennetPeerNode.class);
-    when(node.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
-    when(node.getOpennetPubKeyHash()).thenReturn(new byte[] {1});
-    when(node.addPeerConnection(peerNode)).thenReturn(true);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
+    when(network.opennetPubKeyHash()).thenReturn(new byte[] {1});
+    when(network.addPeerConnection(peerNode)).thenReturn(true);
 
     addPeer.run(handler, node);
 
-    verify(node).createNewOpennetNode(any(SimpleFieldSet.class));
-    verify(node).addPeerConnection(peerNode);
+    verify(network).createNewOpennetNode(any(SimpleFieldSet.class));
+    verify(network).addPeerConnection(peerNode);
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(messageCaptor.capture());
     FCPMessage sent = messageCaptor.getValue();
@@ -214,13 +217,14 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     DarknetPeerNode peerNode = mock(DarknetPeerNode.class);
-    when(node.getDarknetPubKeyHash()).thenReturn(new byte[] {1});
-    when(node.addPeerConnection(peerNode)).thenReturn(true);
+    when(node.network().darknetPubKeyHash()).thenReturn(new byte[] {1});
+    when(node.network().addPeerConnection(peerNode)).thenReturn(true);
 
-    when(node.createNewDarknetNode(
-            any(SimpleFieldSet.class), any(FRIEND_TRUST.class), any(FRIEND_VISIBILITY.class)))
+    when(node.network()
+            .createNewDarknetNode(
+                any(SimpleFieldSet.class), any(FRIEND_TRUST.class), any(FRIEND_VISIBILITY.class)))
         .thenReturn(peerNode);
 
     addPeer.run(handler, node);
@@ -229,10 +233,10 @@ class AddPeerTest {
     ArgumentCaptor<FRIEND_VISIBILITY> visibilityCaptor =
         ArgumentCaptor.forClass(FRIEND_VISIBILITY.class);
 
-    verify(node)
+    verify(node.network())
         .createNewDarknetNode(
             any(SimpleFieldSet.class), trustCaptor.capture(), visibilityCaptor.capture());
-    verify(node).addPeerConnection(peerNode);
+    verify(node.network()).addPeerConnection(peerNode);
 
     assertEquals(FRIEND_TRUST.NORMAL, trustCaptor.getValue());
     assertEquals(FRIEND_VISIBILITY.YES, visibilityCaptor.getValue());
@@ -247,16 +251,19 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetPeerNode peerNode = mock(OpennetPeerNode.class);
-    when(node.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
-    when(node.getOpennetPubKeyHash()).thenReturn(null);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
+    when(network.opennetPubKeyHash()).thenReturn(null);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
 
     assertEquals(ProtocolErrorMessage.CANNOT_PEER_WITH_SELF, exception.protocolCode);
-    verify(node, never()).addPeerConnection(any(PeerNode.class));
+    verify(network, never()).addPeerConnection(any(PeerNode.class));
   }
 
   @Test
@@ -268,11 +275,14 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetPeerNode peerNode = mock(OpennetPeerNode.class);
-    when(node.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
-    when(node.getOpennetPubKeyHash()).thenReturn(new byte[] {1});
-    when(node.addPeerConnection(peerNode)).thenReturn(false);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.createNewOpennetNode(any(SimpleFieldSet.class))).thenReturn(peerNode);
+    when(network.opennetPubKeyHash()).thenReturn(new byte[] {1});
+    when(network.addPeerConnection(peerNode)).thenReturn(false);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));
@@ -289,8 +299,8 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
-    when(node.createNewOpennetNode(any(SimpleFieldSet.class)))
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
         .thenThrow(new FSParseException("parse-error"));
 
     MessageInvalidException exception =
@@ -309,8 +319,8 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
-    when(node.createNewOpennetNode(any(SimpleFieldSet.class)))
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
         .thenThrow(new OpennetDisabledException("disabled"));
 
     MessageInvalidException exception =
@@ -329,8 +339,8 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
-    when(node.createNewOpennetNode(any(SimpleFieldSet.class)))
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
         .thenThrow(new ReferenceSignatureVerificationException("bad-sig"));
 
     MessageInvalidException exception =
@@ -348,8 +358,8 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
-    when(node.createNewOpennetNode(any(SimpleFieldSet.class)))
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(node.network().createNewOpennetNode(any(SimpleFieldSet.class)))
         .thenThrow(new PeerTooOldException("too-old", 1, null));
 
     MessageInvalidException exception =
@@ -367,9 +377,10 @@ class AddPeerTest {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
 
-    Node node = mock(Node.class);
-    when(node.createNewDarknetNode(
-            any(SimpleFieldSet.class), any(FRIEND_TRUST.class), any(FRIEND_VISIBILITY.class)))
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(node.network()
+            .createNewDarknetNode(
+                any(SimpleFieldSet.class), any(FRIEND_TRUST.class), any(FRIEND_VISIBILITY.class)))
         .thenThrow(new ReferenceSignatureVerificationException("bad-sig"));
 
     MessageInvalidException exception =
@@ -388,7 +399,7 @@ class AddPeerTest {
 
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(true);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> addPeer.run(handler, node));

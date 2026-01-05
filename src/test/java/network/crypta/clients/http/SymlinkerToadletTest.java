@@ -33,7 +33,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class SymlinkerToadletTest {
 
   @Mock private HighLevelSimpleClient client;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PersistentConfig persistentConfig;
   @Mock private SubConfig subConfig;
   @Mock private NodeClientCore nodeClientCore;
@@ -66,7 +69,10 @@ class SymlinkerToadletTest {
   @Test
   void addLink_whenStoreTrue_persistsAndRedirects() {
     when(subConfig.getStringArr("symlinks")).thenReturn(new String[0]);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     SymlinkerToadlet toadlet = new SymlinkerToadlet(client, node);
 
     boolean added = toadlet.addLink("/alias/", "/dest/", true);
@@ -85,7 +91,10 @@ class SymlinkerToadletTest {
   @Test
   void removeLink_whenExistingAlias_returnsTrueAndPreventsRedirect() throws Exception {
     when(subConfig.getStringArr("symlinks")).thenReturn(new String[0]);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     SymlinkerToadlet toadlet = new SymlinkerToadlet(client, node);
 
     toadlet.addLink("/remove/", "/kept/", false);

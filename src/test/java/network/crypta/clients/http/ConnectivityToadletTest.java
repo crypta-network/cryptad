@@ -42,7 +42,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ConnectivityToadletTest {
 
   @Mock HighLevelSimpleClient client;
-  @Mock Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
   @Mock PersistentConfig config;
   @Mock ToadletContext ctx;
   @Mock HTTPRequest request;
@@ -65,13 +68,16 @@ class ConnectivityToadletTest {
     PageMaker pageMaker = stubPageMaker(content);
 
     setConfigPorts(true, 8080, false, 0, false, 0);
-    when(node.getFNPPort()).thenReturn(12345);
-    when(node.getOpennetFNPPort()).thenReturn(33333);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.fnpPort()).thenReturn(12345);
+    when(network.opennetFnpPort()).thenReturn(33333);
     when(node.getConfig()).thenReturn(config);
-    when(node.getPacketSocketHandlers()).thenReturn(new UdpSocketHandler[0]);
+    when(network.packetSocketHandlers()).thenReturn(new UdpSocketHandler[0]);
 
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    when(network.ipDetector()).thenReturn(ipDetector);
     doAnswer(invocation -> ((HTMLNode) invocation.getArgument(0)).addChild("div", "ip"))
         .when(ipDetector)
         .addConnectionTypeBox(any(HTMLNode.class));
@@ -105,8 +111,11 @@ class ConnectivityToadletTest {
     PageMaker pageMaker = stubPageMaker(content);
 
     setConfigPorts(false, 9090, true, 9481, true, 2222);
-    when(node.getFNPPort()).thenReturn(54321);
-    when(node.getOpennetFNPPort()).thenReturn(0);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.fnpPort()).thenReturn(54321);
+    when(network.opennetFnpPort()).thenReturn(0);
     when(node.getConfig()).thenReturn(config);
 
     PeerAddressTrackerItem peerItem =
@@ -131,10 +140,10 @@ class ConnectivityToadletTest {
     when(handler.getTitle()).thenReturn("udp-9999");
     when(handler.getAddressTracker()).thenReturn(tracker);
 
-    when(node.getPacketSocketHandlers()).thenReturn(new UdpSocketHandler[] {handler});
+    when(network.packetSocketHandlers()).thenReturn(new UdpSocketHandler[] {handler});
 
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    when(network.ipDetector()).thenReturn(ipDetector);
     doAnswer(invocation -> ((HTMLNode) invocation.getArgument(0)).addChild("div", "ip"))
         .when(ipDetector)
         .addConnectionTypeBox(any(HTMLNode.class));

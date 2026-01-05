@@ -29,7 +29,9 @@ class NodeGetPubkeyTest {
 
   private static final byte[] HASH = new byte[] {1, 2, 3, 4, 5};
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PubkeyStore store;
   @Mock private PubkeyStore cache;
   @Mock private PubkeyStore clientCache;
@@ -89,7 +91,7 @@ class NodeGetPubkeyTest {
   void getKey_whenClientCacheMiss_usesOldClientCacheBeforeStores() throws Exception {
     uut.setLocalDataStore(clientCache);
     when(node.getWriteLocalToDatastore()).thenReturn(true);
-    when(node.getOldPKClientCache()).thenReturn(oldClientCache);
+    when(node.storage().getOldPKClientCache()).thenReturn(oldClientCache);
     DSAPublicKey k = newKey(12);
     org.mockito.Mockito.doReturn(null)
         .when(clientCache)
@@ -111,8 +113,8 @@ class NodeGetPubkeyTest {
     when(node.getWriteLocalToDatastore()).thenReturn(false);
     org.mockito.Mockito.doReturn(null).when(store).fetch(any(), anyBoolean(), anyBoolean(), any());
     org.mockito.Mockito.doReturn(null).when(cache).fetch(any(), anyBoolean(), anyBoolean(), any());
-    when(node.getOldPK()).thenReturn(oldStore);
-    when(node.getOldPKCache()).thenReturn(oldCache);
+    when(node.storage().getOldPK()).thenReturn(oldStore);
+    when(node.storage().getOldPKCache()).thenReturn(oldCache);
     org.mockito.Mockito.doReturn(null)
         .when(oldStore)
         .fetch(any(), anyBoolean(), anyBoolean(), any());

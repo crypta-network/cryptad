@@ -32,7 +32,10 @@ class ModifyPeerTest {
   private static final String NODE_IDENTIFIER = "peer-123";
 
   @Mock FCPConnectionHandler handler;
-  @Mock Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
   @Mock DarknetPeerNode darknetPeerNode;
   @Mock PeerNode peerNode;
 
@@ -80,7 +83,7 @@ class ModifyPeerTest {
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, ex.protocolCode);
     assertEquals(IDENTIFIER, ex.ident);
-    verify(node, never()).getPeerNode(anyString());
+    verify(node.network(), never()).getPeerNode(anyString());
     verify(handler, never()).send(any());
   }
 
@@ -89,7 +92,7 @@ class ModifyPeerTest {
     SimpleFieldSet fs = baseFieldSet();
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode(NODE_IDENTIFIER)).thenReturn(null);
+    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(null);
 
     modifyPeer.run(handler, node);
 
@@ -106,7 +109,7 @@ class ModifyPeerTest {
     SimpleFieldSet fs = baseFieldSet();
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode(NODE_IDENTIFIER)).thenReturn(peerNode);
+    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(peerNode);
 
     MessageInvalidException ex =
         assertThrows(MessageInvalidException.class, () -> modifyPeer.run(handler, node));
@@ -126,7 +129,7 @@ class ModifyPeerTest {
     fs.putSingle("AllowLocalAddresses", "FALSE");
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
 
     modifyPeer.run(handler, node);
 
@@ -153,7 +156,7 @@ class ModifyPeerTest {
     fs.putSingle("IsDisabled", "false");
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
 
     modifyPeer.run(handler, node);
 
@@ -174,7 +177,7 @@ class ModifyPeerTest {
     fs.putSingle("AllowLocalAddresses", "");
     ModifyPeer modifyPeer = new ModifyPeer(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
+    when(node.network().getPeerNode(NODE_IDENTIFIER)).thenReturn(darknetPeerNode);
 
     modifyPeer.run(handler, node);
 

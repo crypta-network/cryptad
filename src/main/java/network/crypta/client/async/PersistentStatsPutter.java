@@ -129,7 +129,7 @@ public class PersistentStatsPutter implements Serializable {
   public void updateData(Node n) {
     // Update our values
     // 0 : total bytes out, 1 : total bytes in
-    final long[] nodeBW = n.getCollector().getTotalIO();
+    final long[] nodeBW = n.network().collector().getTotalIO();
     this.latestBW.setTotalBytesOut(
         this.latestBW.getTotalBytesOut() + nodeBW[0] - this.latestNodeBytesOut);
     this.latestBW.setTotalBytesIn(
@@ -138,7 +138,7 @@ public class PersistentStatsPutter implements Serializable {
     this.latestNodeBytesOut = nodeBW[0];
     this.latestNodeBytesIn = nodeBW[1];
 
-    final long uptime = n.getUptime();
+    final long uptime = n.network().uptime();
     this.latestUptime.setTotalUptime(
         this.latestUptime.getTotalUptime() + uptime - this.latestUptimeVal);
     this.latestUptime.setCreationTime(System.currentTimeMillis());

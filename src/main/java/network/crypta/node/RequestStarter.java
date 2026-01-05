@@ -97,7 +97,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
       boolean isSSK,
       boolean realTime) {
     this.core = node;
-    this.stats = node.getNode().getNodeStats();
+    this.stats = node.getNode().network().stats();
     this.throttle = throttle;
     this.name = name + (realTime ? " (realtime)" : " (bulk)");
     this.averageOutputBytesPerRequest = averageOutputBytesPerRequest;
@@ -112,7 +112,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   }
 
   void start() {
-    core.getNode().getExecutor().execute(this, name);
+    core.getNode().network().executor().execute(this, name);
   }
 
   final String name;
@@ -170,8 +170,8 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
 
   private boolean shouldDeferForOpennet() {
     OpennetManager om;
-    return core.getNode().getPeers().countConnectedPeers() < 3
-        && (om = core.getNode().getOpennet()) != null
+    return core.getNode().network().peers().countConnectedPeers() < 3
+        && (om = core.getNode().network().opennet()) != null
         && System.currentTimeMillis() - om.getCreationTime() < MINUTES.toMillis(5);
   }
 
@@ -290,7 +290,8 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
     if (LOG.isDebugEnabled())
       LOG.debug("Start request {} with priority {}", req, req.getPriority());
     core.getNode()
-        .getExecutor()
+        .network()
+        .executor()
         .execute(new SenderThread(req, req.key), "RequestStarter$SenderThread for " + req);
     return true;
   }

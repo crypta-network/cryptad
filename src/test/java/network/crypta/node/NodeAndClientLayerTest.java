@@ -75,7 +75,7 @@ class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     params.setExecutor(executor);
     Node node = NodeStarter.createTestNode(params);
     node.start(false);
-    HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
+    HighLevelSimpleClient client = node.services().clientCore().makeClient((short) 0, false, false);
     InsertContext ictx = client.getInsertContext(true);
     ictx.setLocalRequestOnly(true);
     FreenetURI uri = client.insert(block, "", (short) 0, ictx);

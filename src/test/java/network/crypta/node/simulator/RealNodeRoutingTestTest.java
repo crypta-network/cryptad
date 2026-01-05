@@ -31,8 +31,8 @@ class RealNodeRoutingTestTest {
     Node[] nodes = new Node[] {node0, node1};
     RandomSource random = alternatingRandomSource();
 
-    when(node1.getDarknetPubKeyHash()).thenReturn(new byte[32]);
-    when(node0.routedPing(anyDouble(), any(byte[].class))).thenReturn(1);
+    when(node1.network().darknetPubKeyHash()).thenReturn(new byte[32]);
+    when(node0.network().routedPing(anyDouble(), any(byte[].class))).thenReturn(1);
 
     try (MockedStatic<RealNodeTest> realNodeTest = mockStatic(RealNodeTest.class);
         MockedStatic<LocationManager> locationManager = mockStatic(LocationManager.class)) {
@@ -44,7 +44,7 @@ class RealNodeRoutingTestTest {
       assertDoesNotThrow(() -> RealNodeRoutingTest.waitForPingAverage(0.9, nodes, random, 2, 0));
     }
 
-    verify(node0, times(20)).routedPing(anyDouble(), any(byte[].class));
+    verify(node0.network(), times(20)).routedPing(anyDouble(), any(byte[].class));
   }
 
   @Test
@@ -54,9 +54,9 @@ class RealNodeRoutingTestTest {
     Node[] nodes = new Node[] {node0, node1};
     RandomSource random = alternatingRandomSource();
 
-    when(node1.getDarknetPubKeyHash()).thenReturn(new byte[32]);
+    when(node1.network().darknetPubKeyHash()).thenReturn(new byte[32]);
     AtomicInteger pingCount = new AtomicInteger();
-    when(node0.routedPing(anyDouble(), any(byte[].class)))
+    when(node0.network().routedPing(anyDouble(), any(byte[].class)))
         .thenAnswer(invocation -> pingCount.getAndIncrement() < 5 ? -1 : 1);
 
     try (MockedStatic<RealNodeTest> realNodeTest = mockStatic(RealNodeTest.class);
@@ -69,7 +69,7 @@ class RealNodeRoutingTestTest {
       assertDoesNotThrow(() -> RealNodeRoutingTest.waitForPingAverage(0.6, nodes, random, 2, 0));
     }
 
-    verify(node0, times(20)).routedPing(anyDouble(), any(byte[].class));
+    verify(node0.network(), times(20)).routedPing(anyDouble(), any(byte[].class));
   }
 
   @Test
@@ -93,19 +93,19 @@ class RealNodeRoutingTestTest {
   }
 
   private static Node mockNodeForPing(double location, int port) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager locationManager = mockLocationManager();
-    when(node.getLocation()).thenReturn(location);
-    when(node.getDarknetPortNumber()).thenReturn(port);
-    when(node.getLocationManager()).thenReturn(locationManager);
+    when(node.network().location()).thenReturn(location);
+    when(node.network().darknetPortNumber()).thenReturn(port);
+    when(node.network().locationManager()).thenReturn(locationManager);
     return node;
   }
 
   private static Node mockNodeForSetup(double location) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager locationManager = mockLocationManager();
-    when(node.getLocation()).thenReturn(location);
-    when(node.getLocationManager()).thenReturn(locationManager);
+    when(node.network().location()).thenReturn(location);
+    when(node.network().locationManager()).thenReturn(locationManager);
     return node;
   }
 

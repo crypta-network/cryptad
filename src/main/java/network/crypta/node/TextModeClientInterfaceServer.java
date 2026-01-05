@@ -80,8 +80,8 @@ public class TextModeClientInterfaceServer implements Runnable {
   TextModeClientInterfaceServer(
       Node node, NodeClientCore core, int port, String bindTo, String allowedHosts) {
     this.n = node;
-    this.core = n.getClientCore();
-    this.r = n.getRandom();
+    this.core = n.services().clientCore();
+    this.r = n.bootstrap().random();
     this.downloadsDir = core.getDownloadsDir();
     this.port = port;
     this.bindTo = bindTo;
@@ -89,9 +89,10 @@ public class TextModeClientInterfaceServer implements Runnable {
     this.isEnabled = true;
     if (ssl) {
       networkInterface =
-          SSLNetworkInterface.create(port, bindTo, allowedHosts, n.getExecutor(), true);
+          SSLNetworkInterface.create(port, bindTo, allowedHosts, n.network().executor(), true);
     } else {
-      networkInterface = NetworkInterface.create(port, bindTo, allowedHosts, n.getExecutor(), true);
+      networkInterface =
+          NetworkInterface.create(port, bindTo, allowedHosts, n.network().executor(), true);
     }
   }
 
@@ -100,7 +101,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     TextModeClientInterfaceConsole.print(
         "TMCI started on " + networkInterface.getAllowedHosts() + ':' + port);
 
-    n.getExecutor().execute(this, "Text mode client interface");
+    n.network().executor().execute(this, "Text mode client interface");
   }
 
   /**
@@ -455,7 +456,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     InputStream in = s.getInputStream();
     OutputStream out = s.getOutputStream();
     TextModeClientInterface tmci = new TextModeClientInterface(this, in, out);
-    n.getExecutor().execute(tmci, "Text mode client interface handler for " + s.getPort());
+    n.network().executor().execute(tmci, "Text mode client interface handler for " + s.getPort());
   }
 
   private void closeNetworkInterfaceQuietly() {

@@ -271,7 +271,8 @@ public class NodeUpdateManager {
 
     this.revocationChecker =
         new RevocationChecker(
-            this, new File(node.getClientCore().getPersistentTempDir(), "revocation-key.fblob"));
+            this,
+            new File(node.services().clientCore().getPersistentTempDir(), "revocation-key.fblob"));
 
     this.uom = new UpdateOverMandatoryManager(this);
     this.uom.removeOldTempFiles();
@@ -294,7 +295,7 @@ public class NodeUpdateManager {
     }
 
     public void start(short priority, long maxSize) {
-      HighLevelSimpleClient hlsc = node.getClientCore().makeClient(priority, false, false);
+      HighLevelSimpleClient hlsc = node.services().clientCore().makeClient(priority, false, false);
       FetchContext context = hlsc.getFetchContext();
       context.setMaxNonSplitfileRetries(-1);
       context.setMaxSplitfileBlockRetries(-1);
@@ -302,7 +303,7 @@ public class NodeUpdateManager {
       context.setMaxOutputLength(maxSize);
       ClientGetter get = new ClientGetter(this, freenetURI, context, priority, null, null, null);
       try {
-        node.getClientCore().getClientContext().start(get);
+        node.services().clientCore().getClientContext().start(get);
       } catch (PersistenceDisabledException _) {
         // Impossible
       } catch (FetchException e) {
@@ -366,7 +367,8 @@ public class NodeUpdateManager {
       try {
         Thread.sleep(
             SECONDS.toMillis(1)
-                + node.getFastWeakRandom()
+                + node.bootstrap()
+                    .fastWeakRandom()
                     .nextInt(
                         (int)
                             SECONDS.toMillis(
@@ -458,7 +460,7 @@ public class NodeUpdateManager {
    */
   public void start() {
 
-    node.getClientCore().getAlerts().register(alert);
+    node.services().clientCore().getAlerts().register(alert);
 
     enable(wasEnabledOnStartup);
 
@@ -489,7 +491,8 @@ public class NodeUpdateManager {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Broadcasting UOM announcements");
     }
-    node.getPeers()
+    node.network()
+        .peers()
         .messenger()
         .localBroadcast(msg, true, true, getByteCounter(), TRANSITION_VERSION, Integer.MAX_VALUE);
   }
@@ -510,8 +513,8 @@ public class NodeUpdateManager {
         .revocationDNFCount(getRevocationChecker().getRevocationDNFCounter())
         .revocationKeyLength(getRevocationChecker().getBlobSize())
         .mainJarLength(blobSize)
-        .pingTime((int) node.getNodeStats().getNodeAveragePingTime())
-        .bwlimitDelayTime((int) node.getNodeStats().getBwlimitDelayTime())
+        .pingTime((int) node.network().stats().getNodeAveragePingTime())
+        .bwlimitDelayTime((int) node.network().stats().getBwlimitDelayTime())
         .build();
   }
 
@@ -607,7 +610,7 @@ public class NodeUpdateManager {
   }
 
   private void startPluginUpdaters() {
-    for (OfficialPluginDescription plugin : node.getPluginManager().getOfficialPlugins()) {
+    for (OfficialPluginDescription plugin : node.services().pluginManager().getOfficialPlugins()) {
       startPluginUpdater(plugin.name);
     }
   }
@@ -624,7 +627,7 @@ public class NodeUpdateManager {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Starting plugin updater for {}", plugName);
     }
-    OfficialPluginDescription plugin = node.getPluginManager().getOfficialPlugin(plugName);
+    OfficialPluginDescription plugin = node.services().pluginManager().getOfficialPlugin(plugName);
     if (plugin != null) {
       startPluginUpdater(plugin);
     } else
@@ -639,8 +642,8 @@ public class NodeUpdateManager {
     // @see https://emu.freenetproject.org/pipermail/devl/2015-November/038581.html
     long minVer = (plugin.essential ? plugin.minimumVersion : plugin.recommendedVersion);
     // But it might already be past that ...
-    PluginInfoWrapper info = node.getPluginManager().findPluginByIdentifier(name);
-    if (info == null && !node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad(name)) {
+    PluginInfoWrapper info = node.services().pluginManager().findPluginByIdentifier(name);
+    if (info == null && !node.services().pluginManager().isPluginLoadedOrLoadingOrWantLoad(name)) {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Plugin not loaded");
       }
@@ -659,7 +662,7 @@ public class NodeUpdateManager {
             (plugin.essential ? (int) minVer : Integer.MAX_VALUE),
             name + "-",
             name,
-            node.getPluginManager(),
+            node.services().pluginManager(),
             false);
     synchronized (this) {
       if (pluginUpdaters == null) {
@@ -686,7 +689,7 @@ public class NodeUpdateManager {
    * @param plugName the plugin identifier used for loading/configuration, without {@code .jar}
    */
   public void stopPluginUpdater(String plugName) {
-    OfficialPluginDescription plugin = node.getPluginManager().getOfficialPlugin(plugName);
+    OfficialPluginDescription plugin = node.services().pluginManager().getOfficialPlugin(plugName);
     if (plugin == null) {
       return; // Not an official plugin
     }
@@ -959,7 +962,7 @@ public class NodeUpdateManager {
     }
     if (revocationAlert == null) {
       revocationAlert = new RevocationKeyFoundUserAlert(msg, disabledNotBlown);
-      node.getClientCore().getAlerts().register(revocationAlert);
+      node.services().clientCore().getAlerts().register(revocationAlert);
       // we don't need to advertize updates : we are not going to do them
       killUpdateAlerts();
     }
@@ -994,7 +997,7 @@ public class NodeUpdateManager {
 
   /** Kill all UserAlerts asking the user whether he wants to update. */
   private void killUpdateAlerts() {
-    node.getClientCore().getAlerts().unregister(alert);
+    node.services().clientCore().getAlerts().unregister(alert);
   }
 
   /**
@@ -1007,10 +1010,11 @@ public class NodeUpdateManager {
     deployPluginUpdates();
     // If we're still here, we didn't update.
     broadcastUOMAnnounces();
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             () -> getRevocationChecker().start(false),
-            node.getRandom().nextInt((int) DAYS.toMillis(1)));
+            node.bootstrap().random().nextInt((int) DAYS.toMillis(1)));
   }
 
   private void deployPluginUpdates() {
@@ -1266,8 +1270,10 @@ public class NodeUpdateManager {
   /** Called inside locks, so don't lock anything */
   public void notPeerClaimsKeyBlown() {
     peersSayBlown = false;
-    node.getExecutor().execute(() -> {}, "Check for updates");
-    node.getTicker().queueTimedJob(this::maybeBroadcastUOMAnnounces, REVOCATION_FETCH_TIMEOUT);
+    node.network().executor().execute(() -> {}, "Check for updates");
+    node.network()
+        .ticker()
+        .queueTimedJob(this::maybeBroadcastUOMAnnounces, REVOCATION_FETCH_TIMEOUT);
   }
 
   boolean peersSayBlown() {
@@ -1296,7 +1302,7 @@ public class NodeUpdateManager {
 
         @Override
         public void sentBytes(int x) {
-          node.getNodeStats().reportUOMBytesSent(x);
+          node.network().stats().reportUOMBytesSent(x);
         }
 
         @Override
@@ -1348,12 +1354,12 @@ public class NodeUpdateManager {
    * @return {@code true} when UoM must not be used due to node role or state
    */
   public boolean dontAllowUOM() {
-    if (node.isOpennetEnabled() && node.wantAnonAuth(true)) {
+    if (node.network().isOpennetEnabled() && node.network().wantAnonAuth(true)) {
       // We are a seednode.
       // Normally this means we won't send UOM.
       // However, if something breaks severely, we need an escape route.
-      return node.getUptime() <= MINUTES.toMillis(5)
-          || node.getPeers().countCompatibleRealPeers() != 0;
+      return node.network().uptime() <= MINUTES.toMillis(5)
+          || node.network().peers().countCompatibleRealPeers() != 0;
     }
     return false;
   }

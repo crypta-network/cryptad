@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * wire.
  *
  * @see PeerMessage
- * @see Node#addPeerConnection(PeerNode)
+ * @see NodeNetworkSubsystem#addPeerConnection(PeerNode)
  */
 public class AddPeer extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(AddPeer.class);
@@ -338,7 +338,8 @@ public class AddPeer extends FCPMessage {
     try {
       FreenetURI refUri = new FreenetURI(urlString);
       HighLevelSimpleClient client =
-          node.getClientCore()
+          node.services()
+              .clientCore()
               .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, true, true);
       return AddPeer.getReferenceFromFreenetURI(refUri, client);
     } catch (MalformedURLException | FetchException _) {
@@ -420,7 +421,7 @@ public class AddPeer extends FCPMessage {
 
   private PeerNode createOpennetPeer(Node node) throws MessageInvalidException {
     try {
-      return node.createNewOpennetNode(fs);
+      return node.network().createNewOpennetNode(fs);
     } catch (FSParseException | PeerParseException | PeerTooOldException e) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.REF_PARSE_ERROR,
@@ -444,7 +445,7 @@ public class AddPeer extends FCPMessage {
 
   private PeerNode createDarknetPeer(Node node) throws MessageInvalidException {
     try {
-      return node.createNewDarknetNode(fs, trust, visibility);
+      return node.network().createNewDarknetNode(fs, trust, visibility);
     } catch (FSParseException | PeerParseException | PeerTooOldException e) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.REF_PARSE_ERROR,
@@ -463,7 +464,7 @@ public class AddPeer extends FCPMessage {
   private void ensureNotSelfPeer(Node node, boolean isOpennetRef, PeerNode peerNode)
       throws MessageInvalidException {
     byte[] nodePubKeyHash =
-        isOpennetRef ? node.getOpennetPubKeyHash() : node.getDarknetPubKeyHash();
+        isOpennetRef ? node.network().opennetPubKeyHash() : node.network().darknetPubKeyHash();
     if (Arrays.equals(peerNode.peerECDSAPubKeyHash, nodePubKeyHash)) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.CANNOT_PEER_WITH_SELF,
@@ -475,7 +476,7 @@ public class AddPeer extends FCPMessage {
 
   private void addPeerConnection(Node node, boolean isOpennetRef, PeerNode peerNode)
       throws MessageInvalidException {
-    if (!node.addPeerConnection(peerNode)) {
+    if (!node.network().addPeerConnection(peerNode)) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.DUPLICATE_PEER_REF,
           "Node already has a peer with that identity",

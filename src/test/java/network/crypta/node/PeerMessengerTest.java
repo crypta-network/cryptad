@@ -31,7 +31,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class PeerMessengerTest {
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerManager peerManager;
   @Mock private NodeStats nodeStats;
   @Mock private Ticker ticker;
@@ -53,7 +55,7 @@ class PeerMessengerTest {
 
   @Test
   void getDisconnCounter_whenBytesReported_updatesNodeStats() {
-    when(node.getNodeStats()).thenReturn(nodeStats);
+    when(node.network().stats()).thenReturn(nodeStats);
     ByteCounter counter = messenger.getDisconnCounter();
 
     counter.receivedBytes(10);
@@ -127,7 +129,7 @@ class PeerMessengerTest {
     when(peerNode.notifyDisconnecting(false)).thenReturn(false);
     when(peerNode.isSeed()).thenReturn(false);
     when(peerNode.isOpennet()).thenReturn(false);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     when(transport.sendAsync(any(Message.class), callbackCaptor.capture(), any(ByteCounter.class)))
         .thenReturn(null);
 
@@ -146,7 +148,7 @@ class PeerMessengerTest {
     when(peerNode.notifyDisconnecting(false)).thenReturn(false);
     when(peerNode.isSeed()).thenReturn(false);
     when(peerNode.isOpennet()).thenReturn(true);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     when(transport.sendAsync(any(Message.class), callbackCaptor.capture(), any(ByteCounter.class)))
         .thenReturn(null);
 
@@ -185,7 +187,7 @@ class PeerMessengerTest {
     when(peerNode.isSeed()).thenReturn(false);
     when(peerNode.isOpennet()).thenReturn(false);
     when(peerNode.isDisconnecting()).thenReturn(true);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     when(transport.sendAsync(
             any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class)))
         .thenReturn(null);

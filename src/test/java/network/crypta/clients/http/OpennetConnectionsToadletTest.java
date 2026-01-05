@@ -42,7 +42,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class OpennetConnectionsToadletTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private PeerManager peerManager;
@@ -64,33 +66,42 @@ class OpennetConnectionsToadletTest {
 
   @Test
   void getNoderef_delegatesToNodeExport() {
-    when(node.exportOpennetPublicFieldSet()).thenReturn(noderef);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.exportOpennetPublicFieldSet()).thenReturn(noderef);
 
     SimpleFieldSet result = toadlet.getNoderef();
 
     assertSame(noderef, result);
-    verify(node).exportOpennetPublicFieldSet();
+    verify(network).exportOpennetPublicFieldSet();
   }
 
   @Test
   void getPeerNodeStatuses_fetchesFromPeerManager() {
     OpennetPeerNodeStatus[] statuses =
         new OpennetPeerNodeStatus[] {mock(OpennetPeerNodeStatus.class)};
-    when(node.getPeers()).thenReturn(peerManager);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.peers()).thenReturn(peerManager);
     when(peerManager.statusBook()).thenReturn(statusBook);
     when(statusBook.getOpennetPeerNodeStatuses(false)).thenReturn(statuses);
 
     PeerNodeStatus[] result = toadlet.getPeerNodeStatuses(false);
 
     assertSame(statuses, result);
-    verify(node, atLeastOnce()).getPeers();
+    verify(network, atLeastOnce()).peers();
     verify(peerManager).statusBook();
     verify(statusBook).getOpennetPeerNodeStatuses(false);
   }
 
   @Test
   void isEnabled_returnsNodeFlag() {
-    when(node.isOpennetEnabled()).thenReturn(true).thenReturn(false);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.isOpennetEnabled()).thenReturn(true).thenReturn(false);
 
     assertTrue(toadlet.isEnabled(null));
     assertFalse(toadlet.isEnabled(null));

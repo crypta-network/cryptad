@@ -28,7 +28,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class MeaningfulNodeNameUserAlertTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore clientCore;
   @Mock private PeerManager peerManager;
 
@@ -92,7 +94,7 @@ class MeaningfulNodeNameUserAlertTest {
 
     // Node wiring: config + client core for form password
     when(node.getConfig()).thenReturn(cfg);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getFormPassword()).thenReturn("formpw");
     // No peer interactions are required by getHTMLText()
 
@@ -192,7 +194,7 @@ class MeaningfulNodeNameUserAlertTest {
   @DisplayName("isValid_whenPeersPresent_reflectsAnyDarknetPeers")
   void isValid_whenPeersPresent_reflectsAnyDarknetPeers() {
     // Arrange
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
 
     when(peerManager.anyDarknetPeers()).thenReturn(false);
     assertFalse(new MeaningfulNodeNameUserAlert(node).isValid());

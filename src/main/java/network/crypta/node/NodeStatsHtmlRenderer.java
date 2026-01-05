@@ -251,7 +251,7 @@ public final class NodeStatsHtmlRenderer {
    * @param content container node that receives paragraphs and tables.
    */
   public static void drawNewLoadManagementDelayTimes(NodeStats stats, HTMLNode content) {
-    WaitingForSlots waitingSlots = stats.node.getTracker().countRequestsWaitingForSlots();
+    WaitingForSlots waitingSlots = stats.node.routing().tracker().countRequestsWaitingForSlots();
     content
         .addChild("p")
         .addChild(

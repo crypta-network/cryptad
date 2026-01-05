@@ -66,7 +66,7 @@ class FCPConnectionInputHandlerTest {
   void start_whenSocketPresent_submitsRunnableWithRemoteAddress() {
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     FCPServer server = mock(FCPServer.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     Socket socket = mock(Socket.class);
     InetSocketAddress address = new InetSocketAddress("127.0.0.1", 9481);
@@ -75,7 +75,7 @@ class FCPConnectionInputHandlerTest {
     when(socket.getRemoteSocketAddress()).thenReturn(address);
     when(handler.getServer()).thenReturn(server);
     when(server.getNode()).thenReturn(node);
-    when(node.getExecutor()).thenReturn(executor);
+    when(node.network().executor()).thenReturn(executor);
 
     FCPConnectionInputHandler inputHandler = new FCPConnectionInputHandler(handler);
 
@@ -268,7 +268,7 @@ class FCPConnectionInputHandlerTest {
     ctx.handler = mock(FCPConnectionHandler.class);
     ctx.bucketFactory = mock(TempBucketFactory.class);
     ctx.server = mock(FCPServer.class);
-    ctx.node = mock(Node.class);
+    ctx.node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     ctx.core = mock(NodeClientCore.class);
     ctx.persistentFactory = mock(PersistentTempBucketFactory.class);
     ctx.socket = mock(Socket.class);

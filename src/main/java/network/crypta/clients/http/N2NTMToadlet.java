@@ -141,7 +141,7 @@ public class N2NTMToadlet extends Toadlet {
       // ignore here, handle below
     }
     if (inputHashcode != -1) {
-      DarknetPeerNode[] peerNodes = node.getDarknetConnections();
+      DarknetPeerNode[] peerNodes = node.network().darknetConnections();
       for (DarknetPeerNode pn : peerNodes) {
         int peerHashcode = pn.hashCode();
         if (peerHashcode == inputHashcode) {
@@ -270,7 +270,7 @@ public class N2NTMToadlet extends Toadlet {
     HTMLNode peerTableInfobox = contentNode.addChild("div", ATTR_CLASS, "infobox infobox-normal");
     SendRequestContext sendRequestContext =
         new SendRequestContext(request, peerTableInfobox, page, ctx, message);
-    DarknetPeerNode[] peerNodes = node.getDarknetConnections();
+    DarknetPeerNode[] peerNodes = node.network().darknetConnections();
     FileSelection selectedFile =
         resolveSelectedFile(
             sendRequestContext.request(),

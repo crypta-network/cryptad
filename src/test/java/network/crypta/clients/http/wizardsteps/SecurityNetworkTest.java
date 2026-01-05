@@ -29,6 +29,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.Test;
@@ -73,17 +74,19 @@ class SecurityNetworkTest {
   @Test
   void setThreatLevel_whenCalled_updatesSecurityLevelsAndStoresConfig() {
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     SecurityLevels securityLevels = mock(SecurityLevels.class);
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
 
     SecurityNetwork step = new SecurityNetwork(core);
 
     step.setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
 
     verify(core, times(1)).getNode();
-    verify(node, times(1)).getSecurityLevels();
+    verify(node, times(1)).services();
     verify(securityLevels, times(1)).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
     verify(core, times(1)).storeConfig();
   }
@@ -203,10 +206,12 @@ class SecurityNetworkTest {
   @Test
   void postStep_whenHighConfirmed_expectSetThreatLevelAndRedirectPhysical() {
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     SecurityLevels securityLevels = mock(SecurityLevels.class);
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
 
     SecurityNetwork step = spy(new SecurityNetwork(core));
     HTTPRequest request = mock(HTTPRequest.class);
@@ -232,10 +237,12 @@ class SecurityNetworkTest {
   void postStep_whenThreatLevelDoesNotRequireConfirmation_expectSetThreatLevelAndRedirectPhysical(
       SecurityLevels.NETWORK_THREAT_LEVEL level) {
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     SecurityLevels securityLevels = mock(SecurityLevels.class);
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
 
     SecurityNetwork step = spy(new SecurityNetwork(core));
     HTTPRequest request = mock(HTTPRequest.class);

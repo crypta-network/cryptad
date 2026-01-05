@@ -71,7 +71,7 @@ class TestDdaRequestMessageTest {
       }
     val message = TestDdaRequestMessage(fieldSet)
     val handler = Mockito.mock(FCPConnectionHandler::class.java)
-    val node = Mockito.mock(Node::class.java)
+    val node = Mockito.mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
     val job = Mockito.mock(DdaCheckJob::class.java)
 
     Mockito.`when`(handler.enqueueDDACheck(directory, true, false)).thenReturn(job)
@@ -96,7 +96,7 @@ class TestDdaRequestMessageTest {
       }
     val message = TestDdaRequestMessage(fieldSet)
     val handler = Mockito.mock(FCPConnectionHandler::class.java)
-    val node = Mockito.mock(Node::class.java)
+    val node = Mockito.mock(Node::class.java, org.mockito.Answers.RETURNS_DEEP_STUBS)
 
     Mockito.`when`(handler.enqueueDDACheck(directory, false, true))
       .thenThrow(IllegalArgumentException("bad path"))

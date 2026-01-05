@@ -136,7 +136,7 @@ public class MeaningfulNodeNameUserAlert extends AbstractUserAlert {
     formNode.addChild(
         ATTR_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
-        new String[] {"hidden", "formPassword", node.getClientCore().getFormPassword()});
+        new String[] {"hidden", "formPassword", node.services().clientCore().getFormPassword()});
     formNode.addChild(
         ATTR_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
@@ -178,7 +178,7 @@ public class MeaningfulNodeNameUserAlert extends AbstractUserAlert {
    * Indicates whether the alert should currently be shown to the user.
    *
    * <p>This implementation bases validity on peer state and returns {@code true} when the node has
-   * at least one Darknet peer (via {@code node.getPeers().anyDarknetPeers()}). This avoids
+   * at least one Darknet peer (via {@code node.network().peers().anyDarknetPeers()}). This avoids
    * surfacing the prompt on isolated or bootstrap‑phase nodes while still encouraging identifiable
    * naming once the node participates in a network.
    *
@@ -187,6 +187,6 @@ public class MeaningfulNodeNameUserAlert extends AbstractUserAlert {
    */
   @Override
   public boolean isValid() {
-    return node.getPeers().anyDarknetPeers();
+    return node.network().peers().anyDarknetPeers();
   }
 }

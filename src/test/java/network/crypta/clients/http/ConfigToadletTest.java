@@ -24,7 +24,10 @@ class ConfigToadletTest {
   @Mock private SubConfig subConfig;
   @Mock private Config config;
   @Mock private HighLevelSimpleClient client;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private ToadletContext ctx;
 

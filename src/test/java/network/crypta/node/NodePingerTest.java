@@ -17,7 +17,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100") // test method naming convention per project rules
 class NodePingerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerManager peerManager;
   @Mock private network.crypta.support.Ticker ticker;
 
@@ -38,8 +40,8 @@ class NodePingerTest {
 
   @Test
   void run_whenNoPeers_schedulesNextRunAndLeavesMeanPingUnchanged() {
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().ticker()).thenReturn(ticker);
     when(peerManager.connectedPeers()).thenReturn(new PeerNode[0]);
 
     NodePinger pinger = new NodePinger(node);
@@ -57,8 +59,8 @@ class NodePingerTest {
 
   @Test
   void run_withOddPeers_calculatesMedianPing() {
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().ticker()).thenReturn(ticker);
 
     PeerNode p1 = mockPeerWithPing(100);
     PeerNode p2 = mockPeerWithPing(300);
@@ -77,8 +79,8 @@ class NodePingerTest {
 
   @Test
   void run_withEvenPeers_usesUpperMedianIndex() {
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().ticker()).thenReturn(ticker);
 
     PeerNode p1 = mockPeerWithPing(10);
     PeerNode p2 = mockPeerWithPing(40);
@@ -96,8 +98,8 @@ class NodePingerTest {
 
   @Test
   void capacityThreshold_whenStatsAvailable_computesThresholdsForAllCombinations() {
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().ticker()).thenReturn(ticker);
 
     // Prepare four peers with explicit per-tracker stats.
     PeerNode[] peers = new PeerNode[4];
@@ -144,8 +146,8 @@ class NodePingerTest {
 
   @Test
   void capacityThreshold_whenSomeStatsAreNull_ignoresThem() {
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().ticker()).thenReturn(ticker);
 
     PeerNode p1 = mockPeerWithPing(1);
     PeerNode p2 = mockPeerWithPing(2);
@@ -181,8 +183,8 @@ class NodePingerTest {
 
   @Test
   void capacityThreshold_whenNoStats_returnsZero() {
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().ticker()).thenReturn(ticker);
 
     PeerNode p1 = mockPeerWithPing(42);
     PeerNode p2 = mockPeerWithPing(43);

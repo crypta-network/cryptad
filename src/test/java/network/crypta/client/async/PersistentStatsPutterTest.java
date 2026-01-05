@@ -24,7 +24,9 @@ import org.mockito.quality.Strictness;
 @SuppressWarnings("java:S100")
 class PersistentStatsPutterTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private IOStatisticCollector collector;
 
   @Test
@@ -58,9 +60,9 @@ class PersistentStatsPutterTest {
   @DisplayName("updateData_whenFirstCall_setsTotalsAndTimestamps")
   void updateData_whenFirstCall_setsTotalsAndTimestamps() {
     // Arrange
-    when(node.getCollector()).thenReturn(collector);
+    when(node.network().collector()).thenReturn(collector);
     when(collector.getTotalIO()).thenReturn(new long[] {1000L, 2000L});
-    when(node.getUptime()).thenReturn(5000L);
+    when(node.network().uptime()).thenReturn(5000L);
 
     PersistentStatsPutter putter = new PersistentStatsPutter();
 
@@ -89,11 +91,11 @@ class PersistentStatsPutterTest {
   @DisplayName("updateData_whenSubsequentCall_accumulatesDeltaAndUpdatesTimestamps")
   void updateData_whenSubsequentCall_accumulatesDeltaAndUpdatesTimestamps() {
     // Arrange
-    when(node.getCollector()).thenReturn(collector);
+    when(node.network().collector()).thenReturn(collector);
     when(collector.getTotalIO())
         .thenReturn(new long[] {1000L, 2000L})
         .thenReturn(new long[] {1400L, 2600L}); // +400 out, +600 in
-    when(node.getUptime()).thenReturn(5000L).thenReturn(8000L); // +3000
+    when(node.network().uptime()).thenReturn(5000L).thenReturn(8000L); // +3000
 
     PersistentStatsPutter putter = new PersistentStatsPutter();
 
@@ -129,11 +131,11 @@ class PersistentStatsPutterTest {
   @DisplayName("updateData_whenCountersDecrease_handlesNegativeDelta")
   void updateData_whenCountersDecrease_handlesNegativeDelta() {
     // Arrange
-    when(node.getCollector()).thenReturn(collector);
+    when(node.network().collector()).thenReturn(collector);
     when(collector.getTotalIO())
         .thenReturn(new long[] {1000L, 2000L})
         .thenReturn(new long[] {900L, 1500L}); // -100 out, -500 in
-    when(node.getUptime()).thenReturn(5000L).thenReturn(4500L); // -500
+    when(node.network().uptime()).thenReturn(5000L).thenReturn(4500L); // -500
 
     PersistentStatsPutter putter = new PersistentStatsPutter();
 

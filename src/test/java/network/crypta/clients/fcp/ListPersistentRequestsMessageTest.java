@@ -105,8 +105,11 @@ class ListPersistentRequestsMessageTest {
     Ticker ticker = mock(Ticker.class);
     ClientContext context = newClientContext(jobRunner, ticker);
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
-    when(node.getClientCore()).thenReturn(core);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(context);
 
     doAnswer(
@@ -163,8 +166,11 @@ class ListPersistentRequestsMessageTest {
     Ticker ticker = mock(Ticker.class);
     ClientContext context = newClientContext(jobRunner, ticker);
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
-    when(node.getClientCore()).thenReturn(core);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(context);
 
     doAnswer(

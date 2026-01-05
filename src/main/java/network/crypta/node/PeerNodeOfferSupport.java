@@ -70,10 +70,10 @@ final class PeerNodeOfferSupport {
     byte[] keyBytes = key.getFullKey();
     // Note: authenticator size is 32 bytes for HMAC-SHA256.
     byte[] authenticator =
-        HMAC.macWithSHA256(peer.node.getFailureTable().offerAuthenticatorKey, keyBytes);
+        HMAC.macWithSHA256(peer.node.routing().failureTable().offerAuthenticatorKey, keyBytes);
     Message msg = DMT.createFNPOfferKey(key, authenticator);
     try {
-      peer.transport().sendAsync(msg, null, peer.node.getNodeStats().sendOffersCtr);
+      peer.transport().sendAsync(msg, null, peer.node.network().stats().sendOffersCtr);
     } catch (NotConnectedException _) {
       // Ignore
     }

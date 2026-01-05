@@ -56,7 +56,9 @@ class NodeUpdateManagerTest {
 
   @TempDir Path tempDir;
 
-  @Mock Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
   @Mock NodeClientCore nodeCore;
   @Mock UserAlertManager alerts;
   @Mock PeerManager peerManager;
@@ -78,13 +80,13 @@ class NodeUpdateManagerTest {
     runProgramDir.move(runDir.getAbsolutePath());
 
     // Wire minimal node surface for the manager
-    when(node.getClientCore()).thenReturn(nodeCore);
+    when(node.services().clientCore()).thenReturn(nodeCore);
     when(nodeCore.getPersistentTempDir()).thenReturn(persistentTmpDir);
     when(nodeCore.getAlerts()).thenReturn(alerts);
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.messenger()).thenReturn(peerMessenger);
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    when(node.network().stats()).thenReturn(nodeStats);
+    when(node.services().pluginManager()).thenReturn(pluginManager);
     when(pluginManager.getOfficialPlugins()).thenReturn(Collections.emptyList());
 
     // Provide values read when building announcements

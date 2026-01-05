@@ -333,8 +333,8 @@ public class DatastoreSize implements Step {
     slots /= 3;
     // We return the total size, so we don't need to worry about cache vs store or even client
     // cache.
-    // One key of all 3 types combined uses Node.SIZE_PER_KEY bytes on disk. So we get a size.
-    return slots * Node.SIZE_PER_KEY;
+    // One key of all 3 types combined uses NodeStorageSubsystem.SIZE_PER_KEY bytes on disk.
+    return slots * network.crypta.node.subsystem.NodeStorageSubsystem.SIZE_PER_KEY;
   }
 
   private long canAutoconfigureDatastoreSize() {

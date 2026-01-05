@@ -105,7 +105,7 @@ public class PluginStores {
     File f = getPluginStoreFile(storeIdentifier, isEncrypted, false);
     Bucket bucket = new FileBucket(f, false, true, false, false);
     if (isEncrypted) {
-      byte[] key = node.getPluginStoreKey(storeIdentifier);
+      byte[] key = node.storage().getPluginStoreKey(storeIdentifier);
       if (key != null && key.length > 0) {
         // We pad then encrypt, which is wasteful, but we have no way to persist the size.
         // Unfortunately AEADCryptBucket needs to know the real termination point.
@@ -122,7 +122,7 @@ public class PluginStores {
     if (!f.exists()) return null;
     Bucket bucket = new FileBucket(f, false, false, false, false);
     if (isEncrypted) {
-      byte[] key = node.getPluginStoreKey(storeIdentifier);
+      byte[] key = node.storage().getPluginStoreKey(storeIdentifier);
       if (key != null && key.length > 0) {
         // We pad then encrypt, which is wasteful, but we have no way to persist the size.
         // Unfortunately AEADCryptBucket needs to know the real termination point.

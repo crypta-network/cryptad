@@ -63,8 +63,10 @@ final class NodeStatsFieldSetExporter {
 
     fs.put("backedOffPercent", stats.backedOffPercent.currentValue());
     fs.put("pInstantReject", stats.pRejectIncomingInstantly());
-    fs.put("unclaimedFIFOSize", stats.node.getUSM().getUnclaimedFIFOSize());
-    fs.put("RAMBucketPoolSize", stats.node.getClientCore().getTempBucketFactory().getRamUsed());
+    fs.put("unclaimedFIFOSize", stats.node.network().unclaimedFifoSize());
+    fs.put(
+        "RAMBucketPoolSize",
+        stats.node.services().clientCore().getTempBucketFactory().getRamUsed());
 
     /* gather connection statistics */
     PeerNodeStatus[] peerNodeStatuses = stats.peers.statusBook().getPeerNodeStatuses(true);
@@ -130,13 +132,13 @@ final class NodeStatsFieldSetExporter {
 
     fs.put(
         "numberOfTransferringRequestSenders",
-        stats.node.getTracker().getNumTransferringRequestSenders());
-    fs.put("numberOfARKFetchers", stats.node.getNumARKFetchers());
+        stats.node.routing().tracker().getNumTransferringRequestSenders());
+    fs.put("numberOfARKFetchers", stats.node.network().numArkFetchers());
     fs.put(
         "bandwidthLiabilityUsageOutputBulk",
-        stats.node.getNodeStats().getBandwidthLiabilityUsage());
+        stats.node.network().stats().getBandwidthLiabilityUsage());
 
-    RequestTracker tracker = stats.node.getTracker();
+    RequestTracker tracker = stats.node.routing().tracker();
 
     fs.put("numberOfLocalCHKInserts", tracker.getNumLocalCHKInserts());
     fs.put("numberOfRemoteCHKInserts", tracker.getNumRemoteCHKInserts());
@@ -148,7 +150,7 @@ final class NodeStatsFieldSetExporter {
     fs.put("numberOfRemoteSSKRequests", tracker.getNumRemoteSSKRequests());
     fs.put(
         "numberOfTransferringRequestHandlers",
-        stats.node.getTracker().getNumTransferringRequestHandlers());
+        stats.node.routing().tracker().getNumTransferringRequestHandlers());
     fs.put("numberOfCHKOfferReplys", tracker.getNumCHKOfferReplies());
     fs.put("numberOfSSKOfferReplys", tracker.getNumSSKOfferReplies());
 
@@ -304,7 +306,7 @@ final class NodeStatsFieldSetExporter {
    */
   private static void putTotalAndRecentIOMetrics(
       NodeStats stats, SimpleFieldSet fs, long nodeUptimeSecondsLocal) {
-    long[] total = stats.node.getCollector().getTotalIO();
+    long[] total = stats.node.network().collector().getTotalIO();
     long totalOutputRate = (total[0]) / nodeUptimeSecondsLocal;
     long totalInputRate = (total[1]) / nodeUptimeSecondsLocal;
     long totalPayloadOutput = stats.node.getTotalPayloadSent();
@@ -364,10 +366,10 @@ final class NodeStatsFieldSetExporter {
    */
   private static void putSwapAndStoreMetrics(
       NodeStats stats, SimpleFieldSet fs, long nodeUptimeSecondsLocal) {
-    double swaps = stats.node.getSwaps();
-    double noSwaps = stats.node.getNoSwaps();
+    double swaps = stats.node.network().swaps();
+    double noSwaps = stats.node.network().noSwaps();
     double numberOfRemotePeerLocationsSeenInSwaps =
-        stats.node.getNumberOfRemotePeerLocationsSeenInSwaps();
+        stats.node.network().numberOfRemotePeerLocationsSeenInSwaps();
     fs.put("numberOfRemotePeerLocationsSeenInSwaps", numberOfRemotePeerLocationsSeenInSwaps);
     double avgConnectedPeersPerNode = 0.0;
     if ((numberOfRemotePeerLocationsSeenInSwaps > 0.0) && ((swaps > 0.0) || (noSwaps > 0.0))) {
@@ -375,12 +377,12 @@ final class NodeStatsFieldSetExporter {
     }
     fs.put("avgConnectedPeersPerNode", avgConnectedPeersPerNode);
 
-    int startedSwaps = stats.node.getStartedSwaps();
-    int swapsRejectedAlreadyLocked = stats.node.getSwapsRejectedAlreadyLocked();
-    int swapsRejectedNowhereToGo = stats.node.getSwapsRejectedNowhereToGo();
-    int swapsRejectedRateLimit = stats.node.getSwapsRejectedRateLimit();
-    int swapsRejectedRecognizedID = stats.node.getSwapsRejectedRecognizedID();
-    double locationChangePerSession = stats.node.getLocationChangeSession();
+    int startedSwaps = stats.node.network().startedSwaps();
+    int swapsRejectedAlreadyLocked = stats.node.network().swapsRejectedAlreadyLocked();
+    int swapsRejectedNowhereToGo = stats.node.network().swapsRejectedNowhereToGo();
+    int swapsRejectedRateLimit = stats.node.network().swapsRejectedRateLimit();
+    int swapsRejectedRecognizedID = stats.node.network().swapsRejectedRecognizedID();
+    double locationChangePerSession = stats.node.network().locationChangeSession();
     double locationChangePerSwap = 0.0;
     double locationChangePerMinute = 0.0;
     double swapsPerMinute = 0.0;
@@ -415,9 +417,9 @@ final class NodeStatsFieldSetExporter {
     fs.put("swapsRejectedRateLimit", swapsRejectedRateLimit);
     fs.put("swapsRejectedRecognizedID", swapsRejectedRecognizedID);
     long fix32kb = 32L * 1024;
-    long cachedKeys = stats.node.getChkDatacache().keyCount();
+    long cachedKeys = stats.node.storage().getChkDatacache().keyCount();
     long cachedSize = cachedKeys * fix32kb;
-    long storeKeys = stats.node.getChkDatastore().keyCount();
+    long storeKeys = stats.node.storage().getChkDatastore().keyCount();
     long storeSize = storeKeys * fix32kb;
     long overallKeys = cachedKeys + storeKeys;
     long overallSize = cachedSize + storeSize;
@@ -427,17 +429,17 @@ final class NodeStatsFieldSetExporter {
 
     double percentOverallKeysOfMax = (double) (overallKeys * 100) / (double) maxOverallKeys;
 
-    long cachedStoreHits = stats.node.getChkDatacache().hits();
-    long cachedStoreMisses = stats.node.getChkDatacache().misses();
-    long cachedStoreWrites = stats.node.getChkDatacache().writes();
+    long cachedStoreHits = stats.node.storage().getChkDatacache().hits();
+    long cachedStoreMisses = stats.node.storage().getChkDatacache().misses();
+    long cachedStoreWrites = stats.node.storage().getChkDatacache().writes();
     long cacheAccesses = cachedStoreHits + cachedStoreMisses;
-    long cachedStoreFalsePositives = stats.node.getChkDatacache().getBloomFalsePositive();
+    long cachedStoreFalsePositives = stats.node.storage().getChkDatacache().getBloomFalsePositive();
     double percentCachedStoreHitsOfAccesses =
         (double) (cachedStoreHits * 100) / (double) cacheAccesses;
-    long storeHits = stats.node.getChkDatastore().hits();
-    long storeMisses = stats.node.getChkDatastore().misses();
-    long storeWrites = stats.node.getChkDatastore().writes();
-    long storeFalsePositives = stats.node.getChkDatastore().getBloomFalsePositive();
+    long storeHits = stats.node.storage().getChkDatastore().hits();
+    long storeMisses = stats.node.storage().getChkDatastore().misses();
+    long storeWrites = stats.node.storage().getChkDatastore().writes();
+    long storeFalsePositives = stats.node.storage().getChkDatastore().getBloomFalsePositive();
     long storeAccesses = storeHits + storeMisses;
     double percentStoreHitsOfAccesses = (double) (storeHits * 100) / (double) storeAccesses;
     long overallAccesses = storeAccesses + cacheAccesses;

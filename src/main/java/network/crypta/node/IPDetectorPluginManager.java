@@ -404,10 +404,10 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    * @return array of port numbers with sign semantics as above; never {@code null}
    */
   public int[] getUDPPortsNotForwarded() {
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
     Status darknetStatus =
-        (node.getPeers().anyDarknetPeers()
-            ? node.getDarknetCrypto().getDetectedConnectivityStatus()
+        (node.network().peers().anyDarknetPeers()
+            ? node.network().darknetCrypto().getDetectedConnectivityStatus()
             : AddressTracker.Status.DONT_KNOW);
     Status opennetStatus =
         om == null ? Status.DONT_KNOW : om.getCrypto().getDetectedConnectivityStatus();
@@ -417,7 +417,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
 
     if (opennetUnknown) {
       if (darknetUnknown) return new int[] {};
-      return new int[] {indicator(darknetStatus, node.getDarknetPortNumber())};
+      return new int[] {indicator(darknetStatus, node.network().darknetPortNumber())};
     }
 
     if (darknetUnknown) {
@@ -425,7 +425,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     }
 
     return new int[] {
-      indicator(darknetStatus, node.getDarknetPortNumber()),
+      indicator(darknetStatus, node.network().darknetPortNumber()),
       indicator(opennetStatus, om.getCrypto().getPortNumber())
     };
   }
@@ -477,8 +477,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    */
   void start() {
     // Cannot be initialized until UserAlertManager has been created.
-    proxyAlert = new ProxyUserAlert(node.getClientCore().getAlerts(), false);
-    node.getClientCore().getAlerts().register(portForwardAlert);
+    proxyAlert = new ProxyUserAlert(node.services().clientCore().getAlerts(), false);
+    node.services().clientCore().getAlerts().register(portForwardAlert);
     started = true;
     tryMaybeRun();
   }
@@ -494,7 +494,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     } catch (Throwable t) {
       LOG.error(CAUGHT + "{}", t, t);
     }
-    node.getTicker().queueTimedJob(this::tryMaybeRun, MINUTES.toMillis(1));
+    node.network().ticker().queueTimedJob(this::tryMaybeRun, MINUTES.toMillis(1));
   }
 
   /**
@@ -568,9 +568,9 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   public void maybeRun() {
     if (!started) return;
     if (LOG.isDebugEnabled()) LOG.debug("Maybe running IP detection plugins");
-    PeerNode[] peers = node.getPeerNodes();
-    PeerNode[] conns = node.getConnectedPeers();
-    int peerCount = node.getPeers().countValidPeers();
+    PeerNode[] peers = node.network().peerNodes();
+    PeerNode[] conns = node.network().connectedPeers();
+    int peerCount = node.network().peers().countValidPeers();
     FreenetInetAddress[] nodeAddrs = detector.getPrimaryIPAddress(true);
     long now = System.currentTimeMillis();
 
@@ -872,7 +872,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
         if (runners.containsKey(plugin)) continue;
         DetectorRunner d = new DetectorRunner(plugin);
         runners.put(plugin, d);
-        node.getExecutor().execute(d, "Plugin detector runner for " + plugin.getClass());
+        node.network().executor().execute(d, "Plugin detector runner for " + plugin.getClass());
       }
     }
   }
@@ -891,7 +891,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
 
     /** Stops the underlying plugin via the plugin manager. */
     public void kill() {
-      node.getPluginManager().killPlugin((FredPlugin) plugin, 0);
+      node.services().pluginManager().killPlugin((FredPlugin) plugin, 0);
     }
 
     @SuppressWarnings("java:S1181") // Plugin boundary: contain plugin-caused Errors
@@ -1045,14 +1045,14 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                         l10n("noConnectivityShort"),
                         UserAlert.ERROR);
         }
-        if (toRegister != null) node.getClientCore().getAlerts().register(toRegister);
+        if (toRegister != null) node.services().clientCore().getAlerts().register(toRegister);
       } else {
         UserAlert toKill;
         synchronized (this) {
           toKill = noConnectivityAlert;
           noConnectivityAlert = null;
         }
-        if (toKill != null) node.getClientCore().getAlerts().unregister(toKill);
+        if (toKill != null) node.services().clientCore().getAlerts().unregister(toKill);
       }
     }
   }
@@ -1070,7 +1070,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       portForwardPlugins[portForwardPlugins.length - 1] = forward;
     }
     if (LOG.isDebugEnabled()) LOG.debug("Register port forward plugin: {}", forward);
-    forward.onChangePublicPorts(node.getPublicInterfacePorts(), this);
+    forward.onChangePublicPorts(node.network().publicInterfacePorts(), this);
   }
 
   /** Remove a plugin. */
@@ -1098,7 +1098,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       localPortForwardPlugins = portForwardPlugins;
     }
     for (final FredPluginPortForward plugin : localPortForwardPlugins) {
-      node.getExecutor()
+      node.network()
+          .executor()
           .execute(
               () -> {
                 try {
@@ -1120,7 +1121,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    */
   @Override
   public void portForwardStatus(Map<ForwardPort, ForwardPortStatus> statuses) {
-    Set<ForwardPort> currentPorts = node.getPublicInterfacePorts();
+    Set<ForwardPort> currentPorts = node.network().publicInterfacePorts();
     for (ForwardPort p : currentPorts) {
       ForwardPortStatus status = statuses.get(p);
       if (status == null) continue;
@@ -1183,7 +1184,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       // Not much more we can do / want to do for now
       // Note: status.externalPort is currently unused.
     }
-    node.getExecutor().execute(this::maybeRun, "Redetect IP after port forward changed");
+    node.network().executor().execute(this::maybeRun, "Redetect IP after port forward changed");
   }
 
   /**
@@ -1204,14 +1205,14 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    * @param contentNode target container
    */
   public void addConnectionTypeBox(HTMLNode contentNode) {
-    if (node.getClientCore() == null) return;
-    if (node.getClientCore().getAlerts() == null) return;
+    if (node.services().clientCore() == null) return;
+    if (node.services().clientCore().getAlerts() == null) return;
     if (proxyAlert == null) {
       LOG.error("start() not called yet");
       return;
     }
     if (proxyAlert.isValid())
-      contentNode.addChild(node.getClientCore().getAlerts().renderAlert(proxyAlert));
+      contentNode.addChild(node.services().clientCore().getAlerts().renderAlert(proxyAlert));
   }
 
   /**
@@ -1220,6 +1221,6 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    * @return {@code true} if a plugin named {@code JSTUN} is active or loading
    */
   public boolean hasJSTUN() {
-    return node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad("JSTUN");
+    return node.services().pluginManager().isPluginLoadedOrLoadingOrWantLoad("JSTUN");
   }
 }

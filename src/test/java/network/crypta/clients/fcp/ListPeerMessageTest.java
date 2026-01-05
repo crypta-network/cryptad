@@ -26,7 +26,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ListPeerMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerNode peerNode;
 
   @Test
@@ -82,7 +85,7 @@ class ListPeerMessageTest {
   @Test
   void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode("node-unknown")).thenReturn(null);
+    when(node.network().getPeerNode("node-unknown")).thenReturn(null);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-4");
     fs.putSingle("NodeIdentifier", "node-unknown");
@@ -102,7 +105,7 @@ class ListPeerMessageTest {
   @Test
   void run_whenPeerFound_sendsPeerMessageWithMetadataAndVolatile() throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode("node-42")).thenReturn(peerNode);
+    when(node.network().getPeerNode("node-42")).thenReturn(peerNode);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-5");
     fs.putSingle("NodeIdentifier", "node-42");

@@ -94,7 +94,7 @@ public final class NodeClientPersistence {
             false,
             "NodeClientCore.fileForClientStats",
             "NodeClientCore.fileForClientStatsLong",
-            node.getTicker(),
+            node.network().ticker(),
             node.getRunDir());
     sortOrderAfter = sortOrder;
   }

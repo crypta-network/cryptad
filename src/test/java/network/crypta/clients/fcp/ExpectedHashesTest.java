@@ -95,7 +95,9 @@ class ExpectedHashesTest {
     assertThrows(
         UnsupportedOperationException.class,
         () ->
-            expectedHashes.run(Mockito.mock(FCPConnectionHandler.class), Mockito.mock(Node.class)));
+            expectedHashes.run(
+                Mockito.mock(FCPConnectionHandler.class),
+                Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
   }
 
   private static HashResult createHash(HashType type, byte fillValue) {

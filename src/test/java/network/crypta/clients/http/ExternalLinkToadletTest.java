@@ -47,7 +47,10 @@ import org.mockito.quality.Strictness;
 class ExternalLinkToadletTest {
 
   @Mock private HighLevelSimpleClient client;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore nodeClientCore;
   @Mock private SimpleToadletServer toadletContainer;
   @Mock private ToadletContext context;
@@ -61,7 +64,10 @@ class ExternalLinkToadletTest {
     toadlet = new ExternalLinkToadlet(client, node);
 
     when(context.getPageMaker()).thenReturn(pageMaker);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     ClientEndpoints endpoints = mock(ClientEndpoints.class);
     when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
     when(endpoints.getToadletContainer()).thenReturn(toadletContainer);

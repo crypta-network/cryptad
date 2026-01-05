@@ -216,10 +216,10 @@ public class FCPServer implements Runnable, DownloadCache {
     NetworkInterface tempNetworkInterface;
     if (ssl) {
       tempNetworkInterface =
-          SSLNetworkInterface.create(port, bindTo, allowedHosts, node.getExecutor(), true);
+          SSLNetworkInterface.create(port, bindTo, allowedHosts, node.network().executor(), true);
     } else {
       tempNetworkInterface =
-          NetworkInterface.create(port, bindTo, allowedHosts, node.getExecutor(), true);
+          NetworkInterface.create(port, bindTo, allowedHosts, node.network().executor(), true);
     }
 
     this.networkInterface = tempNetworkInterface;
@@ -249,7 +249,7 @@ public class FCPServer implements Runnable, DownloadCache {
       this.networkInterface = null;
     }
 
-    if (node.getPluginManager().isEnabled()) {
+    if (node.services().pluginManager().isEnabled()) {
       // We need to start the FCPPluginConnectionTracker no matter whether this.enabled == true:
       // If networked FCP is disabled, plugins might still communicate via non-networked
       // intra-node FCP.
@@ -697,8 +697,8 @@ public class FCPServer implements Runnable, DownloadCache {
       String serverPluginName, FCPConnectionHandler messageHandler) throws PluginNotFoundException {
     return FCPPluginConnectionImpl.constructForNetworkedFCP(
         pluginConnectionTracker,
-        node.getExecutor(),
-        node.getPluginManager(),
+        node.network().executor(),
+        node.services().pluginManager(),
         serverPluginName,
         messageHandler);
   }
@@ -724,8 +724,8 @@ public class FCPServer implements Runnable, DownloadCache {
     FCPPluginConnectionImpl connection =
         FCPPluginConnectionImpl.constructForIntraNodeFCP(
             pluginConnectionTracker,
-            node.getExecutor(),
-            node.getPluginManager(),
+            node.network().executor(),
+            node.services().pluginManager(),
             serverPluginName,
             messageHandler);
     return connection.getDefaultSendDirectionAdapter(SendDirection.TO_SERVER);

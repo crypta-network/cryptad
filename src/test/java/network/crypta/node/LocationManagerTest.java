@@ -19,6 +19,7 @@ import java.util.Map;
 import network.crypta.crypt.RandomSource;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,7 +38,7 @@ class LocationManagerTest {
   void setLocation_whenValid_updates_and_getLocation_returns_value() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
 
     // Act
@@ -56,7 +57,7 @@ class LocationManagerTest {
   void setLocation_whenInvalid_doesNotChange_location() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
     lm.setLocation(0.5);
 
@@ -72,7 +73,7 @@ class LocationManagerTest {
   void updateLocationChangeSession_whenCrossingZero_wraps_and_accumulates() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
     lm.setLocation(0.95);
 
@@ -92,7 +93,7 @@ class LocationManagerTest {
   void getSendSwapInterval_defaults_to_bootstrap_interval_within_bounds() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
 
     // Act
@@ -109,16 +110,18 @@ class LocationManagerTest {
   void swappingDisabled_reflects_opennet_state_from_Node() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
     // opennet enabled -> swapping disabled
-    doReturn(true).when(node).isOpennetEnabled();
+    when(node.network()).thenReturn(network);
+    doReturn(true).when(network).isOpennetEnabled();
     LocationManager lm = newLM(r, node);
 
     // Act & Assert
     assertTrue(lm.swappingDisabled());
 
     // Arrange 2: opennet disabled -> swapping allowed
-    doReturn(false).when(node).isOpennetEnabled();
+    doReturn(false).when(network).isOpennetEnabled();
     assertFalse(lm.swappingDisabled());
   }
 
@@ -127,7 +130,7 @@ class LocationManagerTest {
   void getPitchBlackPrefix_returns_expected_prefix() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
 
     // Act
@@ -190,7 +193,7 @@ class LocationManagerTest {
   void clearOldSwapChains_removes_items_older_than_timeout() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
 
     // Prepare an old RecentlyForwardedItem
@@ -219,7 +222,7 @@ class LocationManagerTest {
       throws NotConnectedException {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
 
     PeerNode sender = mock(PeerNode.class);
@@ -262,7 +265,7 @@ class LocationManagerTest {
   void knownLocations_register_and_query_by_timestamp() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager lm = newLM(r, node);
 
     long before = System.currentTimeMillis();
@@ -300,9 +303,11 @@ class LocationManagerTest {
   void byteCounters_delegate_to_NodeStats() {
     // Arrange
     RandomSource r = mock(RandomSource.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeStats stats = mock(NodeStats.class);
-    doReturn(stats).when(node).getNodeStats();
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    doReturn(stats).when(network).stats();
     LocationManager lm = newLM(r, node);
 
     // Act

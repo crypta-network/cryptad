@@ -21,8 +21,8 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <p>Execution requires full-access credentials. When authorized, {@link #run(FCPConnectionHandler,
  * Node)} constructs a {@link Listener} that adapts probe callbacks into concrete {@link FCPMessage}
- * responses, and delegates to {@link Node#startProbe(byte, long, Type, Listener)}. The method does
- * not block for completion; responses arrive asynchronously via the handler.
+ * responses, and delegates to {@code node.network().startProbe(...)}. The method does not block for
+ * completion; responses arrive asynchronously via the handler.
  *
  * <ul>
  *   <li><strong>Responsibilities:</strong> validate fields, enforce access, and bridge callbacks.
@@ -137,9 +137,9 @@ public class ProbeRequest extends FCPMessage {
    * <p>The handler must have full access; otherwise a {@link MessageInvalidException} with {@link
    * ProtocolErrorMessage#ACCESS_DENIED} is thrown and no probe is started. When authorized, this
    * method builds a {@link Listener} that maps each callback to the corresponding {@link
-   * FCPResponse} message and then delegates to {@link Node#startProbe(byte, long, Type, Listener)}
-   * using the stored hop budget and a fresh random UID from the node. The call is non-blocking and
-   * returns immediately while responses are emitted asynchronously via {@link
+   * FCPResponse} message and then delegates to {@code node.network().startProbe(...)} using the
+   * stored hop budget and a fresh random UID from the node. The call is non-blocking and returns
+   * immediately while responses are emitted asynchronously via {@link
    * FCPConnectionHandler#send(FCPMessage)}.
    *
    * @param handler connection handler used to authorize and send probe responses.
@@ -216,6 +216,7 @@ public class ProbeRequest extends FCPMessage {
                     requestIdentifier, bandwidthClassForCapacityUsage, capacityUsage));
           }
         };
-    node.startProbe(hopsToLive, node.getRandom().nextLong(), probeType, listener);
+    node.network()
+        .startProbe(hopsToLive, node.bootstrap().random().nextLong(), probeType, listener);
   }
 }

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -21,6 +22,7 @@ import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.FreenetInetAddress;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.InvalidAddressOverrideUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
@@ -38,12 +40,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class NodeIPDetectorTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PriorityAwareExecutor executor;
+  @Mock private NodeNetworkSubsystem network;
+  @Mock private PeerManager peers;
 
   @BeforeEach
   void setUpNodeBasics() {
-    // keep empty; stub only what each test needs to avoid strictness failures
+    lenient().when(node.network()).thenReturn(network);
+    lenient().when(network.executor()).thenReturn(executor);
+    lenient().when(network.peers()).thenReturn(peers);
+    lenient().when(peers.myPeers()).thenReturn(new PeerNode[0]);
   }
 
   // Helper: prime the internal IPAddressDetector snapshot to avoid real network enumeration
@@ -71,7 +80,6 @@ class NodeIPDetectorTest {
   @DisplayName("hasDirectlyDetectedIP returns true for routable and false for local-only addresses")
   void hasDirectlyDetectedIP_whenAddressesProvided_expectCorrectClassification() throws Exception {
     NodeIPDetector det = new NodeIPDetector(node);
-    when(node.getExecutor()).thenReturn(executor);
 
     // Routable IPv4 (TEST-NET-3; treated as public by IPUtil rules)
     primeIpDetector(det, ip("203.0.113.10"));
@@ -86,7 +94,7 @@ class NodeIPDetectorTest {
   @DisplayName("redetectAddress writes node file only when address set changes")
   void redetectAddress_whenNoChange_doesNotRewriteNodeFile() throws Exception {
     NodeIPDetector det = new NodeIPDetector(node);
-    when(node.dontDetect()).thenReturn(false);
+    when(network.dontDetect()).thenReturn(false);
 
     InetAddress a = ip("203.0.113.10");
     primeIpDetector(det, a);
@@ -97,8 +105,9 @@ class NodeIPDetectorTest {
 
     // Same addresses -> early return, no write
     reset(node);
-    when(node.getClientCore()).thenReturn(null);
-    when(node.dontDetect()).thenReturn(false);
+    when(node.network()).thenReturn(network);
+    when(node.services().clientCore()).thenReturn(null);
+    when(network.dontDetect()).thenReturn(false);
 
     primeIpDetector(det, a);
     det.redetectAddress();
@@ -109,9 +118,9 @@ class NodeIPDetectorTest {
   @DisplayName("processDetectedIPs reports MTU and triggers re-detect + write")
   void processDetectedIPs_whenPluginReports_expectMtuUpdateAndWrite() throws Exception {
     NodeIPDetector det = new NodeIPDetector(node);
-    when(node.getClientCore()).thenReturn(null);
-    when(node.getPeers()).thenReturn(null);
-    when(node.dontDetect()).thenReturn(false);
+    when(node.services().clientCore()).thenReturn(null);
+    when(network.peers()).thenReturn(null);
+    when(network.dontDetect()).thenReturn(false);
 
     // No directly detected addresses; plugin IPs should be considered
     primeIpDetector(det /* none */);
@@ -124,7 +133,7 @@ class NodeIPDetectorTest {
     det.processDetectedIPs(new DetectedIP[] {v4, v6});
 
     // Two MTU reports (v4 and v6) -> two updates
-    verify(node, org.mockito.Mockito.times(2)).updateMTU();
+    verify(network, org.mockito.Mockito.times(2)).updateMTU();
     verify(node).writeNodeFile();
 
     // Verify the tracked minimum MTUs reflect reports
@@ -143,21 +152,21 @@ class NodeIPDetectorTest {
     assertEquals(Integer.MAX_VALUE, det.getMinimumDetectedMTU(true));
     assertEquals(Integer.MAX_VALUE, det.getMinimumDetectedMTU());
 
-    // First valid report lowers the minima and triggers node.updateMTU()
+    // First valid report lowers the minima and triggers node.network().updateMTU()
     det.reportMTU(1400, false);
-    verify(node).updateMTU();
+    verify(network).updateMTU();
     assertEquals(1400, det.getMinimumDetectedMTU(false));
     assertEquals(1400, det.getMinimumDetectedMTU());
 
     // Zero/negative are ignored and do not trigger updates
-    clearInvocations(node);
+    clearInvocations(network);
     det.reportMTU(0, false);
     det.reportMTU(-1, true);
-    verify(node, never()).updateMTU();
+    verify(network, never()).updateMTU();
 
     // IPv6 report lowers overall minimum and triggers update
     det.reportMTU(1300, true);
-    verify(node).updateMTU();
+    verify(network).updateMTU();
     assertEquals(1300, det.getMinimumDetectedMTU(true));
     assertEquals(1300, det.getMinimumDetectedMTU());
   }
@@ -166,7 +175,7 @@ class NodeIPDetectorTest {
   @DisplayName("isDetecting flips to false after plugin manager and local detection complete")
   void isDetecting_whenPMAndIADComplete_expectFalse() throws Exception {
     NodeIPDetector det = new NodeIPDetector(node);
-    when(node.dontDetect()).thenReturn(false);
+    when(network.dontDetect()).thenReturn(false);
     assertTrue(det.isDetecting()); // neither PM nor IAD completed
 
     // Complete IPAddressDetector path by redetecting once
@@ -201,8 +210,8 @@ class NodeIPDetectorTest {
 
     // ipAddressOverride: valid hostname triggers redetect and keeps hostname-only entry
     // Force detector to avoid direct detection so only the override is considered
-    when(node.dontDetect()).thenReturn(true);
-    when(node.getClientCore()).thenReturn(null);
+    when(network.dontDetect()).thenReturn(true);
+    when(node.services().clientCore()).thenReturn(null);
     override.setValue("example.com");
     verify(node).writeNodeFile();
     FreenetInetAddress[] addrs = det.getPrimaryIPAddress(true);
@@ -224,7 +233,7 @@ class NodeIPDetectorTest {
     NodeClientCore clientCore = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     when(clientCore.getAlerts()).thenReturn(alerts);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
 
     // Simulate a prior invalid override state so clearing should flip the flag and unregister
     Field f = NodeIPDetector.class.getDeclaredField("hasValidAddressOverride");
@@ -256,7 +265,7 @@ class NodeIPDetectorTest {
     det.registerConfigs(nodeCfg, 0);
 
     // Simulate startup: no client core yet
-    when(node.getClientCore()).thenReturn(null);
+    when(node.services().clientCore()).thenReturn(null);
 
     // Pretend we were in an invalid-override state
     Field f = NodeIPDetector.class.getDeclaredField("hasValidAddressOverride");
@@ -281,7 +290,7 @@ class NodeIPDetectorTest {
     NodeClientCore clientCore = mock(NodeClientCore.class);
     UserAlertManager alerts = mock(UserAlertManager.class);
     when(clientCore.getAlerts()).thenReturn(alerts);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
 
     // With no plugins, the method registers the alert
     det.setMaybeSymmetric();

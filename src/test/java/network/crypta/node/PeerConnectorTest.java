@@ -23,7 +23,7 @@ class PeerConnectorTest {
   @Test
   void connect_whenPeerNotPresent_addsPeer() throws Exception {
     // Arrange
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peerManager = mock(PeerManager.class);
     SimpleFieldSet noderef = mock(SimpleFieldSet.class);
     DarknetPeerNode newPeer = mock(DarknetPeerNode.class);
@@ -36,7 +36,7 @@ class PeerConnectorTest {
     FRIEND_TRUST trust = FRIEND_TRUST.NORMAL;
     FRIEND_VISIBILITY visibility = FRIEND_VISIBILITY.YES;
 
-    when(node.createNewDarknetNode(noderef, trust, visibility)).thenReturn(newPeer);
+    when(node.network().createNewDarknetNode(noderef, trust, visibility)).thenReturn(newPeer);
     when(peerManager.myPeers()).thenReturn(new PeerNode[] {existingPeer});
 
     PeerConnector connector = new PeerConnector(node, peerManager);
@@ -51,7 +51,7 @@ class PeerConnectorTest {
   @Test
   void connect_whenPeerAlreadyPresent_doesNotAddPeer() throws Exception {
     // Arrange
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peerManager = mock(PeerManager.class);
     SimpleFieldSet noderef = mock(SimpleFieldSet.class);
     DarknetPeerNode newPeer = mock(DarknetPeerNode.class);
@@ -63,7 +63,7 @@ class PeerConnectorTest {
     FRIEND_TRUST trust = FRIEND_TRUST.HIGH;
     FRIEND_VISIBILITY visibility = FRIEND_VISIBILITY.NAME_ONLY;
 
-    when(node.createNewDarknetNode(noderef, trust, visibility)).thenReturn(newPeer);
+    when(node.network().createNewDarknetNode(noderef, trust, visibility)).thenReturn(newPeer);
     when(peerManager.myPeers()).thenReturn(new PeerNode[] {existingPeer});
 
     PeerConnector connector = new PeerConnector(node, peerManager);
@@ -78,7 +78,7 @@ class PeerConnectorTest {
   @Test
   void connect_whenPeerListEmpty_addsPeer() throws Exception {
     // Arrange
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peerManager = mock(PeerManager.class);
     SimpleFieldSet noderef = mock(SimpleFieldSet.class);
     DarknetPeerNode newPeer = mock(DarknetPeerNode.class);
@@ -87,7 +87,7 @@ class PeerConnectorTest {
     FRIEND_TRUST trust = FRIEND_TRUST.LOW;
     FRIEND_VISIBILITY visibility = FRIEND_VISIBILITY.NO;
 
-    when(node.createNewDarknetNode(noderef, trust, visibility)).thenReturn(newPeer);
+    when(node.network().createNewDarknetNode(noderef, trust, visibility)).thenReturn(newPeer);
     when(peerManager.myPeers()).thenReturn(new PeerNode[0]);
 
     PeerConnector connector = new PeerConnector(node, peerManager);
@@ -102,7 +102,7 @@ class PeerConnectorTest {
   @Test
   void connect_whenCreateNewDarknetNodeThrows_propagatesAndSkipsPeerManager() throws Exception {
     // Arrange
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peerManager = mock(PeerManager.class);
     SimpleFieldSet noderef = mock(SimpleFieldSet.class);
 
@@ -110,7 +110,7 @@ class PeerConnectorTest {
     FRIEND_VISIBILITY visibility = FRIEND_VISIBILITY.YES;
 
     PeerParseException failure = new PeerParseException("bad noderef");
-    when(node.createNewDarknetNode(noderef, trust, visibility)).thenThrow(failure);
+    when(node.network().createNewDarknetNode(noderef, trust, visibility)).thenThrow(failure);
 
     PeerConnector connector = new PeerConnector(node, peerManager);
 

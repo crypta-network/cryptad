@@ -111,7 +111,7 @@ public class TextModeClientInterface implements Runnable {
   private static final String FINISHED_INSERT_BUT = "Finished insert but: ";
   private static final String NO_PEER_FOR_PREFIX = "no peer for ";
   private static final String PEER_DETAILS_FAIL_PREFIX =
-      "n.getPeerNode() failed to get peer details for ";
+      "n.network().getPeerNode() failed to get peer details for ";
   private static final String CRLF2 = "\r\n\r\n";
   private static final String DID_NOT_PARSE_LITERAL = "Did not parse: {}";
   private static final String FILTER_BASE_URL = "http://127.0.0.1:8888/";
@@ -181,7 +181,7 @@ public class TextModeClientInterface implements Runnable {
   public TextModeClientInterface(
       TextModeClientInterfaceServer server, InputStream in, OutputStream out) {
     this.n = server.n;
-    this.core = server.n.getClientCore();
+    this.core = server.n.services().clientCore();
     this.r = server.r;
     client = core.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, true, false);
     this.downloadsDir = server.downloadsDir;
@@ -218,7 +218,7 @@ public class TextModeClientInterface implements Runnable {
       InputStream in,
       OutputStream out) {
     this.n = n;
-    this.r = n.getRandom();
+    this.r = n.bootstrap().random();
     this.core = core;
     this.client = c;
     this.downloadsDir = downloadDir;
@@ -590,7 +590,7 @@ public class TextModeClientInterface implements Runnable {
           new ClientGetter(
               fw, uri, context, RequestStarter.INTERACTIVE_PRIORITY_CLASS, null, null, null);
       get.setMetaSnoop(new DumperSnoopMetadata());
-      get.start(n.getClientCore().getClientContext());
+      get.start(n.services().clientCore().getClientContext());
       FetchResult result = fw.waitForCompletion();
       appendResultData(result, outsb);
     } catch (FetchException e) {
@@ -663,7 +663,7 @@ public class TextModeClientInterface implements Runnable {
   private boolean handleUpdate(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
     outsb.append("starting the update process");
-    n.getTicker().queueTimedJob(() -> n.getNodeUpdater().arm(), 0);
+    n.network().ticker().queueTimedJob(() -> n.services().nodeUpdater().arm(), 0);
     return false;
   }
 
@@ -714,7 +714,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handleBlow(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
-    n.getNodeUpdater().blow("caught an  IOException : (Incompetent Operator) :p", true);
+    n.services().nodeUpdater().blow("caught an  IOException : (Incompetent Operator) :p", true);
     return false;
   }
 
@@ -1103,11 +1103,11 @@ public class TextModeClientInterface implements Runnable {
   private boolean handleStatus(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
     outsb.append("DARKNET:\n");
-    SimpleFieldSet fs = n.exportDarknetPublicFieldSet();
+    SimpleFieldSet fs = n.network().exportDarknetPublicFieldSet();
     outsb.append(fs.toString());
-    if (n.isOpennetEnabled()) {
+    if (n.network().isOpennetEnabled()) {
       outsb.append("OPENNET:\n");
-      fs = n.exportOpennetPublicFieldSet();
+      fs = n.network().exportOpennetPublicFieldSet();
       outsb.append(fs.toString());
     }
     outsb.append(n.getStatus());
@@ -1236,7 +1236,7 @@ public class TextModeClientInterface implements Runnable {
       w.flush();
       return false;
     }
-    PeerNode pn = n.getPeerNode(nodeIdentifier);
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
       w.flush();
@@ -1270,7 +1270,7 @@ public class TextModeClientInterface implements Runnable {
       w.flush();
       return false;
     }
-    PeerNode pn = n.getPeerNode(nodeIdentifier);
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
       w.flush();
@@ -1345,7 +1345,7 @@ public class TextModeClientInterface implements Runnable {
       w.flush();
       return false;
     }
-    PeerNode pn = n.getPeerNode(nodeIdentifier);
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
       w.flush();
@@ -1371,7 +1371,7 @@ public class TextModeClientInterface implements Runnable {
       w.flush();
       return false;
     }
-    PeerNode pn = n.getPeerNode(nodeIdentifier);
+    PeerNode pn = n.network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       w.write((PEER_DETAILS_FAIL_PREFIX + nodeIdentifier + CRLF2));
       w.flush();
@@ -1421,22 +1421,22 @@ public class TextModeClientInterface implements Runnable {
     // Dispatch per legacy prefixes
     if (uline.startsWith("PLUGLOAD:O:")) {
       String name = line.substring("PLUGLOAD:O:".length()).trim();
-      n.getPluginManager().startPluginOfficial(name, true);
+      n.services().pluginManager().startPluginOfficial(name, true);
       return false;
     }
     if (uline.startsWith("PLUGLOAD:F:")) {
       String name = line.substring("PLUGLOAD:F:".length()).trim();
-      n.getPluginManager().startPluginFile(name, true);
+      n.services().pluginManager().startPluginFile(name, true);
       return false;
     }
     if (uline.startsWith("PLUGLOAD:U:")) {
       String name = line.substring("PLUGLOAD:U:".length()).trim();
-      n.getPluginManager().startPluginURL(name, true);
+      n.services().pluginManager().startPluginURL(name, true);
       return false;
     }
     if (uline.startsWith("PLUGLOAD:K:")) {
       String name = line.substring("PLUGLOAD:K:".length()).trim();
-      n.getPluginManager().startPluginFreenet(name, true);
+      n.services().pluginManager().startPluginFreenet(name, true);
       return false;
     }
 
@@ -1453,7 +1453,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handlePlugList(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
-    outsb.append(n.getPluginManager().dumpPlugins());
+    outsb.append(n.services().pluginManager().dumpPlugins());
     return false;
   }
 
@@ -1469,10 +1469,11 @@ public class TextModeClientInterface implements Runnable {
     boolean killed = false;
 
     // Prefer PLUGLIST-style IDs (thread names)
-    for (network.crypta.pluginmanager.PluginInfoWrapper pi : n.getPluginManager().getPlugins()) {
+    for (network.crypta.pluginmanager.PluginInfoWrapper pi :
+        n.services().pluginManager().getPlugins()) {
       if (id.equals(pi.getThreadName())) {
         pi.stopPlugin(
-            n.getPluginManager(), java.util.concurrent.TimeUnit.MINUTES.toMillis(1), false);
+            n.services().pluginManager(), java.util.concurrent.TimeUnit.MINUTES.toMillis(1), false);
         killed = true;
         break;
       }
@@ -1481,10 +1482,10 @@ public class TextModeClientInterface implements Runnable {
     // Fallback: class or filename identifiers
     if (!killed) {
       network.crypta.pluginmanager.PluginInfoWrapper info =
-          n.getPluginManager().findPluginByIdentifier(id);
+          n.services().pluginManager().findPluginByIdentifier(id);
       if (info != null) {
         info.stopPlugin(
-            n.getPluginManager(), java.util.concurrent.TimeUnit.MINUTES.toMillis(1), false);
+            n.services().pluginManager(), java.util.concurrent.TimeUnit.MINUTES.toMillis(1), false);
         killed = true;
       }
     }
@@ -1502,7 +1503,7 @@ public class TextModeClientInterface implements Runnable {
   private boolean handleAnnounce(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
     // Guard when opennet is disabled
-    var om = n.getOpennet();
+    var om = n.network().opennet();
     if (om == null) {
       outsb.append("OPENNET DISABLED, cannot announce.");
       return false;
@@ -1519,7 +1520,7 @@ public class TextModeClientInterface implements Runnable {
       }
     } else {
       // Legacy behavior: pick a fresh random target when none is provided
-      target = n.getRandom().nextDouble();
+      target = n.bootstrap().random().nextDouble();
     }
     outsb.append("Announcing to ").append(target);
     om.announce(
@@ -1711,7 +1712,7 @@ public class TextModeClientInterface implements Runnable {
     }
     PeerNode pn;
     try {
-      pn = n.createNewDarknetNode(fs, FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
+      pn = n.network().createNewDarknetNode(fs, FRIEND_TRUST.NORMAL, FRIEND_VISIBILITY.NO);
     } catch (FSParseException
         | PeerTooOldException
         | ReferenceSignatureVerificationException
@@ -1720,11 +1721,11 @@ public class TextModeClientInterface implements Runnable {
       outsb.append("Did not parse: ").append(e1).append("\r\n");
       return;
     }
-    if (n.getPeers().addPeer(pn)) {
+    if (n.network().peers().addPeer(pn)) {
       LOG.info("Added peer: {}", pn);
       outsb.append("Added peer: ").append(pn).append("\r\n");
     }
-    n.getPeers().writePeersDarknetUrgent();
+    n.network().peers().writePeersDarknetUrgent();
   }
 
   /**
@@ -1732,7 +1733,7 @@ public class TextModeClientInterface implements Runnable {
    * success as boolean
    */
   private boolean disablePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1755,7 +1756,7 @@ public class TextModeClientInterface implements Runnable {
    * success as boolean
    */
   private boolean enablePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1778,7 +1779,7 @@ public class TextModeClientInterface implements Runnable {
    * existence as boolean
    */
   private boolean havePeer(String nodeIdentifier) {
-    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1801,7 +1802,7 @@ public class TextModeClientInterface implements Runnable {
    */
   private boolean removePeer(String nodeIdentifier) {
     LOG.info("Removing peer from node for: {}", nodeIdentifier);
-    for (DarknetPeerNode pn : n.getPeers().roster().getDarknetPeers()) {
+    for (DarknetPeerNode pn : n.network().peers().roster().getDarknetPeers()) {
       Peer peer = pn.getPeer();
       String nodeIpAndPort = "";
       if (peer != null) {
@@ -1812,7 +1813,7 @@ public class TextModeClientInterface implements Runnable {
       if (identity.equals(nodeIdentifier)
           || nodeIpAndPort.equals(nodeIdentifier)
           || name.equals(nodeIdentifier)) {
-        n.removePeerConnection(pn);
+        n.network().removePeerConnection(pn);
         return true;
       }
     }

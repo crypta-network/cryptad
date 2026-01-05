@@ -148,7 +148,7 @@ public class LoadPlugin extends FCPMessage {
           false);
     }
 
-    if (!node.getPluginManager().isEnabled()) {
+    if (!node.services().pluginManager().isEnabled()) {
       handler.send(
           new ProtocolErrorMessage(
               ProtocolErrorMessage.PLUGINS_DISABLED,
@@ -159,7 +159,7 @@ public class LoadPlugin extends FCPMessage {
       return;
     }
 
-    node.getExecutor().execute(() -> processLoad(handler, node), "Load Plugin");
+    node.network().executor().execute(() -> processLoad(handler, node), "Load Plugin");
   }
 
   private void processLoad(FCPConnectionHandler handler, Node node) {
@@ -192,7 +192,7 @@ public class LoadPlugin extends FCPMessage {
     if (urlType != null) {
       return urlType.toLowerCase();
     }
-    if (node.getPluginManager().isOfficialPlugin(pluginURL) != null) {
+    if (node.services().pluginManager().isOfficialPlugin(pluginURL) != null) {
       return TYPENAME_OFFICIAL;
     }
     if (new File(pluginURL).exists()) {
@@ -210,13 +210,13 @@ public class LoadPlugin extends FCPMessage {
   private PluginInfoWrapper startPlugin(Node node, String type, FCPConnectionHandler handler) {
     switch (type) {
       case TYPENAME_OFFICIAL:
-        return node.getPluginManager().startPluginOfficial(pluginURL, store);
+        return node.services().pluginManager().startPluginOfficial(pluginURL, store);
       case TYPENAME_FILE:
-        return node.getPluginManager().startPluginFile(pluginURL, store);
+        return node.services().pluginManager().startPluginFile(pluginURL, store);
       case TYPENAME_FREENET:
-        return node.getPluginManager().startPluginFreenet(pluginURL, store);
+        return node.services().pluginManager().startPluginFreenet(pluginURL, store);
       case TYPENAME_URL:
-        return node.getPluginManager().startPluginURL(pluginURL, store);
+        return node.services().pluginManager().startPluginURL(pluginURL, store);
       default:
         LOG.error("This should really not happen!");
         handler.send(

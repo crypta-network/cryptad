@@ -27,7 +27,10 @@ class GetPluginInfoTest {
   private static final String PLUGIN_NAME = "plugin.Class";
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PluginManager pluginManager;
   @Mock private PluginInfoWrapper pluginInfoWrapper;
 
@@ -74,7 +77,10 @@ class GetPluginInfoTest {
   void run_whenPluginNotFound_sendsProtocolErrorMessage() throws Exception {
     SimpleFieldSet fs = createFieldSet(IDENTIFIER, PLUGIN_NAME, Boolean.FALSE);
     GetPluginInfo message = new GetPluginInfo(fs);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(null);
 
     message.run(handler, node);
@@ -97,7 +103,10 @@ class GetPluginInfoTest {
   void run_whenPluginFoundWithoutDetails_sendsPluginInfoWithBasicFields() throws Exception {
     SimpleFieldSet fs = createFieldSet(IDENTIFIER, PLUGIN_NAME, Boolean.FALSE);
     GetPluginInfo message = new GetPluginInfo(fs);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     mockPluginInfo(true, 42L, "1.0.0", "plugin.jar", 123L, false);
     when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(pluginInfoWrapper);
 
@@ -123,7 +132,10 @@ class GetPluginInfoTest {
     SimpleFieldSet fs = createFieldSet(IDENTIFIER, PLUGIN_NAME, Boolean.TRUE);
     GetPluginInfo message = new GetPluginInfo(fs);
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     mockPluginInfo(true, 99L, "2.3.4", "origin.jar", 9876L, true);
     when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(pluginInfoWrapper);
 

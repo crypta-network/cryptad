@@ -48,7 +48,10 @@ import org.mockito.quality.Strictness;
 class PluginJarUpdaterTest {
 
   @Mock private NodeUpdateManager manager;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private UserAlertManager alerts;
   @Mock private PluginManager pluginManager;
@@ -86,8 +89,8 @@ class PluginJarUpdaterTest {
     when(manager.isEnabled()).thenReturn(true);
     when(manager.isBlown()).thenReturn(false);
 
-    when(node.getClientCore()).thenReturn(core);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    when(node.services().clientCore()).thenReturn(core);
+    when(node.services().pluginManager()).thenReturn(pluginManager);
 
     when(core.getPersistentTempDir()).thenReturn(persistentTempDir.toFile());
     when(core.getAlerts()).thenReturn(alerts);

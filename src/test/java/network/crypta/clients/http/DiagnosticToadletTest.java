@@ -14,7 +14,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
-import network.crypta.node.diagnostics.NodeDiagnostics;
+import network.crypta.node.diagnostics.DefaultNodeDiagnostics;
 import network.crypta.node.diagnostics.ThreadDiagnostics;
 import network.crypta.node.diagnostics.threads.NodeThreadInfo;
 import network.crypta.node.diagnostics.threads.NodeThreadSnapshot;
@@ -36,14 +36,17 @@ class DiagnosticToadletTest {
 
   @BeforeEach
   void setUp() {
-    node = mock(Node.class);
+    node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     nodeStats = mock(NodeStats.class);
     peerManager = mock(PeerManager.class);
     fcpServer = mock(FCPServer.class);
     client = mock(HighLevelSimpleClient.class);
 
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.getPeers()).thenReturn(peerManager);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.stats()).thenReturn(nodeStats);
+    when(network.peers()).thenReturn(peerManager);
   }
 
   @Test
@@ -132,9 +135,12 @@ class DiagnosticToadletTest {
     Locale originalLocale = Locale.getDefault();
     Locale.setDefault(Locale.US);
     try {
-      NodeDiagnostics nodeDiagnostics = mock(NodeDiagnostics.class);
+      DefaultNodeDiagnostics nodeDiagnostics = mock(DefaultNodeDiagnostics.class);
       ThreadDiagnostics threadDiagnostics = mock(ThreadDiagnostics.class);
-      when(node.getNodeDiagnostics()).thenReturn(nodeDiagnostics);
+      network.crypta.node.subsystem.NodeServicesSubsystem services =
+          org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+      when(node.services()).thenReturn(services);
+      when(services.nodeDiagnostics()).thenReturn(nodeDiagnostics);
       when(nodeDiagnostics.getThreadDiagnostics()).thenReturn(threadDiagnostics);
 
       String longName = "ThreadName".repeat(15);

@@ -88,8 +88,8 @@ public final class CHKInsertSender extends BaseSender
       this.thisTag = thisTag;
       bt =
           new BlockTransmitter(
-              node.getUSM(),
-              node.getTicker(),
+              node.network().usm(),
+              node.network().ticker(),
               pn,
               uid,
               prb,
@@ -117,7 +117,7 @@ public final class CHKInsertSender extends BaseSender
                 }
               },
               realTimeFlag,
-              node.getNodeStats());
+              node.network().stats());
     }
 
     /**
@@ -132,7 +132,8 @@ public final class CHKInsertSender extends BaseSender
       // Add ourselves as a listener for the longterm completion message of this transfer, then
       // gracefully exit.
       try {
-        node.getUSM()
+        node.network()
+            .usm()
             .addAsyncFilter(getNotificationMessageFilter(false), BackgroundTransfer.this, null);
       } catch (DisconnectedException _) {
         // Normal
@@ -143,7 +144,8 @@ public final class CHKInsertSender extends BaseSender
     }
 
     void start() {
-      node.getExecutor()
+      node.network()
+          .executor()
           .execute(this, "CHKInsert-BackgroundTransfer" + FOR + uid + " to " + pn.getPeer());
     }
 
@@ -310,7 +312,8 @@ public final class CHKInsertSender extends BaseSender
         pn.localRejectedOverload("InsertTimeoutNoFinalAck", realTimeFlag);
         // First timeout. Wait for second timeout.
         try {
-          node.getUSM()
+          node.network()
+              .usm()
               .addAsyncFilter(getNotificationMessageFilter(true), this, CHKInsertSender.this);
         } catch (DisconnectedException _) {
           // Normal
@@ -366,7 +369,7 @@ public final class CHKInsertSender extends BaseSender
     }
   }
 
-  CHKInsertSender(
+  public CHKInsertSender(
       NodeCHK myKey,
       long uid,
       InsertTag tag,
@@ -402,8 +405,9 @@ public final class CHKInsertSender extends BaseSender
    *
    * <p>Non-blocking. The actual work is performed on a background thread.
    */
-  void start() {
-    node.getExecutor()
+  public void start() {
+    node.network()
+        .executor()
         .execute(
             this,
             "CHKInsertSender"
@@ -411,7 +415,7 @@ public final class CHKInsertSender extends BaseSender
                 + "UID "
                 + uid
                 + " on "
-                + node.getDarknetPortNumber()
+                + node.network().darknetPortNumber()
                 + " at "
                 + System.currentTimeMillis());
   }
@@ -529,7 +533,7 @@ public final class CHKInsertSender extends BaseSender
       return;
     }
 
-    boolean canWriteStorePrev = node.canWriteDatastoreInsert(htl);
+    boolean canWriteStorePrev = node.routing().canWriteDatastoreInsert(htl);
     HtlDecision dec = processHtlDecrement(starting, canWriteStorePrev, highHTLFailureCount);
     if (dec.finished) return;
     // dec.highHTLFailureCount is only relevant within this decision step; no reuse required here.
@@ -572,7 +576,7 @@ public final class CHKInsertSender extends BaseSender
         LOG.debug("Allowing failure {} htl is still {}", highHTLFailureCount, htl);
       return new HtlDecision(false, highHTLFailureCount, false);
     }
-    htl = node.decrementHTL(hasForwarded ? lastNode : source, htl);
+    htl = node.routing().decrementHTL(hasForwarded ? lastNode : source, htl);
     if (LOG.isDebugEnabled()) LOG.debug("Decremented HTL to {}", htl);
     return new HtlDecision(false, highHTLFailureCount, false);
   }
@@ -595,11 +599,11 @@ public final class CHKInsertSender extends BaseSender
   }
 
   private void maybeForkOnCacheable(boolean canWriteStorePrev) {
-    if (node.canWriteDatastoreInsert(htl)
+    if (node.routing().canWriteDatastoreInsert(htl)
         && (!canWriteStorePrev)
         && forkOnCacheable
         && forkedRequestTag == null) {
-      uid = node.getClientCore().makeUID();
+      uid = node.services().clientCore().makeUID();
       forkedRequestTag =
           new InsertTag(false, InsertTag.START.REMOTE, source, realTimeFlag, uid, node);
       forkedRequestTag.reassignToSelf();
@@ -608,12 +612,13 @@ public final class CHKInsertSender extends BaseSender
       forkedRequestTag.setAccepted();
       LOG.info("FORKING CHK INSERT {} to {}", origUID, uid);
       nodesRoutedTo.clear();
-      node.getTracker().lockUID(forkedRequestTag);
+      node.routing().tracker().lockUID(forkedRequestTag);
     }
   }
 
   private PeerNode findNextPeer() {
-    return node.getPeers()
+    return node.network()
+        .peers()
         .routingSelector()
         .closerPeer(
             forkedRequestTag == null ? source : null,
@@ -821,7 +826,8 @@ public final class CHKInsertSender extends BaseSender
     MessageFilter mf =
         makeAcceptedRejectedFilter(next, TIMEOUT_AFTER_ACCEPTEDREJECTED_TIMEOUT, tag);
     try {
-      node.getUSM()
+      node.network()
+          .usm()
           .addAsyncFilter(
               mf,
               new SlowAsyncMessageFilterCallback() {
@@ -1331,7 +1337,7 @@ public final class CHKInsertSender extends BaseSender
     synchronized (totalBytesSync) {
       totalBytesSent += x;
     }
-    node.getNodeStats().insertSentBytes(false, x);
+    node.network().stats().insertSentBytes(false, x);
   }
 
   /**
@@ -1357,7 +1363,7 @@ public final class CHKInsertSender extends BaseSender
     synchronized (totalBytesSync) {
       totalBytesReceived += x;
     }
-    node.getNodeStats().insertReceivedBytes(false, x);
+    node.network().stats().insertReceivedBytes(false, x);
   }
 
   /**
@@ -1379,7 +1385,7 @@ public final class CHKInsertSender extends BaseSender
   @Override
   public void sentPayload(int x) {
     node.sentPayload(x);
-    node.getNodeStats().insertSentBytes(false, -x);
+    node.network().stats().insertSentBytes(false, -x);
   }
 
   /**
@@ -1527,7 +1533,7 @@ public final class CHKInsertSender extends BaseSender
         return;
       }
       try {
-        msg = node.getUSM().waitFor(mf, this);
+        msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
         LOG.info("Disconnected from {} while waiting for InsertReply on {}", next, this);
         transfer.onDisconnect(next);
@@ -1599,7 +1605,7 @@ public final class CHKInsertSender extends BaseSender
     final PeerNode waitingFor = next;
     final short capturedHtl = htlAtTimeout;
     Runnable r = () -> runSecondTimeoutWait(waitingFor, tag, transfer, capturedHtl);
-    node.getExecutor().execute(r);
+    node.network().executor().execute(r);
     // Meanwhile, finish() to update allTransfersCompleted and let the handler proceed downstream.
     finish(TIMED_OUT, next);
   }
@@ -1616,7 +1622,7 @@ public final class CHKInsertSender extends BaseSender
         return;
       }
       try {
-        msg = node.getUSM().waitFor(mf, CHKInsertSender.this);
+        msg = node.network().usm().waitFor(mf, CHKInsertSender.this);
       } catch (DisconnectedException _) {
         LOG.info(
             "Disconnected from {} while waiting for InsertReply on {}",

@@ -31,7 +31,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class OpennetManagerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerNode peer;
   @Mock private PeerTransport transport;
   @Mock private MessageCore usm;
@@ -69,7 +71,7 @@ class OpennetManagerTest {
     // Arrange
     long uid = 42L;
     Message ack = DMT.createFNPOpennetCompletedAck(uid);
-    org.mockito.Mockito.when(node.getUSM()).thenReturn(usm);
+    org.mockito.Mockito.when(node.network().usm()).thenReturn(usm);
     try {
       doAnswer(
               inv -> {
@@ -96,7 +98,7 @@ class OpennetManagerTest {
   void waitForOpennetNoderef_whenTimeout_expectException() {
     // Arrange
     long uid = 777L;
-    org.mockito.Mockito.when(node.getUSM()).thenReturn(usm);
+    org.mockito.Mockito.when(node.network().usm()).thenReturn(usm);
     try {
       doAnswer(
               inv -> {
@@ -144,7 +146,7 @@ class OpennetManagerTest {
   void waitForOpennetNoderef_callback_whenDisconnected_expectNull() throws Exception {
     // Arrange
     long uid = 99L;
-    org.mockito.Mockito.when(node.getUSM()).thenReturn(usm);
+    org.mockito.Mockito.when(node.network().usm()).thenReturn(usm);
     doThrow(new DisconnectedException())
         .when(usm)
         .addAsyncFilter(any(MessageFilter.class), any(), any());

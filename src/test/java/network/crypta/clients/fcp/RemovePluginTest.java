@@ -14,6 +14,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import network.crypta.node.Node;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.PriorityAwareExecutor;
@@ -79,7 +81,7 @@ class RemovePluginTest {
     RemovePlugin removePlugin = new RemovePlugin(minimalFieldSet());
     @SuppressWarnings("resource")
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     org.mockito.Mockito.when(handler.hasFullAccess()).thenReturn(false);
 
@@ -96,13 +98,17 @@ class RemovePluginTest {
   void run_whenPluginNotFound_sendsProtocolError() throws MessageInvalidException {
     RemovePlugin removePlugin = new RemovePlugin(minimalFieldSet());
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     PluginManager pluginManager = mock(PluginManager.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
 
     org.mockito.Mockito.when(handler.hasFullAccess()).thenReturn(true);
-    org.mockito.Mockito.when(node.getExecutor()).thenReturn(executor);
-    org.mockito.Mockito.when(node.getPluginManager()).thenReturn(pluginManager);
+    org.mockito.Mockito.when(node.network()).thenReturn(network);
+    org.mockito.Mockito.when(network.executor()).thenReturn(executor);
+    org.mockito.Mockito.when(node.services()).thenReturn(services);
+    org.mockito.Mockito.when(services.pluginManager()).thenReturn(pluginManager);
     org.mockito.Mockito.when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(null);
     doAnswer(
             invocation -> {
@@ -132,14 +138,18 @@ class RemovePluginTest {
     fs.put("MaxWaitTime", 15);
     RemovePlugin removePlugin = new RemovePlugin(fs);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     PluginManager pluginManager = mock(PluginManager.class);
     PluginInfoWrapper pluginInfoWrapper = mock(PluginInfoWrapper.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
 
     org.mockito.Mockito.when(handler.hasFullAccess()).thenReturn(true);
-    org.mockito.Mockito.when(node.getExecutor()).thenReturn(executor);
-    org.mockito.Mockito.when(node.getPluginManager()).thenReturn(pluginManager);
+    org.mockito.Mockito.when(node.network()).thenReturn(network);
+    org.mockito.Mockito.when(network.executor()).thenReturn(executor);
+    org.mockito.Mockito.when(node.services()).thenReturn(services);
+    org.mockito.Mockito.when(services.pluginManager()).thenReturn(pluginManager);
     org.mockito.Mockito.when(pluginManager.findPluginByIdentifier(PLUGIN_NAME))
         .thenReturn(pluginInfoWrapper);
     doAnswer(
@@ -170,14 +180,18 @@ class RemovePluginTest {
     fs.put("Purge", true);
     RemovePlugin removePlugin = new RemovePlugin(fs);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     PluginManager pluginManager = mock(PluginManager.class);
     PluginInfoWrapper pluginInfoWrapper = mock(PluginInfoWrapper.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
 
     org.mockito.Mockito.when(handler.hasFullAccess()).thenReturn(true);
-    org.mockito.Mockito.when(node.getExecutor()).thenReturn(executor);
-    org.mockito.Mockito.when(node.getPluginManager()).thenReturn(pluginManager);
+    org.mockito.Mockito.when(node.network()).thenReturn(network);
+    org.mockito.Mockito.when(network.executor()).thenReturn(executor);
+    org.mockito.Mockito.when(node.services()).thenReturn(services);
+    org.mockito.Mockito.when(services.pluginManager()).thenReturn(pluginManager);
     org.mockito.Mockito.when(pluginManager.findPluginByIdentifier(PLUGIN_NAME))
         .thenReturn(pluginInfoWrapper);
     org.mockito.Mockito.when(pluginInfoWrapper.getFilename()).thenReturn("plugin-file.jar");

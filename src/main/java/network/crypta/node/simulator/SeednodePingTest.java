@@ -206,7 +206,7 @@ public class SeednodePingTest extends RealNodeTest {
           ReferenceSignatureVerificationException {
     List<SeedServerTestPeerNode> seedNodes = new ArrayList<>();
     for (SimpleFieldSet sfs : seedNodesAsSfs) {
-      SeedServerTestPeerNode seednode = node.createNewSeedServerTestPeerNode(sfs);
+      SeedServerTestPeerNode seednode = node.network().createNewSeedServerTestPeerNode(sfs);
       if (connectSeednode(node, seednode)) {
         seedNodes.add(seednode);
       }
@@ -216,7 +216,7 @@ public class SeednodePingTest extends RealNodeTest {
 
   private static boolean connectSeednode(Node node, SeedServerTestPeerNode seednode) {
     try {
-      node.connectToSeednode(seednode);
+      node.network().connectToSeednode(seednode);
       return true;
     } catch (Exception fse) {
       LOG.error("ERROR adding {} {}", seednode, fse.getMessage());
@@ -276,7 +276,7 @@ public class SeednodePingTest extends RealNodeTest {
     int pingId = pingIdStart;
     int countConnectedSeednodes = 0;
     for (SeedServerPeerNode seednode :
-        node.getPeers().seedPeers().getConnectedSeedServerPeersVector(null)) {
+        node.network().peers().seedPeers().getConnectedSeedServerPeersVector(null)) {
       if (pingSeednode(seednode, pingId)) {
         countConnectedSeednodes++;
         pingId++;
@@ -332,9 +332,9 @@ public class SeednodePingTest extends RealNodeTest {
   private static void logTotals(Node node, int countConnectedSeednodes) {
     LOG.error(
         "################## ({}) {}/{}",
-        node.getPeers().countConnectedPeers(),
+        node.network().peers().countConnectedPeers(),
         countConnectedSeednodes,
-        node.getPeers().countSeednodes());
+        node.network().peers().countSeednodes());
   }
 
   private static void reportFinalTotals(List<SeedServerTestPeerNode> seedNodes) {

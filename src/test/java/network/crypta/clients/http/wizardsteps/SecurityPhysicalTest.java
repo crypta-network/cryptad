@@ -26,6 +26,7 @@ import network.crypta.node.MasterKeysWrongPasswordException;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.SecurityLevels;
+import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +46,11 @@ class SecurityPhysicalTest {
   private static final String OLD_SECRET = "oldPass";
 
   @Mock private NodeClientCore core;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
+  @Mock private NodeStorageSubsystem storage;
   @Mock private SecurityLevels securityLevels;
   @Mock private HTTPRequest request;
 
@@ -54,7 +59,7 @@ class SecurityPhysicalTest {
   @Test
   void getCurrentLevel_whenCalled_returnsLevelFromNodeSecurityLevels() {
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    when(node.services().securityLevels()).thenReturn(securityLevels);
     when(securityLevels.getPhysicalThreatLevel())
         .thenReturn(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
 
@@ -124,8 +129,8 @@ class SecurityPhysicalTest {
         FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
             + "&error=pass&newThreatLevel=HIGH&type=SET_BLANK",
         next);
-    verify(node, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
-    verify(node, never()).setMasterPassword(anyString(), anyBoolean());
+    verify(storage, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
+    verify(storage, never()).setMasterPassword(anyString(), anyBoolean());
     verify(securityLevels, never()).setThreatLevel(any(SecurityLevels.PHYSICAL_THREAT_LEVEL.class));
   }
 
@@ -144,7 +149,7 @@ class SecurityPhysicalTest {
         FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
             + "&error=pass&newThreatLevel=HIGH&type=SET_NO_MATCH",
         next);
-    verify(node, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
+    verify(storage, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
     verify(securityLevels, never()).setThreatLevel(any(SecurityLevels.PHYSICAL_THREAT_LEVEL.class));
   }
 
@@ -155,7 +160,8 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL, SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
     stubPasswordParts(NEW_SECRET, NEW_SECRET);
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    doNothing().when(node).changeMasterPassword("", NEW_SECRET, true);
+    when(node.storage()).thenReturn(storage);
+    doNothing().when(storage).changeMasterPassword("", NEW_SECRET, true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
 
@@ -163,11 +169,11 @@ class SecurityPhysicalTest {
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.NAME_SELECTION.name(), next);
 
-    InOrder inOrder = inOrder(node, securityLevels, core);
-    inOrder.verify(node).changeMasterPassword("", NEW_SECRET, true);
+    InOrder inOrder = inOrder(storage, securityLevels, core);
+    inOrder.verify(storage).changeMasterPassword("", NEW_SECRET, true);
     inOrder.verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
     inOrder.verify(core).storeConfig();
-    inOrder.verify(node).lateSetupDatabase(null);
+    inOrder.verify(storage).lateSetupDatabase(null);
     inOrder.verifyNoMoreInteractions();
   }
 
@@ -177,17 +183,18 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.MAXIMUM, SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
     stubPasswordParts(NEW_SECRET, NEW_SECRET);
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    doNothing().when(node).setMasterPassword(NEW_SECRET, true);
+    when(node.storage()).thenReturn(storage);
+    doNothing().when(storage).setMasterPassword(NEW_SECRET, true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
 
     String next = subject.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.NAME_SELECTION.name(), next);
-    verify(node).setMasterPassword(NEW_SECRET, true);
+    verify(storage).setMasterPassword(NEW_SECRET, true);
     verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
     verify(core).storeConfig();
-    verify(node).lateSetupDatabase(null);
+    verify(storage).lateSetupDatabase(null);
   }
 
   @Test
@@ -198,7 +205,7 @@ class SecurityPhysicalTest {
     stubPasswordParts(NEW_SECRET, NEW_SECRET);
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
     doThrow(new Node.AlreadySetPasswordException())
-        .when(node)
+        .when(storage)
         .changeMasterPassword("", NEW_SECRET, true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
@@ -216,7 +223,7 @@ class SecurityPhysicalTest {
     stubPasswordParts(NEW_SECRET, NEW_SECRET);
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
     doThrow(new MasterKeysWrongPasswordException())
-        .when(node)
+        .when(storage)
         .changeMasterPassword("", NEW_SECRET, true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
@@ -235,7 +242,7 @@ class SecurityPhysicalTest {
     stubPasswordParts(NEW_SECRET, NEW_SECRET);
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
     doThrow(new MasterKeysFileSizeException(false))
-        .when(node)
+        .when(storage)
         .changeMasterPassword("", NEW_SECRET, true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
@@ -261,7 +268,7 @@ class SecurityPhysicalTest {
         FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
             + "&error=pass&newThreatLevel=NORMAL&type=DECRYPT_BLANK",
         next);
-    verify(node, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
+    verify(storage, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
     verify(securityLevels, never()).setThreatLevel(any(SecurityLevels.PHYSICAL_THREAT_LEVEL.class));
   }
 
@@ -275,9 +282,9 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH, SecurityLevels.PHYSICAL_THREAT_LEVEL.LOW);
     stubPasswordParts(OLD_SECRET, "");
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    when(node.getMasterPasswordFile()).thenReturn(masterKeys);
+    when(storage.getMasterKeysFile()).thenReturn(masterKeys);
     doThrow(new MasterKeysWrongPasswordException())
-        .when(node)
+        .when(storage)
         .changeMasterPassword(OLD_SECRET, "", true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
@@ -300,9 +307,9 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH, SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
     stubPasswordParts(OLD_SECRET, "");
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    when(node.getMasterPasswordFile()).thenReturn(masterKeys);
+    when(storage.getMasterKeysFile()).thenReturn(masterKeys);
     doThrow(new MasterKeysFileSizeException(true))
-        .when(node)
+        .when(storage)
         .changeMasterPassword(OLD_SECRET, "", true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
@@ -322,10 +329,10 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH, SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
     stubPasswordParts(OLD_SECRET, "");
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    when(node.getMasterPasswordFile()).thenReturn(masterKeys);
+    when(storage.getMasterKeysFile()).thenReturn(masterKeys);
 
     IOException lowLevel = new IOException("disk full");
-    doThrow(lowLevel).when(node).changeMasterPassword(OLD_SECRET, "", true);
+    doThrow(lowLevel).when(storage).changeMasterPassword(OLD_SECRET, "", true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
 
@@ -345,14 +352,14 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH, SecurityLevels.PHYSICAL_THREAT_LEVEL.LOW);
     stubPasswordParts(OLD_SECRET, "");
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    when(node.getMasterPasswordFile()).thenReturn(masterKeys);
+    when(storage.getMasterKeysFile()).thenReturn(masterKeys);
 
     doAnswer(
             invocation -> {
               assertTrue(masterKeys.delete());
               throw new IOException("write failed");
             })
-        .when(node)
+        .when(storage)
         .changeMasterPassword(OLD_SECRET, "", true);
 
     SecurityPhysical subject = new SecurityPhysical(core);
@@ -372,14 +379,14 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH, SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
     stubPasswordParts(OLD_SECRET, "");
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    when(node.getMasterPasswordFile()).thenReturn(masterKeys);
+    when(storage.getMasterKeysFile()).thenReturn(masterKeys);
 
     SecurityPhysical subject = new SecurityPhysical(core);
 
     String next = subject.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.NAME_SELECTION.name(), next);
-    verify(node, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
+    verify(storage, never()).changeMasterPassword(anyString(), anyString(), anyBoolean());
     verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
   }
 
@@ -389,7 +396,7 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL, SecurityLevels.PHYSICAL_THREAT_LEVEL.MAXIMUM);
     stubPasswordParts("pw", "pw");
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    doThrow(new IOException("no permission")).when(node).killMasterKeysFile();
+    doThrow(new IOException("no permission")).when(storage).killMasterKeysFile();
 
     SecurityPhysical subject = new SecurityPhysical(core);
 
@@ -409,23 +416,24 @@ class SecurityPhysicalTest {
         SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL, SecurityLevels.PHYSICAL_THREAT_LEVEL.MAXIMUM);
     stubPasswordParts("pw", "pw");
     when(request.isPartSet(BACK_TO_MAIN_PART)).thenReturn(false);
-    doNothing().when(node).killMasterKeysFile();
+    doNothing().when(storage).killMasterKeysFile();
 
     SecurityPhysical subject = new SecurityPhysical(core);
 
     String next = subject.postStep(request);
 
     assertEquals(FirstTimeWizardToadlet.WIZARD_STEP.NAME_SELECTION.name(), next);
-    verify(node).killMasterKeysFile();
+    verify(storage).killMasterKeysFile();
     verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.MAXIMUM);
     verify(core).storeConfig();
-    verify(node).lateSetupDatabase(null);
+    verify(storage).lateSetupDatabase(null);
   }
 
   @Test
   void setThreatLevel_whenNullThreatLevel_throwsNullPointerException() {
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    when(node.services().securityLevels()).thenReturn(securityLevels);
+    when(node.storage()).thenReturn(storage);
     doThrow(new NullPointerException())
         .when(securityLevels)
         .setThreatLevel((SecurityLevels.PHYSICAL_THREAT_LEVEL) null);
@@ -435,22 +443,23 @@ class SecurityPhysicalTest {
 
     verify(securityLevels).setThreatLevel((SecurityLevels.PHYSICAL_THREAT_LEVEL) null);
     verify(core, never()).storeConfig();
-    verify(node, never()).lateSetupDatabase(any());
+    verify(storage, never()).lateSetupDatabase(any());
   }
 
   @Test
   void setThreatLevel_whenValidThreatLevel_updatesSecurityLevelsStoresConfigAndLateInitsDatabase() {
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    when(node.services().securityLevels()).thenReturn(securityLevels);
+    when(node.storage()).thenReturn(storage);
 
     SecurityPhysical subject = new SecurityPhysical(core);
 
     subject.setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
 
-    InOrder inOrder = inOrder(securityLevels, core, node);
+    InOrder inOrder = inOrder(securityLevels, core, storage);
     inOrder.verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
     inOrder.verify(core).storeConfig();
-    inOrder.verify(node).lateSetupDatabase(null);
+    inOrder.verify(storage).lateSetupDatabase(null);
     inOrder.verifyNoMoreInteractions();
   }
 
@@ -474,7 +483,8 @@ class SecurityPhysicalTest {
 
   private void stubOldThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL oldThreatLevel) {
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    when(node.services().securityLevels()).thenReturn(securityLevels);
+    when(node.storage()).thenReturn(storage);
     when(securityLevels.getPhysicalThreatLevel()).thenReturn(oldThreatLevel);
   }
 }

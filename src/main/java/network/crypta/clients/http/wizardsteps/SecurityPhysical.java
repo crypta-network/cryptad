@@ -155,7 +155,7 @@ public class SecurityPhysical implements Step {
               new String[] {"bold"},
               new HTMLNode[] {HTMLNode.STRONG});
       if (level == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH
-          && core.getNode().getSecurityLevels().getPhysicalThreatLevel() != level) {
+          && core.getNode().services().securityLevels().getPhysicalThreatLevel() != level) {
         // Add password form on high security if not already at high security.
         HTMLNode p = div.addChild("p");
         p.addChild(TAG_LABEL, "for", "passwordBox", WizardL10n.l10nSec("setPasswordLabel") + ":");
@@ -267,12 +267,12 @@ public class SecurityPhysical implements Step {
       case "corrupt" -> {
         // Password file corrupt
         SecurityLevelsToadlet.sendPasswordFileCorruptedPageInner(
-            helper, core.getNode().getMasterPasswordFile().getPath());
+            helper, core.getNode().storage().getMasterKeysFile().getPath());
         return true;
       }
       case "delete" -> {
         SecurityLevelsToadlet.sendCantDeleteMasterKeysFileInner(
-            helper, core.getNode().getMasterPasswordFile().getPath(), newThreatLevel.name());
+            helper, core.getNode().storage().getMasterKeysFile().getPath(), newThreatLevel.name());
         return true;
       }
       default -> {
@@ -293,7 +293,7 @@ public class SecurityPhysical implements Step {
    *     a correctly initialized node.
    */
   public SecurityLevels.PHYSICAL_THREAT_LEVEL getCurrentLevel() {
-    return core.getNode().getSecurityLevels().getPhysicalThreatLevel();
+    return core.getNode().services().securityLevels().getPhysicalThreatLevel();
   }
 
   /**
@@ -334,7 +334,7 @@ public class SecurityPhysical implements Step {
 
     String physicalThreatLevel = request.getPartAsStringFailsafe(PARAM_PHYSICAL_THREAT_LEVEL, 128);
     SecurityLevels.PHYSICAL_THREAT_LEVEL oldThreatLevel =
-        core.getNode().getSecurityLevels().getPhysicalThreatLevel();
+        core.getNode().services().securityLevels().getPhysicalThreatLevel();
     SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel =
         SecurityLevels.parsePhysicalThreatLevel(physicalThreatLevel);
     if (FirstTimeWizardToadlet.shouldLogMinor()) {
@@ -406,9 +406,9 @@ public class SecurityPhysical implements Step {
     try {
       if (oldThreatLevel == SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL
           || oldThreatLevel == SecurityLevels.PHYSICAL_THREAT_LEVEL.LOW) {
-        core.getNode().changeMasterPassword("", pass, true);
+        core.getNode().storage().changeMasterPassword("", pass, true);
       } else {
-        core.getNode().setMasterPassword(pass, true);
+        core.getNode().storage().setMasterPassword(pass, true);
       }
     } catch (Node.AlreadySetPasswordException _) {
       // Do nothing, already set a password.
@@ -437,13 +437,13 @@ public class SecurityPhysical implements Step {
       // Prompt for the old password, which is needed to decrypt
       return promptPassword(newThreatLevel, PASSWORD_PROMPT.DECRYPT_BLANK);
     }
-    if (!core.getNode().getMasterPasswordFile().exists()) {
+    if (!core.getNode().storage().getMasterKeysFile().exists()) {
       return null;
     }
     try {
-      core.getNode().changeMasterPassword(pass, "", true);
+      core.getNode().storage().changeMasterPassword(pass, "", true);
     } catch (IOException e) {
-      if (!core.getNode().getMasterPasswordFile().exists()) {
+      if (!core.getNode().storage().getMasterKeysFile().exists()) {
         // Ok.
         LOG.info("Master password file no longer exists, assuming this is deliberate");
       } else {
@@ -468,7 +468,7 @@ public class SecurityPhysical implements Step {
       return null;
     }
     try {
-      core.getNode().killMasterKeysFile();
+      core.getNode().storage().killMasterKeysFile();
     } catch (IOException _) {
       return FirstTimeWizardToadlet.WIZARD_STEP.SECURITY_PHYSICAL
           + "&error=delete&newThreatLevel="
@@ -509,9 +509,9 @@ public class SecurityPhysical implements Step {
    *     valid {@link SecurityLevels.PHYSICAL_THREAT_LEVEL} constant.
    */
   public void setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL newThreatLevel) {
-    core.getNode().getSecurityLevels().setThreatLevel(newThreatLevel);
+    core.getNode().services().securityLevels().setThreatLevel(newThreatLevel);
     core.storeConfig();
-    core.getNode().lateSetupDatabase(null);
+    core.getNode().storage().lateSetupDatabase(null);
   }
 
   private void addBackToPhysicalSeclevelsButton(HTMLNode form) {

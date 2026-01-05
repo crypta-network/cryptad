@@ -282,7 +282,8 @@ public class BootstrapPullTest {
 
       // Fetch the data
       long startFetchTime = System.currentTimeMillis();
-      HighLevelSimpleClient client = secondNode.getClientCore().makeClient((short) 0, false, false);
+      HighLevelSimpleClient client =
+          secondNode.services().clientCore().makeClient((short) 0, false, false);
       fetchOrExit(client, uri);
       long endFetchTime = System.currentTimeMillis();
       long fetchDurationMs = endFetchTime - startFetchTime;

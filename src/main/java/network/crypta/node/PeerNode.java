@@ -588,7 +588,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     if (crypto.isOpennet() != isOpennetForNoderef()) {
       throw new IllegalArgumentException("Mismatched NodeCrypto for noderef type");
     }
-    this.random = node.createRandom();
+    this.random = node.bootstrap().createRandom();
     if (peers == null) throw new NullPointerException("peers");
     this.peers = peers;
     this.internals = new PeerNodeInternals(selfPeerNode(), node2, fs.get(SFS_KEY_LOCATION));
@@ -1012,12 +1012,12 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     }
 
     void notifyOpennetOnDisconnect(Node node) {
-      OpennetManager om = node.getOpennet();
+      OpennetManager om = node.network().opennet();
       if (om != null) om.onDisconnect();
     }
 
     void notifyOpennetOnConnect(Node node, PeerNode peerNode) {
-      OpennetManager om = node.getOpennet();
+      OpennetManager om = node.network().opennet();
       if (om != null) {
         // OpennetManager must be notified of a new connection even if it is a darknet peer.
         om.onConnectedPeer(peerNode);
@@ -1192,7 +1192,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     boolean isLowCapacity(boolean isRealtime) {
       PeerLoadStats stats = loadTracker.getLastIncomingLoadStats(isRealtime);
       if (stats == null) return false;
-      NodePinger pinger = node.getNodeStats().nodePinger;
+      NodePinger pinger = node.network().stats().nodePinger;
       if (pinger.capacityThreshold(isRealtime, true) > stats.peerLimit(true)) return true;
       return pinger.capacityThreshold(isRealtime, false) > stats.peerLimit(false);
     }
@@ -1441,7 +1441,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
           internals.setConnected(false, now);
         }
         LOG.error("Failed to parse new noderef for {}: {}", PeerNode.this, e1, e1);
-        node.getPeers().disconnected(selfPeerNode());
+        node.network().peers().disconnected(selfPeerNode());
         return -1;
       }
       RoutabilityDecision rd = decideRoutability();
@@ -1476,9 +1476,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       applyDisconnectSideEffects(har);
       logAndUpdateThrottle(replyTo, thisBootID);
       setPeerNodeStatus(now);
-      if (rd.newer || rd.older || !isConnected()) node.getPeers().disconnected(selfPeerNode());
+      if (rd.newer || rd.older || !isConnected())
+        node.network().peers().disconnected(selfPeerNode());
       else if (!har.wasARekey) {
-        node.getPeers().addConnectedPeer(selfPeerNode());
+        node.network().peers().addConnectedPeer(selfPeerNode());
         maybeOnConnect();
       }
       crypto.maybeBootConnection(selfPeerNode(), replyTo.getFreenetAddress());
@@ -1489,9 +1490,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         for (MessageItem item : har.messagesTellDisconnected) item.onDisconnect();
       }
       if (har.bootIDChanged) {
-        node.getLocationManager().lostOrRestartedNode(selfPeerNode());
-        node.getUSM().onRestart(PeerNode.this);
-        node.getTracker().onRestartOrDisconnect(selfPeerNode());
+        node.network().locationManager().lostOrRestartedNode(selfPeerNode());
+        node.network().usm().onRestart(PeerNode.this);
+        node.routing().tracker().onRestartOrDisconnect(selfPeerNode());
       }
       if (har.oldPrev != null) har.oldPrev.disconnected();
       if (har.oldCur != null) har.oldCur.disconnected();
@@ -2033,7 +2034,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   @Override
   public void wakeUpSender() {
     if (LOG.isDebugEnabled()) LOG.debug("Waking up PacketSender");
-    node.getPacketSender().wakeUp();
+    node.network().packetSender().wakeUp();
   }
 
   /**
@@ -2074,7 +2075,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   public long getProbableSendQueueTime() {
     double bandwidth = (internals.bandwidth() + 1.0);
     if (shouldThrottle())
-      bandwidth = Math.min(bandwidth, (double) node.getOutputBandwidthLimit() / 2);
+      bandwidth = Math.min(bandwidth, (double) node.network().outputBandwidthLimit() / 2);
     long length = getMessageQueueLengthBytes();
     return (long) (1000.0 * length / bandwidth);
   }
@@ -2237,11 +2238,11 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     final long now = System.currentTimeMillis();
     if (isRealConnection()) LOG.info("Disconnected {}", this);
     else if (LOG.isDebugEnabled()) LOG.debug("Disconnected {}", this);
-    node.getUSM().onDisconnect(selfPeerNode());
-    if (dumpMessageQueue) node.getTracker().onRestartOrDisconnect(selfPeerNode());
-    node.getFailureTable().onDisconnect(selfPeerNode());
-    node.getPeers().disconnected(selfPeerNode());
-    node.getNodeUpdater().disconnected(selfPeerNode());
+    node.network().usm().onDisconnect(selfPeerNode());
+    if (dumpMessageQueue) node.routing().tracker().onRestartOrDisconnect(selfPeerNode());
+    node.routing().failureTable().onDisconnect(selfPeerNode());
+    node.network().peers().disconnected(selfPeerNode());
+    node.services().nodeUpdater().disconnected(selfPeerNode());
     DisconnectState st = performSynchronizedDisconnect(dumpMessageQueue, dumpTrackers, now);
     if (st.oldPacketFormat != null) {
       st.moreMessagesTellDisconnected = st.oldPacketFormat.onDisconnect();
@@ -2251,7 +2252,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     if (st.prev != null) st.prev.disconnected();
     if (st.unv != null) st.unv.disconnected();
     internals.maybeDisconnected();
-    node.getLocationManager().lostOrRestartedNode(selfPeerNode());
+    node.network().locationManager().lostOrRestartedNode(selfPeerNode());
     if (peers.havePeer(selfPeerNode())) setPeerNodeStatus(now);
     if (!dumpMessageQueue) queueDelayedDropMessages(now);
     // Tell opennet manager even if this is darknet, because we may need more opennet peers now.
@@ -2276,7 +2277,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   private void queueDelayedDropMessages(final long now) {
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             new Runnable() {
               @Override
@@ -2699,7 +2701,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   public void updateLocation(double newLoc, double[] newLocs) {
     boolean anythingChanged = internals.updateLocation(newLoc, newLocs);
-    node.getPeers().updatePMUserAlert();
+    node.network().peers().updatePMUserAlert();
     if (anythingChanged) writePeers();
     setPeerNodeStatus(System.currentTimeMillis());
   }
@@ -3004,7 +3006,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     }
     maybeSendInitialMessages();
     setPeerNodeStatus(now);
-    node.getPeers().addConnectedPeer(selfPeerNode());
+    node.network().peers().addConnectedPeer(selfPeerNode());
     maybeOnConnect();
     if (completelyDeprecatedTracker != null) {
       completelyDeprecatedTracker.disconnected();
@@ -3060,7 +3062,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   void processDiffNoderef(SimpleFieldSet fs) throws FSParseException {
     processNewNoderef(fs, false, true, false);
     // Send UOMAnnouncement only *after* we know what the other side's version.
-    if (isRealConnection()) node.getNodeUpdater().maybeSendUOMAnnounce(selfPeerNode());
+    if (isRealConnection()) node.services().nodeUpdater().maybeSendUOMAnnounce(selfPeerNode());
   }
 
   static SimpleFieldSet compressedNoderefToFieldSet(byte[] data, int length)
@@ -3122,7 +3124,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
     if (parseARK(fs, false, forDiffNodeRef)) changedAnything = true;
     if (shouldUpdatePeerCounts[0]) {
-      node.getExecutor().execute(() -> node.getPeers().updatePMUserAlert());
+      node.network().executor().execute(() -> node.network().peers().updatePMUserAlert());
     }
     return changedAnything;
   }
@@ -3668,7 +3670,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       mandatoryBackoffUntil =
           now + (mandatoryBackoffLength / 2) + random.nextInt(mandatoryBackoffLength / 2);
       mandatoryBackoffLength *= MANDATORY_BACKOFF_MULTIPLIER;
-      node.getNodeStats().reportMandatoryBackoff(reason, mandatoryBackoffUntil - now, realTime);
+      node.network().stats().reportMandatoryBackoff(reason, mandatoryBackoffUntil - now, realTime);
       if (realTime) {
         mandatoryBackoffLengthRT = mandatoryBackoffLength;
         mandatoryBackoffUntilRT = mandatoryBackoffUntil;
@@ -3765,7 +3767,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         routingBackoffLength = MAX_ROUTING_BACKOFF_LENGTH;
       int x = random.nextInt(routingBackoffLength);
       routingBackedOffUntil = now + x;
-      node.getNodeStats().reportRoutingBackoff(reason, x, realTime);
+      node.network().stats().reportRoutingBackoff(reason, x, realTime);
       if (LOG.isDebugEnabled()) {
         String reasonWrapper = "";
         if (!reason.isEmpty()) reasonWrapper = " because of '" + reason + '\'';
@@ -3849,7 +3851,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       if (transferLen > MAX_TRANSFER_BACKOFF_LENGTH) transferLen = MAX_TRANSFER_BACKOFF_LENGTH;
       int x = random.nextInt(transferLen);
       long newUntil = now + x;
-      node.getNodeStats().reportTransferBackoff(reason, x, realTime);
+      node.network().stats().reportTransferBackoff(reason, x, realTime);
       if (LOG.isDebugEnabled()) {
         String reasonWrapper = reason.isEmpty() ? "" : " because of '" + reason + '\'';
         LOG.debug(
@@ -4428,7 +4430,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     if (peerNodeStatus == PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF) {
       long delta = Math.max(localRoutingBackedOffUntilRT, localRoutingBackedOffUntilBulk) - now + 1;
       if (delta > 0)
-        node.getTicker()
+        node.network()
+            .ticker()
             .queueTimedJob(checkStatusAfterBackoff, "Update status for " + this, delta, true, true);
     }
     return peerNodeStatus;
@@ -4439,7 +4442,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *     If so, we will not be able to route requests to the node under new load management.
    */
   private boolean noLoadStats() {
-    if (node.enableNewLoadManagement(false) || node.enableNewLoadManagement(true)) {
+    if (node.network().enableNewLoadManagement(false)
+        || node.network().enableNewLoadManagement(true)) {
       if (internals.missingLastIncomingLoadStats(true)) {
         if (isRoutable()) LOG.info("No realtime load stats on {}", this);
         return true;
@@ -4947,7 +4951,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     synchronized (this) {
       removed = true;
     }
-    node.getTicker().removeQueuedJob(checkStatusAfterBackoff);
+    node.network().ticker().removeQueuedJob(checkStatusAfterBackoff);
     disconnected(true, true);
     stopARKFetcher();
   }
@@ -5494,7 +5498,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   void reportLoadStatus(Object stat) {
     internals.reportLoadStatus(stat);
-    node.getExecutor().execute(checkStatusAfterBackoff);
+    node.network().executor().execute(checkStatusAfterBackoff);
   }
 
   /**
@@ -5658,12 +5662,12 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   @Override
   public void sentThrottledBytes(int count) {
-    node.getOutputThrottle().forceGrab(count);
+    node.network().outputThrottle().forceGrab(count);
   }
 
   @Override
   public void onNotificationOnlyPacketSent(int length) {
-    node.getNodeStats().reportNotificationOnlyPacketSent(length);
+    node.network().stats().reportNotificationOnlyPacketSent(length);
   }
 
   @Override
@@ -5711,8 +5715,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   private long maxPeerPingTime() {
     if (node == null) return NodeStats.DEFAULT_MAX_PING_TIME * 2;
-    NodeStats stats = node.getNodeStats();
-    if (node.getNodeStats() == null) return NodeStats.DEFAULT_MAX_PING_TIME * 2;
+    NodeStats stats = node.network().stats();
+    if (node.network().stats() == null) return NodeStats.DEFAULT_MAX_PING_TIME * 2;
     else return stats.maxPeerPingTime();
   }
 
@@ -5880,7 +5884,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     // First get usable bandwidth.
     double bandwidth = (internals.bandwidth() + 1.0);
     if (shouldThrottle())
-      bandwidth = Math.min(bandwidth, (double) node.getOutputBandwidthLimit() / 2);
+      bandwidth = Math.min(bandwidth, (double) node.network().outputBandwidthLimit() / 2);
     bandwidth *= nonOverheadFraction;
     // Transfers are divided into packets. Packets are 1KB. There are 1-2
     // of these for SSKs and 32 of them for CHKs, but that's irrelevant here.

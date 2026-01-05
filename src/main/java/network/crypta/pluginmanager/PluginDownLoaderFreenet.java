@@ -140,7 +140,7 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
 
   private void startGetter(ClientGetter getter) throws FetchException {
     try {
-      node.getClientCore().getClientContext().start(getter);
+      node.services().clientCore().getClientContext().start(getter);
     } catch (PersistenceDisabledException e) {
       throw new IllegalStateException("Plugin download unexpectedly requires persistence", e);
     }
@@ -190,7 +190,7 @@ public class PluginDownLoaderFreenet extends PluginDownLoader<FreenetURI> {
 
   @Override
   void tryCancel() {
-    if (get != null) get.cancel(node.getClientCore().getClientContext());
+    if (get != null) get.cancel(node.services().clientCore().getClientContext());
   }
 
   /**

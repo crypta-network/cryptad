@@ -19,6 +19,7 @@ import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKVerifyException;
 import network.crypta.keys.NodeCHK;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.HexUtil;
 import network.crypta.support.ShortBuffer;
@@ -105,7 +106,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     this.tag = tag;
     this.key = key;
     this.htl = htl;
-    canWriteDatastore = node.canWriteDatastoreInsert(htl);
+    canWriteDatastore = node.routing().canWriteDatastoreInsert(htl);
     this.forkOnCacheable = forkOnCacheable;
     this.preferInsert = preferInsert;
     this.ignoreLowBackoff = ignoreLowBackoff;
@@ -192,7 +193,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
   private Message waitForDataInsert() throws DisconnectedException {
     MessageFilter mf = makeDataInsertFilter(DATA_INSERT_TIMEOUT);
-    Message msg = node.getUSM().waitFor(mf, this);
+    Message msg = node.network().usm().waitFor(mf, this);
     if (LOG.isDebugEnabled()) LOG.debug("Received {}", msg);
     return msg;
   }
@@ -220,27 +221,28 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     prb = new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
     if (htl > 0)
       sender =
-          node.makeInsertSender(
-              key,
-              htl,
-              uid,
-              tag,
-              source,
-              Node.ChkInsertOptions.of(headers, prb)
-                  .withFromStore(false)
-                  .withCanWriteClientCache(false)
-                  .withForkOnCacheable(forkOnCacheable)
-                  .withPreferInsert(preferInsert)
-                  .withIgnoreLowBackoff(ignoreLowBackoff)
-                  .withRealTimeFlag(realTimeFlag));
+          node.routing()
+              .makeInsertSender(
+                  key,
+                  htl,
+                  uid,
+                  tag,
+                  source,
+                  NodeRoutingSubsystem.ChkInsertOptions.of(headers, prb)
+                      .withFromStore(false)
+                      .withCanWriteClientCache(false)
+                      .withForkOnCacheable(forkOnCacheable)
+                      .withPreferInsert(preferInsert)
+                      .withIgnoreLowBackoff(ignoreLowBackoff)
+                      .withRealTimeFlag(realTimeFlag));
     br =
         new BlockReceiver(
-            node.getUSM(),
+            node.network().usm(),
             source,
             uid,
             prb,
             this,
-            node.getTicker(),
+            node.network().ticker(),
             realTimeFlag,
             myTimeoutHandler,
             false);
@@ -248,7 +250,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     // Receive the data off-thread so downstream routing can proceed concurrently.
     Runnable dataReceiver = new DataReceiver();
     receiveStarted = true;
-    node.getExecutor().execute(dataReceiver, "CHKInsertHandler$DataReceiver for UID " + uid);
+    node.network().executor().execute(dataReceiver, "CHKInsertHandler$DataReceiver for UID " + uid);
   }
 
   private void processSenderStatuses() {
@@ -441,7 +443,15 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       prb = new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
       br =
           new BlockReceiver(
-              node.getUSM(), source, uid, prb, this, node.getTicker(), realTimeFlag, null, false);
+              node.network().usm(),
+              source,
+              uid,
+              prb,
+              this,
+              node.network().ticker(),
+              realTimeFlag,
+              null,
+              false);
       prb.abort(RetrievalException.NO_DATAINSERT, "No DataInsert", true);
       source.localRejectedOverload("TimedOutAwaitingDataInsert", realTimeFlag);
 
@@ -449,7 +459,8 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       // This accommodates long connection timeouts; revisiting this approach would require careful
       // consideration of transport behavior and handshake timing.
       MessageFilter mf = makeDataInsertFilter(SECONDS.toMillis(60));
-      node.getUSM()
+      node.network()
+          .usm()
           .addAsyncFilter(
               mf,
               new SlowAsyncMessageFilterCallback() {
@@ -666,13 +677,13 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
           totalReceived,
           code,
           receiveFailed());
-    node.getNodeStats().remoteChkInsertBytesSentAverage.report(totalSent);
-    node.getNodeStats().remoteChkInsertBytesReceivedAverage.report(totalReceived);
+    node.network().stats().remoteChkInsertBytesSentAverage.report(totalSent);
+    node.network().stats().remoteChkInsertBytesReceivedAverage.report(totalReceived);
     if (code == CHKInsertSender.SUCCESS) {
       // Report both sent and received because we have both a Handler and a Sender
       if (sender != null && sender.startedSendingData())
-        node.getNodeStats().successfulChkInsertBytesSentAverage.report(totalSent);
-      node.getNodeStats().successfulChkInsertBytesReceivedAverage.report(totalReceived);
+        node.network().stats().successfulChkInsertBytesSentAverage.report(totalSent);
+      node.network().stats().successfulChkInsertBytesReceivedAverage.report(totalReceived);
     }
   }
 
@@ -714,13 +725,15 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
   private void commit(CHKBlock block) {
     try {
-      node.store(
-          block,
-          node.shouldStoreDeep(
-              key, source, sender == null ? new PeerNode[0] : sender.getRoutedTo()),
-          false,
-          canWriteDatastore,
-          false);
+      node.storage()
+          .store(
+              block,
+              node.routing()
+                  .shouldStoreDeep(
+                      key, source, sender == null ? new PeerNode[0] : sender.getRoutedTo()),
+              false,
+              canWriteDatastore,
+              false);
     } catch (KeyCollisionException _) {
       // Impossible with CHKs.
     }
@@ -766,7 +779,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
         receiveCompleted = true;
         CHKInsertHandler.this.notifyAll();
       }
-      node.getNodeStats().successfulBlockReceive(realTimeFlag, false);
+      node.network().stats().successfulBlockReceive(realTimeFlag, false);
     }
 
     @Override
@@ -807,7 +820,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
             .log("Failed to retrieve ({}/{}): {}" + FOR_STRING + "{}");
 
       if (!prb.abortedLocally())
-        node.getNodeStats().failedBlockReceive(false, false, realTimeFlag, false);
+        node.network().stats().failedBlockReceive(false, false, realTimeFlag, false);
     }
   }
 
@@ -830,7 +843,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     synchronized (totalSync) {
       totalSentBytes += x;
     }
-    node.getNodeStats().insertSentBytes(false, x);
+    node.network().stats().insertSentBytes(false, x);
   }
 
   /**
@@ -844,7 +857,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     synchronized (totalSync) {
       totalReceivedBytes += x;
     }
-    node.getNodeStats().insertReceivedBytes(false, x);
+    node.network().stats().insertReceivedBytes(false, x);
   }
 
   /**
@@ -877,7 +890,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   @Override
   public void sentPayload(int x) {
     node.sentPayload(x);
-    node.getNodeStats().insertSentBytes(false, -x);
+    node.network().stats().insertSentBytes(false, -x);
   }
 
   /**

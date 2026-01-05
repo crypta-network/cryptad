@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -381,7 +380,6 @@ class PeerRosterTest {
   void getRandomPeer_whenRoutableAvailable_expectSelected() {
     // Arrange
     RandomSource random = mock(RandomSource.class);
-    when(random.nextInt(anyInt())).thenReturn(0);
     PeerRoster roster = newRoster(random, true);
     PeerNode peer = mock(PeerNode.class);
     when(peer.isRoutable()).thenReturn(true);
@@ -398,7 +396,6 @@ class PeerRosterTest {
   void getRandomPeer_whenExcludeOnlyRoutable_expectNull() {
     // Arrange
     RandomSource random = mock(RandomSource.class);
-    when(random.nextInt(anyInt())).thenReturn(0);
     PeerRoster roster = newRoster(random, true);
     PeerNode peer = mock(PeerNode.class);
     when(peer.isRoutable()).thenReturn(true);
@@ -416,7 +413,6 @@ class PeerRosterTest {
   void getRandomPeer_whenConnectedNotRoutable_expectRebuildAndSelect() {
     // Arrange
     RandomSource random = mock(RandomSource.class);
-    when(random.nextInt(anyInt())).thenReturn(0);
     PeerRoster roster = newRoster(random, true);
     PeerNode notRoutable = mock(PeerNode.class);
     PeerNode routable = mock(PeerNode.class);
@@ -948,7 +944,7 @@ class PeerRosterTest {
   }
 
   private static PeerRoster newRoster(RandomSource random, boolean publish) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     lenient().when(node.getRandom()).thenReturn(random);
     lenient().when(node.shallWePublishOurPeersLocation()).thenReturn(publish);
     return new PeerRoster(node, new Object());

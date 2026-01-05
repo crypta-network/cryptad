@@ -131,7 +131,7 @@ public class ModifyConfig extends FCPMessage {
         updateOption(prefix, option);
       }
     }
-    node.getClientCore().storeConfig();
+    node.services().clientCore().storeConfig();
     handler.send(
         new ConfigData(
             node, true, false, false, false, false, false, false, false, requestIdentifier));

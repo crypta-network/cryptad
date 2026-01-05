@@ -326,8 +326,10 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       boolean disableFiltration,
       boolean dontShowFilter,
       NodeClientCore core) {
-    PHYSICAL_THREAT_LEVEL threatLevel = core.getNode().getSecurityLevels().getPhysicalThreatLevel();
-    NETWORK_THREAT_LEVEL netLevel = core.getNode().getSecurityLevels().getNetworkThreatLevel();
+    PHYSICAL_THREAT_LEVEL threatLevel =
+        core.getNode().services().securityLevels().getPhysicalThreatLevel();
+    NETWORK_THREAT_LEVEL netLevel =
+        core.getNode().services().securityLevels().getNetworkThreatLevel();
     boolean filterChecked = shouldEnableFilter(mimeType, disableFiltration, threatLevel, netLevel);
 
     addDownloadToDiskOption(ctx, optionList, key, mimeType, filterChecked, dontShowFilter, core);
@@ -366,7 +368,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       boolean filterChecked,
       boolean dontShowFilter,
       NodeClientCore core) {
-    PHYSICAL_THREAT_LEVEL threatLevel = core.getNode().getSecurityLevels().getPhysicalThreatLevel();
+    PHYSICAL_THREAT_LEVEL threatLevel =
+        core.getNode().services().securityLevels().getPhysicalThreatLevel();
     if (threatLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM || isDownloadDisabledOrUnsafe(ctx, core)) {
       return;
     }
@@ -453,7 +456,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       boolean filterChecked,
       boolean dontShowFilter,
       NodeClientCore core) {
-    PHYSICAL_THREAT_LEVEL threatLevel = core.getNode().getSecurityLevels().getPhysicalThreatLevel();
+    PHYSICAL_THREAT_LEVEL threatLevel =
+        core.getNode().services().securityLevels().getPhysicalThreatLevel();
     if (threatLevel != PHYSICAL_THREAT_LEVEL.LOW || isDownloadDisabledOrUnsafe(ctx, core)) {
       HTMLNode option = optionList.addChild("li");
       HTMLNode optionForm = ctx.addFormChild(option, DOWNLOADS_PATH, "tooBigQueueForm");
@@ -845,7 +849,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         @Override
         public void onFinishedPage() {
           core.getNode()
-              .getExecutor()
+              .network()
+              .executor()
               .execute(
                   () -> {
                     for (FreenetURI uri1 : uris) {
@@ -1504,7 +1509,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       }
       if ((keyUtil =
               core.getNode()
-                  .getPluginManager()
+                  .services()
+                  .pluginManager()
                   .getPluginInfoByClassName("plugins.KeyUtils.KeyUtilsPlugin"))
           != null) {
         appendKeyUtilsOptions(optionList, keyUtil);
@@ -1512,7 +1518,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       }
       if ((keyUtil =
               core.getNode()
-                  .getPluginManager()
+                  .services()
+                  .pluginManager()
                   .getPluginInfoByClassName("plugins.KeyExplorer.KeyExplorer"))
           != null) {
         appendKeyExplorerOptions(optionList, keyUtil);
@@ -1568,7 +1575,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     private void addFilterRecoveryOptions(HTMLNode optionList, String mime, FetchException e) {
       if ((mime.equals("application/x-freenet-index"))
           && (core.getNode()
-              .getPluginManager()
+              .services()
+              .pluginManager()
               .isPluginLoaded("plugins.ThawIndexBrowser.ThawIndexBrowser"))) {
         HTMLNode option = optionList.addChild("li");
         NodeL10n.getBase()

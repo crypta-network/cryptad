@@ -86,7 +86,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
   public void update() {
     // Called by detector code. Dispatch off-thread to avoid stalling the caller and to reduce lock
     // contention.
-    node.getExecutor().execute(this::innerUpdate);
+    node.network().executor().execute(this::innerUpdate);
   }
 
   private void innerUpdate() {
@@ -101,7 +101,8 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
       SimpleFieldSet fs = new SimpleFieldSet(true);
       fs.putOverwrite(PHYSICAL_UDP, entries);
       if (LOG.isDebugEnabled()) LOG.debug("{} ref physical.udp={}", darknetOpennetString, fs);
-      node.getPeers()
+      node.network()
+          .peers()
           .messenger()
           .locallyBroadcastDiffNodeRef(fs, !crypto.isOpennet(), crypto.isOpennet());
     } else {
@@ -185,7 +186,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
       LOG.debug("Insert {} ARK uri={} contents={}", darknetOpennetString, uri, s);
 
     InsertContext ctx =
-        node.getClientCore().makeClient((short) 0, true, false).getInsertContext(true);
+        node.services().clientCore().makeClient((short) 0, true, false).getInsertContext(true);
     inserter =
         new ClientPutter(
             this,
@@ -203,7 +204,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
 
     try {
 
-      node.getClientCore().getClientContext().start(inserter);
+      node.services().clientCore().getClientContext().start(inserter);
 
       synchronized (this) {
         if (fs.get(PHYSICAL_UDP) == null) {
@@ -316,7 +317,8 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
       // Broadcast the new ARK edition to connected peers via a differential node reference.
       SimpleFieldSet fs = new SimpleFieldSet(true);
       fs.put("ark.number", crypto.getMyARKNumber());
-      node.getPeers()
+      node.network()
+          .peers()
           .messenger()
           .locallyBroadcastDiffNodeRef(fs, !crypto.isOpennet(), crypto.isOpennet());
     }

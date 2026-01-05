@@ -112,7 +112,7 @@ public class ModifyPeer extends FCPMessage {
           requestIdentifier,
           false);
     }
-    PeerNode pn = node.getPeerNode(nodeIdentifier);
+    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, requestIdentifier);
       handler.send(msg);

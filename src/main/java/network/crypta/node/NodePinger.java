@@ -40,8 +40,8 @@ public class NodePinger implements Runnable {
   public void run() {
     try {
       PeerNode[] peers;
-      synchronized (node.getPeers()) {
-        peers = node.getPeers().connectedPeers();
+      synchronized (node.network().peers()) {
+        peers = node.network().peers().connectedPeers();
       }
       if (peers == null || peers.length == 0) return;
 
@@ -53,7 +53,7 @@ public class NodePinger implements Runnable {
       capacityOutputBulk.calculate(peers);
     } finally {
       // Requeue after work completes to avoid exacerbating overload
-      node.getTicker().queueTimedJob(this, 200);
+      node.network().ticker().queueTimedJob(this, 200);
     }
   }
 

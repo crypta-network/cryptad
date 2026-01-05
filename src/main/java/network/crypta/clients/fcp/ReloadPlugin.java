@@ -131,10 +131,12 @@ public class ReloadPlugin extends FCPMessage {
           false);
     }
 
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             () -> {
-              PluginInfoWrapper pi = node.getPluginManager().findPluginByIdentifier(plugname);
+              PluginInfoWrapper pi =
+                  node.services().pluginManager().findPluginByIdentifier(plugname);
               if (pi == null) {
                 handler.send(
                     new ProtocolErrorMessage(
@@ -145,11 +147,11 @@ public class ReloadPlugin extends FCPMessage {
                         false));
               } else {
                 String source = pi.getFilename();
-                pi.stopPlugin(node.getPluginManager(), maxWaitTime, true);
+                pi.stopPlugin(node.services().pluginManager(), maxWaitTime, true);
                 if (purge) {
-                  node.getPluginManager().removeCachedCopy(pi.getFilename());
+                  node.services().pluginManager().removeCachedCopy(pi.getFilename());
                 }
-                pi = node.getPluginManager().startPluginAuto(source, store);
+                pi = node.services().pluginManager().startPluginAuto(source, store);
                 if (pi == null) {
                   handler.send(
                       new ProtocolErrorMessage(

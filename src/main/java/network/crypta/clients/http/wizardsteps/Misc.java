@@ -175,12 +175,14 @@ public class Misc implements Step {
    */
   public void setUPnP(final boolean enableUPnP) {
     // If its state would not change, don't do anything.
-    if (enableUPnP == core.getNode().getPluginManager().isPluginLoaded("plugins.UPnP.UPnP")) {
+    if (enableUPnP
+        == core.getNode().services().pluginManager().isPluginLoaded("plugins.UPnP.UPnP")) {
       return;
     }
 
     core.getNode()
-        .getExecutor()
+        .network()
+        .executor()
         .execute(
             new Runnable() {
 
@@ -189,9 +191,12 @@ public class Misc implements Step {
               @Override
               public void run() {
                 if (enable) {
-                  core.getNode().getPluginManager().startPluginOfficial("UPnP", true);
+                  core.getNode().services().pluginManager().startPluginOfficial("UPnP", true);
                 } else {
-                  core.getNode().getPluginManager().killPluginByClass("plugins.UPnP.UPnP", 5000);
+                  core.getNode()
+                      .services()
+                      .pluginManager()
+                      .killPluginByClass("plugins.UPnP.UPnP", 5000);
                 }
               }
             });

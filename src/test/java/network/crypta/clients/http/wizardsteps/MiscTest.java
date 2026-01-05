@@ -37,6 +37,7 @@ import network.crypta.l10n.BaseL10n.LANGUAGE;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.PriorityAwareExecutor;
@@ -247,18 +248,23 @@ class MiscTest {
   void setUPnP_whenAlreadyInRequestedState_doesNotScheduleExecutor() {
     NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginManager pluginManager = mock(PluginManager.class);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
 
     when(core.getNode()).thenReturn(node);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    when(node.services()).thenReturn(services);
+    when(node.network()).thenReturn(network);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(pluginManager.isPluginLoaded(UPNP_PLUGIN_CLASS)).thenReturn(true);
 
     Misc misc = new Misc(core, config);
 
     misc.setUPnP(true);
 
-    verify(node, never()).getExecutor();
+    verify(network, never()).executor();
     verify(pluginManager, never()).startPluginOfficial(anyString(), anyBoolean());
     verify(pluginManager, never()).killPluginByClass(anyString(), anyLong());
   }
@@ -267,13 +273,19 @@ class MiscTest {
   void setUPnP_whenEnableAndPluginNotLoaded_schedulesStartPluginOfficial() {
     NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginManager pluginManager = mock(PluginManager.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
 
     when(core.getNode()).thenReturn(node);
-    when(node.getPluginManager()).thenReturn(pluginManager);
-    when(node.getExecutor()).thenReturn(executor);
+    when(node.services()).thenReturn(services);
+    when(node.network()).thenReturn(network);
+    when(services.pluginManager()).thenReturn(pluginManager);
+    when(network.executor()).thenReturn(executor);
+    doNothing().when(executor).execute(any(Runnable.class));
     when(pluginManager.isPluginLoaded(UPNP_PLUGIN_CLASS)).thenReturn(false);
 
     Misc misc = new Misc(core, config);
@@ -295,13 +307,19 @@ class MiscTest {
   void setUPnP_whenDisableAndPluginLoaded_schedulesKillPluginByClass() {
     NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginManager pluginManager = mock(PluginManager.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
 
     when(core.getNode()).thenReturn(node);
-    when(node.getPluginManager()).thenReturn(pluginManager);
-    when(node.getExecutor()).thenReturn(executor);
+    when(node.services()).thenReturn(services);
+    when(node.network()).thenReturn(network);
+    when(services.pluginManager()).thenReturn(pluginManager);
+    when(network.executor()).thenReturn(executor);
+    doNothing().when(executor).execute(any(Runnable.class));
     when(pluginManager.isPluginLoaded(UPNP_PLUGIN_CLASS)).thenReturn(true);
 
     Misc misc = new Misc(core, config);

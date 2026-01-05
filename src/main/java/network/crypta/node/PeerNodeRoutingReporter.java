@@ -81,7 +81,7 @@ final class PeerNodeRoutingReporter {
       int htl) {
     double distance = Location.distance(target, peerNode.getLocation());
 
-    var stats = node.getNodeStats();
+    var stats = node.network().stats();
     if (stats == null) return;
 
     Set<Double> excludeLocations = buildExcludeLocations(node, prev, routedTo);
@@ -100,7 +100,7 @@ final class PeerNodeRoutingReporter {
    */
   private static Set<Double> buildExcludeLocations(
       Node node, PeerNode prev, Set<PeerNode> routedTo) {
-    double myLoc = node.getLocation();
+    double myLoc = node.network().location();
     double prevLoc = prev != null ? prev.getLocation() : -1.0;
 
     Set<Double> excludeLocations = new HashSet<>();

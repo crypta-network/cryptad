@@ -25,7 +25,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings({"java:S100"})
 class PacketSenderTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerManager peerManager;
   @Mock private NodeCrypto darknetCrypto;
   @Mock private UdpSocketHandler udpSocket;
@@ -33,10 +35,10 @@ class PacketSenderTest {
   @BeforeEach
   void setupCommonNodeMocks() {
     // Common node wiring used by tests; specific behavior tuned per-test as needed.
-    when(node.getDarknetPortNumber()).thenReturn(12345);
-    when(node.createRandom()).thenReturn(new MersenneTwister(1234));
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getDarknetCrypto()).thenReturn(darknetCrypto);
+    when(node.network().darknetPortNumber()).thenReturn(12345);
+    when(node.bootstrap().createRandom()).thenReturn(new MersenneTwister(1234));
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().darknetCrypto()).thenReturn(darknetCrypto);
     when(darknetCrypto.getSocket()).thenReturn(udpSocket);
     when(udpSocket.getMaxPacketSize()).thenReturn(1200);
 
@@ -44,11 +46,11 @@ class PacketSenderTest {
     /* nanosPerTick= */
     /* initialTokens= */ OutputThrottle outputThrottle =
         new OutputThrottle(10_000, /* nanosPerTick= */ 1_000_000L, /* initialTokens= */ 0);
-    when(node.getOutputThrottle()).thenReturn(outputThrottle);
+    when(node.network().outputThrottle()).thenReturn(outputThrottle);
 
     // Avoid triggering the "no packets received" alarm path.
     when(node.getStartupTime()).thenReturn(System.currentTimeMillis());
-    when(node.getOpennet()).thenReturn(null);
+    when(node.network().opennet()).thenReturn(null);
   }
 
   // Helper to run one iteration of the internal send loop deterministically.
@@ -186,8 +188,8 @@ class PacketSenderTest {
     when(peerManager.myPeers()).thenReturn(new PeerNode[0]);
 
     OpennetManager om = mock(OpennetManager.class);
-    when(node.getOpennet()).thenReturn(om);
-    when(node.getUptime()).thenReturn(60_000L); // > 30s gate
+    when(node.network().opennet()).thenReturn(om);
+    when(node.network().uptime()).thenReturn(60_000L); // > 30s gate
 
     OpennetPeerNode opn = mock(OpennetPeerNode.class);
     OutgoingPacketMangler mangler = mock(OutgoingPacketMangler.class);

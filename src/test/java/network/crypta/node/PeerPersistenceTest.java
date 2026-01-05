@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.Test;
@@ -25,13 +26,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class PeerPersistenceTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
+  @Mock private NodeNetworkSubsystem network;
   @Mock private PeerManager peerManager;
   @Mock private Ticker ticker;
 
   @Test
   void scheduleInitialWrite_whenCalled_queuesImmediateJob() {
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network()).thenReturn(network);
+    when(network.ticker()).thenReturn(ticker);
     PeerPersistence persistence = new PeerPersistence(node, peerManager);
 
     persistence.scheduleInitialWrite();
@@ -57,7 +62,8 @@ class PeerPersistenceTest {
 
     network.crypta.support.PriorityAwareExecutor executor =
         org.mockito.Mockito.mock(network.crypta.support.PriorityAwareExecutor.class);
-    when(node.getExecutor()).thenReturn(executor);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
 
     persistence.writePeers(false);
     persistence.writePeersUrgent(false);
@@ -105,7 +111,7 @@ class PeerPersistenceTest {
     Path oldOpennetFile = tempDir.resolve("old-opennet.peers");
     when(opennetManager.getOldPeersFilename()).thenReturn(oldOpennetFile.toString());
     when(opennetManager.getOldPeers()).thenReturn(new OpennetPeerNode[] {opennetPeer});
-    when(node.getOpennet()).thenReturn(opennetManager);
+    when(node.network().opennet()).thenReturn(opennetManager);
 
     persistence.flushOnShutdown();
 

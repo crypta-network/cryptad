@@ -18,7 +18,8 @@ class ProtocolErrorMessageTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @Test
   void getFieldSet_whenAllFieldsProvided_containsExpectedValues() {

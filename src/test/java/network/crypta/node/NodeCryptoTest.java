@@ -53,7 +53,8 @@ import org.objenesis.ObjenesisStd;
 @SuppressWarnings("java:S100")
 class NodeCryptoTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @BeforeEach
   void setup() {
@@ -240,7 +241,7 @@ class NodeCryptoTest {
     // location manager
     LocationManager lm = mock(LocationManager.class);
     when(lm.getLocation()).thenReturn(0.5);
-    when(node.getLocationManager()).thenReturn(lm);
+    when(node.network().locationManager()).thenReturn(lm);
 
     SimpleFieldSet fs = nc.exportPublicFieldSet(true, false, false); // forSetup=true to avoid IPs
 
@@ -299,7 +300,7 @@ class NodeCryptoTest {
 
     PeerManager pm = mock(PeerManager.class);
     PeerRoster roster = mock(PeerRoster.class);
-    when(node.getPeers()).thenReturn(pm);
+    when(node.network().peers()).thenReturn(pm);
     when(pm.roster()).thenReturn(roster);
 
     PeerNode a = mock(PeerNode.class);
@@ -345,7 +346,7 @@ class NodeCryptoTest {
 
     PeerManager pm = mock(PeerManager.class);
     PeerRoster roster = mock(PeerRoster.class);
-    when(node.getPeers()).thenReturn(pm);
+    when(node.network().peers()).thenReturn(pm);
     when(pm.roster()).thenReturn(roster);
 
     FreenetInetAddress addr = new FreenetInetAddress(InetAddress.getByName("203.0.113.5"));
@@ -374,7 +375,7 @@ class NodeCryptoTest {
     PeerManager pm = mock(PeerManager.class);
     PeerMessenger messenger = mock(PeerMessenger.class);
     PeerRoster roster = mock(PeerRoster.class);
-    when(node.getPeers()).thenReturn(pm);
+    when(node.network().peers()).thenReturn(pm);
     when(pm.messenger()).thenReturn(messenger);
     when(pm.roster()).thenReturn(roster);
 
@@ -410,7 +411,7 @@ class NodeCryptoTest {
     when(mangler.supportedNegTypes(true)).thenReturn(new int[] {1});
     LocationManager lm = mock(LocationManager.class);
     when(lm.getLocation()).thenReturn(0.25);
-    when(node.getLocationManager()).thenReturn(lm);
+    when(node.network().locationManager()).thenReturn(lm);
 
     byte[] compressed = nc.myCompressedSetupRef();
     assertTrue(compressed.length > 1);

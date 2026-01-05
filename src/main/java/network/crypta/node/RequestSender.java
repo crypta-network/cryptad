@@ -210,8 +210,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    * request lifecycle and terminal status are signaled via listeners and accessors.
    */
   public void start() {
-    node.getExecutor()
-        .execute(this, "RequestSender for UID " + uid + " on " + node.getDarknetPortNumber());
+    node.network()
+        .executor()
+        .execute(
+            this, "RequestSender for UID " + uid + " on " + node.network().darknetPortNumber());
   }
 
   /**
@@ -222,7 +224,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   @Override
   @SuppressWarnings("java:S1181")
   public void run() {
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             () -> {
               // We may reroute multiple times, applying the same per-peer timeout each time. The
@@ -270,7 +273,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
     // Prefer offered keys first; regular routing is the fallback.
 
-    final OfferList offers = node.getFailureTable().getOffers(key);
+    final OfferList offers = node.routing().failureTable().getOffers(key);
 
     if (offers != null) tryOffers(offers, null, null);
     else startRequests();
@@ -307,14 +310,15 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (LOG.isDebugEnabled()) LOG.debug("Routing requests on {}", this);
 
     PeerNode next;
-    boolean canWriteStorePrev = node.canWriteDatastoreInsert(htl);
+    boolean canWriteStorePrev = node.routing().canWriteDatastoreInsert(htl);
     if (adjustHTLOrFinish(canWriteStorePrev)) return;
 
     starting = false;
 
     if (LOG.isDebugEnabled()) LOG.debug("htl={}", htl);
     if (htl <= 0) {
-      node.getFailureTable()
+      node.routing()
+          .failureTable()
           .onFinalFailure(
               key,
               null,
@@ -339,7 +343,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
     // Route it
     next =
-        node.getPeers()
+        node.network()
+            .peers()
             .routingSelector()
             .closerPeer(
                 source,
@@ -367,7 +372,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         LOG.debug(
             "no more peers, but overloads ({}/{} overloaded)", rejectOverloads, routeAttempts);
       finish(ROUTE_NOT_FOUND, null, false);
-      node.getFailureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
+      node.routing().failureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
       return;
     }
 
@@ -393,7 +398,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       return false;
     }
     // Decrement at this point so we can DNF immediately on reaching HTL 0.
-    htl = node.decrementHTL((hasForwarded ? null : source), htl);
+    htl = node.routing().decrementHTL((hasForwarded ? null : source), htl);
     if (LOG.isDebugEnabled()) LOG.debug("Decremented HTL to {}", htl);
     return false;
   }
@@ -418,7 +423,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         recentlyFailedTimeLeft = (int) Math.min(Integer.MAX_VALUE, recentlyFailed - now);
       }
       finish(RECENTLY_FAILED, null, false);
-      node.getFailureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
+      node.routing().failureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
       return true;
     }
     boolean rfAnyway;
@@ -431,7 +436,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         recentlyFailedTimeLeft = 0;
       }
       finish(RECENTLY_FAILED, null, false);
-      node.getFailureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
+      node.routing().failureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
       return true;
     }
     return false;
@@ -564,7 +569,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       }
       LOG.error("Unexpected message: {}", msg);
       int t = timeSinceSent();
-      node.getFailureTable().onFailed(key, source, htl, t, t);
+      node.routing().failureTable().onFailed(key, source, htl, t, t);
       source.noLongerRoutingTo(origTag, false);
       return DO.NEXT_PEER;
     }
@@ -578,7 +583,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         return onSskDataFoundHeaders(msg, wasFork, source, waiter);
       LOG.error("Unexpected message: {}", msg);
       int t = timeSinceSent();
-      node.getFailureTable().onFailed(key, source, htl, t, t);
+      node.routing().failureTable().onFailed(key, source, htl, t, t);
       source.noLongerRoutingTo(origTag, false);
       return DO.NEXT_PEER;
     }
@@ -625,13 +630,13 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         pubKey = null;
         LOG.error("Invalid pubkey from {} on {} ({})", next, uid, e.getMessage(), e);
         int t = timeSinceSent();
-        node.getFailureTable().onFailed(key, next, htl, t, t);
+        node.routing().failureTable().onFailed(key, next, htl, t, t);
         next.noLongerRoutingTo(origTag, false);
         return false; // try next node
       } catch (CryptFormatException e) {
         LOG.error("Invalid pubkey from {} on {} ({})", next, uid, e.getMessage(), e);
         int t = timeSinceSent();
-        node.getFailureTable().onFailed(key, next, htl, t, t);
+        node.routing().failureTable().onFailed(key, next, htl, t, t);
         next.noLongerRoutingTo(origTag, false);
         return false; // try next node
       }
@@ -661,7 +666,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       if (timeout >= 0) {
         MessageFilter mf = createMessageFilter(timeout, waitingFor);
         try {
-          node.getUSM().addAsyncFilter(mf, this, RequestSender.this);
+          node.network().usm().addAsyncFilter(mf, this, RequestSender.this);
         } catch (DisconnectedException _) {
           onDisconnect(lastNode);
         }
@@ -693,7 +698,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         // Fatal timeout
         waitingFor.localRejectedOverload("FatalTimeout", realTimeFlag);
         forwardRejectedOverload();
-        node.getFailureTable()
+        node.routing()
+            .failureTable()
             .onFinalFailure(
                 key,
                 waitingFor,
@@ -713,7 +719,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         try {
           int timeout =
               (int) (Math.min(Integer.MAX_VALUE, secondDeadline - System.currentTimeMillis()));
-          msg = node.getUSM().waitFor(createMessageFilter(timeout, waitingFor), RequestSender.this);
+          msg =
+              node.network()
+                  .usm()
+                  .waitFor(createMessageFilter(timeout, waitingFor), RequestSender.this);
         } catch (DisconnectedException _) {
           LOG.info("Disconnected from {} while waiting for reply on {}", waitingFor, this);
           waitingFor.noLongerRoutingTo(origTag, false);
@@ -783,13 +792,14 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       if (newHtl < htl) htl = newHtl;
       next.successNotOverload(realTimeFlag);
       int t = timeSinceSent();
-      node.getFailureTable().onFailed(key, next, htl, t, t);
+      node.routing().failureTable().onFailed(key, next, htl, t, t);
       next.noLongerRoutingTo(origTag, false);
     }
 
     private void handleDataNotFound(boolean wasFork, PeerNode next) {
       next.successNotOverload(realTimeFlag);
-      node.getFailureTable()
+      node.routing()
+          .failureTable()
           .onFinalFailure(
               key,
               next,
@@ -823,7 +833,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       synchronized (RequestSender.this) {
         killedByRecentlyFailed = true;
       }
-      node.getFailureTable()
+      node.routing()
+          .failureTable()
           .onFinalFailure(key, next, htl, origHTL, timeLeft, FailureTable.REJECT_TIME, source);
       next.noLongerRoutingTo(origTag, false);
     }
@@ -833,11 +844,12 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       rejectOverloads++;
       if (msg.getBoolean(DMT.IS_LOCAL)) {
         long t = timeSinceSentForTimeout();
-        node.getFailureTable().onFailed(key, next, htl, t, t);
+        node.routing().failureTable().onFailed(key, next, htl, t, t);
         next.localRejectedOverload("ForwardRejectedOverload2", realTimeFlag);
         LOG.info("Local RejectedOverload after Accepted, moving on to next peer");
         next.noLongerRoutingTo(origTag, false);
-        node.getFailureTable()
+        node.routing()
+            .failureTable()
             .onFinalFailure(
                 key,
                 next,
@@ -873,12 +885,12 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       final long tStart = System.currentTimeMillis();
       final BlockReceiver br =
           new BlockReceiver(
-              node.getUSM(),
+              node.network().usm(),
               next,
               uid,
               localPrb,
               RequestSender.this,
-              node.getTicker(),
+              node.network().ticker(),
               realTimeFlag,
               myTimeoutHandler,
               true);
@@ -936,7 +948,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         return true;
       } catch (KeyVerifyException e1) {
         LOG.info("Got data but verify failed: {}", e1, e1);
-        node.getFailureTable()
+        node.routing()
+            .failureTable()
             .onFinalFailure(
                 key,
                 next,
@@ -974,7 +987,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         if (!wasFork) origTag.senderTransferEnds((NodeCHK) key, RequestSender.this);
         next.transferSuccess(realTimeFlag);
         next.successNotOverload(realTimeFlag);
-        node.getNodeStats().successfulBlockReceive(realTimeFlag, source == null);
+        node.network().stats().successfulBlockReceive(realTimeFlag, source == null);
         if (LOG.isDebugEnabled()) LOG.debug("Received data");
         if (!tryVerifyAndCommit(waiter.headers, data, next, wasFork)) return;
         if (haveSetPRB) fireCHKTransferBegins();
@@ -1019,7 +1032,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
               .log("Local transfer failed: {} : {}): {}" + FROM_SEP + "{}");
         if (!prb.abortedLocally())
           next.localRejectedOverload("TransferFailedRequest" + e.getReason(), realTimeFlag);
-        node.getFailureTable()
+        node.routing()
+            .failureTable()
             .onFinalFailure(
                 key,
                 next,
@@ -1039,7 +1053,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           if (LOG.isDebugEnabled()) LOG.debug("Timeout transferring data : {}", e, e);
           next.transferFailed(e.getErrString(), realTimeFlag);
         } else {
-          node.getFailureTable()
+          node.routing()
+              .failureTable()
               .onFinalFailure(
                   key,
                   next,
@@ -1050,7 +1065,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
                   source);
         }
         if (!prb.abortedLocally())
-          node.getNodeStats().failedBlockReceive(true, timeout, realTimeFlag, source == null);
+          node.network().stats().failedBlockReceive(true, timeout, realTimeFlag, source == null);
       } catch (Throwable t) {
         LOG.error(FAILED_ON + "{}", RequestSender.this, t);
         if (!wasFork) finish(INTERNAL_ERROR, next, true);
@@ -1062,9 +1077,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     private void finishSSK(PeerNode next, boolean wasFork, byte[] headers, byte[] sskData) {
       try {
         block = new SSKBlock(sskData, headers, (NodeSSK) key, false);
-        node.storeShallow(block, canWriteClientCache, canWriteDatastore, false);
-        if (node.getRandom().nextInt(RANDOM_REINSERT_INTERVAL) == 0)
-          node.queueRandomReinsert(block);
+        node.storage().storeShallow(block, canWriteClientCache, canWriteDatastore, false);
+        if (node.bootstrap().random().nextInt(RANDOM_REINSERT_INTERVAL) == 0)
+          node.services().clientCore().getTransfers().queueRandomReinsert(block);
         synchronized (RequestSender.this) {
           finalHeaders = headers;
           finalSskData = sskData;
@@ -1077,14 +1092,15 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       } catch (KeyCollisionException _) {
         LOG.info("Collision on {}", RequestSender.this);
         block =
-            node.fetch(
-                (NodeSSK) key,
-                false,
-                canWriteClientCache,
-                canWriteClientCache,
-                canWriteDatastore,
-                false,
-                null);
+            node.storage()
+                .fetch(
+                    (NodeSSK) key,
+                    false,
+                    canWriteClientCache,
+                    canWriteClientCache,
+                    canWriteDatastore,
+                    false,
+                    null);
         if (block != null) {
           headers = block.getRawHeaders();
           sskData = block.getRawData();
@@ -1176,7 +1192,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       receivingAsync = true;
     }
     try {
-      node.getUSM()
+      node.network()
+          .usm()
           .addAsyncFilter(
               getOfferedKeyReplyFilter(pn, getOfferedTimeout),
               buildOfferReplyCallback(offer, pn, offers),
@@ -1265,7 +1282,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   private OFFER_STATUS handleOfferTimeout(final BlockOffer offer, final PeerNode pn) {
     try {
-      node.getUSM()
+      node.network()
+          .usm()
           .addAsyncFilter(
               getOfferedKeyReplyFilter(pn, GET_OFFER_LONG_TIMEOUT),
               new SlowAsyncMessageFilterCallback() {
@@ -1378,7 +1396,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             .setTimeout(getOfferedTimeout)
             .setType(DMT.FNPSSKDataFoundData);
     try {
-      Message dataMessage = node.getUSM().waitFor(mfData, this);
+      Message dataMessage = node.network().usm().waitFor(mfData, this);
       if (dataMessage == null) {
         LOG.error("Got headers but not data from {} for offer for {} on {}", pn, key, this);
       }
@@ -1400,7 +1418,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             .setType(DMT.FNPSSKPubKey);
     Message pk;
     try {
-      pk = node.getUSM().waitFor(mfPK, this);
+      pk = node.network().usm().waitFor(mfPK, this);
     } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug(DISCONNECTED + "{} getting pubkey for offer for {}", pn, key);
@@ -1470,12 +1488,12 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       fireCHKTransferBegins();
       BlockReceiver br =
           new BlockReceiver(
-              node.getUSM(),
+              node.network().usm(),
               pn,
               uid,
               prb,
               this,
-              node.getTicker(),
+              node.network().ticker(),
               realTimeFlag,
               myTimeoutHandler,
               true);
@@ -1510,7 +1528,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       if (LOG.isDebugEnabled()) LOG.debug("Received data from offer reply");
       verifyAndCommit(headers, data);
       finish(SUCCESS, pn, true);
-      node.getNodeStats().successfulBlockReceive(realTimeFlag, source == null);
+      node.network().stats().successfulBlockReceive(realTimeFlag, source == null);
     } catch (KeyVerifyException e1) {
       LOG.info("Got data but verify failed: {}", e1, e1);
       if (offers != null) {
@@ -1546,7 +1564,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       pn.transferFailed("RequestSenderGetOfferedTransferFailed", realTimeFlag);
       if (offers != null) offers.deleteLastOffer();
       if (!prb.abortedLocally())
-        node.getNodeStats().failedBlockReceive(false, false, realTimeFlag, source == null);
+        node.network().stats().failedBlockReceive(false, false, realTimeFlag, source == null);
     } catch (Throwable t) {
       LOG.error(FAILED_ON + "{}", this, t);
       if (offers != null) finish(INTERNAL_ERROR, pn, true);
@@ -1610,8 +1628,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         finalHeaders = headers;
         finalSskData = sskData;
       }
-      node.storeShallow(block, canWriteClientCache, canWriteDatastore, tryOffersOnly);
-      if (node.getRandom().nextInt(RANDOM_REINSERT_INTERVAL) == 0) node.queueRandomReinsert(block);
+      node.storage().storeShallow(block, canWriteClientCache, canWriteDatastore, tryOffersOnly);
+      if (node.bootstrap().random().nextInt(RANDOM_REINSERT_INTERVAL) == 0)
+        node.services().clientCore().getTransfers().queueRandomReinsert(block);
       finish(SUCCESS, next, true);
       return true;
     } catch (SSKVerifyException e) {
@@ -1655,9 +1674,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       // requests don't go to the full distance, and therefore pollute the
       // store; simulations it is best to only include data from requests
       // which go all the way i.e. inserts.
-      node.storeShallow(chkBlock, canWriteClientCache, canWriteDatastore, tryOffersOnly);
-      if (node.getRandom().nextInt(RANDOM_REINSERT_INTERVAL) == 0)
-        node.queueRandomReinsert(chkBlock);
+      node.storage().storeShallow(chkBlock, canWriteClientCache, canWriteDatastore, tryOffersOnly);
+      if (node.bootstrap().random().nextInt(RANDOM_REINSERT_INTERVAL) == 0)
+        node.services().clientCore().getTransfers().queueRandomReinsert(chkBlock);
     } else {
       synchronized (this) {
         finalHeaders = headers;
@@ -1666,7 +1685,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       try {
         SSKBlock sskBlock = new SSKBlock(data, headers, (NodeSSK) key, false);
         if (LOG.isDebugEnabled()) LOG.debug("Verified SSK");
-        node.storeShallow(sskBlock, canWriteClientCache, canWriteDatastore, tryOffersOnly);
+        node.storage()
+            .storeShallow(sskBlock, canWriteClientCache, canWriteDatastore, tryOffersOnly);
       } catch (KeyCollisionException _) {
         LOG.info("Collision on {}", this);
       }
@@ -1860,14 +1880,14 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (next != null) {
       next.onSuccess(false, isSSK);
     }
-    node.getNodeStats().requestCompleted(true, source != null, isSSK);
+    node.network().stats().requestCompleted(true, source != null, isSSK);
     fireRequestSenderFinished(code, fromOfferedKey);
     if (doOpennet && finishOpennet(next)) shouldUnlock = false;
     return shouldUnlock;
   }
 
   private void handleFinishFailure(int code, boolean fromOfferedKey) {
-    node.getNodeStats().requestCompleted(false, source != null, isSSK);
+    node.network().stats().requestCompleted(false, source != null, isSSK);
     fireRequestSenderFinished(code, fromOfferedKey);
   }
 
@@ -1951,10 +1971,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   private long randomDelayFinishOpennetLocal() {
     double pingTime =
         // Noderefs are sent as real-time
-        node.getNodeStats().getBwlimitDelayTimeRT()
-            + node.getNodeStats().nodePinger.averagePingTime();
+        node.network().stats().getBwlimitDelayTimeRT()
+            + node.network().stats().nodePinger.averagePingTime();
     pingTime = Math.min(pingTime, MAX_PING_TIME);
-    double delay = ((node.getRandom().nextGaussian() * PINGS_STDDEV) + PINGS) * pingTime;
+    double delay = ((node.bootstrap().random().nextGaussian() * PINGS_STDDEV) + PINGS) * pingTime;
     return Math.max((long) delay, 0L);
   }
 
@@ -2001,7 +2021,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       ackOpennet(next);
       return false;
     }
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
     if (om == null) {
       ackOpennet(next);
       return false;
@@ -2019,11 +2039,11 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       ackOpennet(next);
       return false;
     }
-    if (!node.canWriteDatastoreRequest(origHTL)) {
+    if (!node.routing().canWriteDatastoreRequest(origHTL)) {
       ackOpennet(next);
       return false;
     }
-    if (node.addNewOpennetNode(ref, ConnectionType.PATH_FOLDING) == null) {
+    if (node.network().addNewOpennetNode(ref, ConnectionType.PATH_FOLDING) == null) {
       return handleUnwantedNoderef(next, noderef);
     }
     LOG.info("Added opennet noderef in {} from {}", this, next);
@@ -2042,7 +2062,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Delaying opennet completion for {}", TimeUtil.formatTime(delay, 2, true));
       }
-      node.getTicker().queueTimedJob(() -> ackOpennet(next), delay);
+      node.network().ticker().queueTimedJob(() -> ackOpennet(next), delay);
     } else if (origTag.shouldStop()) {
       origTag.finishedWaitingForOpennet(next);
     }
@@ -2202,7 +2222,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       totalBytesSent += x;
     }
     if (LOG.isDebugEnabled()) LOG.debug("Sent bytes: {} for {} isSSK={}", x, this, isSSK);
-    node.getNodeStats().requestSentBytes(isSSK, x);
+    node.network().stats().requestSentBytes(isSSK, x);
   }
 
   /** Returns total bytes sent so far for this request. */
@@ -2224,7 +2244,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     synchronized (totalBytesSync) {
       totalBytesReceived += x;
     }
-    node.getNodeStats().requestReceivedBytes(isSSK, x);
+    node.network().stats().requestReceivedBytes(isSSK, x);
   }
 
   /** Returns total bytes received so far for this request. */
@@ -2247,7 +2267,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   @Override
   public void sentPayload(int x) {
     node.sentPayload(x);
-    node.getNodeStats().requestSentBytes(isSSK, -x);
+    node.network().stats().requestSentBytes(isSSK, -x);
   }
 
   private int recentlyFailedTimeLeft;
@@ -2476,7 +2496,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       else LOG.debug("Local request timed out while waiting for a slot on {}", this);
     }
     finish(ROUTE_NOT_FOUND, null, false);
-    node.getFailureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
+    node.routing().failureTable().onFinalFailure(key, null, htl, origHTL, -1, -1, source);
   }
 
   /** This sender performs a retrieval, not an insert. */
@@ -2499,7 +2519,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
     MessageFilter mf = makeAcceptedRejectedFilter(next, timeout, origTag);
     try {
-      node.getUSM()
+      node.network()
+          .usm()
           .addAsyncFilter(
               mf,
               new SlowAsyncMessageFilterCallback() {

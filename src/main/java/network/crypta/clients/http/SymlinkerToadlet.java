@@ -120,7 +120,7 @@ public class SymlinkerToadlet extends Toadlet {
       ret = alias.equals(linkMap.put(alias, target));
       LOG.info("Adding link: {} => {}", alias, target);
     }
-    if (store) node.getClientCore().storeConfig();
+    if (store) node.services().clientCore().storeConfig();
     return ret;
   }
 
@@ -145,7 +145,7 @@ public class SymlinkerToadlet extends Toadlet {
 
       LOG.info("Removing link: {} => {}", alias, o);
     }
-    if (store) node.getClientCore().storeConfig();
+    if (store) node.services().clientCore().storeConfig();
     return ret;
   }
 

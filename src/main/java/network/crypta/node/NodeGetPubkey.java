@@ -39,12 +39,23 @@ public class NodeGetPubkey implements GetPubkey {
 
   private final Node node;
 
-  NodeGetPubkey(Node node) {
+  /**
+   * Creates a pubkey resolver bound to the provided node.
+   *
+   * @param node owning node for datastore and cache access
+   */
+  public NodeGetPubkey(Node node) {
     cachedPubKeys = LRUMap.createSafeMap(ByteArrayWrapper.FAST_COMPARATOR);
     this.node = node;
   }
 
-  void setDataStore(PubkeyStore pubKeyDatastore, PubkeyStore pubKeyDatacache) {
+  /**
+   * Updates the primary datastore and datacache used for public key lookups.
+   *
+   * @param pubKeyDatastore the main pubkey datastore
+   * @param pubKeyDatacache the main pubkey datacache
+   */
+  public void setDataStore(PubkeyStore pubKeyDatastore, PubkeyStore pubKeyDatacache) {
     this.pubKeyDatastore = pubKeyDatastore;
     this.pubKeyDatacache = pubKeyDatacache;
   }
@@ -189,8 +200,8 @@ public class NodeGetPubkey implements GetPubkey {
       DSAPublicKey key = pubKeyClientcache.fetch(hash, false, false, meta);
       if (key != null) return key;
     }
-    if (node.getOldPKClientCache() != null && canReadClientCache) {
-      PubkeyStore pks = node.getOldPKClientCache();
+    if (node.storage().getOldPKClientCache() != null && canReadClientCache) {
+      PubkeyStore pks = node.storage().getOldPKClientCache();
       DSAPublicKey key = (pks != null) ? pks.fetch(hash, false, false, meta) : null;
       if (key != null) {
         if (LOG.isDebugEnabled())
@@ -208,7 +219,7 @@ public class NodeGetPubkey implements GetPubkey {
       if (LOG.isDebugEnabled()) LOG.debug("Datastore hit for hash={}", HexUtil.bytesToHex(hash));
       return key;
     }
-    PubkeyStore pks = node.getOldPK();
+    PubkeyStore pks = node.storage().getOldPK();
     if (pks != null) key = pks.fetch(hash, false, ignoreOldBlocks, meta);
     if (key != null) {
       if (LOG.isDebugEnabled())
@@ -225,7 +236,7 @@ public class NodeGetPubkey implements GetPubkey {
       if (LOG.isDebugEnabled()) LOG.debug("Datacache hit for hash={}", HexUtil.bytesToHex(hash));
       return key;
     }
-    PubkeyStore pks = node.getOldPKCache();
+    PubkeyStore pks = node.storage().getOldPKCache();
     if (pks != null) key = pks.fetch(hash, false, ignoreOldBlocks, meta);
     if (key != null) {
       if (LOG.isDebugEnabled())

@@ -36,6 +36,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.node.SecurityLevels;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.pluginmanager.FredPluginBandwidthIndicator;
 import network.crypta.pluginmanager.PluginNotFoundException;
 import network.crypta.support.HTMLNode;
@@ -58,7 +59,10 @@ class FirstTimeWizardNewToadletTest {
 
   @Mock private HighLevelSimpleClient client;
   @Mock private NodeClientCore core;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private SecurityLevels securityLevels;
   @Mock private ToadletContext ctx;
   @Mock private PageMaker pageMaker;
@@ -75,7 +79,9 @@ class FirstTimeWizardNewToadletTest {
     PageNode pageNode = new PageNode(outer, head, content);
 
     when(core.getNode()).thenReturn(node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     when(pageMaker.getPageNode(anyString(), eq(ctx), any(PageMaker.RenderParameters.class)))
         .thenReturn(pageNode);
@@ -120,7 +126,10 @@ class FirstTimeWizardNewToadletTest {
 
     FredPluginBandwidthIndicator bandwidthIndicator = mock(FredPluginBandwidthIndicator.class);
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.ipDetector()).thenReturn(ipDetector);
     lenient().when(ipDetector.getBandwidthIndicator()).thenReturn(bandwidthIndicator);
 
     Option<Long> storeSize = mock(Option.class);
@@ -186,7 +195,14 @@ class FirstTimeWizardNewToadletTest {
     parts.put("confirmPassword", "");
     HTTPRequest request = buildRequest(parts);
 
-    when(node.getIpDetector()).thenReturn(mock(NodeIPDetector.class));
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.ipDetector()).thenReturn(mock(NodeIPDetector.class));
+
+    network.crypta.node.subsystem.NodeStorageSubsystem storage =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeStorageSubsystem.class);
+    when(node.storage()).thenReturn(storage);
 
     try (MockedStatic<NodeL10n> nodeL10n = mockStatic(NodeL10n.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);
@@ -216,7 +232,7 @@ class FirstTimeWizardNewToadletTest {
     verify(fproxySubConfig).set("hasCompletedWizard", true);
     verify(securityLevels).setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
     verify(securityLevels).setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
-    verify(node).setMasterPassword("", true);
+    verify(storage).setMasterPassword("", true);
     verify(core).storeConfig();
     verify(ctx)
         .sendReplyHeaders(
@@ -248,7 +264,10 @@ class FirstTimeWizardNewToadletTest {
     parts.put("confirmPassword", "");
     HTTPRequest request = buildRequest(parts);
 
-    when(node.getIpDetector()).thenReturn(mock(NodeIPDetector.class));
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.ipDetector()).thenReturn(mock(NodeIPDetector.class));
 
     try (MockedStatic<NodeL10n> nodeL10n = mockStatic(NodeL10n.class);
         MockedStatic<DatastoreUtil> datastore = mockStatic(DatastoreUtil.class);

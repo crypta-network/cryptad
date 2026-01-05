@@ -33,7 +33,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class PluginStoresTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private SubConfig subConfig;
 
   @Test
@@ -60,7 +62,7 @@ class PluginStoresTest {
     byte[] key = new byte[16];
     ProgramDirectory programDirectory = stubProgramDirectory(tempDir);
     when(node.wantEncryptedDatabase()).thenReturn(true);
-    when(node.getPluginStoreKey(storeIdentifier)).thenReturn(key);
+    when(node.storage().getPluginStoreKey(storeIdentifier)).thenReturn(key);
 
     PluginStores pluginStores = new PluginStores(node, subConfig);
     PluginStore expected = createStore("backup");
@@ -85,7 +87,7 @@ class PluginStoresTest {
     String storeIdentifier = "plainCrypt";
     ProgramDirectory programDirectory = stubProgramDirectory(tempDir);
     when(node.wantEncryptedDatabase()).thenReturn(true);
-    when(node.getPluginStoreKey(storeIdentifier)).thenReturn(key);
+    when(node.storage().getPluginStoreKey(storeIdentifier)).thenReturn(key);
 
     PluginStores pluginStores = new PluginStores(node, subConfig);
     PluginStore expected = createStore("plaintext");

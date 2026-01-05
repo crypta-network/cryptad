@@ -40,7 +40,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class N2NTMToadletTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private HTTPRequest request;
@@ -102,7 +104,10 @@ class N2NTMToadletTest {
     int peerHash = peer.hashCode();
     String missingHash = String.valueOf(peerHash + 1);
     when(request.getParam("peernode_hashcode")).thenReturn(missingHash);
-    when(node.getDarknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
 
     PageMaker pageMaker = mock(PageMaker.class);
     PageNode page = createPageNode();
@@ -134,7 +139,10 @@ class N2NTMToadletTest {
     int peerHash = peer.hashCode();
     when(request.getParam("peernode_hashcode")).thenReturn(String.valueOf(peerHash));
     when(peer.getName()).thenReturn("Alice");
-    when(node.getDarknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
 
     PageMaker pageMaker = mock(PageMaker.class);
     PageNode page = createPageNode();

@@ -28,7 +28,8 @@ class RemovePeerTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @Mock private PeerNode peerNode;
 
@@ -103,16 +104,19 @@ class RemovePeerTest {
   @Test
   void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode("node-missing")).thenReturn(null);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.getPeerNode("node-missing")).thenReturn(null);
     RemovePeer removePeer = new RemovePeer(buildFieldSet("node-missing", "id-789"));
 
     removePeer.run(handler, node);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).hasFullAccess();
-    verify(node).getPeerNode("node-missing");
+    verify(network).getPeerNode("node-missing");
     verify(handler).send(captor.capture());
-    verify(node, never()).removePeerConnection(any(PeerNode.class));
+    verify(network, never()).removePeerConnection(any(PeerNode.class));
     verifyNoMoreInteractions(handler, node);
 
     FCPMessage sent = captor.getValue();
@@ -125,16 +129,19 @@ class RemovePeerTest {
   @Test
   void run_whenPeerPresent_removesPeerAndSendsPeerRemoved() throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode("node-123")).thenReturn(peerNode);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.getPeerNode("node-123")).thenReturn(peerNode);
     when(peerNode.getIdentityString()).thenReturn("identity-xyz");
     RemovePeer removePeer = new RemovePeer(buildFieldSet("node-123", "id-555"));
 
     removePeer.run(handler, node);
 
     verify(handler).hasFullAccess();
-    verify(node).getPeerNode("node-123");
+    verify(network).getPeerNode("node-123");
     verify(peerNode).getIdentityString();
-    verify(node).removePeerConnection(peerNode);
+    verify(network).removePeerConnection(peerNode);
 
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
     verify(handler).send(captor.capture());

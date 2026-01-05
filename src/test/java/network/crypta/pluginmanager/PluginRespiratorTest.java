@@ -60,7 +60,9 @@ class PluginRespiratorTest {
     }
   }
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore nodeClientCore;
   @Mock private HighLevelSimpleClient highLevelSimpleClient;
   @Mock private PluginStores pluginStores;
@@ -82,7 +84,7 @@ class PluginRespiratorTest {
     clearSessionManagers();
 
     when(pluginInfoWrapper.getPlugin()).thenReturn(plugin);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    when(node.services().clientCore()).thenReturn(nodeClientCore);
     lenient().when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
     when(nodeClientCore.makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, false, false))
         .thenReturn(highLevelSimpleClient);

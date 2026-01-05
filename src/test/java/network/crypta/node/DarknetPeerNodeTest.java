@@ -21,6 +21,8 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.Peer;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
+import network.crypta.node.subsystem.NodeBootstrap;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.Base64;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.math.MersenneTwister;
@@ -38,6 +40,8 @@ import org.mockito.quality.Strictness;
 class DarknetPeerNodeTest {
 
   @Mock private Node mockNode;
+  @Mock private NodeBootstrap bootstrap;
+  @Mock private NodeNetworkSubsystem network;
   @Mock private NodeCrypto mockCrypto;
   @Mock private FNPPacketMangler mockMangler;
   @Mock private PeerManager mockPeers;
@@ -45,9 +49,11 @@ class DarknetPeerNodeTest {
   @BeforeEach
   void setupCommonStubs() {
     // Deterministic PRNG used by PeerNode
-    when(mockNode.createRandom()).thenReturn(new MersenneTwister(123456789L));
+    when(mockNode.bootstrap()).thenReturn(bootstrap);
+    when(bootstrap.createRandom()).thenReturn(new MersenneTwister(123456789L));
     when(mockNode.getBootId()).thenReturn(1L);
-    when(mockNode.getPeers()).thenReturn(mockPeers);
+    when(mockNode.network()).thenReturn(network);
+    when(network.peers()).thenReturn(mockPeers);
     // Avoid ARK side effects in setters (setListenOnly/disablePeer)
     when(mockNode.isEnableARKs()).thenReturn(false);
 

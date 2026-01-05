@@ -22,7 +22,7 @@ import network.crypta.support.math.DecayingKeyspaceAverage;
  * </ul>
  *
  * @see NodeStats
- * @see Node#getDataStoreStats()
+ * @see network.crypta.node.subsystem.NodeStorageSubsystem#getDataStoreStats()
  * @see StoreLocationStats
  */
 public final class NodeStoreStatsProvider {
@@ -75,12 +75,13 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgStoreCHKLocation, stats.node.getChkDatastore());
+        return cappedDistance(stats.avgStoreCHKLocation, stats.node.storage().getChkDatastore());
       }
     };
   }
@@ -115,12 +116,13 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgCacheCHKLocation, stats.node.getChkDatacache());
+        return cappedDistance(stats.avgCacheCHKLocation, stats.node.storage().getChkDatacache());
       }
     };
   }
@@ -156,12 +158,14 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgSlashdotCacheCHKLocation, stats.node.getChkSlashdotCache());
+        return cappedDistance(
+            stats.avgSlashdotCacheCHKLocation, stats.node.storage().getChkSlashdotCache());
       }
     };
   }
@@ -196,12 +200,14 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgClientCacheCHKLocation, stats.node.getChkClientCache());
+        return cappedDistance(
+            stats.avgClientCacheCHKLocation, stats.node.storage().getChkClientCache());
       }
     };
   }
@@ -236,12 +242,13 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgStoreSSKLocation, stats.node.getSskDatastore());
+        return cappedDistance(stats.avgStoreSSKLocation, stats.node.storage().getSskDatastore());
       }
     };
   }
@@ -276,12 +283,13 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgCacheSSKLocation, stats.node.getSskDatacache());
+        return cappedDistance(stats.avgCacheSSKLocation, stats.node.storage().getSskDatacache());
       }
     };
   }
@@ -316,12 +324,14 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgSlashdotCacheSSKLocation, stats.node.getSskSlashdotCache());
+        return cappedDistance(
+            stats.avgSlashdotCacheSSKLocation, stats.node.storage().getSskSlashdotCache());
       }
     };
   }
@@ -356,12 +366,14 @@ public final class NodeStoreStatsProvider {
 
       @Override
       public double avgDist() {
-        return Location.distance(stats.node.getLocationManager().getLocation(), avgLocation());
+        return Location.distance(
+            stats.node.network().locationManager().getLocation(), avgLocation());
       }
 
       @Override
       public double distanceStats() {
-        return cappedDistance(stats.avgClientCacheSSKLocation, stats.node.getSskClientCache());
+        return cappedDistance(
+            stats.avgClientCacheSSKLocation, stats.node.storage().getSskClientCache());
       }
     };
   }

@@ -231,7 +231,7 @@ class NodeClientPersistenceTest {
       throws NodeInitException {
     // Arrange
     NodeClientPersistence persistence = newPersistence(tempDir);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     ClientLayerPersister clientLayerPersister = mock(ClientLayerPersister.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     ClientContextResources resources =
@@ -501,8 +501,8 @@ class NodeClientPersistenceTest {
   }
 
   private static Node newNode(Ticker ticker, File runDir) {
-    Node node = mock(Node.class);
-    when(node.getTicker()).thenReturn(ticker);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(node.network().ticker()).thenReturn(ticker);
     when(node.getRunDir()).thenReturn(runDir);
     return node;
   }

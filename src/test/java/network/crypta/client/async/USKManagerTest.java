@@ -326,7 +326,10 @@ class USKManagerTest {
   }
 
   @Mock private network.crypta.node.NodeClientCore core;
-  @Mock private network.crypta.node.Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private network.crypta.node.Node node;
+
   @Mock private ClientContext context;
 
   private USKManager manager;
@@ -339,6 +342,7 @@ class USKManagerTest {
         .thenReturn(new HLClientStub());
     when(core.getNode()).thenReturn(node);
     when(node.getExecutor()).thenReturn(direct);
+    when(node.network().executor()).thenReturn(direct);
     manager = new USKManager(core);
     manager.init(context);
     when(context.getMainExecutor()).thenReturn(direct);

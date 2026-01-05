@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  * @see NodeStats
  * @see ConfigurablePersister
  */
-final class NodeStatsConfig {
+public final class NodeStatsConfig {
   /** Logger used for initialization-time configuration and throttle-file diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(NodeStatsConfig.class);
 
@@ -50,7 +50,12 @@ final class NodeStatsConfig {
    *
    * @param statsConfig mutable sub-configuration for node stats; must be non-null
    */
-  NodeStatsConfig(SubConfig statsConfig) {
+  /**
+   * Creates a configuration binder for node statistics.
+   *
+   * @param statsConfig subconfig containing statistics settings
+   */
+  public NodeStatsConfig(SubConfig statsConfig) {
     this.statsConfig = statsConfig;
   }
 
@@ -283,7 +288,7 @@ final class NodeStatsConfig {
         false,
         "NodeStat.statsPersister",
         "NodeStat.statsPersisterLong",
-        node.getTicker(),
+        node.network().ticker(),
         node.getRunDir());
   }
 

@@ -43,7 +43,10 @@ class BookmarkEditorToadletTest {
 
   @Mock private HighLevelSimpleClient client;
   @Mock private NodeClientCore core;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private BookmarkManager bookmarkManager;
   @Mock private PageMaker pageMaker;
   @Mock private ToadletContext context;
@@ -55,7 +58,10 @@ class BookmarkEditorToadletTest {
     toadlet = new BookmarkEditorToadlet(client, core);
 
     when(core.getNode()).thenReturn(node);
-    when(node.getDarknetConnections()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.darknetConnections()).thenReturn(new network.crypta.node.DarknetPeerNode[0]);
     when(node.isFProxyJavascriptEnabled()).thenReturn(false);
 
     when(context.getPageMaker()).thenReturn(pageMaker);

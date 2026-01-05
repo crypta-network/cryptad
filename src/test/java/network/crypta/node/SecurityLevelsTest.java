@@ -30,7 +30,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class SecurityLevelsTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerManager peers;
   @Mock private PeerRoster roster;
 
@@ -38,7 +40,7 @@ class SecurityLevelsTest {
   void setup() {
     // Ensure Node.getPeers() returns our mock for tests that need it; lenient to avoid strict
     // stubbing failures in tests that don't call getConfirmWarning().
-    org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peers);
+    org.mockito.Mockito.lenient().when(node.network().peers()).thenReturn(peers);
     org.mockito.Mockito.lenient().when(peers.roster()).thenReturn(roster);
   }
 

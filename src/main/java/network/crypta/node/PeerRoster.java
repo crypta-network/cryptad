@@ -421,13 +421,13 @@ public class PeerRoster {
       if (candidate != null) return candidate;
       int lengthWithoutExcluded = rebuildConnectedPeersExcluding(exclude);
       if (lengthWithoutExcluded == 0) return null;
-      return connectedPeers[node.getRandom().nextInt(lengthWithoutExcluded)];
+      return connectedPeers[node.bootstrap().random().nextInt(lengthWithoutExcluded)];
     }
   }
 
   private PeerNode attemptRandomRoutable(PeerNode exclude) {
     for (int i = 0; i < 5; i++) {
-      PeerNode pn = connectedPeers[node.getRandom().nextInt(connectedPeers.length)];
+      PeerNode pn = connectedPeers[node.bootstrap().random().nextInt(connectedPeers.length)];
       if (pn == exclude) continue;
       if (pn.isRoutable()) return pn;
     }

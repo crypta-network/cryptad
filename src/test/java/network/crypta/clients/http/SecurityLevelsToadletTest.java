@@ -29,7 +29,9 @@ class SecurityLevelsToadletTest {
   void path_whenCalled_returnsSecurityLevelsPath() {
     SecurityLevelsToadlet toadlet =
         new SecurityLevelsToadlet(
-            mock(HighLevelSimpleClient.class), mock(Node.class), mock(NodeClientCore.class));
+            mock(HighLevelSimpleClient.class),
+            mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+            mock(NodeClientCore.class));
 
     String result = toadlet.path();
 

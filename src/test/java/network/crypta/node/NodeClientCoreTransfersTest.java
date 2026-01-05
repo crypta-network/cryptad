@@ -39,6 +39,8 @@ import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKEncodeException;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
+import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.InvalidCompressionCodecException;
@@ -63,7 +65,10 @@ class NodeClientCoreTransfersTest {
   private static final byte[] SSK_SAMPLE_BYTES = "ssk-sample".getBytes(StandardCharsets.UTF_8);
 
   @Mock private NodeClientCore core;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private RandomSource random;
   @Mock private RequestStarterGroup requestStarters;
   @Mock private RequestTracker tracker;
@@ -78,13 +83,16 @@ class NodeClientCoreTransfersTest {
   private TimeDecayingRunningAverage sskInsertSuccessSentAverage;
 
   private NodeClientCoreTransfers transfers;
+  private NodeStorageSubsystem storage;
 
   @BeforeEach
   void setUp() throws Exception {
     when(core.getNode()).thenReturn(node);
     when(core.getRandom()).thenReturn(random);
     when(core.getRequestStarters()).thenReturn(requestStarters);
-    when(node.getTracker()).thenReturn(tracker);
+    when(node.routing().tracker()).thenReturn(tracker);
+    storage = mock(NodeStorageSubsystem.class);
+    when(node.storage()).thenReturn(storage);
     when(node.maxHTL()).thenReturn((short) 5);
     lenient().when(random.nextLong()).thenReturn(123L);
     lenient()
@@ -123,7 +131,7 @@ class NodeClientCoreTransfersTest {
     setField(stats, "localSskInsertBytesReceivedAverage", sskInsertReceivedAverage);
     setField(stats, "successfulSskInsertBytesSentAverage", sskInsertSuccessSentAverage);
 
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().stats()).thenReturn(stats);
 
     transfers = new NodeClientCoreTransfers(core);
   }
@@ -141,13 +149,14 @@ class NodeClientCoreTransfersTest {
         ArgumentCaptor.forClass(LowLevelGetException.class);
     verify(completionListener).onFailed(captor.capture());
     assertEquals(LowLevelGetException.INTERNAL_ERROR, captor.getValue().code);
-    verify(node, never()).makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any());
+    verify(node.routing(), never())
+        .makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any());
   }
 
   @Test
   void asyncGet_whenKeyBlockInStore_expectListenerSucceeded() {
     Key key = mock(Key.class);
-    when(node.makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
+    when(node.routing().makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
         .thenReturn(mock(KeyBlock.class));
 
     transfers.asyncGet(key, false, completionListener, true, true, false, false, false);
@@ -161,7 +170,7 @@ class NodeClientCoreTransfersTest {
     Key key = mock(Key.class);
     when(key.toNormalizedDouble()).thenReturn(0.42);
     RequestSender sender = mock(RequestSender.class);
-    when(node.makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
+    when(node.routing().makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
         .thenReturn(sender);
     when(sender.getStatus()).thenReturn(RequestSender.TIMED_OUT);
     when(sender.hasForwarded()).thenReturn(false);
@@ -203,7 +212,7 @@ class NodeClientCoreTransfersTest {
     ClientCHKBlock original = encodeSampleChkBlock(CHK_SAMPLE);
     ClientCHK key = original.getClientKey();
     CHKBlock block = original.getBlock();
-    when(node.makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
+    when(node.routing().makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
         .thenReturn(block);
 
     ClientKeyBlock result = transfers.realGetKey(key, true, false, true, false);
@@ -216,7 +225,7 @@ class NodeClientCoreTransfersTest {
     ClientSSKBlock original = encodeSampleSskBlock(42L);
     ClientSSK key = original.getClientKey();
     SSKBlock block = (SSKBlock) original.getBlock();
-    when(node.makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
+    when(node.routing().makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
         .thenReturn(block);
 
     ClientKeyBlock result = transfers.realGetKey(key, true, false, false, true);
@@ -268,8 +277,14 @@ class NodeClientCoreTransfersTest {
     when(random.nextLong()).thenReturn(uid);
 
     CHKInsertSender sender = mock(CHKInsertSender.class);
-    when(node.makeInsertSender(
-            any(), anyShort(), anyLong(), any(), isNull(), any(Node.ChkInsertOptions.class)))
+    when(node.routing()
+            .makeInsertSender(
+                any(),
+                anyShort(),
+                anyLong(),
+                any(),
+                isNull(),
+                any(NodeRoutingSubsystem.ChkInsertOptions.class)))
         .thenReturn(sender);
     when(sender.getStatus()).thenReturn(CHKInsertSender.SUCCESS);
     when(sender.sentRequest()).thenReturn(false);
@@ -281,12 +296,12 @@ class NodeClientCoreTransfersTest {
     when(sender.completed()).thenReturn(true);
     setField(sender, "uid", uid);
 
-    when(node.shouldStoreDeep(block.getKey(), null, routedTo)).thenReturn(true);
-    doNothing().when(node).store(block, true, true, false, false);
+    when(node.routing().shouldStoreDeep(block.getKey(), null, routedTo)).thenReturn(true);
+    doNothing().when(storage).store(block, true, true, false, false);
 
     transfers.realPutCHK(block, true, false, false, false, true);
 
-    verify(node).store(block, true, true, false, false);
+    verify(storage).store(block, true, true, false, false);
     verify(chkInsertSentAverage).report(123L);
     verify(chkInsertReceivedAverage).report(456L);
     verify(chkInsertSuccessSentAverage).report(123L);
@@ -314,7 +329,8 @@ class NodeClientCoreTransfersTest {
     ClientSSKBlock clientBlock = encodeSampleSskBlock(1L);
     SSKBlock block = (SSKBlock) clientBlock.getBlock();
     SSKBlock altBlock = (SSKBlock) encodeSampleSskBlock(2L).getBlock();
-    when(node.fetch(block.getKey(), false, true, true, false, false, null)).thenReturn(altBlock);
+    when(node.storage().fetch(block.getKey(), false, true, true, false, false, null))
+        .thenReturn(altBlock);
 
     LowLevelPutException ex =
         assertThrows(
@@ -331,11 +347,18 @@ class NodeClientCoreTransfersTest {
     SSKBlock block = (SSKBlock) clientBlock.getBlock();
     long uid = 789L;
     when(random.nextLong()).thenReturn(uid);
-    when(node.fetch(block.getKey(), false, true, true, false, false, null)).thenReturn(null);
+    when(node.storage().fetch(block.getKey(), false, true, true, false, false, null))
+        .thenReturn(null);
 
     SSKInsertSender sender = mock(SSKInsertSender.class);
-    when(node.makeInsertSender(
-            any(), anyShort(), anyLong(), any(), isNull(), any(Node.SskInsertOptions.class)))
+    when(node.routing()
+            .makeInsertSender(
+                any(),
+                anyShort(),
+                anyLong(),
+                any(),
+                isNull(),
+                any(NodeRoutingSubsystem.SskInsertOptions.class)))
         .thenReturn(sender);
     when(sender.getStatus()).thenReturn(SSKInsertSender.SUCCESS);
     when(sender.sentRequest()).thenReturn(false);
@@ -347,12 +370,12 @@ class NodeClientCoreTransfersTest {
     when(sender.hasCollided()).thenReturn(false);
     setField(sender, "uid", uid);
 
-    when(node.shouldStoreDeep(block.getKey(), null, routedTo)).thenReturn(true);
-    doNothing().when(node).storeInsert(block, true, false, true, false);
+    when(node.routing().shouldStoreDeep(block.getKey(), null, routedTo)).thenReturn(true);
+    doNothing().when(storage).storeInsert(block, true, false, true, false);
 
     transfers.realPutSSK(block, true, false, false, false, false);
 
-    verify(node).storeInsert(block, true, false, true, false);
+    verify(storage).storeInsert(block, true, false, true, false);
     verify(sskInsertSentAverage).report(11L);
     verify(sskInsertReceivedAverage).report(22L);
     verify(sskInsertSuccessSentAverage).report(11L);

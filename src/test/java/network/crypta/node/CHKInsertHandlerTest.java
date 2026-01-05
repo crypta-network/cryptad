@@ -34,7 +34,9 @@ import org.mockito.quality.Strictness;
 @SuppressWarnings("java:S100")
 class CHKInsertHandlerTest {
 
-  @Mock Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
   @Mock PeerNode source;
   @Mock PeerTransport transport;
   @Mock MessageCore usm;
@@ -71,10 +73,10 @@ class CHKInsertHandlerTest {
 
   @BeforeEach
   void setUp() {
-    when(node.getUSM()).thenReturn(usm);
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.getTicker()).thenReturn(ticker);
-    when(node.canWriteDatastoreInsert(any(short.class))).thenReturn(true);
+    when(node.network().usm()).thenReturn(usm);
+    when(node.network().stats()).thenReturn(nodeStats);
+    when(node.network().ticker()).thenReturn(ticker);
+    when(node.routing().canWriteDatastoreInsert(any(short.class))).thenReturn(true);
 
     // Source is considered connected for these tests
     when(source.isConnected()).thenReturn(true);

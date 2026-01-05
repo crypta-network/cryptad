@@ -34,14 +34,16 @@ public class DNSRequester implements Runnable {
   static boolean disable = false;
   private boolean wakeRequested;
 
-  DNSRequester(Node node) {
+  public DNSRequester(Node node) {
     this.node = node;
   }
 
-  void start() {
+  public void start() {
     LOG.info("Starting DNSRequester");
     // Schedule the worker on the node's executor with a descriptive thread name.
-    node.getExecutor().execute(this, "DNSRequester thread for " + node.getDarknetPortNumber());
+    node.network()
+        .executor()
+        .execute(this, "DNSRequester thread for " + node.network().darknetPortNumber());
   }
 
   /**
@@ -72,7 +74,7 @@ public class DNSRequester implements Runnable {
     // Resolve DNS for unconnected peers that were not checked recently. This avoids repeatedly
     // selecting the same locations (coupon collector effect) and spreads lookups over time.
     PeerNode[] nodesToCheck =
-        Arrays.stream(node.getPeers().myPeers())
+        Arrays.stream(node.network().peers().myPeers())
             .filter(peerNode -> !peerNode.isConnected())
             // Identify recent peers by location rather than identity. Double equality is used only
             // for exact-match deduplication; ordering/approximation is not required here.
@@ -92,7 +94,7 @@ public class DNSRequester implements Runnable {
     if (unconnectedNodesLength > 0) {
       // Check a randomly chosen unconnected peer that has not been visited recently to avoid
       // bursts of DNS requests.
-      PeerNode pn = nodesToCheck[node.getFastWeakRandom().nextInt(unconnectedNodesLength)];
+      PeerNode pn = nodesToCheck[node.bootstrap().fastWeakRandom().nextInt(unconnectedNodesLength)];
       if (unconnectedNodesLength < 5) {
         // For tiny eligible sets, clear recent-selection state for simplicity.
         recentNodeIdentitySet.clear();
@@ -110,7 +112,7 @@ public class DNSRequester implements Runnable {
       pn.maybeUpdateHandshakeIPs(false);
     }
 
-    int nextMaxWaitTime = 1000 + node.getFastWeakRandom().nextInt(60000);
+    int nextMaxWaitTime = 1000 + node.bootstrap().fastWeakRandom().nextInt(60000);
     try {
       synchronized (this) {
         // Randomized sleep (1s..61s) to spread queries and avoid synchronized bursts across nodes.

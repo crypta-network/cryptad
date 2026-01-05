@@ -45,7 +45,8 @@ class AnnouncerTest {
 
   @Mock private OpennetManager om;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @Mock private PeerManager peers;
 
@@ -106,7 +107,7 @@ class AnnouncerTest {
   @DisplayName("maybeSendAnnouncementOffThread when enoughPeers true does not schedule")
   void maybeSendAnnouncementOffThread_whenEnoughPeersTrue_doesNotSchedule() {
     when(om.getNode()).thenReturn(node);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     Announcer announcer = Mockito.spy(new Announcer(om));
     doReturn(true).when(announcer).enoughPeers();
 
@@ -119,7 +120,7 @@ class AnnouncerTest {
   @DisplayName("maybeSendAnnouncementOffThread when not enough peers schedules immediate job")
   void maybeSendAnnouncementOffThread_whenNotEnoughPeers_schedulesImmediate() {
     when(om.getNode()).thenReturn(node);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     Announcer announcer = Mockito.spy(new Announcer(om));
     doReturn(false).when(announcer).enoughPeers();
 
@@ -136,7 +137,7 @@ class AnnouncerTest {
   @DisplayName("sendAnnouncement returns false when opennet disabled")
   void sendAnnouncement_whenOpennetDisabled_returnsFalse() {
     when(om.getNode()).thenReturn(node);
-    when(node.isOpennetEnabled()).thenReturn(false);
+    when(node.network().isOpennetEnabled()).thenReturn(false);
     Announcer announcer = new Announcer(om);
 
     SeedServerPeerNode seed = mock(SeedServerPeerNode.class);
@@ -155,13 +156,13 @@ class AnnouncerTest {
   void isWaitingForUpdater_whenKillAnnouncementConditionMet_true() {
     when(om.getNode()).thenReturn(node);
     when(om.stopping()).thenReturn(false);
-    when(node.getPeers()).thenReturn(peers);
+    when(node.network().peers()).thenReturn(peers);
     when(peers.countConnectedPeers()).thenReturn(0);
     // ensure target > opennetCount(=0) so we do NOT early-return "enough"
     when(om.getNumberOfConnectedPeersToAimIncludingDarknet()).thenReturn(2);
 
     // Updater: disabled, and UOM not fetching from two
-    when(node.getNodeUpdater()).thenReturn(updater);
+    when(node.services().nodeUpdater()).thenReturn(updater);
     when(updater.isEnabled()).thenReturn(false);
     when(updater.isArmed()).thenReturn(true);
     when(updater.getUpdateOverMandatory()).thenReturn(uom);
@@ -175,7 +176,7 @@ class AnnouncerTest {
     doAnswer(inv -> null).when(executor).execute(any(Runnable.class));
 
     // Alerts mocked to avoid real notification logic
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
 
     Announcer announcer = new Announcer(om);
@@ -193,8 +194,8 @@ class AnnouncerTest {
   void enoughPeers_timeTracking_setsAndResets() {
     when(om.getNode()).thenReturn(node);
     when(om.stopping()).thenReturn(false);
-    when(node.getPeers()).thenReturn(peers);
-    when(node.getNodeUpdater()).thenReturn(updater);
+    when(node.network().peers()).thenReturn(peers);
+    when(node.services().nodeUpdater()).thenReturn(updater);
     when(updater.isEnabled()).thenReturn(true);
     when(updater.isArmed()).thenReturn(true);
     when(updater.getUpdateOverMandatory()).thenReturn(uom);

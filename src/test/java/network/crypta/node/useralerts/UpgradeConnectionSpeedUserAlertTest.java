@@ -31,7 +31,9 @@ import org.mockito.quality.Strictness;
 @SuppressWarnings({"java:S100", "PointlessArithmeticExpression"})
 class UpgradeConnectionSpeedUserAlertTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore clientCore;
   @Mock private UserAlertManager alertManager;
 
@@ -65,7 +67,7 @@ class UpgradeConnectionSpeedUserAlertTest {
         false);
 
     when(node.getConfig()).thenReturn(config);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alertManager);
     // formPassword is only needed in tests that render the form; stubbed there.
   }

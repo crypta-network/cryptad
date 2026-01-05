@@ -122,7 +122,7 @@ public class BandwidthRate extends BandwidthManipulator implements Step {
 
     try {
       BandwidthLimit detected =
-          detectBandwidthLimits(core.getNode().getIpDetector().getBandwidthIndicator());
+          detectBandwidthLimits(core.getNode().network().ipDetector().getBandwidthIndicator());
 
       // Detected limits reasonable; add half of both as recommended option.
       BandwidthLimit usable =

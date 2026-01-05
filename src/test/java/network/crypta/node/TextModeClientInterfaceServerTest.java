@@ -19,6 +19,8 @@ import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
 import network.crypta.io.NetworkInterface;
+import network.crypta.node.subsystem.NodeBootstrap;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +35,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class TextModeClientInterfaceServerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
+  @Mock private NodeBootstrap bootstrap;
+  @Mock private NodeNetworkSubsystem network;
+
   @Mock private NodeClientCore core;
   @Mock private ClientEndpoints endpoints;
 
@@ -87,12 +94,14 @@ class TextModeClientInterfaceServerTest {
   @Test
   void start_whenCalled_logsAndSchedulesRunnable() throws Exception {
     // Arrange a minimal node/core for constructor wiring.
-    Mockito.when(node.getClientCore()).thenReturn(core);
-    Mockito.when(node.getRandom()).thenReturn(Mockito.mock(RandomSource.class));
+    Mockito.when(node.services().clientCore()).thenReturn(core);
+    Mockito.when(node.bootstrap()).thenReturn(bootstrap);
+    Mockito.when(bootstrap.random()).thenReturn(Mockito.mock(RandomSource.class));
     Mockito.when(core.getDownloadsDir()).thenReturn(tempDir);
 
     CapturingExecutor exec = new CapturingExecutor();
-    Mockito.when(node.getExecutor()).thenReturn(exec);
+    Mockito.when(node.network()).thenReturn(network);
+    Mockito.when(network.executor()).thenReturn(exec);
 
     TextModeClientInterfaceServer tmci =
         new TextModeClientInterfaceServer(

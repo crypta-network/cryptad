@@ -109,7 +109,7 @@ public class SSKInsertSender extends BaseSender
    */
   static final int ROUTE_REALLY_NOT_FOUND = 6;
 
-  SSKInsertSender(
+  public SSKInsertSender(
       SSKBlock block,
       long uid,
       InsertTag tag,
@@ -144,14 +144,15 @@ public class SSKInsertSender extends BaseSender
    *
    * <p>Non‑blocking. Execution begins asynchronously on a worker thread.
    */
-  void start() {
-    node.getExecutor()
+  public void start() {
+    node.network()
+        .executor()
         .execute(
             this,
             "SSKInsertSender for UID "
                 + uid
                 + " on "
-                + node.getDarknetPortNumber()
+                + node.network().darknetPortNumber()
                 + " at "
                 + System.currentTimeMillis());
   }
@@ -183,7 +184,7 @@ public class SSKInsertSender extends BaseSender
 
   /** Performs one routing step: adjust HTL, optionally fork, pick a peer, and continue. */
   protected void routeRequests() {
-    final boolean couldWriteStoreBefore = node.canWriteDatastoreInsert(htl);
+    final boolean couldWriteStoreBefore = node.routing().canWriteDatastoreInsert(htl);
 
     if (adjustHtlOrFinish()) return;
 
@@ -208,7 +209,7 @@ public class SSKInsertSender extends BaseSender
     if (dontDecrementHTLThisTime) {
       dontDecrementHTLThisTime = false;
     } else {
-      htl = node.decrementHTL(hasForwarded ? lastNode : source, htl);
+      htl = node.routing().decrementHTL(hasForwarded ? lastNode : source, htl);
       if (LOG.isDebugEnabled()) LOG.debug("Decremented HTL to {}", htl);
     }
     if (htl <= 0) {
@@ -221,11 +222,11 @@ public class SSKInsertSender extends BaseSender
 
   // Fork a local insert when we cross a store‑writable HTL boundary and forking is enabled.
   private void maybeForkOnCacheable(boolean couldWriteStoreBefore) {
-    if (node.canWriteDatastoreInsert(htl)
+    if (node.routing().canWriteDatastoreInsert(htl)
         && (!couldWriteStoreBefore)
         && forkOnCacheable
         && forkedRequestTag == null) {
-      uid = node.getClientCore().makeUID();
+      uid = node.services().clientCore().makeUID();
       forkedRequestTag =
           new InsertTag(true, InsertTag.START.REMOTE, source, realTimeFlag, uid, node);
       forkedRequestTag.reassignToSelf();
@@ -234,12 +235,13 @@ public class SSKInsertSender extends BaseSender
       forkedRequestTag.setAccepted();
       LOG.info("FORKING SSK INSERT {} to {}", origUID, uid);
       nodesRoutedTo.clear();
-      node.getTracker().lockUID(forkedRequestTag);
+      node.routing().tracker().lockUID(forkedRequestTag);
     }
   }
 
   private PeerNode findNextPeer() {
-    return node.getPeers()
+    return node.network()
+        .peers()
         .routingSelector()
         .closerPeer(
             forkedRequestTag == null ? source : null,
@@ -379,7 +381,8 @@ public class SSKInsertSender extends BaseSender
     MessageFilter mf =
         makeAcceptedRejectedFilter(next, TIMEOUT_AFTER_ACCEPTEDREJECTED_TIMEOUT, tag);
     try {
-      node.getUSM()
+      node.network()
+          .usm()
           .addAsyncFilter(mf, new AcceptedRejectedTimeoutCallback(this, next, tag, uid), this);
     } catch (DisconnectedException _) {
       next.noLongerRoutingTo(tag, false);
@@ -573,7 +576,7 @@ public class SSKInsertSender extends BaseSender
             .setType(DMT.FNPSSKDataFoundData);
     Message dataMessage;
     try {
-      dataMessage = node.getUSM().waitFor(mfData, this);
+      dataMessage = node.network().usm().waitFor(mfData, this);
     } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected: {} getting datareply for {}", next, this);
       next.noLongerRoutingTo(thisTag, false);
@@ -833,7 +836,7 @@ public class SSKInsertSender extends BaseSender
     synchronized (totalBytesSync) {
       totalBytesSent += x;
     }
-    node.getNodeStats().insertSentBytes(true, x);
+    node.network().stats().insertSentBytes(true, x);
   }
 
   /** Returns the total bytes sent so far (counters only; does not include payload accounting). */
@@ -851,7 +854,7 @@ public class SSKInsertSender extends BaseSender
     synchronized (totalBytesSync) {
       totalBytesReceived += x;
     }
-    node.getNodeStats().insertReceivedBytes(true, x);
+    node.network().stats().insertReceivedBytes(true, x);
   }
 
   /** Returns the total bytes received so far (counters only). */
@@ -865,7 +868,7 @@ public class SSKInsertSender extends BaseSender
   @Override
   public void sentPayload(int x) {
     node.sentPayload(x);
-    node.getNodeStats().insertSentBytes(true, -x);
+    node.network().stats().insertSentBytes(true, -x);
   }
 
   /** Returns the scheduling priority for this sender. */
@@ -1003,7 +1006,7 @@ public class SSKInsertSender extends BaseSender
             .setType(DMT.FNPSSKPubKeyAccepted);
     Message newAck;
     try {
-      newAck = node.getUSM().waitFor(mf1, this);
+      newAck = node.network().usm().waitFor(mf1, this);
     } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled()) LOG.atDebug().log("Disconnected from {}", next);
       next.noLongerRoutingTo(thisTag, false);
@@ -1024,7 +1027,7 @@ public class SSKInsertSender extends BaseSender
     while (true) {
       Message msg;
       try {
-        msg = node.getUSM().waitFor(mf, this);
+        msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
         LOG.atInfo().log("Disconnected from {} while waiting for InsertReply on {}", next, this);
         next.noLongerRoutingTo(thisTag, false);
@@ -1057,7 +1060,7 @@ public class SSKInsertSender extends BaseSender
     while (true) {
       Message msg;
       try {
-        msg = node.getUSM().waitFor(mf, this);
+        msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
         LOG.atInfo().log("Disconnected from {} while waiting for InsertReply on {}", next, this);
         next.noLongerRoutingTo(thisTag, false);

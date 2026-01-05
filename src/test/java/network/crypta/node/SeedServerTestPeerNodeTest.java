@@ -9,11 +9,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Field;
 import network.crypta.node.SeedServerTestPeerNode.FATE;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.Ticker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -143,10 +145,12 @@ class SeedServerTestPeerNodeTest {
     doReturn(-1L).when(sut).lastReceivedDataPacketTime();
     doReturn(0L).when(sut).timeLastConnectionCompleted();
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     Ticker ticker = mock(Ticker.class);
     doNothing().when(ticker).removeQueuedJob(any());
-    doReturn(ticker).when(node).getTicker();
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    doReturn(ticker).when(network).ticker();
     setNodeOnPeerNode(sut, node);
 
     doReturn(true).when(sut).disconnected(true, true);
@@ -172,10 +176,12 @@ class SeedServerTestPeerNodeTest {
     doReturn(0L).when(sut).lastReceivedDataPacketTime();
     doReturn(123L).when(sut).timeLastConnectionCompleted();
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     Ticker ticker = mock(Ticker.class);
     doNothing().when(ticker).removeQueuedJob(any());
-    doReturn(ticker).when(node).getTicker();
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    doReturn(ticker).when(network).ticker();
     setNodeOnPeerNode(sut, node);
 
     doReturn(true).when(sut).disconnected(true, true);
@@ -199,10 +205,12 @@ class SeedServerTestPeerNodeTest {
     doReturn(999L).when(sut).lastReceivedDataPacketTime();
     doReturn(888L).when(sut).timeLastConnectionCompleted();
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     Ticker ticker = mock(Ticker.class);
     doNothing().when(ticker).removeQueuedJob(any());
-    doReturn(ticker).when(node).getTicker();
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    doReturn(ticker).when(network).ticker();
     setNodeOnPeerNode(sut, node);
 
     doReturn(true).when(sut).disconnected(true, true);

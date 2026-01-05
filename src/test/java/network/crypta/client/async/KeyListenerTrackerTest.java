@@ -45,7 +45,10 @@ class KeyListenerTrackerTest {
   // Use a deterministic dummy RNG for reproducibility in tests.
 
   @Mock private RequestStarter starter;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private ClientContext clientContext;
 

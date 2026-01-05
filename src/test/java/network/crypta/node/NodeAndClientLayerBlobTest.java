@@ -57,7 +57,7 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     params.setExecutor(executor);
     Node node = NodeStarter.createTestNode(params);
     node.start(false);
-    HighLevelSimpleClient client = node.getClientCore().makeClient((short) 0, false, false);
+    HighLevelSimpleClient client = node.services().clientCore().makeClient((short) 0, false, false);
     // First do an ordinary insert.
     InsertContext ictx = client.getInsertContext(true);
     ictx.setLocalRequestOnly(true);
@@ -72,10 +72,11 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     assertTrue(BucketTools.equalBuckets(result.asBucket(), block.getData()));
     // Now fetch the blob...
     fw = new FetchWaiter(rc);
-    Bucket blobBucket = node.getClientCore().getTempBucketFactory().makeBucket(FILE_SIZE * 3);
+    Bucket blobBucket =
+        node.services().clientCore().getTempBucketFactory().makeBucket(FILE_SIZE * 3);
     BinaryBlobWriter bbw = new BinaryBlobWriter(blobBucket);
     ClientGetter getter = new ClientGetter(fw, uri, ctx, (short) 0, null, bbw, false, null, null);
-    getter.start(node.getClientCore().getClientContext());
+    getter.start(node.services().clientCore().getClientContext());
     fw.waitForCompletion();
     assertTrue(blobBucket.size() > 0);
     // Now bootstrap a second node, and fetch using the blob on that node.
@@ -88,7 +89,8 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     params.setExecutor(executor);
     Node node2 = NodeStarter.createTestNode(params);
     node2.start(false);
-    HighLevelSimpleClient client2 = node.getClientCore().makeClient((short) 0, false, false);
+    HighLevelSimpleClient client2 =
+        node.services().clientCore().makeClient((short) 0, false, false);
     FetchContext ctx2 = client.getFetchContext(FILE_SIZE * 2);
     SimpleBlockSet blocks = new SimpleBlockSet();
     DataInputStream dis = new DataInputStream(blobBucket.getInputStream());

@@ -318,8 +318,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
     super(client);
     this.node = n;
     this.core = core;
-    this.stats = n.getNodeStats();
-    this.peers = n.getPeers();
+    this.stats = n.network().stats();
+    this.peers = n.network().peers();
     refLink = HTMLNode.link(path() + "myref.fref").setReadOnly();
     reftextLink = HTMLNode.link(path() + "myref.txt").setReadOnly();
   }
@@ -556,7 +556,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   private void addActivitySection(HTMLNode tableCell, long nodeUptimeSeconds) {
-    int numARKFetchers = node.getNumARKFetchers();
+    int numARKFetchers = node.network().numArkFetchers();
 
     HTMLNode activityInfobox = tableCell.addChild("div", ATTR_CLASS, INFOBOX_CLASS);
     activityInfobox.addChild("div", ATTR_CLASS, INFOBOX_HEADER_CLASS, l10n("activityTitle"));
@@ -925,7 +925,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
       boolean advancedMode,
       long now) {
     double totalSelectionRate = 0.0;
-    PeerNodeStatus[] allPeerNodeStatuses = node.getPeers().statusBook().getPeerNodeStatuses(true);
+    PeerNodeStatus[] allPeerNodeStatuses =
+        node.network().peers().statusBook().getPeerNodeStatuses(true);
     for (PeerNodeStatus status : allPeerNodeStatuses) {
       totalSelectionRate += status.getSelectionRate();
     }
@@ -1509,9 +1510,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
     PeerNode pn;
     try {
       if (isOpennet()) {
-        pn = node.createNewOpennetNode(fs);
+        pn = node.network().createNewOpennetNode(fs);
       } else {
-        pn = node.createNewDarknetNode(fs, trust, visibility);
+        pn = node.network().createNewDarknetNode(fs, trust, visibility);
         ((DarknetPeerNode) pn).setPrivateDarknetCommentNote(privateComment);
       }
     } catch (FSParseException | PeerParseException _) {
@@ -1522,10 +1523,10 @@ public abstract class ConnectionsToadlet extends Toadlet {
       LOG.error("Internal error adding reference :{}", e.getMessage(), e);
       return PeerAdditionReturnCodes.INTERNAL_ERROR;
     }
-    if (Arrays.equals(pn.peerECDSAPubKeyHash, node.getDarknetPubKeyHash())) {
+    if (Arrays.equals(pn.peerECDSAPubKeyHash, node.network().darknetPubKeyHash())) {
       return PeerAdditionReturnCodes.TRY_TO_ADD_SELF;
     }
-    if (!this.node.addPeerConnection(pn)) {
+    if (!this.node.network().addPeerConnection(pn)) {
       return PeerAdditionReturnCodes.ALREADY_IN_REFERENCE;
     }
     return PeerAdditionReturnCodes.OK;

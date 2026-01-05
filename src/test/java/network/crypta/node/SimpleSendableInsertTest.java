@@ -331,7 +331,7 @@ class SimpleSendableInsertTest {
   @Test
   void ctor_withUnknownBlockType_throwsIllegalArgumentException() {
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(core.getNode()).thenReturn(node);
     when(node.getNonPersistentClientBulk()).thenReturn(requestClient);
 

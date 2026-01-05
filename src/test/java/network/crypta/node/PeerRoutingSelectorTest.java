@@ -36,7 +36,9 @@ class PeerRoutingSelectorTest {
   private static final short OUTGOING_HTL = 5;
   private static final double TARGET = 0.25;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerRoster roster;
   @Mock private PeerStatusBook statusBook;
 
@@ -45,7 +47,7 @@ class PeerRoutingSelectorTest {
   @BeforeEach
   void setUp() {
     selector = new PeerRoutingSelector(node, roster, statusBook);
-    when(node.getLocation()).thenReturn(0.0);
+    when(node.network().location()).thenReturn(0.0);
     when(node.isEnablePerNodeFailureTables()).thenReturn(false);
   }
 
@@ -145,7 +147,7 @@ class PeerRoutingSelectorTest {
   @Test
   void closerPeer_whenIgnoreSelfFalseAndOnlyPeersBeyondSelf_expectNull() {
     // Arrange
-    when(node.getLocation()).thenReturn(0.0); // self distance to target=0.25 is 0.25
+    when(node.network().location()).thenReturn(0.0); // self distance to target=0.25 is 0.25
 
     PeerNode closerBeyondSelf = routablePeerAt(0.60); // diff=0.35 (> 0.25)
     PeerNode fartherBeyondSelf = routablePeerAt(0.80); // diff=0.45 (> 0.25)
@@ -180,7 +182,7 @@ class PeerRoutingSelectorTest {
   @Test
   void closerPeer_whenIgnoreSelfTrueAndOnlyPeersBeyondSelf_expectSelectsSecond() {
     // Arrange
-    when(node.getLocation()).thenReturn(0.0); // self distance to target=0.25 is 0.25
+    when(node.network().location()).thenReturn(0.0); // self distance to target=0.25 is 0.25
 
     PeerNode closerBeyondSelf = routablePeerAt(0.60); // diff=0.35
     PeerNode fartherBeyondSelf = routablePeerAt(0.80); // diff=0.45
@@ -385,7 +387,7 @@ class PeerRoutingSelectorTest {
   @Test
   void closerPeer_whenPeerPublishesCloserPeerLocation_expectInfluencesMaxDistance() {
     // Arrange
-    when(node.getLocation()).thenReturn(0.0);
+    when(node.network().location()).thenReturn(0.0);
     PeerNode origin = mock(PeerNode.class);
     when(origin.getLocation()).thenReturn(0.10);
 
@@ -516,7 +518,7 @@ class PeerRoutingSelectorTest {
     when(node.isEnablePerNodeFailureTables()).thenReturn(true);
 
     FailureTable failureTable = mock(FailureTable.class);
-    when(node.getFailureTable()).thenReturn(failureTable);
+    when(node.routing().failureTable()).thenReturn(failureTable);
 
     Key key = mock(Key.class);
     TimedOutNodesList entry = mock(TimedOutNodesList.class);
@@ -567,7 +569,7 @@ class PeerRoutingSelectorTest {
     when(node.isEnableULPRDataPropagation()).thenReturn(true);
 
     FailureTable failureTable = mock(FailureTable.class);
-    when(node.getFailureTable()).thenReturn(failureTable);
+    when(node.routing().failureTable()).thenReturn(failureTable);
 
     Key key = mock(Key.class);
     TimedOutNodesList entry = mock(TimedOutNodesList.class);
@@ -651,7 +653,7 @@ class PeerRoutingSelectorTest {
         .getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_CONNECTED, false);
     verify(statusBook, atLeastOnce())
         .getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
-    verify(node, never()).getNodeStats();
+    verify(node.network(), never()).stats();
   }
 
   @Test

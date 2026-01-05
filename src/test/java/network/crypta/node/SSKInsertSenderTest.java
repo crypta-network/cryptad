@@ -33,7 +33,9 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class SSKInsertSenderTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeStats nodeStats;
   @Mock private PeerNode source;
   @Mock private InsertTag insertTag;
@@ -46,9 +48,9 @@ class SSKInsertSenderTest {
 
   // Stubs applied lazily only when constructing a sender to avoid unnecessary-stubbing failures
   private void prepareCommonStubs() {
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.enableNewLoadManagement(false)).thenReturn(false);
-    when(node.enableNewLoadManagement(true)).thenReturn(false);
+    when(node.network().stats()).thenReturn(nodeStats);
+    when(node.network().enableNewLoadManagement(false)).thenReturn(false);
+    when(node.network().enableNewLoadManagement(true)).thenReturn(false);
     when(node.maxHTL()).thenReturn((short) 18); // arbitrary but stable
 
     when(block.getKey()).thenReturn(nodeSSK);
@@ -254,14 +256,14 @@ class SSKInsertSenderTest {
 
     // Node collaborators
     MessageCore usm = Mockito.mock(MessageCore.class);
-    when(node.getUSM()).thenReturn(usm);
+    when(node.network().usm()).thenReturn(usm);
 
     PeerManager peerManager = Mockito.mock(PeerManager.class);
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
 
     // Request tracker needed by a real InsertTag instance
     RequestTracker tracker = Mockito.mock(RequestTracker.class);
-    when(node.getTracker()).thenReturn(tracker);
+    when(node.routing().tracker()).thenReturn(tracker);
 
     // Real tag with uid=42 matching the SSKInsertSender below
     InsertTag tag = new InsertTag(true, InsertTag.START.REMOTE, source, false, 42L, node);

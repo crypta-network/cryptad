@@ -23,7 +23,8 @@ class SubscribedUSKMessageTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @ParameterizedTest
   @ValueSource(booleans = {true, false})

@@ -425,7 +425,7 @@ public class OpennetManager {
           Peer p = parseUdpPeerOrThrow(u);
           if (p != null && p.getPort() == crypto.getPortNumber()) {
             // DNSRequester doesn't deal with our own node
-            node.getIpDetector().setOldIPAddress(p.getFreenetAddress());
+            node.network().ipDetector().setOldIPAddress(p.getFreenetAddress());
             break;
           }
         }
@@ -458,15 +458,15 @@ public class OpennetManager {
     }
     // Do this outside the constructor, since the constructor is called by the Node constructor, and
     // callbacks may make assumptions about data structures being ready.
-    node.getPeers()
-        .persistence()
+    node.network()
+        .peers()
         .tryReadPeers(
             node.nodeDir().file("openpeers-" + crypto.getPortNumber()).toString(),
             crypto,
             this,
             true,
             false);
-    OpennetPeerNode[] nodes = node.getPeers().roster().getOpennetPeers();
+    OpennetPeerNode[] nodes = node.network().peers().roster().getOpennetPeers();
     Arrays.sort(nodes, PEER_COMPARATOR);
     initLRUsFromExisting(nodes);
     if (LOG.isDebugEnabled()) {
@@ -479,8 +479,8 @@ public class OpennetManager {
     dropAllExcessPeers();
     writeFile();
     // Read old peers
-    node.getPeers()
-        .persistence()
+    node.network()
+        .peers()
         .tryReadPeers(
             node.nodeDir().file("openpeers-old-" + crypto.getPortNumber()).toString(),
             crypto,
@@ -505,7 +505,7 @@ public class OpennetManager {
     }
     if (announcer != null) announcer.stop();
     crypto.stop();
-    if (purge) node.getPeers().removeOpennetPeers();
+    if (purge) node.network().peers().removeOpennetPeers();
     crypto.getSocket().getAddressTracker().setPresumedInnocent();
   }
 
@@ -522,7 +522,7 @@ public class OpennetManager {
       if (Location.isValid(opn.getLocation())) {
         lruQueue(opn).push(opn);
       } else {
-        node.getPeers().messenger().disconnectAndRemove(opn, false, false, false);
+        node.network().peers().messenger().disconnectAndRemove(opn, false, false, false);
       }
     }
   }
@@ -864,7 +864,8 @@ public class OpennetManager {
   public boolean alreadyHaveOpennetNode(SimpleFieldSet fs) {
     try {
       // Consider optimizing: parse only the pubkey and compare against existing peers.
-      OpennetPeerNode pn = new OpennetPeerNode(fs, node, crypto, this, false, node.getPeers());
+      OpennetPeerNode pn =
+          new OpennetPeerNode(fs, node, crypto, this, false, node.network().peers());
       if (lruQueue(pn).contains(pn)) {
         if (LOG.isDebugEnabled())
           LOG.debug("Skip add; {} already in opennet list", pn.userToString());
@@ -898,7 +899,8 @@ public class OpennetManager {
       SimpleFieldSet fs, ConnectionType connectionType, boolean allowExisting)
       throws FSParseException, PeerParseException, ReferenceSignatureVerificationException {
     try {
-      OpennetPeerNode pn = new OpennetPeerNode(fs, node, crypto, this, false, node.getPeers());
+      OpennetPeerNode pn =
+          new OpennetPeerNode(fs, node, crypto, this, false, node.network().peers());
       if (Arrays.equals(pn.peerECDSAPubKeyHash, crypto.getEcdsaPubKeyHash())) {
         if (LOG.isDebugEnabled()) LOG.debug("Skip adding self as opennet peer");
         return null; // Equal to myself
@@ -916,8 +918,8 @@ public class OpennetManager {
         }
       }
       if (pn.isUnroutableOlderVersion()
-          && node.getNodeUpdater() != null
-          && node.getNodeUpdater().dontAllowUOM()) {
+          && node.services().nodeUpdater() != null
+          && node.services().nodeUpdater().dontAllowUOM()) {
         // We can't send the UOM to it, so we should not accept it.
         // Plus, some versions around 1320 had big problems with being connected both as a seednode
         // and as an opennet peer.
@@ -1058,7 +1060,7 @@ public class OpennetManager {
 
   private boolean addPeerIfPresent(OpennetPeerNode nodeToAddNow) {
     if (nodeToAddNow != null) {
-      node.getPeers().addPeer(nodeToAddNow, true, true);
+      node.network().peers().addPeer(nodeToAddNow, true, true);
     }
     return true;
   }
@@ -1066,13 +1068,13 @@ public class OpennetManager {
   private void finalizeGlobalPeerAddAndDrops(OpennetPeerNode nodeToAddNow, DropResult result) {
     if (nodeToAddNow != null
         && result.canAdd
-        && !node.getPeers().addPeer(nodeToAddNow, true, true)) {
+        && !node.network().peers().addPeer(nodeToAddNow, true, true)) {
       LOG.debug("Already present in global peers list: {}", nodeToAddNow);
     }
     for (OpennetPeerNode pn : result.dropList) {
       if (LOG.isDebugEnabled()) LOG.debug("Drop LRU opennet peer: {}", pn);
       pn.setAddedReason(PeerNode.ADDED_REASON_UNKNOWN);
-      node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
+      node.network().peers().messenger().disconnectAndRemove(pn, true, true, true);
     }
   }
 
@@ -1084,7 +1086,7 @@ public class OpennetManager {
     // This does not check whether they are short or long as it is irrelevant for outdated peers.
     int maxTooOldPeers = maxOutdatedPeers();
     int count = 0;
-    OpennetPeerNode[] peers = node.getPeers().roster().getOpennetPeers();
+    OpennetPeerNode[] peers = node.network().peers().roster().getOpennetPeers();
     for (OpennetPeerNode pn : peers) {
       if (pn.isUnroutableOlderVersion()) {
         count++;
@@ -1197,7 +1199,7 @@ public class OpennetManager {
         peersLRU.remove(toDrop);
       }
       if (LOG.isDebugEnabled()) LOG.debug("Drop {}", toDrop);
-      node.getPeers().messenger().disconnectAndRemove(toDrop, true, true, true);
+      node.network().peers().messenger().disconnectAndRemove(toDrop, true, true, true);
     }
   }
 
@@ -1372,7 +1374,7 @@ public class OpennetManager {
         false,
         ConnectionType.RECONNECT,
         distance)) { // Start at top as it just succeeded
-      node.getPeers().messenger().disconnectAndRemove(pn, true, false, true);
+      node.network().peers().messenger().disconnectAndRemove(pn, true, false, true);
     }
   }
 
@@ -1439,9 +1441,9 @@ public class OpennetManager {
    * @return Target count including darknet peers.
    */
   public int getNumberOfConnectedPeersToAimIncludingDarknet() {
-    int max = node.getMaxOpennetPeers();
+    int max = node.network().maxOpennetPeers();
     if (ENABLE_PEERS_PER_KB_OUTPUT) {
-      int obwLimit = node.getOutputBandwidthLimit();
+      int obwLimit = node.network().outputBandwidthLimit();
       int targetPeers = (int) Math.round(Math.sqrt(obwLimit * SCALING_CONSTANT / 1000.0));
       if (targetPeers < MIN_PEERS_FOR_SCALING) targetPeers = MIN_PEERS_FOR_SCALING;
       targetPeers = addMorePeersIfSlowPeersCannotSupplyEnoughBandwidthPerConnection(targetPeers);
@@ -1507,7 +1509,7 @@ public class OpennetManager {
    */
   public int getNumberOfConnectedPeersToAim() {
     int max = getNumberOfConnectedPeersToAimIncludingDarknet();
-    return max - node.getPeers().countConnectedDarknetPeers();
+    return max - node.network().peers().countConnectedDarknetPeers();
   }
 
   /**
@@ -1544,8 +1546,8 @@ public class OpennetManager {
     }
     System.arraycopy(noderef, 0, padded, 0, noderef.length);
     Util.randomBytes(
-        node.getFastWeakRandom(), padded, noderef.length, padded.length - noderef.length);
-    long xferUID = node.getRandom().nextLong();
+        node.bootstrap().fastWeakRandom(), padded, noderef.length, padded.length - noderef.length);
+    long xferUID = node.bootstrap().random().nextLong();
     Message msg2 =
         isReply
             ? DMT.createFNPOpennetConnectReplyNew(uid, xferUID, noderef.length, padded.length)
@@ -1571,7 +1573,7 @@ public class OpennetManager {
     ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(padded);
     raf.setReadOnly();
     PartiallyReceivedBulk prb =
-        new PartiallyReceivedBulk(node.getUSM(), padded.length, Node.PACKET_SIZE, raf, true);
+        new PartiallyReceivedBulk(node.network().usm(), padded.length, Node.PACKET_SIZE, raf, true);
     try {
       BulkTransmitter bt = new BulkTransmitter(prb, peer, xferUID, true, ctr, true, cb);
       return bt.send();
@@ -1595,7 +1597,7 @@ public class OpennetManager {
   public long startSendAnnouncementRequest(
       long uid, PeerNode peer, byte[] noderef, ByteCounter ctr, double target, short htl)
       throws NotConnectedException {
-    long xferUID = node.getRandom().nextLong();
+    long xferUID = node.bootstrap().random().nextLong();
     Message msg =
         DMT.createFNPOpennetAnnounceRequest(
             uid, xferUID, noderef.length, paddedSize(noderef.length), target, htl);
@@ -1617,7 +1619,7 @@ public class OpennetManager {
     byte[] padded = new byte[paddedSize(noderef.length)];
     System.arraycopy(noderef, 0, padded, 0, noderef.length);
     Util.randomBytes(
-        node.getFastWeakRandom(), padded, noderef.length, padded.length - noderef.length);
+        node.bootstrap().fastWeakRandom(), padded, noderef.length, padded.length - noderef.length);
     innerSendOpennetRef(xferUID, padded, peer, ctr, null);
   }
 
@@ -1647,7 +1649,7 @@ public class OpennetManager {
       return;
     }
     System.arraycopy(noderef, 0, padded, 0, noderef.length);
-    long xferUID = node.getRandom().nextLong();
+    long xferUID = node.bootstrap().random().nextLong();
     Message msg = DMT.createFNPOpennetAnnounceReply(uid, xferUID, noderef.length, padded.length);
     peer.transport().sendAsync(msg, null, ctr);
     innerSendOpennetRef(xferUID, padded, peer, ctr, null);
@@ -1768,7 +1770,8 @@ public class OpennetManager {
 
     mf = mfAck.or(mfAckTimeout.or(mf));
     try {
-      node.getUSM()
+      node.network()
+          .usm()
           .addAsyncFilter(
               mf,
               new SlowAsyncMessageFilterCallback() {
@@ -1847,7 +1850,8 @@ public class OpennetManager {
     byte[] buf = new byte[paddedLength];
     ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(buf);
     PartiallyReceivedBulk prb =
-        new PartiallyReceivedBulk(ctx.node.getUSM(), buf.length, Node.PACKET_SIZE, raf, false);
+        new PartiallyReceivedBulk(
+            ctx.node.network().usm(), buf.length, Node.PACKET_SIZE, raf, false);
     BulkReceiver br = new BulkReceiver(prb, ctx.source, xferUID, ctx.ctr);
     if (LOG.isDebugEnabled()) {
       LOG.debug(
@@ -1935,7 +1939,7 @@ public class OpennetManager {
    */
   public void announce(double target, AnnouncementCallback cb) {
     AnnounceSender sender = new AnnounceSender(target, this, node, cb, null);
-    node.getExecutor().execute(sender, "Announcement to " + target);
+    node.network().executor().execute(sender, "Announcement to " + target);
   }
 
   /**

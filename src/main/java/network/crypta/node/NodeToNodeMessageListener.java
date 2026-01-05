@@ -4,11 +4,11 @@ package network.crypta.node;
  * Listener for node‑to‑node messages exchanged between peers.
  *
  * <p>Implementations are registered for a specific message type via {@link
- * Node#registerNodeToNodeMessageListener(int, NodeToNodeMessageListener)}. When a message with that
- * type is received from a remote peer, the node invokes {@link #handleMessage(byte[], boolean,
- * PeerNode, int)} with the raw payload and basic metadata. The payload format is defined by the
- * producer of the message; some built‑in handlers use UTF‑8 encoded {@code SimpleFieldSet}, but
- * callers are free to define other formats.
+ * NodeMessagingSubsystem#registerNodeToNodeMessageListener(int, NodeToNodeMessageListener)}. When a
+ * message with that type is received from a remote peer, the node invokes {@link
+ * #handleMessage(byte[], boolean, PeerNode, int)} with the raw payload and basic metadata. The
+ * payload format is defined by the producer of the message; some built‑in handlers use UTF‑8
+ * encoded {@code SimpleFieldSet}, but callers are free to define other formats.
  *
  * <p>Threading and call ordering are controlled by the caller. No serialization guarantees are
  * provided by this interface; implementations should assume that invocations may occur on internal

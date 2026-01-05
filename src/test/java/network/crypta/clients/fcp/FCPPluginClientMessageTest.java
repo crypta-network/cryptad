@@ -156,7 +156,7 @@ class FCPPluginClientMessageTest {
     try (FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class)) {
       FCPPluginConnection connection = Mockito.mock(FCPPluginConnection.class);
       Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME)).thenReturn(connection);
-      Node node = Mockito.mock(Node.class);
+      Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
       message.run(handler, node);
 
@@ -181,7 +181,7 @@ class FCPPluginClientMessageTest {
       Mockito.doThrow(new IOException("boom"))
           .when(connection)
           .send(Mockito.eq(SendDirection.TO_SERVER), Mockito.any());
-      Node node = Mockito.mock(Node.class);
+      Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
       MessageInvalidException ex =
           assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
@@ -198,7 +198,7 @@ class FCPPluginClientMessageTest {
       Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME))
           .thenThrow(new PluginNotFoundException());
 
-      Node node = Mockito.mock(Node.class);
+      Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
       MessageInvalidException ex =
           assertThrows(MessageInvalidException.class, () -> message.run(handler, node));
@@ -214,7 +214,7 @@ class FCPPluginClientMessageTest {
     try (FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class)) {
       Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME)).thenReturn(null);
 
-      Node node = Mockito.mock(Node.class);
+      Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
       MessageInvalidException ex =
           assertThrows(MessageInvalidException.class, () -> message.run(handler, node));

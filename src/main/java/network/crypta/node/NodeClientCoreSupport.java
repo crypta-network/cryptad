@@ -31,6 +31,7 @@ import network.crypta.keys.Key;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
 import network.crypta.l10n.NodeL10n;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.node.useralerts.DatastoreTooSmallAlert;
 import network.crypta.node.useralerts.DiskSpaceUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
@@ -208,7 +209,8 @@ public final class NodeClientCoreSupport {
                 InsertContext.CompatibilityMode.COMPAT_DEFAULT),
             RequestStarter.PREFETCH_PRIORITY_CLASS,
             maxRunningHealingInserts,
-            new HealingDecisionSupplier(node::getLocation, node::isOpennetEnabled));
+            new HealingDecisionSupplier(
+                () -> node.network().location(), () -> node.network().isOpennetEnabled()));
     return new ClientContextResources(archiveManager, healingQueue);
   }
 
@@ -390,7 +392,7 @@ public final class NodeClientCoreSupport {
    * @param realTimeFlag whether to schedule this insert as real-time.
    * @return insert options configured for local CHK insertion.
    */
-  public static Node.ChkInsertOptions buildChkInsertOptions(
+  public static NodeRoutingSubsystem.ChkInsertOptions buildChkInsertOptions(
       byte[] headers,
       byte[] data,
       boolean canWriteClientCache,
@@ -400,7 +402,7 @@ public final class NodeClientCoreSupport {
       boolean realTimeFlag) {
     PartiallyReceivedBlock prb =
         new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, data);
-    return Node.ChkInsertOptions.of(headers, prb)
+    return NodeRoutingSubsystem.ChkInsertOptions.of(headers, prb)
         .withFromStore(false)
         .withCanWriteClientCache(canWriteClientCache)
         .withForkOnCacheable(forkOnCacheable)
@@ -439,8 +441,9 @@ public final class NodeClientCoreSupport {
    */
   public static long checkRecentlyFailed(Node node, Key key, boolean realTime) {
     RecentlyFailedReturn result = new RecentlyFailedReturn();
-    short origHtl = node.decrementHTL(null, node.maxHTL());
-    node.getPeers()
+    short origHtl = node.routing().decrementHTL(null, node.maxHTL());
+    node.network()
+        .peers()
         .routingSelector()
         .closerPeer(
             null,
@@ -459,7 +462,7 @@ public final class NodeClientCoreSupport {
             result,
             false,
             System.currentTimeMillis(),
-            node.enableNewLoadManagement(realTime));
+            node.network().enableNewLoadManagement(realTime));
     return result.recentlyFailed();
   }
 

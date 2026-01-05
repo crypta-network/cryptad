@@ -227,9 +227,9 @@ class NodeStatsConfigTest {
   }
 
   private static Node createNode(File runDir) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     Ticker ticker = mock(Ticker.class);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     when(node.getRunDir()).thenReturn(runDir);
     return node;
   }

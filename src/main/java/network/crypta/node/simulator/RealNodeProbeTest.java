@@ -434,7 +434,7 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
       updateProbeOptions(nodes[state.index], reader);
       return;
     }
-    nodes[state.index].startProbe(state.htl, random.nextLong(), types[selection], print);
+    nodes[state.index].network().startProbe(state.htl, random.nextLong(), types[selection], print);
   }
 
   private static int readNodeIndex(BufferedReader reader) throws IOException {

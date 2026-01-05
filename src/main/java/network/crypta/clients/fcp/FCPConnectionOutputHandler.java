@@ -67,7 +67,8 @@ public class FCPConnectionOutputHandler implements Runnable {
     handler
         .getServer()
         .getNode()
-        .getExecutor()
+        .network()
+        .executor()
         .execute(
             this,
             "FCP output handler for "

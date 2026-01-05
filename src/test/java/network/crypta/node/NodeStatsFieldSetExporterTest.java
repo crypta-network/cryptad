@@ -18,9 +18,12 @@ import network.crypta.support.math.TrivialRunningAverage;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class NodeStatsFieldSetExporterTest {
 
   @Test
@@ -87,10 +90,10 @@ class NodeStatsFieldSetExporterTest {
     when(fixture.stats.getNodeIOStats())
         .thenReturn(new long[] {100L, 200L, 1000L, 400L, 800L, 2000L});
 
-    when(fixture.node.getSwaps()).thenReturn(10);
-    when(fixture.node.getNoSwaps()).thenReturn(5);
-    when(fixture.node.getNumberOfRemotePeerLocationsSeenInSwaps()).thenReturn(30);
-    when(fixture.node.getLocationChangeSession()).thenReturn(50.0);
+    when(fixture.node.network().swaps()).thenReturn(10);
+    when(fixture.node.network().noSwaps()).thenReturn(5);
+    when(fixture.node.network().numberOfRemotePeerLocationsSeenInSwaps()).thenReturn(30);
+    when(fixture.node.network().locationChangeSession()).thenReturn(50.0);
 
     when(fixture.cache.keyCount()).thenReturn(2L);
     when(fixture.store.keyCount()).thenReturn(3L);
@@ -179,7 +182,7 @@ class NodeStatsFieldSetExporterTest {
   private static StatsFixture createStatsFixture() {
     StatsFixture fixture = new StatsFixture();
     fixture.stats = mock(NodeStats.class);
-    fixture.node = mock(Node.class);
+    fixture.node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     fixture.peers = mock(PeerManager.class);
     fixture.statusBook = mock(PeerStatusBook.class);
     fixture.tracker = mock(RequestTracker.class);
@@ -224,14 +227,14 @@ class NodeStatsFieldSetExporterTest {
 
     when(fixture.node.isUsingWrapper()).thenReturn(true);
     when(fixture.node.getStartupTime()).thenReturn(System.currentTimeMillis() - 1000L);
-    when(fixture.node.getUSM()).thenReturn(fixture.usm);
+    when(fixture.node.network().usm()).thenReturn(fixture.usm);
     when(fixture.usm.getUnclaimedFIFOSize()).thenReturn(0);
-    when(fixture.node.getClientCore()).thenReturn(fixture.clientCore);
+    when(fixture.node.services().clientCore()).thenReturn(fixture.clientCore);
     when(fixture.clientCore.getTempBucketFactory()).thenReturn(fixture.tempBucketFactory);
     when(fixture.tempBucketFactory.getRamUsed()).thenReturn(0L);
-    when(fixture.node.getTracker()).thenReturn(fixture.tracker);
-    when(fixture.node.getNumARKFetchers()).thenReturn(0);
-    when(fixture.node.getNodeStats()).thenReturn(fixture.stats);
+    when(fixture.node.routing().tracker()).thenReturn(fixture.tracker);
+    when(fixture.node.network().numArkFetchers()).thenReturn(0);
+    when(fixture.node.network().stats()).thenReturn(fixture.stats);
 
     when(fixture.peers.statusBook()).thenReturn(fixture.statusBook);
     when(fixture.statusBook.getPeerNodeStatuses(true)).thenReturn(new PeerNodeStatus[0]);
@@ -257,21 +260,21 @@ class NodeStatsFieldSetExporterTest {
     when(fixture.stats.getBandwidthLiabilityUsage()).thenReturn(0.0);
 
     when(fixture.collector.getTotalIO()).thenReturn(new long[] {0L, 0L});
-    when(fixture.node.getCollector()).thenReturn(fixture.collector);
+    when(fixture.node.network().collector()).thenReturn(fixture.collector);
     when(fixture.node.getTotalPayloadSent()).thenReturn(0L);
 
-    when(fixture.node.getSwaps()).thenReturn(0);
-    when(fixture.node.getNoSwaps()).thenReturn(0);
-    when(fixture.node.getNumberOfRemotePeerLocationsSeenInSwaps()).thenReturn(0);
-    when(fixture.node.getStartedSwaps()).thenReturn(0);
-    when(fixture.node.getSwapsRejectedAlreadyLocked()).thenReturn(0);
-    when(fixture.node.getSwapsRejectedNowhereToGo()).thenReturn(0);
-    when(fixture.node.getSwapsRejectedRateLimit()).thenReturn(0);
-    when(fixture.node.getSwapsRejectedRecognizedID()).thenReturn(0);
-    when(fixture.node.getLocationChangeSession()).thenReturn(0.0);
+    when(fixture.node.network().swaps()).thenReturn(0);
+    when(fixture.node.network().noSwaps()).thenReturn(0);
+    when(fixture.node.network().numberOfRemotePeerLocationsSeenInSwaps()).thenReturn(0);
+    when(fixture.node.network().startedSwaps()).thenReturn(0);
+    when(fixture.node.network().swapsRejectedAlreadyLocked()).thenReturn(0);
+    when(fixture.node.network().swapsRejectedNowhereToGo()).thenReturn(0);
+    when(fixture.node.network().swapsRejectedRateLimit()).thenReturn(0);
+    when(fixture.node.network().swapsRejectedRecognizedID()).thenReturn(0);
+    when(fixture.node.network().locationChangeSession()).thenReturn(0.0);
 
-    when(fixture.node.getChkDatacache()).thenReturn(fixture.cache);
-    when(fixture.node.getChkDatastore()).thenReturn(fixture.store);
+    when(fixture.node.storage().getChkDatacache()).thenReturn(fixture.cache);
+    when(fixture.node.storage().getChkDatastore()).thenReturn(fixture.store);
     when(fixture.node.getMaxTotalKeys()).thenReturn(10L);
     when(fixture.cache.keyCount()).thenReturn(0L);
     when(fixture.store.keyCount()).thenReturn(0L);

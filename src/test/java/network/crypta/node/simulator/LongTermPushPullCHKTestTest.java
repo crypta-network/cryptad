@@ -159,9 +159,9 @@ class LongTermPushPullCHKTestTest {
       NodeClientCore clientCore = mock(NodeClientCore.class);
       when(clientCore.getTempBucketFactory()).thenReturn(bucketFactory);
 
-      Node node = mock(Node.class);
-      when(node.getClientCore()).thenReturn(clientCore);
-      when(node.getFastWeakRandom()).thenReturn(new PatternRandomSource());
+      Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+      when(node.services().clientCore()).thenReturn(clientCore);
+      when(node.bootstrap().fastWeakRandom()).thenReturn(new PatternRandomSource());
 
       // Act
       try (RandomAccessBucket result = invokeRandomData(node)) {

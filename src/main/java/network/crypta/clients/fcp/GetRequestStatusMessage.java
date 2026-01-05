@@ -112,12 +112,13 @@ public class GetRequestStatusMessage extends FCPMessage {
   public void run(final FCPConnectionHandler handler, Node node) throws MessageInvalidException {
     ClientRequest req = handler.getRebootRequest(global, handler, requestIdentifier);
     if (req == null) {
-      if (node.getClientCore().killedDatabase()) {
+      if (node.services().clientCore().killedDatabase()) {
         // Ignore.
         return;
       }
       try {
-        node.getClientCore()
+        node.services()
+            .clientCore()
             .getClientContext()
             .jobRunner
             .queue(

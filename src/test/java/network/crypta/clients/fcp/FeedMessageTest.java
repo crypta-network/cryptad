@@ -83,7 +83,7 @@ class FeedMessageTest {
   void run_whenInvoked_expectMessageInvalidExceptionWithInvalidMessageCode() {
     // Arrange
     FeedMessage message = new FeedMessage("header", "short", "text", (short) 2, 123_456_789L);
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     // Act
     MessageInvalidException exception =

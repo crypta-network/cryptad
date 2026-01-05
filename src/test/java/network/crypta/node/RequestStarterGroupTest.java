@@ -23,6 +23,7 @@ import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
@@ -37,13 +38,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class RequestStarterGroupTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private PeerManager peerManager;
   @Mock private RandomSource random;
   @Mock private ClientContext clientContext;
   @Mock private PriorityAwareExecutor executor;
   @Mock private NodeStats nodeStats;
+  @Mock private NodeNetworkSubsystem network;
 
   private Config config;
 
@@ -55,8 +59,9 @@ class RequestStarterGroupTest {
   private RequestStarterGroup newGroup() throws InvalidConfigValueException {
     // portNumber only affects thread names; pick a stable value
     when(core.getNode()).thenReturn(node);
-    lenient().when(node.getExecutor()).thenReturn(executor);
-    when(node.getNodeStats()).thenReturn(nodeStats);
+    when(node.network()).thenReturn(network);
+    lenient().when(network.executor()).thenReturn(executor);
+    when(network.stats()).thenReturn(nodeStats);
     return new RequestStarterGroup(node, core, 12345, random, config, null, clientContext);
   }
 
@@ -106,7 +111,7 @@ class RequestStarterGroupTest {
   @Test
   @DisplayName("getWindow() reflects peer count and default window")
   void getWindow_whenPeersVary_returnsExpected() throws Exception {
-    when(node.getPeers()).thenReturn(peerManager);
+    when(network.peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(true)).thenReturn(3);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(2);
     RequestStarterGroup group = newGroup();
@@ -148,7 +153,7 @@ class RequestStarterGroupTest {
   @DisplayName("getRTT()/getDelay() return expected defaults for CHK/SSK and RT/Bulk")
   void getDelayAndRTT_whenDefaults_expectConsistentValues() throws Exception {
     // With one peer and default window=2.0, delay is rtt/2
-    org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peerManager);
+    org.mockito.Mockito.lenient().when(network.peers()).thenReturn(peerManager);
     org.mockito.Mockito.lenient().when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
     RequestStarterGroup group = newGroup();
 
@@ -212,7 +217,7 @@ class RequestStarterGroupTest {
   @Test
   @DisplayName("statsPageLine() formats RTT, delay and bandwidth deterministically")
   void statsPageLine_whenDefaults_formatsNumbers() throws Exception {
-    when(node.getPeers()).thenReturn(peerManager);
+    when(network.peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
     RequestStarterGroup group = newGroup();
 
@@ -264,7 +269,7 @@ class RequestStarterGroupTest {
   @org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
   void myRequestThrottle_successfulCompletion_belowFloor_clampsDelayAndUpdatesRTT()
       throws Exception {
-    org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peerManager);
+    org.mockito.Mockito.lenient().when(network.peers()).thenReturn(peerManager);
     org.mockito.Mockito.lenient().when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
     RequestStarterGroup group = newGroup();
 
@@ -336,7 +341,7 @@ class RequestStarterGroupTest {
   @Test
   @DisplayName("getWindow() uses at least one peer when none are routable")
   void getWindow_whenZeroPeers_usesFloorOfOne() throws Exception {
-    when(node.getPeers()).thenReturn(peerManager);
+    when(network.peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(0);
     RequestStarterGroup group = newGroup();
     // Default simulated window = 2.0; Math.max(1, 0 peers) = 1 -> 2 * 1
@@ -346,7 +351,7 @@ class RequestStarterGroupTest {
   @Test
   @DisplayName("MyRequestThrottle.getRate() computes bytes/sec for SSK request")
   void myRequestThrottle_getRate_forSSK() throws Exception {
-    when(node.getPeers()).thenReturn(peerManager);
+    when(network.peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(1);
     RequestStarterGroup group = newGroup();
     // SSK Request Bulk uses size=1024 and rtt=5000 => delay=2500, rate=(1000/2500)*1024=409

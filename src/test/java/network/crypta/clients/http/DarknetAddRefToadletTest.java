@@ -44,7 +44,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class DarknetAddRefToadletTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeUpdateManager nodeUpdater;
   @Mock private HighLevelSimpleClient client;
   @Mock private DarknetConnectionsToadlet friendsToadlet;
@@ -55,7 +57,10 @@ class DarknetAddRefToadletTest {
 
   @BeforeEach
   void setUp() {
-    lenient().when(node.getNodeUpdater()).thenReturn(nodeUpdater);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    lenient().when(services.nodeUpdater()).thenReturn(nodeUpdater);
     toadlet = new TestableDarknetAddRefToadlet(node, client, friendsToadlet);
   }
 
@@ -148,7 +153,10 @@ class DarknetAddRefToadletTest {
             });
 
     SimpleFieldSet noderef = new SimpleFieldSet(false);
-    when(node.exportDarknetPublicFieldSet()).thenReturn(noderef);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.exportDarknetPublicFieldSet()).thenReturn(noderef);
     when(friendsToadlet.path()).thenReturn("/friends/");
     doNothing().when(friendsToadlet).drawNoderefBox(content, noderef);
 
@@ -178,7 +186,10 @@ class DarknetAddRefToadletTest {
   @Test
   void getNoderef_returnsNodeExport() {
     SimpleFieldSet expected = new SimpleFieldSet(false);
-    when(node.exportDarknetPublicFieldSet()).thenReturn(expected);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.exportDarknetPublicFieldSet()).thenReturn(expected);
 
     assertSame(expected, toadlet.getNoderef());
   }

@@ -145,7 +145,7 @@ public class BookmarkEditorToadlet extends Toadlet {
             NodeL10n.getBase().getString("BookmarkEditorToadlet.paste"),
             NodeL10n.getBase().getString("BookmarkEditorToadlet.addBookmark"),
             NodeL10n.getBase().getString("BookmarkEditorToadlet.addCategory"),
-            core.getNode().getDarknetConnections().length > 0);
+            core.getNode().network().darknetConnections().length > 0);
     List<BookmarkItem> items = cat.getItems();
     for (int i = 0; i < items.size(); i++) {
       addBookmarkItemToList(items, path, list, labels, i);
@@ -319,7 +319,7 @@ public class BookmarkEditorToadlet extends Toadlet {
   }
 
   private void sendBookmarkFeeds(HTTPRequest req, BookmarkItem item, String publicDescription) {
-    for (DarknetPeerNode peer : core.getNode().getDarknetConnections())
+    for (DarknetPeerNode peer : core.getNode().network().darknetConnections())
       if (req.isPartSet("node_" + peer.hashCode()))
         peer.sendBookmarkFeed(
             item.getURI(), item.getName(), publicDescription, item.hasAnActivelink());
@@ -686,7 +686,7 @@ public class BookmarkEditorToadlet extends Toadlet {
     }
     HTMLNode peerTable = form.addChild("table", ATTRIBUTE_CLASS, "darknet_connections");
     addPeerTableHeader(peerTable);
-    for (DarknetPeerNode peer : core.getNode().getDarknetConnections()) {
+    for (DarknetPeerNode peer : core.getNode().network().darknetConnections()) {
       HTMLNode peerRow = peerTable.addChild("tr", ATTRIBUTE_CLASS, "darknet_connections_normal");
       peerRow
           .addChild("td", ATTRIBUTE_CLASS, "peer-marker")
@@ -732,7 +732,7 @@ public class BookmarkEditorToadlet extends Toadlet {
   }
 
   private boolean shouldDisplayShareSection(String action) {
-    return core.getNode().getDarknetConnections().length > 0
+    return core.getNode().network().darknetConnections().length > 0
         && (ACTION_ADD_ITEM.equals(action) || ACTION_SHARE.equals(action));
   }
 

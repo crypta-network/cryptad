@@ -40,7 +40,9 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class NodeARKInserterTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeCrypto crypto;
   @Mock private NodeIPPortDetector detector;
   @Mock private PeerManager peerManager;
@@ -86,9 +88,9 @@ class NodeARKInserterTest {
         };
 
     when(node.getExecutor()).thenReturn(inlineExecutor);
-    org.mockito.Mockito.lenient().when(node.getPeers()).thenReturn(peerManager);
+    org.mockito.Mockito.lenient().when(node.network().peers()).thenReturn(peerManager);
     org.mockito.Mockito.lenient().when(peerManager.messenger()).thenReturn(peerMessenger);
-    org.mockito.Mockito.lenient().when(node.getClientCore()).thenReturn(core);
+    org.mockito.Mockito.lenient().when(node.services().clientCore()).thenReturn(core);
     org.mockito.Mockito.lenient().when(core.getClientContext()).thenReturn(clientContext);
 
     // Default: provide an InsertContext so ClientPutter constructor receives a non-null ctx
@@ -139,7 +141,7 @@ class NodeARKInserterTest {
 
     // Assert
     verify(detector, never()).detectPrimaryPeers();
-    verify(node, never()).getPeers();
+    verify(node.network(), never()).peers();
     verify(core, never()).makeClient(any(short.class), any(boolean.class), any(boolean.class));
     verify(clientContext, never()).start(any(ClientPutter.class));
   }
@@ -154,7 +156,7 @@ class NodeARKInserterTest {
     inserter.update(); // runs inline via inlineExecutor
 
     // Assert
-    verify(node, never()).getPeers();
+    verify(node.network(), never()).peers();
     verify(clientContext, never()).start(any(ClientPutter.class));
   }
 
@@ -220,7 +222,7 @@ class NodeARKInserterTest {
     NodeARKInserter inserter = newInserter(true);
     when(crypto.isOpennet()).thenReturn(false);
     when(crypto.getMyARKNumber()).thenReturn(5L, 5L, 7L);
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
 
     FreenetURI uri = new FreenetURI(new byte[] {1}, new byte[32], null, "site", 7L);
 

@@ -424,7 +424,7 @@ class CoreUpdater(
     }
 
   /** Provides the node form password required by POST submissions. */
-  private fun formPassword(): String = manager.getNode().getClientCore().getFormPassword()
+  private fun formPassword(): String = manager.getNode().services().clientCore().getFormPassword()
 
   /** Creates a basic POST form addressed to [CORE_UPDATE_PATH]. */
   private fun newPostForm(): HTMLNode =
@@ -537,7 +537,8 @@ class CoreUpdater(
 
     /** Begins the asynchronous fetch and registers this fetcher as an event listener. */
     fun start() {
-      val ctx = manager.getNode().getClientCore().makeClient(0.toShort(), true, false).fetchContext
+      val ctx =
+        manager.getNode().services().clientCore().makeClient(0.toShort(), true, false).fetchContext
       val fb = FileBucket(outFile, false, false, false, false)
       getter =
         ClientGetter(
@@ -551,7 +552,7 @@ class CoreUpdater(
         )
       ctx.eventProducer.addEventListener(this)
       try {
-        manager.getNode().getClientCore().getClientContext().start(getter)
+        manager.getNode().services().clientCore().getClientContext().start(getter)
         this@CoreUpdater.logInfo(
           "download started (listener attached): target=${outFile.absolutePath}"
         )

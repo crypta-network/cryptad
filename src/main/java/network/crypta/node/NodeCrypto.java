@@ -132,7 +132,7 @@ public class NodeCrypto {
 
     this.node = node;
     this.config = config;
-    random = node.getRandom();
+    random = node.bootstrap().random();
     this.isOpennet = isOpennet;
 
     config.starting(this);
@@ -154,7 +154,7 @@ public class NodeCrypto {
 
       packetMangler = new FNPPacketMangler(node, this, socket);
 
-      detector = new NodeIPPortDetector(node, node.getIpDetector(), this, enableARKs);
+      detector = new NodeIPPortDetector(node, node.network().ipDetector(), this, enableARKs);
 
       anonSetupCipher = new Rijndael(256, 256);
 
@@ -187,7 +187,7 @@ public class NodeCrypto {
               node,
               startupTime,
               getTitle(portNo),
-              node.getCollector());
+              node.network().collector());
         } catch (Exception e) {
           LOG.info("Bind {}:{} throws {}", bindto, portNo, e, e);
         }
@@ -199,7 +199,7 @@ public class NodeCrypto {
 
     try {
       return new UdpSocketHandler(
-          port, bindto.getAddress(), node, startupTime, getTitle(port), node.getCollector());
+          port, bindto.getAddress(), node, startupTime, getTitle(port), node.network().collector());
     } catch (Exception e) {
       LOG.error(LOG_CAUGHT_PREFIX + "{}", e, e);
       throw new NodeInitException(
@@ -309,7 +309,7 @@ public class NodeCrypto {
       }
     } else {
       clientNonce = new byte[32];
-      node.getRandom().nextBytes(clientNonce);
+      node.bootstrap().random().nextBytes(clientNonce);
     }
   }
 
@@ -320,9 +320,9 @@ public class NodeCrypto {
     myARK = InsertableClientSSK.createRandom(random, "ark");
     myARKNumber = 0;
     clientNonce = new byte[32];
-    node.getRandom().nextBytes(clientNonce);
+    node.bootstrap().random().nextBytes(clientNonce);
     myIdentity = new byte[IDENTITY_LENGTH];
-    node.getRandom().nextBytes(myIdentity);
+    node.bootstrap().random().nextBytes(myIdentity);
     identityHash = SHA256.digest(myIdentity);
     identityHashHash = SHA256.digest(identityHash);
     anonSetupCipher.initialize(identityHash);
@@ -498,7 +498,7 @@ public class NodeCrypto {
   private void maybeAddLocation(
       SimpleFieldSet fs, boolean forARK, boolean forSetup, boolean forAnonInitiator) {
     if (!(forARK || forSetup || forAnonInitiator)) {
-      fs.put("location", node.getLocationManager().getLocation());
+      fs.put("location", node.network().locationManager().getLocation());
     }
   }
 
@@ -579,9 +579,9 @@ public class NodeCrypto {
    */
   @SuppressWarnings("java:S1168")
   public PeerNode[] getPeerNodes() {
-    if (node.getPeers() == null) return null;
-    if (isOpennet) return node.getPeers().roster().getOpennetAndSeedServerPeers();
-    else return node.getPeers().roster().getDarknetPeers();
+    if (node.network().peers() == null) return null;
+    if (isOpennet) return node.network().peers().roster().getOpennetAndSeedServerPeers();
+    else return node.network().peers().roster().getDarknetPeers();
   }
 
   /**
@@ -598,7 +598,7 @@ public class NodeCrypto {
     // Disallow multiple connections to the same address.
     // For IPv6, a configurable same-/64 subnet rule may be more appropriate than exact match.
     if (config.oneConnectionPerAddress()
-        && node.getPeers().roster().anyConnectedPeerHasAddress(addr, pn)
+        && node.network().peers().roster().anyConnectedPeerHasAddress(addr, pn)
         && !detector.includes(addr)
         && addr.isRealInternetAddress(false, false, false)) {
       LOG.info("Skip handshake packets to {} for {}: same IP address as another node", addr, pn);
@@ -621,7 +621,7 @@ public class NodeCrypto {
     if (detector.includes(address)) return;
     if (!address.isRealInternetAddress(false, false, false)) return;
     java.util.List<PeerNode> possibleMatches =
-        node.getPeers().roster().getAllConnectedByAddress(address, true);
+        node.network().peers().roster().getAllConnectedByAddress(address, true);
     if (possibleMatches == null) return;
     for (PeerNode pn : possibleMatches) {
       if (pn == peerNode || pn.equals(peerNode)) continue;
@@ -649,7 +649,8 @@ public class NodeCrypto {
           ((DarknetPeerNode) incomingPeer).getName(),
           address);
     }
-    node.getPeers()
+    node.network()
+        .peers()
         .messenger()
         .disconnectAndRemove(existingPeer, true, true, existingPeer.isOpennet());
   }
@@ -670,7 +671,7 @@ public class NodeCrypto {
    */
   public PeerNode[] getAnonSetupPeerNodes() {
     ArrayList<PeerNode> v = new ArrayList<>();
-    for (PeerNode pn : node.getPeers().myPeers()) {
+    for (PeerNode pn : node.network().peers().myPeers()) {
       if (pn.handshakeUnknownInitiator() && pn.getOutgoingMangler() == packetMangler) v.add(pn);
     }
     return v.toArray(new PeerNode[0]);
@@ -713,12 +714,12 @@ public class NodeCrypto {
 
   /** Whether anonymous authentication is desired for this node kind. */
   public boolean wantAnonAuth() {
-    return node.wantAnonAuth(isOpennet);
+    return node.network().wantAnonAuth(isOpennet);
   }
 
   /** Whether anonymous authentication should allow IP change for this node kind. */
   public boolean wantAnonAuthChangeIP() {
-    return node.wantAnonAuthChangeIP(isOpennet);
+    return node.network().wantAnonAuthChangeIP(isOpennet);
   }
 
   /** Returns the packet mangler handling encryption/negotiation for this node. */

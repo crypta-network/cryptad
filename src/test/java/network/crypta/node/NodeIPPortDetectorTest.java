@@ -26,7 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class NodeIPPortDetectorTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeIPDetector ipDetector;
   @Mock private NodeCrypto crypto;
   @Mock private NodeCryptoConfig cryptoConfig;

@@ -78,6 +78,15 @@ public class MasterKeys {
   }
 
   /**
+   * Returns the master key used for the client cache store.
+   *
+   * @return client cache master key bytes
+   */
+  public byte[] getClientCacheMasterKey() {
+    return clientCacheMasterKey;
+  }
+
+  /**
    * Creates a new instance with randomly generated secrets.
    *
    * @param random randomness source; for production, supply a cryptographically strong RNG.

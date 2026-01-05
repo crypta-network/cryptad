@@ -34,7 +34,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class WelcomeToadletTest {
 
   @Mock private HighLevelSimpleClient client;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   private WelcomeToadlet toadlet;
 
@@ -61,7 +63,10 @@ class WelcomeToadletTest {
   @Test
   void showSearchBox_whenLibraryPluginLoaded_returnsTrue() {
     PluginManager pluginManager = mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(pluginManager.isPluginLoaded("plugins.Library.Main")).thenReturn(true);
 
     assertTrue(toadlet.showSearchBox());
@@ -70,7 +75,10 @@ class WelcomeToadletTest {
   @Test
   void showSearchBox_whenPluginNotLoaded_returnsFalse() {
     PluginManager pluginManager = mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(pluginManager.isPluginLoaded("plugins.Library.Main")).thenReturn(false);
 
     assertFalse(toadlet.showSearchBox());
@@ -78,7 +86,10 @@ class WelcomeToadletTest {
 
   @Test
   void showSearchBoxLoading_whenNoPluginManager_returnsTrue() {
-    when(node.getPluginManager()).thenReturn(null);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(null);
 
     assertTrue(toadlet.showSearchBoxLoading());
   }
@@ -86,7 +97,10 @@ class WelcomeToadletTest {
   @Test
   void showSearchBoxLoading_whenLibraryLoading_returnsTrue() {
     PluginManager pluginManager = mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(pluginManager.isPluginLoaded("plugins.Library.Main")).thenReturn(false);
     when(pluginManager.isPluginLoadedOrLoadingOrWantLoad("Library")).thenReturn(true);
 
@@ -96,7 +110,10 @@ class WelcomeToadletTest {
   @Test
   void showSearchBoxLoading_whenLibraryAlreadyLoaded_returnsFalse() {
     PluginManager pluginManager = mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(pluginManager.isPluginLoaded("plugins.Library.Main")).thenReturn(true);
 
     assertFalse(toadlet.showSearchBoxLoading());

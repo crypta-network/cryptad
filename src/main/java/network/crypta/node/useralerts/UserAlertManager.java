@@ -623,7 +623,8 @@ public class UserAlertManager implements Comparator<UserAlert> {
                 link.setAttribute("href", feedURI);
               });
           feed.addElement("link", link -> link.setAttribute("href", startURI));
-          feed.addElement("id", "urn:node:" + Base64.encode(core.getNode().getDarknetPubKeyHash()));
+          feed.addElement(
+              "id", "urn:node:" + Base64.encode(core.getNode().network().darknetPubKeyHash()));
           feed.addElement("updated", formatTime(lastUpdated));
           feed.addElement("logo", "/favicon.ico");
 

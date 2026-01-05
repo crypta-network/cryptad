@@ -35,7 +35,10 @@ class GetRequestStatusMessageTest {
 
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPConnectionOutputHandler outputHandler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore nodeClientCore;
 
   @Test
@@ -102,7 +105,10 @@ class GetRequestStatusMessageTest {
     GetRequestStatusMessage message = new GetRequestStatusMessage(fs);
 
     when(handler.getRebootRequest(false, handler, identifier)).thenReturn(null);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     when(nodeClientCore.killedDatabase()).thenReturn(true);
 
     message.run(handler, node);
@@ -126,7 +132,10 @@ class GetRequestStatusMessageTest {
     when(handler.getRebootRequest(false, handler, identifier)).thenReturn(null);
     when(handler.getForeverRequest(false, handler, identifier)).thenReturn(queuedRequest);
     when(handler.getOutputHandler()).thenReturn(outputHandler);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     when(nodeClientCore.killedDatabase()).thenReturn(false);
     when(nodeClientCore.getClientContext()).thenReturn(context);
 
@@ -157,7 +166,10 @@ class GetRequestStatusMessageTest {
 
     when(handler.getRebootRequest(false, handler, identifier)).thenReturn(null);
     when(handler.getForeverRequest(false, handler, identifier)).thenReturn(null);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     when(nodeClientCore.killedDatabase()).thenReturn(false);
     when(nodeClientCore.getClientContext()).thenReturn(context);
 
@@ -191,7 +203,10 @@ class GetRequestStatusMessageTest {
     ClientContext context = contextWithJobRunner(jobRunner);
 
     when(handler.getRebootRequest(false, handler, identifier)).thenReturn(null);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     when(nodeClientCore.killedDatabase()).thenReturn(false);
     when(nodeClientCore.getClientContext()).thenReturn(context);
     doThrow(new PersistenceDisabledException()).when(jobRunner).queue(any(), eq(normPriority()));

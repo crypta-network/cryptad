@@ -138,7 +138,7 @@ class NodeClientCoreSupportTest {
 
   @Test
   void setupProgramDirFile_whenMoveErrMsgProvided_returnsResolvedDir() throws Exception {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     SubConfig installConfig = mock(SubConfig.class);
     ProgramDirectory programDirectory = new ProgramDirectory();
     programDirectory.move(tempDir.toString());
@@ -158,7 +158,7 @@ class NodeClientCoreSupportTest {
 
   @Test
   void setupProgramDirFile_whenMoveErrMsgOmitted_returnsResolvedDir() throws Exception {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     SubConfig installConfig = mock(SubConfig.class);
     ProgramDirectory programDirectory = new ProgramDirectory();
     programDirectory.move(tempDir.toString());
@@ -177,7 +177,7 @@ class NodeClientCoreSupportTest {
 
   @Test
   void setupProgramDirFile_whenNodeThrows_throwsNodeInitException() throws Exception {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     SubConfig installConfig = mock(SubConfig.class);
     NodeInitException exception = new NodeInitException(NodeInitException.EXIT_BAD_DIR, "bad dir");
 
@@ -196,7 +196,7 @@ class NodeClientCoreSupportTest {
 
   @Test
   void createClientContextResources_whenCalled_returnsArchiveAndHealingQueue() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
 
     ClientContextResources resources =
@@ -285,7 +285,7 @@ class NodeClientCoreSupportTest {
 
   @Test
   void checkRecentlyFailed_whenRoutingReportsFailure_returnsWakeup() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peers = mock(PeerManager.class);
     PeerRoutingSelector routingSelector = mock(PeerRoutingSelector.class);
     Key key = mock(Key.class);
@@ -295,11 +295,11 @@ class NodeClientCoreSupportTest {
     boolean realTime = true;
 
     when(node.maxHTL()).thenReturn(maxHtl);
-    when(node.decrementHTL(null, maxHtl)).thenReturn(decremented);
-    when(node.getPeers()).thenReturn(peers);
+    when(node.routing().decrementHTL(null, maxHtl)).thenReturn(decremented);
+    when(node.network().peers()).thenReturn(peers);
     when(peers.routingSelector()).thenReturn(routingSelector);
     when(key.toNormalizedDouble()).thenReturn(0.25);
-    when(node.enableNewLoadManagement(realTime)).thenReturn(true);
+    when(node.network().enableNewLoadManagement(realTime)).thenReturn(true);
 
     doAnswer(
             invocation -> {
@@ -330,13 +330,13 @@ class NodeClientCoreSupportTest {
     long result = NodeClientCoreSupport.checkRecentlyFailed(node, key, realTime);
 
     assertEquals(wakeup, result);
-    verify(node).decrementHTL(null, maxHtl);
-    verify(node).enableNewLoadManagement(realTime);
+    verify(node.routing()).decrementHTL(null, maxHtl);
+    verify(node.network()).enableNewLoadManagement(realTime);
   }
 
   @Test
   void checkRecentlyFailed_whenNoFailure_returnsMinusOne() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peers = mock(PeerManager.class);
     PeerRoutingSelector routingSelector = mock(PeerRoutingSelector.class);
     Key key = mock(Key.class);
@@ -345,11 +345,11 @@ class NodeClientCoreSupportTest {
     boolean realTime = false;
 
     when(node.maxHTL()).thenReturn(maxHtl);
-    when(node.decrementHTL(null, maxHtl)).thenReturn(decremented);
-    when(node.getPeers()).thenReturn(peers);
+    when(node.routing().decrementHTL(null, maxHtl)).thenReturn(decremented);
+    when(node.network().peers()).thenReturn(peers);
     when(peers.routingSelector()).thenReturn(routingSelector);
     when(key.toNormalizedDouble()).thenReturn(0.7);
-    when(node.enableNewLoadManagement(realTime)).thenReturn(false);
+    when(node.network().enableNewLoadManagement(realTime)).thenReturn(false);
 
     when(routingSelector.closerPeer(
             isNull(),
@@ -374,7 +374,7 @@ class NodeClientCoreSupportTest {
     long result = NodeClientCoreSupport.checkRecentlyFailed(node, key, realTime);
 
     assertEquals(-1L, result);
-    verify(node).decrementHTL(null, maxHtl);
+    verify(node.routing()).decrementHTL(null, maxHtl);
   }
 
   @Test
@@ -394,7 +394,7 @@ class NodeClientCoreSupportTest {
   void registerFProxyAlerts_whenPersistenceKilled_registersAlertsAndIsValid() {
     UserAlertManager alerts = mock(UserAlertManager.class);
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     File persistentTemp = tempDir.resolve("temp").toFile();
     File userDir = tempDir.resolve("user").toFile();
 
@@ -419,7 +419,7 @@ class NodeClientCoreSupportTest {
   void registerFProxyAlerts_whenDatabaseNotKilled_persistenceAlertInvalid() {
     UserAlertManager alerts = mock(UserAlertManager.class);
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     when(core.getNode()).thenReturn(node);
     when(core.getPersistentTempDir()).thenReturn(tempDir.toFile());
@@ -438,7 +438,7 @@ class NodeClientCoreSupportTest {
   void registerFProxyAlerts_whenAwaitingPassword_persistenceAlertInvalid() {
     UserAlertManager alerts = mock(UserAlertManager.class);
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     when(core.getNode()).thenReturn(node);
     when(core.getPersistentTempDir()).thenReturn(tempDir.toFile());
@@ -458,7 +458,7 @@ class NodeClientCoreSupportTest {
   void registerFProxyAlerts_whenStopping_persistenceAlertInvalid() {
     UserAlertManager alerts = mock(UserAlertManager.class);
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     when(core.getNode()).thenReturn(node);
     when(core.getPersistentTempDir()).thenReturn(tempDir.toFile());

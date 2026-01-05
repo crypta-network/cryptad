@@ -216,10 +216,13 @@ class BandwidthRateTest {
     NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
     when(core.getNode()).thenReturn(node);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.ipDetector()).thenReturn(ipDetector);
     when(ipDetector.getBandwidthIndicator()).thenReturn(null);
 
     BandwidthRate step = new TestableBandwidthRate(core, config, null);
@@ -244,10 +247,13 @@ class BandwidthRateTest {
     NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
     when(core.getNode()).thenReturn(node);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.ipDetector()).thenReturn(ipDetector);
     when(ipDetector.getBandwidthIndicator()).thenReturn(null);
 
     BandwidthRate step = new TestableBandwidthRate(core, config, null);
@@ -273,10 +279,13 @@ class BandwidthRateTest {
     NodeClientCore core = mock(NodeClientCore.class);
     Config config = mock(Config.class);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
     when(core.getNode()).thenReturn(node);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.ipDetector()).thenReturn(ipDetector);
 
     FredPluginBandwidthIndicator indicator = mock(FredPluginBandwidthIndicator.class);
     when(ipDetector.getBandwidthIndicator()).thenReturn(indicator);

@@ -37,7 +37,7 @@ import network.crypta.support.io.FileBucket;
  * </ul>
  *
  * @see DarknetConnectionsToadlet
- * @see Node#exportDarknetPublicFieldSet()
+ * @see NodeNetworkSubsystem#exportDarknetPublicFieldSet()
  */
 public class DarknetAddRefToadlet extends Toadlet {
 
@@ -101,7 +101,7 @@ public class DarknetAddRefToadlet extends Toadlet {
 
     String path = uri.getPath();
     if (path.endsWith(NodeFile.INSTALLER_WINDOWS.getFilename())) {
-      File installer = node.getNodeUpdater().getInstallerWindows();
+      File installer = node.services().nodeUpdater().getInstallerWindows();
       if (installer != null) {
         FileBucket bucket = new FileBucket(installer, true, false, false, false);
         this.writeReply(ctx, 200, "application/x-msdownload", "OK", bucket);
@@ -110,7 +110,7 @@ public class DarknetAddRefToadlet extends Toadlet {
     }
 
     if (path.endsWith(NodeFile.INSTALLER_NON_WINDOWS.getFilename())) {
-      File installer = node.getNodeUpdater().getInstallerNonWindows();
+      File installer = node.services().nodeUpdater().getInstallerNonWindows();
       if (installer != null) {
         FileBucket bucket = new FileBucket(installer, true, false, false, false);
         this.writeReply(ctx, 200, "application/x-java-archive", "OK", bucket);
@@ -135,7 +135,7 @@ public class DarknetAddRefToadlet extends Toadlet {
     boxContent.addChild("p", l10n("explainBox1"));
     boxContent.addChild("p", l10n("explainBox2"));
 
-    File installer = node.getNodeUpdater().getInstallerWindows();
+    File installer = node.services().nodeUpdater().getInstallerWindows();
     String shortFilename = NodeFile.INSTALLER_WINDOWS.getFilename();
 
     HTMLNode p = boxContent.addChild("p");
@@ -156,10 +156,11 @@ public class DarknetAddRefToadlet extends Toadlet {
               "DarknetAddRefToadlet.explainInstallerWindowsNotYet",
               new String[] {"link"},
               new HTMLNode[] {
-                HTMLNode.link("/" + node.getNodeUpdater().getInstallerWindowsURI().toString())
+                HTMLNode.link(
+                    "/" + node.services().nodeUpdater().getInstallerWindowsURI().toString())
               });
 
-    installer = node.getNodeUpdater().getInstallerNonWindows();
+    installer = node.services().nodeUpdater().getInstallerNonWindows();
     shortFilename = NodeFile.INSTALLER_NON_WINDOWS.getFilename();
 
     boxContent.addChild("#", " ");
@@ -184,7 +185,8 @@ public class DarknetAddRefToadlet extends Toadlet {
               "DarknetAddRefToadlet.explainInstallerNonWindowsNotYet",
               new String[] {"link", "shortfilename"},
               new HTMLNode[] {
-                HTMLNode.link("/" + node.getNodeUpdater().getInstallerNonWindowsURI().toString()),
+                HTMLNode.link(
+                    "/" + node.services().nodeUpdater().getInstallerNonWindowsURI().toString()),
                 HTMLNode.text(shortFilename)
               });
 
@@ -209,7 +211,7 @@ public class DarknetAddRefToadlet extends Toadlet {
    *     the caller for serialization but should not be mutated.
    */
   protected SimpleFieldSet getNoderef() {
-    return node.exportDarknetPublicFieldSet();
+    return node.network().exportDarknetPublicFieldSet();
   }
 
   private static String l10n(String string) {

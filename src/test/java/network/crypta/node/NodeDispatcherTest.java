@@ -22,6 +22,7 @@ import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.NodeCHK;
 import network.crypta.node.NodeDispatcher.NodeDispatcherCallback;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.node.updater.UpdateOverMandatoryManager;
 import network.crypta.support.PriorityAwareExecutor;
@@ -40,7 +41,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class NodeDispatcherTest {
 
-  @Mock Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
+  @Mock NodeNetworkSubsystem network;
+
   @Mock RequestTracker tracker;
   @Mock NodeStats stats;
   @Mock Ticker ticker;
@@ -51,9 +56,10 @@ class NodeDispatcherTest {
   @BeforeEach
   void setUp() {
     // Common node wiring required by the constructor
-    when(node.getTracker()).thenReturn(tracker);
-    when(node.getNodeStats()).thenReturn(stats);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.routing().tracker()).thenReturn(tracker);
+    when(node.network()).thenReturn(network);
+    when(network.stats()).thenReturn(stats);
+    when(network.ticker()).thenReturn(ticker);
     // The constructor schedules a periodic task; execute nothing in tests.
     doAnswer(inv -> null).when(ticker).queueTimedJob(any(Runnable.class), anyLong());
     // Minimal config tree so Probe(node) can register options under the "node" SubConfig
@@ -186,7 +192,7 @@ class NodeDispatcherTest {
     org.junit.jupiter.api.Assertions.assertNotNull(m.getSource());
 
     NodeIPDetector ipDetector = mock(NodeIPDetector.class);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    when(node.network().ipDetector()).thenReturn(ipDetector);
 
     boolean handled = dispatcher.handleMessage(m);
 
@@ -258,7 +264,7 @@ class NodeDispatcherTest {
 
     PeerManager pm = mock(PeerManager.class);
     PeerMessenger messenger = mock(PeerMessenger.class);
-    when(node.getPeers()).thenReturn(pm);
+    when(node.network().peers()).thenReturn(pm);
     when(pm.messenger()).thenReturn(messenger);
 
     boolean handled = dispatcher.handleMessage(m);
@@ -269,7 +275,8 @@ class NodeDispatcherTest {
 
     verify(src).disconnected(true, true);
     verify(messenger).disconnectAndRemove(src, false, false, false);
-    verify(node).receivedNodeToNodeMessage(eq(src), eq(9), any(ShortBuffer.class), eq(true));
+    verify(node.messaging())
+        .receivedNodeToNodeMessage(eq(src), eq(9), any(ShortBuffer.class), eq(true));
   }
 
   @Test
@@ -311,7 +318,8 @@ class NodeDispatcherTest {
 
   @Test
   void start_whenInvoked_expectQueueRunnerSubmitted() {
-    when(node.getExecutor()).thenReturn(executor);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
     dispatcher.start(stats);
     verify(executor).execute(any(Runnable.class));
   }
@@ -324,7 +332,7 @@ class NodeDispatcherTest {
 
     LocationManager lm = mock(LocationManager.class);
     when(lm.getLocation()).thenReturn(0.5);
-    when(node.getLocationManager()).thenReturn(lm);
+    when(node.network().locationManager()).thenReturn(lm);
 
     PeerNode src = peerMock();
     PeerTransport transport = src.transport();
@@ -348,7 +356,7 @@ class NodeDispatcherTest {
     when(node.enableRoutedPing()).thenReturn(true);
     LocationManager lm = mock(LocationManager.class);
     when(lm.getLocation()).thenReturn(0.0);
-    when(node.getLocationManager()).thenReturn(lm);
+    when(node.network().locationManager()).thenReturn(lm);
 
     PeerNode src = peerMock();
     PeerTransport transport = src.transport();
@@ -373,7 +381,7 @@ class NodeDispatcherTest {
     when(node.enableRoutedPing()).thenReturn(true);
     LocationManager lm = mock(LocationManager.class);
     when(lm.getLocation()).thenReturn(0.5);
-    when(node.getLocationManager()).thenReturn(lm);
+    when(node.network().locationManager()).thenReturn(lm);
 
     PeerNode src = peerMock();
     PeerTransport transport = src.transport();
@@ -409,7 +417,7 @@ class NodeDispatcherTest {
 
     NodeUpdateManager upd = mock(NodeUpdateManager.class);
     UpdateOverMandatoryManager uom = mock(UpdateOverMandatoryManager.class);
-    when(node.getNodeUpdater()).thenReturn(upd);
+    when(node.services().nodeUpdater()).thenReturn(upd);
     when(upd.getUpdateOverMandatory()).thenReturn(uom);
     when(uom.handleAnnounce(any(Message.class), any(PeerNode.class))).thenReturn(true);
 

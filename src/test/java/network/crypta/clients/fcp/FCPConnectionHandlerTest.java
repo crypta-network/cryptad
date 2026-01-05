@@ -43,7 +43,9 @@ class FCPConnectionHandlerTest {
   @Mock private ClientContext clientContext;
   @Mock private TempBucketFactory tempBucketFactory;
   @Mock private Socket socket;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   private FCPConnectionHandler handler;
   private Random fastRandom;
@@ -173,7 +175,7 @@ class FCPConnectionHandlerTest {
 
   @Test
   void enqueueDDACheck_whenJobAlreadyInFlight_throws(@TempDir Path tempDir) {
-    when(node.getFastWeakRandom()).thenReturn(fastRandom);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(fastRandom);
     String directory = tempDir.toString();
     handler.enqueueDDACheck(directory, true, false);
 
@@ -183,7 +185,7 @@ class FCPConnectionHandlerTest {
 
   @Test
   void enqueueAndPopDDACheck_roundTripCreatesAndRemovesJob(@TempDir Path tempDir) throws Exception {
-    when(node.getFastWeakRandom()).thenReturn(fastRandom);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(fastRandom);
     DdaCheckJob job = handler.enqueueDDACheck(tempDir.toString(), true, true);
 
     assertNotNull(job);
@@ -203,7 +205,7 @@ class FCPConnectionHandlerTest {
 
   @Test
   void freeDDAJobs_deletesOutstandingFiles(@TempDir Path tempDir) {
-    when(node.getFastWeakRandom()).thenReturn(fastRandom);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(fastRandom);
     DdaCheckJob job = handler.enqueueDDACheck(tempDir.toString(), true, false);
     assertNotNull(job.readFilename);
     assertTrue(job.readFilename.exists());

@@ -288,7 +288,7 @@ public class NodeStarter implements WrapperListener {
 
     // All testing environments connect the nodes as they want, even if the old setup is restored,
     // it is not desired.
-    node.getPeers().removeAllPeers();
+    node.network().peers().removeAllPeers();
 
     return node;
   }

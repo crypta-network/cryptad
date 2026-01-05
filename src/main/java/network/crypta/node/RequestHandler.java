@@ -22,6 +22,7 @@ import network.crypta.keys.SSKBlock;
 import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.node.OpennetManager.NoderefCallback;
 import network.crypta.node.OpennetManager.WaitedTooLongForOpennetNoderefException;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
@@ -71,32 +72,32 @@ public class RequestHandler
         // different one.
         return false;
       }
-      if (node.hasKey(key, false, false)) return true; // Don't want it
+      if (node.storage().hasKey(key, false, false)) return true; // Don't want it
       if (current != null && current.isTransferCoalesced()) {
         if (LOG.isDebugEnabled())
           LOG.debug("Do not cancel transfer; other consumers want data on {}", RequestHandler.this);
         // We do need to reassign the tag because the RS has the same UID.
-        node.getTracker().reassignTagToSelf(tag);
+        node.routing().tracker().reassignTagToSelf(tag);
         return false;
       }
-      if (node.getFailureTable().peersWantKey(key, source)) {
+      if (node.routing().failureTable().peersWantKey(key, source)) {
         // This may indicate downstream is having trouble communicating with us.
         LOG.error(
             "Upstream transfer to {} failed after downstream success. Reassign tag to self for peer"
                 + " demand on {}",
             source.shortToString(),
             RequestHandler.this);
-        node.getTracker().reassignTagToSelf(tag);
+        node.routing().tracker().reassignTagToSelf(tag);
         return false; // Want it
       }
-      if (node.getClientCore() != null && node.getClientCore().wantKey(key)) {
+      if (node.services().clientCore() != null && node.services().clientCore().wantKey(key)) {
         // See extensive security considerations in original code comments.
         LOG.error(
             "Upstream transfer to {} failed after downstream success. Reassign tag to self for"
                 + " local demand on {}",
             source.shortToString(),
             RequestHandler.this);
-        node.getTracker().reassignTagToSelf(tag);
+        node.routing().tracker().reassignTagToSelf(tag);
         return false; // Want it
       }
       return true;
@@ -239,22 +240,22 @@ public class RequestHandler
     if (key instanceof NodeSSK) {
       if (LOG.isDebugEnabled())
         LOG.debug("Remote SSK fetch bytes sent/received: {}/{} (status={})", sent, rcvd, status);
-      node.getNodeStats().remoteSskFetchBytesSentAverage.report(sent);
-      node.getNodeStats().remoteSskFetchBytesReceivedAverage.report(rcvd);
+      node.network().stats().remoteSskFetchBytesSentAverage.report(sent);
+      node.network().stats().remoteSskFetchBytesReceivedAverage.report(rcvd);
       if (status == RequestSender.SUCCESS) {
         // Can report both parts, because we had both a Handler and a Sender
-        node.getNodeStats().successfulSskFetchBytesSentAverage.report(sent);
-        node.getNodeStats().successfulSskFetchBytesReceivedAverage.report(rcvd);
+        node.network().stats().successfulSskFetchBytesSentAverage.report(sent);
+        node.network().stats().successfulSskFetchBytesReceivedAverage.report(rcvd);
       }
     } else {
       if (LOG.isDebugEnabled())
         LOG.debug("Remote CHK fetch bytes sent/received: {}/{} (status={})", sent, rcvd, status);
-      node.getNodeStats().remoteChkFetchBytesSentAverage.report(sent);
-      node.getNodeStats().remoteChkFetchBytesReceivedAverage.report(rcvd);
+      node.network().stats().remoteChkFetchBytesSentAverage.report(sent);
+      node.network().stats().remoteChkFetchBytesReceivedAverage.report(rcvd);
       if (status == RequestSender.SUCCESS) {
         // Can report both parts, because we had both a Handler and a Sender
-        node.getNodeStats().successfulChkFetchBytesSentAverage.report(sent);
-        node.getNodeStats().successfulChkFetchBytesReceivedAverage.report(rcvd);
+        node.network().stats().successfulChkFetchBytesSentAverage.report(sent);
+        node.network().stats().successfulChkFetchBytesReceivedAverage.report(rcvd);
       }
     }
   }
@@ -273,24 +274,26 @@ public class RequestHandler
       return;
     } else
       o =
-          node.makeRequestSender(
-              key,
-              htl,
-              uid,
-              tag,
-              source,
-              Node.RequestSenderOptions.of(
-                  false, // localOnly
-                  true, // ignoreStore
-                  false, // offersOnly
-                  false, // canReadClientCache
-                  false, // canWriteClientCache
-                  realTimeFlag));
+          node.routing()
+              .makeRequestSender(
+                  key,
+                  htl,
+                  uid,
+                  tag,
+                  source,
+                  NodeRoutingSubsystem.RequestSenderOptions.of(
+                      false, // localOnly
+                      true, // ignoreStore
+                      false, // offersOnly
+                      false, // canReadClientCache
+                      false, // canWriteClientCache
+                      realTimeFlag));
 
     if (o == null) { // ran out of htl?
       Message dnf = DMT.createFNPDataNotFound(uid);
       status = RequestSender.DATA_NOT_FOUND; // for byte logging
-      node.getFailureTable()
+      node.routing()
+          .failureTable()
           .onFinalFailure(
               key,
               null,
@@ -300,7 +303,8 @@ public class RequestHandler
               FailureTable.REJECT_TIME,
               source);
       sendTerminal(dnf);
-      node.getNodeStats()
+      node.network()
+          .stats()
           .remoteRequest(
               key instanceof NodeSSK,
               false,
@@ -373,8 +377,8 @@ public class RequestHandler
       PartiallyReceivedBlock prb = rs.getPRB();
       bt =
           new BlockTransmitter(
-              node.getUSM(),
-              node.getTicker(),
+              node.network().usm(),
+              node.network().ticker(),
               source,
               uid,
               prb,
@@ -382,7 +386,7 @@ public class RequestHandler
               new CHKReceiverAbortHandler(),
               new CHKBlockTransmitterCompletion(),
               realTimeFlag,
-              node.getNodeStats());
+              node.network().stats());
       tag.handlerTransferBegins();
       bt.sendAsync();
     } catch (NotConnectedException _) {
@@ -418,7 +422,8 @@ public class RequestHandler
       // Run off-thread because, on the onRequestSenderFinished path, RequestSender won't start to
       // wait for the noderef until we return!
       // Make waitForOpennetNoderef asynchronous (tracked)
-      node.getExecutor()
+      node.network()
+          .executor()
           .execute(
               new PrioRunnable() {
 
@@ -490,7 +495,8 @@ public class RequestHandler
       tooLate = responseDeadline > 0 && now > responseDeadline;
     }
 
-    node.getNodeStats()
+    node.network()
+        .stats()
         .remoteRequest(
             key instanceof NodeSSK,
             status == RequestSender.SUCCESS,
@@ -517,7 +523,7 @@ public class RequestHandler
   private void handleTooLate(RequestSender rs, long now) {
     LOG.atDebug().log("Response arrived after deadline");
     // Offer the data if there is any.
-    node.getFailureTable().onFinalFailure(key, null, htl, htl, -1, -1, source);
+    node.routing().failureTable().onFinalFailure(key, null, htl, htl, -1, -1, source);
     // A certain number of these are normal.
     LOG.atInfo()
         .setMessage("RequestSender responded after {} (status={}) routedLast={}")
@@ -737,7 +743,8 @@ public class RequestHandler
       sendSSK(block.getRawHeaders(), block.getRawData(), ((SSKBlock) block).getPubKey());
       status = RequestSender.SUCCESS; // for byte logging
       // Assume local SSK sending will succeed?
-      node.getNodeStats()
+      node.network()
+          .stats()
           .remoteRequest(true, true, true, htl, key.toNormalizedDouble(), realTimeFlag, false);
     } else if (block instanceof CHKBlock) {
       Message df = DMT.createFNPCHKDataFound(uid, block.getRawHeaders());
@@ -745,8 +752,8 @@ public class RequestHandler
           new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, block.getRawData());
       BlockTransmitter localBt =
           new BlockTransmitter(
-              node.getUSM(),
-              node.getTicker(),
+              node.network().usm(),
+              node.network().ticker(),
               source,
               uid,
               prb,
@@ -766,12 +773,13 @@ public class RequestHandler
                   applyByteCounts();
                   unregisterRequestHandlerWithNode();
                 }
-                node.getNodeStats()
+                node.network()
+                    .stats()
                     .remoteRequest(
                         false, success, true, htl, key.toNormalizedDouble(), realTimeFlag, false);
               },
               realTimeFlag,
-              node.getNodeStats());
+              node.network().stats());
       tag.handlerTransferBegins();
       source.transport().sendAsync(df, null, this);
       localBt.sendAsync();
@@ -873,7 +881,7 @@ public class RequestHandler
    * explicitly otherwise.
    */
   private void finishOpennetChecked() {
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
     if (om != null && (node.passOpennetRefsThroughDarknet() || source.isOpennet())) {
       finishOpennetInner(om);
     } else {
@@ -886,7 +894,7 @@ public class RequestHandler
    * a reply, otherwise just send an ack.
    */
   private void finishOpennetNoRelay() {
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
 
     if (om != null && (source.isOpennet() || node.passOpennetRefsThroughDarknet())) {
       finishOpennetNoRelayInner(om);
@@ -924,7 +932,7 @@ public class RequestHandler
       finishOpennetNoRelayInner(om);
       return;
     }
-    if (node.getRandom().nextInt(OpennetManager.RESET_PATH_FOLDING_PROB) == 0) {
+    if (node.bootstrap().random().nextInt(OpennetManager.RESET_PATH_FOLDING_PROB) == 0) {
 
       // Check whether it is actually the noderef of the peer.
       // If so, we need to relay it anyway.
@@ -1020,7 +1028,7 @@ public class RequestHandler
     if (ref == null) return;
 
     try {
-      if (node.addNewOpennetNode(ref, ConnectionType.PATH_FOLDING) == null)
+      if (node.network().addNewOpennetNode(ref, ConnectionType.PATH_FOLDING) == null)
         LOG.info("Asked for opennet ref but did not want it for {} :\n{}", this, ref);
       else LOG.info("Added opennet noderef for {}", this);
     } catch (FSParseException | PeerParseException e) {
@@ -1152,7 +1160,7 @@ public class RequestHandler
     synchronized (bytesSync) {
       sentBytes += x;
     }
-    node.getNodeStats().requestSentBytes(key instanceof NodeSSK, x);
+    node.network().stats().requestSentBytes(key instanceof NodeSSK, x);
     if (LOG.isDebugEnabled()) LOG.debug("sentBytes={} on {}", x, this);
   }
 
@@ -1166,7 +1174,7 @@ public class RequestHandler
     synchronized (bytesSync) {
       receivedBytes += x;
     }
-    node.getNodeStats().requestReceivedBytes(key instanceof NodeSSK, x);
+    node.network().stats().requestReceivedBytes(key instanceof NodeSSK, x);
   }
 
   /**
@@ -1182,7 +1190,7 @@ public class RequestHandler
      * for the bandwidth throttle.
      */
     node.sentPayload(x);
-    node.getNodeStats().requestSentBytes(key instanceof NodeSSK, -x);
+    node.network().stats().requestSentBytes(key instanceof NodeSSK, -x);
     if (LOG.isDebugEnabled()) LOG.debug("sentPayload={} on {}", x, this);
   }
 

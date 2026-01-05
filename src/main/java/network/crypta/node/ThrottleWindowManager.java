@@ -54,7 +54,8 @@ public class ThrottleWindowManager {
    * Returns the current capacity scaled by eligible peers.
    *
    * <p>Enforces a minimum simulated window of {@code 1.0}. The value is then multiplied by the
-   * number of non-backed-off peers as reported by {@code node.getPeers().countNonBackedOffPeers}.
+   * number of non-backed-off peers as reported by {@code
+   * node.network().peers().countNonBackedOffPeers}.
    *
    * @param realTime when {@code true}, counts peers based on real-time eligibility; otherwise uses
    *     non-real-time criteria
@@ -64,7 +65,8 @@ public class ThrottleWindowManager {
     if (simulatedWindowSize < 1.0) {
       simulatedWindowSize = 1.0F;
     }
-    return simulatedWindowSize * Math.max(1, node.getPeers().countNonBackedOffPeers(realTime));
+    return simulatedWindowSize
+        * Math.max(1, node.network().peers().countNonBackedOffPeers(realTime));
   }
 
   /**

@@ -16,14 +16,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100") // Test method naming uses when/expect convention
 class ThrottleWindowManagerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerManager peerManager;
 
   @Test
   @DisplayName("currentValue_whenNoPeers_usesMultiplierOneAndReturnsSimulated")
   void currentValue_whenNoPeers_usesMultiplierOneAndReturnsSimulated() {
     // Arrange
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(0);
     double def = 2.5;
     ThrottleWindowManager mgr = new ThrottleWindowManager(def, null, node);
@@ -41,7 +43,7 @@ class ThrottleWindowManagerTest {
   @DisplayName("currentValue_whenPeersPresent_multipliesByCount")
   void currentValue_whenPeersPresent_multipliesByCount() {
     // Arrange
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(true)).thenReturn(5);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(2);
     ThrottleWindowManager mgr = new ThrottleWindowManager(2.0, null, node);
@@ -61,7 +63,7 @@ class ThrottleWindowManagerTest {
   @DisplayName("currentValue_whenBelowOne_clampsAndUpdatesState")
   void currentValue_whenBelowOne_clampsAndUpdatesState() {
     // Arrange
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(0);
     ThrottleWindowManager mgr = new ThrottleWindowManager(0.25, null, node);
 
@@ -116,7 +118,7 @@ class ThrottleWindowManagerTest {
     sfs.put("TotalPackets", 10);
     sfs.put("DroppedPackets", 3);
     sfs.put("SimulatedWindowSize", 1.5);
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.countNonBackedOffPeers(true)).thenReturn(4);
     when(peerManager.countNonBackedOffPeers(false)).thenReturn(0);
 
