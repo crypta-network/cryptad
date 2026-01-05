@@ -12,11 +12,13 @@ import java.io.IOException;
 import java.util.Random;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.Key;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -38,18 +40,14 @@ class SimpleHealingQueueTest {
   void setUp() {
     insertCtx =
         new InsertContext(
-            /*maxRetries*/ 0,
-            /*rnfsToSuccess*/ 1,
-            /*splitfileSegmentDataBlocks*/ 1,
-            /*splitfileSegmentCheckBlocks*/ 1,
-            /*eventProducer*/ new SimpleEventProducer(),
-            /*canWriteClientCache*/ false,
-            /*forkOnCacheable*/ false,
-            /*localRequestOnly*/ false,
-            /*compressorDescriptor*/ null,
-            /*extraInsertsSingleBlock*/ 0,
-            /*extraInsertsSplitfileHeaderBlock*/ 0,
-            /*compat*/ CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(0, 1)
+                .splitfileSegmentLimits(1, 1)
+                .clientOptions(new SimpleEventProducer(), false, false, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(CompatibilityMode.COMPAT_CURRENT)
+                .build());
     insertCtx.setGetCHKOnly(true); // make SingleBlockInserter.schedule() complete synchronously
 
     // Minimal, deterministic ClientContext
@@ -58,32 +56,19 @@ class SimpleHealingQueueTest {
     clientCtx =
         new ClientContext(
             /*bootID*/ 1L,
-            /*jobRunner*/ null,
-            /*mainExecutor*/ directExec,
-            /*archiveManager*/ null,
-            /*ptbf*/ null,
-            /*tbf*/ null,
-            /*tracker*/ null,
-            /*healingQueue*/ null,
-            /*uskManager*/ null,
-            /*strongRandom*/ new DummyRandomSource(123L),
-            /*fastWeakRandom*/ new Random(42L),
-            /*ticker*/ new NoopTicker(directExec),
-            /*memoryLimitedJobRunner*/ mlr,
-            /*fg*/ null,
-            /*persistentFG*/ null,
-            /*rafFactory*/ null,
-            /*persistentRAFFactory*/ null,
-            /*fileRAFTransient*/ null,
-            /*fileRAFPersistent*/ null,
-            /*rc*/ null,
-            /*checker*/ null,
-            /*persistentRoot*/ null,
-            /*cryptoSecretTransient*/ null,
-            /*linkFilterExceptionProvider*/ null,
-            /*defaultPersistentFetchContext*/ null,
-            /*defaultPersistentInsertContext*/ insertCtx,
-            /*config*/ null);
+            new ClientContextRuntime(
+                null,
+                directExec,
+                mlr,
+                new NoopTicker(directExec),
+                new DummyRandomSource(123L),
+                new Random(42L),
+                null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, insertCtx, null));
   }
 
   @Test

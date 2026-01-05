@@ -22,7 +22,9 @@ import java.net.MalformedURLException;
 import java.util.Arrays;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.PersistentRequestRoot;
@@ -37,6 +39,7 @@ import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.USK;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -127,45 +130,27 @@ class USKFetcherTagTest {
   private static FetchContext newFetchContext() {
     // Small, deterministic limits; context is forwarded only.
     return new FetchContext(
-        16L * 1024, // maxOutputLength
-        16L * 1024, // maxTempLength
-        4096, // maxMetadataSize
-        4, // maxRecursionLevel
-        0, // maxArchiveRestarts
-        2, // maxArchiveLevels
-        false, // dontEnterImplicitArchives
-        1, // maxSplitfileBlockRetries
-        1, // maxNonSplitfileRetries
-        1, // maxUSKRetries
-        true, // allowSplitfiles
-        true, // followRedirects
-        false, // localRequestOnly
-        false, // filterData
-        0, // maxDataBlocksPerSegment
-        0, // maxCheckBlocksPerSegment
-        new SimpleEventProducer(),
-        true, // ignoreTooManyPathComponents
-        true, // canWriteClientCache
-        null, // charset
-        null, // overrideMIME
-        null // schemeHostAndPort
-        );
+        FetchContextOptions.builder()
+            .limits(16L * 1024, 16L * 1024, 4096)
+            .archiveLimits(4, 0, 2, false)
+            .retryLimits(1, 1, 1)
+            .splitfileLimits(true, 0, 0)
+            .behavior(true, false, false)
+            .clientOptions(new SimpleEventProducer(), true, true)
+            .filterOverrides(null, null, null)
+            .build());
   }
 
   private static InsertContext newInsertContext() {
     return new InsertContext(
-        0, // maxRetries
-        0, // rnfsToSuccess
-        0, // splitfileSegmentDataBlocks
-        0, // splitfileSegmentCheckBlocks
-        new SimpleEventProducer(),
-        true, // canWriteClientCache
-        false, // forkOnCacheable
-        false, // localRequestOnly
-        null, // compressorDescriptor
-        0, // extraInsertsSingleBlock
-        0, // extraInsertsSplitfileHeaderBlock
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(0, 0)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   private static ClientContext minimalContext(
@@ -178,32 +163,34 @@ class USKFetcherTagTest {
       TempBucketFactory tbf) {
     return new ClientContext(
         1L,
-        jobRunner,
-        new DirectExecutor(),
-        Mockito.mock(ArchiveManager.class),
-        ptbf,
-        tbf,
-        Mockito.mock(PersistentFileTracker.class),
-        Mockito.mock(HealingQueue.class),
-        uskManager,
-        Mockito.mock(RandomSource.class),
-        new java.util.Random(123),
-        new DirectTicker(),
-        Mockito.mock(MemoryLimitedJobRunner.class),
-        Mockito.mock(FilenameGenerator.class),
-        Mockito.mock(FilenameGenerator.class),
-        Mockito.mock(LockableRandomAccessBufferFactory.class),
-        Mockito.mock(LockableRandomAccessBufferFactory.class),
-        Mockito.mock(FileRandomAccessBufferFactory.class),
-        Mockito.mock(FileRandomAccessBufferFactory.class),
-        Mockito.mock(RealCompressor.class),
-        Mockito.mock(DatastoreChecker.class),
-        Mockito.mock(PersistentRequestRoot.class),
-        Mockito.mock(MasterSecret.class),
-        linkFilterExceptionProvider,
-        defaultPF,
-        defaultPI,
-        Mockito.mock(Config.class));
+        new ClientContextRuntime(
+            jobRunner,
+            new DirectExecutor(),
+            Mockito.mock(MemoryLimitedJobRunner.class),
+            new DirectTicker(),
+            Mockito.mock(RandomSource.class),
+            new java.util.Random(123),
+            Mockito.mock(MasterSecret.class)),
+        new ClientContextStorageFactories(
+            ptbf,
+            tbf,
+            Mockito.mock(PersistentFileTracker.class),
+            Mockito.mock(FilenameGenerator.class),
+            Mockito.mock(FilenameGenerator.class),
+            Mockito.mock(FileRandomAccessBufferFactory.class),
+            Mockito.mock(FileRandomAccessBufferFactory.class)),
+        new ClientContextRafFactories(
+            Mockito.mock(LockableRandomAccessBufferFactory.class),
+            Mockito.mock(LockableRandomAccessBufferFactory.class)),
+        new ClientContextServices(
+            new ClientContextResources(
+                Mockito.mock(ArchiveManager.class), Mockito.mock(HealingQueue.class)),
+            uskManager,
+            Mockito.mock(RealCompressor.class),
+            Mockito.mock(DatastoreChecker.class),
+            Mockito.mock(PersistentRequestRoot.class),
+            linkFilterExceptionProvider),
+        new ClientContextDefaults(defaultPF, defaultPI, Mockito.mock(Config.class)));
   }
 
   // ---------------- Test fixture ----------------

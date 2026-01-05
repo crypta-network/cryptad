@@ -2,6 +2,7 @@ package network.crypta.client.async;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.CheatingTicker;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;
@@ -16,8 +17,13 @@ class PersistentJobRunnerImplTest {
     jobRunner = new JobRunner(exec, ticker, 1000);
     context =
         new ClientContext(
-            0, null, exec, null, null, null, null, null, null, null, null, ticker, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null);
+            0,
+            new ClientContextRuntime(null, exec, null, ticker, null, null, null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
     jobRunner.start(context);
     jobRunner.onStarted(false);
     exec.waitForIdle();

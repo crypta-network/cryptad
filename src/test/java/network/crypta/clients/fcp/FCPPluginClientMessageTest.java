@@ -155,7 +155,11 @@ class FCPPluginClientMessageTest {
 
     try (FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class)) {
       FCPPluginConnection connection = Mockito.mock(FCPPluginConnection.class);
-      Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME)).thenReturn(connection);
+      FCPServer server = Mockito.mock(FCPServer.class);
+      PluginConnectionRegistry registry = Mockito.mock(PluginConnectionRegistry.class);
+      Mockito.when(handler.getServer()).thenReturn(server);
+      Mockito.when(handler.pluginConnectionRegistry()).thenReturn(registry);
+      Mockito.when(registry.get(PLUGIN_NAME, server, handler)).thenReturn(connection);
       Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
       message.run(handler, node);
@@ -177,7 +181,11 @@ class FCPPluginClientMessageTest {
     FCPPluginClientMessage message = createMessage(null);
     try (FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class)) {
       FCPPluginConnection connection = Mockito.mock(FCPPluginConnection.class);
-      Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME)).thenReturn(connection);
+      FCPServer server = Mockito.mock(FCPServer.class);
+      PluginConnectionRegistry registry = Mockito.mock(PluginConnectionRegistry.class);
+      Mockito.when(handler.getServer()).thenReturn(server);
+      Mockito.when(handler.pluginConnectionRegistry()).thenReturn(registry);
+      Mockito.when(registry.get(PLUGIN_NAME, server, handler)).thenReturn(connection);
       Mockito.doThrow(new IOException("boom"))
           .when(connection)
           .send(Mockito.eq(SendDirection.TO_SERVER), Mockito.any());
@@ -195,7 +203,11 @@ class FCPPluginClientMessageTest {
   void run_whenHandlerThrowsPluginNotFound_throwsMessageInvalid() throws Exception {
     FCPPluginClientMessage message = createMessage(null);
     try (FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class)) {
-      Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME))
+      FCPServer server = Mockito.mock(FCPServer.class);
+      PluginConnectionRegistry registry = Mockito.mock(PluginConnectionRegistry.class);
+      Mockito.when(handler.getServer()).thenReturn(server);
+      Mockito.when(handler.pluginConnectionRegistry()).thenReturn(registry);
+      Mockito.when(registry.get(PLUGIN_NAME, server, handler))
           .thenThrow(new PluginNotFoundException());
 
       Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
@@ -212,7 +224,11 @@ class FCPPluginClientMessageTest {
   void run_whenPluginConnectionMissing_throwsMessageInvalid() throws Exception {
     FCPPluginClientMessage message = createMessage(null);
     try (FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class)) {
-      Mockito.when(handler.getFCPPluginConnection(PLUGIN_NAME)).thenReturn(null);
+      FCPServer server = Mockito.mock(FCPServer.class);
+      PluginConnectionRegistry registry = Mockito.mock(PluginConnectionRegistry.class);
+      Mockito.when(handler.getServer()).thenReturn(server);
+      Mockito.when(handler.pluginConnectionRegistry()).thenReturn(registry);
+      Mockito.when(registry.get(PLUGIN_NAME, server, handler)).thenReturn(null);
 
       Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 

@@ -16,7 +16,9 @@ import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.events.SimpleEventProducer;
@@ -25,6 +27,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.keys.Key;
 import network.crypta.keys.USK;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.BeforeEach;
@@ -132,73 +135,48 @@ class USKInserterTest {
     context =
         new ClientContext(
             1L,
-            Mockito.mock(ClientLayerPersister.class),
-            new InlineExecutor(),
-            null, // ArchiveManager
-            null, // PersistentTempBucketFactory
-            null, // TempBucketFactory
-            null, // PersistentFileTracker
-            null, // HealingQueue
-            uskManager,
-            new DummyRandomSource(),
-            new SecureRandom(),
-            null, // Ticker
-            null, // MemoryLimitedJobRunner
-            null, // FilenameGenerator fg
-            null, // FilenameGenerator persistentFG
-            null, // LockableRandomAccessBufferFactory rafFactory
-            null, // LockableRandomAccessBufferFactory persistentRAFFactory
-            null, // FileRandomAccessBufferFactory transient
-            null, // FileRandomAccessBufferFactory persistent
-            null, // RealCompressor
-            null, // DatastoreChecker
-            null, // PersistentRequestRoot
-            null, // MasterSecret transient
-            null, // LinkFilterExceptionProvider
-            // Default persistent contexts used only when building fetchers internally; not
-            // exercised
-            // in these tests.
-            new FetchContext(
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                true,
-                0,
-                0,
-                0,
-                false,
-                false,
-                false,
-                false,
-                0,
-                0,
-                new SimpleEventProducer(),
-                false,
-                false,
+            new ClientContextRuntime(
+                Mockito.mock(ClientLayerPersister.class),
+                new InlineExecutor(),
                 null,
                 null,
+                new DummyRandomSource(),
+                new SecureRandom(),
                 null),
-            new InsertContext(
-                0,
-                0,
-                0,
-                0,
-                new SimpleEventProducer(),
-                false,
-                false,
-                false,
-                null,
-                0,
-                0,
-                InsertContext.CompatibilityMode.COMPAT_CURRENT),
-            null // Config
-            );
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), uskManager, null, null, null, null),
+            new ClientContextDefaults(
+                // Default persistent contexts used only when building fetchers internally; not
+                // exercised in these tests.
+                new FetchContext(
+                    FetchContextOptions.builder()
+                        .limits(0, 0, 0)
+                        .archiveLimits(1, 0, 0, true)
+                        .retryLimits(0, 0, 0)
+                        .splitfileLimits(false, 0, 0)
+                        .behavior(false, false, false)
+                        .clientOptions(new SimpleEventProducer(), false, false)
+                        .filterOverrides(null, null, null)
+                        .build()),
+                newInsertContext(),
+                null));
   }
 
   // Helpers in tests create per-test SSKs to build consistent public/insertable USK URIs.
+
+  private static InsertContext newInsertContext() {
+    return new InsertContext(
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(0, 0)
+            .clientOptions(new SimpleEventProducer(), false, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
+  }
 
   private static Bucket makeBucket(byte[] data) {
     // Minimal bucket backed by provided bytes; supports read and free().
@@ -324,20 +302,7 @@ class USKInserterTest {
     byte[] bytes = "data".getBytes(StandardCharsets.UTF_8);
     Bucket bucket = makeBucket(bytes);
 
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
     ic.setIgnoreUSKDatehints(false);
 
     when(uskManager.getFetcherForInsertDontSchedule(
@@ -390,20 +355,7 @@ class USKInserterTest {
                 ssk.getURI().getExtra(),
                 edition));
 
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
     ic.setIgnoreUSKDatehints(true); // skip USK date hints path for determinism
 
     USKInserter inserter =
@@ -442,20 +394,7 @@ class USKInserterTest {
             ssk.getInsertURI().getExtra(),
             edition);
 
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
     ic.setIgnoreUSKDatehints(true); // deterministic: avoid date hints branch
 
     USKInserter inserter =
@@ -506,20 +445,7 @@ class USKInserterTest {
             ssk.getInsertURI().getExtra(),
             edition);
 
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
 
     USKInserter inserter =
         newInserter(
@@ -564,20 +490,7 @@ class USKInserterTest {
             ssk.getInsertURI().getCryptoKey(),
             ssk.getInsertURI().getExtra(),
             edition);
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
     USKInserter inserter;
     try {
       inserter =
@@ -613,20 +526,7 @@ class USKInserterTest {
             ssk.getInsertURI().getCryptoKey(),
             ssk.getInsertURI().getExtra(),
             edition);
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
     Bucket data = makeBucket("t".getBytes(StandardCharsets.UTF_8));
     doReturn((short) 42).when(parent).getPriorityClass();
 
@@ -673,20 +573,7 @@ class USKInserterTest {
             ssk2.getInsertURI().getCryptoKey(),
             ssk2.getInsertURI().getExtra(),
             edition2);
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
 
     USKInserter inserter =
         newInserter(
@@ -731,20 +618,7 @@ class USKInserterTest {
             ssk3.getInsertURI().getCryptoKey(),
             ssk3.getInsertURI().getExtra(),
             edition3);
-    InsertContext ic =
-        new InsertContext(
-            0,
-            0,
-            0,
-            0,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            null,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    InsertContext ic = newInsertContext();
 
     USKInserter inserter =
         newInserter(

@@ -615,7 +615,7 @@ class CoreUpdater(
     }
 
     /** Records failure information and forwards the exception to the logger. */
-    override fun onFailure(e: FetchException, state: ClientGetter) {
+    override fun onFailure(e: FetchException) {
       complete = true
       successFile = null
       failed = true

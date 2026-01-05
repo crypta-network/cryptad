@@ -608,7 +608,7 @@ public class Metadata implements Serializable {
   static final short FLAGS_HASHES = 512;
   // If parsed version = 1 and splitfile is set and hashes exist, we create the splitfile key from
   // the hashes.
-  // This flag overrides this behaviour and reads a key anyway.
+  // This flag overrides this behavior and reads a key anyway.
   static final short FLAGS_SPECIFY_SPLITFILE_KEY = 1024;
   // We can specify a hash just for this layer as well as hashes for the final content in a
   // multi-layer splitfile.
@@ -1319,71 +1319,26 @@ public class Metadata implements Serializable {
       FreenetURI uri,
       ClientMetadata cm) {
     this(
-        docType,
-        archiveType,
-        compressionCodec,
-        uri,
-        cm,
-        0,
-        0,
-        0,
-        0,
-        false,
-        CompatibilityMode.COMPAT_UNKNOWN,
-        null);
+        new MetadataRedirectTarget(docType, archiveType, compressionCodec, uri, cm),
+        MetadataTopLayerInfo.none());
   }
 
   /**
    * Create another kind of simple Metadata object (a redirect or similar object).
    *
-   * @param docType the document type (redirect or archive‑related).
-   * @param archiveType archive flavor when relevant; {@code null} when not applicable.
-   * @param compressionCodec compression codec for archive payloads when relevant; {@code null} when
-   *     not applicable.
-   * @param uri target {@link FreenetURI} referenced by this entry; must be a valid CHK for
-   *     splitfile payloads when full keys are not used.
-   * @param cm client metadata describing MIME type and related properties; may be {@code null}.
-   * @param origDataLength original (uncompressed) data length in bytes; non‑negative.
-   * @param origCompressedDataLength compressed data length in bytes when compression is used;
-   *     otherwise typically equals {@code origDataLength}.
-   * @param reqBlocks number of blocks required to decode at the top layer; non‑negative.
-   * @param totalBlocks total number of blocks at the top layer; non‑negative and ≥ {@code
-   *     reqBlocks}.
-   * @param topDontCompress whether top‑layer compression is disabled for the referenced payload.
-   * @param topCompatibilityMode declared top compatibility mode; must not be {@link
-   *     InsertContext.CompatibilityMode#COMPAT_CURRENT}.
-   * @param hashes optional array of hashes (e.g., SHA‑256) of the final data; may be {@code null}
-   *     or non‑empty.
+   * @param target redirect target details (document type, archive/compression, URI, and metadata).
+   * @param topLayer top-layer size, block, compatibility, and hash information.
    */
-  public Metadata(
-      DocumentType docType,
-      ARCHIVE_TYPE archiveType,
-      COMPRESSOR_TYPE compressionCodec,
-      FreenetURI uri,
-      ClientMetadata cm,
-      long origDataLength,
-      long origCompressedDataLength,
-      int reqBlocks,
-      int totalBlocks,
-      boolean topDontCompress,
-      CompatibilityMode topCompatibilityMode,
-      HashResult[] hashes) {
-    if (topCompatibilityMode == CompatibilityMode.COMPAT_CURRENT) {
+  public Metadata(MetadataRedirectTarget target, MetadataTopLayerInfo topLayer) {
+    if (topLayer.topCompatibilityMode() == CompatibilityMode.COMPAT_CURRENT) {
       throw new IllegalArgumentException("Invalid top compatibility mode: COMPAT_CURRENT");
     }
     hashCode = super.hashCode();
-    if (hashes != null && hashes.length == 0) throw new IllegalArgumentException();
-    this.hashes = hashes;
-    initSimpleRedirectOrArchive(docType, archiveType, compressionCodec, cm, uri);
-    TopLayerInit tli =
-        computeTopLayerInit(
-            origDataLength,
-            origCompressedDataLength,
-            reqBlocks,
-            totalBlocks,
-            topDontCompress,
-            topCompatibilityMode,
-            hashes);
+    HashResult[] topHashes = topLayer.hashes();
+    if (topHashes != null && topHashes.length == 0) throw new IllegalArgumentException();
+    this.hashes = topHashes;
+    initSimpleRedirectOrArchive(target);
+    TopLayerInit tli = computeTopLayerInit(topLayer);
     this.topSize = tli.size;
     this.topCompressedSize = tli.compressedSize;
     this.topBlocksRequired = tli.blocksRequired;
@@ -1393,23 +1348,20 @@ public class Metadata implements Serializable {
     parsedVersion = tli.parsedVersion;
   }
 
-  private void initSimpleRedirectOrArchive(
-      DocumentType docType,
-      ARCHIVE_TYPE archiveType,
-      COMPRESSOR_TYPE compressionCodec,
-      ClientMetadata cm,
-      FreenetURI uri) {
+  private void initSimpleRedirectOrArchive(MetadataRedirectTarget target) {
+    DocumentType docType = target.documentType();
     if ((docType == DocumentType.SIMPLE_REDIRECT) || (docType == DocumentType.ARCHIVE_MANIFEST)) {
       documentType = docType;
-      this.archiveType = archiveType;
-      this.compressionCodec = compressionCodec;
-      clientMetadata = cm;
-      if ((cm != null) && !cm.isTrivial()) {
-        setMIMEType(cm.getMIMEType());
+      this.archiveType = target.archiveType();
+      this.compressionCodec = target.compressionCodec();
+      clientMetadata = target.clientMetadata();
+      if ((clientMetadata != null) && !clientMetadata.isTrivial()) {
+        setMIMEType(clientMetadata.getMIMEType());
       } else {
         setMIMEType(DefaultMIMETypes.DEFAULT_MIME_TYPE);
         noMIME = true;
       }
+      FreenetURI uri = target.uri();
       if (uri == null) throw new NullPointerException();
       simpleRedirectKey = uri;
       if (!(uri.getKeyType().equals("CHK") && !uri.hasMetaStrings())) fullKeys = true;
@@ -1418,26 +1370,19 @@ public class Metadata implements Serializable {
     throw new IllegalArgumentException();
   }
 
-  private TopLayerInit computeTopLayerInit(
-      long origDataLength,
-      long origCompressedDataLength,
-      int reqBlocks,
-      int totalBlocks,
-      boolean topDontCompress,
-      CompatibilityMode topCompatibilityMode,
-      HashResult[] hashes) {
-    if (origDataLength != 0
-        || origCompressedDataLength != 0
-        || reqBlocks != 0
-        || totalBlocks != 0
-        || hashes != null) {
+  private TopLayerInit computeTopLayerInit(MetadataTopLayerInfo topLayer) {
+    if (topLayer.origDataLength() != 0
+        || topLayer.origCompressedDataLength() != 0
+        || topLayer.requiredBlocks() != 0
+        || topLayer.totalBlocks() != 0
+        || topLayer.hashes() != null) {
       return new TopLayerInit(
-          origDataLength,
-          origCompressedDataLength,
-          reqBlocks,
-          totalBlocks,
-          topDontCompress,
-          topCompatibilityMode,
+          topLayer.origDataLength(),
+          topLayer.origCompressedDataLength(),
+          topLayer.requiredBlocks(),
+          topLayer.totalBlocks(),
+          topLayer.topDontCompress(),
+          topLayer.topCompatibilityMode(),
           (short) 1);
     } else {
       return new TopLayerInit(0, 0, 0, 0, false, CompatibilityMode.COMPAT_UNKNOWN, (short) 0);
@@ -1447,111 +1392,22 @@ public class Metadata implements Serializable {
   /**
    * Create metadata for a splitfile.
    *
-   * @param algo The splitfile FEC algorithm.
-   * @param dataURIs The data URIs, including cross-check blocks for each segment.
-   * @param checkURIs The check URIs.
-   * @param segmentSize The number of data blocks in a typical segment. Does not include cross-check
-   *     blocks.
-   * @param checkSegmentSize The number of check blocks in a typical segment. Does not include
-   *     cross-check blocks.
-   * @param deductBlocksFromSegments If this is set, the last few segments will lose a data block,
-   *     so that all the segments are the same size to within 1 block. In older splitfiles, the last
-   *     segment could be significantly smaller, and this impacted on retrievability.
-   * @param cm The client metadata i.e. MIME type.
-   * @param dataLength The size of the data that this specific splitfile encodes (as opposed to the
-   *     final data), after compression if necessary.
-   * @param archiveType The archive type, if the splitfile is a container.
-   * @param compressionCodec The compression codec used to compress the data.
-   * @param decompressedLength The length of this specific splitfile's data after it has been
-   *     decompressed.
-   * @param isMetadata If true, the splitfile is multi-level metadata i.e. it encodes a bucket full
-   *     of metadata. This usually happens for huge splitfiles, which can be a pyramid of one block
-   *     with metadata for a splitfile full of metadata, that metadata then encodes another
-   *     splitfile full of metadata, etc. Hence, we can support very large files.
-   * @param hashes Various hashes of <b>the final data</b>. There should always be at least an
-   *     SHA256 hash, unless we are inserting with an old compatibility mode.
-   * @param hashThisLayerOnly Hash of the data in this layer (before compression). Separate from
-   *     hashes of the final data. Not currently verified.
-   * @param origDataSize The size of the final/original data.
-   * @param origCompressedDataSize The size of the final/original data after it was compressed.
-   * @param requiredBlocks The number of blocks required on fetch to reconstruct the final data.
-   *     Hence, as soon as we have the top splitfile metadata (i.e. hopefully in the top block), we
-   *     can show an accurate progress bar.
-   * @param totalBlocks The total number of blocks inserted during the whole insert for the
-   *     final/original data.
-   * @param topDontCompress Whether dontCompress was enabled. This allows us to figure out reinsert
-   *     settings more quickly.
-   * @param topCompatibilityMode The compatibility mode applying to the insert. This allows us to
-   *     figure out reinsert settings more quickly.
-   * @param splitfileCryptoAlgorithm The block level crypto algorithm for all the blocks in the
-   *     splitfile.
-   * @param splitfileCryptoKey The single encryption key used by all blocks in the splitfile. Older
-   *     splitfiles don't have this so have to specify the full keys; newer splitfiles just specify
-   *     the 32 byte routing key for each data or check key.
-   * @param specifySplitfileKey If false, the splitfile crypto key has been automatically computed
-   *     from the final or this-layer data hash. If true, it has been specified explicitly, either
-   *     because it is randomly generated (this significantly improves security against mobile
-   *     attacker source tracing and is the default for splitfiles under SSKs), or because a file is
-   *     being reinserted.
-   * @param crossSegmentBlocks The number of cross-check blocks. If this is specified, we are using
-   *     cross-segment redundancy. This greatly improves reliability on files over 80MB, see bug
-   *     #3370.
+   * @param params splitfile keys, layout, and crypto settings.
+   * @param payload payload details for the splitfile.
+   * @param topLayer top-layer size, compatibility, and hash information.
    */
-  public Metadata(
-      SplitfileAlgorithm algo,
-      ClientCHK[] dataURIs,
-      ClientCHK[] checkURIs,
-      int segmentSize,
-      int checkSegmentSize,
-      int deductBlocksFromSegments,
-      ClientMetadata cm,
-      long dataLength,
-      ARCHIVE_TYPE archiveType,
-      COMPRESSOR_TYPE compressionCodec,
-      long decompressedLength,
-      boolean isMetadata,
-      HashResult[] hashes,
-      byte[] hashThisLayerOnly,
-      long origDataSize,
-      long origCompressedDataSize,
-      int requiredBlocks,
-      int totalBlocks,
-      boolean topDontCompress,
-      CompatibilityMode topCompatibilityMode,
-      byte splitfileCryptoAlgorithm,
-      byte[] splitfileCryptoKey,
-      boolean specifySplitfileKey,
-      int crossSegmentBlocks) {
-    if (topCompatibilityMode == CompatibilityMode.COMPAT_CURRENT) {
+  public Metadata(SplitfileParams params, SplitfilePayload payload, MetadataTopLayerInfo topLayer) {
+    if (topLayer.topCompatibilityMode() == CompatibilityMode.COMPAT_CURRENT) {
       throw new IllegalArgumentException("Invalid top compatibility mode: COMPAT_CURRENT");
     }
     hashCode = super.hashCode();
-    this.hashes = hashes;
-    this.hashThisLayerOnly = hashThisLayerOnly;
+    this.hashes = topLayer.hashes();
+    this.hashThisLayerOnly = topLayer.hashThisLayerOnly();
     if (hashThisLayerOnly != null && hashThisLayerOnly.length != 32)
       throw new IllegalArgumentException();
-    chooseDocTypeForSplitfile(isMetadata, archiveType);
-    initSplitfileCore(
-        algo,
-        dataURIs,
-        checkURIs,
-        cm,
-        compressionCodec,
-        dataLength,
-        decompressedLength,
-        splitfileCryptoKey,
-        hashes,
-        topCompatibilityMode,
-        deductBlocksFromSegments);
-    TopLayerInit tli2 =
-        computeTopLayerInit(
-            origDataSize,
-            origCompressedDataSize,
-            requiredBlocks,
-            totalBlocks,
-            topDontCompress,
-            topCompatibilityMode,
-            hashes);
+    chooseDocTypeForSplitfile(payload);
+    initSplitfileCore(params, payload, topLayer);
+    TopLayerInit tli2 = computeTopLayerInit(topLayer);
     this.topSize = tli2.size;
     this.topCompressedSize = tli2.compressedSize;
     this.topBlocksRequired = tli2.blocksRequired;
@@ -1563,22 +1419,15 @@ public class Metadata implements Serializable {
     // top-layer has no hashes/blocks (tli2.parsedVersion == 0). Do not
     // downgrade, or we would omit splitfile crypto parameters on serialization.
     parsedVersion = (short) Math.max(parsedVersion, tli2.parsedVersion);
-    buildSplitfileParamsBytes(
-        segmentSize,
-        checkSegmentSize,
-        deductBlocksFromSegments,
-        crossSegmentBlocks,
-        splitfileCryptoAlgorithm,
-        splitfileCryptoKey,
-        specifySplitfileKey);
+    buildSplitfileParamsBytes(params);
   }
 
-  private void chooseDocTypeForSplitfile(boolean isMetadata, ARCHIVE_TYPE archiveType) {
-    if (isMetadata) {
+  private void chooseDocTypeForSplitfile(SplitfilePayload payload) {
+    if (payload.isMetadata()) {
       documentType = DocumentType.MULTI_LEVEL_METADATA;
-    } else if (archiveType != null) {
+    } else if (payload.archiveType() != null) {
       documentType = DocumentType.ARCHIVE_MANIFEST;
-      this.archiveType = archiveType;
+      this.archiveType = payload.archiveType();
     } else {
       documentType = DocumentType.SIMPLE_REDIRECT;
     }
@@ -1586,57 +1435,51 @@ public class Metadata implements Serializable {
   }
 
   private void initSplitfileCore(
-      SplitfileAlgorithm algo,
-      ClientCHK[] dataURIs,
-      ClientCHK[] checkURIs,
-      ClientMetadata cm,
-      COMPRESSOR_TYPE compressionCodec,
-      long dataLengthValue,
-      long decompressedLength,
-      byte[] splitfileCryptoKey,
-      HashResult[] hashes,
-      CompatibilityMode topCompatibilityModeParam,
-      int deductBlocksFromSegments) {
-    splitfileAlgorithm = algo;
-    this.dataLength = dataLengthValue;
-    this.compressionCodec = compressionCodec;
-    splitfileBlocks = dataURIs.length;
-    splitfileCheckBlocks = checkURIs.length;
-    splitfileDataKeys = dataURIs;
+      SplitfileParams params, SplitfilePayload payload, MetadataTopLayerInfo topLayer) {
+    splitfileAlgorithm = params.splitfileAlgorithm();
+    this.dataLength = payload.dataLength();
+    this.compressionCodec = payload.compressionCodec();
+    splitfileBlocks = params.dataURIs().length;
+    splitfileCheckBlocks = params.checkURIs().length;
+    splitfileDataKeys = params.dataURIs();
     if (keysInvalid(splitfileDataKeys)) throw new IllegalArgumentException("Invalid data keys");
-    splitfileCheckKeys = checkURIs;
+    splitfileCheckKeys = params.checkURIs();
     if (keysInvalid(splitfileCheckKeys)) throw new IllegalArgumentException("Invalid check keys");
-    clientMetadata = cm;
-    this.compressionCodec = compressionCodec;
-    this.decompressedLength = decompressedLength;
-    if (cm != null) setMIMEType(cm.getMIMEType());
+    clientMetadata = payload.clientMetadata();
+    this.compressionCodec = payload.compressionCodec();
+    this.decompressedLength = payload.decompressedLength();
+    if (clientMetadata != null) setMIMEType(clientMetadata.getMIMEType());
     else setMIMEType(DefaultMIMETypes.DEFAULT_MIME_TYPE);
+    CompatibilityMode topCompatibilityModeParam = topLayer.topCompatibilityMode();
+    HashResult[] topHashes = topLayer.hashes();
+    byte[] splitfileCryptoKeyValue = params.splitfileCryptoKey();
+    int deductBlocksFromSegmentsValue = params.deductBlocksFromSegments();
     if (topCompatibilityModeParam.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
-      if (splitfileCryptoKey != null) throw new IllegalArgumentException();
-      if (hashes != null) throw new IllegalArgumentException();
-      if (deductBlocksFromSegments != 0) throw new IllegalArgumentException();
+      if (splitfileCryptoKeyValue != null) throw new IllegalArgumentException();
+      if (topHashes != null) throw new IllegalArgumentException();
+      if (deductBlocksFromSegmentsValue != 0) throw new IllegalArgumentException();
       parsedVersion = 0;
     } else {
-      if (splitfileCryptoKey == null) throw new IllegalArgumentException();
+      if (splitfileCryptoKeyValue == null) throw new IllegalArgumentException();
       parsedVersion = 1;
     }
   }
 
   // Top fields are final; compute values then assign once in constructors.
 
-  private void buildSplitfileParamsBytes(
-      int segmentSize,
-      int checkSegmentSize,
-      int deductBlocksFromSegments,
-      int crossSegmentBlocks,
-      byte splitfileCryptoAlgorithm,
-      byte[] splitfileCryptoKey,
-      boolean specifySplitfileKey) {
+  private void buildSplitfileParamsBytes(SplitfileParams params) {
+    int segmentSize = params.segmentSize();
+    int checkSegmentSize = params.checkSegmentSize();
+    int deductBlocksFromSegmentsValue = params.deductBlocksFromSegments();
+    int crossSegmentBlocks = params.crossSegmentBlocks();
+    byte splitfileCryptoAlgorithm = params.splitfileCryptoAlgorithm();
+    byte[] splitfileCryptoKey = params.splitfileCryptoKey();
+    boolean specifySplitfileKeyValue = params.specifySplitfileKey();
     if (parsedVersion == 0) {
       splitfileParams = Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
       return;
     }
-    boolean deductBlocks = (deductBlocksFromSegments != 0);
+    boolean deductBlocks = (deductBlocksFromSegmentsValue != 0);
     short mode;
     int len = 10;
     if (crossSegmentBlocks == 0) {
@@ -1656,17 +1499,17 @@ public class Metadata implements Serializable {
           case SPLITFILE_PARAMS_CROSS_SEGMENT ->
               Fields.intsToBytes(
                   new int[] {
-                    segmentSize, checkSegmentSize, deductBlocksFromSegments, crossSegmentBlocks
+                    segmentSize, checkSegmentSize, deductBlocksFromSegmentsValue, crossSegmentBlocks
                   });
           case SPLITFILE_PARAMS_SEGMENT_DEDUCT_BLOCKS ->
               Fields.intsToBytes(
-                  new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegments});
+                  new int[] {segmentSize, checkSegmentSize, deductBlocksFromSegmentsValue});
           default -> Fields.intsToBytes(new int[] {segmentSize, checkSegmentSize});
         };
     System.arraycopy(b, 0, splitfileParams, 2, b.length);
     this.splitfileSingleCryptoAlgorithm = splitfileCryptoAlgorithm;
     this.splitfileSingleCryptoKey = splitfileCryptoKey;
-    this.specifySplitfileKey = specifySplitfileKey;
+    this.specifySplitfileKey = specifySplitfileKeyValue;
     if (splitfileCryptoKey == null)
       throw new IllegalArgumentException("Splitfile with parsed version 1 must have a crypto key");
     // Segments layout is managed elsewhere when needed.

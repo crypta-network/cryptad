@@ -18,6 +18,7 @@ import java.net.MalformedURLException;
 import java.util.HashSet;
 import java.util.Random;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.ClientSSK;
 import network.crypta.keys.FreenetURI;
@@ -240,28 +241,15 @@ class USKDateHintFetchesTest {
 
   private static FetchContext createFetchContext() {
     return new FetchContext(
-        1024,
-        1024,
-        1024,
-        1,
-        0,
-        0,
-        false,
-        0,
-        0,
-        0,
-        true,
-        true,
-        false,
-        false,
-        1,
-        1,
-        new SimpleEventProducer(),
-        false,
-        true,
-        null,
-        null,
-        null);
+        FetchContextOptions.builder()
+            .limits(1024, 1024, 1024)
+            .archiveLimits(1, 0, 0, false)
+            .retryLimits(0, 0, 0)
+            .splitfileLimits(true, 1, 1)
+            .behavior(true, false, false)
+            .clientOptions(new SimpleEventProducer(), false, true)
+            .filterOverrides(null, null, null)
+            .build());
   }
 
   private static USK createUsk() throws MalformedURLException {

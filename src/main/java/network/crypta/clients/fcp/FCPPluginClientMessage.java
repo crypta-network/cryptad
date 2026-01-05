@@ -214,11 +214,11 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
 
     final FCPPluginConnection serverConnection;
     try {
-      serverConnection = handler.getFCPPluginConnection(pluginname);
+      serverConnection =
+          handler.pluginConnectionRegistry().get(pluginname, handler.getServer(), handler);
     } catch (PluginNotFoundException _) {
       throw pluginUnavailable();
     }
-
     if (serverConnection == null) {
       throw pluginUnavailable();
     }

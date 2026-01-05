@@ -299,18 +299,18 @@ class MetadataTest {
   private static byte[] topHeaderUnknownBytes(FreenetURI uri) throws Exception {
     Metadata writer =
         new Metadata(
-            DocumentType.SIMPLE_REDIRECT,
-            null,
-            null,
-            uri,
-            new ClientMetadata(MIME_TEXT),
-            1234L, // topSize
-            1200L, // topCompressedSize
-            10, // topBlocksRequired
-            12, // topBlocksTotal
-            false,
-            CompatibilityMode.COMPAT_UNKNOWN, // write unknown into header alongside non-zero fields
-            null);
+            new MetadataRedirectTarget(
+                DocumentType.SIMPLE_REDIRECT, null, null, uri, new ClientMetadata(MIME_TEXT)),
+            new MetadataTopLayerInfo(
+                1234L, // topSize
+                1200L, // topCompressedSize
+                10, // topBlocksRequired
+                12, // topBlocksTotal
+                false,
+                CompatibilityMode
+                    .COMPAT_UNKNOWN, // write unknown into header alongside non-zero fields
+                null,
+                null));
     return writer.writeToByteArray();
   }
 
@@ -322,36 +322,32 @@ class MetadataTest {
     var data = new ClientCHK[] {};
     var check = new ClientCHK[] {};
     ClientMetadata cm = new ClientMetadata("application/octet-stream");
+    SplitfileParams params =
+        new SplitfileParams(
+            SplitfileAlgorithm.NONREDUNDANT,
+            data,
+            check,
+            1,
+            0,
+            0,
+            0,
+            Key.ALGO_AES_PCFB_256_SHA256,
+            // splitfileCryptoKey must be null for version 0; pass non-null to trigger exception
+            new byte[32],
+            false);
+    SplitfilePayload payload = new SplitfilePayload(cm, 1L, null, null, 1L, false);
+    MetadataTopLayerInfo topLayer =
+        new MetadataTopLayerInfo(
+            0L,
+            0L,
+            0,
+            0,
+            false,
+            CompatibilityMode.COMPAT_1250, // < 1255 → parsedVersion 0
+            null,
+            null);
 
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new Metadata(
-                SplitfileAlgorithm.NONREDUNDANT,
-                data,
-                check,
-                1,
-                0,
-                0,
-                cm,
-                1L,
-                null,
-                null,
-                1L,
-                false,
-                null,
-                null,
-                0L,
-                0L,
-                0,
-                0,
-                false,
-                CompatibilityMode.COMPAT_1250, // < 1255 → parsedVersion 0
-                Key.ALGO_AES_PCFB_256_SHA256,
-                // splitfileCryptoKey must be null for version 0; pass non-null to trigger exception
-                new byte[32],
-                false,
-                0));
+    assertThrows(IllegalArgumentException.class, () -> new Metadata(params, payload, topLayer));
   }
 
   @Test
@@ -382,29 +378,32 @@ class MetadataTest {
 
     // Act: build splitfile with compat >= 1255 (requires metadata v1) but no top section.
     return new Metadata(
-        SplitfileAlgorithm.NONREDUNDANT,
-        dataURIs,
-        checkURIs,
-        /* segmentSize= */ 1,
-        /* checkSegmentSize= */ 0,
-        /* deductBlocksFromSegments= */ 0,
-        /* cm= */ null,
-        /* dataLength= */ 1024L,
-        /* archiveType= */ null,
-        /* compressionCodec= */ null,
-        /* decompressedLength= */ 0L,
-        /* isMetadata= */ false,
-        /* hashes= */ null,
-        /* hashThisLayerOnly= */ null,
-        /* origDataSize= */ 0L,
-        /* origCompressedDataSize= */ 0L,
-        /* requiredBlocks= */ 0,
-        /* totalBlocks= */ 0,
-        /* topDontCompress= */ false,
-        /* topCompatibilityMode= */ CompatibilityMode.COMPAT_1255,
-        /* splitfileCryptoAlgorithm= */ Key.ALGO_AES_CTR_256_SHA256,
-        /* splitfileCryptoKey= */ splitKey,
-        /* specifySplitfileKey= */ true,
-        /* crossSegmentBlocks= */ 0);
+        new SplitfileParams(
+            SplitfileAlgorithm.NONREDUNDANT,
+            dataURIs,
+            checkURIs,
+            /* segmentSize= */ 1,
+            /* checkSegmentSize= */ 0,
+            /* deductBlocksFromSegments= */ 0,
+            /* crossSegmentBlocks= */ 0,
+            /* splitfileCryptoAlgorithm= */ Key.ALGO_AES_CTR_256_SHA256,
+            /* splitfileCryptoKey= */ splitKey,
+            /* specifySplitfileKey= */ true),
+        new SplitfilePayload(
+            /* clientMetadata= */ null,
+            /* dataLength= */ 1024L,
+            /* archiveType= */ null,
+            /* compressionCodec= */ null,
+            /* decompressedLength= */ 0L,
+            /* isMetadata= */ false),
+        new MetadataTopLayerInfo(
+            /* origDataLength= */ 0L,
+            /* origCompressedDataLength= */ 0L,
+            /* requiredBlocks= */ 0,
+            /* totalBlocks= */ 0,
+            /* topDontCompress= */ false,
+            /* topCompatibilityMode= */ CompatibilityMode.COMPAT_1255,
+            /* hashes= */ null,
+            /* hashThisLayerOnly= */ null));
   }
 }

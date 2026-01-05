@@ -145,9 +145,8 @@ class HighLevelSimpleClientImplTest {
   @Test
   void makeDefaultFetchContext_returnsContextWithProvidedProducerAndLimits() {
     SimpleEventProducer ep = new SimpleEventProducer();
-    BucketFactory bf = mock(BucketFactory.class);
 
-    FetchContext ctx = HighLevelSimpleClientImpl.makeDefaultFetchContext(777L, 888L, bf, ep);
+    FetchContext ctx = HighLevelSimpleClientImpl.makeDefaultFetchContext(777L, 888L, ep);
 
     assertEquals(777L, ctx.getMaxOutputLength());
     assertEquals(888L, ctx.getMaxTempLength());
@@ -232,8 +231,7 @@ class HighLevelSimpleClientImplTest {
     ClientGetCallback cb = mock(ClientGetCallback.class);
     when(cb.getRequestClient()).thenReturn(client);
     FetchContext fctx =
-        HighLevelSimpleClientImpl.makeDefaultFetchContext(
-            10L, 20L, bucketFactory, new SimpleEventProducer());
+        HighLevelSimpleClientImpl.makeDefaultFetchContext(10L, 20L, new SimpleEventProducer());
 
     // Act
     client.fetch(uri, 4096L, cb, fctx, (short) 5);
@@ -260,8 +258,7 @@ class HighLevelSimpleClientImplTest {
   void fetch_asyncWithNullUri_throwsNPE() {
     ClientGetCallback cb = mock(ClientGetCallback.class);
     FetchContext fctx =
-        HighLevelSimpleClientImpl.makeDefaultFetchContext(
-            1L, 1L, bucketFactory, new SimpleEventProducer());
+        HighLevelSimpleClientImpl.makeDefaultFetchContext(1L, 1L, new SimpleEventProducer());
     assertThrows(NullPointerException.class, () -> client.fetch(null, cb, fctx, (short) 1));
   }
 
@@ -372,8 +369,7 @@ class HighLevelSimpleClientImplTest {
     ClientGetCallback cb = mock(ClientGetCallback.class);
     when(cb.getRequestClient()).thenReturn(client);
     FetchContext fctx =
-        HighLevelSimpleClientImpl.makeDefaultFetchContext(
-            100L, 200L, bucketFactory, new SimpleEventProducer());
+        HighLevelSimpleClientImpl.makeDefaultFetchContext(100L, 200L, new SimpleEventProducer());
 
     // Act
     ClientGetter getter = client.fetchFromMetadata(initial, cb, fctx, (short) 3);

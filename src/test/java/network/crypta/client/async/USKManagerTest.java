@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import java.net.MalformedURLException;
 import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.events.SimpleEventProducer;
@@ -216,29 +217,15 @@ class USKManagerTest {
     public FetchContext getFetchContext() {
       // Minimal, deterministic context (values patterned after existing tests)
       return new FetchContext(
-          Long.MAX_VALUE, // maxOutputLength
-          Long.MAX_VALUE, // maxTempLength
-          1024 * 1024, // maxMetadataSize
-          1, // maxRecursionLevel
-          1, // maxArchiveRestarts
-          1, // maxArchiveLevels
-          false, // dontEnterImplicitArchives
-          0, // maxSplitfileBlockRetries
-          0, // maxNonSplitfileRetries
-          0, // maxUSKRetries
-          true, // allowSplitfiles
-          true, // followRedirects
-          false, // localRequestOnly
-          false, // filterData
-          1, // maxDataBlocksPerSegment
-          1, // maxCheckBlocksPerSegment
-          new SimpleEventProducer(), // eventProducer
-          false, // ignoreTooManyPathComponents
-          true, // canWriteClientCache
-          null, // charset
-          null, // overrideMIME
-          null // schemeHostAndPort
-          );
+          FetchContextOptions.builder()
+              .limits(Long.MAX_VALUE, Long.MAX_VALUE, 1024 * 1024)
+              .archiveLimits(1, 1, 1, false)
+              .retryLimits(0, 0, 0)
+              .splitfileLimits(true, 1, 1)
+              .behavior(true, false, false)
+              .clientOptions(new SimpleEventProducer(), false, true)
+              .filterOverrides(null, null, null)
+              .build());
     }
 
     @Override

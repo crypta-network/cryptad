@@ -18,6 +18,7 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
@@ -93,28 +94,15 @@ class RevocationCheckerTest {
   private static @NotNull FetchContext getFetchContext() {
     SimpleEventProducer ep = new SimpleEventProducer();
     return new FetchContext(
-        Long.MAX_VALUE,
-        Long.MAX_VALUE,
-        1024 * 1024,
-        1,
-        1,
-        1,
-        false,
-        0,
-        0,
-        0,
-        true,
-        true,
-        false,
-        false,
-        1,
-        1,
-        ep,
-        false,
-        true,
-        null,
-        null,
-        null);
+        FetchContextOptions.builder()
+            .limits(Long.MAX_VALUE, Long.MAX_VALUE, 1024 * 1024)
+            .archiveLimits(1, 1, 1, false)
+            .retryLimits(0, 0, 0)
+            .splitfileLimits(true, 1, 1)
+            .behavior(true, false, false)
+            .clientOptions(ep, false, true)
+            .filterOverrides(null, null, null)
+            .build());
   }
 
   @Test

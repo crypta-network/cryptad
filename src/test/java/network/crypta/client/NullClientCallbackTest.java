@@ -110,7 +110,7 @@ class NullClientCallbackTest {
     FetchException exception = new FetchException(FetchExceptionMode.INTERNAL_ERROR);
 
     // Act & Assert
-    assertDoesNotThrow(() -> callback.onFailure(exception, clientGetter));
+    assertDoesNotThrow(() -> callback.onFailure(exception));
   }
 
   @Test

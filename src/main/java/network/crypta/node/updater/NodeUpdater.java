@@ -677,7 +677,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   @Override
-  public void onFailure(FetchException e, ClientGetter state) {
+  public void onFailure(FetchException e) {
     // Debug gating derives from LOG.isDebugEnabled() where needed
     if (!isRunning) return;
     FetchExceptionMode errorCode = e.getMode();
@@ -687,7 +687,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       LOG.warn("Unable to delete temp blob {} on failure", tempBlobFile, ex);
     }
 
-    if (LOG.isDebugEnabled()) LOG.debug("onFailure({},{})", e, state);
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure({},{})", e, cg);
     synchronized (this) {
       this.cg = null;
       isFetching = false;

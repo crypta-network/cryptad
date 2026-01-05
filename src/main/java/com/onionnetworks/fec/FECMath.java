@@ -80,7 +80,7 @@ public class FECMath {
   /**
    * To speed up computations, we have tables for logarithm, exponent and inverse of a number. If
    * gfBits <= 8, we use a table for multiplication as well (it takes 64K, no big deal even on a
-   * PDA, especially because it can be pre-initialized a put into a ROM!), otherwhise we use a table
+   * PDA, especially because it can be pre-initialized a put into a ROM!), otherwise we use a table
    * of logarithms.
    */
 
@@ -493,7 +493,7 @@ public class FECMath {
    * @param m number of columns in {@code b} and {@code c}
    */
   public final void matMul(char[] a, char[] b, char[] c, int n, int k, int m) {
-    matMul(a, 0, b, 0, c, 0, n, k, m);
+    matMul(new MatrixMulParams(a, 0, b, 0, c, 0, n, k, m));
   }
 
   /*
@@ -503,18 +503,18 @@ public class FECMath {
    * Matrix multiplication with explicit starting offsets for each operand. This overload supports
    * slicing into larger buffers without copying submatrices.
    *
-   * @param a backing array for the left matrix; data begins at {@code aStart}
-   * @param aStart offset into {@code a} where the {@code n x k} block starts
-   * @param b backing array for the right matrix; data begins at {@code bStart}
-   * @param bStart offset into {@code b} where the {@code k x m} block starts
-   * @param c destination array that receives the {@code n x m} product block
-   * @param cStart offset into {@code c} where results are written
-   * @param n number of rows in the left matrix and output
-   * @param k shared inner dimension of the matrices
-   * @param m number of columns in the right matrix and output
+   * @param params grouped matrix slice and dimension settings
    */
-  public final void matMul(
-      char[] a, int aStart, char[] b, int bStart, char[] c, int cStart, int n, int k, int m) {
+  public final void matMul(MatrixMulParams params) {
+    char[] a = params.a();
+    char[] b = params.b();
+    char[] c = params.c();
+    int aStart = params.aStart();
+    int bStart = params.bStart();
+    int cStart = params.cStart();
+    int n = params.n();
+    int k = params.k();
+    int m = params.m();
 
     for (int row = 0; row < n; row++) {
       for (int col = 0; col < m; col++) {
@@ -782,7 +782,7 @@ public class FECMath {
      */
     // much faster than invertMatrix
     invertVandermonde(tmpMatrix, k);
-    matMul(tmpMatrix, k * k, tmpMatrix, 0, encMatrix, k * k, n - k, k, k);
+    matMul(new MatrixMulParams(tmpMatrix, k * k, tmpMatrix, 0, encMatrix, k * k, n - k, k, k));
 
     /*
      * the upper matrix is I so do not bother with a slow multiply

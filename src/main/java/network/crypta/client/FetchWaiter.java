@@ -16,11 +16,11 @@ import network.crypta.node.RequestClient;
  * #waitForCompletion()} to obtain the outcome.
  *
  * <p>The instance holds the first terminal outcome it receives: either {@link
- * #onSuccess(FetchResult, ClientGetter)} or {@link #onFailure(FetchException, ClientGetter)}.
- * Subsequent terminal signals are ignored to preserve the single-result invariant. Callers waiting
- * in {@link #waitForCompletion()} block until the outcome is available or the current thread is
- * interrupted. If interrupted, the method preserves the interrupt status and reports cancellation
- * via a {@link FetchException} with mode {@code CANCELLED}.
+ * #onSuccess(FetchResult, ClientGetter)} or {@link #onFailure(FetchException)}. Subsequent terminal
+ * signals are ignored to preserve the single-result invariant. Callers waiting in {@link
+ * #waitForCompletion()} block until the outcome is available or the current thread is interrupted.
+ * If interrupted, the method preserves the interrupt status and reports cancellation via a {@link
+ * FetchException} with mode {@code CANCELLED}.
  *
  * <p>Thread-safety: all state access is synchronized on {@code this}. Multiple threads may wait for
  * completion concurrently; exactly one terminal outcome is observed. The class performs no I/O and
@@ -85,10 +85,9 @@ public class FetchWaiter implements ClientGetCallback {
    * is stored as-is and later rethrown by {@link #waitForCompletion()}.
    *
    * @param e Non-null {@link FetchException} describing why the fetch failed or was canceled.
-   * @param state The originating {@link ClientGetter} for correlation; not stored by this class.
    */
   @Override
-  public synchronized void onFailure(FetchException e, ClientGetter state) {
+  public synchronized void onFailure(FetchException e) {
     if (finished) return;
     this.error = e;
     finished = true;
@@ -99,10 +98,10 @@ public class FetchWaiter implements ClientGetCallback {
    * Blocks until a terminal outcome is available and returns the result or throws the failure.
    *
    * <p>This method waits until either {@link #onSuccess(FetchResult, ClientGetter)} or {@link
-   * #onFailure(FetchException, ClientGetter)} has been invoked. If the current thread is
-   * interrupted while waiting, the interrupt flag is restored and a {@link FetchException} with
-   * mode {@code CANCELLED} is thrown to signal cancellation to the caller. The method is safe to
-   * call from multiple threads; once completed, all callers observe the same terminal outcome.
+   * #onFailure(FetchException)} has been invoked. If the current thread is interrupted while
+   * waiting, the interrupt flag is restored and a {@link FetchException} with mode {@code
+   * CANCELLED} is thrown to signal cancellation to the caller. The method is safe to call from
+   * multiple threads; once completed, all callers observe the same terminal outcome.
    *
    * <pre>{@code
    * // Example: simple synchronous fetch pattern

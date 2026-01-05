@@ -18,6 +18,11 @@ import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.HealingQueue;
@@ -27,6 +32,7 @@ import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -289,32 +295,34 @@ class ListPersistentRequestsMessageTest {
 
     return new ClientContext(
         1L,
-        jobRunner,
-        executor,
-        mock(ArchiveManager.class),
-        mock(PersistentTempBucketFactory.class),
-        mock(TempBucketFactory.class),
-        mock(PersistentFileTracker.class),
-        mock(HealingQueue.class),
-        mock(USKManager.class),
-        mock(RandomSource.class),
-        new Random(0),
-        ticker,
-        mock(MemoryLimitedJobRunner.class),
-        mock(FilenameGenerator.class),
-        mock(FilenameGenerator.class),
-        mock(LockableRandomAccessBufferFactory.class),
-        mock(LockableRandomAccessBufferFactory.class),
-        mock(FileRandomAccessBufferFactory.class),
-        mock(FileRandomAccessBufferFactory.class),
-        mock(RealCompressor.class),
-        mock(DatastoreChecker.class),
-        mock(PersistentRequestRoot.class),
-        mock(MasterSecret.class),
-        mock(LinkFilterExceptionProvider.class),
-        mock(FetchContext.class),
-        mock(InsertContext.class),
-        mock(Config.class));
+        new ClientContextRuntime(
+            jobRunner,
+            executor,
+            mock(MemoryLimitedJobRunner.class),
+            ticker,
+            mock(RandomSource.class),
+            new Random(0),
+            mock(MasterSecret.class)),
+        new ClientContextStorageFactories(
+            mock(PersistentTempBucketFactory.class),
+            mock(TempBucketFactory.class),
+            mock(PersistentFileTracker.class),
+            mock(FilenameGenerator.class),
+            mock(FilenameGenerator.class),
+            mock(FileRandomAccessBufferFactory.class),
+            mock(FileRandomAccessBufferFactory.class)),
+        new ClientContextRafFactories(
+            mock(LockableRandomAccessBufferFactory.class),
+            mock(LockableRandomAccessBufferFactory.class)),
+        new ClientContextServices(
+            new ClientContextResources(mock(ArchiveManager.class), mock(HealingQueue.class)),
+            mock(USKManager.class),
+            mock(RealCompressor.class),
+            mock(DatastoreChecker.class),
+            mock(PersistentRequestRoot.class),
+            mock(LinkFilterExceptionProvider.class)),
+        new ClientContextDefaults(
+            mock(FetchContext.class), mock(InsertContext.class), mock(Config.class)));
   }
 
   private static class TrackingListJob extends ListPersistentRequestsMessage.ListJob {

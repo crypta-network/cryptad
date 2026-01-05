@@ -17,8 +17,10 @@ import java.lang.reflect.Field;
 import java.util.Random;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
@@ -26,6 +28,7 @@ import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.DummyJobRunner;
@@ -96,82 +99,64 @@ class ClientContextTest {
     // Minimal default contexts used by accessors under test
     defaultFetchCtx =
         new FetchContext(
-            1024L,
-            2048L,
-            4096,
-            2,
-            3,
-            1,
-            false,
-            1,
-            1,
-            0,
-            true,
-            true,
-            false,
-            true,
-            16,
-            16,
-            new SimpleEventProducer(),
-            false,
-            true,
-            null,
-            null,
-            null);
+            FetchContextOptions.builder()
+                .limits(1024L, 2048L, 4096)
+                .archiveLimits(2, 3, 1, false)
+                .retryLimits(1, 1, 0)
+                .splitfileLimits(true, 16, 16)
+                .behavior(true, false, true)
+                .clientOptions(new SimpleEventProducer(), false, true)
+                .filterOverrides(null, null, null)
+                .build());
 
     defaultInsertCtx =
         new InsertContext(
-            1, // maxRetries
-            0, // rnfsToSuccess
-            16, // data blocks per segment
-            16, // check blocks per segment
-            new SimpleEventProducer(),
-            true, // canWriteClientCache
-            false, // forkOnCacheable
-            false, // localRequestOnly
-            null, // compressorDescriptor
-            0, // extra inserts single block
-            0, // extra inserts for splitfile header
-            CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(1, 0)
+                .splitfileSegmentLimits(16, 16)
+                .clientOptions(new SimpleEventProducer(), true, false, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(CompatibilityMode.COMPAT_CURRENT)
+                .build());
 
     Config config = new Config();
 
     ctx =
         new ClientContext(
             BOOT_ID,
-            new ClientLayerPersister(
+            new ClientContextRuntime(
+                new ClientLayerPersister(
+                    mainExecutor,
+                    ticker,
+                    null,
+                    null,
+                    persistentTempBucketFactory,
+                    tempBucketFactory,
+                    null),
                 mainExecutor,
+                memoryLimitedJobRunner,
                 ticker,
-                null,
-                null,
+                strongRandom,
+                fastWeakRandom,
+                cryptoSecretTransient),
+            new ClientContextStorageFactories(
                 persistentTempBucketFactory,
                 tempBucketFactory,
-                null),
-            mainExecutor,
-            archiveManager,
-            persistentTempBucketFactory,
-            tempBucketFactory,
-            persistentFileTracker,
-            healingQueue,
-            uskManager,
-            strongRandom,
-            fastWeakRandom,
-            ticker,
-            memoryLimitedJobRunner,
-            fg,
-            persistentFG,
-            tempRAF,
-            persistentRAF,
-            fileRAFTransient,
-            fileRAFPersistent,
-            realCompressor,
-            datastoreChecker,
-            persistentRoot,
-            cryptoSecretTransient,
-            linkFilterExceptionProvider,
-            defaultFetchCtx,
-            defaultInsertCtx,
-            config);
+                persistentFileTracker,
+                fg,
+                persistentFG,
+                fileRAFTransient,
+                fileRAFPersistent),
+            new ClientContextRafFactories(tempRAF, persistentRAF),
+            new ClientContextServices(
+                new ClientContextResources(archiveManager, healingQueue),
+                uskManager,
+                realCompressor,
+                datastoreChecker,
+                persistentRoot,
+                linkFilterExceptionProvider),
+            new ClientContextDefaults(defaultFetchCtx, defaultInsertCtx, config));
 
     // Replace the real jobRunner created above with a controllable fake for start() tests
     setField(ctx, "dummyJobRunner", new DummyJobRunner(mainExecutor, ctx));
@@ -395,7 +380,7 @@ class ClientContextTest {
 
     ctx.start(getter);
     jobRunner.runLast(ctx);
-    verify(cb, times(1)).onFailure(any(network.crypta.client.FetchException.class), any());
+    verify(cb, times(1)).onFailure(any(network.crypta.client.FetchException.class));
   }
 
   @Test

@@ -25,6 +25,11 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.HealingQueue;
@@ -40,6 +45,7 @@ import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
@@ -260,32 +266,25 @@ class QueueToadletTest {
 
     return new ClientContext(
         1L,
-        jobRunner,
-        executor,
-        archiveManager,
-        ptbf,
-        tbf,
-        tracker,
-        hq,
-        uskManager,
-        strongRandom,
-        new Random(123),
-        ticker,
-        memoryLimitedJobRunner,
-        fg,
-        fg,
-        rafFactory,
-        persistentRAFFactory,
-        fileRAFTransient,
-        fileRAFPersistent,
-        rc,
-        checker,
-        persistentRoot,
-        masterSecret,
-        linkFilterExceptionProvider,
-        fetchContext,
-        insertContext,
-        config);
+        new ClientContextRuntime(
+            jobRunner,
+            executor,
+            memoryLimitedJobRunner,
+            ticker,
+            strongRandom,
+            new Random(123),
+            masterSecret),
+        new ClientContextStorageFactories(
+            ptbf, tbf, tracker, fg, fg, fileRAFTransient, fileRAFPersistent),
+        new ClientContextRafFactories(rafFactory, persistentRAFFactory),
+        new ClientContextServices(
+            new ClientContextResources(archiveManager, hq),
+            uskManager,
+            rc,
+            checker,
+            persistentRoot,
+            linkFilterExceptionProvider),
+        new ClientContextDefaults(fetchContext, insertContext, config));
   }
 
   private FreenetURI sampleUri() {

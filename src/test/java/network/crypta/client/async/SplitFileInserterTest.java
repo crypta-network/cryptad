@@ -16,11 +16,14 @@ import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
+import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.RequestClient;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -165,49 +168,38 @@ class SplitFileInserterTest {
     var fetchCtx = Mockito.mock(network.crypta.client.FetchContext.class);
     var insertCtx =
         new InsertContext(
-            0,
-            0,
-            128,
-            128,
-            new network.crypta.client.events.SimpleEventProducer(),
-            true,
-            false,
-            false,
-            null,
-            0,
-            0,
-            CompatibilityMode.COMPAT_CURRENT);
+            InsertContextOptions.builder()
+                .retryLimits(0, 0)
+                .splitfileSegmentLimits(128, 128)
+                .clientOptions(new SimpleEventProducer(), true, false, false)
+                .compressorDescriptor(null)
+                .redundancy(0, 0)
+                .compatibility(CompatibilityMode.COMPAT_CURRENT)
+                .build());
     var config = Mockito.mock(network.crypta.config.Config.class);
 
     ClientContext ctx =
         new ClientContext(
             1L,
-            runner,
-            immediateExecutor,
-            archiveManager,
-            ptbf,
-            tbf,
-            tracker,
-            hq,
-            uskManager,
-            strongRandom,
-            fastWeakRandom,
-            ticker,
-            memLimited,
-            fg,
-            persistentFG,
-            rafFactory,
-            persistentRAFFactory,
-            fileRAFTransient,
-            fileRAFPersistent,
-            rc,
-            dsChecker,
-            persistentRoot,
-            masterSecret,
-            linkFilterProvider,
-            fetchCtx,
-            insertCtx,
-            config);
+            new ClientContextRuntime(
+                runner,
+                immediateExecutor,
+                memLimited,
+                ticker,
+                strongRandom,
+                fastWeakRandom,
+                masterSecret),
+            new ClientContextStorageFactories(
+                ptbf, tbf, tracker, fg, persistentFG, fileRAFTransient, fileRAFPersistent),
+            new ClientContextRafFactories(rafFactory, persistentRAFFactory),
+            new ClientContextServices(
+                new ClientContextResources(archiveManager, hq),
+                uskManager,
+                rc,
+                dsChecker,
+                persistentRoot,
+                linkFilterProvider),
+            new ClientContextDefaults(fetchCtx, insertCtx, config));
 
     // Spy to stub scheduler access used by SplitFileInserter's constructor.
     ClientContext spyCtx = Mockito.spy(ctx);
@@ -220,18 +212,14 @@ class SplitFileInserterTest {
 
   private InsertContext newInsertContext() {
     return new InsertContext(
-        0,
-        0,
-        128,
-        128,
-        new network.crypta.client.events.SimpleEventProducer(),
-        true,
-        false,
-        false,
-        null,
-        0,
-        0,
-        CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(128, 128)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   private SplitFileInserter newInserter(

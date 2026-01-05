@@ -13,8 +13,10 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.Random;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.events.SimpleEventProducer;
@@ -24,6 +26,7 @@ import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.FreenetURI;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -139,84 +142,44 @@ class InsertCompressorTest {
     // Provide minimal but valid defaults for required ctor parameters; most are unused in tests
     return new ClientContext(
         /*bootID*/ 1L,
-        /*jobRunner*/ jobRunner,
-        /*mainExecutor*/ mainExec,
-        /*archiveManager*/ null,
-        /*ptbf*/ null,
-        /*tbf*/ null,
-        /*tracker*/ null,
-        /*hq*/ null,
-        /*uskManager*/ null,
-        /*strongRandom*/ null,
-        /*fastWeakRandom*/ new Random(0),
-        /*ticker*/ null,
-        /*memoryLimitedJobRunner*/ null,
-        /*fg*/ null,
-        /*persistentFG*/ null,
-        /*rafFactory*/ null,
-        /*persistentRAFFactory*/ null,
-        /*fileRAFTransient*/ null,
-        /*fileRAFPersistent*/ null,
-        /*rc*/ rc,
-        /*checker*/ null,
-        /*persistentRoot*/ null,
-        /*cryptoSecretTransient*/ null,
-        /*linkFilterExceptionProvider*/ null,
-        /*defaultPersistentFetchContext*/
-        new network.crypta.client.FetchContext(
-            0L,
-            0L,
-            0,
-            1,
-            0,
-            0,
-            false,
-            0,
-            0,
-            0,
-            false,
-            false,
-            false,
-            false,
-            0,
-            0,
-            new SimpleEventProducer(),
-            true,
-            false,
-            null,
-            null,
-            null),
-        /*defaultPersistentInsertContext*/
-        new InsertContext(
-            0,
-            0,
-            128,
-            128,
-            new SimpleEventProducer(),
-            false,
-            false,
-            false,
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
-            0,
-            0,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT),
-        /*config*/ config);
+        new ClientContextRuntime(jobRunner, mainExec, null, null, null, new Random(0), null),
+        new ClientContextStorageFactories(null, null, null, null, null, null, null),
+        new ClientContextRafFactories(null, null),
+        new ClientContextServices(
+            new ClientContextResources(null, null), null, rc, null, null, null),
+        new ClientContextDefaults(
+            new network.crypta.client.FetchContext(
+                FetchContextOptions.builder()
+                    .limits(0L, 0L, 0)
+                    .archiveLimits(1, 0, 0, false)
+                    .retryLimits(0, 0, 0)
+                    .splitfileLimits(false, 0, 0)
+                    .behavior(false, false, false)
+                    .clientOptions(new SimpleEventProducer(), true, false)
+                    .filterOverrides(null, null, null)
+                    .build()),
+            new InsertContext(
+                InsertContextOptions.builder()
+                    .retryLimits(0, 0)
+                    .splitfileSegmentLimits(128, 128)
+                    .clientOptions(new SimpleEventProducer(), false, false, false)
+                    .compressorDescriptor(Compressor.DEFAULT_COMPRESSORDESCRIPTOR)
+                    .redundancy(0, 0)
+                    .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+                    .build()),
+            config));
   }
 
   private static InsertContext makeInsertCtx(String compressorDescriptor) {
     return new InsertContext(
-        0,
-        0,
-        128,
-        128,
-        new SimpleEventProducer(),
-        false,
-        false,
-        false,
-        compressorDescriptor,
-        0,
-        0,
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(128, 128)
+            .clientOptions(new SimpleEventProducer(), false, false, false)
+            .compressorDescriptor(compressorDescriptor)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   private static RandomAccessBucket makeData(byte[] bytes) throws IOException {

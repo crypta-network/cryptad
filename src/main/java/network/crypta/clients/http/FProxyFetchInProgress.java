@@ -426,8 +426,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       if (type == null || ((!type.safeToRead) && type.readFilter == null)) {
         UnknownContentTypeException e = new UnknownContentTypeException(strippedMimeType);
         onFailure(
-            new FetchException(e.getFetchErrorCode(), cachedData.size(), e, strippedMimeType),
-            null);
+            new FetchException(e.getFetchErrorCode(), cachedData.size(), e, strippedMimeType));
         return true;
       }
       if (type.safeToRead) {
@@ -567,7 +566,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   @Override
-  public void onFailure(FetchException e, ClientGetter state) {
+  public void onFailure(FetchException e) {
     synchronized (this) {
       this.failed = e;
       this.finished = true;

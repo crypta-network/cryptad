@@ -38,6 +38,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeCHK;
 import network.crypta.node.BaseSendableGet;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.SendableGet;
@@ -299,32 +300,13 @@ class ClientRequestSelectorTest {
     ClientLayerPersister runner = mock(ClientLayerPersister.class);
     return new ClientContext(
         1L,
-        runner,
-        mainExecutor,
-        /* archiveManager */ null,
-        /* ptbf */ null,
-        /* tbf */ null,
-        /* tracker */ null,
-        /* healingQueue */ null,
-        /* uskManager */ null,
-        /* strongRandom */ new DummyRandomSource(42),
-        /* fastWeakRandom */ new Random(0L),
-        /* ticker */ t,
-        /* memoryLimitedJobRunner */ null,
-        /* fg */ null,
-        /* persistentFG */ null,
-        /* rafFactory */ null,
-        /* persistentRAFFactory */ null,
-        /* fileRAFTransient */ null,
-        /* fileRAFPersistent */ null,
-        /* rc */ null,
-        /* checker */ null,
-        /* persistentRoot */ null,
-        /* cryptoSecretTransient */ null,
-        /* linkFilterExceptionProvider */ null,
-        /* defaultPersistentFetchContext */ null,
-        /* defaultPersistentInsertContext */ null,
-        /* config */ null);
+        new ClientContextRuntime(
+            runner, mainExecutor, null, t, new DummyRandomSource(42), new Random(0L), null),
+        new ClientContextStorageFactories(null, null, null, null, null, null, null),
+        new ClientContextRafFactories(null, null),
+        new ClientContextServices(
+            new ClientContextResources(null, null), null, null, null, null, null),
+        new ClientContextDefaults(null, null, null));
   }
 
   private static byte[] randomNodeChkBytes() {
@@ -391,8 +373,7 @@ class ClientRequestSelectorTest {
 
     // FetchContext options
     network.crypta.client.FetchContext fctx =
-        HighLevelSimpleClientImpl.makeDefaultFetchContext(
-            1024, 1024, null, new SimpleEventProducer());
+        HighLevelSimpleClientImpl.makeDefaultFetchContext(1024, 1024, new SimpleEventProducer());
     fctx.setLocalRequestOnly(true);
     fctx.setIgnoreStore(true);
     fctx.setCanWriteClientCache(true);

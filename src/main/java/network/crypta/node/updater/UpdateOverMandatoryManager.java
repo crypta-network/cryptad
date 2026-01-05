@@ -1446,7 +1446,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       updateManager.getNode().services().clientCore().getClientContext().start(cg);
     } catch (FetchException e1) {
       LOG.error("Failed to decode UOM blob", e1);
-      myCallback.onFailure(e1, cg);
+      myCallback.onFailure(e1);
     } catch (PersistenceDisabledException _) {
       // Impossible
     }
@@ -1506,7 +1506,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       final ArrayBucket cleanedBlob) {
     return new ClientGetCallback() {
       @Override
-      public void onFailure(FetchException e, ClientGetter state) {
+      public void onFailure(FetchException e) {
         if (e.mode == FetchExceptionMode.CANCELLED) {
           LOG.error(
               "Cancelled fetch from store/blob of revocation certificate from {} to {} - please"
@@ -1519,7 +1519,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
                   + " bad data)",
               source,
               e);
-          updateManager.getRevocationChecker().onFailure(e, state, cleanedBlob);
+          updateManager.getRevocationChecker().onFailure(e, null, cleanedBlob);
           if (!fromDisk) temp.free();
           insertRevocationBlob(updateManager.getRevocationChecker().getBlobBucket());
         } else {
@@ -2052,7 +2052,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     try {
       updateManager.getNode().services().clientCore().getClientContext().start(cg);
     } catch (FetchException e1) {
-      myCallback.onFailure(e1, cg);
+      myCallback.onFailure(e1);
     } catch (PersistenceDisabledException _) {
       // Impossible
     }
@@ -2088,7 +2088,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     return new ClientGetCallback() {
 
       @Override
-      public void onFailure(FetchException e, ClientGetter state) {
+      public void onFailure(FetchException e) {
         handleMainJarFetchFailure(e, temp, version, toString, cleanedBlob);
       }
 

@@ -27,10 +27,12 @@ import java.util.Random;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
+import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
+import network.crypta.client.InsertContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.fcp.PersistentRequestRoot;
@@ -38,6 +40,7 @@ import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.FreenetURI;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.RequestClient;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
@@ -218,75 +221,60 @@ class ClientGetterTest {
       USKManager uskManager) {
     return new ClientContext(
         1L,
-        jobRunner,
-        new DirectExecutor(),
-        Mockito.mock(ArchiveManager.class),
-        Mockito.mock(PersistentTempBucketFactory.class),
-        Mockito.mock(TempBucketFactory.class),
-        Mockito.mock(PersistentFileTracker.class),
-        Mockito.mock(HealingQueue.class),
-        uskManager,
-        Mockito.mock(RandomSource.class),
-        new Random(123),
-        new DirectTicker(),
-        Mockito.mock(MemoryLimitedJobRunner.class),
-        Mockito.mock(FilenameGenerator.class),
-        Mockito.mock(FilenameGenerator.class),
-        Mockito.mock(LockableRandomAccessBufferFactory.class),
-        Mockito.mock(LockableRandomAccessBufferFactory.class),
-        Mockito.mock(FileRandomAccessBufferFactory.class),
-        Mockito.mock(FileRandomAccessBufferFactory.class),
-        Mockito.mock(RealCompressor.class),
-        Mockito.mock(DatastoreChecker.class),
-        Mockito.mock(PersistentRequestRoot.class),
-        Mockito.mock(MasterSecret.class),
-        linkFilterExceptionProvider,
-        defaultPF,
-        defaultPI,
-        Mockito.mock(Config.class));
+        new ClientContextRuntime(
+            jobRunner,
+            new DirectExecutor(),
+            Mockito.mock(MemoryLimitedJobRunner.class),
+            new DirectTicker(),
+            Mockito.mock(RandomSource.class),
+            new Random(123),
+            Mockito.mock(MasterSecret.class)),
+        new ClientContextStorageFactories(
+            Mockito.mock(PersistentTempBucketFactory.class),
+            Mockito.mock(TempBucketFactory.class),
+            Mockito.mock(PersistentFileTracker.class),
+            Mockito.mock(FilenameGenerator.class),
+            Mockito.mock(FilenameGenerator.class),
+            Mockito.mock(FileRandomAccessBufferFactory.class),
+            Mockito.mock(FileRandomAccessBufferFactory.class)),
+        new ClientContextRafFactories(
+            Mockito.mock(LockableRandomAccessBufferFactory.class),
+            Mockito.mock(LockableRandomAccessBufferFactory.class)),
+        new ClientContextServices(
+            new ClientContextResources(
+                Mockito.mock(ArchiveManager.class), Mockito.mock(HealingQueue.class)),
+            uskManager,
+            Mockito.mock(RealCompressor.class),
+            Mockito.mock(DatastoreChecker.class),
+            Mockito.mock(PersistentRequestRoot.class),
+            linkFilterExceptionProvider),
+        new ClientContextDefaults(defaultPF, defaultPI, Mockito.mock(Config.class)));
   }
 
   private static FetchContext newFetchContext(boolean filter) {
     // Use reasonable small limits; values are not critical for these tests.
     return new FetchContext(
-        16 * 1024,
-        16 * 1024,
-        4096,
-        4,
-        0,
-        2,
-        false,
-        1,
-        1,
-        0,
-        true,
-        true,
-        false,
-        filter,
-        0,
-        0,
-        new SimpleEventProducer(),
-        true,
-        true,
-        null,
-        null,
-        null);
+        FetchContextOptions.builder()
+            .limits(16 * 1024, 16 * 1024, 4096)
+            .archiveLimits(4, 0, 2, false)
+            .retryLimits(1, 1, 0)
+            .splitfileLimits(true, 0, 0)
+            .behavior(true, false, filter)
+            .clientOptions(new SimpleEventProducer(), true, true)
+            .filterOverrides(null, null, null)
+            .build());
   }
 
   private static InsertContext newInsertContext() {
     return new InsertContext(
-        0,
-        0,
-        0,
-        0,
-        new SimpleEventProducer(),
-        true,
-        false,
-        false,
-        null,
-        0,
-        0,
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        InsertContextOptions.builder()
+            .retryLimits(0, 0)
+            .splitfileSegmentLimits(0, 0)
+            .clientOptions(new SimpleEventProducer(), true, false, false)
+            .compressorDescriptor(null)
+            .redundancy(0, 0)
+            .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+            .build());
   }
 
   @Mock private ClientGetCallback callback;
@@ -377,7 +365,7 @@ class ClientGetterTest {
 
     // Assert
     ArgumentCaptor<FetchException> exc = ArgumentCaptor.forClass(FetchException.class);
-    verify(callback, times(1)).onFailure(exc.capture(), eq(getter));
+    verify(callback, times(1)).onFailure(exc.capture());
     assertEquals(FetchExceptionMode.MIME_INCOMPATIBLE_WITH_EXTENSION, exc.getValue().mode);
     verify(callback, never()).onSuccess(any(FetchResult.class), any(ClientGetter.class));
   }
@@ -406,7 +394,7 @@ class ClientGetterTest {
 
     // Assert
     ArgumentCaptor<FetchException> exc = ArgumentCaptor.forClass(FetchException.class);
-    verify(callback, times(1)).onFailure(exc.capture(), eq(getter));
+    verify(callback, times(1)).onFailure(exc.capture());
     assertEquals(FetchExceptionMode.BUCKET_ERROR, exc.getValue().mode);
   }
 

@@ -18,7 +18,6 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
-import network.crypta.support.io.ArrayBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
@@ -109,7 +108,7 @@ class FProxyFetchInProgressTest {
   void notFinishedOrFatallyFinished_whenFatalFailure_returnsTrue() {
     FProxyFetchInProgress progress = newProgress(newFetchContext());
 
-    progress.onFailure(new FetchException(FetchExceptionMode.TOO_BIG), null);
+    progress.onFailure(new FetchException(FetchExceptionMode.TOO_BIG));
 
     assertTrue(progress.notFinishedOrFatallyFinished());
   }
@@ -118,7 +117,7 @@ class FProxyFetchInProgressTest {
   void notFinishedOrFatallyFinished_whenNonFatalFailureEventuallyReturnsFalse() throws Exception {
     FProxyFetchInProgress progress = newProgress(newFetchContext());
 
-    progress.onFailure(new FetchException(FetchExceptionMode.DATA_NOT_FOUND), null);
+    progress.onFailure(new FetchException(FetchExceptionMode.DATA_NOT_FOUND));
     assertTrue(progress.notFinishedOrFatallyFinished());
 
     setField(progress, "timeFailed", System.currentTimeMillis() - 1500);
@@ -139,7 +138,7 @@ class FProxyFetchInProgressTest {
 
   private static FetchContext newFetchContext() {
     return HighLevelSimpleClientImpl.makeDefaultFetchContext(
-        2048L, 4096L, new ArrayBucketFactory(), new SimpleEventProducer());
+        2048L, 4096L, new SimpleEventProducer());
   }
 
   private static void setField(Object target, String name, Object value) throws Exception {
