@@ -1288,7 +1288,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
                                 "SecurityLevels.cantDeletePasswordFile",
                                 "filename",
                                 storage.getMasterKeysFile().getAbsolutePath()));
-                    services.registerCantDeletePasswordFileAlert(storage.getMasterKeysFile());
+                    services.registerCantDeletePasswordFileAlert();
                   }
                 }
                 if (oldLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM
