@@ -517,7 +517,7 @@ public class Node implements TimeSkewDetectorCallback {
     this.shutdownHook = SemiOrderedShutdownHook.get();
     this.executor = executor;
     this.nodeStarter = ns;
-    this.messaging = new NodeMessagingSubsystem(this);
+    this.messaging = new NodeMessagingSubsystem();
     this.bootstrap = new NodeBootstrap(this);
     this.services = new NodeServicesSubsystem(this);
     this.configManager = new NodeConfigManager(this);
