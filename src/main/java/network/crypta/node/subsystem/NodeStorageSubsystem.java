@@ -571,7 +571,7 @@ public final class NodeStorageSubsystem {
     }
     if (storeSize > (maxDatastoreSize = DatastoreUtil.maxDatastoreSize())) {
       throw new InvalidConfigValueException(
-          l10n("invalidMaxStoreSize", Long.toString(maxDatastoreSize / ONE_GIB)));
+          l10nInvalidMaxStoreSize(Long.toString(maxDatastoreSize / ONE_GIB)));
     }
 
     long newMaxStoreKeys = storeSize / SIZE_PER_KEY;
@@ -1731,8 +1731,8 @@ public final class NodeStorageSubsystem {
     return NodeL10n.getBase().getString("Node." + key);
   }
 
-  private String l10n(String key, String replacementValue) {
-    return NodeL10n.getBase().getString("Node." + key, replacementValue);
+  private String l10nInvalidMaxStoreSize(String replacementValue) {
+    return NodeL10n.getBase().getString("Node.invalidMaxStoreSize", replacementValue);
   }
 
   public void initRAMClientCacheFS() {
@@ -2040,40 +2040,42 @@ public final class NodeStorageSubsystem {
     }
   }
 
-  public void changeClientCacheType(String value)
-      throws InvalidConfigValueException, NodeNeedRestartException {
+  public void changeClientCacheType(String value) throws InvalidConfigValueException {
     synchronized (node) { // Serialise this part.
-      if (value.equals(Node.TYPE_SALT_HASH)) {
-        byte[] key;
-        try {
+      switch (value) {
+        case Node.TYPE_SALT_HASH -> {
+          byte[] key;
+          try {
+            synchronized (node) {
+              if (keys == null) throw new MasterKeysWrongPasswordException();
+              key = keys.getClientCacheMasterKey();
+              clientCacheType = value;
+            }
+          } catch (MasterKeysWrongPasswordException _) {
+            setClientCacheAwaitingPassword();
+            throw new InvalidConfigValueException("You must enter the password");
+          }
+          try {
+            initSaltHashClientCacheFS(true, key);
+          } catch (NodeInitException e) {
+            throw new InvalidConfigValueException(e);
+          }
+        }
+        case "ram" -> {
           synchronized (node) {
-            if (keys == null) throw new MasterKeysWrongPasswordException();
-            key = keys.getClientCacheMasterKey();
+            clientCacheAwaitingPassword = false;
             clientCacheType = value;
           }
-        } catch (MasterKeysWrongPasswordException _) {
-          setClientCacheAwaitingPassword();
-          throw new InvalidConfigValueException("You must enter the password");
+          initRAMClientCacheFS();
         }
-        try {
-          initSaltHashClientCacheFS(true, key);
-        } catch (NodeInitException e) {
-          throw new InvalidConfigValueException(e);
+        case "none" -> {
+          synchronized (node) {
+            clientCacheAwaitingPassword = false;
+            clientCacheType = value;
+          }
+          initNoClientCacheFS();
         }
-      } else if (value.equals("ram")) {
-        synchronized (node) {
-          clientCacheAwaitingPassword = false;
-          clientCacheType = value;
-        }
-        initRAMClientCacheFS();
-      } else if (value.equals("none")) {
-        synchronized (node) {
-          clientCacheAwaitingPassword = false;
-          clientCacheType = value;
-        }
-        initNoClientCacheFS();
-      } else {
-        throw new InvalidConfigValueException("Invalid client cache type");
+        default -> throw new InvalidConfigValueException("Invalid client cache type");
       }
     }
   }
