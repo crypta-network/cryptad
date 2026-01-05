@@ -28,6 +28,7 @@ import network.crypta.clients.fcp.PersistentRequestRoot;
 import network.crypta.config.Config;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.DummyJobRunner;
@@ -124,39 +125,38 @@ class ClientContextTest {
     ctx =
         new ClientContext(
             BOOT_ID,
-            new ClientLayerPersister(
+            new ClientContextRuntime(
+                new ClientLayerPersister(
+                    mainExecutor,
+                    ticker,
+                    null,
+                    null,
+                    persistentTempBucketFactory,
+                    tempBucketFactory,
+                    null),
                 mainExecutor,
+                memoryLimitedJobRunner,
                 ticker,
-                null,
-                null,
+                strongRandom,
+                fastWeakRandom,
+                cryptoSecretTransient),
+            new ClientContextStorageFactories(
                 persistentTempBucketFactory,
                 tempBucketFactory,
-                null),
-            mainExecutor,
-            archiveManager,
-            persistentTempBucketFactory,
-            tempBucketFactory,
-            persistentFileTracker,
-            healingQueue,
-            uskManager,
-            strongRandom,
-            fastWeakRandom,
-            ticker,
-            memoryLimitedJobRunner,
-            fg,
-            persistentFG,
-            tempRAF,
-            persistentRAF,
-            fileRAFTransient,
-            fileRAFPersistent,
-            realCompressor,
-            datastoreChecker,
-            persistentRoot,
-            cryptoSecretTransient,
-            linkFilterExceptionProvider,
-            defaultFetchCtx,
-            defaultInsertCtx,
-            config);
+                persistentFileTracker,
+                fg,
+                persistentFG,
+                fileRAFTransient,
+                fileRAFPersistent),
+            new ClientContextRafFactories(tempRAF, persistentRAF),
+            new ClientContextServices(
+                new ClientContextResources(archiveManager, healingQueue),
+                uskManager,
+                realCompressor,
+                datastoreChecker,
+                persistentRoot,
+                linkFilterExceptionProvider),
+            new ClientContextDefaults(defaultFetchCtx, defaultInsertCtx, config));
 
     // Replace the real jobRunner created above with a controllable fake for start() tests
     setField(ctx, "dummyJobRunner", new DummyJobRunner(mainExecutor, ctx));

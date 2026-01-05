@@ -25,7 +25,13 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.crypt.MasterSecret;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBuffer.RAFLock;
@@ -81,32 +87,38 @@ class DelayedFreeRandomAccessBufferTest {
     ClientContext ctx =
         new ClientContext(
             1L,
-            mock(network.crypta.client.async.ClientLayerPersister.class),
-            mock(PriorityAwareExecutor.class),
-            mock(network.crypta.client.ArchiveManager.class),
-            newFactory,
-            mock(TempBucketFactory.class),
-            mock(PersistentFileTracker.class),
-            mock(network.crypta.client.async.HealingQueue.class),
-            mock(network.crypta.client.async.USKManager.class),
-            mock(network.crypta.crypt.RandomSource.class),
-            fastWeak,
-            mock(network.crypta.support.Ticker.class),
-            mock(network.crypta.support.MemoryLimitedJobRunner.class),
-            mock(FilenameGenerator.class),
-            mock(FilenameGenerator.class),
-            mock(network.crypta.support.api.LockableRandomAccessBufferFactory.class),
-            mock(network.crypta.support.api.LockableRandomAccessBufferFactory.class),
-            mock(network.crypta.support.io.FileRandomAccessBufferFactory.class),
-            mock(network.crypta.support.io.FileRandomAccessBufferFactory.class),
-            mock(network.crypta.support.compress.RealCompressor.class),
-            mock(network.crypta.client.async.DatastoreChecker.class),
-            mock(network.crypta.clients.fcp.PersistentRequestRoot.class),
-            mock(MasterSecret.class),
-            mock(network.crypta.client.filter.LinkFilterExceptionProvider.class),
-            mock(network.crypta.client.FetchContext.class),
-            mock(network.crypta.client.InsertContext.class),
-            mock(network.crypta.config.Config.class));
+            new ClientContextRuntime(
+                mock(network.crypta.client.async.ClientLayerPersister.class),
+                mock(PriorityAwareExecutor.class),
+                mock(network.crypta.support.MemoryLimitedJobRunner.class),
+                mock(network.crypta.support.Ticker.class),
+                mock(network.crypta.crypt.RandomSource.class),
+                fastWeak,
+                mock(MasterSecret.class)),
+            new ClientContextStorageFactories(
+                newFactory,
+                mock(TempBucketFactory.class),
+                mock(PersistentFileTracker.class),
+                mock(FilenameGenerator.class),
+                mock(FilenameGenerator.class),
+                mock(network.crypta.support.io.FileRandomAccessBufferFactory.class),
+                mock(network.crypta.support.io.FileRandomAccessBufferFactory.class)),
+            new ClientContextRafFactories(
+                mock(network.crypta.support.api.LockableRandomAccessBufferFactory.class),
+                mock(network.crypta.support.api.LockableRandomAccessBufferFactory.class)),
+            new ClientContextServices(
+                new ClientContextResources(
+                    mock(network.crypta.client.ArchiveManager.class),
+                    mock(network.crypta.client.async.HealingQueue.class)),
+                mock(network.crypta.client.async.USKManager.class),
+                mock(network.crypta.support.compress.RealCompressor.class),
+                mock(network.crypta.client.async.DatastoreChecker.class),
+                mock(network.crypta.clients.fcp.PersistentRequestRoot.class),
+                mock(network.crypta.client.filter.LinkFilterExceptionProvider.class)),
+            new ClientContextDefaults(
+                mock(network.crypta.client.FetchContext.class),
+                mock(network.crypta.client.InsertContext.class),
+                mock(network.crypta.config.Config.class)));
 
     buf.onResume(ctx);
     buf.free();

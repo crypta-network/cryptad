@@ -161,7 +161,7 @@ public class ClientContext {
 
   /**
    * Used for memory intensive jobs such as in-RAM FEC decodes. Some of these jobs may do disk I/O,
-   * and we don't guarantee to serialise them. The new splitfile code does FEC decode entirely in
+   * and we don't guarantee to serialize them. The new splitfile code does FEC decode entirely in
    * memory, which saves a lot of seeks and improves robustness.
    */
   public final MemoryLimitedJobRunner memoryLimitedJobRunner;
@@ -196,101 +196,48 @@ public class ClientContext {
    *
    * @param bootID Monotonic identifier for this process instance; remains constant until restart
    *     and can be used to disambiguate ephemeral artifacts.
-   * @param jobRunner Runner that serializes persistence-affecting jobs to keep on-disk state
-   *     consistent and allow targeted flushing when required.
-   * @param mainExecutor Main executor for client-layer work that benefits from priority-aware task
-   *     scheduling without blocking persistence operations.
-   * @param archiveManager Manager coordinating archive-related tasks invoked by client operations;
-   *     may be a no-op depending on configuration.
-   * @param ptbf Factory for temporary buckets backed by persistent storage across restarts; used by
-   *     persistent requests.
-   * @param tbf Factory for purely transient temporary buckets; used by short-lived operations.
-   * @param tracker Persistent file tracker that records files created by client requests so they
-   *     can be recovered or cleaned safely.
-   * @param hq Background healing queue for deferred repairs or follow-up work emitted by requests.
-   * @param uskManager Manager for USK coordination and updates required by some client workflows.
-   * @param strongRandom Cryptographically strong random source suitable for keys and protocol
-   *     randomness.
-   * @param fastWeakRandom Non-cryptographic random for jitter/backoff and UI-level randomness; do
-   *     not use for secrets.
-   * @param ticker Lightweight scheduler for timed jobs and delayed execution used by the client.
-   * @param memoryLimitedJobRunner Runner for memory-intensive tasks (e.g., FEC) with resource
-   *     limiting to avoid exhausting available memory.
-   * @param fg Filename generator for transient paths created by client operations.
-   * @param persistentFG Filename generator for persistent on-disk artifacts that must survive
-   *     restarts.
-   * @param rafFactory Factory producing random-access buffers for transient data paths.
-   * @param persistentRAFFactory Factory producing random-access buffers for persistent data paths.
-   * @param fileRAFTransient Random-access file factory for transient files.
-   * @param fileRAFPersistent Random-access file factory for persistent files.
-   * @param rc Compressor implementation used by client code paths when compression is applied.
-   * @param checker Datastore checker utility available to client-layer operations.
-   * @param persistentRoot Persistent request root coordinating durable request state.
-   * @param cryptoSecretTransient Transient master secret used for cryptographic operations this
-   *     run.
-   * @param linkFilterExceptionProvider Provider surfacing link filter exceptions for client code.
-   * @param defaultPersistentFetchContext Template fetch context used when creating persistent fetch
-   *     operations.
-   * @param defaultPersistentInsertContext Template insert context used when creating persistent
-   *     inserts.
-   * @param config Effective configuration backing client-layer decisions and defaults.
+   * @param runtime Runtime executors, schedulers, and randomness sources used by the client layer.
+   * @param storageFactories Storage factories and filename generators for transient and persistent
+   *     artifacts.
+   * @param rafFactories Random-access buffer factories for transient and persistent buffers.
+   * @param services Shared service collaborators such as archive/healing resources and managers.
+   * @param defaults Default fetch/insert contexts and configuration backing client operations.
    */
   public ClientContext(
       long bootID,
-      ClientLayerPersister jobRunner,
-      PriorityAwareExecutor mainExecutor,
-      ArchiveManager archiveManager,
-      PersistentTempBucketFactory ptbf,
-      TempBucketFactory tbf,
-      PersistentFileTracker tracker,
-      HealingQueue hq,
-      USKManager uskManager,
-      RandomSource strongRandom,
-      Random fastWeakRandom,
-      Ticker ticker,
-      MemoryLimitedJobRunner memoryLimitedJobRunner,
-      FilenameGenerator fg,
-      FilenameGenerator persistentFG,
-      LockableRandomAccessBufferFactory rafFactory,
-      LockableRandomAccessBufferFactory persistentRAFFactory,
-      FileRandomAccessBufferFactory fileRAFTransient,
-      FileRandomAccessBufferFactory fileRAFPersistent,
-      RealCompressor rc,
-      DatastoreChecker checker,
-      PersistentRequestRoot persistentRoot,
-      MasterSecret cryptoSecretTransient,
-      LinkFilterExceptionProvider linkFilterExceptionProvider,
-      FetchContext defaultPersistentFetchContext,
-      InsertContext defaultPersistentInsertContext,
-      Config config) {
+      ClientContextRuntime runtime,
+      ClientContextStorageFactories storageFactories,
+      ClientContextRafFactories rafFactories,
+      ClientContextServices services,
+      ClientContextDefaults defaults) {
     this.bootID = bootID;
-    this.jobRunner = jobRunner;
-    this.mainExecutorInternal = mainExecutor;
-    this.random = strongRandom;
-    this.archiveManager = archiveManager;
-    this.persistentBucketFactory = ptbf;
-    this.persistentFileTracker = tracker;
-    this.tempBucketFactory = tbf;
-    this.healingQueue = hq;
-    this.uskManager = uskManager;
-    this.fastWeakRandom = fastWeakRandom;
-    this.ticker = ticker;
-    this.fg = fg;
-    this.persistentFG = persistentFG;
-    this.persistentRAFFactory = persistentRAFFactory;
-    this.fileRAFPersistent = fileRAFPersistent;
-    this.fileRAFTransient = fileRAFTransient;
-    this.rc = rc;
-    this.checker = checker;
-    this.linkFilterExceptionProvider = linkFilterExceptionProvider;
-    this.memoryLimitedJobRunner = memoryLimitedJobRunner;
-    this.tempRAFFactory = rafFactory;
-    this.persistentRoot = persistentRoot;
+    this.jobRunner = runtime.jobRunner();
+    this.mainExecutorInternal = runtime.mainExecutor();
+    this.random = runtime.strongRandom();
+    this.archiveManager = services.resources().archiveManager();
+    this.persistentBucketFactory = storageFactories.persistentBucketFactory();
+    this.persistentFileTracker = storageFactories.persistentFileTracker();
+    this.tempBucketFactory = storageFactories.tempBucketFactory();
+    this.healingQueue = services.resources().healingQueue();
+    this.uskManager = services.uskManager();
+    this.fastWeakRandom = runtime.fastWeakRandom();
+    this.ticker = runtime.ticker();
+    this.fg = storageFactories.filenameGenerator();
+    this.persistentFG = storageFactories.persistentFilenameGenerator();
+    this.persistentRAFFactory = rafFactories.persistentRAFFactory();
+    this.fileRAFPersistent = storageFactories.fileRAFPersistent();
+    this.fileRAFTransient = storageFactories.fileRAFTransient();
+    this.rc = services.compressor();
+    this.checker = services.checker();
+    this.linkFilterExceptionProvider = services.linkFilterExceptionProvider();
+    this.memoryLimitedJobRunner = runtime.memoryLimitedJobRunner();
+    this.tempRAFFactory = rafFactories.tempRAFFactory();
+    this.persistentRoot = services.persistentRoot();
     this.dummyJobRunner = new DummyJobRunner(mainExecutorInternal, this);
-    this.defaultPersistentFetchContext = defaultPersistentFetchContext;
-    this.defaultPersistentInsertContext = defaultPersistentInsertContext;
-    this.cryptoSecretTransient = cryptoSecretTransient;
-    this.config = config;
+    this.defaultPersistentFetchContext = defaults.defaultPersistentFetchContext();
+    this.defaultPersistentInsertContext = defaults.defaultPersistentInsertContext();
+    this.cryptoSecretTransient = runtime.cryptoSecretTransient();
+    this.config = defaults.config();
   }
 
   /**
@@ -419,8 +366,8 @@ public class ClientContext {
    * @param getter The getter to start; must be configured and not already running.
    * @throws FetchException If the request is transient and fails to start due to validation or
    *     immediate setup conditions.
-   * @throws PersistenceDisabledException If persistence would be required but is disabled or
-   *     unavailable at this time.
+   * @throws PersistenceDisabledException If persistence was required but is disabled or unavailable
+   *     at this time.
    */
   public void start(final ClientGetter getter) throws FetchException, PersistenceDisabledException {
     if (getter.persistent()) {
@@ -451,8 +398,8 @@ public class ClientContext {
    * @param inserter The manifest putter to start; must not have been started before.
    * @throws InsertException If the insert is transient and fails to start due to validation or
    *     immediate setup conditions.
-   * @throws PersistenceDisabledException If persistence would be required but is currently disabled
-   *     or locked.
+   * @throws PersistenceDisabledException If persistence was required but is currently disabled or
+   *     locked.
    */
   public void start(final BaseManifestPutter inserter)
       throws InsertException, PersistenceDisabledException {

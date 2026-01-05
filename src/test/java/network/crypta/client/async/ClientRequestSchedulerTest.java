@@ -26,6 +26,7 @@ import java.util.Random;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
 import network.crypta.node.BaseSendableGet;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.LowLevelGetException;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.node.Node;
@@ -67,32 +68,13 @@ class ClientRequestSchedulerTest {
     context =
         new ClientContext(
             1L,
-            jobRunner,
-            mainExecutor,
-            /* archiveManager */ null,
-            /* ptbf */ null,
-            /* tbf */ null,
-            /* tracker */ null,
-            /* healingQueue */ null,
-            /* uskManager */ null,
-            /* strongRandom */ random,
-            /* fastWeakRandom */ new Random(0L),
-            /* ticker */ ticker,
-            /* memoryLimitedJobRunner */ null,
-            /* fg */ null,
-            /* persistentFG */ null,
-            /* rafFactory */ null,
-            /* persistentRAFFactory */ null,
-            /* fileRAFTransient */ null,
-            /* fileRAFPersistent */ null,
-            /* rc */ null,
-            /* checker */ datastoreChecker,
-            /* persistentRoot */ null,
-            /* cryptoSecretTransient */ null,
-            /* linkFilterExceptionProvider */ null,
-            /* defaultPersistentFetchContext */ null,
-            /* defaultPersistentInsertContext */ null,
-            /* config */ null);
+            new ClientContextRuntime(
+                jobRunner, mainExecutor, null, ticker, random, new Random(0L), null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, datastoreChecker, null, null),
+            new ClientContextDefaults(null, null, null));
 
     when(core.getStoreChecker()).thenReturn(datastoreChecker);
   }

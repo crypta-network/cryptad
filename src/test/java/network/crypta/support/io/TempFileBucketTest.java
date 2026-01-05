@@ -21,6 +21,12 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 import org.junit.jupiter.api.AfterEach;
@@ -200,32 +206,19 @@ class TempFileBucketTest extends BucketTestBase {
     ClientContext context =
         new ClientContext(
             0L,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            seededSecureRandom(1),
-            null,
-            null,
-            new FilenameGenerator(seededSecureRandom(2), false, tempDir.toFile(), "trans-"),
-            gen,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
+            new ClientContextRuntime(null, null, null, null, null, seededSecureRandom(1), null),
+            new ClientContextStorageFactories(
+                null,
+                null,
+                null,
+                new FilenameGenerator(seededSecureRandom(2), false, tempDir.toFile(), "trans-"),
+                gen,
+                null,
+                null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
 
     try (TempFileBucket bucket = new TempFileBucket()) {
       bucket.filenameID = id; // package-private field, same package
@@ -258,32 +251,19 @@ class TempFileBucketTest extends BucketTestBase {
       ClientContext context =
           new ClientContext(
               0L,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              seededSecureRandom(10),
-              null,
-              null,
-              new FilenameGenerator(seededSecureRandom(11), false, tempDir.toFile(), "trans-"),
-              spyGen,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null);
+              new ClientContextRuntime(null, null, null, null, null, seededSecureRandom(10), null),
+              new ClientContextStorageFactories(
+                  null,
+                  null,
+                  null,
+                  new FilenameGenerator(seededSecureRandom(11), false, tempDir.toFile(), "trans-"),
+                  spyGen,
+                  null,
+                  null),
+              new ClientContextRafFactories(null, null),
+              new ClientContextServices(
+                  new ClientContextResources(null, null), null, null, null, null, null),
+              new ClientContextDefaults(null, null, null));
 
       // Act
       bucket.innerResume(context);
@@ -304,32 +284,19 @@ class TempFileBucketTest extends BucketTestBase {
       ClientContext context =
           new ClientContext(
               0L,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              seededSecureRandom(12),
-              null,
-              null,
-              new FilenameGenerator(seededSecureRandom(13), false, tempDir.toFile(), "trans-"),
-              generatorMock,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null);
+              new ClientContextRuntime(null, null, null, null, null, seededSecureRandom(12), null),
+              new ClientContextStorageFactories(
+                  null,
+                  null,
+                  null,
+                  new FilenameGenerator(seededSecureRandom(13), false, tempDir.toFile(), "trans-"),
+                  generatorMock,
+                  null,
+                  null),
+              new ClientContextRafFactories(null, null),
+              new ClientContextServices(
+                  new ClientContextResources(null, null), null, null, null, null, null),
+              new ClientContextDefaults(null, null, null));
 
       // Act / Assert
       assertThrows(ResumeFailedException.class, () -> bucket.innerResume(context));

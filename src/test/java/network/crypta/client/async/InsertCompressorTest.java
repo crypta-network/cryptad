@@ -26,6 +26,7 @@ import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.FreenetURI;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.RandomAccessBucket;
@@ -141,51 +142,32 @@ class InsertCompressorTest {
     // Provide minimal but valid defaults for required ctor parameters; most are unused in tests
     return new ClientContext(
         /*bootID*/ 1L,
-        /*jobRunner*/ jobRunner,
-        /*mainExecutor*/ mainExec,
-        /*archiveManager*/ null,
-        /*ptbf*/ null,
-        /*tbf*/ null,
-        /*tracker*/ null,
-        /*hq*/ null,
-        /*uskManager*/ null,
-        /*strongRandom*/ null,
-        /*fastWeakRandom*/ new Random(0),
-        /*ticker*/ null,
-        /*memoryLimitedJobRunner*/ null,
-        /*fg*/ null,
-        /*persistentFG*/ null,
-        /*rafFactory*/ null,
-        /*persistentRAFFactory*/ null,
-        /*fileRAFTransient*/ null,
-        /*fileRAFPersistent*/ null,
-        /*rc*/ rc,
-        /*checker*/ null,
-        /*persistentRoot*/ null,
-        /*cryptoSecretTransient*/ null,
-        /*linkFilterExceptionProvider*/ null,
-        /*defaultPersistentFetchContext*/
-        new network.crypta.client.FetchContext(
-            FetchContextOptions.builder()
-                .limits(0L, 0L, 0)
-                .archiveLimits(1, 0, 0, false)
-                .retryLimits(0, 0, 0)
-                .splitfileLimits(false, 0, 0)
-                .behavior(false, false, false)
-                .clientOptions(new SimpleEventProducer(), true, false)
-                .filterOverrides(null, null, null)
-                .build()),
-        /*defaultPersistentInsertContext*/
-        new InsertContext(
-            InsertContextOptions.builder()
-                .retryLimits(0, 0)
-                .splitfileSegmentLimits(128, 128)
-                .clientOptions(new SimpleEventProducer(), false, false, false)
-                .compressorDescriptor(Compressor.DEFAULT_COMPRESSORDESCRIPTOR)
-                .redundancy(0, 0)
-                .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
-                .build()),
-        /*config*/ config);
+        new ClientContextRuntime(jobRunner, mainExec, null, null, null, new Random(0), null),
+        new ClientContextStorageFactories(null, null, null, null, null, null, null),
+        new ClientContextRafFactories(null, null),
+        new ClientContextServices(
+            new ClientContextResources(null, null), null, rc, null, null, null),
+        new ClientContextDefaults(
+            new network.crypta.client.FetchContext(
+                FetchContextOptions.builder()
+                    .limits(0L, 0L, 0)
+                    .archiveLimits(1, 0, 0, false)
+                    .retryLimits(0, 0, 0)
+                    .splitfileLimits(false, 0, 0)
+                    .behavior(false, false, false)
+                    .clientOptions(new SimpleEventProducer(), true, false)
+                    .filterOverrides(null, null, null)
+                    .build()),
+            new InsertContext(
+                InsertContextOptions.builder()
+                    .retryLimits(0, 0)
+                    .splitfileSegmentLimits(128, 128)
+                    .clientOptions(new SimpleEventProducer(), false, false, false)
+                    .compressorDescriptor(Compressor.DEFAULT_COMPRESSORDESCRIPTOR)
+                    .redundancy(0, 0)
+                    .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
+                    .build()),
+            config));
   }
 
   private static InsertContext makeInsertCtx(String compressorDescriptor) {

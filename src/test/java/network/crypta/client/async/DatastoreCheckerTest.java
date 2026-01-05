@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.Node;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
@@ -351,33 +352,19 @@ class DatastoreCheckerTest {
     ClientContext context =
         new ClientContext(
             1L,
-            jobRunner,
-            mainExec,
-            null, // ArchiveManager
-            null, // PersistentTempBucketFactory
-            null, // TempBucketFactory
-            null, // PersistentFileTracker
-            null, // HealingQueue
-            null, // USKManager
-            null, // RandomSource strongRandom
-            new SecureRandom(), // fastWeakRandom (secure for Sonar rule)
-            null, // Ticker
-            null, // MemoryLimitedJobRunner
-            null, // FilenameGenerator fg
-            null, // FilenameGenerator persistentFG
-            null, // LockableRandomAccessBufferFactory rafFactory
-            null, // LockableRandomAccessBufferFactory persistentRAFFactory
-            null, // FileRandomAccessBufferFactory fileRAFTransient
-            null, // FileRandomAccessBufferFactory fileRAFPersistent
-            null, // RealCompressor rc
-            null, // DatastoreChecker checker
-            null, // PersistentRequestRoot
-            null, // MasterSecret cryptoSecretTransient
-            null, // LinkFilterExceptionProvider
-            null, // defaultPersistentFetchContext
-            null, // defaultPersistentInsertContext
-            null // Config
-            );
+            new ClientContextRuntime(
+                jobRunner,
+                mainExec,
+                null,
+                null,
+                null,
+                new SecureRandom(), // fastWeakRandom (secure for Sonar rule)
+                null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
 
     DatastoreChecker checker = new DatastoreChecker(node, true, executor, THREAD_NAME);
     checker.setContext(context);

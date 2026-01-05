@@ -25,6 +25,12 @@ import java.security.Security;
 import java.util.Arrays;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
@@ -370,8 +376,13 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
     ClientContext context =
         new ClientContext(
-            0, null, null, null, null, null, null, null, null, null, r, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null);
+            0,
+            new ClientContextRuntime(null, null, null, null, null, r, null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
     context.setPersistentMasterSecret(secret);
     EncryptedRandomAccessBucket restored =
         (EncryptedRandomAccessBucket)
@@ -410,8 +421,13 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
     DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()));
     ClientContext context =
         new ClientContext(
-            0, null, null, null, null, null, null, null, null, null, r, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null, null, null);
+            0,
+            new ClientContextRuntime(null, null, null, null, null, r, null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), null, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
     context.setPersistentMasterSecret(secret);
     ObjectInputStream ois = new ObjectInputStream(dis);
     EncryptedRandomAccessBucket restored = (EncryptedRandomAccessBucket) ois.readObject();
@@ -454,8 +470,13 @@ class EncryptedRandomAccessBucketTest extends BucketTestBase {
       EncryptedRandomAccessBucket restored = (EncryptedRandomAccessBucket) ois.readObject();
       ClientContext context =
           new ClientContext(
-              0, null, null, null, null, null, null, null, null, null, r, null, null, null, null,
-              null, null, null, null, null, null, null, null, null, null, null, null);
+              0,
+              new ClientContextRuntime(null, null, null, null, null, r, null),
+              new ClientContextStorageFactories(null, null, null, null, null, null, null),
+              new ClientContextRafFactories(null, null),
+              new ClientContextServices(
+                  new ClientContextResources(null, null), null, null, null, null, null),
+              new ClientContextDefaults(null, null, null));
       context.setPersistentMasterSecret(secret);
       restored.onResume(context);
       assertEquals(buf.length, restored.size());

@@ -26,6 +26,7 @@ import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.USK;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -165,32 +166,34 @@ class USKSparseProxyCallbackTest {
       TempBucketFactory tbf) {
     return new ClientContext(
         1L,
-        jobRunner,
-        new DirectExecutor(),
-        Mockito.mock(ArchiveManager.class),
-        ptbf,
-        tbf,
-        Mockito.mock(PersistentFileTracker.class),
-        Mockito.mock(HealingQueue.class),
-        uskManager,
-        Mockito.mock(RandomSource.class),
-        new Random(123),
-        new DirectTicker(),
-        Mockito.mock(MemoryLimitedJobRunner.class),
-        Mockito.mock(FilenameGenerator.class),
-        Mockito.mock(FilenameGenerator.class),
-        Mockito.mock(LockableRandomAccessBufferFactory.class),
-        Mockito.mock(LockableRandomAccessBufferFactory.class),
-        Mockito.mock(FileRandomAccessBufferFactory.class),
-        Mockito.mock(FileRandomAccessBufferFactory.class),
-        Mockito.mock(RealCompressor.class),
-        Mockito.mock(DatastoreChecker.class),
-        Mockito.mock(PersistentRequestRoot.class),
-        Mockito.mock(MasterSecret.class),
-        linkFilterExceptionProvider,
-        defaultPF,
-        defaultPI,
-        Mockito.mock(Config.class));
+        new ClientContextRuntime(
+            jobRunner,
+            new DirectExecutor(),
+            Mockito.mock(MemoryLimitedJobRunner.class),
+            new DirectTicker(),
+            Mockito.mock(RandomSource.class),
+            new Random(123),
+            Mockito.mock(MasterSecret.class)),
+        new ClientContextStorageFactories(
+            ptbf,
+            tbf,
+            Mockito.mock(PersistentFileTracker.class),
+            Mockito.mock(FilenameGenerator.class),
+            Mockito.mock(FilenameGenerator.class),
+            Mockito.mock(FileRandomAccessBufferFactory.class),
+            Mockito.mock(FileRandomAccessBufferFactory.class)),
+        new ClientContextRafFactories(
+            Mockito.mock(LockableRandomAccessBufferFactory.class),
+            Mockito.mock(LockableRandomAccessBufferFactory.class)),
+        new ClientContextServices(
+            new ClientContextResources(
+                Mockito.mock(ArchiveManager.class), Mockito.mock(HealingQueue.class)),
+            uskManager,
+            Mockito.mock(RealCompressor.class),
+            Mockito.mock(DatastoreChecker.class),
+            Mockito.mock(PersistentRequestRoot.class),
+            linkFilterExceptionProvider),
+        new ClientContextDefaults(defaultPF, defaultPI, Mockito.mock(Config.class)));
   }
 
   // ---------------- Mocks and test fixture ----------------

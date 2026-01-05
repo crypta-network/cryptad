@@ -21,6 +21,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.USK;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.compress.Compressor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,33 +45,12 @@ class USKProxyCompletionCallbackTest {
     context =
         new ClientContext(
             0L, // bootID
-            null, // ClientLayerPersister jobRunner
-            null, // PriorityAwareExecutor mainExecutor
-            null, // ArchiveManager archiveManager
-            null, // PersistentTempBucketFactory ptbf
-            null, // TempBucketFactory tbf
-            null, // PersistentFileTracker tracker
-            null, // HealingQueue hq
-            uskManager, // USKManager
-            null, // RandomSource strongRandom
-            null, // Random fastWeakRandom
-            null, // Ticker ticker
-            null, // MemoryLimitedJobRunner
-            null, // FilenameGenerator fg
-            null, // FilenameGenerator persistentFG
-            null, // LockableRandomAccessBufferFactory rafFactory
-            null, // LockableRandomAccessBufferFactory persistentRAFFactory
-            null, // FileRandomAccessBufferFactory fileRAFTransient
-            null, // FileRandomAccessBufferFactory fileRAFPersistent
-            null, // RealCompressor rc
-            null, // DatastoreChecker checker
-            null, // PersistentRequestRoot persistentRoot
-            null, // MasterSecret cryptoSecretTransient
-            null, // LinkFilterExceptionProvider
-            null, // FetchContext defaultPersistentFetchContext
-            null, // InsertContext defaultPersistentInsertContext
-            null // Config config
-            );
+            new ClientContextRuntime(null, null, null, null, null, null, null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), uskManager, null, null, null, null),
+            new ClientContextDefaults(null, null, null));
   }
 
   private static byte[] bytes32(byte value) {
