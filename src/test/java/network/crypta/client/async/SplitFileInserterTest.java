@@ -23,6 +23,7 @@ import network.crypta.client.Metadata;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.RequestClient;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
@@ -180,32 +181,25 @@ class SplitFileInserterTest {
     ClientContext ctx =
         new ClientContext(
             1L,
-            runner,
-            immediateExecutor,
-            archiveManager,
-            ptbf,
-            tbf,
-            tracker,
-            hq,
-            uskManager,
-            strongRandom,
-            fastWeakRandom,
-            ticker,
-            memLimited,
-            fg,
-            persistentFG,
-            rafFactory,
-            persistentRAFFactory,
-            fileRAFTransient,
-            fileRAFPersistent,
-            rc,
-            dsChecker,
-            persistentRoot,
-            masterSecret,
-            linkFilterProvider,
-            fetchCtx,
-            insertCtx,
-            config);
+            new ClientContextRuntime(
+                runner,
+                immediateExecutor,
+                memLimited,
+                ticker,
+                strongRandom,
+                fastWeakRandom,
+                masterSecret),
+            new ClientContextStorageFactories(
+                ptbf, tbf, tracker, fg, persistentFG, fileRAFTransient, fileRAFPersistent),
+            new ClientContextRafFactories(rafFactory, persistentRAFFactory),
+            new ClientContextServices(
+                new ClientContextResources(archiveManager, hq),
+                uskManager,
+                rc,
+                dsChecker,
+                persistentRoot,
+                linkFilterProvider),
+            new ClientContextDefaults(fetchCtx, insertCtx, config));
 
     // Spy to stub scheduler access used by SplitFileInserter's constructor.
     ClientContext spyCtx = Mockito.spy(ctx);

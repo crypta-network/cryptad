@@ -25,6 +25,12 @@ import java.io.OutputStream;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.api.RandomAccessBucket;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -255,32 +261,19 @@ class PersistentTempFileBucketTest {
       context =
           new ClientContext(
               0L,
-              null,
-              null,
-              null,
-              ptbfSpy,
-              null,
-              ptbfSpy,
-              null,
-              null,
-              null,
-              seededSecureRandom(1),
-              null,
-              null,
-              new FilenameGenerator(seededSecureRandom(2), false, tempDir.toFile(), "trans-"),
-              generator,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null,
-              null);
+              new ClientContextRuntime(null, null, null, null, null, seededSecureRandom(1), null),
+              new ClientContextStorageFactories(
+                  ptbfSpy,
+                  null,
+                  ptbfSpy,
+                  new FilenameGenerator(seededSecureRandom(2), false, tempDir.toFile(), "trans-"),
+                  generator,
+                  null,
+                  null),
+              new ClientContextRafFactories(null, null),
+              new ClientContextServices(
+                  new ClientContextResources(null, null), null, null, null, null, null),
+              new ClientContextDefaults(null, null, null));
 
       // Act
       bucket.innerResume(context);

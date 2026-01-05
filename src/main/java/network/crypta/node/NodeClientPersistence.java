@@ -6,6 +6,11 @@ import java.util.Random;
 import network.crypta.client.FetchContext;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.ClientLayerPersister;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.USKManager;
@@ -340,34 +345,33 @@ public final class NodeClientPersistence {
       FetchContext defaultFetchContext,
       InsertContext defaultInsertContext) {
     DiskSpaceCheckingRandomAccessBufferFactory checker = requireDiskChecker();
+    ClientContextRuntime runtime =
+        new ClientContextRuntime(
+            clientLayerPersister,
+            executor,
+            memoryLimitedJobRunner,
+            ticker,
+            random,
+            fastWeakRandom,
+            cryptoSecretTransient);
+    ClientContextStorageFactories storageFactories =
+        new ClientContextStorageFactories(
+            persistentTempBucketFactory,
+            tempBucketFactory,
+            persistentTempBucketFactory,
+            tempFilenameGenerator,
+            persistentFilenameGenerator,
+            fileRafTransient,
+            checker);
+    ClientContextRafFactories rafFactories =
+        new ClientContextRafFactories(tempRafFactory, persistentRafFactory);
+    ClientContextServices services =
+        new ClientContextServices(
+            resources, uskManager, compressor, storeChecker, persistentRoot, init.toadlets());
+    ClientContextDefaults defaults =
+        new ClientContextDefaults(defaultFetchContext, defaultInsertContext, init.config());
     return new ClientContext(
-        node.getBootId(),
-        clientLayerPersister,
-        executor,
-        resources.getArchiveManager(),
-        persistentTempBucketFactory,
-        tempBucketFactory,
-        persistentTempBucketFactory,
-        resources.getHealingQueue(),
-        uskManager,
-        random,
-        fastWeakRandom,
-        ticker,
-        memoryLimitedJobRunner,
-        tempFilenameGenerator,
-        persistentFilenameGenerator,
-        tempRafFactory,
-        persistentRafFactory,
-        fileRafTransient,
-        checker,
-        compressor,
-        storeChecker,
-        persistentRoot,
-        cryptoSecretTransient,
-        init.toadlets(),
-        defaultFetchContext,
-        defaultInsertContext,
-        init.config());
+        node.getBootId(), runtime, storageFactories, rafFactories, services, defaults);
   }
 
   private DiskSpaceCheckingRandomAccessBufferFactory requireDiskChecker() {

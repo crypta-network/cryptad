@@ -26,6 +26,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
 import network.crypta.keys.FreenetURI;
+import network.crypta.node.ClientContextResources;
 import network.crypta.node.KeysFetchingLocally;
 import network.crypta.node.LowLevelPutException;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -108,33 +109,20 @@ class SingleBlockInserterTest {
     MemoryLimitedJobRunner mlr = new MemoryLimitedJobRunner(1, 1, directExec, 1);
     return new ClientContext(
         /*bootID*/ 1L,
-        /*jobRunner*/ null,
-        /*mainExecutor*/ directExec,
-        /*archiveManager*/ null,
-        /*ptbf*/ null,
-        /*tbf*/ null,
-        /*tracker*/ null,
-        /*healingQueue*/ null,
-        /*uskManager*/ null,
-        /*strongRandom*/ new DummyRandomSource(123L),
-        /*fastWeakRandom*/ new Random(42L),
-        /*ticker*/ new NoopTicker(directExec),
-        /*memoryLimitedJobRunner*/ mlr,
-        /*fg*/ null,
-        /*persistentFG*/ null,
-        /*rafFactory*/ null,
-        /*persistentRAFFactory*/ null,
-        /*fileRAFTransient*/ null,
-        /*fileRAFPersistent*/ null,
-        /*rc*/ null,
-        /*checker*/ null,
-        /*persistentRoot*/ null,
-        /*cryptoSecretTransient*/ null,
-        /*linkFilterExceptionProvider*/ null,
-        /*defaultPersistentFetchContext*/ null,
-        /*defaultPersistentInsertContext*/ new InsertContext(
-            defaultInsertCtx, new SimpleEventProducer()),
-        /*config*/ null);
+        new ClientContextRuntime(
+            null,
+            directExec,
+            mlr,
+            new NoopTicker(directExec),
+            new DummyRandomSource(123L),
+            new Random(42L),
+            null),
+        new ClientContextStorageFactories(null, null, null, null, null, null, null),
+        new ClientContextRafFactories(null, null),
+        new ClientContextServices(
+            new ClientContextResources(null, null), null, null, null, null, null),
+        new ClientContextDefaults(
+            null, new InsertContext(defaultInsertCtx, new SimpleEventProducer()), null));
   }
 
   // --- Tests ---

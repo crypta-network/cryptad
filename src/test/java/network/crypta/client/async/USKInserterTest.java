@@ -27,6 +27,7 @@ import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
 import network.crypta.keys.Key;
 import network.crypta.keys.USK;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.BeforeEach;
@@ -134,45 +135,33 @@ class USKInserterTest {
     context =
         new ClientContext(
             1L,
-            Mockito.mock(ClientLayerPersister.class),
-            new InlineExecutor(),
-            null, // ArchiveManager
-            null, // PersistentTempBucketFactory
-            null, // TempBucketFactory
-            null, // PersistentFileTracker
-            null, // HealingQueue
-            uskManager,
-            new DummyRandomSource(),
-            new SecureRandom(),
-            null, // Ticker
-            null, // MemoryLimitedJobRunner
-            null, // FilenameGenerator fg
-            null, // FilenameGenerator persistentFG
-            null, // LockableRandomAccessBufferFactory rafFactory
-            null, // LockableRandomAccessBufferFactory persistentRAFFactory
-            null, // FileRandomAccessBufferFactory transient
-            null, // FileRandomAccessBufferFactory persistent
-            null, // RealCompressor
-            null, // DatastoreChecker
-            null, // PersistentRequestRoot
-            null, // MasterSecret transient
-            null, // LinkFilterExceptionProvider
-            // Default persistent contexts used only when building fetchers internally; not
-            // exercised
-            // in these tests.
-            new FetchContext(
-                FetchContextOptions.builder()
-                    .limits(0, 0, 0)
-                    .archiveLimits(1, 0, 0, true)
-                    .retryLimits(0, 0, 0)
-                    .splitfileLimits(false, 0, 0)
-                    .behavior(false, false, false)
-                    .clientOptions(new SimpleEventProducer(), false, false)
-                    .filterOverrides(null, null, null)
-                    .build()),
-            newInsertContext(),
-            null // Config
-            );
+            new ClientContextRuntime(
+                Mockito.mock(ClientLayerPersister.class),
+                new InlineExecutor(),
+                null,
+                null,
+                new DummyRandomSource(),
+                new SecureRandom(),
+                null),
+            new ClientContextStorageFactories(null, null, null, null, null, null, null),
+            new ClientContextRafFactories(null, null),
+            new ClientContextServices(
+                new ClientContextResources(null, null), uskManager, null, null, null, null),
+            new ClientContextDefaults(
+                // Default persistent contexts used only when building fetchers internally; not
+                // exercised in these tests.
+                new FetchContext(
+                    FetchContextOptions.builder()
+                        .limits(0, 0, 0)
+                        .archiveLimits(1, 0, 0, true)
+                        .retryLimits(0, 0, 0)
+                        .splitfileLimits(false, 0, 0)
+                        .behavior(false, false, false)
+                        .clientOptions(new SimpleEventProducer(), false, false)
+                        .filterOverrides(null, null, null)
+                        .build()),
+                newInsertContext(),
+                null));
   }
 
   // Helpers in tests create per-test SSKs to build consistent public/insertable USK URIs.

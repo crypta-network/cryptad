@@ -15,7 +15,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientContextDefaults;
+import network.crypta.client.async.ClientContextRafFactories;
+import network.crypta.client.async.ClientContextRuntime;
+import network.crypta.client.async.ClientContextServices;
+import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.ClientRequestSelector;
+import network.crypta.node.ClientContextResources;
 import network.crypta.support.RemoveRandom.RemoveRandomReturn;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,33 +40,12 @@ class RandomGrabArrayTest {
     var ticker = new network.crypta.support.CheatingTicker(exec);
     return new ClientContext(
         0L,
-        null, // ClientLayerPersister
-        exec,
-        null, // ArchiveManager
-        null, // PersistentTempBucketFactory
-        null, // TempBucketFactory
-        null, // PersistentFileTracker
-        null, // HealingQueue
-        null, // USKManager
-        null, // RandomSource strongRandom
-        new Random(seed), // fastWeakRandom
-        ticker, // Ticker
-        null, // MemoryLimitedJobRunner
-        null, // FilenameGenerator
-        null, // FilenameGenerator persistent
-        null, // LockableRandomAccessBufferFactory temp
-        null, // LockableRandomAccessBufferFactory persistent
-        null, // FileRandomAccessBufferFactory transient
-        null, // FileRandomAccessBufferFactory persistent
-        null, // RealCompressor
-        null, // DatastoreChecker
-        null, // PersistentRequestRoot
-        null, // MasterSecret
-        null, // LinkFilterExceptionProvider
-        null, // FetchContext
-        null, // InsertContext
-        null // Config
-        );
+        new ClientContextRuntime(null, exec, null, ticker, null, new Random(seed), null),
+        new ClientContextStorageFactories(null, null, null, null, null, null, null),
+        new ClientContextRafFactories(null, null),
+        new ClientContextServices(
+            new ClientContextResources(null, null), null, null, null, null, null),
+        new ClientContextDefaults(null, null, null));
   }
 
   private static class TestItem implements RandomGrabArrayItem {
