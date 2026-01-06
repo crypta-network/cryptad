@@ -28,6 +28,7 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.node.subsystem.CryptoAndTransportParams;
 import network.crypta.node.subsystem.NodeBootstrap;
 import network.crypta.node.subsystem.NodeConfigManager;
 import network.crypta.node.subsystem.NodeMessagingSubsystem;
@@ -964,14 +965,15 @@ public class Node implements TimeSkewDetectorCallback {
 
     sortOrder =
         network.initCryptoAndTransport(
-            nodeConfig,
-            oldConfig,
-            sortOrder,
-            executor,
-            shutdownHook,
-            services.securityLevels(),
-            startupTime,
-            enableARKs);
+            new CryptoAndTransportParams(
+                nodeConfig,
+                oldConfig,
+                executor,
+                shutdownHook,
+                services.securityLevels(),
+                startupTime,
+                enableARKs),
+            sortOrder);
 
     // Bandwidth limit
 
