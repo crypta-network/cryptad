@@ -39,6 +39,7 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStats;
 import network.crypta.node.NodeStoreStatsProvider;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.node.stats.DataStoreInstanceType;
 import network.crypta.node.stats.DataStoreKeyType;
 import network.crypta.node.stats.DataStoreStats;
@@ -90,6 +91,17 @@ public final class NodeStorageSubsystem {
 
   /** Default slashdot cache size (must be at least MIN_SLASHDOT_CACHE_SIZE) */
   public static final long DEFAULT_SLASHDOT_CACHE_SIZE = 10L * 1024 * 1024;
+
+  /**
+   * Default persistence time (milliseconds) for the salted-hash store's slot filter backing
+   * buffers.
+   *
+   * <p>This mirrors {@link ResizablePersistentIntBuffer#DEFAULT_PERSISTENCE_TIME} but is exposed
+   * here so callers configuring storage do not need to depend on the low-level buffer
+   * implementation.
+   */
+  public static final int DEFAULT_SALT_HASH_SLOT_FILTER_PERSISTENCE_TIME =
+      ResizablePersistentIntBuffer.DEFAULT_PERSISTENCE_TIME;
 
   /** Estimated total bytes per logical key across all stores (sizing heuristic). */
   public static final int SIZE_PER_KEY =
@@ -1994,7 +2006,7 @@ public final class NodeStorageSubsystem {
             node.bootstrap().random(),
             maxKeys,
             storeUseSlotFilters,
-            node.getShutdownHook(),
+            SemiOrderedShutdownHook.get(),
             storePreallocate,
             storeSaltHashResizeOnStart && !lateStart,
             clientCacheMasterKey);

@@ -39,7 +39,6 @@ import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.pluginmanager.PluginManager;
-import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
 import network.crypta.support.Fields;
 import network.crypta.support.HexUtil;
 import network.crypta.support.PriorityAwareExecutor;
@@ -129,7 +128,7 @@ public class Node implements TimeSkewDetectorCallback {
   public static final double DECREMENT_AT_MAX_PROB = 0.5;
 
   // Send keepalives every 7-14 seconds. Will be acked and if necessary resent.
-  // Old behaviour was keepalives every 14-28. Even that was adequate for a 30-second
+  // Old behavior was keepalives every 14-28. Even that was adequate for a 30-second
   // timeout. Most nodes don't need to send keepalives because they are constantly busy,
   // this is only an issue for disabled darknet connections, very quiet private networks
   // etc.
@@ -192,8 +191,6 @@ public class Node implements TimeSkewDetectorCallback {
   /** Length in bytes for symmetric keys used by the node (e.g., AES‑256). */
   public static final int SYMMETRIC_KEY_LENGTH =
       32; // 256 bits - note that this isn't used everywhere to determine it
-
-  private final SemiOrderedShutdownHook shutdownHook;
 
   /**
    * For debugging/testing, set this to true to stop the probabilistic decrement at the edges of the
@@ -377,9 +374,15 @@ public class Node implements TimeSkewDetectorCallback {
    */
   private static final int MINIMUM_BANDWIDTH = 10 * 1024;
 
-  /*
-   * Gets minimum bandwidth in bytes considered usable.
+  /**
+   * Returns the minimum usable bandwidth limit in bytes per second.
    *
+   * <p>This accessor exposes the hard floor enforced by bandwidth configuration callbacks. Values
+   * below this threshold are treated as invalid because they would effectively stall node traffic.
+   * The threshold does not apply to the reserved input-bandwidth sentinel value {@code -1}, which
+   * is handled separately by the configuration logic. The method is pure and side-effect free.
+   *
+   * @return minimum acceptable bandwidth limit, expressed in bytes per second.
    * @see #MINIMUM_BANDWIDTH
    */
   public static int getMinimumBandwidth() {
@@ -429,6 +432,14 @@ public class Node implements TimeSkewDetectorCallback {
 
   private final Object writeNodeFileSync = new Object();
 
+  /**
+   * Writes the node identity file to disk using a backup-and-rename workflow.
+   *
+   * <p>The method serializes the current darknet identity field set to a {@code .bak} file, then
+   * moves the backup into place. Calls are serialized using an internal lock to avoid concurrent
+   * writes. Any I/O failures are logged and the method returns without throwing, so callers should
+   * not rely on it for transactional guarantees beyond the best-effort backup move.
+   */
   public void writeNodeFile() {
     synchronized (writeNodeFileSync) {
       writeNodeFile(
@@ -437,6 +448,13 @@ public class Node implements TimeSkewDetectorCallback {
     }
   }
 
+  /**
+   * Persists the opennet reference file through the network subsystem.
+   *
+   * <p>This is a convenience wrapper around {@link NodeNetworkSubsystem#writeOpennetFile()}. It
+   * emits no additional synchronization and assumes the underlying subsystem manages its own
+   * concurrency. Errors are handled within the network subsystem and are logged there.
+   */
   public void writeOpennetFile() {
     network.writeOpennetFile();
   }
@@ -478,20 +496,42 @@ public class Node implements TimeSkewDetectorCallback {
   }
 
   /**
-   * Entry point delegating to {@link NodeStarter}. Parses CLI arguments and boots the wrapper‑
-   * managed node process.
+   * Process entry point for launching the node under the wrapper.
    *
-   * @param args command‑line arguments passed to the node launcher. Unknown options are forwarded
-   *     to {@link NodeStarter} and may control wrapper behavior, config paths, or startup mode.
+   * <p>This method forwards arguments to {@link NodeStarter#main(String[])}, which handles wrapper
+   * integration, config parsing, and JVM lifecycle callbacks. It performs no validation locally and
+   * returns only after the wrapper has taken control of startup sequencing. Use this entry point in
+   * packaged distributions rather than constructing {@link Node} directly.
+   *
+   * @param args command-line arguments forwarded to the wrapper-managed launcher; may be empty.
    */
   public static void main(String[] args) {
     NodeStarter.main(args);
   }
 
+  /**
+   * Returns whether the node is running under the native Tanuki wrapper.
+   *
+   * <p>The check combines the presence of a {@link NodeStarter} instance with the wrapper runtime
+   * indicator. This is used to warn operators when the process is started in a way that bypasses
+   * wrapper supervision. The value can change only if the wrapper runtime state changes, which is
+   * not expected during normal operation.
+   *
+   * @return {@code true} when controlled by the native wrapper; {@code false} otherwise.
+   */
   public boolean isUsingWrapper() {
     return nodeStarter != null && WrapperManager.isControlledByNativeWrapper();
   }
 
+  /**
+   * Returns the {@link NodeStarter} associated with this node, if any.
+   *
+   * <p>The starter coordinates wrapper lifecycle callbacks and may be {@code null} in tests or
+   * custom bootstrap scenarios. Callers should treat the returned instance as node-owned and avoid
+   * invoking lifecycle methods directly unless they are part of the startup/shutdown flow.
+   *
+   * @return the associated {@link NodeStarter}, or {@code null} if not initialized.
+   */
   public NodeStarter getNodeStarter() {
     return nodeStarter;
   }
@@ -516,7 +556,6 @@ public class Node implements TimeSkewDetectorCallback {
       NodeStarter ns,
       PriorityAwareExecutor executor)
       throws NodeInitException {
-    this.shutdownHook = SemiOrderedShutdownHook.get();
     this.executor = executor;
     this.nodeStarter = ns;
     this.messaging = new NodeMessagingSubsystem();
@@ -598,7 +637,7 @@ public class Node implements TimeSkewDetectorCallback {
                 nodeConfig,
                 oldConfig,
                 executor,
-                shutdownHook,
+                SemiOrderedShutdownHook.get(),
                 services.securityLevels(),
                 startupTime,
                 enableARKs),
@@ -621,7 +660,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     loadOrInitNodeFile(nodeFile, nodeFileBackup);
 
     // Then read the peers
-    network.initPeers(shutdownHook);
+    network.initPeers(SemiOrderedShutdownHook.get());
 
     routing.init();
 
@@ -756,7 +795,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     nodeConfig.register(
         "storeSaltHashSlotFilterPersistenceTime",
-        ResizablePersistentIntBuffer.DEFAULT_PERSISTENCE_TIME,
+        NodeStorageSubsystem.DEFAULT_SALT_HASH_SLOT_FILTER_PERSISTENCE_TIME,
         sortOrder++,
         true,
         false,
@@ -800,7 +839,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     storage.initializeStoreSaltHashResizeOnStart(
         nodeConfig.getBoolean("storeSaltHashResizeOnStart"));
 
-    // Determine default data base again for storeDir (separate from earlier setup)
+    // Determine default database again for storeDir (separate from earlier setup)
     Path defaultDataBase = storage.defaultStoreBaseDir();
 
     storage.setStoreDir(
@@ -1071,13 +1110,17 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     LOG.info("Initializing Plugin Manager");
     services.setPluginManager(PluginManager.create(this, lastVersion));
 
-    shutdownHook.addEarlyJob(
-        new NativeThread("Shutdown plugins", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true) {
-          @Override
-          public void realRun() {
-            services.pluginManager().stop(SECONDS.toMillis(30)); // Consider making it configurable.
-          }
-        });
+    SemiOrderedShutdownHook.get()
+        .addEarlyJob(
+            new NativeThread(
+                "Shutdown plugins", NativeThread.PriorityLevel.HIGH_PRIORITY.value, true) {
+              @Override
+              public void realRun() {
+                services
+                    .pluginManager()
+                    .stop(SECONDS.toMillis(30)); // Consider making it configurable.
+              }
+            });
 
     // Note:
     // Short timeouts and JVM timeouts with nothing more said than the above have been seen...
@@ -1586,7 +1629,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
               if (val < MIN_UDP_MTU) throw new InvalidConfigValueException("Must be over 576");
               if (val > 1492)
                 throw new InvalidConfigValueException(
-                    "Larger than ethernet frame size unlikely to work!");
+                    "Larger than Ethernet frame size unlikely to work!");
               maxPacketSize = val;
             }
             network.updateMTU();
@@ -2044,10 +2087,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Sets up a program directory from configuration.
    *
-   * <p>Registers a path option in the provided {@link SubConfig}, applies defaults when the option
-   * is missing, and attempts to move/create the directory on disk. The option is persisted (forced
-   * write) so installers and first‑run wizards can pin locations reliably. Failures to create or
-   * move the directory surface as {@link NodeInitException} with a user‑oriented message.
+   * <p>This method wires a directory option into the installation configuration, applies a default
+   * when the option is absent, and resolves the on-disk location. The option is persisted
+   * immediately (forced write) because directory locations cannot be changed at runtime and
+   * installers rely on stable paths. The method then attempts to move or create the directory.
+   * Failures to create, move, or resolve the location are converted into {@link NodeInitException}
+   * with a user-facing message. It is safe to call once per directory option during startup.
    *
    * @param installConfig configuration section to register and read the directory option from.
    * @param cfgKey option key under which the directory path is stored.
@@ -2082,6 +2127,23 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return dir;
   }
 
+  /**
+   * Convenience overload for {@link #setupProgramDir(SubConfig, String, String, String, String,
+   * String)} with a default move error message.
+   *
+   * <p>This variant is used when no customized directory-move failure text is needed. It delegates
+   * to the full overload with a {@code null} move-error message, preserving the same persistence
+   * behavior and on-disk validation. Callers should still treat {@link NodeInitException} as fatal
+   * because it indicates the directory could not be created or validated.
+   *
+   * @param installConfig configuration section to register and read the directory option from.
+   * @param cfgKey option key under which the directory path is stored.
+   * @param defaultValue default path used when the option is unset; may be absolute or relative.
+   * @param shortdesc i18n key for a short description shown to users.
+   * @param longdesc i18n key for a longer description shown to users.
+   * @return a {@link ProgramDirectory} bound to the resolved path and callbacks.
+   * @throws NodeInitException if the directory cannot be created or set up.
+   */
   public ProgramDirectory setupProgramDir(
       SubConfig installConfig,
       String cfgKey,
@@ -2092,6 +2154,19 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return setupProgramDir(installConfig, cfgKey, defaultValue, shortdesc, longdesc, null);
   }
 
+  /**
+   * Starts the node's runtime subsystems and services.
+   *
+   * <p>This method transitions the node from initialized to running by starting network
+   * dispatchers, peers, routing maintenance, and service layers. It also starts the updater,
+   * applies startup logging, and persists configuration state. The call is not idempotent; callers
+   * should invoke it exactly once after construction. Startup ordering is significant, particularly
+   * for peer loading and dispatcher setup, so the method should not be interrupted or run
+   * concurrently.
+   *
+   * @param noSwaps when {@code true}, suppresses swap activity even if configured otherwise.
+   * @throws NodeInitException if a required subsystem fails to initialize or start.
+   */
   public void start(boolean noSwaps) throws NodeInitException {
     if (LOG.isTraceEnabled()) {
       LOG.trace("start(noSwaps={})", noSwaps);
@@ -2169,7 +2244,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns a human‑readable summary of current node status.
    *
-   * @return a multi‑line textual summary including peer and transfer information.
+   * <p>The summary includes peer connectivity information and the current number of transferring
+   * request senders. The exact formatting is intended for diagnostics or operator output rather
+   * than stable parsing. The method is read-only and performs no synchronization beyond the
+   * underlying subsystem accessors, so callers should tolerate minor race conditions in reported
+   * values.
+   *
+   * @return a multi-line textual summary including peer and transfer information.
    */
   public String getStatus() {
     return network.peerStatus() + routing.tracker().getNumTransferringRequestSenders() + '\n';
@@ -2178,7 +2259,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns a textual list of peers formatted for TMCI.
    *
-   * @return a string containing the current TMCI peer listing.
+   * <p>The output is intended for human consumption via TMCI and may be empty. When there are no
+   * peers, a placeholder string is returned to clarify the state. The method allocates a new string
+   * each call and should not be used as a high-frequency polling interface.
+   *
+   * @return a string containing the current TMCI peer listing, or a "No peers yet" placeholder.
    */
   public String getTMCIPeerList() {
     StringBuilder sb = new StringBuilder();
@@ -2191,7 +2276,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Attempts a graceful shutdown and then exits the JVM with the given code.
    *
-   * @param reason exit status code to return to the OS.
+   * <p>The method invokes {@link #park()} to quiesce subsystems, logs the shutdown reason, and then
+   * unconditionally terminates the JVM. Because it always calls {@link System#exit(int)} in a
+   * {@code finally} block, callers should assume the process will exit even if shutdown steps
+   * throw. This method should not be called from within shutdown hooks.
+   *
+   * @param reason exit status code to return to the OS; use {@code 0} for success.
    */
   @SuppressWarnings("finally")
   public void exit(int reason) {
@@ -2206,7 +2296,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Attempts a graceful shutdown and then exits the JVM (status 0).
    *
-   * @param reason textual reason recorded in logs.
+   * <p>This overload logs the provided reason string and always exits with status {@code 0}. It is
+   * intended for operator-initiated shutdowns where a human-readable reason is useful in logs. The
+   * method calls {@link #park()} and terminates the process in a {@code finally} block, so it does
+   * not return.
+   *
+   * @param reason textual reason recorded in logs; must be non-null for clarity.
    */
   @SuppressWarnings("finally")
   public void exit(String reason) {
@@ -2221,6 +2316,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Reports whether the node is in the process of shutting down.
    *
+   * <p>Once this flag becomes {@code true}, callers should avoid scheduling new background work or
+   * relying on ongoing network operations. The value transitions to {@code true} during {@link
+   * #park()} and is not reset.
+   *
    * @return {@code true} when shutdown has begun and new work should not be scheduled.
    */
   public boolean isStopping() {
@@ -2228,8 +2327,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Get the node into a state where it can be stopped safely May be called twice - once in exit
-   * (above) and then again from the wrapper triggered by calling System.exit(). Beware!
+   * Quiesces the node so it can be stopped safely.
+   *
+   * <p>The method is idempotent and may be called multiple times, including during wrapper-driven
+   * shutdown sequences. It broadcasts disconnects to peers, persists configuration, and flushes any
+   * persistent random seed data. It does not block for full subsystem shutdown and should be used
+   * as a best-effort transition into a safe-to-exit state rather than a full stop barrier.
    */
   public void park() {
     synchronized (this) {
@@ -2246,23 +2349,68 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /**
+   * Returns whether the node has completed startup and entered the running state.
+   *
+   * <p>The flag is set to {@code true} at the end of {@link #start(boolean)} and remains true for
+   * the remainder of the process lifetime. Callers can use it to gate UI updates or avoid
+   * displaying startup-specific warnings once the node is fully running.
+   *
+   * @return {@code true} if startup has completed; {@code false} otherwise.
+   */
   public boolean isHasStarted() {
     return hasStarted;
   }
 
+  /**
+   * Returns the filesystem path used to store extra peer data.
+   *
+   * <p>This directory is created during startup and contains queued node-to-node messages, peer
+   * notes, and related metadata. The path is returned as a string for display or logging purposes;
+   * callers that need file operations should convert it to a {@link File} or {@link Path}.
+   *
+   * @return absolute or resolved path string for the extra peer data directory.
+   */
   public String getExtraPeerDataDir() {
     return extraPeerDataDir.getPath();
   }
 
+  /**
+   * Indicates whether the node currently has any connected peers.
+   *
+   * <p>The returned value reflects a momentary snapshot of the peer manager state and may change
+   * immediately after the call. It is intended for UI or alert logic that needs to detect "no
+   * peers" conditions rather than for strict synchronization.
+   *
+   * @return {@code true} when no peers are connected; {@code false} otherwise.
+   */
   public boolean noConnectedPeers() {
     return !network.anyConnectedPeers();
   }
 
+  /**
+   * Returns whether advanced mode is enabled in the client UI.
+   *
+   * <p>Advanced mode controls the visibility of expert settings and diagnostics. If the client core
+   * is not yet initialized, this method returns {@code false}. The value reflects current UI
+   * configuration and does not affect underlying networking behavior directly.
+   *
+   * @return {@code true} when advanced mode is enabled; {@code false} otherwise.
+   */
   public boolean isAdvancedModeEnabled() {
     if (services.clientCore() == null) return false;
     return services.clientCore().isAdvancedModeEnabled();
   }
 
+  /**
+   * Returns whether FProxy JavaScript is enabled for this node.
+   *
+   * <p>The value is read from the client core configuration and reflects the current UI preference.
+   * It does not verify runtime policy enforcement, so callers should treat it as a configuration
+   * flag rather than a security boundary.
+   *
+   * @return {@code true} when FProxy JavaScript is enabled; {@code false} otherwise.
+   */
   public boolean isFProxyJavascriptEnabled() {
     return services.clientCore().isFProxyJavascriptEnabled();
   }
@@ -2273,9 +2421,25 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   // Consider moving this elsewhere
   private final Object statsSync = new Object();
 
-  /** The total number of bytes of real data i.e.&nbsp;payload sent by the node */
+  /**
+   * Total number of bytes of payload data sent by the node.
+   *
+   * <p>The counter tracks only real payload data and excludes protocol overhead. Updates are
+   * synchronized on a dedicated lock to avoid race conditions with reporting. The value is
+   * monotonic over the process lifetime and is not persisted across restarts.
+   */
   private long totalPayloadSent;
 
+  /**
+   * Accumulates payload bytes sent by the node.
+   *
+   * <p>Callers should supply the number of payload bytes (not including protocol overhead) for a
+   * completed send. The method performs a synchronized increment and does not validate the value,
+   * so callers must ensure the length is non-negative. It has no return value and is safe for
+   * concurrent use.
+   *
+   * @param len number of payload bytes sent; must be non-negative.
+   */
   public void sentPayload(int len) {
     synchronized (statsSync) {
       totalPayloadSent += len;
@@ -2283,9 +2447,13 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Get the total number of bytes of payload (real data) sent by the node
+   * Returns the total number of payload bytes sent by the node.
    *
-   * @return Total payload sent in bytes
+   * <p>The value reflects the cumulative sum of {@link #sentPayload(int)} calls and therefore
+   * represents payload only, not protocol overhead. It is a snapshot that may change immediately
+   * after the call due to concurrent sends. The counter is not persisted and resets on restart.
+   *
+   * @return total payload sent in bytes since process start.
    */
   public long getTotalPayloadSent() {
     synchronized (statsSync) {
@@ -2293,10 +2461,31 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  /**
+   * Updates the node's configured display name in persistent configuration.
+   *
+   * <p>The new name is validated by the configuration option. Some changes may require a node
+   * restart to take effect, in which case a {@link NodeNeedRestartException} is thrown. The method
+   * does not update the in-memory name field directly; it delegates to the configuration system
+   * which may apply additional constraints or notify listeners.
+   *
+   * @param key new node name value; must meet configuration validation rules.
+   * @throws InvalidConfigValueException if the provided value fails validation.
+   * @throws NodeNeedRestartException if the change requires a node restart to apply.
+   */
   public void setName(String key) throws InvalidConfigValueException, NodeNeedRestartException {
     config.get("node").getOption("name").setValue(key);
   }
 
+  /**
+   * Returns the current maximum hop-to-live (HTL) value.
+   *
+   * <p>The value is derived from configuration and applies to routed requests that do not specify
+   * an explicit HTL. It is read-only from callers' perspective and does not perform synchronization
+   * because updates are serialized through configuration callbacks.
+   *
+   * @return maximum HTL value used by default for routing decisions.
+   */
   public short maxHTL() {
     return maxHTL;
   }
@@ -2310,6 +2499,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return storage.getDatastoreSize();
   }
 
+  /**
+   * Requests that a user-facing time-skew alert be shown.
+   *
+   * <p>This method is invoked when time-skew detection logic identifies a likely clock problem. It
+   * delegates alert creation to the services subsystem and is synchronized to avoid duplicate
+   * registration races. Callers should treat it as a best-effort signal; it does not guarantee a
+   * visible alert if the client core is not yet available.
+   */
   @Override
   public synchronized void setTimeSkewDetectedUserAlert() {
     services.setTimeSkewDetectedUserAlert();
@@ -2317,6 +2514,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   /**
    * Returns the node directory root (identity and peer files).
+   *
+   * <p>This directory holds the node identity file, peer references, and other core state that is
+   * tied to the node's network identity. The value is derived from startup configuration and is
+   * stable for the lifetime of the process. Callers should not mutate the directory structure while
+   * the node is running.
    *
    * @return node directory path.
    */
@@ -2327,6 +2529,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns the configuration directory root.
    *
+   * <p>The configuration directory contains localization overrides and configuration files. The
+   * path is resolved during startup and is not expected to change at runtime. Callers should use
+   * this only for read-only access unless they coordinate with the configuration subsystem.
+   *
    * @return configuration directory path.
    */
   public File getCfgDir() {
@@ -2335,6 +2541,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   /**
    * Returns the user data directory root.
+   *
+   * <p>User data includes client state such as bookmarks and download lists. The returned path is
+   * resolved during startup and should be treated as read/write by the client core only. External
+   * callers should avoid modifying its contents while the node is active.
    *
    * @return user data directory path.
    */
@@ -2345,6 +2555,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns the runtime state directory root.
    *
+   * <p>The runtime directory stores ephemeral state such as boot identifiers and PRNG seeds. It is
+   * intended for mutable, restart-safe data and may be cleaned or regenerated on startup. Callers
+   * should treat the returned directory as node-owned.
+   *
    * @return runtime state directory path.
    */
   public File getRunDir() {
@@ -2353,6 +2567,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   /**
    * Returns the datastore base directory.
+   *
+   * <p>This is the root for persistent store files, including salted-hash stores and caches. The
+   * directory is created and managed by the storage subsystem. Callers should not alter its
+   * contents directly because that can corrupt store metadata.
    *
    * @return datastore base directory path.
    */
@@ -2363,6 +2581,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns the plugin directory root.
    *
+   * <p>The plugin directory contains installed plugin artifacts and their state. The returned path
+   * is resolved at startup. Plugin lifecycle management should go through the plugin manager, not
+   * by directly manipulating files under this directory.
+   *
    * @return plugin directory path.
    */
   public File getPluginDir() {
@@ -2371,6 +2593,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   /**
    * ProgramDirectory handle for the node directory.
+   *
+   * <p>This returns the {@link ProgramDirectory} wrapper that exposes callbacks for config-driven
+   * directory changes. It is primarily used by subsystems during initialization. External callers
+   * should prefer {@link #getNodeDir()} for a plain {@link File} unless they need the wrapper.
    *
    * @return program directory handle.
    */
@@ -2381,6 +2607,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * ProgramDirectory handle for the configuration directory.
    *
+   * <p>Use this accessor when you need the wrapper's change callbacks or metadata. For plain file
+   * access, prefer {@link #getCfgDir()}.
+   *
    * @return program directory handle.
    */
   public ProgramDirectory cfgDir() {
@@ -2389,6 +2618,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   /**
    * ProgramDirectory handle for the user data directory.
+   *
+   * <p>Use this when calling APIs that expect a {@link ProgramDirectory}. For basic file access,
+   * {@link #getUserDir()} is sufficient.
    *
    * @return program directory handle.
    */
@@ -2399,6 +2631,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * ProgramDirectory handle for the runtime state directory.
    *
+   * <p>This accessor is typically used by persistence helpers that operate on {@link
+   * ProgramDirectory} rather than raw file paths.
+   *
    * @return program directory handle.
    */
   public ProgramDirectory runDir() {
@@ -2407,6 +2642,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   /**
    * ProgramDirectory handle for the datastore base directory.
+   *
+   * <p>Use this when passing the store directory into storage helpers that expect the wrapper type.
+   * For file path access, {@link #getStoreDir()} is more direct.
    *
    * @return program directory handle.
    */
@@ -2417,20 +2655,50 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * ProgramDirectory handle for the plugin directory.
    *
+   * <p>This wrapper is used when a subsystem needs to react to configuration-driven directory
+   * changes. Most callers should use {@link #getPluginDir()}.
+   *
    * @return program directory handle.
    */
   public ProgramDirectory pluginDir() {
     return pluginDir;
   }
 
+  /**
+   * Returns the configured maximum number of opennet peers.
+   *
+   * <p>The value is sourced from configuration and enforced by the peer manager. It represents an
+   * upper bound, not a guarantee of connected peers. The method is a simple delegate and performs
+   * no synchronization.
+   *
+   * @return maximum allowed opennet peer count.
+   */
   public int getMaxOpennetPeers() {
     return network.maxOpennetPeers();
   }
 
+  /**
+   * Indicates whether opennet references are allowed to pass through darknet peers.
+   *
+   * <p>This setting affects how peer references are forwarded between networks. The method returns
+   * a snapshot of current configuration and is synchronized to align with updates from config
+   * callbacks.
+   *
+   * @return {@code true} if opennet references may pass through darknet; {@code false} otherwise.
+   */
   public synchronized boolean passOpennetRefsThroughDarknet() {
     return network.passOpennetRefsThroughDarknet();
   }
 
+  /**
+   * Returns whether this node is running as a seed node.
+   *
+   * <p>Seed nodes use a distinct configuration for initial peer discovery and do not participate in
+   * the network like regular peers. This method delegates to the network subsystem and returns the
+   * current mode flag.
+   *
+   * @return {@code true} if the node is configured as a seed node.
+   */
   public boolean isSeednode() {
     return network.isSeednode();
   }
@@ -2440,10 +2708,29 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   private final RequestClient nonPersistentClientRT = new RequestClientBuilder().realTime().build();
 
+  /**
+   * Indicates whether the node should publish peer locations.
+   *
+   * <p>This flag is derived from security-level and configuration decisions. It determines whether
+   * the node includes peer-location information in announcements. The value is read without
+   * synchronization because it is updated through serialized configuration callbacks.
+   *
+   * @return {@code true} when peer locations may be published; {@code false} otherwise.
+   */
   public boolean shallWePublishOurPeersLocation() {
     return publishOurPeersLocation;
   }
 
+  /**
+   * Indicates whether routing should consider peer locations for a given HTL.
+   *
+   * <p>The decision depends on both the configuration flag and the provided hop-to-live value. The
+   * method returns {@code false} for {@code htl <= 1} to avoid unnecessary routing heuristics on
+   * near-terminal hops. It is a pure check and does not modify state.
+   *
+   * @param htl hop-to-live value for the current request; must be non-negative.
+   * @return {@code true} if peer-location routing should be applied; {@code false} otherwise.
+   */
   public boolean shallWeRouteAccordingToOurPeersLocation(int htl) {
     return routeAccordingToOurPeersLocation && htl > 1;
   }
@@ -2452,6 +2739,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return hasPanicked;
   }
 
+  /**
+   * Immediately enters panic mode and attempts to remove sensitive persisted data.
+   *
+   * <p>Panic mode is a one-way transition that halts persistent client storage and deletes the
+   * master keys file to prevent recovery of sensitive data. The method logs warnings if cleanup
+   * fails but does not throw. After calling this method, the node remains in a panicked state until
+   * restart, and persistent temporary files are cleaned on the next startup.
+   */
   public void panic() {
     hasPanicked = true;
     services.clientCore().getClientLayerPersister().panic();
@@ -2467,16 +2762,39 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // persistent-temp will be cleaned on restart.
   }
 
-  /** Requests a wrapper restart after a panic and exits the current JVM. */
+  /**
+   * Requests a wrapper restart after a panic and exits the current JVM.
+   *
+   * <p>This method triggers a wrapper-managed restart and immediately terminates the process with
+   * exit code {@code 0}. It should be invoked only after {@link #panic()} has completed its cleanup
+   * steps and the node is in a consistent shutdown state.
+   */
   public void finishPanic() {
     WrapperManager.restart();
     System.exit(0);
   }
 
-  /** Thrown when a master password is already configured and a new one is set. */
+  /**
+   * Thrown when a master password is already configured and a new one is set.
+   *
+   * <p>This exception signals that an attempt was made to set a master password when one already
+   * exists. Callers should surface a clear message to the user and avoid retrying without explicit
+   * confirmation, as overwriting the existing password can make previously encrypted data
+   * inaccessible.
+   */
   public static class AlreadySetPasswordException extends Exception {
 
     @Serial private static final long serialVersionUID = -7328456475029374032L;
+
+    /**
+     * Constructs the exception with no detail message.
+     *
+     * <p>This explicit constructor mirrors the implicit default constructor and exists to provide
+     * Javadoc for doclint. It does not change behavior or add side effects.
+     */
+    public AlreadySetPasswordException() {
+      super();
+    }
   }
 
   /**
@@ -2488,14 +2806,41 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return storage.isClientCacheAwaitingPassword() || storage.isDatabaseAwaitingPassword();
   }
 
+  /**
+   * Indicates whether the database should be encrypted based on physical threat level.
+   *
+   * <p>This is a policy check derived from security-level configuration. It does not confirm that
+   * encryption is currently active; it only states the desired policy at this moment. Callers
+   * should use it for UI hints or configuration decisions.
+   *
+   * @return {@code true} when encryption is desired; {@code false} when cleartext is acceptable.
+   */
   public boolean wantEncryptedDatabase() {
     return this.services.securityLevels().getPhysicalThreatLevel() != PHYSICAL_THREAT_LEVEL.LOW;
   }
 
+  /**
+   * Indicates whether persistent database storage should be disabled.
+   *
+   * <p>The decision is based on the current physical threat level. When {@code true}, the node
+   * should avoid writing persistent client data to disk. This method is a policy check and does not
+   * itself change persistence behavior.
+   *
+   * @return {@code true} if no persistent database should be used; {@code false} otherwise.
+   */
   public boolean wantNoPersistentDatabase() {
     return this.services.securityLevels().getPhysicalThreatLevel() == PHYSICAL_THREAT_LEVEL.MAXIMUM;
   }
 
+  /**
+   * Indicates whether a client database is currently available.
+   *
+   * <p>This is a runtime status check that queries the client layer persister. A return value of
+   * {@code false} means the database is not loaded or has been explicitly killed, which can occur
+   * after panic or when persistence is disabled.
+   *
+   * @return {@code true} if a client database is loaded; {@code false} otherwise.
+   */
   public boolean hasDatabase() {
     return !services.clientCore().getClientLayerPersister().isKilledOrNotLoaded();
   }
@@ -2509,15 +2854,43 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return services.clientCore().getClientLayerPersister().getWriteFilename().toString();
   }
 
+  /**
+   * Returns whether locally originated data may be written to the datastore.
+   *
+   * <p>This flag controls whether the node stores locally generated content in the main store. It
+   * is a policy decision driven by configuration and security levels and is checked by storage
+   * operations when deciding whether to persist inserts.
+   *
+   * @return {@code true} if local data may be stored; {@code false} otherwise.
+   */
   public boolean getWriteLocalToDatastore() {
     return storage.isWriteLocalToDatastore();
   }
 
+  /**
+   * Returns whether the Slashdot cache is enabled.
+   *
+   * <p>The Slashdot cache is a transient cache layer for frequently accessed blocks. When disabled
+   * the node still operates normally but may serve less effectively under load. This method is a
+   * configuration snapshot with no side effects.
+   *
+   * @return {@code true} if the Slashdot cache is enabled; {@code false} otherwise.
+   */
   @SuppressWarnings("unused")
   public boolean getUseSlashdotCache() {
     return storage.isUseSlashdotCache();
   }
 
+  /**
+   * Returns the minimum effective MTU used for packet sizing decisions.
+   *
+   * <p>The returned value is the minimum of the configured maximum packet size and the minimum MTU
+   * detected by the network subsystem. This ensures the node does not exceed the smallest viable
+   * MTU for its current environment. The calculation is a snapshot and may change as detection
+   * updates.
+   *
+   * @return minimum MTU in bytes used for packet sizing.
+   */
   public int getMinimumMTU() {
     int mtu;
     synchronized (this) {
@@ -2529,6 +2902,14 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   private static final boolean TESTNET_ENABLED = false;
 
+  /**
+   * Indicates whether testnet mode is enabled in this build.
+   *
+   * <p>This is a compile-time or build-time flag and does not change at runtime. It is primarily
+   * used to gate behavior and logging for test deployments.
+   *
+   * @return {@code true} if testnet mode is enabled; {@code false} otherwise.
+   */
   public static boolean isTestnetEnabled() {
     return TESTNET_ENABLED;
   }
@@ -2605,41 +2986,89 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return disableProbabilisticHTLs;
   }
 
+  /**
+   * Returns the node-to-node messaging subsystem.
+   *
+   * <p>This accessor exposes the dispatcher responsible for node-to-node message routing and
+   * listener registration. The returned instance is owned by the node and is initialized during
+   * construction. Callers should avoid reconfiguring it after startup except through its public
+   * APIs.
+   *
+   * @return messaging subsystem instance.
+   */
   public NodeMessagingSubsystem messaging() {
     return messaging;
   }
 
+  /**
+   * Returns the bootstrap helper that manages early startup state.
+   *
+   * <p>The bootstrap component coordinates program directory setup and random source initialization
+   * and remains available after startup for access to shared random sources. The returned instance
+   * is node-owned and thread-safe for the access patterns provided by the bootstrap API.
+   *
+   * @return bootstrap helper instance.
+   */
   public NodeBootstrap bootstrap() {
     return bootstrap;
   }
 
+  /**
+   * Returns the services subsystem responsible for client-facing services.
+   *
+   * <p>This subsystem wires the HTTP interface, plugin manager, alerts, and related services. The
+   * instance is created during node construction and persists for the node lifetime. Callers should
+   * use the subsystem's public methods rather than manipulating internal state directly.
+   *
+   * @return services subsystem instance.
+   */
   public NodeServicesSubsystem services() {
     return services;
   }
 
+  /**
+   * Returns the network subsystem that manages peer connections and transport.
+   *
+   * <p>The network subsystem owns peer managers, packet dispatchers, and transport configuration.
+   * It is initialized during construction and started via {@link #start(boolean)}. Callers should
+   * treat the returned instance as node-owned shared state.
+   *
+   * @return network subsystem instance.
+   */
   public NodeNetworkSubsystem network() {
     return network;
   }
 
+  /**
+   * Returns the storage subsystem responsible for datastores and caches.
+   *
+   * <p>The storage subsystem manages persistent stores, cache sizing, and encryption keys. It is
+   * initialized during node construction. Callers should interact with storage through its public
+   * API and avoid touching store files directly.
+   *
+   * @return storage subsystem instance.
+   */
   public NodeStorageSubsystem storage() {
     return storage;
   }
 
+  /**
+   * Returns the routing subsystem responsible for request scheduling and routing logic.
+   *
+   * <p>The routing subsystem coordinates request queues, failure tables, and routing heuristics. It
+   * is initialized during construction and started as part of {@link #start(boolean)}.
+   *
+   * @return routing subsystem instance.
+   */
   public NodeRoutingSubsystem routing() {
     return routing;
   }
 
   /**
-   * Returns the shutdown hook used to order shutdown tasks.
-   *
-   * @return shutdown hook coordinator
-   */
-  public SemiOrderedShutdownHook getShutdownHook() {
-    return shutdownHook;
-  }
-
-  /**
    * Returns the node's strong random source.
+   *
+   * <p>The returned {@link RandomSource} is initialized during bootstrap and is safe for
+   * cryptographic use within the node. Callers should not attempt to reseed or replace it.
    *
    * @return strong random source.
    */
@@ -2649,6 +3078,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   /**
    * Returns the primary executor used for background work.
+   *
+   * <p>The executor is used by multiple subsystems for background tasks and should be treated as
+   * shared infrastructure. Callers may submit tasks but should avoid long blocking work that could
+   * starve critical node activities.
    *
    * @return executor instance.
    */
@@ -2710,11 +3143,29 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return enablePacketCoalescing;
   }
 
+  /**
+   * Returns the build number recorded when the node last ran.
+   *
+   * <p>This value is populated from the stored node file at startup and may be {@code -1} if the
+   * previous version could not be parsed. It is intended for diagnostics and upgrade workflows, not
+   * for runtime feature checks.
+   *
+   * @return last recorded build number, or {@code -1} when unavailable.
+   */
   @SuppressWarnings("unused")
   public int getLastVersion() {
     return lastVersion;
   }
 
+  /**
+   * Returns the active {@link SecurityLevels} configuration.
+   *
+   * <p>The returned instance is owned by the node and may be mutated by configuration callbacks.
+   * Callers should treat it as shared mutable state and avoid storing long-lived references unless
+   * they can tolerate updates.
+   *
+   * @return current security levels configuration instance.
+   */
   public SecurityLevels getSecurityLevels() {
     return services.securityLevels();
   }
@@ -2737,14 +3188,41 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     return bootID;
   }
 
+  /**
+   * Returns the wall-clock startup timestamp for this node instance.
+   *
+   * <p>The value is captured during construction and represents {@link System#currentTimeMillis()}
+   * at that moment. It is useful for uptime calculations or logging. The value is not adjusted for
+   * clock skew changes after startup.
+   *
+   * @return startup time in milliseconds since the epoch.
+   */
   public long getStartupTime() {
     return startupTime;
   }
 
+  /**
+   * Returns the non-persistent bulk request client.
+   *
+   * <p>The returned client issues bulk-priority requests that do not use persistent state. It is
+   * intended for short-lived or ephemeral operations. Callers should not retain it across shutdown
+   * because it is owned by the node and does not manage persistence for retries.
+   *
+   * @return non-persistent bulk request client instance.
+   */
   public RequestClient getNonPersistentClientBulk() {
     return nonPersistentClientBulk;
   }
 
+  /**
+   * Returns the non-persistent real-time request client.
+   *
+   * <p>This client issues real-time priority requests and does not persist state. It is suited for
+   * interactive operations where latency matters. The client is owned by the node; callers should
+   * treat it as shared and not attempt to close it directly.
+   *
+   * @return non-persistent real-time request client instance.
+   */
   public RequestClient getNonPersistentClientRT() {
     return nonPersistentClientRT;
   }
