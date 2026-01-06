@@ -19,6 +19,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNode;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -30,18 +31,30 @@ class RealNodeTestTest {
   @Test
   void makeKleinbergNetwork_whenIdealLocationsTrue_setsEvenlySpacedLocations() {
     // Arrange
-    Node[] nodes = new Node[] {mock(Node.class), mock(Node.class), mock(Node.class)};
+    Node[] nodes =
+        new Node[] {
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)
+        };
+    NodeNetworkSubsystem[] networks =
+        new NodeNetworkSubsystem[] {
+          mock(NodeNetworkSubsystem.class),
+          mock(NodeNetworkSubsystem.class),
+          mock(NodeNetworkSubsystem.class)
+        };
     double[] locations = new double[nodes.length];
     for (int i = 0; i < nodes.length; i++) {
       final int index = i;
+      when(nodes[i].network()).thenReturn(networks[i]);
       doAnswer(
               invocation -> {
                 locations[index] = invocation.getArgument(0);
                 return null;
               })
-          .when(nodes[i])
+          .when(networks[i])
           .setLocation(org.mockito.ArgumentMatchers.anyDouble());
-      when(nodes[i].getLocation()).thenAnswer(invocation -> locations[index]);
+      when(networks[i].location()).thenAnswer(invocation -> locations[index]);
     }
     RandomSource random = mock(RandomSource.class);
 
@@ -59,7 +72,22 @@ class RealNodeTestTest {
       throws Exception {
     // Arrange
     Node[] nodes =
-        new Node[] {mock(Node.class), mock(Node.class), mock(Node.class), mock(Node.class)};
+        new Node[] {
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)
+        };
+    NodeNetworkSubsystem[] networks =
+        new NodeNetworkSubsystem[] {
+          mock(NodeNetworkSubsystem.class),
+          mock(NodeNetworkSubsystem.class),
+          mock(NodeNetworkSubsystem.class),
+          mock(NodeNetworkSubsystem.class)
+        };
+    for (int i = 0; i < nodes.length; i++) {
+      when(nodes[i].network()).thenReturn(networks[i]);
+    }
     RandomSource random = mock(RandomSource.class);
 
     // Act
@@ -68,8 +96,8 @@ class RealNodeTestTest {
     // Assert
     for (int i = 0; i < nodes.length; i++) {
       int next = (i + 1) % nodes.length;
-      verify(nodes[i]).connect(nodes[next], RealNodeTest.trust, RealNodeTest.visibility);
-      verify(nodes[next]).connect(nodes[i], RealNodeTest.trust, RealNodeTest.visibility);
+      verify(networks[i]).connect(nodes[next], RealNodeTest.trust, RealNodeTest.visibility);
+      verify(networks[next]).connect(nodes[i], RealNodeTest.trust, RealNodeTest.visibility);
     }
   }
 
@@ -77,18 +105,27 @@ class RealNodeTestTest {
   void makeKleinbergNetwork_whenRandomAlwaysAccepts_connectsBothDirectionsForTwoNodes()
       throws Exception {
     // Arrange
-    Node[] nodes = new Node[] {mock(Node.class), mock(Node.class)};
+    Node[] nodes =
+        new Node[] {
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+          mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)
+        };
+    NodeNetworkSubsystem[] networks =
+        new NodeNetworkSubsystem[] {
+          mock(NodeNetworkSubsystem.class), mock(NodeNetworkSubsystem.class)
+        };
     double[] locations = new double[nodes.length];
     for (int i = 0; i < nodes.length; i++) {
       final int index = i;
+      when(nodes[i].network()).thenReturn(networks[i]);
       doAnswer(
               invocation -> {
                 locations[index] = invocation.getArgument(0);
                 return null;
               })
-          .when(nodes[i])
+          .when(networks[i])
           .setLocation(org.mockito.ArgumentMatchers.anyDouble());
-      when(nodes[i].getLocation()).thenAnswer(invocation -> locations[index]);
+      when(networks[i].location()).thenAnswer(invocation -> locations[index]);
     }
     RandomSource random = mock(RandomSource.class);
     when(random.nextFloat()).thenReturn(0.0f);
@@ -97,32 +134,36 @@ class RealNodeTestTest {
     RealNodeTest.makeKleinbergNetwork(nodes, true, 2, false, random);
 
     // Assert
-    verify(nodes[0], times(2)).connect(nodes[1], RealNodeTest.trust, RealNodeTest.visibility);
-    verify(nodes[1], times(2)).connect(nodes[0], RealNodeTest.trust, RealNodeTest.visibility);
+    verify(networks[0], times(2)).connect(nodes[1], RealNodeTest.trust, RealNodeTest.visibility);
+    verify(networks[1], times(2)).connect(nodes[0], RealNodeTest.trust, RealNodeTest.visibility);
   }
 
   @Test
   void connect_whenFirstConnectThrows_doesNotPropagateAndSkipsSecond() throws Exception {
     // Arrange
-    Node a = mock(Node.class);
-    Node b = mock(Node.class);
+    Node a = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node b = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeNetworkSubsystem netA = mock(NodeNetworkSubsystem.class);
+    NodeNetworkSubsystem netB = mock(NodeNetworkSubsystem.class);
+    when(a.network()).thenReturn(netA);
+    when(b.network()).thenReturn(netB);
     doThrow(new FSParseException("boom"))
-        .when(a)
+        .when(netA)
         .connect(b, RealNodeTest.trust, RealNodeTest.visibility);
 
     // Act + Assert
     assertDoesNotThrow(() -> RealNodeTest.connect(a, b));
-    verify(a).connect(b, RealNodeTest.trust, RealNodeTest.visibility);
-    verify(b, never()).connect(a, RealNodeTest.trust, RealNodeTest.visibility);
+    verify(netA).connect(b, RealNodeTest.trust, RealNodeTest.visibility);
+    verify(netB, never()).connect(a, RealNodeTest.trust, RealNodeTest.visibility);
   }
 
   @Test
   void distance_whenLocationsValid_returnsLocationDistance() {
     // Arrange
-    Node a = mock(Node.class);
-    Node b = mock(Node.class);
-    when(a.getLocation()).thenReturn(0.1);
-    when(b.getLocation()).thenReturn(0.9);
+    Node a = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node b = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(a.network().location()).thenReturn(0.1);
+    when(b.network().location()).thenReturn(0.9);
 
     // Act
     double distance = RealNodeTest.distance(a, b);
@@ -134,10 +175,10 @@ class RealNodeTestTest {
   @Test
   void distance_whenLocationInvalid_throwsIllegalArgumentException() {
     // Arrange
-    Node a = mock(Node.class);
-    Node b = mock(Node.class);
-    when(a.getLocation()).thenReturn(Location.LOCATION_INVALID);
-    when(b.getLocation()).thenReturn(0.5);
+    Node a = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node b = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(a.network().location()).thenReturn(Location.LOCATION_INVALID);
+    when(b.network().location()).thenReturn(0.5);
 
     // Act + Assert
     assertThrows(IllegalArgumentException.class, () -> RealNodeTest.distance(a, b));
@@ -178,8 +219,8 @@ class RealNodeTestTest {
   @Test
   void getPortNumber_whenNodePresent_returnsPort() {
     // Arrange
-    Node node = mock(Node.class);
-    when(node.getDarknetPortNumber()).thenReturn(4242);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(node.network().darknetPortNumber()).thenReturn(4242);
 
     // Act
     String port = RealNodeTest.getPortNumber(node);
@@ -191,17 +232,17 @@ class RealNodeTestTest {
   @Test
   void waitForAllConnected_whenAllConditionsMet_returnsWithoutDelay() {
     // Arrange
-    Node nodeA = mock(Node.class);
-    Node nodeB = mock(Node.class);
+    Node nodeA = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node nodeB = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerManager peersA = mock(PeerManager.class);
     PeerManager peersB = mock(PeerManager.class);
     NodeStats statsA = mock(NodeStats.class);
     NodeStats statsB = mock(NodeStats.class);
 
-    when(nodeA.getPeers()).thenReturn(peersA);
-    when(nodeB.getPeers()).thenReturn(peersB);
-    when(nodeA.getNodeStats()).thenReturn(statsA);
-    when(nodeB.getNodeStats()).thenReturn(statsB);
+    when(nodeA.network().peers()).thenReturn(peersA);
+    when(nodeB.network().peers()).thenReturn(peersB);
+    when(nodeA.network().stats()).thenReturn(statsA);
+    when(nodeB.network().stats()).thenReturn(statsB);
 
     when(peersA.countConnectedDarknetPeers()).thenReturn(2);
     when(peersA.countAlmostConnectedDarknetPeers()).thenReturn(2);

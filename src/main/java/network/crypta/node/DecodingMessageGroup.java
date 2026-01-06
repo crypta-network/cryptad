@@ -23,8 +23,8 @@ public interface DecodingMessageGroup {
    *
    * <p>The provided byte region identifies a single message in the on‑wire format. Typical
    * implementations pass this buffer to the message codec for parsing (for example, {@code
-   * node.getUSM().decodeSingleMessage(...)}), optionally deferring further handling until {@link
-   * #complete()}.
+   * node.network().usm().decodeSingleMessage(...)}), optionally deferring further handling until
+   * {@link #complete()}.
    *
    * @param data backing array containing the encoded message bytes
    * @param offset start offset within {@code data}

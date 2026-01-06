@@ -146,8 +146,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     this.manager = manager;
     this.node = manager.getNode();
     this.uri = updateUri.setSuggestedEdition(((long) Version.currentBuildNumber()) + 1);
-    this.ticker = node.getTicker();
-    this.core = node.getClientCore();
+    this.ticker = node.network().ticker();
+    this.core = node.services().clientCore();
     this.currentVersion = current;
     this.availableVersion = -1;
     this.isRunning = true;
@@ -286,7 +286,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
     if (toStart != null)
       try {
-        node.getClientCore().getClientContext().start(toStart);
+        node.services().clientCore().getClientContext().start(toStart);
       } catch (FetchException e) {
         LOG.error("Error while starting the fetching: {}", e, e);
         synchronized (this) {
@@ -326,7 +326,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
           File.createTempFile(
               blobFilenamePrefix + version + "-",
               ".fblob.tmp",
-              manager.getNode().getClientCore().getPersistentTempDir());
+              manager.getNode().services().clientCore().getPersistentTempDir());
       FreenetURI uskUri = this.uri.setSuggestedEdition(version);
       uskUri = uskUri.sskForUSK();
       cg =
@@ -352,7 +352,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   final File getBlobFile(int availableVersion) {
     return new File(
-        node.getClientCore().getPersistentTempDir(),
+        node.services().clientCore().getPersistentTempDir(),
         blobFilenamePrefix + availableVersion + ".fblob");
   }
 
@@ -383,7 +383,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
         }
         LOG.error("Cannot update: result either null or empty for {}", availableVersion);
         // Try again immediately; no need to inspect Bucket here
-        node.getTicker().queueTimedJob(this::maybeUpdate, 0);
+        node.network().ticker().queueTimedJob(this::maybeUpdate, 0);
         return;
       }
       blobFile = tryFinalizeBlobFile(tempBlobFile, fetchedVersion);

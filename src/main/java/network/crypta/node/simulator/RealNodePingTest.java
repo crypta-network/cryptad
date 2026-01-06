@@ -165,13 +165,13 @@ public class RealNodePingTest {
             });
     Node node2 = NodeStarter.createTestNode(node2Params);
     // Connect
-    node1.connect(node2, trust, visibility);
-    node2.connect(node1, trust, visibility);
+    node1.network().connect(node2, trust, visibility);
+    node2.network().connect(node1, trust, visibility);
     // No swapping
     node1.start(true);
     node2.start(true);
     // Ping
-    PeerNode pn = node1.getPeerNodes()[0];
+    PeerNode pn = node1.network().peerNodes()[0];
     AtomicInteger pingID = new AtomicInteger();
     try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
       scheduler.scheduleWithFixedDelay(

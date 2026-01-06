@@ -92,7 +92,7 @@ public class ListPeersMessage extends FCPMessage {
    * @param handler connection handler responsible for sending responses; must already be
    *     authenticated for full access.
    * @param node node instance supplying the current peers; expected to return a live snapshot via
-   *     {@link Node#getPeerNodes()}.
+   *     {@link NodeNetworkSubsystem#peerNodes()}.
    * @throws MessageInvalidException when the handler lacks required access rights or when message
    *     validation fails before any peer data is returned.
    */
@@ -105,7 +105,7 @@ public class ListPeersMessage extends FCPMessage {
           requestIdentifier,
           false);
     }
-    PeerNode[] nodes = node.getPeerNodes();
+    PeerNode[] nodes = node.network().peerNodes();
     for (PeerNode pn : nodes) {
       handler.send(new PeerMessage(pn, withMetadata, withVolatile, requestIdentifier));
     }

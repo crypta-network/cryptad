@@ -173,7 +173,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
           "input",
           new String[] {"type", "name", "value"},
           new String[] {
-            "hidden", "formPassword", updater.getNode().getClientCore().getFormPassword()
+            "hidden", "formPassword", updater.getNode().services().clientCore().getFormPassword()
           });
     }
 
@@ -234,7 +234,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
       formText = appendNotReadyText(sb);
     }
 
-    if (updater.getNode().updateIsUrgent()) {
+    if (updater.getNode().network().updateIsUrgent()) {
       sb.append(' ').append(l10n("updateIsUrgent"));
     }
 
@@ -302,7 +302,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
   @Override
   public short getPriorityClass() {
     Node node = updater.getNode();
-    if (node.updateIsUrgent()) return UserAlert.CRITICAL_ERROR;
+    if (node.network().updateIsUrgent()) return UserAlert.CRITICAL_ERROR;
     if (updater.inFinalCheck() || updater.canUpdateNow() || !updater.isArmed())
       return UserAlert.ERROR;
     else return UserAlert.MINOR;

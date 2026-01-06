@@ -38,7 +38,9 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class PeersOffersUserAlertTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private UserAlertManager alertManager;
 
@@ -50,7 +52,7 @@ class PeersOffersUserAlertTest {
     programDirectory.move(tempDir.toString());
 
     when(node.runDir()).thenReturn(programDirectory);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getAlerts()).thenReturn(alertManager);
     when(core.getFormPassword()).thenReturn("pw123");
   }

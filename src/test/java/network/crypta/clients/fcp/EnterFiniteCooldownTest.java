@@ -45,7 +45,7 @@ class EnterFiniteCooldownTest {
   void run_whenInvoked_doesNothingAndDoesNotTouchCollaborators() throws MessageInvalidException {
     EnterFiniteCooldown message = new EnterFiniteCooldown("id", false, 123L);
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     message.run(handler, node);
 

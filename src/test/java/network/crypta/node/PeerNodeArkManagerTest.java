@@ -29,6 +29,7 @@ import network.crypta.keys.ClientSSK;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.USK;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
@@ -51,7 +52,11 @@ class PeerNodeArkManagerTest {
   private static final String FIELD_MY_ARK = "myARK";
 
   @Mock PeerNode peer;
-  @Mock Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
+  @Mock NodeNetworkSubsystem network;
   @Mock NodeClientCore clientCore;
   @Mock USKManager uskManager;
   @Mock PriorityAwareExecutor executor;
@@ -65,6 +70,7 @@ class PeerNodeArkManagerTest {
   void setUp() {
     manager = new PeerNodeArkManager(peer);
     setField(peer, "node", node);
+    when(node.network()).thenReturn(network);
   }
 
   @Test
@@ -469,14 +475,14 @@ class PeerNodeArkManagerTest {
   }
 
   private void stubArkSubscriptionDependencies() {
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getUskManager()).thenReturn(uskManager);
-    when(node.getArkFetcherContext()).thenReturn(fetchContext);
+    when(node.network().arkFetcherContext()).thenReturn(fetchContext);
     when(node.getNonPersistentClientRT()).thenReturn(requestClient);
   }
 
   private void stubExecutor() {
-    when(node.getExecutor()).thenReturn(executor);
+    when(node.network().executor()).thenReturn(executor);
   }
 
   private static USK newUsk(long edition) {

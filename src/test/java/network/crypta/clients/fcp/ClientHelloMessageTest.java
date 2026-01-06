@@ -21,7 +21,8 @@ class ClientHelloMessageTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @Test
   void constructor_whenNameMissing_expectException() {

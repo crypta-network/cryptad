@@ -50,6 +50,7 @@ import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.RequestStarterGroup;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.node.useralerts.UserEvent;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -182,7 +183,7 @@ class QueueToadletTest {
     ProgramDirectory userDir = new ProgramDirectory();
     userDir.move(tempDir.toString());
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(node.userDir()).thenReturn(userDir);
     when(node.getUserDir()).thenReturn(userDir.dir());
 
@@ -190,7 +191,9 @@ class QueueToadletTest {
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
     when(core.getAlerts()).thenReturn(alerts);
-    when(node.getExecutor()).thenReturn(executor);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
 
     ClientContext context = createClientContext();
     context.init(starters, alerts);

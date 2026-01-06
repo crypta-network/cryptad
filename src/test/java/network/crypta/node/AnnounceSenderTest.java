@@ -22,6 +22,8 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.node.subsystem.NodeBootstrap;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +41,9 @@ import org.mockito.quality.Strictness;
 @SuppressWarnings("java:S100")
 class AnnounceSenderTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private OpennetManager om;
   @Mock private PeerNode onlyNode;
   @Mock private AnnouncementCallback cb;
@@ -50,15 +54,19 @@ class AnnounceSenderTest {
   @Mock private PriorityAwareExecutor executor;
   @Mock private PeerManager peers;
   @Mock private PeerRoutingSelector routingSelector;
+  @Mock private NodeNetworkSubsystem network;
+  @Mock private NodeBootstrap bootstrap;
 
   private static final long FIXED_UID = 777L;
 
   @BeforeEach
   void setUpCommon() {
-    when(node.getTracker()).thenReturn(tracker);
-    when(node.getUSM()).thenReturn(usm);
-    when(node.getNodeStats()).thenReturn(stats);
-    when(node.getExecutor()).thenReturn(executor);
+    when(node.network()).thenReturn(network);
+    when(node.bootstrap()).thenReturn(bootstrap);
+    when(node.routing().tracker()).thenReturn(tracker);
+    when(network.usm()).thenReturn(usm);
+    when(network.stats()).thenReturn(stats);
+    when(network.executor()).thenReturn(executor);
     // Run runnables inline for determinism when used.
     Mockito.doAnswer(
             inv -> {
@@ -74,13 +82,13 @@ class AnnounceSenderTest {
 
     // Local-origin announce defaults
     when(node.maxHTL()).thenReturn((short) 3);
-    when(node.isOpennetEnabled()).thenReturn(true);
+    when(network.isOpennetEnabled()).thenReturn(true);
     when(node.isAdvancedModeEnabled()).thenReturn(false);
 
     // Deterministic UID
     RandomSource rnd = Mockito.mock(RandomSource.class);
     when(rnd.nextLong()).thenReturn(FIXED_UID);
-    when(node.getRandom()).thenReturn(rnd);
+    when(bootstrap.random()).thenReturn(rnd);
   }
 
   @Test
@@ -109,7 +117,7 @@ class AnnounceSenderTest {
     verify(cb, times(1)).completed();
     verify(stats, atLeastOnce()).endAnnouncement(FIXED_UID);
     // Originated locally: no source path or peer selection
-    verify(node, never()).getPeers();
+    verify(node.network(), never()).peers();
   }
 
   @Test
@@ -174,11 +182,11 @@ class AnnounceSenderTest {
   void run_whenNoOnlyNodeAndNoPeerChosen_expectNoMoreNodes() {
     // Arrange: onlyNode == null, routingSelector.closerPeer() returns null so we RNF with next ==
     // null
-    when(node.getPeers()).thenReturn(peers);
+    when(network.peers()).thenReturn(peers);
     when(peers.routingSelector()).thenReturn(routingSelector);
-    when(node.isOpennetEnabled()).thenReturn(true);
+    when(network.isOpennetEnabled()).thenReturn(true);
     when(node.maxHTL()).thenReturn((short) 3);
-    when(node.decrementHTL(isNull(), anyShort())).thenReturn((short) 1);
+    when(node.routing().decrementHTL(isNull(), anyShort())).thenReturn((short) 1);
     when(routingSelector.closerPeer(
             isNull(),
             anySet(),
@@ -219,7 +227,7 @@ class AnnounceSenderTest {
   @Test
   void updateHtl_usesLastPeerAfterSendFailure() throws Exception {
     // Arrange: multi-peer routing (onlyNode == null)
-    when(node.getPeers()).thenReturn(peers);
+    when(node.network().peers()).thenReturn(peers);
     when(peers.routingSelector()).thenReturn(routingSelector);
 
     PeerNode p1 = Mockito.mock(PeerNode.class);
@@ -241,7 +249,8 @@ class AnnounceSenderTest {
         .thenReturn(p1, p2, null);
 
     // Decrement HTL returns a sequence to keep iterations going
-    when(node.decrementHTL(any(), anyShort())).thenReturn((short) 2, (short) 1, (short) 1);
+    when(node.routing().decrementHTL(any(), anyShort()))
+        .thenReturn((short) 2, (short) 1, (short) 1);
 
     // First peer p1: start OK, then we don't get Accepted (timeout), so routeOnce ->
     // CONTINUE_FORWARDED
@@ -263,7 +272,7 @@ class AnnounceSenderTest {
     // Assert: verify decrementHTL was called with p2 as the 'from' on the iteration after send
     // failure
     ArgumentCaptor<PeerNode> fromCaptor = ArgumentCaptor.forClass(PeerNode.class);
-    verify(node, atLeast(3)).decrementHTL(fromCaptor.capture(), anyShort());
+    verify(node.routing(), atLeast(3)).decrementHTL(fromCaptor.capture(), anyShort());
     // Calls expected: [null (initial), p1 (after first forward), p2 (after send failure)]
     java.util.List<PeerNode> calls = fromCaptor.getAllValues();
     // Ensure we have at least 3 calls and the third is p2

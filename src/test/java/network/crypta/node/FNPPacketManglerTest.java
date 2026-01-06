@@ -22,12 +22,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @SuppressWarnings("java:S100")
 class FNPPacketManglerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeCrypto crypto;
   @Mock private PacketSocketHandler sock;
 
@@ -42,7 +47,7 @@ class FNPPacketManglerTest {
 
     // Defaults that keep control-flow simple for most tests
     lenient().when(node.isStopping()).thenReturn(false);
-    lenient().when(node.getOpennet()).thenReturn(null);
+    lenient().when(node.network().opennet()).thenReturn(null);
     lenient().when(crypto.getPeerNodes()).thenReturn(new PeerNode[0]);
     lenient().when(crypto.wantAnonAuth()).thenReturn(false);
     lenient().when(crypto.wantAnonAuthChangeIP()).thenReturn(false);
@@ -60,7 +65,7 @@ class FNPPacketManglerTest {
   @Test
   void process_whenNoMatch_andOpennetNull_returnsNotDecoded() {
     when(node.isStopping()).thenReturn(false);
-    when(node.getOpennet()).thenReturn(null); // no old opennet peers to try
+    when(node.network().opennet()).thenReturn(null); // no old opennet peers to try
     when(crypto.wantAnonAuth()).thenReturn(false); // skip anon paths entirely
 
     DECODED result = mangler.process(new byte[8], 0, 8, loopbackPeer, null);
@@ -71,7 +76,7 @@ class FNPPacketManglerTest {
   @Test
   void process_whenOpennetPresentButDoesNotWantPeer_returnsDidntWantOpenNet() {
     OpennetManager opennet = Mockito.mock(OpennetManager.class);
-    when(node.getOpennet()).thenReturn(opennet);
+    when(node.network().opennet()).thenReturn(opennet);
     // Signal: do not want peers now → code must not try old peers and should return
     // DIDNT_WANT_OPENNET
     when(opennet.wantPeer(null, false, true, true, OpennetManager.ConnectionType.RECONNECT))

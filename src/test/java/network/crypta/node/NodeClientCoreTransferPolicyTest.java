@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.stream.Stream;
 import network.crypta.config.SubConfig;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.support.api.StringArrCallback;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -311,7 +312,9 @@ class NodeClientCoreTransferPolicyTest {
   }
 
   private void stubPhysicalThreatLevel(PHYSICAL_THREAT_LEVEL level) {
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    NodeServicesSubsystem services = org.mockito.Mockito.mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
     when(securityLevels.getPhysicalThreatLevel()).thenReturn(level);
   }
 }

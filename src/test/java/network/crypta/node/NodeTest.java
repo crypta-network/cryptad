@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import network.crypta.io.comm.TrafficClass;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,7 +26,7 @@ class NodeTest {
 
   private static void setField(Object target, String fieldName, Object value) {
     try {
-      Field f = Node.class.getDeclaredField(fieldName);
+      Field f = target.getClass().getDeclaredField(fieldName);
       f.setAccessible(true);
       f.set(target, value);
     } catch (ReflectiveOperationException e) {
@@ -52,16 +53,19 @@ class NodeTest {
   @DisplayName("getTrafficClass_whenSet_returnsSameValue")
   void getTrafficClass_whenSet_returnsSameValue() {
     Node node = newNodeInstance();
-    setField(node, "trafficClass", TrafficClass.DSCP_CS1);
-    assertEquals(TrafficClass.DSCP_CS1, node.getTrafficClass());
+    NodeNetworkSubsystem network = new NodeNetworkSubsystem(node);
+    setField(node, "network", network);
+    setField(network, "trafficClass", TrafficClass.DSCP_CS1);
+    assertEquals(TrafficClass.DSCP_CS1, node.network().trafficClass());
   }
 
   @Test
   @DisplayName("getMinimumMTU_whenIpDetectorNull_returnsConfiguredMtu")
   void getMinimumMTU_whenIpDetectorNull_returnsConfiguredMtu() {
     Node node = newNodeInstance();
+    NodeNetworkSubsystem network = new NodeNetworkSubsystem(node);
+    setField(node, "network", network);
     setField(node, "maxPacketSize", 1500);
-    setField(node, "ipDetector", null);
     assertEquals(1500, node.getMinimumMTU());
   }
 
@@ -69,10 +73,12 @@ class NodeTest {
   @DisplayName("getMinimumMTU_whenDetectorLower_returnsDetectorValue")
   void getMinimumMTU_whenDetectorLower_returnsDetectorValue() {
     Node node = newNodeInstance();
+    NodeNetworkSubsystem network = new NodeNetworkSubsystem(node);
+    setField(node, "network", network);
     setField(node, "maxPacketSize", 1500);
     NodeIPDetector detector = mock(NodeIPDetector.class);
     when(detector.getMinimumDetectedMTU()).thenReturn(1200);
-    setField(node, "ipDetector", detector);
+    setField(network, "ipDetector", detector);
     assertEquals(1200, node.getMinimumMTU());
   }
 
@@ -80,10 +86,12 @@ class NodeTest {
   @DisplayName("getMinimumMTU_whenDetectorHigher_returnsConfiguredMtu")
   void getMinimumMTU_whenDetectorHigher_returnsConfiguredMtu() {
     Node node = newNodeInstance();
+    NodeNetworkSubsystem network = new NodeNetworkSubsystem(node);
+    setField(node, "network", network);
     setField(node, "maxPacketSize", 1400);
     NodeIPDetector detector = mock(NodeIPDetector.class);
     when(detector.getMinimumDetectedMTU()).thenReturn(9000);
-    setField(node, "ipDetector", detector);
+    setField(network, "ipDetector", detector);
     assertEquals(1400, node.getMinimumMTU());
   }
 
@@ -91,21 +99,25 @@ class NodeTest {
   @DisplayName("getDarknetPortNumber_delegatesToNodeCrypto")
   void getDarknetPortNumber_delegatesToNodeCrypto() {
     Node node = newNodeInstance();
+    NodeNetworkSubsystem network = new NodeNetworkSubsystem(node);
+    setField(node, "network", network);
     NodeCrypto crypto = mock(NodeCrypto.class);
     when(crypto.getPortNumber()).thenReturn(4545);
-    setField(node, "darknetCrypto", crypto);
-    assertEquals(4545, node.getDarknetPortNumber());
+    setField(network, "darknetCrypto", crypto);
+    assertEquals(4545, node.network().darknetPortNumber());
   }
 
   @Test
   @DisplayName("exportVolatileFieldSet_delegatesToNodeStats")
   void exportVolatileFieldSet_delegatesToNodeStats() {
     Node node = newNodeInstance();
+    NodeNetworkSubsystem network = new NodeNetworkSubsystem(node);
+    setField(node, "network", network);
     NodeStats stats = mock(NodeStats.class);
     SimpleFieldSet expected = new SimpleFieldSet(true);
     when(stats.exportVolatileFieldSet()).thenReturn(expected);
-    setField(node, "nodeStats", stats);
-    assertEquals(expected, node.exportVolatileFieldSet());
+    setField(network, "nodeStats", stats);
+    assertEquals(expected, node.network().exportVolatileFieldSet());
   }
 
   @Test

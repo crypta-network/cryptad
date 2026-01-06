@@ -22,7 +22,9 @@ import org.mockito.quality.Strictness;
 @SuppressWarnings("java:S100")
 class PeerNodeBackoffStatusCheckerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerManager peerManager;
 
   @Test
@@ -41,7 +43,7 @@ class PeerNodeBackoffStatusCheckerTest {
     // Arrange
     PeerNode pn = Mockito.mock(PeerNode.class);
     setPeerNodeNodeField(pn, node);
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.havePeer(pn)).thenReturn(false);
     when(pn.cachedRemoved()).thenReturn(true);
 
@@ -60,7 +62,7 @@ class PeerNodeBackoffStatusCheckerTest {
     // Arrange
     PeerNode pn = Mockito.mock(PeerNode.class);
     setPeerNodeNodeField(pn, node);
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.havePeer(pn)).thenReturn(false);
     when(pn.cachedRemoved()).thenReturn(false);
 
@@ -79,7 +81,7 @@ class PeerNodeBackoffStatusCheckerTest {
     // Arrange
     PeerNode pn = Mockito.mock(PeerNode.class);
     setPeerNodeNodeField(pn, node);
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.havePeer(pn)).thenReturn(true);
     when(pn.cachedRemoved()).thenReturn(false);
 

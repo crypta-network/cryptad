@@ -60,7 +60,10 @@ class SubscribedUSKUpdateTest {
     MessageInvalidException exception =
         assertThrows(
             MessageInvalidException.class,
-            () -> update.run(mock(FCPConnectionHandler.class), mock(Node.class)));
+            () ->
+                update.run(
+                    mock(FCPConnectionHandler.class),
+                    mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(identifier, exception.ident);

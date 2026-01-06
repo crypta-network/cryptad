@@ -29,7 +29,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ListPeersMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerNode peerOne;
   @Mock private PeerNode peerTwo;
 
@@ -69,7 +72,7 @@ class ListPeersMessageTest {
 
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, ex.protocolCode);
     assertEquals("id-1", ex.ident);
-    verify(node, never()).getPeerNodes();
+    verify(node.network(), never()).peerNodes();
     verify(handler, never()).send(any());
   }
 
@@ -77,7 +80,7 @@ class ListPeersMessageTest {
   void run_whenFullAccess_sendsEachPeerFollowedByEnd() throws MessageInvalidException {
     ListPeersMessage message = new ListPeersMessage(buildFieldSet(true, true, "identifier"));
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNodes()).thenReturn(new PeerNode[] {peerOne, peerTwo});
+    when(node.network().peerNodes()).thenReturn(new PeerNode[] {peerOne, peerTwo});
 
     message.run(handler, node);
 
@@ -112,7 +115,7 @@ class ListPeersMessageTest {
   void run_whenNoPeersStillEmitsEndMarker() throws MessageInvalidException {
     ListPeersMessage message = new ListPeersMessage(buildFieldSet(false, false, null));
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNodes()).thenReturn(new PeerNode[0]);
+    when(node.network().peerNodes()).thenReturn(new PeerNode[0]);
 
     message.run(handler, node);
 

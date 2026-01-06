@@ -183,12 +183,15 @@ class ModifyPersistentRequestTest {
 
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     ClientRequest rebootRequest = mock(ClientRequest.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
     FCPServer server = mock(FCPServer.class);
 
     when(handler.getRebootRequest(false, handler, "req-7")).thenReturn(rebootRequest);
-    when(node.getClientCore()).thenReturn(core);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(core);
     ClientEndpoints endpoints = mock(ClientEndpoints.class);
     when(core.getEndpoints()).thenReturn(endpoints);
     when(endpoints.getFCPServer()).thenReturn(server);
@@ -224,8 +227,11 @@ class ModifyPersistentRequestTest {
     ClientContext context = newClientContext(jobRunner, ticker);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getClientContext()).thenReturn(context);
-    Node node = mock(Node.class);
-    when(node.getClientCore()).thenReturn(core);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(core);
 
     doAnswer(
             invocation -> {
@@ -262,8 +268,11 @@ class ModifyPersistentRequestTest {
     ClientContext context = newClientContext(jobRunner, ticker);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getClientContext()).thenReturn(context);
-    Node node = mock(Node.class);
-    when(node.getClientCore()).thenReturn(core);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(core);
 
     ArgumentCaptor<ProtocolErrorMessage> errorCaptor =
         ArgumentCaptor.forClass(ProtocolErrorMessage.class);
@@ -306,8 +315,11 @@ class ModifyPersistentRequestTest {
     ClientContext context = newClientContext(jobRunner, ticker);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getClientContext()).thenReturn(context);
-    Node node = mock(Node.class);
-    when(node.getClientCore()).thenReturn(core);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(core);
 
     doThrow(new PersistenceDisabledException())
         .when(jobRunner)
@@ -345,8 +357,11 @@ class ModifyPersistentRequestTest {
     ClientEndpoints endpoints = mock(ClientEndpoints.class);
     when(core.getEndpoints()).thenReturn(endpoints);
     when(endpoints.getFCPServer()).thenReturn(mock(FCPServer.class));
-    Node node = mock(Node.class);
-    when(node.getClientCore()).thenReturn(core);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(core);
 
     message.run(handler, node);
 

@@ -156,7 +156,9 @@ final class DdaAccessController {
 
     File writeFile =
         write
-            ? new File(path, "DDACheck-" + server.getNode().getFastWeakRandom().nextInt() + ".tmp")
+            ? new File(
+                path,
+                "DDACheck-" + server.getNode().bootstrap().fastWeakRandom().nextInt() + ".tmp")
             : null;
     File readFile = null;
     if (read) {
@@ -169,7 +171,8 @@ final class DdaAccessController {
     }
 
     DdaCheckJob job =
-        new DdaCheckJob(server.getNode().getFastWeakRandom(), directory, readFile, writeFile);
+        new DdaCheckJob(
+            server.getNode().bootstrap().fastWeakRandom(), directory, readFile, writeFile);
 
     if (readFile != null) {
       try (FileOutputStream fos = new FileOutputStream(readFile);

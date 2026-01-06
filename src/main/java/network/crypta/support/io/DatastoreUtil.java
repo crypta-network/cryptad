@@ -102,9 +102,11 @@ public class DatastoreUtil {
       slots /= 3;
       // We return the total size, so we don't need to worry about cache vs store or even client
       // cache.
-      // One key of all 3 types combined uses Node.SIZE_PER_KEY bytes on disk. So we get a size.
+      // One key of all 3 types combined uses NodeStorageSubsystem.SIZE_PER_KEY bytes on disk.
       maxDatastoreSize =
-          slots * Node.SIZE_PER_KEY; // in total this is (RAM - 100 MiB) / 24 * ~32 KiB
+          slots
+              * network.crypta.node.subsystem.NodeStorageSubsystem
+                  .SIZE_PER_KEY; // in total this is (RAM - 100 MiB) / 24 * ~32 KiB
     }
     return maxDatastoreSize;
   }

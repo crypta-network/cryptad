@@ -158,7 +158,7 @@ public class PproxyToadlet extends Toadlet {
 
     if (LOG.isDebugEnabled()) LOG.debug("Pproxy received POST on {}", path);
 
-    final PluginManager pm = node.getPluginManager();
+    final PluginManager pm = node.services().pluginManager();
 
     if (!path.isEmpty()) {
       handlePluginPost(path, pm, request, ctx);
@@ -315,7 +315,7 @@ public class PproxyToadlet extends Toadlet {
 
   private void startOfficialPlugin(HTTPRequest request, PluginManager pluginManager) {
     final String pluginName = request.getPartAsStringFailsafe("plugin-name", 40);
-    node.getExecutor().execute(() -> pluginManager.startPluginOfficial(pluginName, true));
+    node.network().executor().execute(() -> pluginManager.startPluginOfficial(pluginName, true));
   }
 
   private void startOtherPlugin(HTTPRequest request, PluginManager pluginManager) {
@@ -323,7 +323,8 @@ public class PproxyToadlet extends Toadlet {
     final boolean fileOnly =
         "on".equalsIgnoreCase(request.getPartAsStringFailsafe(PARAM_FILE_ONLY, 20));
 
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             () -> {
               if (fileOnly) {
@@ -336,7 +337,7 @@ public class PproxyToadlet extends Toadlet {
 
   private void startFreenetPlugin(HTTPRequest request, PluginManager pluginManager) {
     final String pluginName = request.getPartAsStringFailsafe("plugin-uri", 300);
-    node.getExecutor().execute(() -> pluginManager.startPluginFreenet(pluginName, true));
+    node.network().executor().execute(() -> pluginManager.startPluginFreenet(pluginName, true));
   }
 
   private void handleUnloadConfirmation(
@@ -445,7 +446,7 @@ public class PproxyToadlet extends Toadlet {
       return;
     }
 
-    node.getNodeUpdater().deployPluginWhenReady(pluginFilename);
+    node.services().nodeUpdater().deployPluginWhenReady(pluginFilename);
     sendFoundRedirect(ctx, headers, ".");
   }
 
@@ -468,7 +469,7 @@ public class PproxyToadlet extends Toadlet {
     if (purge) {
       pluginManager.removeCachedCopy(filename);
     }
-    node.getExecutor().execute(() -> pluginManager.startPluginAuto(filename, true));
+    node.network().executor().execute(() -> pluginManager.startPluginAuto(filename, true));
 
     sendFoundRedirect(ctx, headers, ".");
   }
@@ -494,7 +495,7 @@ public class PproxyToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     String path = normalizePluginPath(request.getPath());
 
-    PluginManager pm = node.getPluginManager();
+    PluginManager pm = node.services().pluginManager();
 
     if (LOG.isDebugEnabled()) LOG.debug("Pproxy fetching {}", path);
     try {

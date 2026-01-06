@@ -78,7 +78,8 @@ public class PeersOffersUserAlert extends AbstractUserAlert {
           }
         }
       }
-      node.getClientCore()
+      node.services()
+          .clientCore()
           .getAlerts()
           .register(new PeersOffersUserAlert(node, frefFiles.toString()));
     }
@@ -122,7 +123,7 @@ public class PeersOffersUserAlert extends AbstractUserAlert {
     form.addChild(
         TAG_INPUT,
         new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
-        new String[] {"hidden", "formPassword", node.getClientCore().getFormPassword()});
+        new String[] {"hidden", "formPassword", node.services().clientCore().getFormPassword()});
     form.addChild(
         TAG_INPUT,
         new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},

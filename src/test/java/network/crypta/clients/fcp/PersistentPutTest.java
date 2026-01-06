@@ -157,7 +157,10 @@ class PersistentPutTest {
     MessageInvalidException ex =
         assertThrows(
             MessageInvalidException.class,
-            () -> put.run(mock(FCPConnectionHandler.class), mock(Node.class)));
+            () ->
+                put.run(
+                    mock(FCPConnectionHandler.class),
+                    mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, ex.protocolCode);
     assertEquals(

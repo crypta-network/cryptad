@@ -94,14 +94,19 @@ public class FailureTable {
   /** Clean up old data every 10 minutes to save memory and improve privacy */
   static final long CLEANUP_PERIOD = MINUTES.toMillis(10);
 
-  FailureTable(Node node) {
+  /**
+   * Creates a failure table bound to the provided node.
+   *
+   * @param node owning node instance
+   */
+  public FailureTable(Node node) {
     entriesByKey = LRUMap.createSafeMap();
     blockOfferListByKey = LRUMap.createSafeMap();
     this.node = node;
     offerAuthenticatorKey = new byte[32];
-    node.getRandom().nextBytes(offerAuthenticatorKey);
+    node.bootstrap().random().nextBytes(offerAuthenticatorKey);
     offerExecutor = new SerialExecutor(NativeThread.PriorityLevel.HIGH_PRIORITY.value);
-    node.getTicker().queueTimedJob(new FailureTableCleaner(), CLEANUP_PERIOD);
+    node.network().ticker().queueTimedJob(new FailureTableCleaner(), CLEANUP_PERIOD);
   }
 
   /**
@@ -110,7 +115,8 @@ public class FailureTable {
    */
   public void start() {
     offerExecutor.start(
-        node.getExecutor(), "FailureTable offers executor for " + node.getDarknetPortNumber());
+        node.network().executor(),
+        "FailureTable offers executor for " + node.network().darknetPortNumber());
   }
 
   /**
@@ -272,7 +278,7 @@ public class FailureTable {
         if (offers.length > 1) return;
         blockOfferListByKey.removeKey(entry.key);
       }
-      node.getClientCore().dequeueOfferedKey(entry.key);
+      node.services().clientCore().dequeueOfferedKey(entry.key);
     }
 
     public void addOffer(BlockOffer offer) {
@@ -422,13 +428,14 @@ public class FailureTable {
    */
   protected void innerOnOffer(Key key, PeerNode peer, byte[] authenticator) {
     if (LOG.isDebugEnabled())
-      LOG.debug("Inner on offer for {} from {} on {}", key, peer, node.getDarknetPortNumber());
+      LOG.debug(
+          "Inner on offer for {} from {} on {}", key, peer, node.network().darknetPortNumber());
     if (key.getRoutingKey() == null) throw new NullPointerException();
-    // NB: node.hasKey() executes a datastore fetch
+    // NB: node.storage().hasKey() executes a datastore fetch
     // If we have the key in the datastore (store or cache), we don't want it.
     // If we have the key in the client cache, we might want it for other nodes,
     // although hopefully the client layer was tripped when we got it.
-    if (node.hasKey(key, false, true)) {
+    if (node.storage().hasKey(key, false, true)) {
       LOG.debug("Already have key");
       return;
     }
@@ -507,7 +514,7 @@ public class FailureTable {
     // we will probably want it in the future.
     // Note: Queuing offered keys as realtime may be unsafe for similar reasons to
     // prioritization; if enabling, consider doing so only at low priorities.
-    node.getClientCore().queueOfferedKey(key, false);
+    node.services().clientCore().queueOfferedKey(key, false);
   }
 
   private void trimOffersList(long now) {
@@ -609,7 +616,7 @@ public class FailureTable {
       final boolean realTimeFlag)
       throws NotConnectedException {
     if (isSSK) {
-      SSKBlock block = node.fetch((NodeSSK) key, false, false, false, false, true, null);
+      SSKBlock block = node.storage().fetch((NodeSSK) key, false, false, false, false, true, null);
       if (block == null) {
         // Don't have the key
         source
@@ -628,7 +635,8 @@ public class FailureTable {
 
       source.transport().sendAsync(headers, null, senderCounter);
 
-      node.getExecutor()
+      node.network()
+          .executor()
           .execute(
               new PrioRunnable() {
 
@@ -656,7 +664,7 @@ public class FailureTable {
         source.transport().sendAsync(pk, null, senderCounter);
       }
     } else {
-      CHKBlock block = node.fetch((NodeCHK) key, false, false, false, false, true, null);
+      CHKBlock block = node.storage().fetch((NodeCHK) key, false, false, false, false, true, null);
       if (block == null) {
         // Don't have the key
         source
@@ -674,8 +682,8 @@ public class FailureTable {
           new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, block.getRawData());
       final BlockTransmitter bt =
           new BlockTransmitter(
-              node.getUSM(),
-              node.getTicker(),
+              node.network().usm(),
+              node.network().ticker(),
               source,
               uid,
               prb,
@@ -683,8 +691,9 @@ public class FailureTable {
               BlockTransmitter.NEVER_CASCADE,
               success -> tag.unlockHandler(),
               realTimeFlag,
-              node.getNodeStats());
-      node.getExecutor()
+              node.network().stats());
+      node.network()
+          .executor()
           .execute(
               new PrioRunnable() {
 
@@ -714,18 +723,18 @@ public class FailureTable {
 
     @Override
     public void receivedBytes(int x) {
-      node.getNodeStats().offeredKeysSenderReceivedBytes(x);
+      node.network().stats().offeredKeysSenderReceivedBytes(x);
     }
 
     @Override
     public void sentBytes(int x) {
-      node.getNodeStats().offeredKeysSenderSentBytes(x);
+      node.network().stats().offeredKeysSenderSentBytes(x);
     }
 
     @Override
     public void sentPayload(int x) {
       node.sentPayload(x);
-      node.getNodeStats().offeredKeysSenderSentBytes(-x);
+      node.network().stats().offeredKeysSenderSentBytes(-x);
     }
   }
 
@@ -771,11 +780,12 @@ public class FailureTable {
         throw new IllegalStateException("Last offer not dealt with");
       }
       if (!recentOffers.isEmpty()) {
-        lastOffer = ListUtils.removeRandomBySwapLastSimple(node.getRandom(), recentOffers);
+        lastOffer = ListUtils.removeRandomBySwapLastSimple(node.bootstrap().random(), recentOffers);
         return lastOffer;
       }
       if (!expiredOffers.isEmpty()) {
-        lastOffer = ListUtils.removeRandomBySwapLastSimple(node.getRandom(), expiredOffers);
+        lastOffer =
+            ListUtils.removeRandomBySwapLastSimple(node.bootstrap().random(), expiredOffers);
         return lastOffer;
       }
       // No more offers.
@@ -859,7 +869,7 @@ public class FailureTable {
       } catch (Throwable t) {
         LOG.error("FailureTableCleaner caught {}", t, t);
       } finally {
-        node.getTicker().queueTimedJob(this, CLEANUP_PERIOD);
+        node.network().ticker().queueTimedJob(this, CLEANUP_PERIOD);
       }
     }
 

@@ -775,15 +775,17 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
       throws LowLevelPutException {
     if (req.localRequestOnly)
       try {
-        core.getNode().store(b, false, req.canWriteClientCache, true, false);
+        core.getNode().storage().store(b, false, req.canWriteClientCache, true, false);
       } catch (KeyCollisionException e) {
         KeyBlock collided =
-            core.getNode().fetch(k.getNodeKey(), true, req.canWriteClientCache, false, false, null);
+            core.getNode()
+                .storage()
+                .fetch(k.getNodeKey(), true, req.canWriteClientCache, false, false, null);
         if (collided == null) {
           LOG.error("Collided but no key?!");
           // Could be a race condition.
           try {
-            core.getNode().store(b, false, req.canWriteClientCache, true, false);
+            core.getNode().storage().store(b, false, req.canWriteClientCache, true, false);
           } catch (KeyCollisionException _) {
             LOG.error("Collided but no key and still collided!");
             throw new LowLevelPutException(

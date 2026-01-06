@@ -111,9 +111,9 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   public AnnounceSender(
       double target, OpennetManager om, Node node, AnnouncementCallback cb, PeerNode onlyNode) {
     source = null;
-    this.uid = node.getRandom().nextLong();
+    this.uid = node.bootstrap().random().nextLong();
     // Prevent it being routed back to us.
-    node.getTracker().completed(uid);
+    node.routing().tracker().completed(uid);
     this.om = om;
     this.node = node;
     this.htl = node.maxHTL();
@@ -138,16 +138,16 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   public void run() {
     try {
       realRun();
-      node.getNodeStats().reportAnnounceForwarded(forwardedRefs, source);
+      node.network().stats().reportAnnounceForwarded(forwardedRefs, source);
     } catch (Throwable t) {
       LOG.error("Caught {} announcing {} from {}", t, uid, source, t);
     } finally {
       if (source != null) {
         source.completedAnnounce(uid);
       }
-      node.getTracker().completed(uid);
+      node.routing().tracker().completed(uid);
       if (cb != null) cb.completed();
-      node.getNodeStats().endAnnouncement(uid);
+      node.network().stats().endAnnouncement(uid);
     }
   }
 
@@ -229,19 +229,20 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private boolean shouldCompleteNow() {
-    return (htl == 0) || !node.isOpennetEnabled();
+    return (htl == 0) || !node.network().isOpennetEnabled();
   }
 
   private void updateHtl(boolean hasForwarded, PeerNode last) {
     if (onlyNode == null) {
       // Decrement at this point so HTL==0 is detected before routing the next hop.
-      htl = node.decrementHTL(hasForwarded ? last : source, htl);
+      htl = node.routing().decrementHTL(hasForwarded ? last : source, htl);
     }
   }
 
   private PeerNode chooseNextNode(HashSet<PeerNode> routed) {
     if (onlyNode == null) {
-      return node.getPeers()
+      return node.network()
+          .peers()
           .routingSelector()
           .closerPeer(
               source,
@@ -285,7 +286,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       MessageFilter mf = buildAcceptedWaitFilter(next);
       Message msg;
       try {
-        msg = node.getUSM().waitFor(mf, this);
+        msg = node.network().usm().waitFor(mf, this);
         if (LOG.isDebugEnabled()) LOG.debug("first part got {}", msg);
       } catch (DisconnectedException _) {
         LOG.info("Disconnected from {} while waiting for Accepted on {}", next, uid);
@@ -370,7 +371,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       Message msg;
       MessageFilter mf = buildFinalWaitFilter(next);
       try {
-        msg = node.getUSM().waitFor(mf, this);
+        msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
         LOG.info("Disconnected from {} while waiting for announcement", next);
         return Flow.CONTINUE;
@@ -562,7 +563,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     while (true) {
       Message msg;
       try {
-        msg = node.getUSM().waitFor(mf, this);
+        msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
         return;
       }
@@ -624,7 +625,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
           }
         };
     try {
-      node.getExecutor().execute(r);
+      node.network().executor().execute(r);
     } catch (Throwable _) {
       synchronized (this) {
         waitingForTransfers--;
@@ -667,7 +668,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
   private void addNodeFromFs(SimpleFieldSet fs) {
     try {
-      OpennetPeerNode pn = node.addNewOpennetNode(fs, ConnectionType.ANNOUNCE);
+      OpennetPeerNode pn = node.network().addNewOpennetNode(fs, ConnectionType.ANNOUNCE);
       if (cb != null) {
         if (pn != null) cb.addedNode(pn);
         else cb.nodeNotAdded();
@@ -803,19 +804,19 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   /** Reports sent bytes to the announce byte counter. */
   @Override
   public void sentBytes(int x) {
-    node.getNodeStats().announceByteCounter.sentBytes(x);
+    node.network().stats().announceByteCounter.sentBytes(x);
   }
 
   /** Reports received bytes to the announce byte counter. */
   @Override
   public void receivedBytes(int x) {
-    node.getNodeStats().announceByteCounter.receivedBytes(x);
+    node.network().stats().announceByteCounter.receivedBytes(x);
   }
 
   /** Reports payload bytes; not counted toward the total byte counter. */
   @Override
   public void sentPayload(int x) {
-    node.getNodeStats().announceByteCounter.sentPayload(x);
+    node.network().stats().announceByteCounter.sentPayload(x);
     // Doesn't count.
   }
 

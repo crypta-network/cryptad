@@ -347,7 +347,7 @@ class PluginManagerTest {
   }
 
   private PluginManager newPluginManagerWithRealConfig() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     PersistentConfig config = new PersistentConfig(null);
     SubConfig fproxy = config.createSubConfig(FPROXY_SUBCONFIG);
@@ -364,7 +364,7 @@ class PluginManagerTest {
     when(node.getConfig()).thenReturn(config);
 
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.makeClient(PluginManager.PRIO, true, false))
         .thenReturn(mock(HighLevelSimpleClient.class));
 
@@ -374,7 +374,7 @@ class PluginManagerTest {
   }
 
   private PluginManager newPluginManagerWithRealConfig(File pluginDir) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(node.getPluginDir()).thenReturn(pluginDir);
 
     PersistentConfig config = new PersistentConfig(null);
@@ -392,7 +392,7 @@ class PluginManagerTest {
     when(node.getConfig()).thenReturn(config);
 
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.makeClient(PluginManager.PRIO, true, false))
         .thenReturn(mock(HighLevelSimpleClient.class));
 
@@ -402,7 +402,7 @@ class PluginManagerTest {
   }
 
   private TestablePluginManager newTestablePluginManagerWithRealConfig() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     PersistentConfig config = new PersistentConfig(null);
     SubConfig fproxy = config.createSubConfig(FPROXY_SUBCONFIG);
@@ -419,7 +419,7 @@ class PluginManagerTest {
     when(node.getConfig()).thenReturn(config);
 
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.makeClient(PluginManager.PRIO, true, false))
         .thenReturn(mock(HighLevelSimpleClient.class));
 
@@ -429,7 +429,7 @@ class PluginManagerTest {
   }
 
   private PluginManager newPluginManagerWithDisabledPluginsConfig() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     SubConfig pluginManagerConfig = mock(SubConfig.class);
     when(pluginManagerConfig.getBoolean("enabled")).thenReturn(false);
@@ -444,7 +444,7 @@ class PluginManagerTest {
     when(node.getConfig()).thenReturn(config);
 
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.makeClient(PluginManager.PRIO, true, false))
         .thenReturn(mock(HighLevelSimpleClient.class));
 

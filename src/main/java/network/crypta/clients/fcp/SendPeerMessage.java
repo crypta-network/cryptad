@@ -116,7 +116,7 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
    */
   @Override
   public void run(FCPConnectionHandler handler, Node node) throws MessageInvalidException {
-    PeerNode pn = node.getPeerNode(nodeIdentifier);
+    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, identifier);
       handler.send(msg);

@@ -24,7 +24,9 @@ import org.slf4j.LoggerFactory;
 @SuppressWarnings("java:S100") // test naming style: method_whenCondition_expectOutcome
 class InsertTagTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerNode source;
   @Mock private PeerManager peerManager;
   @Mock private Ticker ticker;
@@ -55,7 +57,7 @@ class InsertTagTest {
   @BeforeEach
   void setUp() {
     tracker = new TestRequestTracker(peerManager, ticker);
-    when(node.getTracker()).thenReturn(tracker);
+    when(node.routing().tracker()).thenReturn(tracker);
   }
 
   @Test

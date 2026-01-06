@@ -17,6 +17,7 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.keys.NodeCHK;
 import network.crypta.keys.NodeSSK;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100") // test method naming style: method_whenCondition_expectOutcome
 class RequestSenderTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   private static byte[] bytes(int size, int seed) {
     byte[] b = new byte[size];
@@ -42,7 +44,7 @@ class RequestSenderTest {
     // 32‑byte routing key; content doesn't matter for these tests
     NodeCHK key = new NodeCHK(bytes(NodeCHK.KEY_LENGTH, 1), (byte) 1);
     when(node.maxHTL()).thenReturn((short) 18);
-    when(node.enableNewLoadManagement(realtime)).thenReturn(false);
+    when(node.network().enableNewLoadManagement(realtime)).thenReturn(false);
     return new RequestSender(
         key,
         /* pubKey */ null,
@@ -63,7 +65,7 @@ class RequestSenderTest {
     byte[] pkh = bytes(NodeSSK.PUBKEY_HASH_SIZE, 3);
     NodeSSK key = new NodeSSK(pkh, ehd, (byte) 1);
     when(node.maxHTL()).thenReturn((short) 18);
-    when(node.enableNewLoadManagement(realtime)).thenReturn(false);
+    when(node.network().enableNewLoadManagement(realtime)).thenReturn(false);
     return new RequestSender(
         key,
         pubKey,
@@ -158,8 +160,10 @@ class RequestSenderTest {
     RequestSender sender = newChkSender(true, uid, htl);
 
     PriorityAwareExecutor exec = mock(PriorityAwareExecutor.class);
-    when(node.getExecutor()).thenReturn(exec);
-    when(node.getDarknetPortNumber()).thenReturn(31337);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(exec);
+    when(network.darknetPortNumber()).thenReturn(31337);
 
     sender.start();
 
@@ -187,7 +191,7 @@ class RequestSenderTest {
     boolean realtime = true;
     short htl = 8;
     when(node.maxHTL()).thenReturn((short) 18);
-    when(node.enableNewLoadManagement(realtime)).thenReturn(false);
+    when(node.network().enableNewLoadManagement(realtime)).thenReturn(false);
     RequestSender sender = newChkSender(realtime, 11L, htl);
 
     int expected = BaseSender.calculateTimeout(realtime, htl, node);

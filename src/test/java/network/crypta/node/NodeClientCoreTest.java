@@ -22,6 +22,7 @@ import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,7 +38,9 @@ import org.mockito.quality.Strictness;
 @SuppressWarnings("java:S100")
 class NodeClientCoreTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private SecurityLevels securityLevels;
   @Mock private SimpleToadletServer toadlets;
   @Mock private RequestStarterGroup requestStarters;
@@ -59,7 +62,9 @@ class NodeClientCoreTest {
     // Inject required collaborators/fields via reflection to avoid full Node/Config bootstrapping
     setField(core, "random", rng);
     setField(core, "node", node);
-    when(node.getSecurityLevels()).thenReturn(securityLevels);
+    NodeServicesSubsystem services = Mockito.mock(NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
 
     setField(core, "downloadsDir", tempDir.toFile());
     setField(core, "transferPolicy", new NodeClientCoreTransferPolicy(node, tempDir.toFile()));

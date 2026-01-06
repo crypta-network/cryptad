@@ -26,6 +26,8 @@ import network.crypta.node.probe.Error;
 import network.crypta.node.probe.Listener;
 import network.crypta.node.probe.Probe;
 import network.crypta.node.probe.Type;
+import network.crypta.node.subsystem.NodeBootstrap;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,7 +43,8 @@ class ProbeRequestTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @Test
   void constructor_whenTypeUnrecognized_expectMessageInvalidException() {
@@ -102,6 +105,8 @@ class ProbeRequestTest {
       throws MessageInvalidException {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 5));
     when(handler.hasFullAccess()).thenReturn(false);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> request.run(handler, node));
@@ -109,7 +114,7 @@ class ProbeRequestTest {
     assertEquals(ProtocolErrorMessage.ACCESS_DENIED, exception.protocolCode);
     assertEquals("probe-1", exception.ident);
     assertEquals("Probe requires full access.", exception.getMessage());
-    verify(node, never()).startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
+    verify(network, never()).startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
   }
 
   @Test
@@ -117,13 +122,17 @@ class ProbeRequestTest {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, null));
     when(handler.hasFullAccess()).thenReturn(true);
     RandomSource random = mock(RandomSource.class);
+    NodeBootstrap bootstrap = mock(NodeBootstrap.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
     when(random.nextLong()).thenReturn(REQUEST_UID);
-    when(node.getRandom()).thenReturn(random);
+    when(node.bootstrap()).thenReturn(bootstrap);
+    when(bootstrap.random()).thenReturn(random);
+    when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
     request.run(handler, node);
 
-    verify(node)
+    verify(network)
         .startProbe(eq(Probe.MAX_HTL), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
     assertNotNull(listenerCaptor.getValue());
   }
@@ -133,13 +142,17 @@ class ProbeRequestTest {
     ProbeRequest request = new ProbeRequest(fieldSet("probe-1", Type.BUILD, (byte) 12));
     when(handler.hasFullAccess()).thenReturn(true);
     RandomSource random = mock(RandomSource.class);
+    NodeBootstrap bootstrap = mock(NodeBootstrap.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
     when(random.nextLong()).thenReturn(REQUEST_UID);
-    when(node.getRandom()).thenReturn(random);
+    when(node.bootstrap()).thenReturn(bootstrap);
+    when(bootstrap.random()).thenReturn(random);
+    when(node.network()).thenReturn(network);
     ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
 
     request.run(handler, node);
 
-    verify(node)
+    verify(network)
         .startProbe(eq((byte) 12), eq(REQUEST_UID), eq(Type.BUILD), listenerCaptor.capture());
     assertNotNull(listenerCaptor.getValue());
   }
@@ -346,15 +359,19 @@ class ProbeRequestTest {
   private Listener runAndCaptureListener(ProbeRequest request) throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
     RandomSource random = mock(RandomSource.class);
+    NodeBootstrap bootstrap = mock(NodeBootstrap.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
     when(random.nextLong()).thenReturn(REQUEST_UID);
-    when(node.getRandom()).thenReturn(random);
+    when(node.bootstrap()).thenReturn(bootstrap);
+    when(bootstrap.random()).thenReturn(random);
+    when(node.network()).thenReturn(network);
     AtomicReference<Listener> listenerRef = new AtomicReference<>();
     doAnswer(
             invocation -> {
               listenerRef.set(invocation.getArgument(3));
               return null;
             })
-        .when(node)
+        .when(network)
         .startProbe(anyByte(), anyLong(), any(Type.class), any(Listener.class));
 
     request.run(handler, node);

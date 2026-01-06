@@ -17,6 +17,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerRoster;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,7 +34,11 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class IPUndetectedUserAlertTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
+  @Mock private NodeNetworkSubsystem network;
+
   @Mock private NodeIPDetector ipDetector;
   @Mock private PeerManager peers;
   @Mock private PeerRoster roster;
@@ -50,17 +55,18 @@ class IPUndetectedUserAlertTest {
     new NodeL10n();
 
     // Common stubs used by multiple tests
-    lenient().when(node.getIpDetector()).thenReturn(ipDetector);
-    lenient().when(node.getPeers()).thenReturn(peers);
+    lenient().when(node.network()).thenReturn(network);
+    lenient().when(network.ipDetector()).thenReturn(ipDetector);
+    lenient().when(network.peers()).thenReturn(peers);
     lenient().when(peers.roster()).thenReturn(roster);
-    lenient().when(node.getDarknetPortNumber()).thenReturn(12345);
-    lenient().when(node.getOpennetFNPPort()).thenReturn(-1);
-    lenient().when(node.isOpennetEnabled()).thenReturn(false);
+    lenient().when(network.darknetPortNumber()).thenReturn(12345);
+    lenient().when(network.opennetFnpPort()).thenReturn(-1);
+    lenient().when(network.isOpennetEnabled()).thenReturn(false);
     lenient().when(peers.countConnectiblePeers()).thenReturn(0);
-    lenient().when(node.getUptime()).thenReturn(0L);
+    lenient().when(network.uptime()).thenReturn(0L);
 
     // Config + form for getHTMLText()
-    lenient().when(node.getClientCore()).thenReturn(clientCore);
+    lenient().when(node.services().clientCore()).thenReturn(clientCore);
     lenient().when(clientCore.getFormPassword()).thenReturn("secret-form-pass");
 
     lenient().when(node.getConfig()).thenReturn(config);
@@ -131,8 +137,8 @@ class IPUndetectedUserAlertTest {
   void text_whenUnknownAndSinglePort_includesPortForwardSuggestion() {
     when(ipDetector.noDetectPlugins()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(false);
-    when(node.getDarknetPortNumber()).thenReturn(7777);
-    when(node.getOpennetFNPPort()).thenReturn(-1);
+    when(node.network().darknetPortNumber()).thenReturn(7777);
+    when(node.network().opennetFnpPort()).thenReturn(-1);
 
     String unknown =
         NodeL10n.getBase()
@@ -150,8 +156,8 @@ class IPUndetectedUserAlertTest {
   void text_whenUnknownAndTwoPorts_includesTwoPortSuggestionWithSpacing() {
     when(ipDetector.noDetectPlugins()).thenReturn(false);
     when(ipDetector.isDetecting()).thenReturn(false);
-    when(node.getDarknetPortNumber()).thenReturn(7000);
-    when(node.getOpennetFNPPort()).thenReturn(8000);
+    when(node.network().darknetPortNumber()).thenReturn(7000);
+    when(node.network().opennetFnpPort()).thenReturn(8000);
 
     String unknown =
         NodeL10n.getBase()
@@ -182,22 +188,22 @@ class IPUndetectedUserAlertTest {
   @DisplayName("isValid_variousCombinations_followContract")
   void isValid_variousCombinations_followContract() {
     // Opennet enabled -> invalid regardless of peers/uptime/detection
-    when(node.isOpennetEnabled()).thenReturn(true);
+    when(network.isOpennetEnabled()).thenReturn(true);
     assertFalse(alert.isValid());
 
     // Few peers -> valid
-    when(node.isOpennetEnabled()).thenReturn(false);
+    when(network.isOpennetEnabled()).thenReturn(false);
     when(peers.countConnectiblePeers()).thenReturn(3);
     assertTrue(alert.isValid());
 
     // Enough peers, short uptime, still detecting -> invalid
     when(peers.countConnectiblePeers()).thenReturn(8);
-    when(node.getUptime()).thenReturn(TimeUnit.SECONDS.toMillis(30));
+    when(network.uptime()).thenReturn(TimeUnit.SECONDS.toMillis(30));
     when(ipDetector.isDetecting()).thenReturn(true);
     assertFalse(alert.isValid());
 
     // Enough peers, long uptime, not detecting -> valid
-    when(node.getUptime()).thenReturn(TimeUnit.MINUTES.toMillis(2));
+    when(network.uptime()).thenReturn(TimeUnit.MINUTES.toMillis(2));
     when(ipDetector.isDetecting()).thenReturn(false);
     assertTrue(alert.isValid());
   }

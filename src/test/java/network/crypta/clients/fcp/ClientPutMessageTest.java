@@ -120,7 +120,7 @@ class ClientPutMessageTest {
     ClientPutMessage message = newDirectMessage("put-run", 8L);
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
 
-    message.run(handler, Mockito.mock(Node.class));
+    message.run(handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));
 
     Mockito.verify(handler).startClientPut(message);
   }

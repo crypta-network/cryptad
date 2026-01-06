@@ -214,7 +214,8 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     for (int i = 0; i < clients.length; i++) {
       clients[i] =
           nodes[i]
-              .getClientCore()
+              .services()
+              .clientCore()
               .makeClient(RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS, false, false);
     }
     return clients;
@@ -244,7 +245,8 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       logBlockDetails(block, chkBlock);
       try {
         randomNode
-            .getClientCore()
+            .services()
+            .clientCore()
             .getTransfers()
             .realPut(chkBlock, false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
         LOG.error("Inserted to {}", nodeIndex);
@@ -349,7 +351,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
   private static long countRunningRequests(Node[] nodes) {
     long totalRunningRequests = 0;
     for (Node node : nodes) {
-      totalRunningRequests += node.getClientCore().countQueuedRequests();
+      totalRunningRequests += node.services().clientCore().countQueuedRequests();
     }
     return totalRunningRequests;
   }

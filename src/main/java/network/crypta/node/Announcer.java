@@ -124,9 +124,9 @@ public class Announcer {
    * scheduling anything. The method itself is non-blocking.
    */
   protected void start() {
-    if (!node.isOpennetEnabled()) return;
-    int darkPeers = node.getPeers().roster().getDarknetPeers().length;
-    int openPeers = node.getPeers().roster().getOpennetPeers().length;
+    if (!node.network().isOpennetEnabled()) return;
+    int darkPeers = node.network().peers().roster().getDarknetPeers().length;
+    int openPeers = node.network().peers().roster().getOpennetPeers().length;
     int oldOpenPeers = om.countOldOpennetPeers();
     if (darkPeers + openPeers + oldOpenPeers == 0) {
       // Opennet is enabled and there are no peers. Connect to several seed nodes and announce.
@@ -144,7 +144,8 @@ public class Announcer {
           openPeers,
           oldOpenPeers);
       // Wait a minute, then check whether we need to seed.
-      node.getTicker()
+      node.network()
+          .ticker()
           .queueTimedJob(
               () -> {
                 synchronized (Announcer.this) {
@@ -165,11 +166,11 @@ public class Announcer {
   }
 
   private void registerEvent(int eventStatus) {
-    node.getClientCore().getAlerts().register(new AnnouncementUserEvent(eventStatus));
+    node.services().clientCore().getAlerts().register(new AnnouncementUserEvent(eventStatus));
   }
 
   private void connectSomeSeednodes() {
-    if (!node.isOpennetEnabled()) return;
+    if (!node.network().isOpennetEnabled()) return;
     boolean announceNow;
     if (LOG.isDebugEnabled()) LOG.debug("Connecting some seednodes...");
     List<SimpleFieldSet> seeds = Announcer.readSeednodes(NodeFile.SEEDNODES.getFile(node));
@@ -180,11 +181,12 @@ public class Announcer {
 
     int count = connectSomeNodesInner(seeds);
     boolean stillConnecting;
-    List<SeedServerPeerNode> tryingSeeds = node.getPeers().seedPeers().getSeedServerPeersVector();
+    List<SeedServerPeerNode> tryingSeeds =
+        node.network().peers().seedPeers().getSeedServerPeersVector();
     stillConnecting = hasUnannouncedTryingSeeds(tryingSeeds);
     debugCounts(count, stillConnecting);
     announceNow = handleNoMorePeers(count, stillConnecting);
-    node.getDNSRequester().forceRun();
+    node.network().dnsRequester().forceRun();
     // If none connect in a minute, try some more.
     scheduleMaybeSendAnnouncement(announceNow ? 0 : MIN_ADDED_SEEDS_INTERVAL);
   }
@@ -200,7 +202,8 @@ public class Announcer {
       if (seeds.isEmpty()) {
         registerEvent(STATUS_NO_SEEDNODES);
         // File may be added later; re-check periodically without requiring a restart.
-        node.getTicker()
+        node.network()
+            .ticker()
             .queueTimedJob(this::maybeSendAnnouncement, Announcer.RETRY_MISSING_SEEDNODES_DELAY);
         return true;
       }
@@ -256,7 +259,8 @@ public class Announcer {
 
   private void scheduleClearAnnouncedAndRetry() {
     if (LOG.isDebugEnabled()) LOG.debug("Will clear announced-to in 1 minute...");
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             () -> {
               if (LOG.isDebugEnabled()) LOG.debug("Clearing old announced-to list");
@@ -276,7 +280,8 @@ public class Announcer {
 
   /** Schedule maybeSendAnnouncement with a try/catch logging wrapper. */
   private void scheduleMaybeSendAnnouncement(long delayMs) {
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             () -> {
               try {
@@ -298,7 +303,7 @@ public class Announcer {
     int count = 0;
     while (count < CONNECT_AT_ONCE) {
       if (seeds.isEmpty()) break;
-      SimpleFieldSet fs = ListUtils.removeRandomBySwapLastSimple(node.getRandom(), seeds);
+      SimpleFieldSet fs = ListUtils.removeRandomBySwapLastSimple(node.bootstrap().random(), seeds);
       if (processSeedFromFieldSet(fs)) count++;
     }
     if (LOG.isDebugEnabled()) LOG.debug("connectSomeNodesInner() returning {}", count);
@@ -308,10 +313,10 @@ public class Announcer {
   private boolean processSeedFromFieldSet(SimpleFieldSet fs) {
     try {
       SeedServerPeerNode seed =
-          new SeedServerPeerNode(fs, node, om.getCrypto(), false, node.getPeers());
+          new SeedServerPeerNode(fs, node, om.getCrypto(), false, node.network().peers());
       if (shouldSkipSeed(seed)) return false;
       if (LOG.isDebugEnabled()) LOG.debug("Trying to connect to seednode {}", seed);
-      boolean added = node.getPeers().addPeer(seed);
+      boolean added = node.network().peers().addPeer(seed);
       if (added) {
         if (LOG.isDebugEnabled()) LOG.debug("Connecting to seednode {}", seed);
       } else {
@@ -332,8 +337,8 @@ public class Announcer {
   }
 
   private boolean shouldSkipSeed(SeedServerPeerNode seed) {
-    if (node.wantAnonAuth(true)
-        && Arrays.equals(node.getOpennetPubKeyHash(), seed.peerECDSAPubKeyHash)) {
+    if (node.network().wantAnonAuth(true)
+        && Arrays.equals(node.network().opennetPubKeyHash(), seed.peerECDSAPubKeyHash)) {
       if (LOG.isDebugEnabled()) LOG.atDebug().log(seed::userToString);
       return true;
     }
@@ -439,7 +444,7 @@ public class Announcer {
         public HTMLNode getHTMLText() {
           HTMLNode div = new HTMLNode("div");
           div.addChild("#", l10n(ANNOUNCE_DISABLED_TOO_OLD_KEY));
-          if (!node.getNodeUpdater().isEnabled()) {
+          if (!node.services().nodeUpdater().isEnabled()) {
             div.addChild("#", " ");
             NodeL10n.getBase()
                 .addL10nSubstitution(
@@ -457,7 +462,7 @@ public class Announcer {
           StringBuilder sb = new StringBuilder();
           sb.append(l10n(ANNOUNCE_DISABLED_TOO_OLD_KEY));
           sb.append(" ");
-          if (!node.getNodeUpdater().isEnabled()) {
+          if (!node.services().nodeUpdater().isEnabled()) {
             sb.append(
                 l10n(
                     "announceDisabledTooOldUpdateDisabled",
@@ -469,7 +474,7 @@ public class Announcer {
 
         @Override
         public boolean isValid() {
-          if (node.getNodeUpdater().isEnabled()) return false;
+          if (node.services().nodeUpdater().isEnabled()) return false;
           // If it is enabled but not armed there will be a message from the updater.
           synchronized (Announcer.this) {
             return killedAnnouncementTooOld;
@@ -485,7 +490,7 @@ public class Announcer {
   boolean enoughPeers() {
     if (om.stopping()) return true;
     // Do we want to send an announcement to the node?
-    int opennetCount = node.getPeers().countConnectedPeers();
+    int opennetCount = node.network().peers().countConnectedPeers();
     int target = getAnnouncementThreshold();
     if (opennetCount >= target) {
       if (LOG.isDebugEnabled())
@@ -513,12 +518,14 @@ public class Announcer {
   }
 
   private boolean checkAndMaybeKillForTooOld() {
-    if ((!node.getNodeUpdater().isEnabled())
-        || (node.getNodeUpdater().canUpdateNow() && !node.getNodeUpdater().isArmed())) {
+    if ((!node.services().nodeUpdater().isEnabled())
+        || (node.services().nodeUpdater().canUpdateNow()
+            && !node.services().nodeUpdater().isArmed())) {
       synchronized (this) {
         if (killedAnnouncementTooOld) return true;
       }
-      if (node.getPeers().getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_TOO_NEW, false) > 10) {
+      if (node.network().peers().getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_TOO_NEW, false)
+          > 10) {
         synchronized (this) {
           if (killedAnnouncementTooOld) return true;
           killedAnnouncementTooOld = true;
@@ -526,8 +533,8 @@ public class Announcer {
         LOG.error(
             "Shutting down announcement as we are older than the current mandatory build and"
                 + " auto-update is disabled or waiting for user input.");
-        if (node.getClientCore() != null)
-          node.getClientCore().getAlerts().register(announcementDisabledAlert);
+        if (node.services().clientCore() != null)
+          node.services().clientCore().getAlerts().register(announcementDisabledAlert);
         return true;
       }
     }
@@ -535,14 +542,16 @@ public class Announcer {
   }
 
   private void disconnectAllAsync() {
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             () -> {
-              for (OpennetPeerNode pn : node.getPeers().roster().getOpennetPeers()) {
-                node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
+              for (OpennetPeerNode pn : node.network().peers().roster().getOpennetPeers()) {
+                node.network().peers().messenger().disconnectAndRemove(pn, true, true, true);
               }
-              for (SeedServerPeerNode pn : node.getPeers().seedPeers().getSeedServerPeersVector()) {
-                node.getPeers().messenger().disconnectAndRemove(pn, true, true, true);
+              for (SeedServerPeerNode pn :
+                  node.network().peers().seedPeers().getSeedServerPeersVector()) {
+                node.network().peers().messenger().disconnectAndRemove(pn, true, true, true);
               }
             });
   }
@@ -551,15 +560,16 @@ public class Announcer {
     synchronized (this) {
       killedAnnouncementTooOld = false;
     }
-    if (node.getClientCore() != null)
-      node.getClientCore().getAlerts().unregister(announcementDisabledAlert);
+    if (node.services().clientCore() != null)
+      node.services().clientCore().getAlerts().unregister(announcementDisabledAlert);
   }
 
   private boolean shouldPauseForUomAndTooNew() {
-    return node.getNodeUpdater().isEnabled()
-        && node.getNodeUpdater().isArmed()
-        && node.getNodeUpdater().getUpdateOverMandatory().fetchingFromTwo()
-        && node.getPeers().getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_TOO_NEW, false) > 5;
+    return node.services().nodeUpdater().isEnabled()
+        && node.services().nodeUpdater().isArmed()
+        && node.services().nodeUpdater().getUpdateOverMandatory().fetchingFromTwo()
+        && node.network().peers().getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_TOO_NEW, false)
+            > 5;
   }
 
   /**
@@ -593,11 +603,12 @@ public class Announcer {
       }
       if (enoughPeers()) {
         for (SeedServerPeerNode pn :
-            node.getPeers().seedPeers().getConnectedSeedServerPeersVector(null)) {
-          node.getPeers().messenger().disconnectAndRemove(pn, true, true, false);
+            node.network().peers().seedPeers().getConnectedSeedServerPeersVector(null)) {
+          node.network().peers().messenger().disconnectAndRemove(pn, true, true, false);
         }
         // Re-check every minute. Adverse conditions (e.g., CPU starvation) might require reseeding.
-        node.getTicker()
+        node.network()
+            .ticker()
             .queueTimedJob(
                 this::maybeSendAnnouncement,
                 "Check whether we need to announce",
@@ -605,7 +616,8 @@ public class Announcer {
                 false,
                 true);
       } else {
-        node.getTicker()
+        node.network()
+            .ticker()
             .queueTimedJob(
                 this::maybeSendAnnouncement,
                 "Check whether we need to announce",
@@ -625,7 +637,7 @@ public class Announcer {
    */
   public void maybeSendAnnouncementOffThread() {
     if (enoughPeers()) return;
-    node.getTicker().queueTimedJob(this::maybeSendAnnouncement, 0);
+    node.network().ticker().queueTimedJob(this::maybeSendAnnouncement, 0);
   }
 
   /**
@@ -656,9 +668,11 @@ public class Announcer {
       if (!started) return true;
     }
     if (LOG.isDebugEnabled()) LOG.debug("maybeSendAnnouncement()");
-    if (!node.isOpennetEnabled()) return true;
+    if (!node.network().isOpennetEnabled()) return true;
     if (enoughPeers()) {
-      node.getTicker().queueTimedJob(checker(), "Announcement checker", FINAL_DELAY, false, true);
+      node.network()
+          .ticker()
+          .queueTimedJob(checker(), "Announcement checker", FINAL_DELAY, false, true);
       return true;
     }
     return false;
@@ -667,7 +681,9 @@ public class Announcer {
   private boolean checksUnderLock() {
     // Double check after taking the lock.
     if (enoughPeers()) {
-      node.getTicker().queueTimedJob(checker(), "Announcement checker", FINAL_DELAY, false, true);
+      node.network()
+          .ticker()
+          .queueTimedJob(checker(), "Announcement checker", FINAL_DELAY, false, true);
       return true;
     }
     if (runningAnnouncements > WANT_ANNOUNCEMENTS) {
@@ -690,10 +706,10 @@ public class Announcer {
 
   private void announceToAvailableSeeds() {
     List<SeedServerPeerNode> seeds =
-        node.getPeers().seedPeers().getConnectedSeedServerPeersVector(announcedToIdentities);
+        node.network().peers().seedPeers().getConnectedSeedServerPeersVector(announcedToIdentities);
     while (sentAnnouncements < WANT_ANNOUNCEMENTS && !seeds.isEmpty()) {
       final SeedServerPeerNode seed =
-          ListUtils.removeRandomBySwapLastSimple(node.getRandom(), seeds);
+          ListUtils.removeRandomBySwapLastSimple(node.bootstrap().random(), seeds);
       if (seed == null) {
         LOG.debug("Null seed encountered while selecting; skipping.");
         continue; // Single allowed continue: keep nesting shallow and reduce complexity.
@@ -765,7 +781,7 @@ public class Announcer {
    *     disabled
    */
   protected boolean sendAnnouncement(final SeedServerPeerNode seed) {
-    if (!node.isOpennetEnabled()) {
+    if (!node.network().isOpennetEnabled()) {
       if (LOG.isDebugEnabled()) LOG.debug("Not announcing to {} because opennet is disabled", seed);
       return false;
     }
@@ -774,7 +790,7 @@ public class Announcer {
       LOG.atDebug().addArgument(seed::userToString).log(ANNOUNCEMENT_TO + "{} starting...");
     AnnounceSender sender =
         new AnnounceSender(
-            node.getLocation(),
+            node.network().location(),
             om,
             node,
             new AnnouncementCallback() {
@@ -830,7 +846,8 @@ public class Announcer {
                     startTime = System.currentTimeMillis() + COOLING_OFF_PERIOD;
                     sentAnnouncements = 0;
                     // Wait for COOLING_OFF_PERIOD before trying again
-                    node.getTicker()
+                    node.network()
+                        .ticker()
                         .queueTimedJob(() -> maybeSendAnnouncement(), COOLING_OFF_PERIOD);
                   } else if (runningAnnouncements == 0) {
                     sentAnnouncements = 0;
@@ -840,7 +857,7 @@ public class Announcer {
                 // If disconnect takes longer than COOLING_OFF_PERIOD we might not reannounce to
                 // this seed immediately. Regardless, we cannot reannounce until the announced-to
                 // set is cleared, which is typically later than that period.
-                node.getPeers().messenger().disconnectAndRemove(seed, true, false, false);
+                node.network().peers().messenger().disconnectAndRemove(seed, true, false, false);
                 int shallow = node.maxHTL() - (totalAdded + totalNotWanted);
                 if (acceptedSomewhere)
                   LOG.atInfo()
@@ -906,7 +923,7 @@ public class Announcer {
               }
             },
             seed);
-    node.getExecutor().execute(sender, "Announcer to " + seed);
+    node.network().executor().execute(sender, "Announcer to " + seed);
     return true;
   }
 
@@ -943,7 +960,7 @@ public class Announcer {
       if (status == STATUS_LOADING) {
         return l10n("announceLoading");
       }
-      if (node.getClientCore().isAdvancedModeEnabled()) {
+      if (node.services().clientCore().isAdvancedModeEnabled()) {
         // Detail
         sb.append(' ');
         int addedNodes;
@@ -959,7 +976,8 @@ public class Announcer {
           recentSentAnnouncements = sentAnnouncements;
           runningAnnouncementsLocal = Announcer.this.runningAnnouncements;
         }
-        List<SeedServerPeerNode> nodes = node.getPeers().seedPeers().getSeedServerPeersVector();
+        List<SeedServerPeerNode> nodes =
+            node.network().peers().seedPeers().getSeedServerPeersVector();
         for (SeedServerPeerNode seed : nodes) {
           if (seed.isConnected()) connectedSeednodes++;
           else disconnectedSeednodes++;
@@ -997,7 +1015,7 @@ public class Announcer {
 
     @Override
     public boolean isValid() {
-      return (!enoughPeers()) && node.isOpennetEnabled();
+      return (!enoughPeers()) && node.network().isOpennetEnabled();
     }
 
     @Override

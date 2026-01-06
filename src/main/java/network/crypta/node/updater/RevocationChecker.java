@@ -107,7 +107,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    */
   public RevocationChecker(NodeUpdateManager manager, File blobFile) {
     this.manager = manager;
-    core = manager.getNode().getClientCore();
+    core = manager.getNode().services().clientCore();
     this.revocationDNFCounter = 0;
     this.blobFile = blobFile;
     // Debug gating derives from LOG.isDebugEnabled() where needed
@@ -286,7 +286,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
   }
 
   private void ensurePersistentTempDir() {
-    File dir = manager.getNode().getClientCore().getPersistentTempDir();
+    File dir = manager.getNode().services().clientCore().getPersistentTempDir();
     if (!dir.exists() && !dir.mkdirs()) {
       LOG.warn("Failed to create persistent temp directory: {}", dir);
     }
@@ -489,7 +489,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         // This ensures we don't constantly start them, fail them, and start them again.
         this.manager
             .getNode()
-            .getTicker()
+            .network()
+            .ticker()
             .queueTimedJob(() -> start(wasAggressive, false), SECONDS.toMillis(1));
       } else {
         start(wasAggressive, false);

@@ -16,8 +16,11 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
+import network.crypta.node.SecurityLevels;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
@@ -82,8 +85,13 @@ class FileInsertWizardToadletTest {
   @Test
   void handleMethodGET_whenLowThreat_prefersCanonicalRadio() throws Exception {
     when(container.publicGatewayMode()).thenReturn(false);
-    when(core.getNode().getSecurityLevels().getNetworkThreatLevel())
-        .thenReturn(NETWORK_THREAT_LEVEL.LOW);
+    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
+    SecurityLevels securityLevels = mock(SecurityLevels.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(core.getNode()).thenReturn(node);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
+    when(securityLevels.getNetworkThreatLevel()).thenReturn(NETWORK_THREAT_LEVEL.LOW);
 
     PageHolder holder = new PageHolder();
     PageMaker pageMaker = buildPageMaker(holder);
@@ -103,8 +111,13 @@ class FileInsertWizardToadletTest {
   @Test
   void handleMethodGET_afterRandomInsert_prefersSskRadio() throws Exception {
     when(container.publicGatewayMode()).thenReturn(false);
-    when(core.getNode().getSecurityLevels().getNetworkThreatLevel())
-        .thenReturn(NETWORK_THREAT_LEVEL.LOW);
+    Node node = mock(Node.class, Answers.RETURNS_DEEP_STUBS);
+    SecurityLevels securityLevels = mock(SecurityLevels.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(core.getNode()).thenReturn(node);
+    when(node.services()).thenReturn(services);
+    when(services.securityLevels()).thenReturn(securityLevels);
+    when(securityLevels.getNetworkThreatLevel()).thenReturn(NETWORK_THREAT_LEVEL.LOW);
 
     PageHolder holder = new PageHolder();
     PageMaker pageMaker = buildPageMaker(holder);

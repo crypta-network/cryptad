@@ -259,7 +259,8 @@ final class NodeClientCoreTransferPolicy {
    * @return {@code true} when the path is within an allowed parent directory.
    */
   boolean allowDownloadTo(File filename) {
-    PHYSICAL_THREAT_LEVEL physicalThreatLevel = node.getSecurityLevels().getPhysicalThreatLevel();
+    PHYSICAL_THREAT_LEVEL physicalThreatLevel =
+        node.services().securityLevels().getPhysicalThreatLevel();
     if (physicalThreatLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM) return false;
     synchronized (this) {
       if (downloadAllowedEverywhere) return true;

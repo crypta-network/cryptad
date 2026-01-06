@@ -103,7 +103,7 @@ public abstract class RealNodeTest {
     double div = 1.0 / nodes.length;
     double loc = 0.0;
     for (Node node : nodes) {
-      node.setLocation(loc);
+      node.network().setLocation(loc);
       loc += div;
     }
   }
@@ -118,7 +118,7 @@ public abstract class RealNodeTest {
   private static double calculateDistanceNormalization(Node node, Node[] nodes) {
     double norm = 0.0;
     for (Node other : nodes) {
-      if (node.getLocation() == other.getLocation()) continue;
+      if (node.network().location() == other.network().location()) continue;
       norm += 1.0 / distance(node, other);
     }
     return norm;
@@ -128,7 +128,7 @@ public abstract class RealNodeTest {
       Node node, Node[] nodes, double normalization, int degree, RandomSource random) {
     // Create degree/2 outgoing connections
     for (Node other : nodes) {
-      if (node.getLocation() == other.getLocation()) continue;
+      if (node.network().location() == other.network().location()) continue;
       double p = 1.0 / distance(node, other) / normalization;
       for (int n = 0; n < degree / 2; n++) {
         if (random.nextFloat() < p) {
@@ -141,8 +141,8 @@ public abstract class RealNodeTest {
 
   static void connect(Node a, Node b) {
     try {
-      a.connect(b, trust, visibility);
-      b.connect(a, trust, visibility);
+      a.network().connect(b, trust, visibility);
+      b.network().connect(a, trust, visibility);
     } catch (FSParseException e) {
       LOG.error("cannot connect!!!!", e);
     } catch (PeerParseException e) {
@@ -155,8 +155,8 @@ public abstract class RealNodeTest {
   }
 
   static double distance(Node a, Node b) {
-    double aL = a.getLocation();
-    double bL = b.getLocation();
+    double aL = a.network().location();
+    double bL = b.network().location();
     return Location.distance(aL, bL);
   }
 
@@ -167,7 +167,7 @@ public abstract class RealNodeTest {
 
   static String getPortNumber(Node n) {
     if (n == null) return "null";
-    return Integer.toString(n.getDarknetPortNumber());
+    return Integer.toString(n.network().darknetPortNumber());
   }
 
   static void waitForAllConnected(Node[] nodes) throws InterruptedException {
@@ -229,17 +229,17 @@ public abstract class RealNodeTest {
     }
 
     private void recordNode(Node node) {
-      int countConnected = node.getPeers().countConnectedDarknetPeers();
-      int countAlmostConnected = node.getPeers().countAlmostConnectedDarknetPeers();
-      int countTotal = node.getPeers().countValidPeers();
-      int countBackedOff = node.getPeers().countBackedOffPeers(false);
-      int countCompatible = node.getPeers().countCompatibleDarknetPeers();
+      int countConnected = node.network().peers().countConnectedDarknetPeers();
+      int countAlmostConnected = node.network().peers().countAlmostConnectedDarknetPeers();
+      int countTotal = node.network().peers().countValidPeers();
+      int countBackedOff = node.network().peers().countBackedOffPeers(false);
+      int countCompatible = node.network().peers().countCompatibleDarknetPeers();
       totalPeers += countTotal;
       totalConnections += countConnected;
       totalPartialConnections += countAlmostConnected;
       totalCompatibleConnections += countCompatible;
       totalBackedOff += countBackedOff;
-      double pingTime = node.getNodeStats().getNodeAveragePingTime();
+      double pingTime = node.network().stats().getNodeAveragePingTime();
       totalPingTime += pingTime;
       if (pingTime > maxPingTime) maxPingTime = pingTime;
       if (pingTime < minPingTime) minPingTime = pingTime;

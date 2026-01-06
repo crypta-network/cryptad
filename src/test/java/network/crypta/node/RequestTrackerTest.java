@@ -39,8 +39,8 @@ class RequestTrackerTest {
   @BeforeEach
   void setup() {
     tracker = new RequestTracker(peerManager, ticker);
-    node = org.mockito.Mockito.mock(Node.class);
-    org.mockito.Mockito.lenient().when(node.getTracker()).thenReturn(tracker);
+    node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    org.mockito.Mockito.lenient().when(node.routing().tracker()).thenReturn(tracker);
   }
 
   @Test

@@ -46,13 +46,13 @@ class LongTermPushRepullTestTest {
     CountingRandomSource randomSource = new CountingRandomSource();
     InMemoryRandomAccessBucket bucket = new InMemoryRandomAccessBucket();
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore clientCore = mock(NodeClientCore.class);
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getTempBucketFactory()).thenReturn(tempBucketFactory);
     when(tempBucketFactory.makeBucket(testSize)).thenReturn(bucket);
-    when(node.getFastWeakRandom()).thenReturn(randomSource);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(randomSource);
 
     try (RandomAccessBucket result = invokeRandomData(node)) {
       assertNotNull(result);
@@ -76,12 +76,12 @@ class LongTermPushRepullTestTest {
   void randomData_whenOutputStreamFails_expectIOException() throws Exception {
     int testSize = testSize();
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore clientCore = mock(NodeClientCore.class);
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
 
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getTempBucketFactory()).thenReturn(tempBucketFactory);
     when(tempBucketFactory.makeBucket(testSize)).thenReturn(bucket);
     when(bucket.getOutputStream()).thenThrow(new IOException("boom"));

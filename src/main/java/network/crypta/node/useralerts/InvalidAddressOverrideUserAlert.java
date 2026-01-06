@@ -131,7 +131,7 @@ public class InvalidAddressOverrideUserAlert extends AbstractUserAlert {
     formNode.addChild(
         TAG_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
-        new String[] {"hidden", "formPassword", node.getClientCore().getFormPassword()});
+        new String[] {"hidden", "formPassword", node.services().clientCore().getFormPassword()});
     formNode.addChild(
         TAG_INPUT,
         new String[] {"type", "name", ATTR_VALUE},

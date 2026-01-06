@@ -267,7 +267,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
       } else {
         DirPutFile f = (DirPutFile) val;
         if (f instanceof DiskDirPutFile file
-            && !node.getClientCore().allowUploadFrom(file.getFile()))
+            && !node.services().clientCore().allowUploadFrom(file.getFile()))
           throw new MessageInvalidException(
               ProtocolErrorMessage.ACCESS_DENIED,
               "Not allowed to upload " + file.getFile(),

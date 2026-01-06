@@ -46,12 +46,12 @@ public class PeerMessenger {
       new ByteCounter() {
         @Override
         public void receivedBytes(int x) {
-          node.getNodeStats().disconnBytesReceived(x);
+          node.network().stats().disconnBytesReceived(x);
         }
 
         @Override
         public void sentBytes(int x) {
-          node.getNodeStats().disconnBytesSent(x);
+          node.network().stats().disconnBytesSent(x);
         }
 
         @Override
@@ -296,7 +296,8 @@ public class PeerMessenger {
 
   private void scheduleDisconnectTimeoutHandling(PeerNode pn, boolean remove, long timeout) {
     if (pn.isSeed()) return;
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             () -> {
               if (pn.isDisconnecting()) {

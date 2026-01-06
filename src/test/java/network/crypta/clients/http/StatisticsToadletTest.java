@@ -28,7 +28,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class StatisticsToadletTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private NodeStats nodeStats;
@@ -38,8 +40,11 @@ class StatisticsToadletTest {
 
   @BeforeEach
   void setUp() {
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.getPeers()).thenReturn(peerManager);
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.stats()).thenReturn(nodeStats);
+    when(network.peers()).thenReturn(peerManager);
     toadlet = new StatisticsToadlet(node, core, client) {};
   }
 
@@ -65,8 +70,11 @@ class StatisticsToadletTest {
   @Test
   void drawPeerStatsBox_whenCountsZero_doesNotRenderStatusEntries() {
     HTMLNode infobox = new HTMLNode("div");
-    Node nodeWithoutOpennet = mock(Node.class);
-    when(nodeWithoutOpennet.getOpennet()).thenReturn(null);
+    Node nodeWithoutOpennet = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeNetworkSubsystem networkWithoutOpennet =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(nodeWithoutOpennet.network()).thenReturn(networkWithoutOpennet);
+    when(networkWithoutOpennet.opennet()).thenReturn(null);
 
     StatisticsToadlet.drawPeerStatsBox(
         infobox,
@@ -100,11 +108,14 @@ class StatisticsToadletTest {
   @Test
   void drawPeerStatsBox_whenCountsPresent_rendersEntriesAndOpennetTotals() {
     HTMLNode infobox = new HTMLNode("div");
-    Node nodeWithOpennet = mock(Node.class);
+    Node nodeWithOpennet = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetManager opennet = mock(OpennetManager.class);
     when(opennet.getNumberOfConnectedPeersToAimIncludingDarknet()).thenReturn(7);
     when(opennet.getNumberOfConnectedPeersToAim()).thenReturn(3);
-    when(nodeWithOpennet.getOpennet()).thenReturn(opennet);
+    network.crypta.node.subsystem.NodeNetworkSubsystem networkWithOpennet =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(nodeWithOpennet.network()).thenReturn(networkWithOpennet);
+    when(networkWithOpennet.opennet()).thenReturn(opennet);
 
     StatisticsToadlet.drawPeerStatsBox(
         infobox,

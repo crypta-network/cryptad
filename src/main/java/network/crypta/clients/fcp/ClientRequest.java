@@ -769,7 +769,8 @@ public abstract class ClientRequest implements Serializable {
       server
           .getCore()
           .getNode()
-          .getExecutor()
+          .network()
+          .executor()
           .execute(
               new PrioRunnable() {
 

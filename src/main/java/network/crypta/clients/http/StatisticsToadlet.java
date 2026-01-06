@@ -184,8 +184,8 @@ public class StatisticsToadlet extends Toadlet {
     super(client);
     this.node = n;
     this.core = core;
-    stats = node.getNodeStats();
-    peers = node.getPeers();
+    stats = node.network().stats();
+    peers = node.network().peers();
   }
 
   /**
@@ -252,7 +252,11 @@ public class StatisticsToadlet extends Toadlet {
       return;
     }
 
-    node.getClientCore().getClientLayerPersister().getBandwidthStatsPutter().updateData(node);
+    node.services()
+        .clientCore()
+        .getClientLayerPersister()
+        .getBandwidthStatsPutter()
+        .updateData(node);
 
     PageNode page = ctx.getPageMaker().getPageNode(l10n("fullTitle"), ctx);
 
@@ -322,15 +326,15 @@ public class StatisticsToadlet extends Toadlet {
     HTMLNode contentNode = page.getContentNode();
 
     final long now = System.currentTimeMillis();
-    double myLocation = node.getLocation();
+    double myLocation = node.network().location();
     final long nodeUptimeSeconds = (now - node.getStartupTime()) / 1000;
 
     if (ctx.isAllowedFullAccess()) {
       contentNode.addChild(ctx.getAlertManager().createSummary());
     }
 
-    double swaps = node.getSwaps();
-    double noSwaps = node.getNoSwaps();
+    double swaps = node.network().swaps();
+    double noSwaps = node.network().noSwaps();
 
     HTMLNode overviewTable = contentNode.addChild(TAG_TABLE, ATTR_CLASS, CLASS_COLUMN);
     HTMLNode overviewTableRow = overviewTable.addChild("tr");
@@ -461,7 +465,8 @@ public class StatisticsToadlet extends Toadlet {
       drawOverviewBox(
           overviewInfobox,
           nodeUptimeSeconds,
-          node.getClientCore()
+          node.services()
+              .clientCore()
               .getClientLayerPersister()
               .getBandwidthStatsPutter()
               .getLatestUptimeData()
@@ -618,11 +623,11 @@ public class StatisticsToadlet extends Toadlet {
     drawRejectReasonsBox(rightColumn, false);
     drawRejectReasonsBox(rightColumn, true);
 
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
     if (om != null) {
       drawOpennetStatsBox(rightColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX), om);
 
-      if (node.isSeednode()) {
+      if (node.network().isSeednode()) {
         drawSeedStatsBox(rightColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX), om);
       }
     }
@@ -770,12 +775,12 @@ public class StatisticsToadlet extends Toadlet {
   private void drawNewLoadManagementBox(HTMLNode infobox) {
     infobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("newLoadManagementTitle"));
     HTMLNode content = infobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    NodeStatsHtmlRenderer.drawNewLoadManagementDelayTimes(node.getNodeStats(), content);
+    NodeStatsHtmlRenderer.drawNewLoadManagementDelayTimes(node.network().stats(), content);
   }
 
   private void drawRejectReasonsBox(HTMLNode nextTableCell, boolean local) {
     HTMLNode rejectReasonsTable = new HTMLNode(TAG_TABLE);
-    NodeStats nodeStats = node.getNodeStats();
+    NodeStats nodeStats = node.network().stats();
     boolean success =
         local
             ? NodeStatsHtmlRenderer.getLocalRejectReasonsTable(nodeStats, rejectReasonsTable)
@@ -810,7 +815,7 @@ public class StatisticsToadlet extends Toadlet {
                   Version.gitRevision()
                 }));
 
-    node.getNodeUpdater().addChangelogLinks(Version.currentBuildNumber(), versionInfobox);
+    node.services().nodeUpdater().addChangelogLinks(Version.currentBuildNumber(), versionInfobox);
   }
 
   private void drawJVMStatsBox(HTMLNode jvmStatsInfobox, boolean advancedModeEnabled) {
@@ -964,7 +969,7 @@ public class StatisticsToadlet extends Toadlet {
     row.addChild("th", l10n("avgDist"));
     row.addChild("th", l10n("distanceStats"));
 
-    Map<DataStoreInstanceType, DataStoreStats> storeStats = node.getDataStoreStats();
+    Map<DataStoreInstanceType, DataStoreStats> storeStats = node.storage().getDataStoreStats();
     for (Map.Entry<DataStoreInstanceType, DataStoreStats> entry : storeStats.entrySet()) {
       addStoreStatsRow(storeSizeTable, entry.getKey(), entry.getValue(), nodeUptimeSeconds);
     }
@@ -1035,7 +1040,8 @@ public class StatisticsToadlet extends Toadlet {
     if (totalAccess == null) {
       return 0;
     }
-    return node.getClientCore()
+    return node.services()
+        .clientCore()
         .getClientLayerPersister()
         .getBandwidthStatsPutter()
         .getLatestUptimeData()
@@ -1101,7 +1107,7 @@ public class StatisticsToadlet extends Toadlet {
     HTMLNode unclaimedFIFOMessageCountsList =
         unclaimedFIFOMessageCountsInfoboxContent.addChild("ul");
     Map<String, Integer> unclaimedFIFOMessageCountsMap =
-        node.getUSM().getUnclaimedFIFOMessageCounts();
+        node.network().usm().getUnclaimedFIFOMessageCounts();
     STMessageCount[] unclaimedFIFOMessageCountsArray =
         new STMessageCount[unclaimedFIFOMessageCountsMap.size()];
     int i = 0;
@@ -1139,14 +1145,14 @@ public class StatisticsToadlet extends Toadlet {
       double noSwaps) {
 
     locationSwapInfobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, "Location swaps");
-    int startedSwaps = node.getStartedSwaps();
-    int swapsRejectedAlreadyLocked = node.getSwapsRejectedAlreadyLocked();
-    int swapsRejectedNowhereToGo = node.getSwapsRejectedNowhereToGo();
-    int swapsRejectedRateLimit = node.getSwapsRejectedRateLimit();
-    int swapsRejectedRecognizedID = node.getSwapsRejectedRecognizedID();
-    double locChangeSession = node.getLocationChangeSession();
-    int averageSwapTime = node.getAverageOutgoingSwapTime();
-    long sendSwapInterval = node.getSendSwapInterval();
+    int startedSwaps = node.network().startedSwaps();
+    int swapsRejectedAlreadyLocked = node.network().swapsRejectedAlreadyLocked();
+    int swapsRejectedNowhereToGo = node.network().swapsRejectedNowhereToGo();
+    int swapsRejectedRateLimit = node.network().swapsRejectedRateLimit();
+    int swapsRejectedRecognizedID = node.network().swapsRejectedRecognizedID();
+    double locChangeSession = node.network().locationChangeSession();
+    int averageSwapTime = node.network().averageOutgoingSwapTime();
+    long sendSwapInterval = node.network().sendSwapInterval();
 
     HTMLNode locationSwapInfoboxContent =
         locationSwapInfobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
@@ -1342,7 +1348,7 @@ public class StatisticsToadlet extends Toadlet {
         "peer_no_load_stats",
         "noLoadStats",
         "noLoadStatsShort");
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
     if (om != null) {
       peerStatsList.addChild(
           "li", l10n("maxTotalPeers") + ": " + om.getNumberOfConnectedPeersToAimIncludingDarknet());
@@ -1390,7 +1396,7 @@ public class StatisticsToadlet extends Toadlet {
 
     HTMLNode activityList = drawActivity(activityInfoboxContent, node);
 
-    int numARKFetchers = node.getNumARKFetchers();
+    int numARKFetchers = node.network().numArkFetchers();
 
     if (advancedModeEnabled && activityList != null) {
       if (numARKFetchers > 0)
@@ -1398,34 +1404,38 @@ public class StatisticsToadlet extends Toadlet {
       activityList.addChild(
           "li",
           "BackgroundFetcherByUSKSize:\u00a0"
-              + node.getClientCore().getUskManager().getBackgroundFetcherByUSKSize());
+              + node.services().clientCore().getUskManager().getBackgroundFetcherByUSKSize());
       activityList.addChild(
           "li",
           "temporaryBackgroundFetchersLRUSize:\u00a0"
-              + node.getClientCore().getUskManager().getTemporaryBackgroundFetchersLRU());
+              + node.services().clientCore().getUskManager().getTemporaryBackgroundFetchersLRU());
       activityList.addChild(
           "li",
           "outputBandwidthLiabilityUsage:\u00a0"
-              + this.fix3p1pct.format(node.getNodeStats().getBandwidthLiabilityUsage()));
+              + this.fix3p1pct.format(node.network().stats().getBandwidthLiabilityUsage()));
     }
   }
 
   static void drawBandwidth(
       HTMLNode activityList, Node node, long nodeUptimeSeconds, boolean isAdvancedModeEnabled) {
-    long[] total = node.getCollector().getTotalIO();
+    long[] total = node.network().collector().getTotalIO();
     if (total[0] == 0 || total[1] == 0) return;
     long totalOutputRate = (total[0]) / nodeUptimeSeconds;
     long totalInputRate = (total[1]) / nodeUptimeSeconds;
     long totalPayload = node.getTotalPayloadSent();
     long totalPayloadRate = totalPayload / nodeUptimeSeconds;
-    if (node.getClientCore() == null) throw new NullPointerException();
+    if (node.services().clientCore() == null) throw new NullPointerException();
     BandwidthStatsContainer stats =
-        node.getClientCore().getClientLayerPersister().getBandwidthStatsPutter().getLatestBWData();
+        node.services()
+            .clientCore()
+            .getClientLayerPersister()
+            .getBandwidthStatsPutter()
+            .getLatestBWData();
     if (stats == null) throw new NullPointerException();
     long overallTotalOut = stats.getTotalBytesOut();
     long overallTotalIn = stats.getTotalBytesIn();
     int percent = (int) (100 * totalPayload / total[0]);
-    long[] rate = node.getNodeStats().getNodeIOStats();
+    long[] rate = node.network().stats().getNodeIOStats();
     long delta = (rate[5] - rate[2]) / 1000;
     if (delta > 0) {
       long outputRate = (rate[3] - rate[0]) / delta;
@@ -1493,30 +1503,30 @@ public class StatisticsToadlet extends Toadlet {
             new String[] {TOTAL_KEY},
             new String[] {SizeUtil.formatSize(overallTotalOut, true)}));
     if (isAdvancedModeEnabled) {
-      long totalBytesSentCHKRequests = node.getNodeStats().getCHKRequestTotalBytesSent();
-      long totalBytesSentSSKRequests = node.getNodeStats().getSSKRequestTotalBytesSent();
-      long totalBytesSentCHKInserts = node.getNodeStats().getCHKInsertTotalBytesSent();
-      long totalBytesSentSSKInserts = node.getNodeStats().getSSKInsertTotalBytesSent();
-      long totalBytesSentOfferedKeys = node.getNodeStats().getOfferedKeysTotalBytesSent();
-      long totalBytesSendOffers = node.getNodeStats().getOffersSentBytesSent();
-      long totalBytesSentSwapOutput = node.getNodeStats().getSwappingTotalBytesSent();
-      long totalBytesSentAuth = node.getNodeStats().getTotalAuthBytesSent();
-      long totalBytesSentAckOnly = node.getNodeStats().getNotificationOnlyPacketsSentBytes();
-      long totalBytesSentResends = node.getNodeStats().getResendBytesSent();
-      long totalBytesSentUOM = node.getNodeStats().getUOMBytesSent();
-      long totalBytesSentAnnounce = node.getNodeStats().getAnnounceBytesSent();
-      long totalBytesSentAnnouncePayload = node.getNodeStats().getAnnounceBytesPayloadSent();
-      long totalBytesSentRoutingStatus = node.getNodeStats().getRoutingStatusBytes();
-      long totalBytesSentNetworkColoring = node.getNodeStats().getNetworkColoringSentBytes();
-      long totalBytesSentPing = node.getNodeStats().getPingSentBytes();
-      long totalBytesSentProbeRequest = node.getNodeStats().getProbeRequestSentBytes();
-      long totalBytesSentRouted = node.getNodeStats().getRoutedMessageSentBytes();
-      long totalBytesSentDisconn = node.getNodeStats().getDisconnBytesSent();
-      long totalBytesSentInitial = node.getNodeStats().getInitialMessagesBytesSent();
-      long totalBytesSentChangedIP = node.getNodeStats().getChangedIPBytesSent();
-      long totalBytesSentNodeToNode = node.getNodeStats().getNodeToNodeBytesSent();
-      long totalBytesSentAllocationNotices = node.getNodeStats().getAllocationNoticesBytesSent();
-      long totalBytesSentFOAF = node.getNodeStats().getFOAFBytesSent();
+      long totalBytesSentCHKRequests = node.network().stats().getCHKRequestTotalBytesSent();
+      long totalBytesSentSSKRequests = node.network().stats().getSSKRequestTotalBytesSent();
+      long totalBytesSentCHKInserts = node.network().stats().getCHKInsertTotalBytesSent();
+      long totalBytesSentSSKInserts = node.network().stats().getSSKInsertTotalBytesSent();
+      long totalBytesSentOfferedKeys = node.network().stats().getOfferedKeysTotalBytesSent();
+      long totalBytesSendOffers = node.network().stats().getOffersSentBytesSent();
+      long totalBytesSentSwapOutput = node.network().stats().getSwappingTotalBytesSent();
+      long totalBytesSentAuth = node.network().stats().getTotalAuthBytesSent();
+      long totalBytesSentAckOnly = node.network().stats().getNotificationOnlyPacketsSentBytes();
+      long totalBytesSentResends = node.network().stats().getResendBytesSent();
+      long totalBytesSentUOM = node.network().stats().getUOMBytesSent();
+      long totalBytesSentAnnounce = node.network().stats().getAnnounceBytesSent();
+      long totalBytesSentAnnouncePayload = node.network().stats().getAnnounceBytesPayloadSent();
+      long totalBytesSentRoutingStatus = node.network().stats().getRoutingStatusBytes();
+      long totalBytesSentNetworkColoring = node.network().stats().getNetworkColoringSentBytes();
+      long totalBytesSentPing = node.network().stats().getPingSentBytes();
+      long totalBytesSentProbeRequest = node.network().stats().getProbeRequestSentBytes();
+      long totalBytesSentRouted = node.network().stats().getRoutedMessageSentBytes();
+      long totalBytesSentDisconn = node.network().stats().getDisconnBytesSent();
+      long totalBytesSentInitial = node.network().stats().getInitialMessagesBytesSent();
+      long totalBytesSentChangedIP = node.network().stats().getChangedIPBytesSent();
+      long totalBytesSentNodeToNode = node.network().stats().getNodeToNodeBytesSent();
+      long totalBytesSentAllocationNotices = node.network().stats().getAllocationNoticesBytesSent();
+      long totalBytesSentFOAF = node.network().stats().getFOAFBytesSent();
       long totalBytesSentRemaining =
           total[0]
               - (totalPayload
@@ -1638,7 +1648,7 @@ public class StatisticsToadlet extends Toadlet {
                 SizeUtil.formatSize(totalBytesSentRemaining, true),
                 Integer.toString((int) (totalBytesSentRemaining * 100 / total[0]))
               }));
-      double sentOverheadPerSecond = node.getNodeStats().getSentOverheadPerSecond();
+      double sentOverheadPerSecond = node.network().stats().getSentOverheadPerSecond();
       activityList.addChild(
           "li",
           l10n(
@@ -1652,7 +1662,7 @@ public class StatisticsToadlet extends Toadlet {
   }
 
   static HTMLNode drawActivity(HTMLNode activityInfoboxContent, Node node) {
-    RequestTracker tracker = node.getTracker();
+    RequestTracker tracker = node.routing().tracker();
     int numLocalCHKInserts = tracker.getNumLocalCHKInserts();
     int numRemoteCHKInserts = tracker.getNumRemoteCHKInserts();
     int numLocalSSKInserts = tracker.getNumLocalSSKInserts();
@@ -1764,7 +1774,7 @@ public class StatisticsToadlet extends Toadlet {
     int bwlimitDelayTimeRT = (int) stats.getBwlimitDelayTimeRT();
     int nodeAveragePingTime = (int) stats.getNodeAveragePingTime();
     double numberOfRemotePeerLocationsSeenInSwaps =
-        node.getNumberOfRemotePeerLocationsSeenInSwaps();
+        node.network().numberOfRemotePeerLocationsSeenInSwaps();
 
     // Darknet
     int darknetSizeEstimateSession = stats.getDarknetSizeEstimate(-1);
@@ -1870,7 +1880,7 @@ public class StatisticsToadlet extends Toadlet {
             + CHK_SUFFIX
             + fix3p1pct.format(stats.pRejectIncomingInstantlySSKInsertRT())
             + SSK_SUFFIX);
-    overviewList.addChild("li", "unclaimedFIFOSize:\u00a0" + node.getUnclaimedFIFOSize());
+    overviewList.addChild("li", "unclaimedFIFOSize:\u00a0" + node.network().unclaimedFifoSize());
     overviewList.addChild(
         "li",
         "RAMBucketPoolSize:\u00a0"
@@ -1878,7 +1888,8 @@ public class StatisticsToadlet extends Toadlet {
             + " / "
             + SizeUtil.formatSize(core.getTempBucketFactory().getMaxRamUsed()));
     overviewList.addChild(
-        "li", "uptimeAverage:\u00a0" + fix3p1pct.format(node.getUptimeEstimator().getUptime()));
+        "li",
+        "uptimeAverage:\u00a0" + fix3p1pct.format(node.network().uptimeEstimator().getUptime()));
 
     long[] decoded = IncomingPacketFilterImpl.getDecodedPackets();
     if (decoded != null) {

@@ -231,7 +231,7 @@ public class RealNodeULPRTest extends RealNodeTest {
 
   private static void exportDarknetRefs(Node[] nodes) {
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
-      nodes[i].exportDarknetPublicFieldSet();
+      nodes[i].network().exportDarknetPublicFieldSet();
     }
     LOG.info("Exported darknet public references");
   }
@@ -244,8 +244,8 @@ public class RealNodeULPRTest extends RealNodeTest {
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       int next = (i + 1) % NUMBER_OF_NODES;
       int prev = (i + NUMBER_OF_NODES - 1) % NUMBER_OF_NODES;
-      nodes[i].connect(nodes[next], trust, visibility);
-      nodes[i].connect(nodes[prev], trust, visibility);
+      nodes[i].network().connect(nodes[next], trust, visibility);
+      nodes[i].network().connect(nodes[prev], trust, visibility);
     }
     LOG.info("Connected nodes");
   }
@@ -264,8 +264,8 @@ public class RealNodeULPRTest extends RealNodeTest {
       int nodeB = (nodeA + length) % NUMBER_OF_NODES;
       Node a = nodes[nodeA];
       Node b = nodes[nodeB];
-      a.connect(b, trust, visibility);
-      b.connect(a, trust, visibility);
+      a.network().connect(b, trust, visibility);
+      b.network().connect(a, trust, visibility);
     }
     LOG.info("Added random links");
   }
@@ -318,13 +318,13 @@ public class RealNodeULPRTest extends RealNodeTest {
               || (isSSK && m.getSpec() == DMT.FNPSSKDataRequest)) {
             Key key = (Key) m.getObject(DMT.FREENET_ROUTING_KEY);
             if (key.equals(nodeKey)) {
-              visited[n.getDarknetPortNumber() - DARKNET_PORT_BASE] = true;
+              visited[n.network().darknetPortNumber() - DARKNET_PORT_BASE] = true;
             }
           }
         };
 
     for (Node node : nodes) {
-      node.setDispatcherHook(cb);
+      node.network().setDispatcherHook(cb);
     }
     return visited;
   }
@@ -334,7 +334,8 @@ public class RealNodeULPRTest extends RealNodeTest {
       LOG.info("Searching from node {}", i);
       try {
         nodes[i % nodes.length]
-            .getClientCore()
+            .services()
+            .clientCore()
             .getTransfers()
             .realGetKey(fetchKey, false, false, false, REAL_TIME_FLAG);
         LOG.error("TEST FAILED: KEY ALREADY PRESENT!!!");
@@ -384,7 +385,7 @@ public class RealNodeULPRTest extends RealNodeTest {
       throws InterruptedException, KeyCollisionException {
     LOG.info("Inserting to node {}", nodes.length - 1);
     long tStart = System.currentTimeMillis();
-    nodes[nodes.length - 1].store(block.getBlock(), false, false, true, false);
+    nodes[nodes.length - 1].storage().store(block.getBlock(), false, false, true, false);
     LOG.info("Inserted to node {}", nodes.length - 1);
 
     int x = -1;
@@ -411,7 +412,7 @@ public class RealNodeULPRTest extends RealNodeTest {
   private static int countNodesWithKey(Node[] nodes, ClientKey fetchKey) {
     int count = 0;
     for (Node node : nodes) {
-      if (node.hasKey(fetchKey.getNodeKey(false), true, true)) {
+      if (node.storage().hasKey(fetchKey.getNodeKey(false), true, true)) {
         count++;
       }
     }
@@ -434,7 +435,7 @@ public class RealNodeULPRTest extends RealNodeTest {
   private static String nodesWithKey(Node[] nodes, ClientKey fetchKey) {
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < nodes.length; i++) {
-      if (nodes[i].hasKey(fetchKey.getNodeKey(false), true, true)) {
+      if (nodes[i].storage().hasKey(fetchKey.getNodeKey(false), true, true)) {
         if (!sb.isEmpty()) {
           sb.append(' ');
         }

@@ -79,7 +79,7 @@ public class NodeCryptoConfig {
    */
   private boolean paddDataPackets;
 
-  NodeCryptoConfig(
+  public NodeCryptoConfig(
       SubConfig config, int sortOrder, boolean isOpennet, SecurityLevels securityLevels)
       throws NodeInitException {
     sortOrder = registerListenPort(config, sortOrder, isOpennet);

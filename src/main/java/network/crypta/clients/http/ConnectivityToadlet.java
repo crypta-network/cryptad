@@ -114,9 +114,9 @@ public class ConnectivityToadlet extends Toadlet {
     addAlerts(ctx, contentNode);
     addPortInfobox(contentNode);
 
-    node.getIpDetector().addConnectionTypeBox(contentNode);
+    node.network().ipDetector().addConnectionTypeBox(contentNode);
 
-    UdpSocketHandler[] handlers = node.getPacketSocketHandlers();
+    UdpSocketHandler[] handlers = node.network().packetSocketHandlers();
 
     addSummary(contentNode, pageMaker, handlers);
 
@@ -147,8 +147,8 @@ public class ConnectivityToadlet extends Toadlet {
             .getString(
                 "DarknetConnectionsToadlet.darknetFnpPort",
                 new String[] {"port"},
-                new String[] {Integer.toString(node.getFNPPort())}));
-    int opennetPort = node.getOpennetFNPPort();
+                new String[] {Integer.toString(node.network().fnpPort())}));
+    int opennetPort = node.network().opennetFnpPort();
     if (opennetPort > 0) {
       portInfoList.addChild(
           "li",

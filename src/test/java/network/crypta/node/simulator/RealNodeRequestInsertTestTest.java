@@ -36,10 +36,10 @@ class RealNodeRequestInsertTestTest {
     when(insertCore.getTransfers()).thenReturn(insertTransfers);
     when(fetchCore.getTransfers()).thenReturn(fetchTransfers);
 
-    Node insertNode = mock(Node.class);
-    Node fetchNode = mock(Node.class);
-    when(insertNode.getClientCore()).thenReturn(insertCore);
-    when(fetchNode.getClientCore()).thenReturn(fetchCore);
+    Node insertNode = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node fetchNode = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(insertNode.services().clientCore()).thenReturn(insertCore);
+    when(fetchNode.services().clientCore()).thenReturn(fetchCore);
 
     Node[] nodes = createNodes(null, insertNode, fetchNode);
     DummyRandomSource random = new SequenceRandom(0, 1);
@@ -88,10 +88,11 @@ class RealNodeRequestInsertTestTest {
             eq(false),
             eq(RealNodeRequestInsertTest.REAL_TIME_FLAG));
 
-    Node insertNode = mock(Node.class);
-    when(insertNode.getClientCore()).thenReturn(insertCore);
+    Node insertNode = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(insertNode.services().clientCore()).thenReturn(insertCore);
 
-    Node[] nodes = createNodes(null, insertNode, mock(Node.class));
+    Node[] nodes =
+        createNodes(null, insertNode, mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));
     DummyRandomSource random = new SequenceRandom(0, 1);
 
     RealNodeRequestInsertTest tester = new RealNodeRequestInsertTest(nodes, random, 1);
@@ -116,10 +117,10 @@ class RealNodeRequestInsertTestTest {
             any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
         .thenThrow(new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND));
 
-    Node insertNode = mock(Node.class);
-    Node fetchNode = mock(Node.class);
-    when(insertNode.getClientCore()).thenReturn(insertCore);
-    when(fetchNode.getClientCore()).thenReturn(fetchCore);
+    Node insertNode = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node fetchNode = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(insertNode.services().clientCore()).thenReturn(insertCore);
+    when(fetchNode.services().clientCore()).thenReturn(fetchCore);
 
     Node[] nodes = createNodes(tracker, insertNode, fetchNode);
     DummyRandomSource random = new SequenceRandom(0, 1);
@@ -154,10 +155,10 @@ class RealNodeRequestInsertTestTest {
             any(ClientKey.class), eq(false), eq(false), eq(false), eq(false)))
         .thenReturn(returnedBlock);
 
-    Node insertNode = mock(Node.class);
-    Node fetchNode = mock(Node.class);
-    when(insertNode.getClientCore()).thenReturn(insertCore);
-    when(fetchNode.getClientCore()).thenReturn(fetchCore);
+    Node insertNode = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node fetchNode = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    when(insertNode.services().clientCore()).thenReturn(insertCore);
+    when(fetchNode.services().clientCore()).thenReturn(fetchCore);
 
     Node[] nodes = createNodes(null, insertNode, fetchNode);
     DummyRandomSource random = new SequenceRandom(0, 1);
@@ -172,13 +173,13 @@ class RealNodeRequestInsertTestTest {
   private static Node[] createNodes(RequestTracker tracker, Node insertNode, Node fetchNode) {
     Node[] nodes = new Node[RealNodeRequestInsertTest.NUMBER_OF_NODES];
     for (int i = 0; i < nodes.length; i++) {
-      nodes[i] = mock(Node.class);
+      nodes[i] = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     }
     nodes[0] = insertNode;
     nodes[1] = fetchNode;
     if (tracker != null) {
       for (Node node : nodes) {
-        when(node.getTracker()).thenReturn(tracker);
+        when(node.routing().tracker()).thenReturn(tracker);
       }
     }
     return nodes;

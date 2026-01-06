@@ -206,7 +206,7 @@ final class FProxyRegistrar {
         true,
         null);
 
-    if (node.getPluginManager().isEnabled()) {
+    if (node.services().pluginManager().isEnabled()) {
       PproxyToadlet pproxy = new PproxyToadlet(client, node);
       server.register(
           pproxy,
@@ -284,7 +284,8 @@ final class FProxyRegistrar {
         true,
         opennetToadlet);
 
-    ChatForumsToadlet chatForumsToadlet = new ChatForumsToadlet(client, node.getPluginManager());
+    ChatForumsToadlet chatForumsToadlet =
+        new ChatForumsToadlet(client, node.services().pluginManager());
     server.register(
         chatForumsToadlet,
         "FProxyToadlet.categoryChat",

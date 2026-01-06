@@ -134,9 +134,14 @@ public class PeerManager {
     return routingSelector;
   }
 
-  /** Returns the persistence helper used for peer file reads and writes. */
-  PeerPersistence persistence() {
-    return peerPersistence;
+  /** Reads peers from disk using the configured persistence helper. */
+  public void tryReadPeers(
+      String filename,
+      NodeCrypto crypto,
+      OpennetManager opennet,
+      boolean isOpennet,
+      boolean oldOpennetPeers) {
+    peerPersistence.tryReadPeers(filename, crypto, opennet, isOpennet, oldOpennetPeers);
   }
 
   public boolean addPeer(PeerNode pn) {
@@ -154,7 +159,7 @@ public class PeerManager {
    * @return True if the node was successfully added. False if it was already present, or if we
    *     tried to add an opennet peer when opennet was disabled.
    */
-  boolean addPeer(PeerNode pn, boolean ignoreOpennet, boolean reactivate) {
+  public boolean addPeer(PeerNode pn, boolean ignoreOpennet, boolean reactivate) {
     assert (pn != null);
     boolean added = roster.addPeer(pn, reactivate);
     if (!added) return false;
@@ -167,7 +172,7 @@ public class PeerManager {
     notifyPeerStatusChangeListeners();
     if (!pn.isSeed()) {
       // LOCKING: addPeer() can be called inside PM lock, so must do this on a separate thread.
-      node.getExecutor().execute(this::updatePMUserAlert);
+      node.network().executor().execute(this::updatePMUserAlert);
     }
     return true;
   }
@@ -213,7 +218,7 @@ public class PeerManager {
     boolean changed = roster.disconnected(pn);
     if (!changed) return false;
     if (!pn.isSeed()) updatePMUserAlert();
-    node.getLocationManager().announceLocChange();
+    node.network().locationManager().announceLocChange();
     return true;
   }
 
@@ -247,7 +252,7 @@ public class PeerManager {
     boolean added = roster.addConnectedPeer(pn, this::addPeer);
     if (!added) return;
     if (!pn.isSeed()) updatePMUserAlert();
-    node.getLocationManager().announceLocChange();
+    node.network().locationManager().announceLocChange();
   }
 
   /**
@@ -295,7 +300,7 @@ public class PeerManager {
     peerPersistence.writePeers(opennet);
   }
 
-  void writePeersUrgent(boolean opennet) {
+  public void writePeersUrgent(boolean opennet) {
     peerPersistence.writePeersUrgent(opennet);
   }
 
@@ -372,7 +377,7 @@ public class PeerManager {
   public void changePeerNodeStatus(
       PeerNode peerNode, int oldPeerNodeStatus, int peerNodeStatus, boolean noLog) {
     statusBook.changePeerNodeStatus(peerNode, oldPeerNodeStatus, peerNodeStatus, noLog);
-    node.getExecutor().execute(this::updatePMUserAlert);
+    node.network().executor().execute(this::updatePMUserAlert);
   }
 
   /**
@@ -582,7 +587,12 @@ public class PeerManager {
    * guaranteed when exit lock), DO NOT MODIFY THE RETURNED DATA! Package-local - stuff outside
    * node/ should use the copying getters (which are a little more expensive).
    */
-  synchronized PeerNode[] myPeers() {
+  /**
+   * Returns a snapshot of all configured peers.
+   *
+   * @return peer array snapshot
+   */
+  public synchronized PeerNode[] myPeers() {
     return roster.myPeers();
   }
 
@@ -593,7 +603,12 @@ public class PeerManager {
    * <p>Note: Check all callers. Should they use myPeers and check for connectedness, and/or should
    * they use a copying method? I'm not sure how reliable updating of connectedPeers is ...
    */
-  synchronized PeerNode[] connectedPeers() {
+  /**
+   * Returns a snapshot of currently connected peers.
+   *
+   * @return connected peer array snapshot
+   */
+  public synchronized PeerNode[] connectedPeers() {
     return roster.connectedPeers();
   }
 

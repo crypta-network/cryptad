@@ -303,7 +303,8 @@ public class FirstTimeWizardToadlet extends Toadlet {
       super.writeTemporaryRedirect(
           ctx, "Need opennet choice", persistFields.appendTo(TOADLET_URL + "?step=OPENNET"));
       return;
-    } else if (currentStep == WIZARD_STEP.NAME_SELECTION && core.getNode().isOpennetEnabled()) {
+    } else if (currentStep == WIZARD_STEP.NAME_SELECTION
+        && core.getNode().network().isOpennetEnabled()) {
       // Skip node name selection if not in darknet mode.
       super.writeTemporaryRedirect(
           ctx,

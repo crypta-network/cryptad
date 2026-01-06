@@ -42,7 +42,9 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class PeerManagerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PriorityAwareExecutor executor;
   @Mock private LocationManager locationManager;
   @Mock private RandomSource randomSource;
@@ -63,7 +65,9 @@ class PeerManagerTest {
 
     when(node.getExecutor()).thenReturn(executor);
     // These may be needed by some tests; keep lenient to avoid unnecessary stubbing failures.
-    org.mockito.Mockito.lenient().when(node.getLocationManager()).thenReturn(locationManager);
+    org.mockito.Mockito.lenient()
+        .when(node.network().locationManager())
+        .thenReturn(locationManager);
     org.mockito.Mockito.lenient().when(node.getRandom()).thenReturn(randomSource);
 
     pm = new PeerManager(node, SemiOrderedShutdownHook.get());

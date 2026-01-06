@@ -68,7 +68,7 @@ public class PeerOpennetGate {
     if (ignoreOpennet) return true;
     if (!(peer instanceof OpennetPeerNode)) return true;
 
-    OpennetManager opennet = node.getOpennet();
+    OpennetManager opennet = node.network().opennet();
     if (opennet != null) {
       opennet.forceAddPeer((OpennetPeerNode) peer, true);
       return true;

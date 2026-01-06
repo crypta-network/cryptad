@@ -7,6 +7,7 @@ import java.lang.reflect.Field;
 import java.util.stream.Stream;
 import network.crypta.node.stats.StatsNotAvailableException;
 import network.crypta.node.stats.StoreLocationStats;
+import network.crypta.node.subsystem.NodeStorageSubsystem;
 import network.crypta.store.CHKStore;
 import network.crypta.store.SSKStore;
 import network.crypta.store.StoreCallback;
@@ -29,10 +30,12 @@ class NodeStoreStatsProviderTest {
   void storeStats_whenValuesConfigured_expectSnapshotValues(StoreStatsCase testCase)
       throws StatsNotAvailableException {
     // Arrange
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeStorageSubsystem storage = Mockito.mock(NodeStorageSubsystem.class);
+    Mockito.when(node.storage()).thenReturn(storage);
     LocationManager locationManager = Mockito.mock(LocationManager.class);
     Mockito.when(locationManager.getLocation()).thenReturn(testCase.nodeLocation());
-    Mockito.when(node.getLocationManager()).thenReturn(locationManager);
+    Mockito.when(node.network().locationManager()).thenReturn(locationManager);
 
     NodeStats stats = Mockito.mock(NodeStats.class);
     setField(stats, "node", node);
@@ -47,7 +50,7 @@ class NodeStoreStatsProviderTest {
 
     StoreCallback<?> store = Mockito.mock(testCase.storeClass());
     Mockito.when(store.keyCount()).thenReturn(testCase.keyCount());
-    testCase.storeSetter().stub(node, store);
+    testCase.storeSetter().stub(storage, store);
 
     NodeStoreStatsProvider provider = new NodeStoreStatsProvider(stats);
 
@@ -69,11 +72,13 @@ class NodeStoreStatsProviderTest {
   void distanceStats_whenReportsExceedKeyCount_expectCappedAtOne()
       throws StatsNotAvailableException {
     // Arrange
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeStorageSubsystem storage = Mockito.mock(NodeStorageSubsystem.class);
+    Mockito.when(node.storage()).thenReturn(storage);
 
     CHKStore store = Mockito.mock(CHKStore.class);
     Mockito.when(store.keyCount()).thenReturn(50L);
-    Mockito.doReturn(store).when(node).getChkDatacache();
+    Mockito.doReturn(store).when(storage).getChkDatacache();
 
     NodeStats stats = Mockito.mock(NodeStats.class);
     setField(stats, "node", node);
@@ -93,10 +98,10 @@ class NodeStoreStatsProviderTest {
   @Test
   void avgDist_whenAvgLocationInvalid_expectIllegalArgumentException() {
     // Arrange
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     LocationManager locationManager = Mockito.mock(LocationManager.class);
     Mockito.when(locationManager.getLocation()).thenReturn(0.2);
-    Mockito.when(node.getLocationManager()).thenReturn(locationManager);
+    Mockito.when(node.network().locationManager()).thenReturn(locationManager);
 
     NodeStats stats = Mockito.mock(NodeStats.class);
     setField(stats, "node", node);
@@ -115,7 +120,7 @@ class NodeStoreStatsProviderTest {
             1,
             "chkStoreStats",
             NodeStoreStatsProvider::chkStoreStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getChkDatastore(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getChkDatastore(),
             CHKStore.class,
             "avgStoreCHKLocation",
             "avgStoreCHKSuccess",
@@ -124,7 +129,7 @@ class NodeStoreStatsProviderTest {
             2,
             "chkCacheStats",
             NodeStoreStatsProvider::chkCacheStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getChkDatacache(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getChkDatacache(),
             CHKStore.class,
             "avgCacheCHKLocation",
             "avgCacheCHKSuccess",
@@ -133,7 +138,7 @@ class NodeStoreStatsProviderTest {
             3,
             "chkSlashDotCacheStats",
             NodeStoreStatsProvider::chkSlashDotCacheStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getChkSlashdotCache(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getChkSlashdotCache(),
             CHKStore.class,
             "avgSlashdotCacheCHKLocation",
             "avgSlashdotCacheCHKSucess",
@@ -142,7 +147,7 @@ class NodeStoreStatsProviderTest {
             4,
             "chkClientCacheStats",
             NodeStoreStatsProvider::chkClientCacheStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getChkClientCache(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getChkClientCache(),
             CHKStore.class,
             "avgClientCacheCHKLocation",
             "avgClientCacheCHKSuccess",
@@ -151,7 +156,7 @@ class NodeStoreStatsProviderTest {
             5,
             "sskStoreStats",
             NodeStoreStatsProvider::sskStoreStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getSskDatastore(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getSskDatastore(),
             SSKStore.class,
             "avgStoreSSKLocation",
             "avgStoreSSKSuccess",
@@ -160,7 +165,7 @@ class NodeStoreStatsProviderTest {
             6,
             "sskCacheStats",
             NodeStoreStatsProvider::sskCacheStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getSskDatacache(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getSskDatacache(),
             SSKStore.class,
             "avgCacheSSKLocation",
             "avgCacheSSKSuccess",
@@ -169,7 +174,7 @@ class NodeStoreStatsProviderTest {
             7,
             "sskSlashDotCacheStats",
             NodeStoreStatsProvider::sskSlashDotCacheStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getSskSlashdotCache(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getSskSlashdotCache(),
             SSKStore.class,
             "avgSlashdotCacheSSKLocation",
             "avgSlashdotCacheSSKSuccess",
@@ -178,7 +183,7 @@ class NodeStoreStatsProviderTest {
             8,
             "sskClientCacheStats",
             NodeStoreStatsProvider::sskClientCacheStats,
-            (node, store) -> Mockito.doReturn(store).when(node).getSskClientCache(),
+            (storage, store) -> Mockito.doReturn(store).when(storage).getSskClientCache(),
             SSKStore.class,
             "avgClientCacheSSKLocation",
             "avgClientCacheSSKSuccess",
@@ -215,7 +220,7 @@ class NodeStoreStatsProviderTest {
 
   @FunctionalInterface
   private interface StoreSetter {
-    void stub(Node node, StoreCallback<?> store);
+    void stub(NodeStorageSubsystem storage, StoreCallback<?> store);
   }
 
   private record StoreStatsCase(

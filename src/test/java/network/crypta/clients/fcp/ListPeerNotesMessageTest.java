@@ -29,7 +29,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ListPeerNotesMessageTest {
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerNode peerNode;
   @Mock private DarknetPeerNode darknetPeerNode;
 
@@ -105,7 +108,7 @@ class ListPeerNotesMessageTest {
   @Test
   void run_whenPeerUnknown_sendsUnknownNodeIdentifierMessage() throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode("node-unknown")).thenReturn(null);
+    when(node.network().getPeerNode("node-unknown")).thenReturn(null);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-5");
     fs.putSingle("NodeIdentifier", "node-unknown");
@@ -125,7 +128,7 @@ class ListPeerNotesMessageTest {
   @Test
   void run_whenPeerIsNotDarknet_throwsDarknetOnly() {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode("node-2")).thenReturn(peerNode);
+    when(node.network().getPeerNode("node-2")).thenReturn(peerNode);
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-6");
     fs.putSingle("NodeIdentifier", "node-2");
@@ -144,7 +147,7 @@ class ListPeerNotesMessageTest {
   @Test
   void run_whenPeerIsDarknet_sendsPeerNoteAndEndMessage() throws MessageInvalidException {
     when(handler.hasFullAccess()).thenReturn(true);
-    when(node.getPeerNode("node-3")).thenReturn(darknetPeerNode);
+    when(node.network().getPeerNode("node-3")).thenReturn(darknetPeerNode);
     when(darknetPeerNode.getPrivateDarknetCommentNote()).thenReturn("secret-note");
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.putSingle("Identifier", "req-7");

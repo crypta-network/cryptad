@@ -68,10 +68,11 @@ public class BootstrapSeedTest {
     int seconds = 0;
     while (seconds < 600) {
       Thread.sleep(1000);
-      int seeds = node.getPeers().countSeednodes();
-      int seedConns = node.getPeers().seedPeers().getConnectedSeedServerPeersVector(null).size();
-      int opennetPeers = node.getPeers().countValidPeers();
-      int opennetConns = node.getPeers().countConnectedOpennetPeers();
+      int seeds = node.network().peers().countSeednodes();
+      int seedConns =
+          node.network().peers().seedPeers().getConnectedSeedServerPeersVector(null).size();
+      int opennetPeers = node.network().peers().countValidPeers();
+      int opennetConns = node.network().peers().countConnectedOpennetPeers();
       LOG.error(
           "{} : seeds: {}, connected: {} opennet: peers: {}, connected: {}",
           seconds,
@@ -172,7 +173,7 @@ public class BootstrapSeedTest {
       // Start it
       node.start(true);
       // Wait until we have 10 connected nodes...
-      int targetPeers = node.getOpennet().getAnnouncementThreshold();
+      int targetPeers = node.network().opennet().getAnnouncementThreshold();
       if (waitUntilBootstrapped(node, targetPeers, startTime)) {
         System.exit(0);
       }

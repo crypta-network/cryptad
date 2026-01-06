@@ -77,7 +77,7 @@ final class PeerNodeTransport implements PeerTransport {
           synchronized (peer) {
             resendBytesSent += x;
           }
-          peer.node.getNodeStats().resendByteCounter.sentBytes(x);
+          peer.node.network().stats().resendByteCounter.sentBytes(x);
         }
 
         @Override
@@ -132,7 +132,7 @@ final class PeerNodeTransport implements PeerTransport {
           msg,
           cb,
           peer,
-          peer.node.getDarknetPortNumber(),
+          peer.node.network().darknetPortNumber(),
           msg.getPriority());
     if (!peer.isConnected()) {
       if (cb != null) cb.disconnected();
@@ -231,12 +231,13 @@ final class PeerNodeTransport implements PeerTransport {
    */
   public boolean ping(int pingID) throws NotConnectedException {
     Message ping = DMT.createFNPPing(pingID);
-    peer.node.getUSM().send(peer, ping, peer.node.getDispatcher().pingCounter);
+    peer.node.network().usm().send(peer, ping, peer.node.network().dispatcher().pingCounter);
     Message msg;
     try {
       msg =
           peer.node
-              .getUSM()
+              .network()
+              .usm()
               .waitFor(
                   MessageFilter.create()
                       .setTimeout(2000)
@@ -289,7 +290,7 @@ final class PeerNodeTransport implements PeerTransport {
    * @param m decoded message to handle; must be non-null and peer-associated
    */
   public void handleMessage(Message m) {
-    peer.node.getUSM().checkFilters(m, peer.crypto.getSocket());
+    peer.node.network().usm().checkFilters(m, peer.crypto.getSocket());
   }
 
   @Override
@@ -318,21 +319,21 @@ final class PeerNodeTransport implements PeerTransport {
   void sendInitialMessages() {
     Message locMsg =
         DMT.createFNPLocChangeNotificationNew(
-            peer.node.getLocationManager().getLocation(),
-            peer.node.getPeers().getPeerLocationDoubles(true));
+            peer.node.network().locationManager().getLocation(),
+            peer.node.network().peers().getPeerLocationDoubles(true));
     Message ipMsg = DMT.createFNPDetectedIPAddress(peer.getPeer());
     Message timeMsg = DMT.createFNPTime(System.currentTimeMillis());
     Message dRoutingMsg = DMT.createRoutingStatus(!peer.disableRoutingHasBeenSetLocally);
     Message uptimeMsg =
-        DMT.createFNPUptime((byte) (int) (100 * peer.node.getUptimeEstimator().getUptime()));
+        DMT.createFNPUptime((byte) (int) (100 * peer.node.network().uptimeEstimator().getUptime()));
 
     try {
       if (peer.isRealConnection())
-        sendAsync(locMsg, null, peer.node.getNodeStats().initialMessagesCtr);
-      sendAsync(ipMsg, null, peer.node.getNodeStats().initialMessagesCtr);
-      sendAsync(timeMsg, null, peer.node.getNodeStats().initialMessagesCtr);
-      sendAsync(dRoutingMsg, null, peer.node.getNodeStats().initialMessagesCtr);
-      sendAsync(uptimeMsg, null, peer.node.getNodeStats().initialMessagesCtr);
+        sendAsync(locMsg, null, peer.node.network().stats().initialMessagesCtr);
+      sendAsync(ipMsg, null, peer.node.network().stats().initialMessagesCtr);
+      sendAsync(timeMsg, null, peer.node.network().stats().initialMessagesCtr);
+      sendAsync(dRoutingMsg, null, peer.node.network().stats().initialMessagesCtr);
+      sendAsync(uptimeMsg, null, peer.node.network().stats().initialMessagesCtr);
     } catch (NotConnectedException e) {
       LOG.error(
           "Completed handshake with {} but disconnected ({}:{}!!!: {}",
@@ -355,7 +356,7 @@ final class PeerNodeTransport implements PeerTransport {
   void sendIPAddressMessage() {
     Message ipMsg = DMT.createFNPDetectedIPAddress(peer.getPeer());
     try {
-      sendAsync(ipMsg, null, peer.node.getNodeStats().changedIPCtr);
+      sendAsync(ipMsg, null, peer.node.network().stats().changedIPCtr);
     } catch (NotConnectedException e) {
       LOG.info("Sending IP change message to {} but disconnected: {}", peer, e, e);
     }
@@ -393,7 +394,7 @@ final class PeerNodeTransport implements PeerTransport {
       cb = new UnqueueMessageOnAckCallback((DarknetPeerNode) peer, fileNumber);
     }
     try {
-      sendAsync(n2nm, cb, peer.node.getNodeStats().nodeToNodeCounter);
+      sendAsync(n2nm, cb, peer.node.network().stats().nodeToNodeCounter);
     } catch (NotConnectedException _) {
       if (includeSentTime) {
         fs.removeValue("sentTime");
@@ -548,7 +549,8 @@ final class PeerNodeTransport implements PeerTransport {
      * status messages are handled immediately; load-limited requests are queued for later.
      */
     public void processDecryptedMessage(byte[] data, int offset, int length, int overhead) {
-      Message m = peer.node.getUSM().decodeSingleMessage(data, offset, length, peer, overhead);
+      Message m =
+          peer.node.network().usm().decodeSingleMessage(data, offset, length, peer, overhead);
       if (m == null) {
         if (LOG.isDebugEnabled())
           LOG.debug("Message not decoded from {} ({})", peer, peer.getBuildNumber());

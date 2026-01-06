@@ -607,7 +607,7 @@ public final class PageMaker {
 
   private void renderStatusBar(
       HTMLNode pageDiv, ToadletContext ctx, RenderParameters renderParameters) {
-    if (node == null || node.getClientCore() == null) {
+    if (node == null || node.services().clientCore() == null) {
       return;
     }
     HTMLNode statusBarDiv =
@@ -640,7 +640,9 @@ public final class PageMaker {
 
   private void addModeSwitch(
       HTMLNode statusBarDiv, ToadletContext ctx, RenderParameters renderParameters) {
-    if (node.getClientCore() == null || ctx == null || !renderParameters.isRenderModeSwitch()) {
+    if (node.services().clientCore() == null
+        || ctx == null
+        || !renderParameters.isRenderModeSwitch()) {
       return;
     }
     boolean isAdvancedMode = ctx.isAdvancedModeEnabled();
@@ -676,34 +678,37 @@ public final class PageMaker {
             TAG_A,
             "href",
             "/seclevels/",
-            SecurityLevels.localisedName(node.getSecurityLevels().getNetworkThreatLevel())
+            SecurityLevels.localisedName(node.services().securityLevels().getNetworkThreatLevel())
                 + "\u00a0");
     network.addAttribute(
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.networkThreatLevelShort"));
     network.addAttribute(
-        ATTR_CLASS, node.getSecurityLevels().getNetworkThreatLevel().toString().toLowerCase());
+        ATTR_CLASS,
+        node.services().securityLevels().getNetworkThreatLevel().toString().toLowerCase());
 
     HTMLNode physical =
         secLevels.addChild(
             TAG_A,
             "href",
             "/seclevels/",
-            SecurityLevels.localisedName(node.getSecurityLevels().getPhysicalThreatLevel()));
+            SecurityLevels.localisedName(
+                node.services().securityLevels().getPhysicalThreatLevel()));
     physical.addAttribute(
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.physicalThreatLevelShort"));
     physical.addAttribute(
-        ATTR_CLASS, node.getSecurityLevels().getPhysicalThreatLevel().toString().toLowerCase());
+        ATTR_CLASS,
+        node.services().securityLevels().getPhysicalThreatLevel().toString().toLowerCase());
   }
 
   private void addPeerStatus(HTMLNode statusBarDiv) {
     addSeparator(statusBarDiv);
-    int connectedPeers = node.getPeers().countConnectedPeers();
+    int connectedPeers = node.network().peers().countConnectedPeers();
     int darknetTotal = countEnabledDarknetPeers();
-    int connectedDarknetPeers = node.getPeers().countConnectedDarknetPeers();
+    int connectedDarknetPeers = node.network().peers().countConnectedDarknetPeers();
     int totalPeers =
-        node.getOpennet() == null
+        node.network().opennet() == null
             ? determineDarknetTotal(darknetTotal)
-            : node.getOpennet().getNumberOfConnectedPeersToAimIncludingDarknet();
+            : node.network().opennet().getNumberOfConnectedPeersToAimIncludingDarknet();
     double connectedRatio = ((double) connectedPeers) / (double) totalPeers;
     String additionalClass =
         classifyPeerStatus(connectedPeers, connectedDarknetPeers, connectedRatio);
@@ -727,8 +732,8 @@ public final class PageMaker {
                   "StatusBar.connectedPeers",
                   new String[] {"X", "Y"},
                   new String[] {
-                    Integer.toString(node.getPeers().countConnectedDarknetPeers()),
-                    Integer.toString(node.getPeers().countConnectedOpennetPeers())
+                    Integer.toString(node.network().peers().countConnectedDarknetPeers()),
+                    Integer.toString(node.network().peers().countConnectedOpennetPeers())
                   })
         },
         connectedPeers + ((totalPeers != Integer.MAX_VALUE) ? " / " + totalPeers : ""));
@@ -767,7 +772,7 @@ public final class PageMaker {
 
   private int countEnabledDarknetPeers() {
     int darknetTotal = 0;
-    for (DarknetPeerNode peer : node.getPeers().roster().getDarknetPeers()) {
+    for (DarknetPeerNode peer : node.network().peers().roster().getDarknetPeers()) {
       if (peer != null && !peer.isDisabled()) {
         darknetTotal++;
       }

@@ -70,7 +70,13 @@ public class RequestTracker {
   /** UIDs of RequestHandler instances currently transferring. */
   private final HashSet<Long> transferringRequestHandlers;
 
-  RequestTracker(PeerManager peers, Ticker ticker) {
+  /**
+   * Creates a request tracker for the given peer manager and ticker.
+   *
+   * @param peers peer manager used to derive routing context
+   * @param ticker scheduler for periodic cleanup tasks
+   */
+  public RequestTracker(PeerManager peers, Ticker ticker) {
     this.peers = peers;
     this.ticker = ticker;
     runningCHKGetUIDsRT = new HashMap<>();

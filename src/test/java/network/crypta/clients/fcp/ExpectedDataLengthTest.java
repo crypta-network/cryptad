@@ -19,7 +19,8 @@ class ExpectedDataLengthTest {
 
   @Mock private FCPConnectionHandler handler;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @ParameterizedTest
   @CsvSource({"identifier-1,true,42", "another-id,false,0"})

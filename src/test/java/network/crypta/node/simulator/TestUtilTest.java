@@ -23,13 +23,13 @@ class TestUtilTest {
   void waitForNodes_whenOpennetConnectionsReachTarget_expectTrueAndStopsEarly()
       throws InterruptedException {
     // Arrange
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetManager opennet = mock(OpennetManager.class);
     PeerManager peers = mock(PeerManager.class);
     SeedPeerQueries seedPeers = mock(SeedPeerQueries.class);
-    when(node.getOpennet()).thenReturn(opennet);
+    when(node.network().opennet()).thenReturn(opennet);
     when(opennet.getAnnouncementThreshold()).thenReturn(3);
-    when(node.getPeers()).thenReturn(peers);
+    when(node.network().peers()).thenReturn(peers);
     when(peers.seedPeers()).thenReturn(seedPeers);
     when(peers.countSeednodes()).thenReturn(1);
     when(seedPeers.getConnectedSeedServerPeersVector(null)).thenReturn(List.of());
@@ -50,9 +50,9 @@ class TestUtilTest {
   @Test
   void waitForNodes_whenSleepInterrupted_expectInterruptedException() {
     // Arrange
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetManager opennet = mock(OpennetManager.class);
-    when(node.getOpennet()).thenReturn(opennet);
+    when(node.network().opennet()).thenReturn(opennet);
     when(opennet.getAnnouncementThreshold()).thenReturn(1);
 
     Thread.currentThread().interrupt();

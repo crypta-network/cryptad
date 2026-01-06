@@ -40,7 +40,10 @@ import org.mockito.quality.Strictness;
 class UpdatedVersionAvailableUserAlertTest {
 
   @Mock private NodeUpdateManager updater;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore clientCore;
 
   @InjectMocks private UpdatedVersionAvailableUserAlert alert;
@@ -123,7 +126,7 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.hasNewMainJar()).thenReturn(true);
     when(updater.newMainJarVersion()).thenReturn(1234);
     when(updater.canUpdateImmediately()).thenReturn(true);
-    when(node.updateIsUrgent()).thenReturn(false);
+    when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.brokenDependencies()).thenReturn(false);
 
     String downloaded =
@@ -151,7 +154,7 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.canUpdateNow()).thenReturn(true);
     when(updater.hasNewMainJar()).thenReturn(false);
     when(updater.canUpdateImmediately()).thenReturn(false);
-    when(node.updateIsUrgent()).thenReturn(false);
+    when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.brokenDependencies()).thenReturn(false);
 
     String prompt =
@@ -172,7 +175,7 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.canUpdateNow()).thenReturn(false);
     when(updater.fetchingFromUOM()).thenReturn(true);
     when(updater.fetchingNewMainJar()).thenReturn(false);
-    when(node.updateIsUrgent()).thenReturn(false);
+    when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.brokenDependencies()).thenReturn(false);
 
     Path nodeDir = Files.createTempDirectory("cryptad-node-test");
@@ -218,10 +221,10 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.isArmed()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(true);
     when(updater.canUpdateImmediately()).thenReturn(true);
-    when(node.updateIsUrgent()).thenReturn(false);
+    when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.brokenDependencies()).thenReturn(false);
 
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getFormPassword()).thenReturn("secret-token");
 
     // Version selection path shouldn't matter for this check; take the fallback branch.
@@ -255,9 +258,9 @@ class UpdatedVersionAvailableUserAlertTest {
   @Test
   @DisplayName("htmlText_versionSelection_prefersNewJarThenFetchingThenCurrent")
   void htmlText_versionSelection_prefersNewJarThenFetchingThenCurrent() {
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getFormPassword()).thenReturn("pw");
-    when(node.updateIsUrgent()).thenReturn(false);
+    when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.brokenDependencies()).thenReturn(false);
 
     // Capture the version passed into addChangelogLinks (will be overwritten on each call)
@@ -300,14 +303,14 @@ class UpdatedVersionAvailableUserAlertTest {
   @DisplayName("priority_whenUrgent_returnsCritical")
   void priority_whenUrgent_returnsCritical() {
     when(updater.getNode()).thenReturn(node);
-    when(node.updateIsUrgent()).thenReturn(true);
+    when(node.network().updateIsUrgent()).thenReturn(true);
     assertEquals(UserAlert.CRITICAL_ERROR, alert.getPriorityClass());
   }
 
   @Test
   @DisplayName("priority_whenFinalCheckOrReadyOrNotArmed_returnsError")
   void priority_whenFinalCheckOrReadyOrNotArmed_returnsError() {
-    when(node.updateIsUrgent()).thenReturn(false);
+    when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.getNode()).thenReturn(node);
 
     when(updater.inFinalCheck()).thenReturn(true);
@@ -325,7 +328,7 @@ class UpdatedVersionAvailableUserAlertTest {
   @Test
   @DisplayName("priority_whenArmedAndNotReady_returnsMinor")
   void priority_whenArmedAndNotReady_returnsMinor() {
-    when(node.updateIsUrgent()).thenReturn(false);
+    when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.getNode()).thenReturn(node);
     when(updater.inFinalCheck()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(false);

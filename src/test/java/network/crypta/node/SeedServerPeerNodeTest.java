@@ -11,11 +11,13 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -113,8 +115,10 @@ class SeedServerPeerNodeTest {
   void shouldDisconnectAndRemoveNow_whenOpennetNull_returnsTrue() {
     // Arrange
     SeedServerPeerNode seed = mock(SeedServerPeerNode.class, CALLS_REAL_METHODS);
-    Node node = mock(Node.class);
-    doReturn(null).when(node).getOpennet();
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    doReturn(null).when(network).opennet();
     setNodeField(seed, node);
 
     // Act & Assert
@@ -126,10 +130,12 @@ class SeedServerPeerNodeTest {
   void shouldDisconnectAndRemoveNow_whenNotEnoughPeers_returnsFalse() {
     // Arrange
     SeedServerPeerNode seed = mock(SeedServerPeerNode.class, CALLS_REAL_METHODS);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetManager om = mock(OpennetManager.class);
     Announcer announcer = mock(Announcer.class);
-    doReturn(om).when(node).getOpennet();
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    doReturn(om).when(network).opennet();
     doReturn(announcer).when(om).getAnnouncer();
     doReturn(false).when(announcer).enoughPeers();
     setNodeField(seed, node);
@@ -143,10 +149,12 @@ class SeedServerPeerNodeTest {
   void shouldDisconnectAndRemoveNow_whenEnoughPeersForOver5min_returnsTrue() {
     // Arrange
     SeedServerPeerNode seed = mock(SeedServerPeerNode.class, CALLS_REAL_METHODS);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     OpennetManager om = mock(OpennetManager.class);
     Announcer announcer = mock(Announcer.class);
-    doReturn(om).when(node).getOpennet();
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    doReturn(om).when(network).opennet();
     doReturn(announcer).when(om).getAnnouncer();
     doReturn(true).when(announcer).enoughPeers();
     long past = System.currentTimeMillis() - java.util.concurrent.TimeUnit.MINUTES.toMillis(6);

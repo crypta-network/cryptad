@@ -83,10 +83,12 @@ public class PluginRespirator {
   public PluginRespirator(Node node, PluginInfoWrapper pi) {
     this.node = node;
     this.hlsc =
-        node.getClientCore().makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, false, false);
+        node.services()
+            .clientCore()
+            .makeClient(RequestStarter.INTERACTIVE_PRIORITY_CLASS, false, false);
     this.plugin = pi.getPlugin();
     this.pi = pi;
-    stores = node.getClientCore().getPluginStores();
+    stores = node.services().clientCore().getPluginStores();
   }
 
   /**
@@ -184,7 +186,7 @@ public class PluginRespirator {
     formNode.addChild(
         "input",
         new String[] {"type", "name", "value"},
-        new String[] {"hidden", "formPassword", node.getClientCore().getFormPassword()});
+        new String[] {"hidden", "formPassword", node.services().clientCore().getFormPassword()});
 
     return formNode;
   }
@@ -263,7 +265,8 @@ public class PluginRespirator {
 
     // pluginName being null will be handled by createFCPPluginConnectionForIntraNodeFCP().
 
-    return node.getClientCore()
+    return node.services()
+        .clientCore()
         .getEndpoints()
         .getFCPServer()
         .createFCPPluginConnectionForIntraNodeFCP(pluginName, messageHandler);
@@ -304,7 +307,11 @@ public class PluginRespirator {
    *     discard it.
    */
   public FCPPluginConnection getPluginConnectionByID(UUID connectionID) throws IOException {
-    return node.getClientCore().getEndpoints().getFCPServer().getPluginConnectionByID(connectionID);
+    return node.services()
+        .clientCore()
+        .getEndpoints()
+        .getFCPServer()
+        .getPluginConnectionByID(connectionID);
   }
 
   /**
@@ -322,7 +329,7 @@ public class PluginRespirator {
    * @return the node {@link ToadletContainer}, or {@code null} if HTTP is not available.
    */
   public ToadletContainer getToadletContainer() {
-    return node.getClientCore().getEndpoints().getToadletContainer();
+    return node.services().clientCore().getEndpoints().getToadletContainer();
   }
 
   /**

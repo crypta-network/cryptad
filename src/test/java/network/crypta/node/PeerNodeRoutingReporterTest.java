@@ -28,9 +28,9 @@ class PeerNodeRoutingReporterTest {
 
   @Test
   void reportRoutedTo_whenNodeStatsNull_doesNotThrow() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerNode peerNode = mock(PeerNode.class);
-    when(node.getNodeStats()).thenReturn(null);
+    when(node.network().stats()).thenReturn(null);
     when(peerNode.getLocation()).thenReturn(0.7);
 
     assertDoesNotThrow(
@@ -43,7 +43,7 @@ class PeerNodeRoutingReporterTest {
   @CsvSource({"true,true", "true,false", "false,true", "false,false"})
   void reportRoutedTo_whenNoPeerLocationsPublished_reportsOriginalDistance(
       boolean isLocal, boolean realTime) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerNode peerNode = mock(PeerNode.class);
     RunningAverage overall = mock(RunningAverage.class);
     RunningAverage local = mock(RunningAverage.class);
@@ -56,8 +56,8 @@ class PeerNodeRoutingReporterTest {
     double peerLocation = 0.85;
     double expectedDistance = Location.distance(target, peerLocation);
 
-    when(node.getLocation()).thenReturn(0.4);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().location()).thenReturn(0.4);
+    when(node.network().stats()).thenReturn(stats);
     when(peerNode.getLocation()).thenReturn(peerLocation);
     when(peerNode.shallWeRouteAccordingToOurPeersLocation(2)).thenReturn(false);
 
@@ -83,7 +83,7 @@ class PeerNodeRoutingReporterTest {
 
   @Test
   void reportRoutedTo_whenPeerPublishesCloserLocation_reportsCloserDistance() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerNode peerNode = mock(PeerNode.class);
     RunningAverage overall = mock(RunningAverage.class);
     RunningAverage local = mock(RunningAverage.class);
@@ -97,8 +97,8 @@ class PeerNodeRoutingReporterTest {
     double closestLocation = 0.25;
     double expectedDistance = Location.distance(target, closestLocation);
 
-    when(node.getLocation()).thenReturn(0.1);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().location()).thenReturn(0.1);
+    when(node.network().stats()).thenReturn(stats);
     when(peerNode.getLocation()).thenReturn(peerLocation);
     when(peerNode.shallWeRouteAccordingToOurPeersLocation(3)).thenReturn(true);
     when(peerNode.getClosestPeerLocation(eq(target), anySet())).thenReturn(closestLocation);
@@ -116,7 +116,7 @@ class PeerNodeRoutingReporterTest {
   @CsvSource({"NaN", "0.6"})
   void reportRoutedTo_whenClosestLocationMissingOrWorse_keepsOriginalDistance(
       double closestLocation) {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerNode peerNode = mock(PeerNode.class);
     RunningAverage overall = mock(RunningAverage.class);
     RunningAverage local = mock(RunningAverage.class);
@@ -129,8 +129,8 @@ class PeerNodeRoutingReporterTest {
     double peerLocation = 0.9;
     double expectedDistance = Location.distance(target, peerLocation);
 
-    when(node.getLocation()).thenReturn(0.1);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().location()).thenReturn(0.1);
+    when(node.network().stats()).thenReturn(stats);
     when(peerNode.getLocation()).thenReturn(peerLocation);
     when(peerNode.shallWeRouteAccordingToOurPeersLocation(4)).thenReturn(true);
     when(peerNode.getClosestPeerLocation(eq(target), anySet())).thenReturn(closestLocation);
@@ -146,7 +146,7 @@ class PeerNodeRoutingReporterTest {
 
   @Test
   void reportRoutedTo_whenPeerLocationInvalid_throwsIllegalArgumentException() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerNode peerNode = mock(PeerNode.class);
     RunningAverage overall = mock(RunningAverage.class);
     RunningAverage local = mock(RunningAverage.class);
@@ -168,7 +168,7 @@ class PeerNodeRoutingReporterTest {
 
   @Test
   void reportRoutedTo_whenPeerPublishesLocations_passesExcludeSetWithSelfPrevAndRoutedTo() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PeerNode peerNode = mock(PeerNode.class);
     PeerNode prev = mock(PeerNode.class);
     PeerNode routedToA = mock(PeerNode.class);
@@ -186,8 +186,8 @@ class PeerNodeRoutingReporterTest {
     double routedToLocationB = 0.77;
     double target = 0.2;
 
-    when(node.getLocation()).thenReturn(myLocation);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().location()).thenReturn(myLocation);
+    when(node.network().stats()).thenReturn(stats);
     when(peerNode.getLocation()).thenReturn(0.9);
     when(peerNode.shallWeRouteAccordingToOurPeersLocation(6)).thenReturn(true);
     when(prev.getLocation()).thenReturn(prevLocation);

@@ -168,7 +168,7 @@ public class FCPConnectionHandler implements Closeable {
     this.ddaAccessController = new DdaAccessController(server, LOG);
 
     byte[] identifier = new byte[16];
-    server.getNode().getRandom().nextBytes(identifier);
+    server.getNode().bootstrap().random().nextBytes(identifier);
     this.connectionIdentifier = HexUtil.bytesToHex(identifier);
 
     // The random 16-byte identifier was used before we added the UUID. Luckily, UUIDs are also

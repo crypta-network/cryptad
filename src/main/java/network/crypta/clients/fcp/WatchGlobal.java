@@ -130,7 +130,7 @@ public class WatchGlobal extends FCPMessage {
     if (!handler
         .getRebootClient()
         .setWatchGlobal(
-            enabled, verbosityMask, node.getClientCore().getEndpoints().getFCPServer())) {
+            enabled, verbosityMask, node.services().clientCore().getEndpoints().getFCPServer())) {
       FCPMessage err =
           new ProtocolErrorMessage(
               ProtocolErrorMessage.PERSISTENCE_DISABLED, false, "Persistence disabled", null, true);

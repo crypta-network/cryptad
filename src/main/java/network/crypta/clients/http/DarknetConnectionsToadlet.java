@@ -349,7 +349,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    */
   @Override
   protected SimpleFieldSet getNoderef() {
-    return node.exportDarknetPublicFieldSet();
+    return node.network().exportDarknetPublicFieldSet();
   }
 
   /**
@@ -364,7 +364,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
    */
   @Override
   protected PeerNodeStatus[] getPeerNodeStatuses(boolean noHeavy) {
-    return node.getPeers().statusBook().getDarknetPeerNodeStatuses(noHeavy);
+    return node.network().peers().statusBook().getDarknetPeerNodeStatuses(noHeavy);
   }
 
   /**
@@ -645,7 +645,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   private DarknetPeerNode findFirstSelectedPeer(HTTPRequest request) {
-    for (DarknetPeerNode pn : node.getDarknetConnections()) {
+    for (DarknetPeerNode pn : node.network().darknetConnections()) {
       if (request.isPartSet(NODE_PREFIX + pn.hashCode())) {
         return pn;
       }
@@ -691,11 +691,11 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
       throws ToadletContextClosedException, IOException {
     if (LOG.isDebugEnabled()) LOG.debug("Remove node");
 
-    for (DarknetPeerNode pn : node.getDarknetConnections()) {
+    for (DarknetPeerNode pn : node.network().darknetConnections()) {
       if (!request.isPartSet(NODE_PREFIX + pn.hashCode())) {
         if (LOG.isDebugEnabled()) LOG.debug("Part not set: node_{}", pn.hashCode());
       } else if (shouldRemovePeer(pn, request)) {
-        node.removePeerConnection(pn);
+        node.network().removePeerConnection(pn);
         if (LOG.isDebugEnabled()) LOG.debug("Removed node: node_{}", pn.hashCode());
       } else {
         showRemovalConfirmation(ctx, pn);
@@ -755,7 +755,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   private void handleUpdateNotes(HTTPRequest request) {
-    for (DarknetPeerNode pn : node.getDarknetConnections()) {
+    for (DarknetPeerNode pn : node.network().darknetConnections()) {
       String partName = PEER_PRIVATE_NOTE_PREFIX + pn.hashCode();
       if (!request.isPartSet(partName)) {
         continue;
@@ -768,7 +768,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   private void forSelectedPeers(HTTPRequest request, Consumer<DarknetPeerNode> action) {
-    for (DarknetPeerNode pn : node.getDarknetConnections()) {
+    for (DarknetPeerNode pn : node.network().darknetConnections()) {
       if (request.isPartSet(NODE_PREFIX + pn.hashCode())) {
         action.accept(pn);
       }
@@ -780,7 +780,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("sendMessageTitle"), ctx);
     HTMLNode contentNode = page.getContentNode();
     HashMap<String, String> peers = new HashMap<>();
-    for (DarknetPeerNode pn : node.getDarknetConnections()) {
+    for (DarknetPeerNode pn : node.network().darknetConnections()) {
       String nodePart = NODE_PREFIX + pn.hashCode();
       if (request.isPartSet(nodePart)) {
         String peerHash = String.valueOf(pn.hashCode());
@@ -912,7 +912,7 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
   }
 
   private DarknetPeerNode findPeerByHashcode(int targetHashcode) {
-    for (DarknetPeerNode peerNode : node.getDarknetConnections()) {
+    for (DarknetPeerNode peerNode : node.network().darknetConnections()) {
       if (peerNode.hashCode() == targetHashcode) {
         return peerNode;
       }

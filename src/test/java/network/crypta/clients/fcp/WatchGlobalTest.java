@@ -26,7 +26,10 @@ class WatchGlobalTest {
   @Mock private FCPConnectionHandler handler;
   @Mock private PersistentRequestClient rebootClient;
   @Mock private PersistentRequestClient foreverClient;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore nodeClientCore;
   @Mock private ClientEndpoints endpoints;
   @Mock private FCPServer nodeFcpServer;
@@ -114,7 +117,6 @@ class WatchGlobalTest {
     verify(handler, never()).send(org.mockito.ArgumentMatchers.any(FCPMessage.class));
     verify(handler).getRebootClient();
     verify(handler).getForeverClient();
-    verify(node).getClientCore();
     verify(nodeClientCore).getEndpoints();
     verify(endpoints).getFCPServer();
     verifyNoMoreInteractions(handler, rebootClient, node, nodeClientCore, nodeFcpServer);
@@ -138,7 +140,10 @@ class WatchGlobalTest {
 
   private void prepareSharedMocks() {
     when(handler.getRebootClient()).thenReturn(rebootClient);
-    when(node.getClientCore()).thenReturn(nodeClientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(nodeClientCore);
     when(nodeClientCore.getEndpoints()).thenReturn(endpoints);
     when(endpoints.getFCPServer()).thenReturn(nodeFcpServer);
   }

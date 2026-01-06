@@ -19,6 +19,8 @@ import static org.mockito.Mockito.when;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.node.Node;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
@@ -37,15 +39,22 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class LoadPluginTest {
 
   @Mock private FCPConnectionHandler handler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PluginManager pluginManager;
   @Mock private PriorityAwareExecutor executor;
 
   @BeforeEach
   void setUp() {
     lenient().when(handler.hasFullAccess()).thenReturn(true);
-    lenient().when(node.getPluginManager()).thenReturn(pluginManager);
-    lenient().when(node.getExecutor()).thenReturn(executor);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    lenient().when(node.services()).thenReturn(services);
+    lenient().when(node.network()).thenReturn(network);
+    lenient().when(services.pluginManager()).thenReturn(pluginManager);
+    lenient().when(network.executor()).thenReturn(executor);
     lenient().when(pluginManager.isEnabled()).thenReturn(true);
 
     lenient()

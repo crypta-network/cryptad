@@ -40,7 +40,9 @@ class BandwidthManagerTest {
 
   private static final long DELAY_MS = HOURS.toMillis(24);
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private Ticker ticker;
   @Mock private NodeIPDetector ipDetector;
   @Mock private PersistentConfig config;
@@ -58,8 +60,8 @@ class BandwidthManagerTest {
   }
 
   private void wireStartCommon(boolean detectionEnabled) {
-    when(node.getTicker()).thenReturn(ticker);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    when(node.network().ticker()).thenReturn(ticker);
+    when(node.network().ipDetector()).thenReturn(ipDetector);
     when(node.getConfig()).thenReturn(config);
     when(config.get("node")).thenReturn(nodeSubConfig);
     when(nodeSubConfig.getBoolean("connectionSpeedDetection")).thenReturn(detectionEnabled);
@@ -232,7 +234,7 @@ class BandwidthManagerTest {
   void start_whenInputDetectedTriples_registersAlertWithExpectedOffer() {
     wireStartCommon(true);
     when(ipDetector.getBandwidthIndicator()).thenReturn(indicator);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
     when(clientCore.getFormPassword()).thenReturn("pw");
 
@@ -277,13 +279,13 @@ class BandwidthManagerTest {
 
   @Test
   void start_whenReRunWithoutFurtherIncrease_doesNotReAlert() {
-    when(node.getTicker()).thenReturn(ticker);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    when(node.network().ticker()).thenReturn(ticker);
+    when(node.network().ipDetector()).thenReturn(ipDetector);
     when(ipDetector.getBandwidthIndicator()).thenReturn(indicator);
     when(node.getConfig()).thenReturn(config);
     when(config.get("node")).thenReturn(nodeSubConfig);
     when(nodeSubConfig.getBoolean("connectionSpeedDetection")).thenReturn(true);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alerts);
 
     int currentIn = 1000;
@@ -310,8 +312,8 @@ class BandwidthManagerTest {
 
   @Test
   void start_whenDetectorThrows_stillReschedulesAndPropagates() {
-    when(node.getTicker()).thenReturn(ticker);
-    when(node.getIpDetector()).thenReturn(ipDetector);
+    when(node.network().ticker()).thenReturn(ticker);
+    when(node.network().ipDetector()).thenReturn(ipDetector);
     doThrow(new RuntimeException("boom")).when(ipDetector).getBandwidthIndicator();
 
     BandwidthManager bm = new BandwidthManager(node);

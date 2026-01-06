@@ -28,7 +28,9 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ProbeTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerNode source;
   @Mock private network.crypta.node.PeerTransport transport;
   @Mock private RandomSource random;
@@ -50,7 +52,7 @@ class ProbeTest {
     when(node.getRandom()).thenReturn(random);
 
     // Default: no peers connected so routing fails with DISCONNECTED immediately.
-    when(node.getConnectedPeers()).thenReturn(new PeerNode[0]);
+    when(node.network().connectedPeers()).thenReturn(new PeerNode[0]);
 
     // Source peer is connected and can accept async sends.
     when(source.isConnected()).thenReturn(true);

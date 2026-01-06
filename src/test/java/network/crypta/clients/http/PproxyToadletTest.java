@@ -45,7 +45,10 @@ class PproxyToadletTest {
   void setUp() throws Exception {
     toadlet = new PproxyToadlet(client, node);
 
-    lenient().when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    lenient().when(node.services()).thenReturn(services);
+    lenient().when(services.pluginManager()).thenReturn(pluginManager);
     lenient().when(ctx.checkFullAccess(any())).thenReturn(true);
     lenient().when(ctx.checkFormPassword(any())).thenReturn(true);
     lenient().when(ctx.checkFormPassword(any(), anyString())).thenReturn(true);
@@ -121,7 +124,10 @@ class PproxyToadletTest {
   @Test
   void handleMethodPOST_withReloadConfirmMissingPlugin_sends404ErrorPage() throws Exception {
     PproxyToadlet spyToadlet = spy(new PproxyToadlet(client, node));
-    doReturn(pluginManager).when(node).getPluginManager();
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    doReturn(pluginManager).when(services).pluginManager();
 
     doNothing().when(spyToadlet).sendErrorPage(eq(ctx), eq(404), anyString(), anyString());
 
@@ -157,7 +163,10 @@ class PproxyToadletTest {
   @Test
   void handleMethodGET_whenPluginRedirects_writesTemporaryRedirect() throws Exception {
     PproxyToadlet spyToadlet = spy(new PproxyToadlet(client, node));
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
     when(request.getPath()).thenReturn("/plugins/Redirector");
     when(pluginManager.handleHTTPGet("Redirector", request))
         .thenThrow(new RedirectPluginHTTPException("move", "/target"));

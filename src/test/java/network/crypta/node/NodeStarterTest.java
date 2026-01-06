@@ -18,6 +18,7 @@ import java.util.Properties;
 import network.crypta.config.PersistentConfig;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,7 +97,9 @@ class NodeStarterTest {
               }
               // getPeers() must not return null because createTestNode() calls removeAllPeers()
               PeerManager peerManager = mock(PeerManager.class);
-              Mockito.when(mock.getPeers()).thenReturn(peerManager);
+              NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+              Mockito.doReturn(network).when(mock).network();
+              Mockito.doReturn(peerManager).when(network).peers();
             })) {
       // Act
       Node node = NodeStarter.createTestNode(params);
@@ -119,7 +122,7 @@ class NodeStarterTest {
       assertEquals(new File(portDir, "throttle.dat").toString(), sfs.get("node.throttleFile"));
 
       // And ensure peers list is cleared on the returned node
-      verify(node.getPeers(), times(1)).removeAllPeers();
+      verify(node.network().peers(), times(1)).removeAllPeers();
     }
   }
 
@@ -192,7 +195,7 @@ class NodeStarterTest {
       throws ReflectiveOperationException {
     // Arrange
     NodeStarter ns = newNodeStarterViaReflection();
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setNodeField(ns, node);
 
     try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class)) {

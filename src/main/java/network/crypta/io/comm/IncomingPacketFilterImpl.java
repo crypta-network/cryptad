@@ -122,8 +122,8 @@ public class IncomingPacketFilterImpl implements IncomingPacketFilter {
     debugLogPacket(length, peer);
     // Mix a small amount of arrival-time entropy into the node RNG. The bias preserves legacy
     // behavior and balances entropy quality with performance.
-    node.getRandom().acceptTimerEntropy(fnpTimingSource, 0.25);
-    PeerNode opn = node.getPeers().roster().getByPeer(peer, mangler);
+    node.bootstrap().random().acceptTimerEntropy(fnpTimingSource, 0.25);
+    PeerNode opn = node.network().peers().roster().getByPeer(peer, mangler);
 
     if (opn == null) {
       LOG.info("Got packet from unknown address");

@@ -52,7 +52,10 @@ class ClientRequestSchedulerTest {
 
   @Mock private RandomSource random;
   @Mock private RequestStarter starter;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private DatastoreChecker datastoreChecker;
 

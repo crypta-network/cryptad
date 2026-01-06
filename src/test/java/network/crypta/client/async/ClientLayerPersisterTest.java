@@ -51,7 +51,9 @@ class ClientLayerPersisterTest {
 
   @TempDir File tempDir;
 
-  @Mock Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
   @Mock NodeClientCore core;
   @Mock PersistentTempBucketFactory persistentTempBucketFactory;
   @Mock TempBucketFactory tempBucketFactory;
@@ -64,8 +66,8 @@ class ClientLayerPersisterTest {
     when(core.getPersistentRequests()).thenReturn(new ClientRequest[0]);
 
     // Stats reading during save()
-    when(node.getCollector()).thenReturn(new IOStatisticCollector());
-    when(node.getUptime()).thenReturn(0L);
+    when(node.network().collector()).thenReturn(new IOStatisticCollector());
+    when(node.network().uptimeEstimator().getUptime()).thenReturn(0d);
 
     // No delayed frees by default
     when(persistentTempBucketFactory.grabBucketsToFree()).thenReturn(null);

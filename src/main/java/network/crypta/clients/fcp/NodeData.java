@@ -84,19 +84,19 @@ public class NodeData extends FCPMessage {
     SimpleFieldSet fs;
     if (giveOpennetRef) {
       if (withPrivate) {
-        fs = node.exportOpennetPrivateFieldSet();
+        fs = node.network().exportOpennetPrivateFieldSet();
       } else {
-        fs = node.exportOpennetPublicFieldSet();
+        fs = node.network().exportOpennetPublicFieldSet();
       }
     } else {
       if (withPrivate) {
-        fs = node.exportDarknetPrivateFieldSet();
+        fs = node.network().exportDarknetPrivateFieldSet();
       } else {
-        fs = node.exportDarknetPublicFieldSet();
+        fs = node.network().exportDarknetPublicFieldSet();
       }
     }
     if (withVolatile) {
-      SimpleFieldSet vol = node.exportVolatileFieldSet();
+      SimpleFieldSet vol = node.network().exportVolatileFieldSet();
       if (!vol.isEmpty()) {
         fs.put("volatile", vol);
       }

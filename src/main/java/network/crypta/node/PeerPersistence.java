@@ -133,7 +133,7 @@ class PeerPersistence {
    * {@link #scheduleWritePeersNextRun()} so the periodic cycle continues.
    */
   void scheduleInitialWrite() {
-    node.getTicker().queueTimedJob(writePeersRunnable, 0);
+    node.network().ticker().queueTimedJob(writePeersRunnable, 0);
   }
 
   /**
@@ -221,7 +221,7 @@ class PeerPersistence {
    * delay is fixed and expressed in milliseconds by {@link #MIN_WRITEPEERS_DELAY}.
    */
   private void scheduleWritePeersNextRun() {
-    node.getTicker().queueTimedJob(writePeersRunnable, MIN_WRITEPEERS_DELAY);
+    node.network().ticker().queueTimedJob(writePeersRunnable, MIN_WRITEPEERS_DELAY);
   }
 
   /**
@@ -337,7 +337,8 @@ class PeerPersistence {
    * <p>This path rotates backups and runs outside the ticker to reduce latency.
    */
   private void writePeersOpennetUrgent() {
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             new PrioRunnable() {
               @Override
@@ -358,7 +359,8 @@ class PeerPersistence {
    * <p>This path rotates backups and runs outside the ticker to reduce latency.
    */
   private void writePeersDarknetUrgent() {
-    node.getExecutor()
+    node.network()
+        .executor()
         .execute(
             new PrioRunnable() {
               @Override
@@ -419,7 +421,9 @@ class PeerPersistence {
    */
   private String getOldOpennetPeersString(OpennetManager om) {
     StringBuilder sb = new StringBuilder();
-    for (PeerNode pn : om.getOldPeers()) {
+    PeerNode[] oldPeers = om.getOldPeers();
+    if (oldPeers == null) return sb.toString();
+    for (PeerNode pn : oldPeers) {
       if (pn instanceof OpennetPeerNode) sb.append(pn.exportDiskFieldSet().toOrderedString());
     }
     return sb.toString();
@@ -452,7 +456,7 @@ class PeerPersistence {
     String newOpennetPeersString = null;
     String newOldOpennetPeersString = null;
     synchronized (writePeersSync) {
-      OpennetManager om = node.getOpennet();
+      OpennetManager om = node.network().opennet();
       if (om != null) {
         if (openFilename != null) newOpennetPeersString = getOpennetPeersString();
         oldOpennetPeersFilename = om.getOldPeersFilename();
@@ -465,6 +469,7 @@ class PeerPersistence {
         writePeersInner(openFilename, opennetPeersStringCache, BACKUPS_OPENNET, rotateBackups);
       }
       if (newOldOpennetPeersString != null
+          && oldOpennetPeersFilename != null
           && !newOldOpennetPeersString.equals(oldOpennetPeersStringCache)) {
         oldOpennetPeersStringCache = newOldOpennetPeersString;
         writePeersInner(
@@ -610,7 +615,7 @@ class PeerPersistence {
     }
     if (!droppedOldPeers.isEmpty()) {
       try {
-        node.getClientCore().getAlerts().register(droppedOldPeers);
+        node.services().clientCore().getAlerts().register(droppedOldPeers);
         LOG.error(droppedOldPeers.getText());
       } catch (Throwable t) {
         // Startup MUST complete, don't let client layer problems kill it.

@@ -95,10 +95,11 @@ public class RemovePeer extends FCPMessage {
    * <p>The handler must have full access; otherwise a {@link MessageInvalidException} with an
    * {@link ProtocolErrorMessage#ACCESS_DENIED} error is thrown. When the {@code NodeIdentifier}
    * field is missing, the method signals a {@link ProtocolErrorMessage#MISSING_FIELD} error. If a
-   * matching peer exists, it is detached via {@link Node#removePeerConnection(PeerNode)} and a
-   * {@link PeerRemoved} acknowledgment is sent. Unknown peer identifiers yield an {@link
-   * UnknownNodeIdentifierMessage}. No state beyond the current invocation is retained, and the
-   * method is not idempotent if the peer list changes between calls.
+   * matching peer exists, it is detached via {@link
+   * NodeNetworkSubsystem#removePeerConnection(PeerNode)} and a {@link PeerRemoved} acknowledgment
+   * is sent. Unknown peer identifiers yield an {@link UnknownNodeIdentifierMessage}. No state
+   * beyond the current invocation is retained, and the method is not idempotent if the peer list
+   * changes between calls.
    *
    * <pre>{@code
    * // Example: remove a peer by its node identifier
@@ -130,14 +131,14 @@ public class RemovePeer extends FCPMessage {
           messageIdentifier,
           false);
     }
-    PeerNode pn = node.getPeerNode(nodeIdentifier);
+    PeerNode pn = node.network().getPeerNode(nodeIdentifier);
     if (pn == null) {
       FCPMessage msg = new UnknownNodeIdentifierMessage(nodeIdentifier, messageIdentifier);
       handler.send(msg);
       return;
     }
     String identity = pn.getIdentityString();
-    node.removePeerConnection(pn);
+    node.network().removePeerConnection(pn);
     handler.send(new PeerRemoved(identity, nodeIdentifier, messageIdentifier));
   }
 }

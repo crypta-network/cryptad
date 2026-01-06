@@ -41,7 +41,8 @@ class SeedClientPeerNodeTest {
   @Mock private PeerManager peerManager;
   @Mock private PeerMessenger peerMessenger;
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @Mock private NodeCrypto crypto;
 
@@ -56,33 +57,33 @@ class SeedClientPeerNodeTest {
     pubKey = ecdsa.getPublicKey();
 
     // Node: provide the minimal collaborators touched by PeerNode logic
-    when(node.createRandom()).thenReturn(new MersenneTwister(123456789L));
+    when(node.bootstrap().createRandom()).thenReturn(new MersenneTwister(123456789L));
     when(node.getBootId()).thenReturn(42L);
 
     // USM, tracker, failure table, updater, and location manager are referenced on disconnect
     MessageCore usm = mock(MessageCore.class);
     doNothing().when(usm).onDisconnect(any());
-    when(node.getUSM()).thenReturn(usm);
+    when(node.network().usm()).thenReturn(usm);
 
     when(peerManager.messenger()).thenReturn(peerMessenger);
 
     RequestTracker tracker = mock(RequestTracker.class);
     doNothing().when(tracker).onRestartOrDisconnect(any());
-    when(node.getTracker()).thenReturn(tracker);
+    when(node.routing().tracker()).thenReturn(tracker);
 
     FailureTable ft = mock(FailureTable.class);
     doNothing().when(ft).onDisconnect(any());
-    when(node.getFailureTable()).thenReturn(ft);
+    when(node.routing().failureTable()).thenReturn(ft);
 
     NodeUpdateManager updater = mock(NodeUpdateManager.class);
     doNothing().when(updater).disconnected(any());
-    when(node.getNodeUpdater()).thenReturn(updater);
+    when(node.services().nodeUpdater()).thenReturn(updater);
 
     LocationManager lm = mock(LocationManager.class);
     doNothing().when(lm).lostOrRestartedNode(any());
-    when(node.getLocationManager()).thenReturn(lm);
+    when(node.network().locationManager()).thenReturn(lm);
 
-    when(node.getPeers()).thenReturn(peerManager);
+    when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.disconnected(any())).thenReturn(true);
     when(peerManager.havePeer(any())).thenReturn(false);
 

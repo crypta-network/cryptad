@@ -124,7 +124,7 @@ public class GetPluginInfo extends FCPMessage {
           false);
     }
 
-    PluginInfoWrapper pi = node.getPluginManager().findPluginByIdentifier(plugname);
+    PluginInfoWrapper pi = node.services().pluginManager().findPluginByIdentifier(plugname);
     if (pi == null) {
       handler.send(
           new ProtocolErrorMessage(

@@ -168,7 +168,7 @@ final class PeerNodeAddressManager {
     }
     if (handleNoNominalPeersCase(localDetectedPeer, myNominalPeer, ignoreHostnames)) return;
 
-    FreenetInetAddress localhost = peer.node.getFreenetLocalhostAddress();
+    FreenetInetAddress localhost = peer.node.network().freenetLocalhostAddress();
     Peer[] nodePeers = peer.getOutgoingMangler().getPrimaryIPAddress();
     List<Peer> basePeers;
     synchronized (peer) {
@@ -492,7 +492,7 @@ final class PeerNodeAddressManager {
    * @return {@code true} when throttling should be applied; {@code false} otherwise.
    */
   static boolean shouldThrottle(Peer peer, Node node) {
-    if (node.isThrottleLocalData()) return true;
+    if (node.network().isThrottleLocalData()) return true;
     if (peer == null) return true; // presumably
     InetAddress addr = peer.getAddress(false);
     if (addr == null) return true; // presumably

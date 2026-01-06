@@ -242,13 +242,17 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
         new Runnable() {
           @Override
           public void run() {
-            nodes[0].getTicker().queueTimedJob(this, PITCH_BLACK_MITIGATION_FREQUENCY_ONE_DAY);
+            nodes[0]
+                .network()
+                .ticker()
+                .queueTimedJob(this, PITCH_BLACK_MITIGATION_FREQUENCY_ONE_DAY);
             LocationManager.setClockForTesting(
                 Clock.offset(LocationManager.getClockForTesting(), Duration.ofDays(1)));
           }
         };
     nodes[0]
-        .getTicker()
+        .network()
+        .ticker()
         .queueTimedJob(dayIncrementingJob, PITCH_BLACK_MITIGATION_FREQUENCY_ONE_DAY);
 
     // start the nodes and adjust mitigation times
@@ -291,15 +295,15 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
       int indexOfNode) {
     double pitchBlackFakeLocation =
         pitchBlackAttackMeanLocation
-            + (nodeToAttack.getFastWeakRandom().nextDouble() * pitchBlackAttackJitter);
+            + (nodeToAttack.bootstrap().fastWeakRandom().nextDouble() * pitchBlackAttackJitter);
     LOG.warn(
         "Pitch-Black-Attack on node {} using mean {} with jitter {}: {}",
         indexOfNode,
         pitchBlackAttackMeanLocation,
         pitchBlackAttackJitter,
         pitchBlackFakeLocation);
-    nodeToAttack.setLocation(pitchBlackFakeLocation);
-    LOG.warn("New location of node {}: {}", indexOfNode, nodeToAttack.getLocation());
+    nodeToAttack.network().setLocation(pitchBlackFakeLocation);
+    LOG.warn("New location of node {}: {}", indexOfNode, nodeToAttack.network().location());
   }
 
   static void waitForPingAverage(
@@ -363,7 +367,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       Node nodeToAttack = nodes[i];
       // attack 2% of the nodes per round
-      if (nodeToAttack.getFastWeakRandom().nextFloat() < 0.98) {
+      if (nodeToAttack.bootstrap().fastWeakRandom().nextFloat() < 0.98) {
         continue;
       }
       attackSpecificNode(
@@ -385,9 +389,9 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
           "Cycle {} node {}: {} degree: {} locs: {}",
           cycleNumber,
           i,
-          nodes[i].getLocation(),
-          nodes[i].getPeerNodes().length,
-          Arrays.stream(nodes[i].getPeerNodes())
+          nodes[i].network().location(),
+          nodes[i].network().peerNodes().length,
+          Arrays.stream(nodes[i].network().peerNodes())
               .map(PeerNode::getLocation)
               .collect(Collectors.summarizingDouble(d -> d)));
     }
@@ -423,8 +427,8 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     double totalSwapInterval = 0.0;
     double totalSwapTime = 0.0;
     for (Node node : nodes) {
-      totalSwapInterval += node.getLocationManager().getSendSwapInterval();
-      totalSwapTime += node.getLocationManager().getAverageSwapTime();
+      totalSwapInterval += node.network().locationManager().getSendSwapInterval();
+      totalSwapTime += node.network().locationManager().getAverageSwapTime();
     }
     LOG.warn("Average swap time: {}", totalSwapTime / nodes.length);
     LOG.warn("Average swap sender interval: {}", totalSwapInterval / nodes.length);
@@ -436,7 +440,8 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
       sleepSilently(sleepTime);
       try {
         PingAttempt attempt = createPingAttempt(nodes, random);
-        int hopsTaken = attempt.from.routedPing(attempt.targetLocation, attempt.targetKeyHash);
+        int hopsTaken =
+            attempt.from.network().routedPing(attempt.targetLocation, attempt.targetKeyHash);
         stats.pings++;
         if (hopsTaken < 0) {
           recordFailure(stats, attempt);
@@ -455,13 +460,13 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     while (randomNode2 == randomNode) {
       randomNode2 = nodes[random.nextInt(nodes.length)];
     }
-    double loc2 = randomNode2.getLocation();
+    double loc2 = randomNode2.network().location();
     LOG.info(
         "Pinging {} @ {} from {} @ {}",
-        randomNode2.getDarknetPortNumber(),
+        randomNode2.network().darknetPortNumber(),
         loc2,
-        randomNode.getDarknetPortNumber(),
-        randomNode.getLocation());
+        randomNode.network().darknetPortNumber(),
+        randomNode.network().location());
     return new PingAttempt(randomNode, randomNode2, loc2);
   }
 
@@ -473,8 +478,8 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     LOG.warn(
         "Routed ping {} FAILED from {} to {} (long:{}, short:{}, vague:{})",
         stats.pings,
-        attempt.from.getDarknetPortNumber(),
-        attempt.to.getDarknetPortNumber(),
+        attempt.from.network().darknetPortNumber(),
+        attempt.to.network().darknetPortNumber(),
         ratio,
         stats.avg.currentValue(),
         stats.avg2.currentValue());
@@ -490,8 +495,8 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
         "Routed ping {} success: {} {} to {} (long:{}, short:{}, vague:{})",
         stats.pings,
         hopsTaken,
-        attempt.from.getDarknetPortNumber(),
-        attempt.to.getDarknetPortNumber(),
+        attempt.from.network().darknetPortNumber(),
+        attempt.to.network().darknetPortNumber(),
         ratio,
         stats.avg.currentValue(),
         stats.avg2.currentValue());
@@ -522,7 +527,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
       this.from = from;
       this.to = to;
       this.targetLocation = targetLocation;
-      this.targetKeyHash = to.getDarknetPubKeyHash();
+      this.targetKeyHash = to.network().darknetPubKeyHash();
     }
   }
 

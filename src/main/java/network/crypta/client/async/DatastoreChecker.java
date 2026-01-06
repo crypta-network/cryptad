@@ -280,7 +280,9 @@ public class DatastoreChecker implements PrioRunnable {
         continue;
       }
       KeyBlock block =
-          (blocks != null) ? blocks.get(key) : node.fetch(key, true, true, false, false, null);
+          (blocks != null)
+              ? blocks.get(key)
+              : node.storage().fetch(key, true, true, false, false, null);
       if (block != null) {
         if (LOG.isDebugEnabled()) LOG.debug("Found key");
         sched.tripPendingKey(block);

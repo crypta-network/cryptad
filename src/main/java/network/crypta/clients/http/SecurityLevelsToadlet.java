@@ -183,23 +183,24 @@ public class SecurityLevelsToadlet extends Toadlet {
     String networkThreatLevel = request.getPartAsStringFailsafe(PARAM_NETWORK_THREAT_LEVEL, 128);
     NETWORK_THREAT_LEVEL newThreatLevel =
         SecurityLevels.parseNetworkThreatLevel(networkThreatLevel);
-    NETWORK_THREAT_LEVEL currentLevel = node.getSecurityLevels().getNetworkThreatLevel();
+    NETWORK_THREAT_LEVEL currentLevel = node.services().securityLevels().getNetworkThreatLevel();
 
     if (newThreatLevel == null || newThreatLevel == currentLevel) {
       return;
     }
 
     if (request.isPartSet(PARAM_NETWORK_THREAT_LEVEL_CONFIRM)) {
-      node.getSecurityLevels().setThreatLevel(newThreatLevel);
+      node.services().securityLevels().setThreatLevel(newThreatLevel);
       state.changedAnything = true;
       return;
     }
 
     HTMLNode warning =
-        node.getSecurityLevels()
+        node.services()
+            .securityLevels()
             .getConfirmWarning(newThreatLevel, PARAM_NETWORK_THREAT_LEVEL_CONFIRM);
     if (warning == null) {
-      node.getSecurityLevels().setThreatLevel(newThreatLevel);
+      node.services().securityLevels().setThreatLevel(newThreatLevel);
       state.changedAnything = true;
       return;
     }
@@ -250,12 +251,12 @@ public class SecurityLevelsToadlet extends Toadlet {
     PHYSICAL_THREAT_LEVEL newPhysicalLevel =
         SecurityLevels.parsePhysicalThreatLevel(physicalThreatLevel);
     PHYSICAL_THREAT_LEVEL oldPhysicalLevel =
-        core.getNode().getSecurityLevels().getPhysicalThreatLevel();
+        core.getNode().services().securityLevels().getPhysicalThreatLevel();
     if (LOG.isDebugEnabled()) {
       LOG.debug(
           "New physical threat level: {} old = {}",
           newPhysicalLevel,
-          node.getSecurityLevels().getPhysicalThreatLevel());
+          node.services().securityLevels().getPhysicalThreatLevel());
     }
 
     if (newPhysicalLevel == null) {
@@ -285,7 +286,7 @@ public class SecurityLevelsToadlet extends Toadlet {
       return true;
     }
 
-    node.getSecurityLevels().setThreatLevel(newPhysicalLevel);
+    node.services().securityLevels().setThreatLevel(newPhysicalLevel);
     state.changedAnything = true;
     return false;
   }
@@ -306,7 +307,7 @@ public class SecurityLevelsToadlet extends Toadlet {
         && !password.isEmpty()
         && password.equals(confirmPassword)) {
       try {
-        core.getNode().changeMasterPassword(oldPassword, password, false);
+        core.getNode().storage().changeMasterPassword(oldPassword, password, false);
       } catch (MasterKeysWrongPasswordException _) {
         sendChangePasswordForm(ctx, true, false, newPhysicalLevel.name());
         storeConfigIfChanged(state);
@@ -335,9 +336,9 @@ public class SecurityLevelsToadlet extends Toadlet {
       PHYSICAL_THREAT_LEVEL newPhysicalLevel)
       throws ToadletContextClosedException, IOException {
     try {
-      core.getNode().changeMasterPassword(password, "", false);
+      core.getNode().storage().changeMasterPassword(password, "", false);
     } catch (IOException e) {
-      if (!core.getNode().getMasterPasswordFile().exists()) {
+      if (!core.getNode().storage().getMasterKeysFile().exists()) {
         LOG.info("Master password file no longer exists, assuming this is deliberate");
       } else {
         LOG.error("Cannot change password as cannot write new passwords file", e);
@@ -422,9 +423,9 @@ public class SecurityLevelsToadlet extends Toadlet {
     try {
       if (oldPhysicalLevel == PHYSICAL_THREAT_LEVEL.NORMAL
           || oldPhysicalLevel == PHYSICAL_THREAT_LEVEL.LOW) {
-        core.getNode().changeMasterPassword("", password, false);
+        core.getNode().storage().changeMasterPassword("", password, false);
       } else {
-        core.getNode().setMasterPassword(password, false);
+        core.getNode().storage().setMasterPassword(password, false);
       }
     } catch (AlreadySetPasswordException _) {
       sendChangePasswordForm(ctx, false, false, newPhysicalLevel.name());
@@ -452,7 +453,7 @@ public class SecurityLevelsToadlet extends Toadlet {
     String password = request.getPartAsStringFailsafe(PARAM_MASTER_PASSWORD, MAX_PASSWORD_LENGTH);
     if (!password.isEmpty()) {
       return applyDowngradePasswordChange(password, ctx, state, newPhysicalLevel);
-    } else if (core.getNode().getMasterPasswordFile().exists()) {
+    } else if (core.getNode().storage().getMasterKeysFile().exists()) {
       PageNode page = ctx.getPageMaker().getPageNode(l10nSec(PASSWORD_FOR_DECRYPT_TITLE_KEY), ctx);
       HTMLNode contentNode = page.getContentNode();
 
@@ -507,7 +508,7 @@ public class SecurityLevelsToadlet extends Toadlet {
   private boolean handleMaximumLevel(ToadletContext ctx, PHYSICAL_THREAT_LEVEL newPhysicalLevel)
       throws ToadletContextClosedException, IOException {
     try {
-      core.getNode().killMasterKeysFile();
+      core.getNode().storage().killMasterKeysFile();
     } catch (IOException _) {
       sendCantDeleteMasterKeysFile(ctx, newPhysicalLevel.name());
       return true;
@@ -525,7 +526,7 @@ public class SecurityLevelsToadlet extends Toadlet {
     }
     LOG.info("Setting master password");
     try {
-      node.setMasterPassword(masterPassword, false);
+      node.storage().setMasterPassword(masterPassword, false);
     } catch (AlreadySetPasswordException _) {
       LOG.error("Already set master password");
       redirectToRoot(ctx);
@@ -598,7 +599,7 @@ public class SecurityLevelsToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     HTMLNode pageNode =
         sendCantDeleteMasterKeysFileInner(
-            ctx, node.getMasterPasswordFile().getPath(), false, physicalSecurityLevel);
+            ctx, node.storage().getMasterKeysFile().getPath(), false, physicalSecurityLevel);
     writeHTMLReply(ctx, 200, "OK", pageNode.generate());
   }
 
@@ -813,10 +814,10 @@ public class SecurityLevelsToadlet extends Toadlet {
   private void drawSecurityLevelsPage(HTMLNode contentNode, ToadletContext ctx) {
     HTMLNode formNode = createSeclevelsForm(contentNode, ctx);
 
-    NETWORK_THREAT_LEVEL networkLevel = node.getSecurityLevels().getNetworkThreatLevel();
+    NETWORK_THREAT_LEVEL networkLevel = node.services().securityLevels().getNetworkThreatLevel();
     addNetworkThreatSection(formNode, networkLevel);
 
-    PHYSICAL_THREAT_LEVEL physicalLevel = node.getSecurityLevels().getPhysicalThreatLevel();
+    PHYSICAL_THREAT_LEVEL physicalLevel = node.services().securityLevels().getPhysicalThreatLevel();
     addPhysicalThreatSection(formNode, physicalLevel);
 
     addFormButtons(formNode);
@@ -1090,7 +1091,8 @@ public class SecurityLevelsToadlet extends Toadlet {
 
   void sendPasswordFileCorruptedPage(ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    HTMLNode page = sendPasswordFileCorruptedPageInner(ctx, node.getMasterPasswordFile().getPath());
+    HTMLNode page =
+        sendPasswordFileCorruptedPageInner(ctx, node.storage().getMasterKeysFile().getPath());
     writeHTMLReply(ctx, 500, "Internal Server Error", page.generate());
   }
 

@@ -20,7 +20,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class WatchFeedsMessageTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore clientCore;
   @Mock private UserAlertManager alertManager;
   @Mock private FCPConnectionHandler handler;
@@ -60,7 +62,10 @@ class WatchFeedsMessageTest {
     fs.put("Enabled", true);
     WatchFeedsMessage message = new WatchFeedsMessage(fs);
 
-    when(node.getClientCore()).thenReturn(clientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alertManager);
 
     message.run(handler, node);
@@ -75,7 +80,10 @@ class WatchFeedsMessageTest {
     fs.put("Enabled", false);
     WatchFeedsMessage message = new WatchFeedsMessage(fs);
 
-    when(node.getClientCore()).thenReturn(clientCore);
+    network.crypta.node.subsystem.NodeServicesSubsystem services =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeServicesSubsystem.class);
+    when(node.services()).thenReturn(services);
+    when(services.clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alertManager);
 
     message.run(handler, node);

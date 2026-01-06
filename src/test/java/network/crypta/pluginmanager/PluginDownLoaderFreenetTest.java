@@ -61,7 +61,8 @@ class PluginDownLoaderFreenetTest {
   @Test
   void checkSource_whenValidFreenetKey_expectParsedUri() throws Exception {
     PluginDownLoaderFreenet downloader =
-        new PluginDownLoaderFreenet(mockHLSC(), mock(Node.class), false);
+        new PluginDownLoaderFreenet(
+            mockHLSC(), mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS), false);
 
     FreenetURI out = downloader.checkSource("KSK@gpl.txt");
 
@@ -71,7 +72,8 @@ class PluginDownLoaderFreenetTest {
   @Test
   void checkSource_whenInvalidKey_expectPluginNotFoundWithCause() {
     PluginDownLoaderFreenet downloader =
-        new PluginDownLoaderFreenet(mockHLSC(), mock(Node.class), false);
+        new PluginDownLoaderFreenet(
+            mockHLSC(), mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS), false);
     String invalid = "not a freenet uri";
 
     PluginNotFoundException ex =
@@ -91,7 +93,8 @@ class PluginDownLoaderFreenetTest {
   void getPluginName_whenCalled_expectDerivedName(String source, String expectedName)
       throws Exception {
     PluginDownLoaderFreenet downloader =
-        new PluginDownLoaderFreenet(mockHLSC(), mock(Node.class), false);
+        new PluginDownLoaderFreenet(
+            mockHLSC(), mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS), false);
 
     String name = downloader.getPluginName(source);
 
@@ -101,7 +104,8 @@ class PluginDownLoaderFreenetTest {
   @Test
   void getSHA1sum_whenCalled_expectNull() {
     PluginDownLoaderFreenet downloader =
-        new PluginDownLoaderFreenet(mockHLSC(), mock(Node.class), false);
+        new PluginDownLoaderFreenet(
+            mockHLSC(), mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS), false);
 
     assertNull(assertDoesNotThrow(downloader::getSHA1sum));
   }
@@ -109,7 +113,8 @@ class PluginDownLoaderFreenetTest {
   @Test
   void fatalFailure_whenNewInstance_expectFalse() {
     PluginDownLoaderFreenet downloader =
-        new PluginDownLoaderFreenet(mockHLSC(), mock(Node.class), false);
+        new PluginDownLoaderFreenet(
+            mockHLSC(), mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS), false);
 
     assertFalse(downloader.fatalFailure());
   }
@@ -117,7 +122,8 @@ class PluginDownLoaderFreenetTest {
   @Test
   void isLoadingFromFreenet_whenCalled_expectTrue() {
     PluginDownLoaderFreenet downloader =
-        new PluginDownLoaderFreenet(mockHLSC(), mock(Node.class), false);
+        new PluginDownLoaderFreenet(
+            mockHLSC(), mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS), false);
 
     assertTrue(downloader.isLoadingFromFreenet());
   }
@@ -125,7 +131,7 @@ class PluginDownLoaderFreenetTest {
   @Test
   void getRetryDownloader_whenCalled_expectNewInstanceWithDesperateEnabled() {
     HighLevelSimpleClient hlsc = mockHLSC();
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginDownLoaderFreenet downloader = new PluginDownLoaderFreenet(hlsc, node, false);
 
     PluginDownLoader<FreenetURI> retry = downloader.getRetryDownloader();
@@ -139,7 +145,8 @@ class PluginDownLoaderFreenetTest {
   @Test
   void tryCancel_whenNoInFlightGetter_expectNoException() {
     PluginDownLoaderFreenet downloader =
-        new PluginDownLoaderFreenet(mockHLSC(), mock(Node.class), false);
+        new PluginDownLoaderFreenet(
+            mockHLSC(), mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS), false);
 
     assertDoesNotThrow(downloader::tryCancel);
   }
@@ -152,9 +159,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 
@@ -196,9 +203,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 
@@ -251,9 +258,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 
@@ -306,9 +313,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 
@@ -345,9 +352,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 
@@ -379,9 +386,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 
@@ -412,9 +419,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 
@@ -466,9 +473,9 @@ class PluginDownLoaderFreenetTest {
     HighLevelSimpleClient hlsc = mockHLSC();
     when(hlsc.getFetchContext()).thenReturn(fetchContext);
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getClientContext()).thenReturn(clientContext);
     when(node.getNonPersistentClientBulk()).thenReturn(mock(RequestClient.class));
 

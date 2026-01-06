@@ -137,15 +137,15 @@ class FailureTableTest {
   }
 
   private static Node newNodeMock(boolean ulpr, boolean perNode, NodeClientCore core) {
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     Mockito.when(node.isEnableULPRDataPropagation()).thenReturn(ulpr);
     Mockito.when(node.isEnablePerNodeFailureTables()).thenReturn(perNode);
     Mockito.when(node.getRandom()).thenReturn(new FixedRandomSource(123456789L));
-    Mockito.when(node.getTicker()).thenReturn(new NoopTicker());
-    Mockito.when(node.getClientCore()).thenReturn(core);
-    Mockito.when(node.hasKey(Mockito.any(), Mockito.anyBoolean(), Mockito.anyBoolean()))
+    Mockito.when(node.network().ticker()).thenReturn(new NoopTicker());
+    Mockito.when(node.services().clientCore()).thenReturn(core);
+    Mockito.when(node.storage().hasKey(Mockito.any(), Mockito.anyBoolean(), Mockito.anyBoolean()))
         .thenReturn(false);
-    Mockito.when(node.getDarknetPortNumber()).thenReturn(9481);
+    Mockito.when(node.network().darknetPortNumber()).thenReturn(9481);
     return node;
   }
 

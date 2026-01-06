@@ -606,7 +606,8 @@ public class BookmarkManager implements RequestClient {
       if (isSavingBookmarksLazy) return;
       isSavingBookmarksLazy = true;
       node.getNode()
-          .getTicker()
+          .network()
+          .ticker()
           .queueTimedJob(
               () -> {
                 try {

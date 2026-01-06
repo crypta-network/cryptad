@@ -11,6 +11,7 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.NativeThread;
@@ -89,7 +90,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     this.tag = tag;
     this.canWriteDatastore = canWriteDatastore;
     byte[] pubKeyHash = key.getPubKeyHash();
-    pubKey = node.getGetPubKey().getKey(pubKeyHash, false, false, null);
+    pubKey = node.storage().getPubKey().getKey(pubKeyHash, false, false, null);
     canCommit = false;
 
     this.forkOnCacheable = forkOnCacheable;
@@ -152,7 +153,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     while ((headers == null) || (data == null) || (pubKey == null)) {
       Message msg;
       try {
-        msg = node.getUSM().waitFor(buildWaitFilter(), this);
+        msg = node.network().usm().waitFor(buildWaitFilter(), this);
       } catch (DisconnectedException _) {
         if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
         return false;
@@ -296,7 +297,8 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   }
 
   private boolean handleStoredBlock() {
-    SSKBlock storedBlock = node.fetch(key, false, false, false, canWriteDatastore, false, null);
+    SSKBlock storedBlock =
+        node.storage().fetch(key, false, false, false, canWriteDatastore, false, null);
     if ((storedBlock != null) && !storedBlock.equals(block)) {
       try {
         RequestHandler.sendSSK(
@@ -314,20 +316,21 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
 
   private void createSender() {
     sender =
-        node.makeInsertSender(
-            block,
-            htl,
-            uid,
-            tag,
-            source,
-            Node.SskInsertOptions.of()
-                .withFromStore(false)
-                .withCanWriteClientCache(false)
-                .withCanWriteDatastore(canWriteDatastore)
-                .withForkOnCacheable(forkOnCacheable)
-                .withPreferInsert(preferInsert)
-                .withIgnoreLowBackoff(ignoreLowBackoff)
-                .withRealTimeFlag(realTimeFlag));
+        node.routing()
+            .makeInsertSender(
+                block,
+                htl,
+                uid,
+                tag,
+                source,
+                NodeRoutingSubsystem.SskInsertOptions.of()
+                    .withFromStore(false)
+                    .withCanWriteClientCache(false)
+                    .withCanWriteDatastore(canWriteDatastore)
+                    .withForkOnCacheable(forkOnCacheable)
+                    .withPreferInsert(preferInsert)
+                    .withIgnoreLowBackoff(ignoreLowBackoff)
+                    .withRealTimeFlag(realTimeFlag));
   }
 
   private void processSenderResults() {
@@ -494,26 +497,28 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
             totalSent,
             totalReceived,
             code);
-      node.getNodeStats().remoteSskInsertBytesSentAverage.report(totalSent);
-      node.getNodeStats().remoteSskInsertBytesReceivedAverage.report(totalReceived);
+      node.network().stats().remoteSskInsertBytesSentAverage.report(totalSent);
+      node.network().stats().remoteSskInsertBytesReceivedAverage.report(totalReceived);
       if (code == SSKInsertSender.SUCCESS) {
         // Can report both sides
-        node.getNodeStats().successfulSskInsertBytesSentAverage.report(totalSent);
-        node.getNodeStats().successfulSskInsertBytesReceivedAverage.report(totalReceived);
+        node.network().stats().successfulSskInsertBytesSentAverage.report(totalSent);
+        node.network().stats().successfulSskInsertBytesReceivedAverage.report(totalReceived);
       }
     }
   }
 
   private void commit() {
     try {
-      node.store(
-          block,
-          node.shouldStoreDeep(
-              key, source, sender == null ? new PeerNode[0] : sender.getRoutedTo()),
-          collided,
-          false,
-          canWriteDatastore,
-          false);
+      node.storage()
+          .store(
+              block,
+              node.routing()
+                  .shouldStoreDeep(
+                      key, source, sender == null ? new PeerNode[0] : sender.getRoutedTo()),
+              collided,
+              false,
+              canWriteDatastore,
+              false);
     } catch (KeyCollisionException _) {
       LOG.info("Datastore collision on {}", this);
     }
@@ -533,7 +538,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     synchronized (totalBytesSync) {
       totalBytesSent += x;
     }
-    node.getNodeStats().insertSentBytes(true, x);
+    node.network().stats().insertSentBytes(true, x);
   }
 
   /**
@@ -546,7 +551,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     synchronized (totalBytesSync) {
       totalBytesReceived += x;
     }
-    node.getNodeStats().insertReceivedBytes(true, x);
+    node.network().stats().insertReceivedBytes(true, x);
   }
 
   /**
@@ -579,7 +584,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   @Override
   public void sentPayload(int x) {
     node.sentPayload(x);
-    node.getNodeStats().insertSentBytes(true, -x);
+    node.network().stats().insertSentBytes(true, -x);
   }
 
   /**

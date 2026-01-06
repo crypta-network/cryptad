@@ -22,7 +22,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class InvalidAddressOverrideUserAlertTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore clientCore;
   @Mock private PersistentConfig config;
   @Mock private SubConfig nodeSubConfig;
@@ -33,7 +35,7 @@ class InvalidAddressOverrideUserAlertTest {
   @BeforeEach
   void setUp() {
     // Common stubbing for config + client core used by getHTMLText()
-    lenient().when(node.getClientCore()).thenReturn(clientCore);
+    lenient().when(node.services().clientCore()).thenReturn(clientCore);
     lenient().when(clientCore.getFormPassword()).thenReturn("secret-form-pass");
 
     lenient().when(node.getConfig()).thenReturn(config);

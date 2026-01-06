@@ -40,7 +40,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class DarknetConnectionsToadletTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeClientCore core;
   @Mock private HighLevelSimpleClient client;
   @Mock private ToadletContext ctx;
@@ -121,7 +123,10 @@ class DarknetConnectionsToadletTest {
   void handleAltPost_updateNotes_updatesChangedNotesAndRedirects() throws Exception {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getPrivateDarknetCommentNote()).thenReturn("old");
-    when(node.getDarknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
 
     int peerHash = peer.hashCode();
     when(request.isPartSet("doAction")).thenReturn(true);
@@ -140,7 +145,10 @@ class DarknetConnectionsToadletTest {
   @Test
   void handleAltPost_enableAction_enablesSelectedPeersAndRedirects() throws Exception {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
-    when(node.getDarknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
 
     int peerHash = peer.hashCode();
     when(request.isPartSet("doAction")).thenReturn(true);
@@ -160,7 +168,10 @@ class DarknetConnectionsToadletTest {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.timeLastConnectionCompleted()).thenReturn(System.currentTimeMillis());
     when(peer.getPeerNodeStatus()).thenReturn(0);
-    when(node.getDarknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
 
     int peerHash = peer.hashCode();
     when(request.isPartSet("remove")).thenReturn(true);
@@ -171,7 +182,7 @@ class DarknetConnectionsToadletTest {
 
     toadlet.handleAltPost(new URI("http://localhost/friends/"), request, ctx, false);
 
-    verify(node).removePeerConnection(peer);
+    verify(network).removePeerConnection(peer);
     assertRedirectIssued();
   }
 
@@ -183,7 +194,10 @@ class DarknetConnectionsToadletTest {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Friend");
     when(peer.getFullNoderef()).thenReturn(fieldSet);
-    when(node.getDarknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
+    network.crypta.node.subsystem.NodeNetworkSubsystem network =
+        org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.darknetConnections()).thenReturn(new DarknetPeerNode[] {peer});
 
     int peerHash = peer.hashCode();
     URI uri = URI.create("http://localhost/friends/friend-" + peerHash + ".fref");

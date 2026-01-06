@@ -356,7 +356,8 @@ public class TranslationToadlet extends Toadlet {
         ctx.getPageMaker().getInfobox(null, translation("selectTranslation"), contentNode);
     ArrayList<String> elementsToTranslate = new ArrayList<>();
     elementsToTranslate.add("Node");
-    for (PluginInfoWrapper pluginInfo : this.core.getNode().getPluginManager().getPlugins()) {
+    for (PluginInfoWrapper pluginInfo :
+        this.core.getNode().services().pluginManager().getPlugins()) {
       if (!pluginInfo.isBaseL10nPlugin()) {
         continue;
       }
@@ -421,7 +422,8 @@ public class TranslationToadlet extends Toadlet {
   private void updateTranslationTarget(HTTPRequest request) {
     final String translateFor = request.getPartAsStringFailsafe(PARAM_TRANSLATING_FOR, 255);
 
-    for (PluginInfoWrapper pluginInfo : this.core.getNode().getPluginManager().getPlugins()) {
+    for (PluginInfoWrapper pluginInfo :
+        this.core.getNode().services().pluginManager().getPlugins()) {
       if (translateFor.equals(pluginInfo.getPluginClassName()) && pluginInfo.isBaseL10nPlugin()) {
         FredPluginBaseL10n plugin = (FredPluginBaseL10n) pluginInfo.getPlugin();
         this.translatingFor = translateFor;

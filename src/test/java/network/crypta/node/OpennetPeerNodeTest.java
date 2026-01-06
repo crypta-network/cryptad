@@ -56,20 +56,21 @@ class OpennetPeerNodeTest {
 
   @BeforeEach
   void setUp() {
-    node = mock(Node.class);
+    node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     // Deterministic random for PeerNode internals
-    when(node.createRandom()).thenReturn(new network.crypta.support.math.MersenneTwister(1234));
+    when(node.bootstrap().createRandom())
+        .thenReturn(new network.crypta.support.math.MersenneTwister(1234));
     when(node.getBootId()).thenReturn(42L);
     // Default USM started in the far past unless a test overrides
     MessageCore usm = mock(MessageCore.class);
     when(usm.getStartedTime()).thenReturn(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1));
-    when(node.getUSM()).thenReturn(usm);
+    when(node.network().usm()).thenReturn(usm);
     // Default ticker: ignore scheduled jobs
     network.crypta.support.Ticker ticker = mock(network.crypta.support.Ticker.class);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
     // Default environment for linkLengthClass
     when(opennetManager.getNode()).thenReturn(node);
-    when(node.getLocation()).thenReturn(0.0);
+    when(node.network().location()).thenReturn(0.0);
     // NodeCrypto required by PeerNode constructor
     when(nodeCryptoForPeer.isOpennet()).thenReturn(true);
     when(nodeCryptoForPeer.getPacketMangler()).thenReturn(mock(FNPPacketMangler.class));
@@ -219,7 +220,7 @@ class OpennetPeerNodeTest {
     OpennetPeerNode pn = newPeerLocal("0.25");
 
     // Make node uptime large enough so we don't hit the startup guard
-    when(node.getUSM().getStartedTime())
+    when(node.network().usm().getStartedTime())
         .thenReturn(System.currentTimeMillis() - OpennetManager.DROP_STARTUP_DELAY - 1000);
 
     // Case A: NEVER_CONNECTED and age < DROP_MIN_AGE_DISCONNECTED
@@ -244,13 +245,13 @@ class OpennetPeerNodeTest {
     setPrivateField(pn, FIELD_PEER_NODE_STATUS, PeerManager.PEER_NODE_STATUS_CONNECTED);
 
     // But if node uptime is too low, it should return TOO_LOW_UPTIME
-    when(node.getUSM().getStartedTime())
+    when(node.network().usm().getStartedTime())
         .thenReturn(System.currentTimeMillis() - (OpennetManager.DROP_STARTUP_DELAY - 1000));
 
     assertEquals(OpennetPeerNode.NOT_DROP_REASON.TOO_LOW_UPTIME, pn.isDroppableWithReason(false));
 
     // Now make uptime large enough and verify state reset + DROPPABLE
-    when(node.getUSM().getStartedTime())
+    when(node.network().usm().getStartedTime())
         .thenReturn(System.currentTimeMillis() - (OpennetManager.DROP_STARTUP_DELAY + 1000));
     OpennetPeerNode.NOT_DROP_REASON res = pn.isDroppableWithReason(false);
     assertEquals(OpennetPeerNode.NOT_DROP_REASON.DROPPABLE, res);
@@ -262,7 +263,7 @@ class OpennetPeerNodeTest {
   void dropReason_whenReconnectGracePeriod_activeUnlessIgnored() throws Exception {
     OpennetPeerNode pn = newPeerLocal("0.25");
 
-    when(node.getUSM().getStartedTime())
+    when(node.network().usm().getStartedTime())
         .thenReturn(System.currentTimeMillis() - (OpennetManager.DROP_STARTUP_DELAY + 1000));
 
     // Configure status and disconnect timers per condition
@@ -298,8 +299,8 @@ class OpennetPeerNodeTest {
 
   @Test
   void onConnect_setsAddressTrackerPresumedGuilty() throws Exception {
-    // Wire node.getOpennet() so super.onConnect() can notify
-    when(node.getOpennet()).thenReturn(opennetManager);
+    // Wire node.network().opennet() so super.onConnect() can notify
+    when(node.network().opennet()).thenReturn(opennetManager);
 
     // Prepare AddressTracker chain
     AddressTracker tracker = mock(AddressTracker.class);
@@ -361,12 +362,12 @@ class OpennetPeerNodeTest {
     // Uptime ~1h10m, updater == null => true
     setPrivateField(
         pn, FIELD_CONNECTED_TIME, System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(70));
-    when(node.getNodeUpdater()).thenReturn(null);
+    when(node.services().nodeUpdater()).thenReturn(null);
     assertTrue(pn.shouldDisconnectAndRemoveNow());
 
     // Updater present but no UOM => true
     NodeUpdateManager updater = mock(NodeUpdateManager.class);
-    when(node.getNodeUpdater()).thenReturn(updater);
+    when(node.services().nodeUpdater()).thenReturn(updater);
     when(updater.getUpdateOverMandatory()).thenReturn(null);
     assertTrue(pn.shouldDisconnectAndRemoveNow());
 

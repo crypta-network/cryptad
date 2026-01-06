@@ -48,9 +48,9 @@ class PluginDownLoaderOfficialFreenetTest {
     HighLevelSimpleClient hlscCopy = org.mockito.Mockito.mock(HighLevelSimpleClient.class);
     HighLevelSimpleClient hlsc = mockHighLevelSimpleClient(hlscCopy);
 
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginManager pluginManager = org.mockito.Mockito.mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    when(node.services().pluginManager()).thenReturn(pluginManager);
     when(pluginManager.getOfficialPlugin(any())).thenReturn(null);
 
     PluginDownLoaderOfficialFreenet downloader =
@@ -62,7 +62,7 @@ class PluginDownLoaderOfficialFreenetTest {
 
     // Assert
     assertEquals("Not in the official plugins list: " + source, ex.getMessage());
-    verify(node, never()).getNodeUpdater();
+    verify(node.services(), never()).nodeUpdater();
   }
 
   @Test
@@ -71,9 +71,9 @@ class PluginDownLoaderOfficialFreenetTest {
     HighLevelSimpleClient hlscCopy = org.mockito.Mockito.mock(HighLevelSimpleClient.class);
     HighLevelSimpleClient hlsc = mockHighLevelSimpleClient(hlscCopy);
 
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginManager pluginManager = org.mockito.Mockito.mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    when(node.services().pluginManager()).thenReturn(pluginManager);
 
     String source = "WebOfTrust";
     FreenetURI explicitUri = org.mockito.Mockito.mock(FreenetURI.class);
@@ -90,7 +90,7 @@ class PluginDownLoaderOfficialFreenetTest {
 
     // Assert
     assertSame(explicitUri, out);
-    verify(node, never()).getNodeUpdater();
+    verify(node.services(), never()).nodeUpdater();
   }
 
   @ParameterizedTest
@@ -101,12 +101,12 @@ class PluginDownLoaderOfficialFreenetTest {
     HighLevelSimpleClient hlscCopy = org.mockito.Mockito.mock(HighLevelSimpleClient.class);
     HighLevelSimpleClient hlsc = mockHighLevelSimpleClient(hlscCopy);
 
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginManager pluginManager = org.mockito.Mockito.mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    when(node.services().pluginManager()).thenReturn(pluginManager);
 
     NodeUpdateManager nodeUpdateManager = org.mockito.Mockito.mock(NodeUpdateManager.class);
-    when(node.getNodeUpdater()).thenReturn(nodeUpdateManager);
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
 
     String source = "UPnP";
     OfficialPluginDescription desc =
@@ -156,7 +156,10 @@ class PluginDownLoaderOfficialFreenetTest {
     HighLevelSimpleClient hlsc = mockHighLevelSimpleClient(hlscCopy);
 
     PluginDownLoaderOfficialFreenet downloader =
-        new PluginDownLoaderOfficialFreenet(hlsc, org.mockito.Mockito.mock(Node.class), false);
+        new PluginDownLoaderOfficialFreenet(
+            hlsc,
+            org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+            false);
 
     // Act
     String name = downloader.getPluginName(source);
@@ -172,9 +175,9 @@ class PluginDownLoaderOfficialFreenetTest {
     HighLevelSimpleClient hlscCopy = org.mockito.Mockito.mock(HighLevelSimpleClient.class);
     HighLevelSimpleClient hlsc = mockHighLevelSimpleClient(hlscCopy);
 
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginManager pluginManager = org.mockito.Mockito.mock(PluginManager.class);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    when(node.services().pluginManager()).thenReturn(pluginManager);
 
     String source = "HelloWorld";
     FreenetURI uri = org.mockito.Mockito.mock(FreenetURI.class);
@@ -201,7 +204,10 @@ class PluginDownLoaderOfficialFreenetTest {
     HighLevelSimpleClient hlsc = mockHighLevelSimpleClient(hlscCopy);
 
     PluginDownLoaderOfficialFreenet downloader =
-        new PluginDownLoaderOfficialFreenet(hlsc, org.mockito.Mockito.mock(Node.class), false);
+        new PluginDownLoaderOfficialFreenet(
+            hlsc,
+            org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS),
+            false);
 
     // Act + Assert
     assertTrue(downloader.isOfficialPluginLoader());
@@ -218,7 +224,7 @@ class PluginDownLoaderOfficialFreenetTest {
             hlscCopy1); // initial constructor will use hlsc.copy() -> hlscCopy1
     when(hlscCopy1.copy()).thenReturn(hlscCopy2); // retry constructor copies hlscCopy1 -> hlscCopy2
 
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PluginDownLoaderOfficialFreenet downloader =
         new PluginDownLoaderOfficialFreenet(hlsc, node, false);
 

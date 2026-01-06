@@ -62,14 +62,15 @@ public class BandwidthManager {
     /* Periodically suggest raising configured limits when auto-detected
      * capacity is far above the current settings and has increased
      * significantly since the last suggestion. */
-    node.getTicker()
+    node.network()
+        .ticker()
         .queueTimedJob(
             new Runnable() {
               @Override
               public void run() {
                 try {
                   FredPluginBandwidthIndicator bandwidthIndicator =
-                      node.getIpDetector().getBandwidthIndicator();
+                      node.network().ipDetector().getBandwidthIndicator();
                   if (!node.getConfig().get("node").getBoolean("connectionSpeedDetection")
                       || bandwidthIndicator == null) {
                     return;
@@ -103,7 +104,7 @@ public class BandwidthManager {
                   }
                 } finally {
                   // Re-schedule the check after the fixed delay.
-                  node.getTicker().queueTimedJob(this, HOURS.toMillis(DELAY_HOURS));
+                  node.network().ticker().queueTimedJob(this, HOURS.toMillis(DELAY_HOURS));
                 }
               }
             },

@@ -896,7 +896,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   @Override
   public long checkRecentlyFailed(Key key, boolean realTime) {
     Node node = sched.getNode();
-    return node.getClientCore().checkRecentlyFailed(key, realTime);
+    return node.services().clientCore().checkRecentlyFailed(key, realTime);
   }
 
   /**

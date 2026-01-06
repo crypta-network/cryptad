@@ -94,7 +94,10 @@ class PluginInfoMessageTest {
     MessageInvalidException exception =
         assertThrows(
             MessageInvalidException.class,
-            () -> message.run(mock(FCPConnectionHandler.class), mock(Node.class)));
+            () ->
+                message.run(
+                    mock(FCPConnectionHandler.class),
+                    mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
 
     assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode);
     assertEquals(

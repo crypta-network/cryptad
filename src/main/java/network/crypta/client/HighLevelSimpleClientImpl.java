@@ -822,7 +822,10 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     ctx.setAllowedMIMETypes(allowedTypes);
     final ClientGetter get =
         new ClientGetter(nullCallback, uri, ctx, prio, new NullBucket(), null, null);
-    core.getNode().getTicker().queueTimedJob(() -> get.cancel(core.getClientContext()), timeout);
+    core.getNode()
+        .network()
+        .ticker()
+        .queueTimedJob(() -> get.cancel(core.getClientContext()), timeout);
     try {
       core.getClientContext().start(get);
     } catch (FetchException | PersistenceDisabledException _) {

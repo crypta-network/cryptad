@@ -158,7 +158,8 @@ public class WelcomeToadlet extends Toadlet {
     if (updated) {
       HTMLNode alertCell = row.addChild("td", ATTR_STYLE, STYLE_BORDER_NONE);
       alertCell.addChild(
-          node.getClientCore()
+          node.services()
+              .clientCore()
               .getAlerts()
               .renderDismissButton(item.getUserAlert(), path() + "#" + BOOKMARKS_ANCHOR));
     }
@@ -229,8 +230,8 @@ public class WelcomeToadlet extends Toadlet {
    */
   public boolean showSearchBox() {
     // Only show it if Library is loaded.
-    return (node.getPluginManager() != null
-        && node.getPluginManager().isPluginLoaded("plugins.Library.Main"));
+    return (node.services().pluginManager() != null
+        && node.services().pluginManager().isPluginLoaded("plugins.Library.Main"));
   }
 
   /**
@@ -247,9 +248,9 @@ public class WelcomeToadlet extends Toadlet {
    */
   public boolean showSearchBoxLoading() {
     // Only show it if Library is loaded.
-    return (node.getPluginManager() == null
-        || (!node.getPluginManager().isPluginLoaded("plugins.Library.Main")
-            && node.getPluginManager().isPluginLoadedOrLoadingOrWantLoad("Library")));
+    return (node.services().pluginManager() == null
+        || (!node.services().pluginManager().isPluginLoaded("plugins.Library.Main")
+            && node.services().pluginManager().isPluginLoadedOrLoadingOrWantLoad("Library")));
   }
 
   /**
@@ -375,7 +376,7 @@ public class WelcomeToadlet extends Toadlet {
     content.addChild("p").addChild("#", l10n("thanks"));
     writeHTMLReply(ctx, 200, "OK", page.generate());
     LOG.info("Node is updating/restarting");
-    node.getNodeUpdater().arm();
+    node.services().nodeUpdater().arm();
     return true;
   }
 
@@ -625,7 +626,7 @@ public class WelcomeToadlet extends Toadlet {
         MultiValueTable.from(
             HEADER_LOCATION, "/?terminated&" + PARAM_FORM_PASSWORD + '=' + ctx.getFormPassword());
     ctx.sendReplyHeaders(302, STATUS_FOUND, headers, null, 0);
-    node.getTicker().queueTimedJob(() -> node.exit("Shutdown from fproxy"), 1);
+    node.network().ticker().queueTimedJob(() -> node.exit("Shutdown from fproxy"), 1);
     return true;
   }
 
@@ -668,7 +669,7 @@ public class WelcomeToadlet extends Toadlet {
         MultiValueTable.from(
             HEADER_LOCATION, "/?restarted&" + PARAM_FORM_PASSWORD + '=' + ctx.getFormPassword());
     ctx.sendReplyHeaders(302, STATUS_FOUND, headers, null, 0);
-    node.getTicker().queueTimedJob(() -> node.getNodeStarter().restart(), 1);
+    node.network().ticker().queueTimedJob(() -> node.getNodeStarter().restart(), 1);
     return true;
   }
 
@@ -713,7 +714,7 @@ public class WelcomeToadlet extends Toadlet {
   }
 
   private UpgradeConnectionSpeedUserAlert findUpgradeConnectionSpeedAlert() {
-    for (UserAlert alert : node.getClientCore().getAlerts().getAlerts()) {
+    for (UserAlert alert : node.services().clientCore().getAlerts().getAlerts()) {
       if (alert instanceof UpgradeConnectionSpeedUserAlert userAlert) {
         return userAlert;
       }
@@ -961,7 +962,7 @@ public class WelcomeToadlet extends Toadlet {
   }
 
   private void appendDarknetPeersSection(HTMLNode addForm) {
-    if (node.getDarknetConnections().length == 0) {
+    if (node.network().darknetConnections().length == 0) {
       return;
     }
     addForm.addChild("br");
@@ -992,7 +993,7 @@ public class WelcomeToadlet extends Toadlet {
               "2",
               NodeL10n.getBase().getString("QueueToadlet.recommendToFriends"));
     }
-    for (DarknetPeerNode peer : node.getDarknetConnections()) {
+    for (DarknetPeerNode peer : node.network().darknetConnections()) {
       HTMLNode peerRow = peerTable.addChild("tr", ATTR_CLASS, "darknet_connections_normal");
       peerRow
           .addChild("td", ATTR_CLASS, "peer-marker")

@@ -196,7 +196,8 @@ public class UdpSocketHandler
       datagramChannel = tmp;
 
       try {
-        datagramChannel.setOption(StandardSocketOptions.IP_TOS, node.getTrafficClass().value);
+        datagramChannel.setOption(
+            StandardSocketOptions.IP_TOS, node.network().trafficClass().value);
       } catch (UnsupportedOperationException e) {
         LOG.error("Failed to set IP_TOS socket option", e);
       }
@@ -212,7 +213,7 @@ public class UdpSocketHandler
       }
 
       // Only used for debugging, no need to seed from Yarrow
-      dropRandom = node.getFastWeakRandom();
+      dropRandom = node.bootstrap().fastWeakRandom();
       tracker = AddressTracker.create(node.getLastBootId(), node.runDir(), listenPort);
       tracker.startSend(startupTime);
       success = true;
@@ -488,7 +489,7 @@ public class UdpSocketHandler
       started = true;
       startTime = System.currentTimeMillis();
     }
-    node.getExecutor().execute(this, "UdpSocketHandler for port " + localAddress.getPort());
+    node.network().executor().execute(this, "UdpSocketHandler for port " + localAddress.getPort());
   }
 
   /**

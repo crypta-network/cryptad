@@ -17,6 +17,7 @@ import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
+import network.crypta.node.subsystem.NodeBootstrap;
 import network.crypta.support.Base64;
 import network.crypta.support.io.ArrayBucket;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class TextModeClientInterfaceTest {
 
   @Mock Node node;
+  @Mock NodeBootstrap bootstrap;
   @Mock NodeClientCore core;
   @Mock HighLevelSimpleClient client;
   @Mock ClientEndpoints endpoints;
@@ -43,6 +45,9 @@ class TextModeClientInterfaceTest {
   @org.junit.jupiter.api.BeforeEach
   void setUp() {
     when(core.getEndpoints()).thenReturn(endpoints);
+    when(node.bootstrap()).thenReturn(bootstrap);
+    when(bootstrap.random())
+        .thenReturn(org.mockito.Mockito.mock(network.crypta.crypt.RandomSource.class));
   }
 
   private String runWithInput(String input) throws Exception {

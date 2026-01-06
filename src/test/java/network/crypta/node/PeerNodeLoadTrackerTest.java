@@ -32,7 +32,7 @@ class PeerNodeLoadTrackerTest {
   @Test
   void proportionTimingOutFatallyInWait_whenFirstFatalNoAllocated_returnsHalf() throws Exception {
     TestContext ctx = newTestContext();
-    when(ctx.node.getNodeStats()).thenReturn(ctx.nodeStats);
+    when(ctx.node.network().stats()).thenReturn(ctx.nodeStats);
     PeerNodeLoadTracker.OutputLoadTracker tracker = ctx.tracker.outputLoadTracker(true);
 
     tracker.reportFatalTimeoutInWait(false);
@@ -44,7 +44,7 @@ class PeerNodeLoadTrackerTest {
   @Test
   void proportionTimingOutFatallyInWait_whenFatalAndAllocated_returnsRatio() throws Exception {
     TestContext ctx = newTestContext();
-    when(ctx.node.getNodeStats()).thenReturn(ctx.nodeStats);
+    when(ctx.node.network().stats()).thenReturn(ctx.nodeStats);
     PeerNodeLoadTracker.OutputLoadTracker tracker = ctx.tracker.outputLoadTracker(true);
 
     tracker.reportFatalTimeoutInWait(false);
@@ -57,7 +57,7 @@ class PeerNodeLoadTrackerTest {
   @Test
   void tryRouteTo_whenNoLoadStatsAndTagNew_returnsUnknownAndAddsRoute() throws Exception {
     TestContext ctx = newTestContext();
-    when(ctx.node.getNodeStats()).thenReturn(ctx.nodeStats);
+    when(ctx.node.network().stats()).thenReturn(ctx.nodeStats);
     when(ctx.nodeStats.ignoreLocalVsRemoteBandwidthLiability()).thenReturn(false);
     when(ctx.peer.isRoutable()).thenReturn(true);
     when(ctx.peer.isInMandatoryBackoff(anyLong(), eq(true))).thenReturn(false);
@@ -75,7 +75,7 @@ class PeerNodeLoadTrackerTest {
   @Test
   void tryRouteTo_whenPeerNotRoutable_returnsNull() throws Exception {
     TestContext ctx = newTestContext();
-    when(ctx.node.getNodeStats()).thenReturn(ctx.nodeStats);
+    when(ctx.node.network().stats()).thenReturn(ctx.nodeStats);
     when(ctx.nodeStats.ignoreLocalVsRemoteBandwidthLiability()).thenReturn(false);
     when(ctx.peer.isRoutable()).thenReturn(false);
     PeerNodeLoadTracker.OutputLoadTracker tracker = ctx.tracker.outputLoadTracker(true);
@@ -96,7 +96,7 @@ class PeerNodeLoadTrackerTest {
     PeerLoadStats loadStats = createLoadStats(ctx.peer, 100, 100, 300, 300, 1000, 1200, 10, 20);
     RunningRequestsSnapshot runningRequests = mock(RunningRequestsSnapshot.class);
     RunningRequestsSnapshot otherRunningRequests = mock(RunningRequestsSnapshot.class);
-    when(ctx.node.getNodeStats()).thenReturn(ctx.nodeStats);
+    when(ctx.node.network().stats()).thenReturn(ctx.nodeStats);
     when(ctx.nodeStats.getRunningRequestsTo(ctx.peer, true)).thenReturn(runningRequests);
     when(ctx.nodeStats.ignoreLocalVsRemoteBandwidthLiability()).thenReturn(false);
     when(runningRequests.calculate(false, false)).thenReturn(50.0);
@@ -127,7 +127,7 @@ class PeerNodeLoadTrackerTest {
     PeerLoadStats loadStats = createLoadStats(ctx.peer, 100, 100, 300, 300, 1000, 1200, 5, 30);
     RunningRequestsSnapshot runningRequests = mock(RunningRequestsSnapshot.class);
     RunningRequestsSnapshot otherRunningRequests = mock(RunningRequestsSnapshot.class);
-    when(ctx.node.getNodeStats()).thenReturn(ctx.nodeStats);
+    when(ctx.node.network().stats()).thenReturn(ctx.nodeStats);
     when(ctx.nodeStats.getRunningRequestsTo(ctx.peer, true)).thenReturn(runningRequests);
     when(ctx.nodeStats.ignoreLocalVsRemoteBandwidthLiability()).thenReturn(false);
     when(runningRequests.calculate(false, false)).thenReturn(120.0);
@@ -167,7 +167,7 @@ class PeerNodeLoadTrackerTest {
     PeerLoadStats loadStats = createLoadStats(ctx.peer, 1000, 2000, 5000, 6000, 5000, 6000, 10, 20);
     RunningRequestsSnapshot runningRequests = mock(RunningRequestsSnapshot.class);
     RunningRequestsSnapshot otherRunningRequests = mock(RunningRequestsSnapshot.class);
-    when(ctx.node.getNodeStats()).thenReturn(ctx.nodeStats);
+    when(ctx.node.network().stats()).thenReturn(ctx.nodeStats);
     when(ctx.nodeStats.getRunningRequestsTo(ctx.peer, true)).thenReturn(runningRequests);
     when(ctx.nodeStats.ignoreLocalVsRemoteBandwidthLiability()).thenReturn(false);
     when(runningRequests.calculate(false, false)).thenReturn(111.0);
@@ -263,7 +263,7 @@ class PeerNodeLoadTrackerTest {
 
   private static TestContext newTestContext() throws Exception {
     PeerNode peer = mock(PeerNode.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeStats nodeStats = mock(NodeStats.class);
     setPeerNodeField(peer, node);
     PeerNodeLoadTracker tracker = new PeerNodeLoadTracker(peer);

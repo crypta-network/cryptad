@@ -283,7 +283,8 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     try {
       insertAttempts++;
       randomNode
-          .getClientCore()
+          .services()
+          .clientCore()
           .getTransfers()
           .realPut(block.getBlock(), false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
       LOG.error("Inserted to {}", node1);
@@ -300,7 +301,8 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     try {
       block =
           fetchNode
-              .getClientCore()
+              .services()
+              .clientCore()
               .getTransfers()
               .realGetKey(keys.fetchKey, false, false, false, REAL_TIME_FLAG);
     } catch (LowLevelGetException _) {
@@ -383,8 +385,8 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
     for (int i = 0; i < nodes.length; i++) {
       load.append(i);
       load.append(':');
-      nodes[i].getTracker().addRunningUIDs(runningUIDsList);
-      int runningUIDsAlt = nodes[i].getTracker().getTotalRunningUIDsAlt();
+      nodes[i].routing().tracker().addRunningUIDs(runningUIDsList);
+      int runningUIDsAlt = nodes[i].routing().tracker().getTotalRunningUIDsAlt();
       totalRunningUIDsAlt += runningUIDsAlt;
       load.append(totalRunningUIDsAlt);
       if (i != nodes.length - 1) {

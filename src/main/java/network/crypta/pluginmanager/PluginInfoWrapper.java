@@ -131,7 +131,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
               config,
               subconfig,
               node,
-              node.getClientCore(),
+              node.services().clientCore(),
               (FredPluginConfigurable) plug);
     } else {
       config = null;

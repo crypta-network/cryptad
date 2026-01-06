@@ -15,6 +15,7 @@ import network.crypta.keys.KeyBlock;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.store.KeyCollisionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,7 +96,7 @@ public final class NodeClientCoreTransfers {
     final boolean isSSK = key instanceof NodeSSK;
     final RequestTag tag =
         new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, isSSK, false, false, true, realTimeFlag, tag)) {
+    if (!node.routing().tracker().lockUID(uid, isSSK, false, false, true, realTimeFlag, tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       listener.onFailed(
           new LowLevelGetException(
@@ -109,7 +110,7 @@ public final class NodeClientCoreTransfers {
     // us to cache it in the datastore. Find the lowest HTL fetching the key in that period,
     // and use that for purposes of deciding whether to cache it in the store.
     if (offersOnly) {
-      htl = node.getFailureTable().minOfferedHTL(key, htl);
+      htl = node.routing().failureTable().minOfferedHTL(key, htl);
       if (LOG.isDebugEnabled()) LOG.debug("Using old HTL for GetOfferedKey: {}", htl);
     }
     final long startTime = System.currentTimeMillis();
@@ -224,19 +225,20 @@ public final class NodeClientCoreTransfers {
         };
     try {
       Object o =
-          node.makeRequestSender(
-              key,
-              htl,
-              uid,
-              tag,
-              null,
-              Node.RequestSenderOptions.of(
-                  localOnly,
-                  ignoreStore,
-                  offersOnly,
-                  canReadClientCache,
-                  canWriteClientCache,
-                  realTimeFlag));
+          node.routing()
+              .makeRequestSender(
+                  key,
+                  htl,
+                  uid,
+                  tag,
+                  null,
+                  NodeRoutingSubsystem.RequestSenderOptions.of(
+                      localOnly,
+                      ignoreStore,
+                      offersOnly,
+                      canReadClientCache,
+                      canWriteClientCache,
+                      realTimeFlag));
       if (o instanceof KeyBlock) {
         tag.setServedFromDatastore();
         senderListener.onDataFoundLocally();
@@ -303,17 +305,17 @@ public final class NodeClientCoreTransfers {
           rs.getTotalReceivedBytes(),
           status);
     (isSSK
-            ? node.getNodeStats().localSskFetchBytesSentAverage
-            : node.getNodeStats().localChkFetchBytesSentAverage)
+            ? node.network().stats().localSskFetchBytesSentAverage
+            : node.network().stats().localChkFetchBytesSentAverage)
         .report(rs.getTotalSentBytes());
     (isSSK
-            ? node.getNodeStats().localSskFetchBytesReceivedAverage
-            : node.getNodeStats().localChkFetchBytesReceivedAverage)
+            ? node.network().stats().localSskFetchBytesReceivedAverage
+            : node.network().stats().localChkFetchBytesReceivedAverage)
         .report(rs.getTotalReceivedBytes());
     if (status == RequestSender.SUCCESS)
       (isSSK
-              ? node.getNodeStats().successfulSskFetchBytesReceivedAverage
-              : node.getNodeStats().successfulChkFetchBytesReceivedAverage)
+              ? node.network().stats().successfulSskFetchBytesReceivedAverage
+              : node.network().stats().successfulChkFetchBytesReceivedAverage)
           .report(rs.getTotalReceivedBytes());
   }
 
@@ -332,8 +334,8 @@ public final class NodeClientCoreTransfers {
     requestStarters.rejectedOverload(isSSK, false, realTimeFlag);
     long rtt = System.currentTimeMillis() - startTime;
     double targetLocation = key.toNormalizedDouble();
-    if (isSSK) node.getNodeStats().reportSSKOutcome(rtt, false, realTimeFlag);
-    else node.getNodeStats().reportCHKOutcome(rtt, false, targetLocation, realTimeFlag);
+    if (isSSK) node.network().stats().reportSSKOutcome(rtt, false, realTimeFlag);
+    else node.network().stats().reportCHKOutcome(rtt, false, targetLocation, realTimeFlag);
   }
 
   private void handleForwardedStatuses(
@@ -343,9 +345,10 @@ public final class NodeClientCoreTransfers {
     requestStarters.requestCompleted(isSSK, false, key, realTimeFlag);
     requestStarters.getThrottle(isSSK, false, realTimeFlag).successfulCompletion(rtt);
     if (isSSK)
-      node.getNodeStats().reportSSKOutcome(rtt, status == RequestSender.SUCCESS, realTimeFlag);
+      node.network().stats().reportSSKOutcome(rtt, status == RequestSender.SUCCESS, realTimeFlag);
     else
-      node.getNodeStats()
+      node.network()
+          .stats()
           .reportCHKOutcome(rtt, status == RequestSender.SUCCESS, targetLocation, realTimeFlag);
     if (status == RequestSender.SUCCESS) {
       LOG.debug("Successful {} fetch took {}", isSSK ? "SSK" : "CHK", rtt);
@@ -448,7 +451,7 @@ public final class NodeClientCoreTransfers {
     long startTime = System.currentTimeMillis();
     long uid = makeUID();
     RequestTag tag = new RequestTag(false, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, false, false, false, true, realTimeFlag, tag)) {
+    if (!node.routing().tracker().lockUID(uid, false, false, false, true, realTimeFlag, tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
     }
@@ -456,14 +459,15 @@ public final class NodeClientCoreTransfers {
     RequestSender rs;
     try {
       Object o =
-          node.makeRequestSender(
-              key.getNodeCHK(),
-              node.maxHTL(),
-              uid,
-              tag,
-              null,
-              Node.RequestSenderOptions.of(
-                  localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
+          node.routing()
+              .makeRequestSender(
+                  key.getNodeCHK(),
+                  node.maxHTL(),
+                  uid,
+                  tag,
+                  null,
+                  NodeRoutingSubsystem.RequestSenderOptions.of(
+                      localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
       if (o instanceof CHKBlock block)
         try {
           tag.setServedFromDatastore();
@@ -588,7 +592,7 @@ public final class NodeClientCoreTransfers {
     long startTime = System.currentTimeMillis();
     long uid = makeUID();
     RequestTag tag = new RequestTag(true, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, true, false, false, true, realTimeFlag, tag)) {
+    if (!node.routing().tracker().lockUID(uid, true, false, false, true, realTimeFlag, tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
     }
@@ -596,14 +600,15 @@ public final class NodeClientCoreTransfers {
     RequestSender rs;
     try {
       Object o =
-          node.makeRequestSender(
-              key.getNodeKey(true),
-              node.maxHTL(),
-              uid,
-              tag,
-              null,
-              Node.RequestSenderOptions.of(
-                  localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
+          node.routing()
+              .makeRequestSender(
+                  key.getNodeKey(true),
+                  node.maxHTL(),
+                  uid,
+                  tag,
+                  null,
+                  NodeRoutingSubsystem.RequestSenderOptions.of(
+                      localOnly, ignoreStore, false, true, canWriteClientCache, realTimeFlag));
       if (o instanceof SSKBlock block)
         try {
           tag.setServedFromDatastore();
@@ -735,7 +740,7 @@ public final class NodeClientCoreTransfers {
       throws LowLevelPutException {
     byte[] data = block.getData();
     byte[] headers = block.getHeaders();
-    Node.ChkInsertOptions options =
+    NodeRoutingSubsystem.ChkInsertOptions options =
         NodeClientCoreSupport.buildChkInsertOptions(
             headers,
             data,
@@ -747,14 +752,14 @@ public final class NodeClientCoreTransfers {
     CHKInsertSender is;
     long uid = makeUID();
     InsertTag tag = new InsertTag(false, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, false, true, false, true, realTimeFlag, tag)) {
+    if (!node.routing().tracker().lockUID(uid, false, true, false, true, realTimeFlag, tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }
     tag.setAccepted();
     try {
       long startTime = System.currentTimeMillis();
-      is = node.makeInsertSender(block.getKey(), node.maxHTL(), uid, tag, null, options);
+      is = node.routing().makeInsertSender(block.getKey(), node.maxHTL(), uid, tag, null, options);
       boolean hasReceivedRejectedOverload = awaitChkCompletion(is, realTimeFlag);
 
       if (LOG.isDebugEnabled())
@@ -800,18 +805,19 @@ public final class NodeClientCoreTransfers {
       int received = is.getTotalReceivedBytes();
       if (LOG.isDebugEnabled())
         LOG.debug("Local CHK insert cost {}/{}" + LOG_BYTES_OPEN + "{})", sent, received, status);
-      node.getNodeStats().localChkInsertBytesSentAverage.report(sent);
-      node.getNodeStats().localChkInsertBytesReceivedAverage.report(received);
+      node.network().stats().localChkInsertBytesSentAverage.report(sent);
+      node.network().stats().localChkInsertBytesReceivedAverage.report(received);
       if (status == CHKInsertSender.SUCCESS)
-        node.getNodeStats().successfulChkInsertBytesSentAverage.report(sent);
+        node.network().stats().successfulChkInsertBytesSentAverage.report(sent);
     }
   }
 
   private void storeChkLocally(CHKInsertSender is, CHKBlock block, boolean canWriteClientCache) {
     boolean deep =
-        node.shouldStoreDeep(block.getKey(), null, is == null ? new PeerNode[0] : is.getRoutedTo());
+        node.routing()
+            .shouldStoreDeep(block.getKey(), null, is == null ? new PeerNode[0] : is.getRoutedTo());
     try {
-      node.store(block, deep, canWriteClientCache, false, false);
+      node.storage().store(block, deep, canWriteClientCache, false, false);
     } catch (KeyCollisionException _) {
       // CHKs don't collide
     }
@@ -909,7 +915,7 @@ public final class NodeClientCoreTransfers {
     SSKInsertSender is;
     long uid = makeUID();
     InsertTag tag = new InsertTag(true, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.getTracker().lockUID(uid, true, true, false, true, realTimeFlag, tag)) {
+    if (!node.routing().tracker().lockUID(uid, true, true, false, true, realTimeFlag, tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }
@@ -918,23 +924,25 @@ public final class NodeClientCoreTransfers {
       long startTime = System.currentTimeMillis();
       // Be consistent: use the client cache to check for collisions as this is a local insert.
       SSKBlock altBlock =
-          node.fetch(block.getKey(), false, true, canWriteClientCache, false, false, null);
+          node.storage()
+              .fetch(block.getKey(), false, true, canWriteClientCache, false, false, null);
       if (altBlock != null && !altBlock.equals(block)) throw new LowLevelPutException(altBlock);
       is =
-          node.makeInsertSender(
-              block,
-              node.maxHTL(),
-              uid,
-              tag,
-              null,
-              Node.SskInsertOptions.of()
-                  .withFromStore(false)
-                  .withCanWriteClientCache(canWriteClientCache)
-                  .withCanWriteDatastore(false)
-                  .withForkOnCacheable(forkOnCacheable)
-                  .withPreferInsert(preferInsert)
-                  .withIgnoreLowBackoff(ignoreLowBackoff)
-                  .withRealTimeFlag(realTimeFlag));
+          node.routing()
+              .makeInsertSender(
+                  block,
+                  node.maxHTL(),
+                  uid,
+                  tag,
+                  null,
+                  NodeRoutingSubsystem.SskInsertOptions.of()
+                      .withFromStore(false)
+                      .withCanWriteClientCache(canWriteClientCache)
+                      .withCanWriteDatastore(false)
+                      .withForkOnCacheable(forkOnCacheable)
+                      .withPreferInsert(preferInsert)
+                      .withIgnoreLowBackoff(ignoreLowBackoff)
+                      .withRealTimeFlag(realTimeFlag));
       boolean hasReceivedRejectedOverload = awaitSskCompletion(is, realTimeFlag);
 
       if (LOG.isDebugEnabled())
@@ -1012,10 +1020,10 @@ public final class NodeClientCoreTransfers {
       int received = is.getTotalReceivedBytes();
       if (LOG.isDebugEnabled())
         LOG.debug("Local SSK insert cost {}/{}" + LOG_BYTES_OPEN + "{})", sent, received, status);
-      node.getNodeStats().localSskInsertBytesSentAverage.report(sent);
-      node.getNodeStats().localSskInsertBytesReceivedAverage.report(received);
+      node.network().stats().localSskInsertBytesSentAverage.report(sent);
+      node.network().stats().localSskInsertBytesReceivedAverage.report(received);
       if (status == SSKInsertSender.SUCCESS)
-        node.getNodeStats().successfulSskInsertBytesSentAverage.report(sent);
+        node.network().stats().successfulSskInsertBytesSentAverage.report(sent);
     }
   }
 
@@ -1041,26 +1049,27 @@ public final class NodeClientCoreTransfers {
   private void handleSskCollisionOrStore(
       SSKInsertSender is, SSKBlock block, boolean canWriteClientCache) throws LowLevelPutException {
     boolean deep =
-        node.shouldStoreDeep(block.getKey(), null, is == null ? new PeerNode[0] : is.getRoutedTo());
+        node.routing()
+            .shouldStoreDeep(block.getKey(), null, is == null ? new PeerNode[0] : is.getRoutedTo());
 
     if (is != null && is.hasCollided()) {
       SSKBlock collided = is.getBlock();
       try {
-        node.storeInsert(collided, deep, true, canWriteClientCache, false);
+        node.storage().storeInsert(collided, deep, true, canWriteClientCache, false);
       } catch (KeyCollisionException e) {
         LOG.info("collision race? is={}", is, e);
       }
       throw new LowLevelPutException(collided);
     }
     try {
-      node.storeInsert(block, deep, false, canWriteClientCache, false);
+      node.storage().storeInsert(block, deep, false, canWriteClientCache, false);
     } catch (KeyCollisionException e) {
       NodeSSK key = block.getKey();
-      KeyBlock collided = node.fetch(key, true, canWriteClientCache, false, false, null);
+      KeyBlock collided = node.storage().fetch(key, true, canWriteClientCache, false, false, null);
       if (collided == null) {
         LOG.error("Collided but no key?!");
         try {
-          node.store(block, false, canWriteClientCache, false, false);
+          node.storage().store(block, false, canWriteClientCache, false, false);
         } catch (KeyCollisionException _) {
           LOG.error("Collided but no key and still collided!");
           throw new LowLevelPutException(

@@ -54,7 +54,7 @@ class SimpleToadletServerTest {
   @Test
   void findToadlet_whenWizardIncomplete_redirectsToWizard() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
     server.setCore(core);
@@ -138,7 +138,7 @@ class SimpleToadletServerTest {
   private SimpleToadletServer newServerWithDefaults() throws Exception {
     Config rootConfig = new Config();
     SubConfig config = rootConfig.createSubConfig("fproxy");
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     BucketFactory bucketFactory = mock(BucketFactory.class);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
 

@@ -29,7 +29,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class CHKInsertSenderTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeStats nodeStats;
   @Mock private PeerNode sourcePeer;
   @Mock private InsertTag insertTag;
@@ -52,9 +54,9 @@ class CHKInsertSenderTest {
     headers = new byte[] {1, 2, 3, 4};
 
     // Minimal Node stubbing used by BaseSender/CHKInsertSender
-    when(node.enableNewLoadManagement(anyBoolean())).thenReturn(false);
+    when(node.network().enableNewLoadManagement(anyBoolean())).thenReturn(false);
     when(node.maxHTL()).thenReturn((short) 18);
-    when(node.getNodeStats()).thenReturn(nodeStats);
+    when(node.network().stats()).thenReturn(nodeStats);
   }
 
   private CHKInsertSender newSender(

@@ -18,6 +18,7 @@ import java.net.SocketAddress;
 import java.time.Duration;
 import java.util.stream.IntStream;
 import network.crypta.node.Node;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,10 @@ class FCPConnectionOutputHandlerTest {
 
   @Mock private FCPConnectionHandler handler;
   @Mock private FCPServer server;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PriorityAwareExecutor executor;
   @Mock private Socket socket;
   @Mock private OutputStream outputStream;
@@ -54,7 +58,9 @@ class FCPConnectionOutputHandlerTest {
     when(socket.getPort()).thenReturn(9481);
     when(handler.getServer()).thenReturn(server);
     when(server.getNode()).thenReturn(node);
-    when(node.getExecutor()).thenReturn(executor);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
 
     outputHandler.start();
 

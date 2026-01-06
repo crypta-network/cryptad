@@ -64,7 +64,9 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
   public static final String TOADLET_URL = "/wiz/";
 
   private static final long MIN_STORAGE_LIMIT =
-      Node.MIN_STORE_SIZE * 5 / 4; // min store size + 10% for client cache + 10% for slashdot cache
+      network.crypta.node.subsystem.NodeStorageSubsystem.MIN_STORE_SIZE
+          * 5
+          / 4; // min store size + 10% for client cache + 10% for slashdot cache
 
   private final NodeClientCore core;
 
@@ -123,7 +125,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
     // if threat level is high, the password must already be set: user is running the wizard again?
     isPasswordAlreadySet =
-        core.getNode().getSecurityLevels().getPhysicalThreatLevel()
+        core.getNode().services().securityLevels().getPhysicalThreatLevel()
             == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH;
     showForm(ctx, new FormModel().toModel());
   }
@@ -408,7 +410,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       try {
         BandwidthLimit detected =
             BandwidthManipulator.detectBandwidthLimits(
-                core.getNode().getIpDetector().getBandwidthIndicator());
+                core.getNode().network().ipDetector().getBandwidthIndicator());
 
         // Detected limits reasonable; add half of both as recommended option.
         downloadLimitDetected = Long.toString(detected.downBytes / 2 / KIB);
@@ -457,18 +459,21 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       if (knowSomeone.isEmpty()) {
         // Opennet + Darknet (possible)
         core.getNode()
-            .getSecurityLevels()
+            .services()
+            .securityLevels()
             .setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
       } else {
         if (connectToStrangers.isEmpty()) {
           // Darknet
           core.getNode()
-              .getSecurityLevels()
+              .services()
+              .securityLevels()
               .setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.HIGH);
         } else {
           // Opennet + Darknet
           core.getNode()
-              .getSecurityLevels()
+              .services()
+              .securityLevels()
               .setThreatLevel(SecurityLevels.NETWORK_THREAT_LEVEL.NORMAL);
         }
       }
@@ -493,14 +498,16 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
         try {
           if (setPassword.isEmpty()) { // no password protection requested
             core.getNode()
-                .getSecurityLevels()
+                .services()
+                .securityLevels()
                 .setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.NORMAL);
-            core.getNode().setMasterPassword("", true);
+            core.getNode().storage().setMasterPassword("", true);
           } else {
             core.getNode()
-                .getSecurityLevels()
+                .services()
+                .securityLevels()
                 .setThreatLevel(SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH);
-            core.getNode().setMasterPassword(password, true);
+            core.getNode().storage().setMasterPassword(password, true);
           }
         } catch (Node.AlreadySetPasswordException
             | MasterKeysWrongPasswordException

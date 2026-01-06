@@ -54,7 +54,10 @@ class RevocationCheckerTest {
   @TempDir Path tempDir;
 
   @Mock NodeUpdateManager manager;
-  @Mock Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  Node node;
+
   @Mock NodeClientCore core;
   @Mock ClientContext clientContext;
   @Mock Ticker ticker;
@@ -71,10 +74,10 @@ class RevocationCheckerTest {
 
     // Minimal node wiring
     when(manager.getNode()).thenReturn(node);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(core.getPersistentTempDir()).thenReturn(persistentTmpDir);
     when(core.getClientContext()).thenReturn(clientContext);
-    when(node.getTicker()).thenReturn(ticker);
+    when(node.network().ticker()).thenReturn(ticker);
 
     // Fetch context for constructor path
     HighLevelSimpleClient hlsc = Mockito.mock(HighLevelSimpleClient.class);

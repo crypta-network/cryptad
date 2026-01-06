@@ -23,7 +23,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class HourlyStatsTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @BeforeEach
   void setUp() {
@@ -34,7 +35,7 @@ class HourlyStatsTest {
   void remoteRequest_withinSameHour_doesNotRotateAndForwards() throws Exception {
     // Arrange
     HourlyStats stats = new HourlyStats(node);
-    when(node.getLocation()).thenReturn(0.5);
+    when(node.network().location()).thenReturn(0.5);
     HourlyStatsRecord initialCurrent = getField(stats, "currentRecord", HourlyStatsRecord.class);
 
     // Act
@@ -63,7 +64,7 @@ class HourlyStatsTest {
     lastHourly.setTime(nowUtc.getTime());
 
     // Act: first request in the new hour triggers rotation
-    when(node.getLocation()).thenReturn(0.5);
+    when(node.network().location()).thenReturn(0.5);
     stats.remoteRequest(true, false, false, 2, 0.80);
 
     // Assert

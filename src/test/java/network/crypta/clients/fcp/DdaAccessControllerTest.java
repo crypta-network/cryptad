@@ -31,7 +31,9 @@ class DdaAccessControllerTest {
 
   @Mock private FCPServer server;
   @Mock private Logger log;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @TempDir private Path tempDir;
 
@@ -51,7 +53,7 @@ class DdaAccessControllerTest {
 
   private void stubRandomAccess() {
     when(server.getNode()).thenReturn(node);
-    when(node.getFastWeakRandom()).thenReturn(random);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(random);
   }
 
   @Test

@@ -15,6 +15,8 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import network.crypta.node.Node;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.pluginmanager.PluginInfoWrapper;
 import network.crypta.pluginmanager.PluginManager;
 import network.crypta.support.PriorityAwareExecutor;
@@ -79,7 +81,7 @@ class ReloadPluginTest {
     ReloadPlugin reloadPlugin = new ReloadPlugin(minimalFieldSet());
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
     when(handler.hasFullAccess()).thenReturn(false);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> reloadPlugin.run(handler, node));
@@ -100,9 +102,13 @@ class ReloadPluginTest {
     PluginManager pluginManager = mock(PluginManager.class);
     when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(null);
 
-    Node node = mock(Node.class);
-    when(node.getExecutor()).thenReturn(executor);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
 
     reloadPlugin.run(handler, node);
 
@@ -137,9 +143,13 @@ class ReloadPluginTest {
     when(pluginManager.findPluginByIdentifier(PLUGIN_NAME)).thenReturn(existingPlugin);
     when(pluginManager.startPluginAuto("plugin.jar", false)).thenReturn(null);
 
-    Node node = mock(Node.class);
-    when(node.getExecutor()).thenReturn(executor);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
 
     reloadPlugin.run(handler, node);
 
@@ -179,9 +189,13 @@ class ReloadPluginTest {
     when(reloadedPlugin.getPluginVersion()).thenReturn("1.0.0");
     when(pluginManager.startPluginAuto("plugin.jar", true)).thenReturn(reloadedPlugin);
 
-    Node node = mock(Node.class);
-    when(node.getExecutor()).thenReturn(executor);
-    when(node.getPluginManager()).thenReturn(pluginManager);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
+    NodeServicesSubsystem services = mock(NodeServicesSubsystem.class);
+    when(node.network()).thenReturn(network);
+    when(network.executor()).thenReturn(executor);
+    when(node.services()).thenReturn(services);
+    when(services.pluginManager()).thenReturn(pluginManager);
 
     reloadPlugin.run(handler, node);
 

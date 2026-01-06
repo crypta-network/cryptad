@@ -53,7 +53,7 @@ class DatastoreSizeTest {
 
   @Test
   void maxDatastoreSize_whenMemoryLimitIsUnknown_expectOneGiB() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
       nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(Long.MAX_VALUE);
 
@@ -65,7 +65,7 @@ class DatastoreSizeTest {
 
   @Test
   void maxDatastoreSize_whenMemoryLimitIsVerySmall_expectOneGiB() {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
       nodeStarter.when(NodeStarter::getMemoryLimitBytes).thenReturn(127L * 1024 * 1024);
 
@@ -87,7 +87,7 @@ class DatastoreSizeTest {
     when(storeDir.getUsableSpace()).thenReturn(freeSpace);
     when(storeDir.listFiles()).thenReturn(new File[] {fileA, fileB});
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(node.getStoreDir()).thenReturn(storeDir);
 
     long expectedDiskCap = freeSpace + 1234L + 5678L;
@@ -97,7 +97,8 @@ class DatastoreSizeTest {
     available = available / 2;
     long slots = available / 4;
     slots /= 3;
-    long expectedMemoryCap = slots * Node.SIZE_PER_KEY;
+    long expectedMemoryCap =
+        slots * network.crypta.node.subsystem.NodeStorageSubsystem.SIZE_PER_KEY;
     long expectedCap = Math.min(expectedDiskCap, expectedMemoryCap);
 
     try (MockedStatic<NodeStarter> nodeStarter = mockStatic(NodeStarter.class)) {
@@ -246,7 +247,7 @@ class DatastoreSizeTest {
   @Test
   void getStep_whenAutodetectedIs512MiB_expectNo512MOption() {
     Config config = newConfigWithNodeDefaults(10, 10, 1000L);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
 
@@ -282,7 +283,7 @@ class DatastoreSizeTest {
   @Test
   void getStep_whenAutodetectedIsNot512MiB_expect512MOptionPresent() {
     Config config = newConfigWithNodeDefaults(10, 10, 1000L);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
 
@@ -324,7 +325,7 @@ class DatastoreSizeTest {
     nodeConfig.set(KEY_CLIENT_CACHE_SIZE, "512MiB");
     nodeConfig.set(KEY_SLASHDOT_CACHE_SIZE, "256MiB");
 
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
 

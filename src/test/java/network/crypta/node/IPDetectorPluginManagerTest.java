@@ -23,6 +23,8 @@ import java.util.Map;
 import java.util.Set;
 import network.crypta.io.AddressTracker.Status;
 import network.crypta.io.comm.Peer;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.pluginmanager.DetectedIP;
 import network.crypta.pluginmanager.ForwardPort;
 import network.crypta.pluginmanager.ForwardPortCallback;
@@ -46,7 +48,9 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class IPDetectorPluginManagerTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private NodeIPDetector detector;
   @Mock private PeerManager peerManager;
   @Mock private NodeCrypto darknetCrypto;
@@ -55,6 +59,8 @@ class IPDetectorPluginManagerTest {
   @Mock private PriorityAwareExecutor executor;
   @Mock private Ticker ticker;
   @Mock private PluginManager pluginManager;
+  @Mock private NodeNetworkSubsystem network;
+  @Mock private NodeServicesSubsystem services;
 
   private IPDetectorPluginManager newManager() {
     return new IPDetectorPluginManager(node, detector);
@@ -62,13 +68,15 @@ class IPDetectorPluginManagerTest {
 
   @BeforeEach
   void setUp() {
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getDarknetCrypto()).thenReturn(darknetCrypto);
-    when(node.getExecutor()).thenReturn(executor);
-    when(node.getTicker()).thenReturn(ticker);
-    when(node.getPluginManager()).thenReturn(pluginManager);
-    when(node.getPeerNodes()).thenReturn(new PeerNode[0]);
-    when(node.getConnectedPeers()).thenReturn(new PeerNode[0]);
+    when(node.network()).thenReturn(network);
+    when(node.services()).thenReturn(services);
+    when(network.peers()).thenReturn(peerManager);
+    when(network.darknetCrypto()).thenReturn(darknetCrypto);
+    when(network.executor()).thenReturn(executor);
+    when(network.ticker()).thenReturn(ticker);
+    when(services.pluginManager()).thenReturn(pluginManager);
+    when(network.peerNodes()).thenReturn(new PeerNode[0]);
+    when(network.connectedPeers()).thenReturn(new PeerNode[0]);
     when(detector.getPrimaryIPAddress(true))
         .thenReturn(new network.crypta.io.comm.FreenetInetAddress[0]);
     when(detector.hasDirectlyDetectedIP()).thenReturn(false);
@@ -96,7 +104,7 @@ class IPDetectorPluginManagerTest {
   void getUDPPortsNotForwarded_whenNoOpennetAndDarknetUnknown_expectEmpty() {
     IPDetectorPluginManager mgr = newManager();
 
-    when(node.getOpennet()).thenReturn(null);
+    when(node.network().opennet()).thenReturn(null);
     when(peerManager.anyDarknetPeers()).thenReturn(false); // -> darknet status DONT_KNOW
 
     int[] ports = mgr.getUDPPortsNotForwarded();
@@ -107,10 +115,10 @@ class IPDetectorPluginManagerTest {
   void getUDPPortsNotForwarded_whenNoOpennetAndDarknetDefinitelyNAT_expectNegativeDarknetPort() {
     IPDetectorPluginManager mgr = newManager();
 
-    when(node.getOpennet()).thenReturn(null);
+    when(node.network().opennet()).thenReturn(null);
     when(peerManager.anyDarknetPeers()).thenReturn(true);
     when(darknetCrypto.getDetectedConnectivityStatus()).thenReturn(Status.DEFINITELY_NATED);
-    when(node.getDarknetPortNumber()).thenReturn(9486);
+    when(node.network().darknetPortNumber()).thenReturn(9486);
 
     assertArrayEquals(new int[] {-9486}, mgr.getUDPPortsNotForwarded());
   }
@@ -119,7 +127,7 @@ class IPDetectorPluginManagerTest {
   void getUDPPortsNotForwarded_whenOpennetNatAndDarknetUnknown_expectNegativeOpennetPort() {
     IPDetectorPluginManager mgr = newManager();
 
-    when(node.getOpennet()).thenReturn(opennetManager);
+    when(node.network().opennet()).thenReturn(opennetManager);
     when(opennetManager.getCrypto()).thenReturn(opennetCrypto);
     when(opennetCrypto.getDetectedConnectivityStatus()).thenReturn(Status.DEFINITELY_NATED);
 
@@ -133,14 +141,14 @@ class IPDetectorPluginManagerTest {
   void getUDPPortsNotForwarded_whenBothNat_expectBothPortsNegative() {
     IPDetectorPluginManager mgr = newManager();
 
-    when(node.getOpennet()).thenReturn(opennetManager);
+    when(node.network().opennet()).thenReturn(opennetManager);
     when(opennetManager.getCrypto()).thenReturn(opennetCrypto);
     when(opennetCrypto.getDetectedConnectivityStatus()).thenReturn(Status.DEFINITELY_NATED);
     when(opennetCrypto.getPortNumber()).thenReturn(56789);
 
     when(peerManager.anyDarknetPeers()).thenReturn(true);
     when(darknetCrypto.getDetectedConnectivityStatus()).thenReturn(Status.DEFINITELY_NATED);
-    when(node.getDarknetPortNumber()).thenReturn(24680);
+    when(node.network().darknetPortNumber()).thenReturn(24680);
 
     assertArrayEquals(new int[] {-24680, -56789}, mgr.getUDPPortsNotForwarded());
   }
@@ -149,14 +157,14 @@ class IPDetectorPluginManagerTest {
   void getUDPPortsNotForwarded_whenBothMaybeNated_expectBothPortsPositive() {
     IPDetectorPluginManager mgr = newManager();
 
-    when(node.getOpennet()).thenReturn(opennetManager);
+    when(node.network().opennet()).thenReturn(opennetManager);
     when(opennetManager.getCrypto()).thenReturn(opennetCrypto);
     when(opennetCrypto.getDetectedConnectivityStatus()).thenReturn(Status.MAYBE_NATED);
     when(opennetCrypto.getPortNumber()).thenReturn(30000);
 
     when(peerManager.anyDarknetPeers()).thenReturn(true);
     when(darknetCrypto.getDetectedConnectivityStatus()).thenReturn(Status.MAYBE_NATED);
-    when(node.getDarknetPortNumber()).thenReturn(40000);
+    when(node.network().darknetPortNumber()).thenReturn(40000);
 
     assertArrayEquals(new int[] {40000, 30000}, mgr.getUDPPortsNotForwarded());
   }
@@ -194,7 +202,7 @@ class IPDetectorPluginManagerTest {
 
     Set<ForwardPort> current = new HashSet<>();
     current.add(new ForwardPort("darknet", false, ForwardPort.PROTOCOL_UDP_IPV4, 11111));
-    when(node.getPublicInterfacePorts()).thenReturn(current);
+    when(node.network().publicInterfacePorts()).thenReturn(current);
 
     FredPluginPortForward pf = mock(FredPluginPortForward.class);
     mgr.registerPortForwardPlugin(pf);
@@ -210,7 +218,7 @@ class IPDetectorPluginManagerTest {
 
     Set<ForwardPort> initial = new HashSet<>();
     initial.add(new ForwardPort("darknet", false, ForwardPort.PROTOCOL_UDP_IPV4, 22222));
-    when(node.getPublicInterfacePorts()).thenReturn(initial);
+    when(node.network().publicInterfacePorts()).thenReturn(initial);
 
     mgr.registerPortForwardPlugin(pf1);
     mgr.registerPortForwardPlugin(pf2);
@@ -236,7 +244,7 @@ class IPDetectorPluginManagerTest {
     Set<ForwardPort> current = new HashSet<>();
     ForwardPort fp = new ForwardPort("darknet", false, ForwardPort.PROTOCOL_UDP_IPV4, 44444);
     current.add(fp);
-    when(node.getPublicInterfacePorts()).thenReturn(current);
+    when(node.network().publicInterfacePorts()).thenReturn(current);
 
     Map<ForwardPort, ForwardPortStatus> statuses = new HashMap<>();
     statuses.put(
@@ -283,7 +291,7 @@ class IPDetectorPluginManagerTest {
     network.crypta.node.useralerts.UserAlertManager alerts =
         mock(network.crypta.node.useralerts.UserAlertManager.class);
     when(core.getAlerts()).thenReturn(alerts);
-    when(node.getClientCore()).thenReturn(core);
+    when(node.services().clientCore()).thenReturn(core);
     when(alerts.renderAlert(any())).thenReturn(new HTMLNode("div"));
 
     // Install a ProxyUserAlert with an underlying always-valid alert via reflection
@@ -447,8 +455,8 @@ class IPDetectorPluginManagerTest {
       // Valid InetAddress to pass eligibility check
       when(fna.getAddress(false)).thenReturn(java.net.InetAddress.getByName("198.51.100.10"));
     }
-    when(node.getPeerNodes()).thenReturn(new PeerNode[] {p1, p2, p3});
-    when(node.getConnectedPeers()).thenReturn(new PeerNode[0]);
+    when(node.network().peerNodes()).thenReturn(new PeerNode[] {p1, p2, p3});
+    when(node.network().connectedPeers()).thenReturn(new PeerNode[0]);
 
     // Set last detect attempt to 7 minutes ago: hourly throttle active, but 6-minute override
     // applies.

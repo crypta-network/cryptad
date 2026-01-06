@@ -24,7 +24,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class PeerAlertCoordinatorTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private PeerRoster roster;
   @Mock private PeerStatusBook statusBook;
   @Mock private NodeClientCore clientCore;
@@ -74,14 +76,14 @@ class PeerAlertCoordinatorTest {
     when(statusBook.getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_TOO_NEW, false))
         .thenReturn(5);
 
-    when(node.getOpennet()).thenReturn(null);
+    when(node.network().opennet()).thenReturn(null);
 
     NodeCrypto darknetCrypto = mock(NodeCrypto.class);
     NodeCryptoConfig darknetConfig = mock(NodeCryptoConfig.class);
-    when(node.getDarknetCrypto()).thenReturn(darknetCrypto);
+    when(node.network().darknetCrypto()).thenReturn(darknetCrypto);
     when(darknetCrypto.getConfig()).thenReturn(darknetConfig);
     when(darknetConfig.alwaysHandshakeAggressively()).thenReturn(true);
-    when(node.darknetDefinitelyPortForwarded()).thenReturn(true);
+    when(node.network().darknetDefinitelyPortForwarded()).thenReturn(true);
 
     // Act
     coordinator.update();
@@ -102,7 +104,7 @@ class PeerAlertCoordinatorTest {
     verify(alert).setOpennetEnabled(false);
     verify(alert).setTooNewPeersDarknet(2);
     verify(alert).setTooNewPeersTotal(5);
-    verify(node, never()).onConnectedPeer();
+    verify(node.network(), never()).onConnectedPeer();
   }
 
   @Test
@@ -138,7 +140,7 @@ class PeerAlertCoordinatorTest {
     OpennetManager opennet = mock(OpennetManager.class);
     NodeCrypto opennetCrypto = mock(NodeCrypto.class);
     NodeCryptoConfig opennetConfig = mock(NodeCryptoConfig.class);
-    when(node.getOpennet()).thenReturn(opennet);
+    when(node.network().opennet()).thenReturn(opennet);
     when(opennet.getCrypto()).thenReturn(opennetCrypto);
     when(opennetCrypto.definitelyPortForwarded()).thenReturn(true);
     when(opennetCrypto.getConfig()).thenReturn(opennetConfig);
@@ -146,10 +148,10 @@ class PeerAlertCoordinatorTest {
 
     NodeCrypto darknetCrypto = mock(NodeCrypto.class);
     NodeCryptoConfig darknetConfig = mock(NodeCryptoConfig.class);
-    when(node.getDarknetCrypto()).thenReturn(darknetCrypto);
+    when(node.network().darknetCrypto()).thenReturn(darknetCrypto);
     when(darknetCrypto.getConfig()).thenReturn(darknetConfig);
     when(darknetConfig.alwaysHandshakeAggressively()).thenReturn(false);
-    when(node.darknetDefinitelyPortForwarded()).thenReturn(false);
+    when(node.network().darknetDefinitelyPortForwarded()).thenReturn(false);
 
     // Act
     coordinator.update();
@@ -167,7 +169,7 @@ class PeerAlertCoordinatorTest {
     verify(alert).setPeers(3);
     verify(alert).setTooNewPeersDarknet(1);
     verify(alert).setTooNewPeersTotal(2);
-    verify(node, times(1)).onConnectedPeer();
+    verify(node.network(), times(1)).onConnectedPeer();
   }
 
   @Test
@@ -175,9 +177,9 @@ class PeerAlertCoordinatorTest {
     // Arrange
     PeerAlertCoordinator coordinator = new PeerAlertCoordinator(node, roster, statusBook);
 
-    when(node.getNodeStats()).thenReturn(nodeStats);
-    when(node.getNodeUpdater()).thenReturn(nodeUpdateManager);
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.network().stats()).thenReturn(nodeStats);
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getAlerts()).thenReturn(alertManager);
 
     when(roster.getDarknetPeers()).thenReturn(new DarknetPeerNode[0]);
@@ -186,7 +188,7 @@ class PeerAlertCoordinatorTest {
 
     NodeCrypto darknetCrypto = mock(NodeCrypto.class);
     NodeCryptoConfig darknetConfig = mock(NodeCryptoConfig.class);
-    when(node.getDarknetCrypto()).thenReturn(darknetCrypto);
+    when(node.network().darknetCrypto()).thenReturn(darknetCrypto);
     when(darknetCrypto.getConfig()).thenReturn(darknetConfig);
     when(darknetConfig.alwaysHandshakeAggressively()).thenReturn(false);
 

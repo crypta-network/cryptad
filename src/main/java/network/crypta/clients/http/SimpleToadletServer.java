@@ -292,8 +292,8 @@ public final class SimpleToadletServer
       cssTheme = THEME.themeFromName(cssName);
       pageMaker.setTheme(cssTheme);
       NodeClientCore coreRef = SimpleToadletServer.this.core;
-      if (coreRef.getNode().getPluginManager() != null)
-        coreRef.getNode().getPluginManager().setFProxyTheme(cssTheme);
+      if (coreRef.getNode().services().pluginManager() != null)
+        coreRef.getNode().services().pluginManager().setFProxyTheme(cssTheme);
       fetchKeyBoxAboveBookmarks = cssTheme.fetchKeyBoxAboveBookmarks;
     }
 
@@ -1228,7 +1228,8 @@ public final class SimpleToadletServer
    */
   public void finishStart() {
     core.getNode()
-        .getSecurityLevels()
+        .services()
+        .securityLevels()
         .addNetworkThreatLevelListener(
             (oldLevel, newLevel) -> {
               // At LOW, we do ACCEPT_OLD.
@@ -1241,7 +1242,8 @@ public final class SimpleToadletServer
               }
             });
     core.getNode()
-        .getSecurityLevels()
+        .services()
+        .securityLevels()
         .addPhysicalThreatLevelListener(
             (oldLevel, newLevel) -> {
               if (newLevel != oldLevel && newLevel == PHYSICAL_THREAT_LEVEL.LOW) {
@@ -1755,7 +1757,7 @@ public final class SimpleToadletServer
    * @return {@link Ticker} from the node; never {@code null} after the core is set.
    */
   public Ticker getTicker() {
-    return core.getNode().getTicker();
+    return core.getNode().network().ticker();
   }
 
   /**

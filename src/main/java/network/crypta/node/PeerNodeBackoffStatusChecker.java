@@ -47,14 +47,14 @@ class PeerNodeBackoffStatusChecker implements Runnable {
     if (pn == null) return;
     // If marked removed, only proceed when also still present (inconsistent state).
     if (pn.cachedRemoved()) {
-      if (LOG.isDebugEnabled() && pn.node.getPeers().havePeer(pn)) {
+      if (LOG.isDebugEnabled() && pn.node.network().peers().havePeer(pn)) {
         LOG.error("Peer marked removed but present in peers table: {}", pn);
       } else {
         return;
       }
     }
     // If not present, and not flagged removed, log inconsistency and stop.
-    if (!pn.node.getPeers().havePeer(pn)) {
+    if (!pn.node.network().peers().havePeer(pn)) {
       if (!pn.cachedRemoved()) LOG.error("Peer not in peers table and not marked removed: {}", pn);
       return;
     }

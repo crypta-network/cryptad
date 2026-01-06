@@ -21,7 +21,9 @@ class PersistentRequestModifiedMessageTest {
   private static final String CLIENT_TOKEN = "token-abc";
 
   @Mock private FCPConnectionHandler connectionHandler;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @Test
   void getFieldSet_withPriorityOnly_setsIdentifierGlobalAndPriority() {

@@ -92,10 +92,10 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    */
   @Override
   public String getText() {
-    if (node.getIpDetector().noDetectPlugins()) return l10n("noDetectorPlugins");
-    if (node.getIpDetector().isDetecting()) return l10n("detecting");
+    if (node.network().ipDetector().noDetectPlugins()) return l10n("noDetectorPlugins");
+    if (node.network().ipDetector().isDetecting()) return l10n("detecting");
     else
-      return l10n("unknownAddress", "port", Integer.toString(node.getDarknetPortNumber()))
+      return l10n("unknownAddress", "port", Integer.toString(node.network().darknetPortNumber()))
           + ' '
           + textPortForwardSuggestion();
   }
@@ -122,9 +122,10 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    */
   @Override
   public boolean isValid() {
-    if (node.isOpennetEnabled()) return false;
-    return node.getPeers().countConnectiblePeers() < 5
-        || (node.getUptime() >= MINUTES.toMillis(1) && !node.getIpDetector().isDetecting());
+    if (node.network().isOpennetEnabled()) return false;
+    return node.network().peers().countConnectiblePeers() < 5
+        || (node.network().uptime() >= MINUTES.toMillis(1)
+            && !node.network().ipDetector().isDetecting());
   }
 
   /**
@@ -151,17 +152,17 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
         .addL10nSubstitution(
             textNode,
             L10N_PREFIX
-                + (node.getIpDetector().isDetecting()
+                + (node.network().ipDetector().isDetecting()
                     ? "detectingWithConfigLink"
                     : "unknownAddressWithConfigLink"),
             new String[] {"link"},
             new HTMLNode[] {HTMLNode.link("/config/" + sc.getPrefix())});
 
-    int peers = node.getPeers().roster().getDarknetPeers().length;
+    int peers = node.network().peers().roster().getDarknetPeers().length;
     if (peers > 0)
       textNode.addChild("p", l10n("noIPMaybeFromPeers", "number", Integer.toString(peers)));
 
-    if (node.getIpDetector().noDetectPlugins()) {
+    if (node.network().ipDetector().noDetectPlugins()) {
       HTMLNode p = textNode.addChild("p");
       NodeL10n.getBase()
           .addL10nSubstitution(
@@ -171,7 +172,8 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
                 "plugins", "config",
               },
               new HTMLNode[] {HTMLNode.link("/plugins/"), HTMLNode.link("/config/node")});
-    } else if (!node.getIpDetector().hasJSTUN() && !node.getIpDetector().isDetecting()) {
+    } else if (!node.network().ipDetector().hasJSTUN()
+        && !node.network().ipDetector().isDetecting()) {
       HTMLNode p = textNode.addChild("p");
       NodeL10n.getBase()
           .addL10nSubstitution(
@@ -191,7 +193,7 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
     formNode.addChild(
         HTML_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
-        new String[] {"hidden", "formPassword", node.getClientCore().getFormPassword()});
+        new String[] {"hidden", "formPassword", node.services().clientCore().getFormPassword()});
     formNode.addChild(
         HTML_INPUT,
         new String[] {"type", "name", ATTR_VALUE},
@@ -222,8 +224,8 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
   private void addPortForwardSuggestion(HTMLNode textNode) {
     // Note: This alert suggests forwarding the standard darknet/opennet ports.
     // Supporting arbitrary numbers of ports and protocols would require broader L10n changes.
-    int darknetPort = node.getDarknetPortNumber();
-    int opennetPort = node.getOpennetFNPPort();
+    int darknetPort = node.network().darknetPortNumber();
+    int opennetPort = node.network().opennetFnpPort();
     if (opennetPort <= 0) {
       textNode.addChild(
           "#", " " + l10n("suggestForwardPort", "port", Integer.toString(darknetPort)));
@@ -242,8 +244,8 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
   private String textPortForwardSuggestion() {
     // Note: This text mirrors the current single/two-port suggestion behavior.
     // Expanding to multiple ports would entail non-trivial localization updates.
-    int darknetPort = node.getDarknetPortNumber();
-    int opennetPort = node.getOpennetFNPPort();
+    int darknetPort = node.network().darknetPortNumber();
+    int opennetPort = node.network().opennetFnpPort();
     if (opennetPort <= 0) {
       return l10n("suggestForwardPort", "port", Integer.toString(darknetPort));
     } else {
@@ -268,7 +270,7 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    */
   @Override
   public short getPriorityClass() {
-    if (node.getIpDetector().isDetecting()) return UserAlert.WARNING;
+    if (node.network().ipDetector().isDetecting()) return UserAlert.WARNING;
     else return UserAlert.ERROR;
   }
 
@@ -285,8 +287,8 @@ public class IPUndetectedUserAlert extends AbstractUserAlert {
    */
   @Override
   public String getShortText() {
-    if (node.getIpDetector().noDetectPlugins()) return l10n("noDetectorPlugins");
-    if (node.getIpDetector().isDetecting()) return l10n("detectingShort");
+    if (node.network().ipDetector().noDetectPlugins()) return l10n("noDetectorPlugins");
+    if (node.network().ipDetector().isDetecting()) return l10n("detectingShort");
     else return l10n("unknownAddressShort");
   }
 }

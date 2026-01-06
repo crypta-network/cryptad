@@ -34,7 +34,7 @@ class PeerNodeOfferSupportTest {
     PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
     when(peer.transport()).thenReturn(transport);
 
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     FailureTable failureTable = org.mockito.Mockito.mock(FailureTable.class);
     byte[] offerAuthenticatorKey = new byte[32];
     for (int i = 0; i < offerAuthenticatorKey.length; i++) {
@@ -46,8 +46,8 @@ class PeerNodeOfferSupportTest {
     ByteCounter sendOffersCtr = org.mockito.Mockito.mock(ByteCounter.class);
     setField(nodeStats, "sendOffersCtr", sendOffersCtr);
 
-    when(node.getFailureTable()).thenReturn(failureTable);
-    when(node.getNodeStats()).thenReturn(nodeStats);
+    when(node.routing().failureTable()).thenReturn(failureTable);
+    when(node.network().stats()).thenReturn(nodeStats);
     setField(peer, "node", node);
 
     byte[] routingKey = new byte[NodeCHK.KEY_LENGTH];
@@ -74,7 +74,7 @@ class PeerNodeOfferSupportTest {
     PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
     when(peer.transport()).thenReturn(transport);
 
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     FailureTable failureTable = org.mockito.Mockito.mock(FailureTable.class);
     setField(failureTable, "offerAuthenticatorKey", new byte[32]);
 
@@ -82,8 +82,8 @@ class PeerNodeOfferSupportTest {
     ByteCounter sendOffersCtr = org.mockito.Mockito.mock(ByteCounter.class);
     setField(nodeStats, "sendOffersCtr", sendOffersCtr);
 
-    when(node.getFailureTable()).thenReturn(failureTable);
-    when(node.getNodeStats()).thenReturn(nodeStats);
+    when(node.routing().failureTable()).thenReturn(failureTable);
+    when(node.network().stats()).thenReturn(nodeStats);
     setField(peer, "node", node);
 
     doThrow(new NotConnectedException())
@@ -101,7 +101,7 @@ class PeerNodeOfferSupportTest {
   @SuppressWarnings("DataFlowIssue")
   void offer_whenKeyNull_expectNullPointerException() {
     PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
-    Node node = org.mockito.Mockito.mock(Node.class);
+    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, "node", node);
 
     PeerNodeOfferSupport support = new PeerNodeOfferSupport(peer);

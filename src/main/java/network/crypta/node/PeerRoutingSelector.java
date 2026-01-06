@@ -211,7 +211,7 @@ public class PeerRoutingSelector {
     int backedOff =
         statusBook.getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
     if (backedOff + connected > 0) {
-      node.getNodeStats().backedOffPercent.report((double) backedOff / (backedOff + connected));
+      node.network().stats().backedOffPercent.report((double) backedOff / (backedOff + connected));
     }
   }
 
@@ -267,11 +267,13 @@ public class PeerRoutingSelector {
       LOG.debug("Choosing closest peer (connectedPeers={}, key={})", peers.length, effectiveKey);
     }
 
-    double myLoc = node.getLocation();
+    double myLoc = node.network().location();
     double maxDiff = ignoreSelf ? Double.MAX_VALUE : Location.distance(myLoc, target);
     double prevLoc = pn != null ? pn.getLocation() : -1.0;
     TimedOutNodesList entry =
-        effectiveKey != null ? node.getFailureTable().getTimedOutNodesList(effectiveKey) : null;
+        effectiveKey != null
+            ? node.routing().failureTable().getTimedOutNodesList(effectiveKey)
+            : null;
     SelectionRates selection = computeSelectionRates(peers);
     boolean enableFOAF = peers.length >= PeerNode.SELECTION_MIN_PEERS && selection.total > 0.0;
     Set<Double> exclude = buildExcludeLocations(myLoc, prevLoc, routedTo);
@@ -865,7 +867,7 @@ public class PeerRoutingSelector {
       }
       decidedUntil = now + FailureTable.RECENTLY_FAILED_TIME;
     }
-    return key != null && node.getFailureTable().hadAnyOffers(key) ? -1L : decidedUntil;
+    return key != null && node.routing().failureTable().hadAnyOffers(key) ? -1L : decidedUntil;
   }
 
   private static final class FirstSecondChoice {
@@ -957,7 +959,8 @@ public class PeerRoutingSelector {
       int numberOfRoutingBackedOff =
           statusBook.getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF, false);
       if (numberOfRoutingBackedOff + numberOfConnected > 0) {
-        node.getNodeStats()
+        node.network()
+            .stats()
             .backedOffPercent
             .report(
                 (double) numberOfRoutingBackedOff / (numberOfRoutingBackedOff + numberOfConnected));

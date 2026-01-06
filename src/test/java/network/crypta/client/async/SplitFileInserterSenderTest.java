@@ -295,7 +295,7 @@ class SplitFileInserterSenderTest {
 
     // Node core and local store
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(core.getNode()).thenReturn(node);
 
     // Build chosen block with localRequestOnly=true
@@ -314,7 +314,7 @@ class SplitFileInserterSenderTest {
     // Assert
     assertTrue(accepted);
     verify(segment, times(1)).encodeBlock(blockNo);
-    verify(node, times(1)).store(chkBlock, false, true, true, false);
+    verify(node.storage(), times(1)).store(chkBlock, false, true, true, false);
     // onInsertSuccess -> sender.onSuccess -> segment.onInsertedBlock
     verify(segment, times(1)).onInsertedBlock(blockNo, clientKey);
   }
@@ -396,10 +396,13 @@ class SplitFileInserterSenderTest {
     when(sched.getContext()).thenReturn(ctx);
 
     NodeClientCore core = mock(NodeClientCore.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    network.crypta.node.subsystem.NodeStorageSubsystem storage =
+        mock(network.crypta.node.subsystem.NodeStorageSubsystem.class);
     when(core.getNode()).thenReturn(node);
+    when(node.storage()).thenReturn(storage);
     doThrow(new network.crypta.store.KeyCollisionException())
-        .when(node)
+        .when(storage)
         .store(chkBlock, false, true, true, false);
 
     ChosenBlockImpl chosen =

@@ -72,7 +72,7 @@ public abstract class UIDTag {
     this.sourceRef = source == null ? null : source.myRef;
     wasLocal = source == null;
     this.realTimeFlag = realTimeFlag;
-    this.tracker = node.getTracker();
+    this.tracker = node.routing().tracker();
     this.uid = uid;
     if (LOG.isDebugEnabled()) LOG.debug("Create tag {}", this);
     // For locally originated requests, acceptance is immediate by design.

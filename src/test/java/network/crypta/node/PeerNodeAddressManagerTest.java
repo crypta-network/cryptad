@@ -33,7 +33,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PeerNodeAddressManagerTest {
 
   @Mock private PeerNode peer;
-  @Mock private Node node;
+
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
+
   @Mock private OutgoingPacketMangler outgoingMangler;
 
   @Test
@@ -137,7 +140,7 @@ class PeerNodeAddressManagerTest {
     peer.nominalPeer = new ArrayList<>(List.of(detectedDuplicate, peerMatchingNode, duplicatePeer));
 
     FreenetInetAddress localhost = new FreenetInetAddress(inetAddress(127, 0, 0, 1));
-    when(node.getFreenetLocalhostAddress()).thenReturn(localhost);
+    when(node.network().freenetLocalhostAddress()).thenReturn(localhost);
 
     Peer[] nodePeers = new Peer[] {new Peer(matchingAddress, 9999)};
     when(outgoingMangler.getPrimaryIPAddress()).thenReturn(nodePeers);
@@ -373,7 +376,7 @@ class PeerNodeAddressManagerTest {
   @Test
   void shouldThrottle_whenNodeThrottlesLocalData_expectTrue() {
     // Arrange
-    when(node.isThrottleLocalData()).thenReturn(true);
+    when(node.network().isThrottleLocalData()).thenReturn(true);
 
     // Act
     boolean result = PeerNodeAddressManager.shouldThrottle(null, node);
@@ -385,7 +388,7 @@ class PeerNodeAddressManagerTest {
   @Test
   void shouldThrottle_whenPeerNull_expectTrue() {
     // Arrange
-    when(node.isThrottleLocalData()).thenReturn(false);
+    when(node.network().isThrottleLocalData()).thenReturn(false);
 
     // Act
     boolean result = PeerNodeAddressManager.shouldThrottle(null, node);
@@ -398,7 +401,7 @@ class PeerNodeAddressManagerTest {
   void shouldThrottle_whenPeerAddressNull_expectTrue() {
     // Arrange
     Peer throttledPeer = Mockito.mock(Peer.class);
-    when(node.isThrottleLocalData()).thenReturn(false);
+    when(node.network().isThrottleLocalData()).thenReturn(false);
     when(throttledPeer.getAddress(false)).thenReturn(null);
 
     // Act
@@ -412,7 +415,7 @@ class PeerNodeAddressManagerTest {
   void shouldThrottle_whenPeerAddressIsLocal_expectFalse() throws UnknownHostException {
     // Arrange
     Peer throttledPeer = new Peer(inetAddress(127, 0, 0, 1), 1111);
-    when(node.isThrottleLocalData()).thenReturn(false);
+    when(node.network().isThrottleLocalData()).thenReturn(false);
 
     // Act
     boolean result = PeerNodeAddressManager.shouldThrottle(throttledPeer, node);
@@ -425,7 +428,7 @@ class PeerNodeAddressManagerTest {
   void shouldThrottle_whenPeerAddressIsPublic_expectTrue() throws UnknownHostException {
     // Arrange
     Peer throttledPeer = new Peer(inetAddress(8, 8, 8, 8), 1111);
-    when(node.isThrottleLocalData()).thenReturn(false);
+    when(node.network().isThrottleLocalData()).thenReturn(false);
 
     // Act
     boolean result = PeerNodeAddressManager.shouldThrottle(throttledPeer, node);

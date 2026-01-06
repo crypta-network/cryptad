@@ -77,7 +77,10 @@ class NodeHelloMessageTest {
     MessageInvalidException exception =
         assertThrows(
             MessageInvalidException.class,
-            () -> message.run(Mockito.mock(FCPConnectionHandler.class), Mockito.mock(Node.class)));
+            () ->
+                message.run(
+                    Mockito.mock(FCPConnectionHandler.class),
+                    Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
 
     assertAll(
         () -> assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, exception.protocolCode),

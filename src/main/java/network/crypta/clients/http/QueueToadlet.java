@@ -728,7 +728,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return false;
       }
       if (SimpleToadletServer.noConfirmPanic) {
-        core.getNode().killMasterKeysFile();
+        core.getNode().storage().killMasterKeysFile();
         core.getNode().panic();
         sendPanicingPage(ctx);
         core.getNode().finishPanic();
@@ -744,7 +744,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           || request.getPartAsStringFailsafe(CONFIRM_PANIC, 128).isEmpty()) {
         return false;
       }
-      core.getNode().killMasterKeysFile();
+      core.getNode().storage().killMasterKeysFile();
       core.getNode().panic();
       sendPanicingPage(ctx);
       core.getNode().finishPanic();
@@ -1775,7 +1775,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       } else {
         peerTable.addChild("tr").addChild("th", "colspan", "2", l10n("recommendToFriends"));
       }
-      for (DarknetPeerNode peer : core.getNode().getDarknetConnections()) {
+      for (DarknetPeerNode peer : core.getNode().network().darknetConnections()) {
         HTMLNode peerRow = peerTable.addChild("tr", ATTR_CLASS, "darknet_connections_normal");
         peerRow
             .addChild("td", ATTR_CLASS, "peer-marker")
@@ -1875,7 +1875,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         }
       }
 
-      for (DarknetPeerNode peer : core.getNode().getDarknetConnections()) {
+      for (DarknetPeerNode peer : core.getNode().network().darknetConnections()) {
         if (request.isPartSet("node_" + peer.hashCode())) {
           for (FreenetURI furi : uris) peer.sendDownloadFeed(furi, description);
         }
@@ -3941,7 +3941,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         new String[] {"id", "name", "cols", "rows"},
         new String[] {BULK_DOWNLOADS, BULK_DOWNLOADS, "120", "8"});
     downloadForm.addChild("br");
-    PHYSICAL_THREAT_LEVEL threatLevel = core.getNode().getSecurityLevels().getPhysicalThreatLevel();
+    PHYSICAL_THREAT_LEVEL threatLevel =
+        core.getNode().services().securityLevels().getPhysicalThreatLevel();
     // Force downloading to encrypted space if high/maximum threat level or if the user has disabled
     // downloading to disk.
     if (threatLevel == PHYSICAL_THREAT_LEVEL.HIGH
@@ -4092,7 +4093,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       String mimeType,
       QueueType queueType) {
     Objects.requireNonNull(tableContext.pageMaker(), "pageMaker");
-    boolean hasFriends = core.getNode().getDarknetConnections().length > 0;
+    boolean hasFriends = core.getNode().network().darknetConnections().length > 0;
     long now = System.currentTimeMillis();
 
     HTMLNode formDiv = new HTMLNode("div", ATTR_CLASS, "request-table-form");
@@ -4542,7 +4543,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     private void saveCompletedIdentifiersOffThread() {
       core.getNode()
-          .getExecutor()
+          .network()
+          .executor()
           .execute(this::saveCompletedIdentifiers, "Save completed identifiers");
     }
 

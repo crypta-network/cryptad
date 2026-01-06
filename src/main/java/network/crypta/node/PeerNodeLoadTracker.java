@@ -862,12 +862,12 @@ public final class PeerNodeLoadTracker {
 
     synchronized /* lock only used for counter */ void reportFatalTimeoutInWait(boolean local) {
       if (!local) totalFatalTimeouts++;
-      peer.node.getNodeStats().reportFatalTimeoutInWait(local);
+      peer.node.network().stats().reportFatalTimeoutInWait(local);
     }
 
     synchronized /* lock only used for counter */ void reportAllocated(boolean local) {
       if (!local) totalAllocated++;
-      peer.node.getNodeStats().reportAllocatedSlot(local);
+      peer.node.network().stats().reportAllocatedSlot(local);
     }
 
     public synchronized double proportionTimingOutFatallyInWait() {
@@ -893,10 +893,10 @@ public final class PeerNodeLoadTracker {
         loadStats = lastIncomingLoadStats;
       }
       RunningRequestsSnapshot runningRequests =
-          peer.node.getNodeStats().getRunningRequestsTo(peer, realTime);
+          peer.node.network().stats().getRunningRequestsTo(peer, realTime);
       RunningRequestsSnapshot otherRunningRequests = loadStats.getOtherRunningRequests();
       boolean ignoreLocalVsRemoteBandwidthLiability =
-          peer.node.getNodeStats().ignoreLocalVsRemoteBandwidthLiability();
+          peer.node.network().stats().ignoreLocalVsRemoteBandwidthLiability();
       Limits limits =
           new Limits(
               loadStats.outputBandwidthPeerLimit,
@@ -928,7 +928,7 @@ public final class PeerNodeLoadTracker {
         UIDTag tag, RequestLikelyAcceptedState worstAcceptable) {
       PeerLoadStats loadStats;
       boolean ignoreLocalVsRemote =
-          peer.node.getNodeStats().ignoreLocalVsRemoteBandwidthLiability();
+          peer.node.network().stats().ignoreLocalVsRemoteBandwidthLiability();
       if (!peer.isRoutable()) return null;
       if (peer.isInMandatoryBackoff(System.currentTimeMillis(), realTime)) return null;
       synchronized (routedToLock) {
@@ -946,7 +946,7 @@ public final class PeerNodeLoadTracker {
         if (dontSendUnlessGuaranteed) worstAcceptable = RequestLikelyAcceptedState.GUARANTEED;
         // Requests already running to this node
         RunningRequestsSnapshot runningRequests =
-            peer.node.getNodeStats().getRunningRequestsTo(peer, realTime);
+            peer.node.network().stats().getRunningRequestsTo(peer, realTime);
         runningRequests.log(peer);
         // Requests running from its other peers
         RunningRequestsSnapshot otherRunningRequests = loadStats.getOtherRunningRequests();
@@ -1088,7 +1088,7 @@ public final class PeerNodeLoadTracker {
     private void maybeNotifySlotWaiter() {
       if (!peer.isRoutable()) return;
       boolean ignoreLocalVsRemote =
-          peer.node.getNodeStats().ignoreLocalVsRemoteBandwidthLiability();
+          peer.node.network().stats().ignoreLocalVsRemoteBandwidthLiability();
       if (LOG.isDebugEnabled())
         LOG.debug(
             "Maybe waking up slot waiters for {}" + STR_REALTIME_EQ + "{}" + STR_FOR + "{}",
@@ -1207,7 +1207,7 @@ public final class PeerNodeLoadTracker {
         }
         if (LOG.isDebugEnabled()) LOG.debug("Checking slot waiters for {}", type);
         RunningRequestsSnapshot runningRequests =
-            peer.node.getNodeStats().getRunningRequestsTo(peer, realTime);
+            peer.node.network().stats().getRunningRequestsTo(peer, realTime);
         runningRequests.log(peer);
         RunningRequestsSnapshot otherRunningRequests = loadStats.getOtherRunningRequests();
         acceptState =

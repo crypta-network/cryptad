@@ -130,15 +130,15 @@ class LongTermMHKTestTest {
   private static Node prepareNodeForBucket(
       RandomAccessBucket bucket, OutputStream outputStream, int testSize, RandomSource randomSource)
       throws IOException {
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeClientCore clientCore = mock(NodeClientCore.class);
     TempBucketFactory tempBucketFactory = mock(TempBucketFactory.class);
 
-    when(node.getClientCore()).thenReturn(clientCore);
+    when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getTempBucketFactory()).thenReturn(tempBucketFactory);
     when(tempBucketFactory.makeBucket((long) testSize)).thenReturn(bucket);
     when(bucket.getOutputStream()).thenReturn(outputStream);
-    when(node.getFastWeakRandom()).thenReturn(randomSource);
+    when(node.bootstrap().fastWeakRandom()).thenReturn(randomSource);
 
     return node;
   }

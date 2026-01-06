@@ -154,7 +154,10 @@ class FilterMessageTest {
 
     MessageInvalidException exception =
         assertThrows(
-            MessageInvalidException.class, () -> message.run(handler, Mockito.mock(Node.class)));
+            MessageInvalidException.class,
+            () ->
+                message.run(
+                    handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
 
     assertEquals(ProtocolErrorMessage.MISSING_FIELD, exception.protocolCode);
     assertEquals("req-run-nobucket", exception.ident);
@@ -180,7 +183,10 @@ class FilterMessageTest {
 
     MessageInvalidException exception =
         assertThrows(
-            MessageInvalidException.class, () -> message.run(handler, Mockito.mock(Node.class)));
+            MessageInvalidException.class,
+            () ->
+                message.run(
+                    handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
 
     assertEquals(ProtocolErrorMessage.INTERNAL_ERROR, exception.protocolCode);
     assertEquals("req-run-bf", exception.ident);
@@ -221,7 +227,7 @@ class FilterMessageTest {
                 return status;
               });
 
-      message.run(handler, Mockito.mock(Node.class));
+      message.run(handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));
     }
 
     Mockito.verify(handler).send(responseCaptor.capture());
@@ -284,7 +290,7 @@ class FilterMessageTest {
                       Mockito.isNull()))
           .thenThrow(unsafe);
 
-      message.run(handler, Mockito.mock(Node.class));
+      message.run(handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));
     }
 
     Mockito.verify(handler).send(responseCaptor.capture());

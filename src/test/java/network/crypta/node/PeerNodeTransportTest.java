@@ -61,7 +61,7 @@ class PeerNodeTransportTest {
   void sendAsync_whenNotConnected_invokesDisconnectedAndThrows() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
     when(peer.isConnected()).thenReturn(false);
 
@@ -80,7 +80,7 @@ class PeerNodeTransportTest {
   void sendAsync_whenQueueExceedsMax_wakesSender() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
     when(peer.isConnected()).thenReturn(true);
     when(peer.getMaxPacketSize()).thenReturn(100);
@@ -108,7 +108,7 @@ class PeerNodeTransportTest {
   void sendAsync_whenQueueWithinMaxAndCoalescingEnabled_doesNotWakeSender() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
     when(node.isEnablePacketCoalescing()).thenReturn(true);
     when(peer.isConnected()).thenReturn(true);
@@ -136,7 +136,7 @@ class PeerNodeTransportTest {
   void sendSync_whenNotConnected_propagatesNotConnectedException() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
     when(peer.isConnected()).thenReturn(false);
 
@@ -152,7 +152,7 @@ class PeerNodeTransportTest {
   void ping_whenWaitForReturnsMessage_returnsTrue() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
 
     MessageCore usm = Mockito.mock(MessageCore.class);
@@ -160,8 +160,8 @@ class PeerNodeTransportTest {
     ByteCounter pingCounter = new CountingByteCounter();
     setField(dispatcher, NodeDispatcher.class, "pingCounter", pingCounter);
 
-    when(node.getUSM()).thenReturn(usm);
-    when(node.getDispatcher()).thenReturn(dispatcher);
+    when(node.network().usm()).thenReturn(usm);
+    when(node.network().dispatcher()).thenReturn(dispatcher);
     when(usm.waitFor(ArgumentMatchers.any(MessageFilter.class), ArgumentMatchers.isNull()))
         .thenReturn(new Message(DMT.FNPPong));
 
@@ -182,7 +182,7 @@ class PeerNodeTransportTest {
   void ping_whenWaitForReturnsNull_returnsFalse() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
 
     MessageCore usm = Mockito.mock(MessageCore.class);
@@ -190,8 +190,8 @@ class PeerNodeTransportTest {
     ByteCounter pingCounter = new CountingByteCounter();
     setField(dispatcher, NodeDispatcher.class, "pingCounter", pingCounter);
 
-    when(node.getUSM()).thenReturn(usm);
-    when(node.getDispatcher()).thenReturn(dispatcher);
+    when(node.network().usm()).thenReturn(usm);
+    when(node.network().dispatcher()).thenReturn(dispatcher);
     when(usm.waitFor(ArgumentMatchers.any(MessageFilter.class), ArgumentMatchers.isNull()))
         .thenReturn(null);
 
@@ -208,7 +208,7 @@ class PeerNodeTransportTest {
   void ping_whenDisconnectedException_throwsNotConnectedException() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
 
     MessageCore usm = Mockito.mock(MessageCore.class);
@@ -216,8 +216,8 @@ class PeerNodeTransportTest {
     ByteCounter pingCounter = new CountingByteCounter();
     setField(dispatcher, NodeDispatcher.class, "pingCounter", pingCounter);
 
-    when(node.getUSM()).thenReturn(usm);
-    when(node.getDispatcher()).thenReturn(dispatcher);
+    when(node.network().usm()).thenReturn(usm);
+    when(node.network().dispatcher()).thenReturn(dispatcher);
     when(usm.waitFor(ArgumentMatchers.any(MessageFilter.class), ArgumentMatchers.isNull()))
         .thenThrow(new DisconnectedException());
 
@@ -264,14 +264,14 @@ class PeerNodeTransportTest {
   void handleMessage_whenCalled_delegatesToUsmCheckFilters() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeCrypto crypto = Mockito.mock(NodeCrypto.class);
     setField(peer, PeerNode.class, "node", node);
     setField(peer, PeerNode.class, "crypto", crypto);
 
     MessageCore usm = Mockito.mock(MessageCore.class);
     UdpSocketHandler socket = Mockito.mock(UdpSocketHandler.class);
-    when(node.getUSM()).thenReturn(usm);
+    when(node.network().usm()).thenReturn(usm);
     when(crypto.getSocket()).thenReturn(socket);
 
     Message msg = Mockito.mock(Message.class);
@@ -288,11 +288,11 @@ class PeerNodeTransportTest {
   void startProcessingDecryptedMessages_whenDecodeReturnsNull_doesNotHandle() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     setField(peer, PeerNode.class, "node", node);
 
     MessageCore usm = Mockito.mock(MessageCore.class);
-    when(node.getUSM()).thenReturn(usm);
+    when(node.network().usm()).thenReturn(usm);
     when(usm.decodeSingleMessage(
             ArgumentMatchers.any(byte[].class),
             ArgumentMatchers.anyInt(),
@@ -316,14 +316,14 @@ class PeerNodeTransportTest {
   void startProcessingDecryptedMessages_whenPeerLoadStatus_handlesImmediately() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeCrypto crypto = Mockito.mock(NodeCrypto.class);
     setField(peer, PeerNode.class, "node", node);
     setField(peer, PeerNode.class, "crypto", crypto);
 
     MessageCore usm = Mockito.mock(MessageCore.class);
     UdpSocketHandler socket = Mockito.mock(UdpSocketHandler.class);
-    when(node.getUSM()).thenReturn(usm);
+    when(node.network().usm()).thenReturn(usm);
     when(crypto.getSocket()).thenReturn(socket);
     when(usm.decodeSingleMessage(
             ArgumentMatchers.any(byte[].class),
@@ -349,14 +349,14 @@ class PeerNodeTransportTest {
   void complete_whenNormalAndLoadLimited_expectNormalHandledBeforeLoadLimited() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeCrypto crypto = Mockito.mock(NodeCrypto.class);
     setField(peer, PeerNode.class, "node", node);
     setField(peer, PeerNode.class, "crypto", crypto);
 
     MessageCore usm = Mockito.mock(MessageCore.class);
     UdpSocketHandler socket = Mockito.mock(UdpSocketHandler.class);
-    when(node.getUSM()).thenReturn(usm);
+    when(node.network().usm()).thenReturn(usm);
     when(crypto.getSocket()).thenReturn(socket);
 
     Message normal = new Message(DMT.FNPRejectedLoop);
@@ -387,11 +387,11 @@ class PeerNodeTransportTest {
   void sendNodeToNodeMessage_whenNotConnected_removesSentTime() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeStats stats = Mockito.mock(NodeStats.class);
     setField(peer, PeerNode.class, "node", node);
     setField(stats, NodeStats.class, "nodeToNodeCounter", NOOP_COUNTER);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().stats()).thenReturn(stats);
     when(peer.isDarknet()).thenReturn(false);
 
     PeerNodeTransport transport = Mockito.spy(new PeerNodeTransport(peer));
@@ -416,7 +416,7 @@ class PeerNodeTransportTest {
   void sendInitialMessages_whenRealConnection_sendsFiveMessagesAndConnectedDiff() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeStats stats = Mockito.mock(NodeStats.class);
     LocationManager locationManager = Mockito.mock(LocationManager.class);
     PeerManager peerManager = Mockito.mock(PeerManager.class);
@@ -428,10 +428,10 @@ class PeerNodeTransportTest {
 
     when(peer.isRealConnection()).thenReturn(true);
     when(peer.getPeer()).thenReturn(peerRef);
-    when(node.getLocationManager()).thenReturn(locationManager);
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getUptimeEstimator()).thenReturn(uptimeEstimator);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().locationManager()).thenReturn(locationManager);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().uptimeEstimator()).thenReturn(uptimeEstimator);
+    when(node.network().stats()).thenReturn(stats);
     when(locationManager.getLocation()).thenReturn(0.25);
     when(peerManager.getPeerLocationDoubles(true)).thenReturn(new double[] {0.1, 0.2});
     when(uptimeEstimator.getUptime()).thenReturn(0.5d);
@@ -460,7 +460,7 @@ class PeerNodeTransportTest {
   void sendInitialMessages_whenNotRealConnection_skipsLocationMessage() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeStats stats = Mockito.mock(NodeStats.class);
     LocationManager locationManager = Mockito.mock(LocationManager.class);
     PeerManager peerManager = Mockito.mock(PeerManager.class);
@@ -472,10 +472,10 @@ class PeerNodeTransportTest {
 
     when(peer.isRealConnection()).thenReturn(false);
     when(peer.getPeer()).thenReturn(peerRef);
-    when(node.getLocationManager()).thenReturn(locationManager);
-    when(node.getPeers()).thenReturn(peerManager);
-    when(node.getUptimeEstimator()).thenReturn(uptimeEstimator);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().locationManager()).thenReturn(locationManager);
+    when(node.network().peers()).thenReturn(peerManager);
+    when(node.network().uptimeEstimator()).thenReturn(uptimeEstimator);
+    when(node.network().stats()).thenReturn(stats);
     when(locationManager.getLocation()).thenReturn(0.25);
     when(peerManager.getPeerLocationDoubles(true)).thenReturn(new double[] {0.1, 0.2});
     when(uptimeEstimator.getUptime()).thenReturn(0.5d);
@@ -504,13 +504,13 @@ class PeerNodeTransportTest {
   void resendBytes_whenCalled_incrementsCounters() throws Exception {
     // Arrange
     PeerNode peer = Mockito.mock(PeerNode.class);
-    Node node = Mockito.mock(Node.class);
+    Node node = Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     NodeStats stats = Mockito.mock(NodeStats.class);
     CountingByteCounter counter = new CountingByteCounter();
 
     setField(peer, PeerNode.class, "node", node);
     setField(stats, NodeStats.class, "resendByteCounter", counter);
-    when(node.getNodeStats()).thenReturn(stats);
+    when(node.network().stats()).thenReturn(stats);
 
     PeerNodeTransport transport = new PeerNodeTransport(peer);
 

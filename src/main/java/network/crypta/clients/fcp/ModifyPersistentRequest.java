@@ -157,7 +157,8 @@ public class ModifyPersistentRequest extends FCPMessage {
     ClientRequest req = handler.getRebootRequest(global, handler, requestIdentifier);
     if (req == null) {
       try {
-        node.getClientCore()
+        node.services()
+            .clientCore()
             .getClientContext()
             .jobRunner
             .queue(
@@ -190,7 +191,7 @@ public class ModifyPersistentRequest extends FCPMessage {
       }
     } else {
       req.modifyRequest(
-          clientToken, priorityClass, node.getClientCore().getEndpoints().getFCPServer());
+          clientToken, priorityClass, node.services().clientCore().getEndpoints().getFCPServer());
     }
   }
 }

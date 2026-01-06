@@ -80,7 +80,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     assert (isSSK || key instanceof NodeCHK);
     this.htl = htl;
     this.origHTL = htl;
-    newLoadManagement = node.enableNewLoadManagement(realTimeFlag);
+    newLoadManagement = node.network().enableNewLoadManagement(realTimeFlag);
     incomingSearchTimeout = calculateTimeout(realTimeFlag, htl, node);
   }
 
@@ -250,7 +250,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           source,
           nodesRoutedTo,
           htl);
-      node.getPeers().incrementSelectionSamples(next);
+      node.network().peers().incrementSelectionSamples(next);
     } catch (NotConnectedException _) {
       LOG.debug("Not connected");
       next.noLongerRoutingTo(origTag, false);
@@ -636,7 +636,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           source,
           nodesRoutedTo,
           htl);
-      node.getPeers().incrementSelectionSamples(state.next);
+      node.network().peers().incrementSelectionSamples(state.next);
       return true;
     } catch (NotConnectedException _) {
       LOG.debug("Not connected");
@@ -671,7 +671,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   }
 
   private PeerNode closerPeer(Set<PeerNode> exclude, long now) {
-    return node.getPeers()
+    return node.network()
+        .peers()
         .routingSelector()
         .closerPeer(
             sourceForRouting(),
@@ -753,7 +754,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     } else if (waitedForLoadManagement || retriedForLoadManagement) {
       LOG.debug(TOOK_MSG, tryCount, time, suffix);
     }
-    node.getNodeStats().reportNLMDelay(delta, realTimeFlag, source == null);
+    node.network().stats().reportNLMDelay(delta, realTimeFlag, source == null);
   }
 
   private String buildDeltaSuffix(
@@ -798,7 +799,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
   private WaitResult waitOnceForAccepted(MessageFilter mf, PeerNode next, UIDTag origTag) {
     try {
-      Message msg = node.getUSM().waitFor(mf, this);
+      Message msg = node.network().usm().waitFor(mf, this);
       LOG.debug("first part got {}", msg);
       return (msg == null)
           ? new WaitResult(WaitKind.TIMEOUT, null)
@@ -834,7 +835,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     next.localRejectedOverload("AcceptedTimeout", realTimeFlag);
     forwardRejectedOverload();
     int t = timeSinceSent();
-    node.getFailureTable().onFailed(key, next, htl, t, t);
+    node.routing().failureTable().onFailed(key, next, htl, t, t);
     synchronized (this) {
       rejectedLoops++;
     }
@@ -846,7 +847,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     LOG.debug("Rejected loop");
     next.successNotOverload(realTimeFlag);
     int t = timeSinceSent();
-    node.getFailureTable().onFailed(key, next, htl, t, t);
+    node.routing().failureTable().onFailed(key, next, htl, t, t);
     next.noLongerRoutingTo(origTag, false);
     return DO.NEXT_PEER;
   }
@@ -870,7 +871,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       forwardRejectedOverload();
       next.localRejectedOverload("ForwardRejectedOverload", realTimeFlag);
       int t = timeSinceSent();
-      node.getFailureTable().onFailed(key, next, htl, t, t);
+      node.routing().failureTable().onFailed(key, next, htl, t, t);
       LOG.debug("Local RejectedOverload, moving on to next peer");
       next.noLongerRoutingTo(origTag, false);
       return DO.NEXT_PEER;

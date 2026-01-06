@@ -133,14 +133,15 @@ public class SeedServerPeerNode extends PeerNode {
   @SuppressWarnings("java:S1181")
   protected void sendInitialMessages() {
     super.sendInitialMessages();
-    final OpennetManager om = node.getOpennet();
+    final OpennetManager om = node.network().opennet();
     if (om == null) {
       LOG.info("Opennet turned off while connecting to seednodes");
-      node.getPeers().messenger().disconnectAndRemove(this, true, true, true);
+      node.network().peers().messenger().disconnectAndRemove(this, true, true, true);
     } else {
       // Delay announcements: another node may connect first; avoid biasing toward the
       // fastest initial connection.
-      node.getTicker()
+      node.network()
+          .ticker()
           .queueTimedJob(
               () -> {
                 try {
@@ -202,7 +203,7 @@ public class SeedServerPeerNode extends PeerNode {
   @Override
   public boolean disconnected(boolean dumpMessageQueue, boolean dumpTrackers) {
     boolean ret = super.disconnected(dumpMessageQueue, dumpTrackers);
-    node.getPeers().messenger().disconnectAndRemove(this, false, false, false);
+    node.network().peers().messenger().disconnectAndRemove(this, false, false, false);
     return ret;
   }
 
@@ -216,7 +217,7 @@ public class SeedServerPeerNode extends PeerNode {
    */
   @Override
   public boolean shouldDisconnectAndRemoveNow() {
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
     if (om == null) return true;
     if (!om.getAnnouncer().enoughPeers()) return false;
     // Enough peers can fluctuate; require 5 minutes of stability before dropping the seed.

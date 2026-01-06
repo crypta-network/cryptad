@@ -288,7 +288,7 @@ public class SplitFileInserterSender extends SendableInsert {
     private void storeLocally(NodeClientCore node, CHKBlock block, boolean canWriteClientCache)
         throws LowLevelPutException {
       try {
-        node.getNode().store(block, false, canWriteClientCache, true, false);
+        node.getNode().storage().store(block, false, canWriteClientCache, true, false);
       } catch (KeyCollisionException _) {
         throw new LowLevelPutException(LowLevelPutException.COLLISION);
       }

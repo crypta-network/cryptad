@@ -57,9 +57,9 @@ class GenerateSSKMessageTest {
     GenerateSSKMessage message = new GenerateSSKMessage(fs);
 
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     RandomSource randomSource = mock(RandomSource.class);
-    when(node.getRandom()).thenReturn(randomSource);
+    when(node.bootstrap().random()).thenReturn(randomSource);
 
     FreenetURI insertUri =
         new FreenetURI("SSK", "insert", new byte[] {1, 2}, new byte[32], new byte[] {3});
@@ -78,7 +78,7 @@ class GenerateSSKMessageTest {
       message.run(handler, node);
 
       mocked.verify(() -> InsertableClientSSK.createRandom(randomSource, ""), times(1));
-      verify(node, times(1)).getRandom();
+      verify(node.bootstrap(), times(1)).random();
 
       ArgumentCaptor<SSKKeypairMessage> captor = ArgumentCaptor.forClass(SSKKeypairMessage.class);
       verify(handler, times(1)).send(captor.capture());
@@ -95,9 +95,9 @@ class GenerateSSKMessageTest {
     GenerateSSKMessage message = new GenerateSSKMessage(new SimpleFieldSet(true));
 
     FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
-    Node node = mock(Node.class);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     RandomSource randomSource = mock(RandomSource.class);
-    when(node.getRandom()).thenReturn(randomSource);
+    when(node.bootstrap().random()).thenReturn(randomSource);
 
     FreenetURI insertUri =
         new FreenetURI("SSK", "insert", new byte[] {7, 8}, new byte[32], new byte[] {9});

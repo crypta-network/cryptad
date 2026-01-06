@@ -36,16 +36,17 @@ public class TestUtil {
   }
 
   static boolean waitForNodes(Node node) throws InterruptedException {
-    int targetPeers = node.getOpennet().getAnnouncementThreshold();
+    int targetPeers = node.network().opennet().getAnnouncementThreshold();
     // Wait until the opennet connection count reaches the configured threshold.
     int seconds = 0;
     boolean success = false;
     while (seconds < 600) {
       Thread.sleep(1000);
-      int seeds = node.getPeers().countSeednodes();
-      int seedConns = node.getPeers().seedPeers().getConnectedSeedServerPeersVector(null).size();
-      int opennetPeers = node.getPeers().countValidPeers();
-      int opennetConns = node.getPeers().countConnectedOpennetPeers();
+      int seeds = node.network().peers().countSeednodes();
+      int seedConns =
+          node.network().peers().seedPeers().getConnectedSeedServerPeersVector(null).size();
+      int opennetPeers = node.network().peers().countValidPeers();
+      int opennetConns = node.network().peers().countConnectedOpennetPeers();
       LOG.info(
           "{} : seeds: {}, connected: {} opennet: peers: {}, connected: {}",
           seconds,

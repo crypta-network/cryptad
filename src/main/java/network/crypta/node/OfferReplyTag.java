@@ -31,7 +31,7 @@ public class OfferReplyTag extends UIDTag {
    * @param realTimeFlag Whether this request uses the real‑time routing budget.
    * @param uid Unique identifier associated with this in‑flight operation.
    * @param node Owning node; used to obtain the {@link RequestTracker} via {@link
-   *     Node#getTracker()}.
+   *     {@code node.routing().tracker()}.
    */
   public OfferReplyTag(boolean isSSK, PeerNode source, boolean realTimeFlag, long uid, Node node) {
     super(source, realTimeFlag, uid, node);

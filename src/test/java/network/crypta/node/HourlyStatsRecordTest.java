@@ -21,13 +21,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class HourlyStatsRecordTest {
 
-  @Mock private Node node;
+  @Mock(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
+  private Node node;
 
   @BeforeEach
   void setUp() {
     when(node.maxHTL()).thenReturn((short) 10);
-    Mockito.lenient().when(node.getLocation()).thenReturn(0.5);
-    Mockito.lenient().when(node.getUptime()).thenReturn(42_000L);
+    Mockito.lenient().when(node.network().location()).thenReturn(0.5);
+    Mockito.lenient().when(node.network().uptimeEstimator().getUptime()).thenReturn(42_000d);
   }
 
   @Test

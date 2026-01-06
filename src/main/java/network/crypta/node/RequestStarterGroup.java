@@ -100,7 +100,7 @@ public class RequestStarterGroup {
       ClientContext ctx)
       throws InvalidConfigValueException {
     SubConfig schedulerConfig = config.createSubConfig("node.scheduler");
-    this.stats = node.getNodeStats();
+    this.stats = node.network().stats();
 
     throttleWindowBulk =
         new ThrottleWindowManager(2.0, fs == null ? null : fs.subset("ThrottleWindow"), node);

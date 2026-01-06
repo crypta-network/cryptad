@@ -70,9 +70,9 @@ public class PeerAlertCoordinator {
    * }</pre>
    */
   public void start() {
-    alert = new PeerManagerUserAlert(node.getNodeStats(), node.getNodeUpdater());
+    alert = new PeerManagerUserAlert(node.network().stats(), node.services().nodeUpdater());
     update();
-    node.getClientCore().getAlerts().register(alert);
+    node.services().clientCore().getAlerts().register(alert);
   }
 
   /**
@@ -92,13 +92,14 @@ public class PeerAlertCoordinator {
     int opennetPeers = roster.getOpennetPeers().length;
     int peers = darknetPeers + opennetPeers;
 
-    OpennetManager om = node.getOpennet();
+    OpennetManager om = node.network().opennet();
     boolean opennetEnabled = om != null;
     boolean opennetDefinitelyPortForwarded = om != null && om.getCrypto().definitelyPortForwarded();
     boolean opennetAssumeNAT =
         om != null && om.getCrypto().getConfig().alwaysHandshakeAggressively();
-    boolean darknetDefinitelyPortForwarded = node.darknetDefinitelyPortForwarded();
-    boolean darknetAssumeNAT = node.getDarknetCrypto().getConfig().alwaysHandshakeAggressively();
+    boolean darknetDefinitelyPortForwarded = node.network().darknetDefinitelyPortForwarded();
+    boolean darknetAssumeNAT =
+        node.network().darknetCrypto().getConfig().alwaysHandshakeAggressively();
 
     synchronized (uaLock) {
       ua.setOpennetDefinitelyPortForwarded(opennetDefinitelyPortForwarded);
@@ -129,6 +130,6 @@ public class PeerAlertCoordinator {
       ua.setTooNewPeersTotal(
           statusBook.getPeerNodeStatusSize(PeerManager.PEER_NODE_STATUS_TOO_NEW, false));
     }
-    if (roster.anyConnectedPeers()) node.onConnectedPeer();
+    if (roster.anyConnectedPeers()) node.network().onConnectedPeer();
   }
 }

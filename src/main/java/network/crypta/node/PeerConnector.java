@@ -72,7 +72,7 @@ public class PeerConnector {
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    PeerNode pn = node.createNewDarknetNode(noderef, trust, visibility);
+    PeerNode pn = node.network().createNewDarknetNode(noderef, trust, visibility);
     PeerNode[] peerList = peerManager.myPeers();
     for (PeerNode mp : peerList) {
       if (Arrays.equals(mp.peerECDSAPubKeyHash, pn.peerECDSAPubKeyHash)) return;
