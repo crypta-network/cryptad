@@ -1,5 +1,6 @@
 package network.crypta.node.subsystem;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -11,8 +12,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.keys.CHKBlock;
 import network.crypta.node.DatabaseKey;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -20,6 +23,9 @@ import network.crypta.node.NodeInitException;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
+import network.crypta.store.CHKStore;
+import network.crypta.store.FreenetStore;
+import network.crypta.store.saltedhash.SaltedHashFreenetStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -216,5 +222,42 @@ class NodeStorageSubsystemTest {
 
     assertFalse(subsystem.isDatabaseAwaitingPassword());
     assertFalse(subsystem.isClientCacheAwaitingPassword());
+  }
+
+  @Test
+  void setStorePreallocate_whenSaltHashBeforeStoresInitialized_doesNotThrow() {
+    subsystem.setStoreType(Node.TYPE_SALT_HASH);
+
+    assertDoesNotThrow(() -> subsystem.setStorePreallocate(true));
+    assertTrue(subsystem.isStorePreallocate());
+  }
+
+  @Test
+  void setStorePreallocate_whenStoreIsWrapped_appliesToUnderlyingSaltedHashStore()
+      throws Exception {
+    subsystem.setStoreType(Node.TYPE_SALT_HASH);
+
+    CHKStore chkDatastore = new CHKStore();
+    @SuppressWarnings("unchecked")
+    FreenetStore<CHKBlock> wrapperStore = org.mockito.Mockito.mock(FreenetStore.class);
+    @SuppressWarnings("unchecked")
+    SaltedHashFreenetStore<CHKBlock> saltedHashStore =
+        org.mockito.Mockito.mock(SaltedHashFreenetStore.class);
+
+    when(wrapperStore.getUnderlyingStore()).thenReturn(saltedHashStore);
+    chkDatastore.setStore(wrapperStore);
+
+    setPrivateField(subsystem, "chkDatastore", chkDatastore);
+
+    subsystem.setStorePreallocate(true);
+
+    verify(saltedHashStore).setPreallocate(true);
+  }
+
+  private static void setPrivateField(Object target, String fieldName, Object value)
+      throws ReflectiveOperationException {
+    Field field = target.getClass().getDeclaredField(fieldName);
+    field.setAccessible(true);
+    field.set(target, value);
   }
 }

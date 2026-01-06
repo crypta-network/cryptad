@@ -537,9 +537,21 @@ public final class NodeStorageSubsystem {
   }
 
   private void setPreallocate(StoreCallback<?> datastore, boolean value) {
-    // Avoid race conditions by checking first.
+    if (datastore == null) {
+      return;
+    }
+
+    // Avoid races during startup/config init: the callback may exist while no store is bound yet,
+    // and wrappers can sit in front of the salted-hash store.
     FreenetStore<?> store = datastore.getStore();
-    if (store instanceof SaltedHashFreenetStore<?> freenetStore) freenetStore.setPreallocate(value);
+    if (store == null) {
+      return;
+    }
+
+    FreenetStore<?> underlyingStore = store.getUnderlyingStore();
+    if (underlyingStore instanceof SaltedHashFreenetStore<?> freenetStore) {
+      freenetStore.setPreallocate(value);
+    }
   }
 
   public long getDatastoreSize() {
