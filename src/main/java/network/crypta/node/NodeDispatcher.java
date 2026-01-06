@@ -129,7 +129,7 @@ public class NodeDispatcher implements Dispatcher {
 
     // Remaining message families
     if (swapHandler.handle(m, source)) return true;
-    if (dataRequestHandler.handle(m, source)) return true;
+    if (dataRequestHandler.handle(m)) return true;
     if (insertRequestHandler.handle(m, source)) return true;
     if (routedMessageRouter.handle(m, source)) return true;
     if (offerMessageHandler.handle(m, source)) return true;
