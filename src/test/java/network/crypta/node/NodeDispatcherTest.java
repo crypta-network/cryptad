@@ -61,7 +61,7 @@ class NodeDispatcherTest {
     when(network.stats()).thenReturn(stats);
     when(network.ticker()).thenReturn(ticker);
     // The constructor schedules a periodic task; execute nothing in tests.
-    doAnswer(inv -> null).when(ticker).queueTimedJob(any(Runnable.class), anyLong());
+    doAnswer(_ -> null).when(ticker).queueTimedJob(any(Runnable.class), anyLong());
     // Minimal config tree so Probe(node) can register options under the "node" SubConfig
     network.crypta.config.PersistentConfig cfg = new network.crypta.config.PersistentConfig(null);
     cfg.createSubConfig("node");
@@ -186,7 +186,6 @@ class NodeDispatcherTest {
   @Test
   void handleMessage_whenDetectedIP_expectPeerUpdatedAndRedetect() {
     PeerNode src = peerMock();
-    PeerTransport transport = src.transport();
     Peer detected = new Peer(java.net.InetAddress.getLoopbackAddress(), 12345);
     Message m = withSource(DMT.createFNPDetectedIPAddress(detected), src);
     org.junit.jupiter.api.Assertions.assertNotNull(m.getSource());
@@ -306,7 +305,6 @@ class NodeDispatcherTest {
   @Test
   void setHook_whenCallbackSet_expectSnoopInvokedOnMessage() {
     PeerNode src = peerMock();
-    PeerTransport transport = src.transport();
     Message m = withSource(DMT.createFNPVoid(), src);
 
     NodeDispatcherCallback cb = mock(NodeDispatcherCallback.class);
