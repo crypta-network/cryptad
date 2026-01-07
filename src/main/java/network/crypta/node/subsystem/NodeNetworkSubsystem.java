@@ -8,6 +8,8 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.config.Dimension;
 import network.crypta.config.EnumerableOptionCallback;
@@ -15,6 +17,7 @@ import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
+import network.crypta.io.comm.AsyncMessageFilterCallback;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
 import network.crypta.io.comm.FreenetInetAddress;
@@ -23,6 +26,7 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.Peer;
+import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.io.comm.TrafficClass;
@@ -1568,15 +1572,53 @@ public final class NodeNetworkSubsystem {
     Message m = DMT.createFNPRoutedPing(uid, loc2, node.maxHTL(), initialX, pubKeyHash);
     LOG.info("Message: {}", m);
 
-    dispatcher().handleRouted(m, null);
-    MessageFilter mf1 =
+    MessageFilter filter =
         MessageFilter.create().setField(DMT.UID, uid).setType(DMT.FNPRoutedPong).setTimeout(5000);
+    CountDownLatch latch = new CountDownLatch(1);
+    AtomicReference<Message> replyRef = new AtomicReference<>();
+    AsyncMessageFilterCallback callback =
+        new AsyncMessageFilterCallback() {
+          @Override
+          public void onMatched(Message msg) {
+            replyRef.set(msg);
+            latch.countDown();
+          }
+
+          @Override
+          public boolean shouldTimeout() {
+            return false;
+          }
+
+          @Override
+          public void onTimeout() {
+            latch.countDown();
+          }
+
+          @Override
+          public void onDisconnect(PeerContext ctx) {
+            latch.countDown();
+          }
+
+          @Override
+          public void onRestarted(PeerContext ctx) {
+            latch.countDown();
+          }
+        };
     try {
-      m = usm().waitFor(mf1, null);
+      usm().addAsyncFilter(filter, callback, null);
     } catch (DisconnectedException _) {
-      LOG.info("Disconnected in waiting for pong");
+      LOG.info("Disconnected while registering pong filter");
       return -1;
     }
+
+    dispatcher().handleRouted(m, null);
+    try {
+      if (!latch.await(5, SECONDS)) return -1;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return -1;
+    }
+    m = replyRef.get();
     if (m == null) return -1;
     if (m.getSpec() == DMT.FNPRoutedRejected) return -1;
     return m.getInt(DMT.COUNTER) - initialX;
