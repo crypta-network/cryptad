@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
@@ -20,6 +21,7 @@ import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
+import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.Peer;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
@@ -44,6 +46,7 @@ class NodeRoutedMessageRouterTest {
 
   @Mock private Node node;
   @Mock private NodeNetworkSubsystem network;
+  @Mock private MessageCore messageCore;
   @Mock private PrioritizedTicker ticker;
   @Mock private NodeStats nodeStats;
   @Mock private PeerManager peerManager;
@@ -90,6 +93,24 @@ class NodeRoutedMessageRouterTest {
     router.handleRouted(ping, source);
 
     Message reply = captureSent(sourceTransport);
+    assertEquals(DMT.FNPRoutedPong, reply.getSpec());
+    assertEquals(UID, reply.getLong(DMT.UID));
+    assertEquals(COUNTER, reply.getInt(DMT.COUNTER));
+  }
+
+  @Test
+  void handleRouted_whenLocalTargetAndLocalOrigin_dispatchesPongToMessageCore() {
+    when(node.enableRoutedPing()).thenReturn(true);
+    when(network.locationManager()).thenReturn(locationManager);
+    when(network.usm()).thenReturn(messageCore);
+    NodeRoutedMessageRouter router = new NodeRoutedMessageRouter(node);
+    when(locationManager.getLocation()).thenReturn(TARGET);
+    Message ping = DMT.createFNPRoutedPing(UID, TARGET, HTL, COUNTER, IDENTITY);
+
+    router.handleRouted(ping, null);
+
+    verify(messageCore).checkFilters(messageCaptor.capture(), isNull());
+    Message reply = messageCaptor.getValue();
     assertEquals(DMT.FNPRoutedPong, reply.getSpec());
     assertEquals(UID, reply.getLong(DMT.UID));
     assertEquals(COUNTER, reply.getInt(DMT.COUNTER));

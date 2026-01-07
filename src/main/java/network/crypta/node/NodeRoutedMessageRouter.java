@@ -216,6 +216,7 @@ final class NodeRoutedMessageRouter implements Runnable {
   private boolean rejectDuplicateRoutedIfAny(long id, short htl, PeerNode source, Message m) {
     RoutedContext ctx = routedContexts.get(id);
     if (ctx == null) return false;
+    if (source == null) return true;
     try {
       source
           .transport()
@@ -493,6 +494,10 @@ final class NodeRoutedMessageRouter implements Runnable {
       int x = m.getInt(DMT.COUNTER);
       Message reply = DMT.createFNPRoutedPong(id, x);
       if (LOG.isDebugEnabled()) LOG.debug("Reply routed pong; counter={} id={}", x, id);
+      if (src == null) {
+        node.network().usm().checkFilters(reply, null);
+        return;
+      }
       try {
         src.transport().sendAsync(reply, null, nodeStats.routedMessageCtr);
       } catch (NotConnectedException _) {
