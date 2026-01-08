@@ -156,54 +156,26 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * network.crypta.support.io.NoFreeBucket}. When {@code targetFilename} is provided, a one-file
    * manifest is created so clients can retrieve the file as {@code <final-key>/<targetFilename>}.
    *
-   * @param callback callback receiving lifecycle events, success/failure, and generated outputs;
-   *     must remain valid for the lifetime of the insert, never {@code null}.
-   * @param data data source to publish; readable for the duration of the insert and freed on
-   *     completion unless wrapped in a non-freeing bucket implementation.
-   * @param targetURI desired destination URI; may be CHK/SSK/KSK/USK depending on configuration;
-   *     must be an insert-capable form and passes {@link FreenetURI#checkInsertURI()}.
-   * @param cm client-visible metadata such as MIME type and optional attributes; may be cloned if
-   *     persistence is enabled to shield against caller mutation during the insert.
-   * @param ctx insert configuration controlling splitfile strategy, priority, and compatibility
-   *     mode; used throughout to drive scheduling and encoding decisions.
-   * @param priorityClass priority hint for scheduling; higher values may be deprioritized under
-   *     load depending on scheduler policy; preserved across restarts.
-   * @param isMetadata when {@code true}, treats the content as metadata-only to be stored
-   *     accordingly; callers should set based on their retrieval expectations.
-   * @param targetFilename optional manifest filename to expose the single file under; when set,
-   *     clients can fetch {@code <final-URI>/<targetFilename>} directly.
-   * @param binaryBlob enable the binary-blob inserter path used by some protocols; otherwise the
-   *     standard single-file inserter path is chosen.
-   * @param overrideSplitfileCrypto optional 32-byte key to override random generation; when
-   *     provided, length must be exactly 32 bytes; {@code null} enables randomization.
-   * @param metadataThreshold when greater than zero, returns compact final metadata instead of a
-   *     URI when the encoded metadata length is below this threshold; units are bytes.
+   * @param request bundled request parameters including callback, data, target URI, and insert
+   *     context; values are stored without validation to preserve legacy behavior.
+   * @param options optional settings for filename hints, binary-blob behavior, splitfile crypto
+   *     overrides, and metadata thresholding; use {@link ClientPutterOptions#defaults()} for
+   *     standard behavior.
    */
-  public ClientPutter(
-      ClientPutCallback callback,
-      RandomAccessBucket data,
-      FreenetURI targetURI,
-      ClientMetadata cm,
-      InsertContext ctx,
-      short priorityClass,
-      boolean isMetadata,
-      String targetFilename,
-      boolean binaryBlob,
-      byte[] overrideSplitfileCrypto,
-      long metadataThreshold) {
-    super(priorityClass, callback.getRequestClient());
-    this.cm = cm;
-    this.isMetadata = isMetadata;
-    this.callback = callback;
-    this.data = data;
-    this.targetURI = targetURI;
-    this.ctx = ctx;
+  public ClientPutter(ClientPutterRequest request, ClientPutterOptions options) {
+    super(request.priorityClass(), request.callback().getRequestClient());
+    this.cm = request.clientMetadata();
+    this.isMetadata = request.isMetadata();
+    this.callback = request.callback();
+    this.data = request.data();
+    this.targetURI = request.targetURI();
+    this.ctx = request.insertContext();
     this.finished = false;
     this.cancelled = false;
-    this.targetFilename = targetFilename;
-    this.binaryBlob = binaryBlob;
-    this.overrideSplitfileCrypto = overrideSplitfileCrypto;
-    this.metadataThreshold = metadataThreshold;
+    this.targetFilename = options.targetFilename();
+    this.binaryBlob = options.binaryBlob();
+    this.overrideSplitfileCrypto = options.overrideSplitfileCrypto();
+    this.metadataThreshold = options.metadataThreshold();
   }
 
   /**
@@ -228,7 +200,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    *
    * <p>When {@code restart} is {@code true}, internal counters are reset and the insert is
    * re-scheduled if the previous attempt has finished. The method returns {@code false} when a
-   * start is rejected by guards (e.g., already starting, currently running, or cancelled). If an
+   * start is rejected by guards (e.g., already starting, currently running, or canceled). If an
    * {@link InsertException} occurs during preparation, the callback is notified and the method
    * returns {@code true} only when scheduling has successfully begun.
    *
@@ -237,7 +209,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * @param context execution context with schedulers and utilities required by the insert; must be
    *     non-null and remain valid while the insert is active.
    * @return {@code true} if the insert was accepted and scheduled; {@code false} if a guard
-   *     prevented starting or the operation was cancelled before scheduling.
+   *     prevented starting or the operation was canceled before scheduling.
    * @throws InsertException if validation, bucket access, or other preconditions fail during
    *     preparation; the callback is notified with the same exception instance.
    */
@@ -251,7 +223,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
         throw new InsertException(InsertExceptionMode.BUCKET_ERROR, "No data to insert", null);
 
       if (!prepareAndBuildState(restart, context, cryptoAlgorithm, randomiseKeys)) {
-        // If the insert was actually cancelled, report cancellation; otherwise this was a guard
+        // If the insert was actually canceled, report cancellation; otherwise this was a guard
         // rejection (e.g., already starting/running) and should not notify failure.
         synchronized (this) {
           if (cancelled) {
@@ -423,7 +395,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   public static boolean randomiseSplitfileKeys(FreenetURI targetURI, InsertContext ctx) {
     // If the top level key is an SSK, all CHK blocks and particularly splitfiles below it should
     // have
-    // randomised keys. This substantially improves security by making it impossible to identify
+    // randomized keys. This substantially improves security by making it impossible to identify
     // blocks
     // even if you know the content. In the user interface, we will offer the option of inserting as
     // a
@@ -537,7 +509,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 
   /**
    * Cancels the insert if it has not already finished. This triggers a failure callback with a
-   * {@link InsertExceptionMode#CANCELLED} reason unless the request was already cancelled.
+   * {@link InsertExceptionMode#CANCELLED} reason unless the request was already canceled.
    */
   @Override
   public void cancel(ClientContext context) {
@@ -554,7 +526,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   }
 
   /**
-   * Indicates whether the insert has completed or was cancelled. The return value becomes stable
+   * Indicates whether the insert has completed or was canceled. The return value becomes stable
    * after completion; callers may poll to drive UI state while waiting for callbacks.
    */
   @Override
@@ -752,7 +724,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * @param context execution context with schedulers and utilities required by the insert; must be
    *     non-null and valid for rescheduling.
    * @return {@code true} if the restart was accepted and scheduled; {@code false} if guards
-   *     rejected the attempt or the request was cancelled.
+   *     rejected the attempt or the request was canceled.
    * @throws InsertException if validation or preparation fails during restart; the callback is
    *     notified with the thrown exception.
    */
@@ -764,7 +736,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   public void onTransition(
       ClientGetState oldState, ClientGetState newState, ClientContext context) {
     // Ignore, at the moment
-    // This exists here because e.g. USKInserter does requests as well as inserts.
+    // This exists here because e.g. USKInserter does request as well as inserts.
   }
 
   @Override

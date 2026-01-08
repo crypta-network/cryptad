@@ -25,6 +25,8 @@ import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.async.BinaryBlob;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutter;
+import network.crypta.client.async.ClientPutterOptions;
+import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.SHA256;
@@ -247,17 +249,12 @@ public class ClientPut extends ClientPutBase {
 
     putter =
         new ClientPutter(
-            this,
-            data,
-            this.uri,
-            cm,
-            ctx,
-            priorityClass,
-            isMetadata,
-            this.uri.getDocName() == null ? targetFilename : null,
-            binaryBlob,
-            overrideSplitfileKey,
-            -1);
+            new ClientPutterRequest(this, data, this.uri, cm, ctx, priorityClass, isMetadata),
+            new ClientPutterOptions(
+                this.uri.getDocName() == null ? targetFilename : null,
+                binaryBlob,
+                overrideSplitfileKey,
+                -1));
   }
 
   /**
@@ -338,17 +335,13 @@ public class ClientPut extends ClientPutBase {
     if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
     putter =
         new ClientPutter(
-            this,
-            data,
-            this.uri,
-            cm,
-            ctx,
-            priorityClass,
-            preparedData.isMetadata(),
-            this.uri.getDocName() == null ? targetFilename : null,
-            binaryBlob,
-            message.overrideSplitfileCryptoKey,
-            message.metadataThreshold);
+            new ClientPutterRequest(
+                this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata()),
+            new ClientPutterOptions(
+                this.uri.getDocName() == null ? targetFilename : null,
+                binaryBlob,
+                message.overrideSplitfileCryptoKey,
+                message.metadataThreshold));
   }
 
   private static String ensureConnectionIdentifierAvailable(

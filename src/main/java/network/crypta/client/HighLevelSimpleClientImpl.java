@@ -10,6 +10,8 @@ import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
+import network.crypta.client.async.ClientPutterOptions;
+import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.DefaultManifestPutter;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -473,17 +475,15 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     PutWaiter pw = new PutWaiter(this);
     ClientPutter put =
         new ClientPutter(
-            pw,
-            insert.getData(),
-            insert.desiredURI,
-            insert.clientMetadata,
-            ctx,
-            priority,
-            isMetadata,
-            filenameHint,
-            false,
-            forceCryptoKey,
-            -1);
+            new ClientPutterRequest(
+                pw,
+                insert.getData(),
+                insert.desiredURI,
+                insert.clientMetadata,
+                ctx,
+                priority,
+                isMetadata),
+            new ClientPutterOptions(filenameHint, false, forceCryptoKey, -1));
     try {
       core.getClientContext().start(put);
     } catch (PersistenceDisabledException _) {
@@ -514,17 +514,15 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
       throws InsertException {
     ClientPutter put =
         new ClientPutter(
-            cb,
-            insert.getData(),
-            insert.desiredURI,
-            insert.clientMetadata,
-            ctx,
-            priority,
-            isMetadata,
-            filenameHint,
-            false,
-            null,
-            -1);
+            new ClientPutterRequest(
+                cb,
+                insert.getData(),
+                insert.desiredURI,
+                insert.clientMetadata,
+                ctx,
+                priority,
+                isMetadata),
+            new ClientPutterOptions(filenameHint, false, null, -1));
     try {
       core.getClientContext().start(put);
     } catch (PersistenceDisabledException _) {
