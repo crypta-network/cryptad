@@ -171,6 +171,42 @@ public class ClientGetter extends BaseClientGetter
 
   private transient boolean resumedFetcher;
 
+  // Constructors.
+
+  /**
+   * Create a getter from a request and optional settings.
+   *
+   * <p>This constructor centralizes request initialization while keeping the request parameters and
+   * optional behavior flags in reusable parameter objects. It performs no validation and preserves
+   * the legacy behavior of the expanded constructor.
+   *
+   * @param request base request parameters including callback, URI, context, and priority
+   * @param options optional settings such as return buckets and binary blob recording
+   */
+  public ClientGetter(ClientGetterRequest request, ClientGetterOptions options) {
+    super(request.priorityClass(), request.client().getRequestClient());
+    this.clientCallback = request.client();
+    this.returnBucket = options.returnBucket();
+    this.uri = request.uri();
+    this.ctx = request.ctx();
+    this.finished = false;
+    this.actx = new ArchiveContext(ctx.getMaxTempLength(), ctx.getMaxArchiveLevels());
+    this.binaryBlobWriter = options.binaryBlobWriter();
+    this.dontFinalizeBlobWriter = options.dontFinalizeBlobWriter();
+    this.initialMetadata = options.initialMetadata();
+    archiveRestarts = 0;
+    this.forceCompatibleExtension = options.forceCompatibleExtension();
+  }
+
+  /**
+   * Create a getter with default options.
+   *
+   * @param request base request parameters including callback, URI, context, and priority
+   */
+  public ClientGetter(ClientGetterRequest request) {
+    this(request, ClientGetterOptions.defaults());
+  }
+
   // Shorter constructors for convenience and backwards compatibility.
 
   /**
@@ -187,7 +223,7 @@ public class ClientGetter extends BaseClientGetter
    */
   public ClientGetter(
       ClientGetCallback client, FreenetURI uri, FetchContext ctx, short priorityClass) {
-    this(client, uri, ctx, priorityClass, null, null, null);
+    this(new ClientGetterRequest(client, uri, ctx, priorityClass), ClientGetterOptions.defaults());
   }
 
   /**
@@ -208,7 +244,9 @@ public class ClientGetter extends BaseClientGetter
       FetchContext ctx,
       short priorityClass,
       Bucket returnBucket) {
-    this(client, uri, ctx, priorityClass, returnBucket, null, null);
+    this(
+        new ClientGetterRequest(client, uri, ctx, priorityClass),
+        ClientGetterOptions.withReturnBucket(returnBucket));
   }
 
   /**
@@ -234,7 +272,9 @@ public class ClientGetter extends BaseClientGetter
       short priorityClass,
       Bucket returnBucket,
       BinaryBlobWriter binaryBlobWriter) {
-    this(client, uri, ctx, priorityClass, returnBucket, binaryBlobWriter, null);
+    this(
+        new ClientGetterRequest(client, uri, ctx, priorityClass),
+        ClientGetterOptions.withBinaryBlobWriter(returnBucket, binaryBlobWriter));
   }
 
   /**
@@ -262,15 +302,8 @@ public class ClientGetter extends BaseClientGetter
       BinaryBlobWriter binaryBlobWriter,
       Bucket initialMetadata) {
     this(
-        client,
-        uri,
-        ctx,
-        priorityClass,
-        returnBucket,
-        binaryBlobWriter,
-        false,
-        initialMetadata,
-        null);
+        new ClientGetterRequest(client, uri, ctx, priorityClass),
+        ClientGetterOptions.withInitialMetadata(returnBucket, binaryBlobWriter, initialMetadata));
   }
 
   /**
@@ -291,6 +324,7 @@ public class ClientGetter extends BaseClientGetter
    * @param forceCompatibleExtension If set, and filtering is enabled, the MIME type we filter with
    *     must be compatible with this extension
    */
+  @SuppressWarnings("java:S107")
   public ClientGetter(
       ClientGetCallback client,
       FreenetURI uri,
@@ -301,18 +335,14 @@ public class ClientGetter extends BaseClientGetter
       boolean dontFinalizeBlobWriter,
       Bucket initialMetadata,
       String forceCompatibleExtension) {
-    super(priorityClass, client.getRequestClient());
-    this.clientCallback = client;
-    this.returnBucket = returnBucket;
-    this.uri = uri;
-    this.ctx = ctx;
-    this.finished = false;
-    this.actx = new ArchiveContext(ctx.getMaxTempLength(), ctx.getMaxArchiveLevels());
-    this.binaryBlobWriter = binaryBlobWriter;
-    this.dontFinalizeBlobWriter = dontFinalizeBlobWriter;
-    this.initialMetadata = initialMetadata;
-    archiveRestarts = 0;
-    this.forceCompatibleExtension = forceCompatibleExtension;
+    this(
+        new ClientGetterRequest(client, uri, ctx, priorityClass),
+        new ClientGetterOptions(
+            returnBucket,
+            binaryBlobWriter,
+            dontFinalizeBlobWriter,
+            initialMetadata,
+            forceCompatibleExtension));
   }
 
   /** Required because we implement {@link Serializable}. */
