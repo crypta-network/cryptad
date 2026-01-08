@@ -87,7 +87,7 @@ class OpennetManagerTest {
     }
 
     // Act
-    byte[] result = OpennetManager.waitForOpennetNoderef(true, peer, uid, null, node);
+    byte[] result = OpennetNoderefWaiter.waitForOpennetNoderef(true, peer, uid, null, node);
 
     // Assert
     assertNull(result, "Ack path signals completion without noderef");
@@ -114,11 +114,11 @@ class OpennetManagerTest {
 
     // Act + Assert
     assertThrows(
-        OpennetManager.WaitedTooLongForOpennetNoderefException.class,
-        () -> OpennetManager.waitForOpennetNoderef(false, peer, uid, byteCounter, node));
+        OpennetNoderefWaiter.WaitedTooLongForOpennetNoderefException.class,
+        () -> OpennetNoderefWaiter.waitForOpennetNoderef(false, peer, uid, byteCounter, node));
   }
 
-  static final class TestCallback implements OpennetManager.NoderefCallback {
+  static final class TestCallback implements OpennetNoderefWaiter.NoderefCallback {
 
     boolean timedOut;
     Boolean ackTimedOut;
@@ -153,11 +153,11 @@ class OpennetManagerTest {
     TestCallback cb = new TestCallback();
 
     // Act
-    OpennetManager.waitForOpennetNoderef(true, peer, uid, null, cb, node);
+    OpennetNoderefWaiter.waitForOpennetNoderef(true, peer, uid, null, cb, node);
 
     // Assert
     assertNull(cb.noderef, "Disconnected path delivers null noderef via callback");
-    // Ensure no timeout was signalled here
+    // Ensure no timeout was signaled here
     assertFalse(cb.timedOut, "should not signal timeout on immediate disconnect");
   }
 
@@ -190,7 +190,7 @@ class OpennetManagerTest {
   void validateNoderef_whenInvalidData_expectNull() {
     byte[] bogus = new byte[] {0x00, 0x01, 0x02, 0x03, 0x7F, 0x00, 0x10, 0x55, (byte) 0xAA, 0x5A};
     // Act
-    var ref = OpennetManager.validateNoderef(bogus, peer, false);
+    var ref = OpennetNoderefValidator.validateNoderef(bogus, peer, false);
     // Assert
     assertNull(ref, "invalid bytes should fail parsing and return null");
   }

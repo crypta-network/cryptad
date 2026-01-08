@@ -2131,13 +2131,9 @@ public final class NodeNetworkSubsystem {
    * @param fs field set describing the peer to add; must be non-null
    * @param connectionType how the peer reference was obtained; must be non-null
    * @return created opennet peer node, or {@code null} if opennet is disabled
-   * @throws FSParseException if the field set cannot be parsed
-   * @throws PeerParseException if peer fields are invalid
-   * @throws ReferenceSignatureVerificationException if the reference signature fails validation
    */
   public OpennetPeerNode addNewOpennetNode(
-      SimpleFieldSet fs, OpennetManager.ConnectionType connectionType)
-      throws FSParseException, PeerParseException, ReferenceSignatureVerificationException {
+      SimpleFieldSet fs, OpennetManager.ConnectionType connectionType) {
     if (opennet() == null) return null;
     return opennet().addNewOpennetNode(fs, connectionType, false);
   }

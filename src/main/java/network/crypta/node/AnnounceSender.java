@@ -8,8 +8,6 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
-import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
@@ -636,15 +634,15 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private void processAnnouncementReply(
       long transferUID, int paddedLen, int length, PeerNode from) {
     byte[] buf =
-        OpennetManager.innerWaitForOpennetNoderef(
+        OpennetNoderefWaiter.innerWaitForOpennetNoderef(
             transferUID,
             paddedLen,
             length,
-            new OpennetManager.NoderefTransferCtx(from, false, uid, true, this, node));
+            new OpennetNoderefWaiter.NoderefTransferCtx(from, false, uid, true, this, node));
     if (buf == null) {
       return; // Don't relay
     }
-    SimpleFieldSet fs = OpennetManager.validateNoderef(buf, from, false);
+    SimpleFieldSet fs = OpennetNoderefValidator.validateNoderef(buf, from, false);
     if (fs == null) {
       if (cb != null) cb.bogusNoderef("invalid noderef");
       return; // Don't relay
@@ -667,15 +665,10 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private void addNodeFromFs(SimpleFieldSet fs) {
-    try {
-      OpennetPeerNode pn = node.network().addNewOpennetNode(fs, ConnectionType.ANNOUNCE);
-      if (cb != null) {
-        if (pn != null) cb.addedNode(pn);
-        else cb.nodeNotAdded();
-      }
-    } catch (FSParseException | ReferenceSignatureVerificationException | PeerParseException e) {
-      LOG.info(LOG_FAILED_PARSE_REPLY, e, e);
-      if (cb != null) cb.bogusNoderef(PARSE_FAILED_PREFIX + e);
+    OpennetPeerNode pn = node.network().addNewOpennetNode(fs, ConnectionType.ANNOUNCE);
+    if (cb != null) {
+      if (pn != null) cb.addedNode(pn);
+      else cb.nodeNotAdded();
     }
   }
 
@@ -758,15 +751,15 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   /** Returns {@code true} when the upstream noderef was received and validated. */
   private boolean transferNoderef() {
     noderefBuf =
-        OpennetManager.innerWaitForOpennetNoderef(
+        OpennetNoderefWaiter.innerWaitForOpennetNoderef(
             xferUID,
             paddedLength,
             noderefLength,
-            new OpennetManager.NoderefTransferCtx(source, false, uid, true, this, node));
+            new OpennetNoderefWaiter.NoderefTransferCtx(source, false, uid, true, this, node));
     if (noderefBuf == null) {
       return false;
     }
-    SimpleFieldSet fs = OpennetManager.validateNoderef(noderefBuf, source, false);
+    SimpleFieldSet fs = OpennetNoderefValidator.validateNoderef(noderefBuf, source, false);
     if (fs == null) {
       OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
       return false;
@@ -781,10 +774,6 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
         sendNotWanted();
         // Okay, just route it.
       }
-    } catch (FSParseException | ReferenceSignatureVerificationException | PeerParseException e) {
-      LOG.warn(LOG_REJECTING_NODEREF, e, e);
-      OpennetManager.rejectRef(uid, source, DMT.NODEREF_REJECTED_INVALID, this);
-      return false;
     } catch (NotConnectedException _) {
       LOG.info("Could not receive noderef, disconnected");
       return false;
