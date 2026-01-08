@@ -31,7 +31,7 @@ import network.crypta.keys.SSKVerifyException;
 import network.crypta.node.FailureTable.BlockOffer;
 import network.crypta.node.FailureTable.OfferList;
 import network.crypta.node.OpennetManager.ConnectionType;
-import network.crypta.node.OpennetManager.WaitedTooLongForOpennetNoderefException;
+import network.crypta.node.OpennetNoderefWaiter.WaitedTooLongForOpennetNoderefException;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.SimpleFieldSet;
@@ -1987,7 +1987,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    */
   private boolean finishOpennet(final PeerNode next) {
     try {
-      byte[] noderef = OpennetManager.waitForOpennetNoderef(false, next, uid, this, node);
+      byte[] noderef = OpennetNoderefWaiter.waitForOpennetNoderef(false, next, uid, this, node);
       return handleNoderefResult(next, noderef);
     } catch (FSParseException | PeerParseException e) {
       LOG.error("Could not parse opennet noderef for {} from {}", this, next, e);
@@ -2030,11 +2030,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   }
 
   private boolean processOpennetRef(PeerNode next, byte[] noderef, OpennetManager om)
-      throws FSParseException,
-          PeerParseException,
-          ReferenceSignatureVerificationException,
-          NotConnectedException {
-    SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, next, false);
+      throws NotConnectedException {
+    SimpleFieldSet ref = OpennetNoderefValidator.validateNoderef(noderef, next, false);
     if (ref == null) {
       ackOpennet(next);
       return false;
@@ -2088,7 +2085,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       notifyAll();
     }
     try {
-      OpennetManager.waitForOpennetNoderef(false, next, uid, this, node);
+      OpennetNoderefWaiter.waitForOpennetNoderef(false, next, uid, this, node);
     } catch (WaitedTooLongForOpennetNoderefException _) {
       LOG.error(
           "RequestSender FATAL TIMEOUT out waiting for noderef from {}" + FOR_SEP + "{}",

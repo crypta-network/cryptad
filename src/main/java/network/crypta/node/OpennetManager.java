@@ -27,27 +27,18 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Message;
-import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
-import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
-import network.crypta.io.comm.RetrievalException;
-import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
-import network.crypta.io.xfer.BulkReceiver;
 import network.crypta.io.xfer.BulkTransmitter;
-import network.crypta.io.xfer.BulkTransmitter.AllSentCallback;
 import network.crypta.io.xfer.PartiallyReceivedBulk;
 import network.crypta.node.OpennetPeerNode.NOT_DROP_REASON;
 import network.crypta.support.Fields;
-import network.crypta.support.HTMLNode;
 import network.crypta.support.LRUQueue;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeSortedHashtable;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
 import network.crypta.support.io.FileUtil;
-import network.crypta.support.io.NativeThread;
 import network.crypta.support.transport.ip.HostnameSyntaxException;
 import network.crypta.support.transport.ip.IPUtil;
 import org.slf4j.Logger;
@@ -491,9 +482,6 @@ public class OpennetManager {
     if (announcer != null) announcer.start();
   }
 
-  record NoderefTransferCtx(
-      PeerNode source, boolean isReply, long uid, boolean sendReject, ByteCounter ctr, Node node) {}
-
   /**
    * Stop opennet subsystems.
    *
@@ -890,14 +878,10 @@ public class OpennetManager {
    * @param connectionType The reason/category for the add (affects grace limits).
    * @param allowExisting If {@code true}, return the current instance when already present.
    * @return The new or existing {@link OpennetPeerNode}, or {@code null} when not accepted.
-   * @throws FSParseException If the field set cannot be parsed.
-   * @throws PeerParseException If the noderef contents are invalid.
-   * @throws ReferenceSignatureVerificationException If signature verification fails.
    */
   @SuppressWarnings("java:S1181")
   public OpennetPeerNode addNewOpennetNode(
-      SimpleFieldSet fs, ConnectionType connectionType, boolean allowExisting)
-      throws FSParseException, PeerParseException, ReferenceSignatureVerificationException {
+      SimpleFieldSet fs, ConnectionType connectionType, boolean allowExisting) {
     try {
       OpennetPeerNode pn =
           new OpennetPeerNode(fs, node, crypto, this, false, node.network().peers());
@@ -1513,14 +1497,21 @@ public class OpennetManager {
   }
 
   /**
-   * Send our opennet noderef to a peer without a completion callback.
+   * Callback invoked when all packets of an opennet noderef transfer have been queued and observed
+   * as sent.
    *
-   * @see #sendOpennetRef(boolean, long, PeerNode, byte[], ByteCounter, AllSentCallback)
+   * <p>This is intentionally narrower than {@link
+   * network.crypta.io.xfer.BulkTransmitter.AllSentCallback} so callers do not need to depend on
+   * bulk transfer internals.
    */
-  public void sendOpennetRef(
-      boolean isReply, long uid, PeerNode peer, byte[] noderef, ByteCounter ctr)
-      throws NotConnectedException {
-    sendOpennetRef(isReply, uid, peer, noderef, ctr, null);
+  @FunctionalInterface
+  public interface NoderefAllSentCallback {
+    /**
+     * Called asynchronously once all packets have been queued and their send callbacks have fired.
+     *
+     * @param anyFailed {@code true} if any packet failed to send; {@code false} otherwise
+     */
+    void allSent(boolean anyFailed);
   }
 
   /**
@@ -1537,7 +1528,33 @@ public class OpennetManager {
    */
   @SuppressWarnings("UnusedReturnValue")
   public boolean sendOpennetRef(
-      boolean isReply, long uid, PeerNode peer, byte[] noderef, ByteCounter ctr, AllSentCallback cb)
+      boolean isReply, long uid, PeerNode peer, byte[] noderef, ByteCounter ctr)
+      throws NotConnectedException {
+    return sendOpennetRef(isReply, uid, peer, noderef, ctr, null);
+  }
+
+  /**
+   * Send our opennet noderef to a node, with an optional callback invoked when all packets have
+   * been queued and observed as sent.
+   *
+   * @param isReply If true, send an FNPOpennetConnectReply, else send an
+   *     FNPOpennetConnectDestination.
+   * @param uid The unique ID of the request chain involved.
+   * @param peer The node to send the noderef to. Not necessarily an OpennetPeerNode, as path
+   *     folding and possibly announcement can pass through darknet.
+   * @param noderef The full compressed noderef to send.
+   * @param cb Optional callback invoked when all packets have been queued and sent.
+   * @throws NotConnectedException If the peer becomes disconnected while we are trying to send the
+   *     noderef.
+   */
+  @SuppressWarnings("UnusedReturnValue")
+  public boolean sendOpennetRef(
+      boolean isReply,
+      long uid,
+      PeerNode peer,
+      byte[] noderef,
+      ByteCounter ctr,
+      NoderefAllSentCallback cb)
       throws NotConnectedException {
     byte[] padded = new byte[paddedSize(noderef.length)];
     if (noderef.length > padded.length) {
@@ -1563,19 +1580,23 @@ public class OpennetManager {
    * @param xferUID The transfer UID
    * @param padded The length of the data to transfer.
    * @param peer The peer to send it to.
-   * @param cb Optional callback invoked when all bytes are sent.
+   * @param cb Optional callback invoked when all packets have been queued and observed as sent.
    * @throws NotConnectedException If the peer is not connected, or we lose the connection to the
    *     peer, or it restarts.
    */
   private boolean innerSendOpennetRef(
-      long xferUID, byte[] padded, PeerNode peer, ByteCounter ctr, AllSentCallback cb)
+      long xferUID, byte[] padded, PeerNode peer, ByteCounter ctr, NoderefAllSentCallback cb)
       throws NotConnectedException {
     ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(padded);
     raf.setReadOnly();
     PartiallyReceivedBulk prb =
         new PartiallyReceivedBulk(node.network().usm(), padded.length, Node.PACKET_SIZE, raf, true);
     try {
-      BulkTransmitter bt = new BulkTransmitter(prb, peer, xferUID, true, ctr, true, cb);
+      BulkTransmitter.AllSentCallback bulkCb = null;
+      if (cb != null) {
+        bulkCb = (bulkTransmitter, anyFailed) -> cb.allSent(anyFailed);
+      }
+      BulkTransmitter bt = new BulkTransmitter(prb, peer, xferUID, true, ctr, true, bulkCb);
       return bt.send();
     } catch (DisconnectedException e) {
       throw new NotConnectedException(e);
@@ -1655,234 +1676,6 @@ public class OpennetManager {
     innerSendOpennetRef(xferUID, padded, peer, ctr, null);
   }
 
-  public interface NoderefCallback {
-    /** Got a noderef. */
-    void gotNoderef(byte[] noderef);
-
-    /** Timed out waiting for a noderef. */
-    void timedOut();
-
-    /**
-     * Got an ack; not a timeout, but no noderef will arrive.
-     *
-     * @param timedOutMessage {@code true} when the upstream reports a timeout; {@code false} for a
-     *     regular completion ack.
-     */
-    void acked(boolean timedOutMessage);
-  }
-
-  private static class SyncNoderefCallback implements NoderefCallback {
-
-    byte[] returned;
-    boolean finished;
-    boolean timedOut;
-
-    @Override
-    public synchronized void timedOut() {
-      timedOut = true;
-      finished = true;
-      notifyAll();
-    }
-
-    @Override
-    public void acked(boolean timedOutMessage) {
-      gotNoderef(null);
-    }
-
-    @Override
-    public synchronized void gotNoderef(byte[] noderef) {
-      returned = noderef;
-      finished = true;
-      notifyAll();
-    }
-
-    public synchronized byte[] waitForResult() throws WaitedTooLongForOpennetNoderefException {
-      while (!finished)
-        try {
-          wait();
-        } catch (InterruptedException _) {
-          Thread.currentThread().interrupt();
-        }
-      if (timedOut) throw new WaitedTooLongForOpennetNoderefException();
-      return returned;
-    }
-  }
-
-  public static class WaitedTooLongForOpennetNoderefException extends Exception {}
-
-  /**
-   * Wait for an opennet noderef.
-   *
-   * @param isReply If true, wait for an FNPOpennetConnectReply[New], if false wait for an
-   *     FNPOpennetConnectDestination[New].
-   * @param uid The UID of the parent request.
-   * @return An opennet noderef.
-   */
-  public static byte[] waitForOpennetNoderef(
-      boolean isReply, PeerNode source, long uid, ByteCounter ctr, Node node)
-      throws WaitedTooLongForOpennetNoderefException {
-    SyncNoderefCallback cb = new SyncNoderefCallback();
-    if (LOG.isDebugEnabled())
-      LOG.debug("Wait for opennet noderef uid={} from {} reply={}", uid, source, isReply);
-    waitForOpennetNoderef(isReply, source, uid, ctr, cb, node);
-    return cb.waitForResult();
-  }
-
-  /**
-   * Asynchronously wait for an opennet noderef or completion ack and deliver it to a callback.
-   *
-   * @param isReply Whether to expect a reply ({@code FNPOpennetConnectReplyNew}) or a destination
-   *     ({@code FNPOpennetConnectDestinationNew}).
-   * @param source The source peer that will send the noderef.
-   * @param uid The parent request UID for correlating messages.
-   * @param ctr Byte counter for accounting.
-   * @param callback Callback invoked on noderef receipt, ack, or timeout.
-   * @param node The owning node used to register filters.
-   */
-  public static void waitForOpennetNoderef(
-      final boolean isReply,
-      final PeerNode source,
-      final long uid,
-      final ByteCounter ctr,
-      final NoderefCallback callback,
-      final Node node) {
-    // Backward-compatibility handling
-    MessageFilter mf =
-        MessageFilter.create()
-            .setSource(source)
-            .setField(DMT.UID, uid)
-            .setTimeout(RequestSender.OPENNET_TIMEOUT)
-            .setType(isReply ? DMT.FNPOpennetConnectReplyNew : DMT.FNPOpennetConnectDestinationNew);
-    // Also waiting for an ack
-    MessageFilter mfAck =
-        MessageFilter.create()
-            .setSource(source)
-            .setField(DMT.UID, uid)
-            .setTimeout(RequestSender.OPENNET_TIMEOUT)
-            .setType(DMT.FNPOpennetCompletedAck);
-    // Also waiting for an upstream timed out.
-    MessageFilter mfAckTimeout =
-        MessageFilter.create()
-            .setSource(source)
-            .setField(DMT.UID, uid)
-            .setTimeout(RequestSender.OPENNET_TIMEOUT)
-            .setType(DMT.FNPOpennetCompletedTimeout);
-
-    mf = mfAck.or(mfAckTimeout.or(mf));
-    try {
-      node.network()
-          .usm()
-          .addAsyncFilter(
-              mf,
-              new SlowAsyncMessageFilterCallback() {
-
-                boolean completed;
-
-                @Override
-                public void onMatched(Message msg) {
-                  if (msg.getSpec() == DMT.FNPOpennetCompletedAck
-                      || msg.getSpec() == DMT.FNPOpennetCompletedTimeout) {
-                    synchronized (this) {
-                      if (completed) return;
-                      completed = true;
-                    }
-                    callback.acked(msg.getSpec() == DMT.FNPOpennetCompletedTimeout);
-                  } else {
-                    // Noderef bulk transfer
-                    long xferUID = msg.getLong(DMT.TRANSFER_UID);
-                    int paddedLength = msg.getInt(DMT.PADDED_LENGTH);
-                    int realLength = msg.getInt(DMT.NODEREF_LENGTH);
-                    complete(
-                        innerWaitForOpennetNoderef(
-                            xferUID,
-                            paddedLength,
-                            realLength,
-                            new NoderefTransferCtx(source, isReply, uid, false, ctr, node)));
-                  }
-                }
-
-                @Override
-                public boolean shouldTimeout() {
-                  return false;
-                }
-
-                @Override
-                public void onTimeout() {
-                  synchronized (this) {
-                    if (completed) return;
-                    completed = true;
-                  }
-                  callback.timedOut();
-                }
-
-                @Override
-                public void onDisconnect(PeerContext ctx) {
-                  complete(null);
-                }
-
-                @Override
-                public void onRestarted(PeerContext ctx) {
-                  complete(null);
-                }
-
-                @Override
-                public int getPriority() {
-                  return NativeThread.PriorityLevel.NORM_PRIORITY.value;
-                }
-
-                private void complete(byte[] buf) {
-                  synchronized (this) {
-                    if (completed) return;
-                    completed = true;
-                  }
-                  callback.gotNoderef(buf);
-                }
-              },
-              ctr);
-    } catch (DisconnectedException _) {
-      callback.gotNoderef(null);
-    }
-  }
-
-  @SuppressWarnings("java:S1168")
-  static byte[] innerWaitForOpennetNoderef(
-      long xferUID, int paddedLength, int realLength, NoderefTransferCtx ctx) {
-    byte[] buf = new byte[paddedLength];
-    ByteArrayRandomAccessBuffer raf = new ByteArrayRandomAccessBuffer(buf);
-    PartiallyReceivedBulk prb =
-        new PartiallyReceivedBulk(
-            ctx.node.network().usm(), buf.length, Node.PACKET_SIZE, raf, false);
-    BulkReceiver br = new BulkReceiver(prb, ctx.source, xferUID, ctx.ctr);
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "Receive opennet noderef (reply={}) via bulk transfer (uid={} xferUID={} from={})",
-          ctx.isReply,
-          ctx.uid,
-          xferUID,
-          ctx.source);
-    }
-    if (!br.receive()) {
-      if (ctx.source.isConnected()) {
-        String msg =
-            "Failed to receive noderef bulk transfer : "
-                + RetrievalException.getErrString(prb.getAbortReason())
-                + " : "
-                + prb.getAbortDescription()
-                + " from "
-                + ctx.source;
-        if (prb.getAbortReason() != RetrievalException.SENDER_DISCONNECTED) {
-          LOG.warn(msg);
-        } else {
-          LOG.info(msg);
-        }
-        if (ctx.sendReject)
-          rejectRef(ctx.uid, ctx.source, DMT.NODEREF_REJECTED_TRANSFER_FAILED, ctx.ctr);
-      }
-      return null;
-    }
-    return Arrays.copyOf(buf, realLength);
-  }
-
   /**
    * Send a noderef rejection to the given peer.
    *
@@ -1898,37 +1691,6 @@ public class OpennetManager {
     } catch (NotConnectedException _) {
       // Ignore
     }
-  }
-
-  /**
-   * Validate and parse a compressed noderef.
-   *
-   * @param noderef Compressed noderef bytes.
-   * @param from Peer the noderef came from (for logging).
-   * @param forceOpennetEnabled If {@code true}, inject {@code opennet=true} into the parsed ref.
-   * @return Parsed {@link SimpleFieldSet} when valid; {@code null} otherwise.
-   */
-  public static SimpleFieldSet validateNoderef(
-      byte[] noderef, PeerNode from, boolean forceOpennetEnabled) {
-    SimpleFieldSet ref;
-    try {
-      ref = PeerNode.compressedNoderefToFieldSet(noderef, noderef.length);
-    } catch (FSParseException e) {
-      LOG.error("Invalid noderef: {}", e, e);
-      return null;
-    }
-    if (forceOpennetEnabled) ref.put("opennet", true);
-
-    if (!OpennetPeerNode.validateRef(ref)) {
-      LOG.error("Could not parse opennet noderef from {}", from);
-      return null;
-    }
-
-    String identity = ref.get("identity");
-    if (identity != null) { // N2N_MESSAGE_TYPE_DIFFNODEREF don't have identity
-      registerKnownIdentity(identity);
-    }
-    return ref;
   }
 
   /**
@@ -1954,7 +1716,7 @@ public class OpennetManager {
   private static final long MAX_AGE = DAYS.toMillis(7);
   private static final TimeSortedHashtable<String> knownIds = new TimeSortedHashtable<>();
 
-  private static void registerKnownIdentity(String d) {
+  static void registerKnownIdentity(String d) {
     if (LOG.isDebugEnabled()) LOG.debug("Known identity: {}", d);
     long now = System.currentTimeMillis();
 
@@ -1997,48 +1759,55 @@ public class OpennetManager {
   }
 
   /**
-   * Render opennet connection statistics into a table element.
+   * Return the count of connection attempts for the given {@link ConnectionType}.
    *
-   * @param box Parent HTML node to append a statistics table to.
+   * <p>Thread safety: reads are synchronized to avoid races with opennet connection bookkeeping.
+   *
+   * @param type the connection type to read
+   * @return number of attempts
    */
-  public void drawOpennetStatsBox(HTMLNode box) {
-    HTMLNode table = box.addChild("table", "border", "0");
-    HTMLNode row = table.addChild("tr");
+  public synchronized long getConnectionAttempts(ConnectionType type) {
+    return connectionAttempts.get(type);
+  }
 
-    row.addChild("th");
-    for (ConnectionType type : ConnectionType.values()) {
-      row.addChild("th", type.name());
-    }
+  /**
+   * Return the count of accepted connection attempts for the given {@link ConnectionType}.
+   *
+   * @param type the connection type to read
+   * @return number of accepted attempts
+   */
+  public synchronized long getConnectionAttemptsAdded(ConnectionType type) {
+    return connectionAttemptsAdded.get(type);
+  }
 
-    row = table.addChild("tr");
-    row.addChild("td", "Connection attempts");
-    for (ConnectionType type : ConnectionType.values()) {
-      row.addChild("td", Long.toString(connectionAttempts.get(type)));
-    }
+  /**
+   * Return the count of accepted connection attempts where free slots were available.
+   *
+   * @param type the connection type to read
+   * @return number of accepted attempts with free slots
+   */
+  public synchronized long getConnectionAttemptsAddedPlentySpace(ConnectionType type) {
+    return connectionAttemptsAddedPlentySpace.get(type);
+  }
 
-    row = table.addChild("tr");
-    row.addChild("td", "Connections accepted");
-    for (ConnectionType type : ConnectionType.values()) {
-      row.addChild("td", Long.toString(connectionAttemptsAdded.get(type)));
-    }
+  /**
+   * Return the count of connection attempts rejected by per-type grace period enforcement.
+   *
+   * @param type the connection type to read
+   * @return number of rejected attempts
+   */
+  public synchronized long getConnectionAttemptsRejectedByPerTypeEnforcement(ConnectionType type) {
+    return connectionAttemptsRejectedByPerTypeEnforcement.get(type);
+  }
 
-    row = table.addChild("tr");
-    row.addChild("td", "Accepted (free slots)");
-    for (ConnectionType type : ConnectionType.values()) {
-      row.addChild("td", Long.toString(connectionAttemptsAddedPlentySpace.get(type)));
-    }
-
-    row = table.addChild("tr");
-    row.addChild("td", "Rejected (per-type grace periods)");
-    for (ConnectionType type : ConnectionType.values()) {
-      row.addChild("td", Long.toString(connectionAttemptsRejectedByPerTypeEnforcement.get(type)));
-    }
-
-    row = table.addChild("tr");
-    row.addChild("td", "Rejected (no droppable peers)");
-    for (ConnectionType type : ConnectionType.values()) {
-      row.addChild("td", Long.toString(connectionAttemptsRejectedNoPeersDroppable.get(type)));
-    }
+  /**
+   * Return the count of connection attempts rejected because no peers were droppable.
+   *
+   * @param type the connection type to read
+   * @return number of rejected attempts
+   */
+  public synchronized long getConnectionAttemptsRejectedNoPeersDroppable(ConnectionType type) {
+    return connectionAttemptsRejectedNoPeersDroppable.get(type);
   }
 
   /**
@@ -2055,15 +1824,6 @@ public class OpennetManager {
   @SuppressWarnings("unused")
   public void reannounce() {
     announcer.reannounce();
-  }
-
-  /**
-   * Render seed announcement statistics into the provided container.
-   *
-   * @param content Parent HTML node for the report.
-   */
-  public void drawSeedStatsBox(HTMLNode content) {
-    seedTracker.drawSeedStats(content);
   }
 
   /**

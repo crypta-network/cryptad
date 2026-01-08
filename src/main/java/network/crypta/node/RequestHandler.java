@@ -6,12 +6,9 @@ import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
-import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTransmitterCompletion;
 import network.crypta.io.xfer.BlockTransmitter.ReceiverAbortHandler;
-import network.crypta.io.xfer.BulkTransmitter.AllSentCallback;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.Key;
@@ -20,8 +17,8 @@ import network.crypta.keys.NodeCHK;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.node.OpennetManager.ConnectionType;
-import network.crypta.node.OpennetManager.NoderefCallback;
-import network.crypta.node.OpennetManager.WaitedTooLongForOpennetNoderefException;
+import network.crypta.node.OpennetNoderefWaiter.NoderefCallback;
+import network.crypta.node.OpennetNoderefWaiter.WaitedTooLongForOpennetNoderefException;
 import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.TimeUtil;
@@ -937,7 +934,7 @@ public class RequestHandler
       // Check whether it is actually the noderef of the peer.
       // If so, we need to relay it anyway.
 
-      SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, source, false);
+      SimpleFieldSet ref = OpennetNoderefValidator.validateNoderef(noderef, source, false);
 
       if (ref != null && !om.alreadyHaveOpennetNode(ref)) {
         if (LOG.isDebugEnabled()) LOG.debug("Reset path folding for {}", this);
@@ -984,7 +981,7 @@ public class RequestHandler
 
     // Wait for response
 
-    OpennetManager.waitForOpennetNoderef(
+    OpennetNoderefWaiter.waitForOpennetNoderef(
         true,
         source,
         uid,
@@ -1023,18 +1020,14 @@ public class RequestHandler
   private void finishOpennetNoRelayInner(byte[] noderef) {
     if (noderef == null || noderef.length == 0) return;
 
-    SimpleFieldSet ref = OpennetManager.validateNoderef(noderef, source, false);
+    SimpleFieldSet ref = OpennetNoderefValidator.validateNoderef(noderef, source, false);
 
     if (ref == null) return;
 
-    try {
-      if (node.network().addNewOpennetNode(ref, ConnectionType.PATH_FOLDING) == null)
-        LOG.info("Asked for opennet ref but did not want it for {} :\n{}", this, ref);
-      else LOG.info("Added opennet noderef for {}", this);
-    } catch (FSParseException | PeerParseException e) {
-      LOG.error("Failed to parse opennet noderef for {} from {}", this, source, e);
-    } catch (ReferenceSignatureVerificationException e) {
-      LOG.error("Invalid signature on opennet noderef for {} from {}: {}", this, source, e, e);
+    if (node.network().addNewOpennetNode(ref, ConnectionType.PATH_FOLDING) == null) {
+      LOG.info("Asked for opennet ref but did not want it for {} :\n{}", this, ref);
+    } else {
+      LOG.info("Added opennet noderef for {}", this);
     }
   }
 
@@ -1070,7 +1063,7 @@ public class RequestHandler
 
     // We have sent a noderef. Therefore, we must unlock, not ack.
 
-    OpennetManager.waitForOpennetNoderef(
+    OpennetNoderefWaiter.waitForOpennetNoderef(
         true, source, uid, this, new FinishOpennetRelayCallback(om, dataSource), node);
   }
 
@@ -1090,7 +1083,7 @@ public class RequestHandler
         rs.ackOpennet(dataSource);
       } else {
         // Send it forward to the data source, if it is valid.
-        if (OpennetManager.validateNoderef(newNoderef, source, false) != null) {
+        if (OpennetNoderefValidator.validateNoderef(newNoderef, source, false) != null) {
           try {
             if (LOG.isDebugEnabled())
               LOG.debug("Relay noderef from source to data source for {}", RequestHandler.this);
@@ -1100,17 +1093,15 @@ public class RequestHandler
                 dataSource,
                 newNoderef,
                 RequestHandler.this,
-                (AllSentCallback)
-                    (bulkTransmitter, anyFailed) -> {
-                      // As soon as the originator receives the three blocks, he can reuse the slot.
-                      tag.finishedWaitingForOpennet(dataSource);
-                      tag.unlockHandler();
-                      applyByteCounts();
-                      // Note that sendOpennetRef() does not wait for an acknowledgement or even for
-                      // the blocks to have been sent! So this will be called well after
-                      // gotNoderef()
-                      // exits.
-                    });
+                anyFailed -> {
+                  // As soon as the originator receives the three blocks, he can reuse the slot.
+                  tag.finishedWaitingForOpennet(dataSource);
+                  tag.unlockHandler();
+                  applyByteCounts();
+                  // Note that sendOpennetRef() does not wait for an acknowledgement or even for
+                  // the blocks to have been sent! So this will be called well after gotNoderef()
+                  // exits.
+                });
           } catch (NotConnectedException _) {
             // How sad
           }

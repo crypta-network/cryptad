@@ -892,13 +892,49 @@ public class StatisticsToadlet extends Toadlet {
   private void drawOpennetStatsBox(HTMLNode box, OpennetManager om) {
     box.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("opennetStats"));
     HTMLNode opennetStatsContent = box.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    om.drawOpennetStatsBox(opennetStatsContent);
+    HTMLNode table = opennetStatsContent.addChild(TAG_TABLE, ATTR_BORDER, "0");
+    HTMLNode row = table.addChild("tr");
+
+    row.addChild("th");
+    for (OpennetManager.ConnectionType type : OpennetManager.ConnectionType.values()) {
+      row.addChild("th", type.name());
+    }
+
+    row = table.addChild("tr");
+    row.addChild("td", "Connection attempts");
+    for (OpennetManager.ConnectionType type : OpennetManager.ConnectionType.values()) {
+      row.addChild("td", Long.toString(om.getConnectionAttempts(type)));
+    }
+
+    row = table.addChild("tr");
+    row.addChild("td", "Connections accepted");
+    for (OpennetManager.ConnectionType type : OpennetManager.ConnectionType.values()) {
+      row.addChild("td", Long.toString(om.getConnectionAttemptsAdded(type)));
+    }
+
+    row = table.addChild("tr");
+    row.addChild("td", "Accepted (free slots)");
+    for (OpennetManager.ConnectionType type : OpennetManager.ConnectionType.values()) {
+      row.addChild("td", Long.toString(om.getConnectionAttemptsAddedPlentySpace(type)));
+    }
+
+    row = table.addChild("tr");
+    row.addChild("td", "Rejected (per-type grace periods)");
+    for (OpennetManager.ConnectionType type : OpennetManager.ConnectionType.values()) {
+      row.addChild("td", Long.toString(om.getConnectionAttemptsRejectedByPerTypeEnforcement(type)));
+    }
+
+    row = table.addChild("tr");
+    row.addChild("td", "Rejected (no droppable peers)");
+    for (OpennetManager.ConnectionType type : OpennetManager.ConnectionType.values()) {
+      row.addChild("td", Long.toString(om.getConnectionAttemptsRejectedNoPeersDroppable(type)));
+    }
   }
 
   private void drawSeedStatsBox(HTMLNode box, OpennetManager om) {
     box.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("seedStats"));
     HTMLNode opennetStatsContent = box.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
-    om.drawSeedStatsBox(opennetStatsContent);
+    om.getSeedTracker().drawSeedStats(opennetStatsContent);
   }
 
   private void drawClientRequestersBox(HTMLNode box) {
