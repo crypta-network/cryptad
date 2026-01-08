@@ -302,7 +302,8 @@ class ClientGetterTest {
             });
 
     return new ClientGetter(
-        callback, uri, fctx, (short) 1, returnBucket, null, false, null, forceCompatibleExt);
+        new ClientGetterRequest(callback, uri, fctx, (short) 1),
+        new ClientGetterOptions(returnBucket, null, false, null, forceCompatibleExt));
   }
 
   private ClientContext newContext(FetchContext fctx, InsertContext ictx) {
@@ -382,7 +383,7 @@ class ClientGetterTest {
 
     StreamGenerator generator = Mockito.mock(StreamGenerator.class);
     doAnswer(
-            inv -> {
+            _ -> {
               throw new IOException("boom");
             })
         .when(generator)

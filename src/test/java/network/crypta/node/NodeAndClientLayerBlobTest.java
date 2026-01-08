@@ -18,6 +18,8 @@ import network.crypta.client.async.BinaryBlob;
 import network.crypta.client.async.BinaryBlobFormatException;
 import network.crypta.client.async.BinaryBlobWriter;
 import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.ClientGetterOptions;
+import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.SimpleBlockSet;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.keys.FreenetURI;
@@ -47,7 +49,7 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     DummyRandomSource random = new DummyRandomSource(25312);
     final PriorityAwareExecutor executor = new PooledExecutor();
     FileUtil.removeAll(dir);
-    dir.mkdir();
+    assertTrue(dir.mkdirs() || dir.isDirectory());
     NodeStarter.globalTestInit(dir, false, Level.ERROR, "", true, random);
     TestNodeParameters params = new TestNodeParameters();
     params.setRandom(new DummyRandomSource(253121));
@@ -63,7 +65,7 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     ictx.setLocalRequestOnly(true);
     InsertBlock block = generateBlock(random, false);
     FreenetURI uri = client.insert(block, "", (short) 0, ictx);
-    assertEquals(uri.getKeyType(), "SSK");
+    assertEquals("SSK", uri.getKeyType());
     FetchContext ctx = client.getFetchContext(FILE_SIZE * 2);
     ctx.setLocalRequestOnly(true);
     FetchWaiter fw = new FetchWaiter(rc);
@@ -75,7 +77,10 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     Bucket blobBucket =
         node.services().clientCore().getTempBucketFactory().makeBucket(FILE_SIZE * 3);
     BinaryBlobWriter bbw = new BinaryBlobWriter(blobBucket);
-    ClientGetter getter = new ClientGetter(fw, uri, ctx, (short) 0, null, bbw, false, null, null);
+    ClientGetter getter =
+        new ClientGetter(
+            new ClientGetterRequest(fw, uri, ctx, (short) 0),
+            ClientGetterOptions.withBinaryBlobWriter(null, bbw));
     getter.start(node.services().clientCore().getClientContext());
     fw.waitForCompletion();
     assertTrue(blobBucket.size() > 0);
@@ -85,7 +90,8 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     params.setRamStore(true);
     params.setStoreSize(FILE_SIZE * 3);
     params.setBaseDirectory(new File(dir, "fetchNode"));
-    params.getBaseDirectory().mkdir();
+    File fetchNodeDir = params.getBaseDirectory();
+    assertTrue(fetchNodeDir.mkdirs() || fetchNodeDir.isDirectory());
     params.setExecutor(executor);
     Node node2 = NodeStarter.createTestNode(params);
     node2.start(false);
@@ -97,7 +103,7 @@ class NodeAndClientLayerBlobTest extends NodeAndClientLayerTestBase {
     BinaryBlob.readBinaryBlob(dis, blocks, true);
     ctx2 = new FetchContext(ctx2, FetchContext.IDENTICAL_MASK, true, blocks);
     fw = new FetchWaiter(rc);
-    getter = client2.fetch(uri, FILE_SIZE * 2, fw, ctx2, (short) 0);
+    client2.fetch(uri, FILE_SIZE * 2, fw, ctx2, (short) 0);
     result = fw.waitForCompletion();
     assertTrue(BucketTools.equalBuckets(result.asBucket(), block.getData()));
   }

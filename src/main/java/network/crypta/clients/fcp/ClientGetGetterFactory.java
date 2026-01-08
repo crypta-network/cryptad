@@ -15,6 +15,8 @@ import network.crypta.client.async.BinaryBlobWriter;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.ClientGetterOptions;
+import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.PersistentClientCallback;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
@@ -264,28 +266,19 @@ final class ClientGetGetterFactory {
                 .makeBucket(fetchContext.getMaxOutputLength());
       }
       return new ClientGetter(
-          callback,
-          uri,
-          fetchContext,
-          priorityClass,
-          NULL_BUCKET,
-          new BinaryBlobWriter(blobBucket),
-          false,
-          initialMetadata,
-          extensionCheck);
+          new ClientGetterRequest(callback, uri, fetchContext, priorityClass),
+          new ClientGetterOptions(
+              NULL_BUCKET,
+              new BinaryBlobWriter(blobBucket),
+              false,
+              initialMetadata,
+              extensionCheck));
     }
     if (discardData) {
       returnBucket = NULL_BUCKET;
     }
     return new ClientGetter(
-        callback,
-        uri,
-        fetchContext,
-        priorityClass,
-        returnBucket,
-        null,
-        false,
-        initialMetadata,
-        extensionCheck);
+        new ClientGetterRequest(callback, uri, fetchContext, priorityClass),
+        new ClientGetterOptions(returnBucket, null, false, initialMetadata, extensionCheck));
   }
 }
