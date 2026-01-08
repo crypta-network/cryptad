@@ -4,9 +4,7 @@ import java.io.Serial;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import network.crypta.client.InsertContext;
 import network.crypta.client.Metadata;
-import network.crypta.keys.FreenetURI;
 import network.crypta.support.ContainerSizeEstimator;
 import network.crypta.support.ContainerSizeEstimator.ContainerSize;
 import network.crypta.support.api.ManifestElement;
@@ -166,57 +164,34 @@ public class DefaultManifestPutter extends BaseManifestPutter {
    * parameters (e.g., randomized splitfile keys for SSK targets). No network I/O occurs until
    * {@code start(...)} is invoked on the enclosing put workflow.
    *
-   * @param clientCallback callback receiver for progress and completion events; must remain valid
-   *     for the duration of the insert. Null is not permitted.
-   * @param manifestElements hierarchical map of entry names to {@link
-   *     network.crypta.support.api.ManifestElement} or nested {@code Map}s; values are copied.
-   *     Entry names must be simple names relative to their directory level.
-   * @param prioClass priority class controlling scheduler behavior; higher priority may preempt
-   *     lower tiers. Valid values are implementation‑defined.
-   * @param target target {@link network.crypta.keys.FreenetURI} for the root container; SSK targets
-   *     enable randomized splitfile keys downstream.
-   * @param defaultName default document name within each directory. Provide a simple file name
-   *     without path separators; if missing in a given directory, no default is set there.
-   * @param ctx insert context with tuning parameters and compatibility mode; used to configure data
-   *     chunking and retries. Must be non‑null.
+   * @param params shared manifest putter parameters, including callback, manifest map, priorities
+   *     and context. The manifest map is defensively copied before packing.
    * @param persistent whether the job participates in persistence across restarts; when {@code
    *     true}, the putter coordinates with persistent job runners.
-   * @param forceCryptoKey optional override for content encryption; when {@code null}, defaults are
-   *     derived from the target and context.
-   * @param context environment and runtime services for the client; used for job scheduling and
-   *     resuming. Must be non‑null.
    * @throws TooManyFilesInsertException if the input contains an excessive number of files within a
    *     single directory such that reasonable packing cannot proceed.
    */
-  public DefaultManifestPutter(
-      ClientPutCallback clientCallback,
-      Map<String, Object> manifestElements,
-      short prioClass,
-      FreenetURI target,
-      String defaultName,
-      InsertContext ctx,
-      boolean persistent,
-      byte[] forceCryptoKey,
-      ClientContext context)
+  public DefaultManifestPutter(ManifestPutterParams params, boolean persistent)
       throws TooManyFilesInsertException {
     // If the top level key is an SSK, all CHK blocks and particularly splitfiles below it should
     // have
-    // randomised keys. This substantially improves security by making it impossible to identify
+    // randomized keys. This substantially improves security by making it impossible to identify
     // blocks
     // even if you know the content. In the user interface, we will offer the option of inserting as
     // a
     // random SSK to take advantage of this.
     super(
         new InitParams()
-            .withCb(clientCallback)
-            .withManifestElements(new HashMap<>(manifestElements))
-            .withPrioClass(prioClass)
-            .withTarget(target)
-            .withDefaultName(defaultName)
-            .withCtx(ctx)
-            .withRandomiseCryptoKeys(ClientPutter.randomiseSplitfileKeys(target, ctx))
-            .withForceCryptoKey(forceCryptoKey)
-            .withContext(context));
+            .withCb(params.clientCallback())
+            .withManifestElements(new HashMap<>(params.manifestElements()))
+            .withPrioClass(params.prioClass())
+            .withTarget(params.target())
+            .withDefaultName(params.defaultName())
+            .withCtx(params.ctx())
+            .withRandomiseCryptoKeys(
+                ClientPutter.randomiseSplitfileKeys(params.target(), params.ctx()))
+            .withForceCryptoKey(params.forceCryptoKey())
+            .withContext(params.context()));
     if (LOG.isDebugEnabled()) LOG.debug("DefaultManifestPutter persistent={}", persistent);
   }
 
@@ -229,7 +204,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
    * externals; leftovers are grouped into overflow archives to keep containers within limits.
    *
    * @param manifestElements hierarchical map of file names to elements or nested maps; must contain
-   *     only supported types as validated by {@link #verifyManifest(HashMap)}.
+   *     only supported types as validated by {@link #verifyManifest(Map)}.
    * @param defaultName default document name to apply within directories where a matching entry
    *     exists.
    * @throws TooManyFilesInsertException if a directory contains so many entries that a reasonable

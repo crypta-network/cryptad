@@ -73,15 +73,16 @@ class DefaultManifestPutterTest {
         IllegalArgumentException.class,
         () ->
             new DefaultManifestPutter(
-                cb,
-                root,
-                /*prioClass*/ (short) 0,
-                FreenetURI.EMPTY_CHK_URI,
-                /*defaultName*/ "index.html",
-                ctx,
-                /*persistent*/ false,
-                /*forceCryptoKey*/ null,
-                /*context*/ mock(ClientContext.class)));
+                new ManifestPutterParams(
+                    cb,
+                    root,
+                    /*prioClass*/ (short) 0,
+                    FreenetURI.EMPTY_CHK_URI,
+                    /*defaultName*/ "index.html",
+                    ctx,
+                    /*forceCryptoKey*/ null,
+                    /*context*/ mock(ClientContext.class)),
+                /*persistent*/ false));
   }
 
   // A subclass that lets us spy on the builders created during packing
@@ -101,7 +102,9 @@ class DefaultManifestPutterTest {
         byte[] forceKey,
         ClientContext context)
         throws TooManyFilesInsertException {
-      super(cb, manifest, prio, target, defaultName, ctx, persistent, forceKey, context);
+      super(
+          new ManifestPutterParams(cb, manifest, prio, target, defaultName, ctx, forceKey, context),
+          persistent);
     }
 
     @Override

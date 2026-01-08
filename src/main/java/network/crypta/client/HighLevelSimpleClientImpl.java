@@ -11,6 +11,7 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.DefaultManifestPutter;
+import network.crypta.client.async.ManifestPutterParams;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.client.events.ClientEventListener;
@@ -607,15 +608,16 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     try {
       putter =
           new DefaultManifestPutter(
-              pw,
-              BaseManifestPutter.bucketsByNameToManifestEntries(bucketsByName),
-              priorityClass,
-              insertURI,
-              defaultName,
-              getInsertContext(true),
-              false,
-              forceCryptoKey,
-              core.getClientContext());
+              new ManifestPutterParams(
+                  pw,
+                  BaseManifestPutter.bucketsByNameToManifestEntries(bucketsByName),
+                  priorityClass,
+                  insertURI,
+                  defaultName,
+                  getInsertContext(true),
+                  forceCryptoKey,
+                  core.getClientContext()),
+              false);
     } catch (TooManyFilesInsertException _) {
       throw new InsertException(InsertExceptionMode.TOO_MANY_FILES);
     }
