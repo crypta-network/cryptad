@@ -157,7 +157,7 @@ class OpennetManagerTest {
 
     // Assert
     assertNull(cb.noderef, "Disconnected path delivers null noderef via callback");
-    // Ensure no timeout was signalled here
+    // Ensure no timeout was signaled here
     assertFalse(cb.timedOut, "should not signal timeout on immediate disconnect");
   }
 
