@@ -68,7 +68,7 @@ public class SplitFileFetcherSegmentStorage {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherSegmentStorage.class);
 
   // Set this to false to turn off checking the CHKs on blocks decoded (and encoded) via FEC.
-  // Generally it is a good idea to have consistent behaviour regardless of what order we fetched
+  // Generally it is a good idea to have consistent behavior regardless of what order we fetched
   // the blocks in, whether binary blobs are enabled etc ... and this has caught nasty bugs in
   // the past, although now we have hashes at file level ...
   private static final boolean FORCE_CHECK_FEC_KEYS = true;
@@ -145,7 +145,7 @@ public class SplitFileFetcherSegmentStorage {
   private boolean finished;
 
   /**
-   * True if the segment has been cancelled, has failed due to an internal error, etc. In which case
+   * True if the segment has been canceled, has failed due to an internal error, etc. In which case
    * it is not interested in further blocks. Not true if it has run out of retries, in which case
    * (for cross-segment) we may still be interested in blocks.
    */
@@ -225,9 +225,8 @@ public class SplitFileFetcherSegmentStorage {
             parent.maxRetries,
             parent.cooldownTries,
             parent.cooldownLength,
-            this,
-            p.keysFetching,
-            ignoreLastBlock ? p.dataBlocks - 1 : -1);
+            new SplitFileFetcherSegmentBlockChooserParams(
+                this, p.keysFetching, ignoreLastBlock ? p.dataBlocks - 1 : -1));
     int minFetched = blocksForDecode();
     if (this.crossSegmentCheckBlocks != 0)
       crossSegmentsByBlock = new SplitFileFetcherCrossSegmentStorage[minFetched];
@@ -299,9 +298,8 @@ public class SplitFileFetcherSegmentStorage {
             parent.maxRetries,
             parent.cooldownTries,
             parent.cooldownLength,
-            this,
-            p.keysFetching,
-            ignoreLastBlock ? dataBlocks - 1 : -1);
+            new SplitFileFetcherSegmentBlockChooserParams(
+                this, p.keysFetching, ignoreLastBlock ? dataBlocks - 1 : -1));
     int minFetched = blocksForDecode();
     if (crossSegmentCheckBlocks != 0)
       crossSegmentsByBlock = new SplitFileFetcherCrossSegmentStorage[minFetched];
@@ -476,7 +474,7 @@ public class SplitFileFetcherSegmentStorage {
 
   /**
    * Attempt FEC decoding. Check blocks before decoding in case there is disk corruption. Check the
-   * new decoded blocks afterward to ensure reproducible behaviour.
+   * new decoded blocks afterward to ensure reproducible behavior.
    */
   private void innerDecode() throws IOException {
     if (LOG.isDebugEnabled()) LOG.debug("Trying to decode {} for {}", this, parent);
@@ -1226,7 +1224,7 @@ public class SplitFileFetcherSegmentStorage {
   }
 
   /**
-   * Returns whether the segment has reached a terminal state: succeeded, cancelled, or given up
+   * Returns whether the segment has reached a terminal state: succeeded, canceled, or given up
    * after exhausting retries.
    *
    * @return {@code true} when no further work will be performed.
@@ -1580,7 +1578,7 @@ public class SplitFileFetcherSegmentStorage {
 
   /**
    * Marks this segment as finished without completing decode, typically because the higher-level
-   * operation was cancelled. If decode is in progress, the final callback is deferred until the
+   * operation was canceled. If decode is in progress, the final callback is deferred until the
    * decoder reports back; otherwise the parent is notified immediately.
    */
   public void cancel() {

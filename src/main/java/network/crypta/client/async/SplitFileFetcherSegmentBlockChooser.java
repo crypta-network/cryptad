@@ -37,7 +37,7 @@ public class SplitFileFetcherSegmentBlockChooser extends CooldownBlockChooser {
    *
    * <p>The {@code blocks} argument defines the number of candidate block indices tracked by this
    * chooser. Cooldown behavior and retry limits are inherited from {@link CooldownBlockChooser}.
-   * When {@code ignoreLastBlock} is non‑negative, that zero‑based index is excluded from
+   * When {@code params.ignoreLastBlock()} is non‑negative, that zero‑based index is excluded from
    * eligibility checks performed by {@link #checkValid(int)}.
    *
    * @param blocks total number of blocks managed by this chooser; valid indices are {@code [0,
@@ -50,12 +50,7 @@ public class SplitFileFetcherSegmentBlockChooser extends CooldownBlockChooser {
    *     cooldownTries}th attempt schedules a temporary cooldown window for a block.
    * @param cooldownTime cooldown duration in milliseconds added to {@link
    *     System#currentTimeMillis()} to compute per‑block wake‑up times.
-   * @param segment backing segment storage that provides key material and overall segment context;
-   *     must not be {@code null}.
-   * @param keysFetching coordinator tracking keys being fetched locally so duplicate work can be
-   *     avoided; used to filter out in‑flight duplicates.
-   * @param ignoreLastBlock zero‑based block index to exclude from selection, or {@code -1} to
-   *     disable the exclusion and consider all indices.
+   * @param params segment-specific chooser parameters such as key storage and in-flight tracking.
    */
   public SplitFileFetcherSegmentBlockChooser(
       int blocks,
@@ -63,13 +58,11 @@ public class SplitFileFetcherSegmentBlockChooser extends CooldownBlockChooser {
       int maxRetries,
       int cooldownTries,
       long cooldownTime,
-      SplitFileFetcherSegmentStorage segment,
-      KeysFetchingLocally keysFetching,
-      int ignoreLastBlock) {
+      SplitFileFetcherSegmentBlockChooserParams params) {
     super(blocks, random, maxRetries, cooldownTries, cooldownTime);
-    this.segment = segment;
-    this.keysFetching = keysFetching;
-    this.ignoreLastBlock = ignoreLastBlock;
+    this.segment = params.segment();
+    this.keysFetching = params.keysFetching();
+    this.ignoreLastBlock = params.ignoreLastBlock();
   }
 
   private final SplitFileFetcherSegmentStorage segment;
@@ -100,7 +93,7 @@ public class SplitFileFetcherSegmentBlockChooser extends CooldownBlockChooser {
           keys.getNodeKey(chosen, null, false), segment.parent.fetcher.getSendableGet());
     } catch (final IOException e) {
       segment.parent.jobRunner.queueNormalOrDrop(
-          context -> {
+          _ -> {
             segment.parent.failOnDiskError(e);
             return true;
           });
