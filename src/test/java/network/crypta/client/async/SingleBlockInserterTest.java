@@ -130,26 +130,17 @@ class SingleBlockInserterTest {
   @Test
   void constructor_whenAddToParentTrue_notifiesParent() {
     ClientContext ctx = newMinimalClientContext(insertCtx);
-    new SingleBlockInserter(
-        parent,
+    newInserter(
+        ctx,
         bucket,
-        (short) -1,
         FreenetURI.EMPTY_CHK_URI,
-        insertCtx,
-        /*realTime*/ false,
-        cb,
         /*isMetadata*/ false,
         /*sourceLength*/ 0,
         /*token*/ 7,
         /*addToParent*/ true,
         /*dontSendEncoded*/ true,
         /*tokenObject*/ new Object(),
-        ctx,
-        /*persistent*/ false,
-        /*freeData*/ false,
-        /*extraInserts*/ 0,
-        /*cryptoAlgorithm*/ (byte) 0,
-        /*cryptoKey*/ null);
+        /*freeData*/ false);
 
     verify(parent, times(1)).addMustSucceedBlocks(1);
     verify(parent, times(1)).notifyClients(ctx);
@@ -159,26 +150,17 @@ class SingleBlockInserterTest {
   void encode_whenDontSendEncodedFalse_callsCallbackAndSetsKey() throws Exception {
     ClientContext ctx = newMinimalClientContext(insertCtx);
     SingleBlockInserter sbi =
-        new SingleBlockInserter(
-            parent,
+        newInserter(
+            ctx,
             bucket,
-            (short) -1,
             FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
             /*dontSendEncoded*/ false,
             new Object(),
-            ctx,
-            false,
-            /*freeData*/ false,
-            0,
-            (byte) 0,
-            null);
+            /*freeData*/ false);
 
     // Spy to stub innerEncode, returning a block with a known key
     SingleBlockInserter spy = Mockito.spy(sbi);
@@ -198,26 +180,17 @@ class SingleBlockInserterTest {
   void encode_whenDontSendEncodedTrue_doesNotCallCallback() throws Exception {
     ClientContext ctx = newMinimalClientContext(insertCtx);
     SingleBlockInserter sbi =
-        new SingleBlockInserter(
-            parent,
+        newInserter(
+            ctx,
             bucket,
-            (short) -1,
             FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
             /*dontSendEncoded*/ true,
             new Object(),
-            ctx,
-            false,
-            /*freeData*/ false,
-            0,
-            (byte) 0,
-            null);
+            /*freeData*/ false);
 
     SingleBlockInserter spy = Mockito.spy(sbi);
     ClientKeyBlock block = mock(ClientKeyBlock.class);
@@ -235,26 +208,17 @@ class SingleBlockInserterTest {
     ClientContext ctx = newMinimalClientContext(insertCtx);
     // freeData=true so source bucket is freed on failure
     SingleBlockInserter inserter =
-        new SingleBlockInserter(
-            parent,
-            bucket,
-            (short) -1,
-            FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
-            true,
-            new Object(),
+        newInserter(
             ctx,
-            false,
-            /*freeData*/ true,
-            0,
-            (byte) 0,
-            null);
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ true);
 
     inserter.onFailure(new LowLevelPutException(LowLevelPutException.COLLISION), null, ctx);
 
@@ -271,26 +235,17 @@ class SingleBlockInserterTest {
     // freeData=true so bucket is freed on success path
     try (ArrayBucket realBucket = new ArrayBucket()) {
       SingleBlockInserter inserter =
-          new SingleBlockInserter(
-              parent,
-              realBucket,
-              (short) -1,
-              FreenetURI.EMPTY_CHK_URI,
-              insertCtx,
-              false,
-              cb,
-              false,
-              0,
-              1,
-              false,
-              true,
-              new Object(),
+          newInserter(
               ctx,
-              false,
-              /*freeData*/ true,
-              0,
-              (byte) 0,
-              null);
+              realBucket,
+              FreenetURI.EMPTY_CHK_URI,
+              /*isMetadata*/ false,
+              /*sourceLength*/ 0,
+              /*token*/ 1,
+              /*addToParent*/ false,
+              /*dontSendEncoded*/ true,
+              new Object(),
+              /*freeData*/ true);
 
       inserter.onFailure(new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND), null, ctx);
       inserter.onFailure(new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND), null, ctx);
@@ -314,26 +269,17 @@ class SingleBlockInserterTest {
     when(ctx.getChkInsertScheduler(false)).thenReturn(mockScheduler);
 
     SingleBlockInserter inserter =
-        new SingleBlockInserter(
-            parent,
-            bucket,
-            (short) -1,
-            FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
-            true,
-            new Object(),
+        newInserter(
             ctx,
-            false,
-            false,
-            0,
-            (byte) 0,
-            null);
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ false);
 
     long wake = inserter.getWakeupTime(ctx, /*now*/ 0L);
     assertEquals(Long.MAX_VALUE, wake);
@@ -349,26 +295,17 @@ class SingleBlockInserterTest {
     when(ctx.getChkInsertScheduler(false)).thenReturn(mockScheduler);
 
     SingleBlockInserter inserter =
-        new SingleBlockInserter(
-            parent,
-            bucket,
-            (short) -1,
-            FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
-            true,
-            new Object(),
+        newInserter(
             ctx,
-            false,
-            false,
-            0,
-            (byte) 0,
-            null);
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ false);
 
     long wake = inserter.getWakeupTime(ctx, /*now*/ 0L);
     assertEquals(0L, wake);
@@ -378,26 +315,17 @@ class SingleBlockInserterTest {
   void cancel_marksFinished_andNotifies_andFrees() {
     ClientContext ctx = newMinimalClientContext(insertCtx);
     SingleBlockInserter inserter =
-        new SingleBlockInserter(
-            parent,
-            bucket,
-            (short) -1,
-            FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
-            true,
-            new Object(),
+        newInserter(
             ctx,
-            false,
-            /*freeData*/ true,
-            0,
-            (byte) 0,
-            null);
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ true);
 
     inserter.cancel(ctx);
 
@@ -412,26 +340,17 @@ class SingleBlockInserterTest {
   void innerOnResume_callsBucketResume_andCallbackResume_andSchedules() throws Exception {
     ClientContext ctx = newMinimalClientContext(insertCtx);
     SingleBlockInserter sbi =
-        new SingleBlockInserter(
-            parent,
-            bucket,
-            (short) -1,
-            FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
-            true,
-            new Object(),
+        newInserter(
             ctx,
-            false,
-            false,
-            0,
-            (byte) 0,
-            null);
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ false);
     SingleBlockInserter spy = Mockito.spy(sbi);
     doNothing().when(spy).schedule(ctx);
 
@@ -446,26 +365,17 @@ class SingleBlockInserterTest {
   void flags_and_isSSK_reflectContextAndUri() {
     ClientContext ctx = newMinimalClientContext(insertCtx);
     SingleBlockInserter chkInserter =
-        new SingleBlockInserter(
-            parent,
-            bucket,
-            (short) -1,
-            FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            false,
-            cb,
-            true,
-            0,
-            1,
-            false,
-            true,
-            new Object(),
+        newInserter(
             ctx,
-            false,
-            false,
-            0,
-            (byte) 0,
-            null);
+            bucket,
+            FreenetURI.EMPTY_CHK_URI,
+            /*isMetadata*/ true,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ false);
 
     assertFalse(chkInserter.isSSK());
     assertTrue(chkInserter.canWriteClientCache());
@@ -474,26 +384,17 @@ class SingleBlockInserterTest {
 
     // SSK variant: the constructor only inspects uri.getKeyType()
     SingleBlockInserter sskInserter =
-        new SingleBlockInserter(
-            parent,
-            bucket,
-            (short) -1,
-            new FreenetURI("SSK", "doc"),
-            insertCtx,
-            false,
-            cb,
-            false,
-            0,
-            1,
-            false,
-            true,
-            new Object(),
+        newInserter(
             ctx,
-            false,
-            false,
-            0,
-            (byte) 0,
-            null);
+            bucket,
+            new FreenetURI("SSK", "doc"),
+            /*isMetadata*/ false,
+            /*sourceLength*/ 0,
+            /*token*/ 1,
+            /*addToParent*/ false,
+            /*dontSendEncoded*/ true,
+            new Object(),
+            /*freeData*/ false);
     assertTrue(sskInserter.isSSK());
   }
 
@@ -507,14 +408,15 @@ class SingleBlockInserterTest {
           () ->
               SingleBlockInserter.innerEncode(
                   new DummyRandomSource(1L),
-                  usk,
-                  src,
-                  /*isMetadata*/ false,
-                  (short) -1,
-                  /*sourceLength*/ 0,
-                  /*compressorDescriptor*/ null,
-                  /*cryptoAlgorithm*/ (byte) 0,
-                  /*cryptoKey*/ null),
+                  new BlockInsertPayload(
+                      src,
+                      usk,
+                      (short) -1,
+                      /*isMetadata*/ false,
+                      /*sourceLength*/ 0,
+                      /*cryptoAlgorithm*/ (byte) 0,
+                      /*cryptoKey*/ null),
+                  /*compressorDescriptor*/ null),
           "Unknown key types must throw InsertException(INVALID_URI)");
     }
   }
@@ -555,5 +457,23 @@ class SingleBlockInserterTest {
         Runnable runner, String name, long time, boolean runOnTickerAnyway, boolean noDupes) {
       exec.execute(runner);
     }
+  }
+
+  private SingleBlockInserter newInserter(
+      ClientContext ctx,
+      Bucket data,
+      FreenetURI uri,
+      boolean isMetadata,
+      int sourceLength,
+      int token,
+      boolean addToParent,
+      boolean dontSendEncoded,
+      Object tokenObject,
+      boolean freeData) {
+    return new SingleBlockInserter(
+        new BlockInsertPayload(data, uri, (short) -1, isMetadata, sourceLength, (byte) 0, null),
+        new BlockInsertParams(parent, insertCtx, cb, token, tokenObject, addToParent, ctx),
+        new BlockInsertOptions(false, false, freeData, 0),
+        dontSendEncoded);
   }
 }

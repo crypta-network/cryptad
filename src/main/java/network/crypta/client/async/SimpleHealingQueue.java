@@ -135,25 +135,17 @@ public class SimpleHealingQueue extends BaseClientPutter
       try {
         sbi =
             new SingleBlockInserter(
-                this,
-                data,
-                (short) -1,
-                FreenetURI.EMPTY_CHK_URI,
-                ctx,
-                realTimeFlag,
-                this,
-                false,
-                CHKBlock.DATA_LENGTH,
-                ctr,
-                false,
-                false,
-                data,
-                context,
-                false,
-                true,
-                0,
-                cryptoAlgorithm,
-                cryptoKey);
+                new BlockInsertPayload(
+                    data,
+                    FreenetURI.EMPTY_CHK_URI,
+                    (short) -1,
+                    false,
+                    CHKBlock.DATA_LENGTH,
+                    cryptoAlgorithm,
+                    cryptoKey),
+                new BlockInsertParams(this, ctx, this, ctr, data, false, context),
+                new BlockInsertOptions(false, realTimeFlag, true, 0),
+                false);
       } catch (Exception e) {
         LOG.error("Caught trying to insert healing block", e);
         return false;

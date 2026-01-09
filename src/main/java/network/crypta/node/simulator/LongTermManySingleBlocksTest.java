@@ -131,6 +131,8 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       BatchInsert bi = new BatchInsert(block);
       synchronized (this) {
         inserts.add(bi);
+        runningInserts++;
+        LOGGER.info("Starting insert: running {}", runningInserts);
       }
       bi.start();
     }
@@ -154,10 +156,6 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
       @Override
       public void run() {
-        synchronized (InsertBatch.this) {
-          runningInserts++;
-          LOGGER.info("Starting insert: running {}", runningInserts);
-        }
         long t1 = 0;
         long t2 = 0;
         FreenetURI thisURI = null;

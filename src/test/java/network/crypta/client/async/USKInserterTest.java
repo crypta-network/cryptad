@@ -264,24 +264,16 @@ class USKInserterTest {
     Mockito.lenient().when(rc.realTimeFlag()).thenReturn(cfg.realTimeFlag);
 
     return new USKInserter(
-        parent,
-        data,
-        compressionCodec,
-        uskUri,
-        insertCtx,
-        cb,
-        cfg.isMetadata,
-        (int) data.size(),
-        123,
-        cfg.addToParent,
-        "token",
-        context,
-        cfg.freeData,
-        cfg.persistent,
-        cfg.realTimeFlag,
-        0,
-        Key.ALGO_AES_PCFB_256_SHA256,
-        null);
+        new BlockInsertPayload(
+            data,
+            uskUri,
+            compressionCodec,
+            cfg.isMetadata,
+            (int) data.size(),
+            Key.ALGO_AES_PCFB_256_SHA256,
+            null),
+        new BlockInsertParams(parent, insertCtx, cb, 123, "token", cfg.addToParent, context),
+        new BlockInsertOptions(cfg.persistent, cfg.realTimeFlag, cfg.freeData, 0));
   }
 
   @Test
@@ -532,24 +524,10 @@ class USKInserterTest {
 
     USKInserter inserter =
         new USKInserter(
-            parent,
-            data,
-            (short) 0,
-            insertUri,
-            ic,
-            cb,
-            false,
-            1,
-            7,
-            false,
-            "tok",
-            context,
-            false,
-            false,
-            false,
-            0,
-            Key.ALGO_AES_PCFB_256_SHA256,
-            null);
+            new BlockInsertPayload(
+                data, insertUri, (short) 0, false, 1, Key.ALGO_AES_PCFB_256_SHA256, null),
+            new BlockInsertParams(parent, ic, cb, 7, "tok", false, context),
+            new BlockInsertOptions(false, false, false, 0));
 
     // Assert
     assertSame("tok", inserter.getToken());

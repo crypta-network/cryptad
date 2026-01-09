@@ -532,27 +532,23 @@ class SingleFileInserter implements ClientPutState, Serializable {
       throws InsertException {
     SingleBlockInserter dataPutter =
         new SingleBlockInserter(
-            parent,
-            data,
-            codecNumber,
-            FreenetURI.EMPTY_CHK_URI,
-            ctx,
-            realTimeFlag,
-            cb,
-            metadata,
-            (int) origSize,
-            -1,
-            true,
-            true,
-            token,
-            context,
-            persistent,
-            shouldFreeData,
-            forSplitfile
-                ? ctx.getExtraInsertsSplitfileHeaderBlock()
-                : ctx.getExtraInsertsSingleBlock(),
-            cryptoAlgorithm,
-            forceCryptoKey);
+            new BlockInsertPayload(
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                codecNumber,
+                metadata,
+                (int) origSize,
+                cryptoAlgorithm,
+                forceCryptoKey),
+            new BlockInsertParams(parent, ctx, cb, -1, token, true, context),
+            new BlockInsertOptions(
+                persistent,
+                realTimeFlag,
+                shouldFreeData,
+                forSplitfile
+                    ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                    : ctx.getExtraInsertsSingleBlock()),
+            true);
     if (LOG.isTraceEnabled()) LOG.trace("Inserting with metadata: {} for {}", dataPutter, this);
     Metadata meta = makeMetadata(archiveType, dataPutter.getURI(context), hashes);
     cb.onMetadata(meta, this, context);
@@ -578,27 +574,23 @@ class SingleFileInserter implements ClientPutState, Serializable {
         new MultiPutCompletionCallback(cb, parent, token, persistent, false, ctx.isEarlyEncode());
     SingleBlockInserter dataPutter =
         new SingleBlockInserter(
-            parent,
-            data,
-            codecNumber,
-            FreenetURI.EMPTY_CHK_URI,
-            ctx,
-            realTimeFlag,
-            mcb,
-            metadata,
-            (int) origSize,
-            -1,
-            true,
-            false,
-            token,
-            context,
-            persistent,
-            shouldFreeData,
-            forSplitfile
-                ? ctx.getExtraInsertsSplitfileHeaderBlock()
-                : ctx.getExtraInsertsSingleBlock(),
-            cryptoAlgorithm,
-            forceCryptoKey);
+            new BlockInsertPayload(
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                codecNumber,
+                metadata,
+                (int) origSize,
+                cryptoAlgorithm,
+                forceCryptoKey),
+            new BlockInsertParams(parent, ctx, mcb, -1, token, true, context),
+            new BlockInsertOptions(
+                persistent,
+                realTimeFlag,
+                shouldFreeData,
+                forSplitfile
+                    ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                    : ctx.getExtraInsertsSingleBlock()),
+            false);
     if (LOG.isTraceEnabled()) LOG.trace("Inserting data: {} for {}", dataPutter, this);
     Metadata meta = makeMetadata(archiveType, dataPutter.getURI(context), hashes);
     RandomAccessBucket metadataBucket;
@@ -926,53 +918,45 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (uri.getKeyType().equals("USK")) {
       try {
         return new USKInserter(
-            parent,
-            data,
-            compressionCodec,
-            uri,
-            ctx,
-            cb,
-            isMetadata,
-            sourceLength,
-            -1,
-            true,
-            this.token,
-            context,
-            freeData,
-            persistent,
-            realTimeFlag,
-            forSplitfile
-                ? ctx.getExtraInsertsSplitfileHeaderBlock()
-                : ctx.getExtraInsertsSingleBlock(),
-            cryptoAlgorithm,
-            forceCryptoKey);
+            new BlockInsertPayload(
+                data,
+                uri,
+                compressionCodec,
+                isMetadata,
+                sourceLength,
+                cryptoAlgorithm,
+                forceCryptoKey),
+            new BlockInsertParams(parent, ctx, cb, -1, this.token, true, context),
+            new BlockInsertOptions(
+                persistent,
+                realTimeFlag,
+                freeData,
+                forSplitfile
+                    ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                    : ctx.getExtraInsertsSingleBlock()));
       } catch (MalformedURLException e) {
         throw new InsertException(InsertExceptionMode.INVALID_URI, e, null);
       }
     } else {
       SingleBlockInserter sbi =
           new SingleBlockInserter(
-              parent,
-              data,
-              compressionCodec,
-              uri,
-              ctx,
-              realTimeFlag,
-              cb,
-              isMetadata,
-              sourceLength,
-              -1,
-              true,
-              false,
-              this.token,
-              context,
-              persistent,
-              freeData,
-              forSplitfile
-                  ? ctx.getExtraInsertsSplitfileHeaderBlock()
-                  : ctx.getExtraInsertsSingleBlock(),
-              cryptoAlgorithm,
-              forceCryptoKey);
+              new BlockInsertPayload(
+                  data,
+                  uri,
+                  compressionCodec,
+                  isMetadata,
+                  sourceLength,
+                  cryptoAlgorithm,
+                  forceCryptoKey),
+              new BlockInsertParams(parent, ctx, cb, -1, this.token, true, context),
+              new BlockInsertOptions(
+                  persistent,
+                  realTimeFlag,
+                  freeData,
+                  forSplitfile
+                      ? ctx.getExtraInsertsSplitfileHeaderBlock()
+                      : ctx.getExtraInsertsSingleBlock()),
+              false);
       // pass uri to SBI
       block.nullURI();
       return sbi;
