@@ -99,26 +99,23 @@ class InsertCompressorTest {
     TestInserter(
         InsertBlock block, InsertContext ctx, boolean persistent, PutCompletionCallback cb) {
       super(
-          /*parent*/ null,
-          /*cb*/ cb,
-          /*block*/ block,
-          /*metadata*/ false,
-          /*ctx*/ ctx,
-          /*realTimeFlag*/ false,
-          /*dontCompress*/ false,
-          /*reportMetadataOnly*/ false,
-          /*token*/ new Object(),
-          /*archiveType*/ null,
-          /*freeData*/ false,
-          /*targetFilename*/ null,
-          /*forSplitfile*/ false,
-          /*persistent*/ persistent,
-          /*origDataLength*/ 0L,
-          /*origCompressedDataLength*/ 0L,
-          /*origHashes*/ null,
-          /*cryptoAlgorithm*/ (byte) 0,
-          /*forceCryptoKey*/ null,
-          /*metadataThreshold*/ 0L);
+          new SingleFileInserterParams()
+              .withParent(null)
+              .withCallback(cb)
+              .withBlock(block)
+              .withMetadata(false)
+              .withCtx(ctx)
+              .withExecutionOptions(
+                  new InsertExecutionOptions(false, false, null, null, (byte) 0, false))
+              .withToken(new Object())
+              .withFreeData(false)
+              .withTargetFilename(null)
+              .withForSplitfile(false)
+              .withPersistent(persistent)
+              .withOrigDataLength(0L)
+              .withOrigCompressedDataLength(0L)
+              .withOrigHashes(null)
+              .withMetadataThreshold(0L));
       this.testCb = cb;
     }
 

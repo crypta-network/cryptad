@@ -147,83 +147,31 @@ class SingleFileInserter implements ClientPutState, Serializable {
    * underlying strategy (single block vs. splitfile). For large content, it may also construct and
    * insert metadata such as a redirect or archive manifest.
    *
-   * @param parent owning putter that receives state transitions and aggregates results; never
-   *     {@code null}.
-   * @param cb callback that observes progress and completion events; must be serializable for
-   *     durable requests.
-   * @param block input data and client metadata to insert; desired URI determines key type and
-   *     sizing.
-   * @param metadata whether this inserter represents metadata rather than primary data; affects
-   *     hashing and redirect behavior.
-   * @param ctx insertion configuration including compatibility mode, compression policy, and event
-   *     producer.
-   * @param realTimeFlag hint that the request prefers reduced latency to throughput; may affect
-   *     scheduling.
-   * @param dontCompress when {@code true}, disables compression regardless of heuristics.
-   * @param reportMetadataOnly when {@code true}, do not insert metadata; return it directly
-   *     instead.
-   * @param token application correlation token echoed on callbacks; may be {@code null}.
-   * @param archiveType optional archive type indicating an archive manifest should be produced
-   *     (when applicable); may be {@code null}.
-   * @param freeData when {@code true}, frees underlying data as soon as possible to reduce resource
-   *     usage.
-   * @param targetFilename optional preferred filename for redirect/manifest entries; may be {@code
-   *     null}.
-   * @param forSplitfile whether this insertion is above a splitfile, affecting duplicate extra
-   *     insert policy.
-   * @param persistent whether the request is durable across restarts; influences bucket selection
-   *     and resume behavior.
-   * @param origDataLength original uncompressed length for reporting; {@code 0} when unknown.
-   * @param origCompressedDataLength original compressed length for reporting; {@code 0} when
-   *     unknown.
-   * @param origHashes optional precomputed hashes to reuse; {@code null} to compute if needed.
-   * @param cryptoAlgorithm CHK cryptographic algorithm identifier to use when generating keys.
-   * @param forceCryptoKey optional explicit CHK key material; {@code null} to use a random key.
-   * @param metadataThreshold when positive, return metadata bytes directly if serialized metadata
-   *     is shorter than this many bytes.
+   * @param params parameter bundle describing the insert inputs and execution options
    */
-  SingleFileInserter(
-      BaseClientPutter parent,
-      PutCompletionCallback cb,
-      InsertBlock block,
-      boolean metadata,
-      InsertContext ctx,
-      boolean realTimeFlag,
-      boolean dontCompress,
-      boolean reportMetadataOnly,
-      Object token,
-      ARCHIVE_TYPE archiveType,
-      boolean freeData,
-      String targetFilename,
-      boolean forSplitfile,
-      boolean persistent,
-      long origDataLength,
-      long origCompressedDataLength,
-      HashResult[] origHashes,
-      byte cryptoAlgorithm,
-      byte[] forceCryptoKey,
-      long metadataThreshold) {
+  SingleFileInserter(SingleFileInserterParams params) {
     hashCode = super.hashCode();
-    this.reportMetadataOnly = reportMetadataOnly;
-    this.token = token;
-    this.parent = parent;
-    this.block = block;
-    this.ctx = ctx;
-    this.realTimeFlag = realTimeFlag;
-    this.metadata = metadata;
-    this.cb = cb;
-    this.archiveType = archiveType;
-    this.freeData = freeData;
-    this.targetFilename = targetFilename;
-    this.persistent = persistent;
-    this.forSplitfile = forSplitfile;
-    this.origCompressedDataLength = origCompressedDataLength;
-    this.origDataLength = origDataLength;
-    this.origHashes = origHashes;
-    this.forceCryptoKey = forceCryptoKey;
-    this.cryptoAlgorithm = cryptoAlgorithm;
-    this.metadataThreshold = metadataThreshold;
-    this.dontCompress = dontCompress;
+    InsertExecutionOptions execOptions = params.executionOptions;
+    this.reportMetadataOnly = execOptions.reportMetadataOnly();
+    this.token = params.token;
+    this.parent = params.parent;
+    this.block = params.block;
+    this.ctx = params.ctx;
+    this.realTimeFlag = execOptions.realTimeFlag();
+    this.metadata = params.metadata;
+    this.cb = params.callback;
+    this.archiveType = execOptions.archiveType();
+    this.freeData = params.freeData;
+    this.targetFilename = params.targetFilename;
+    this.persistent = params.persistent;
+    this.forSplitfile = params.forSplitfile;
+    this.origCompressedDataLength = params.origCompressedDataLength;
+    this.origDataLength = params.origDataLength;
+    this.origHashes = params.origHashes;
+    this.forceCryptoKey = execOptions.forceCryptoKey();
+    this.cryptoAlgorithm = execOptions.cryptoAlgorithm();
+    this.metadataThreshold = params.metadataThreshold;
+    this.dontCompress = execOptions.dontCompress();
     if (LOG.isDebugEnabled())
       LOG.debug("Created {} persistent={} freeData={}", this, persistent, freeData);
   }
@@ -471,14 +419,15 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (persistent && (data instanceof NotPersistentBucket)) data = fixNotPersistent(data, context);
     ClientPutState bi =
         createInserter(
-            parent,
-            data,
-            codecNumber,
-            ctx,
-            cb,
-            metadata,
-            (int) origSize,
-            context,
+            new BlockInsertPayload(
+                data,
+                block.desiredURI,
+                codecNumber,
+                metadata,
+                (int) origSize,
+                cryptoAlgorithm,
+                forceCryptoKey),
+            new BlockInsertParams(parent, ctx, cb, -1, token, true, context),
             shouldFreeData,
             forSplitfile);
     if (LOG.isTraceEnabled()) LOG.trace("Inserting without metadata: {} for {}", bi, this);
@@ -572,6 +521,8 @@ class SingleFileInserter implements ClientPutState, Serializable {
       throws InsertException {
     MultiPutCompletionCallback mcb =
         new MultiPutCompletionCallback(cb, parent, token, persistent, false, ctx.isEarlyEncode());
+    BlockInsertParams insertParams =
+        new BlockInsertParams(parent, ctx, mcb, -1, token, true, context);
     SingleBlockInserter dataPutter =
         new SingleBlockInserter(
             new BlockInsertPayload(
@@ -582,7 +533,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
                 (int) origSize,
                 cryptoAlgorithm,
                 forceCryptoKey),
-            new BlockInsertParams(parent, ctx, mcb, -1, token, true, context),
+            insertParams,
             new BlockInsertOptions(
                 persistent,
                 realTimeFlag,
@@ -607,14 +558,15 @@ class SingleFileInserter implements ClientPutState, Serializable {
     }
     ClientPutState metaPutter =
         createInserter(
-            parent,
-            metadataBucket,
-            (short) -1,
-            ctx,
-            mcb,
-            true,
-            (int) origSize,
-            context,
+            new BlockInsertPayload(
+                metadataBucket,
+                block.desiredURI,
+                (short) -1,
+                true,
+                (int) origSize,
+                cryptoAlgorithm,
+                forceCryptoKey),
+            insertParams,
             true,
             false);
     if (LOG.isTraceEnabled()) LOG.trace("Inserting metadata: {} for {}", metaPutter, this);
@@ -847,24 +799,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
 
   private Metadata makeMetadata(ARCHIVE_TYPE archiveType, FreenetURI uri, HashResult[] hashes) {
     Metadata meta;
-    boolean allowTopBlocks = origDataLength != 0;
-    int req = 0;
-    int total = 0;
-    long data = 0;
-    long compressed = 0;
-    boolean topDontCompress = false;
-    CompatibilityMode topCompatibilityMode = CompatibilityMode.COMPAT_UNKNOWN;
-    if (allowTopBlocks) {
-      req = parent.getMinSuccessFetchBlocks();
-      total = parent.totalBlocks;
-      topDontCompress = (ctx.isDontCompress() || this.dontCompress);
-      topCompatibilityMode = ctx.getCompatibilityMode();
-      data = origDataLength;
-      compressed = origCompressedDataLength;
-    }
-    MetadataTopLayerInfo topLayer =
-        new MetadataTopLayerInfo(
-            data, compressed, req, total, topDontCompress, topCompatibilityMode, hashes, null);
+    MetadataTopLayerInfo topLayer = buildTopLayerInfo(hashes);
     if (archiveType != null) {
       meta =
           new Metadata(
@@ -886,6 +821,26 @@ class SingleFileInserter implements ClientPutState, Serializable {
     return meta;
   }
 
+  private MetadataTopLayerInfo buildTopLayerInfo(HashResult[] hashes) {
+    boolean allowTopBlocks = origDataLength != 0;
+    int req = 0;
+    int total = 0;
+    long data = 0;
+    long compressed = 0;
+    boolean topDontCompress = false;
+    CompatibilityMode topCompatibilityMode = CompatibilityMode.COMPAT_UNKNOWN;
+    if (allowTopBlocks) {
+      req = parent.getMinSuccessFetchBlocks();
+      total = parent.totalBlocks;
+      topDontCompress = (ctx.isDontCompress() || this.dontCompress);
+      topCompatibilityMode = ctx.getCompatibilityMode();
+      data = origDataLength;
+      compressed = origCompressedDataLength;
+    }
+    return new MetadataTopLayerInfo(
+        data, compressed, req, total, topDontCompress, topCompatibilityMode, hashes, null);
+  }
+
   /**
    * Create an inserter, either for a USK or a single block.
    *
@@ -897,19 +852,10 @@ class SingleFileInserter implements ClientPutState, Serializable {
    *     multiple inserts of the same block.
    */
   private ClientPutState createInserter(
-      BaseClientPutter parent,
-      Bucket data,
-      short compressionCodec,
-      InsertContext ctx,
-      PutCompletionCallback cb,
-      boolean isMetadata,
-      int sourceLength,
-      ClientContext context,
-      boolean freeData,
-      boolean forSplitfile)
+      BlockInsertPayload payload, BlockInsertParams params, boolean freeData, boolean forSplitfile)
       throws InsertException {
 
-    FreenetURI uri = block.desiredURI;
+    FreenetURI uri = payload.uri();
     if (uri == null) {
       throw new InsertException(InsertExceptionMode.INVALID_URI, "Null key type", null);
     }
@@ -918,44 +864,30 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (uri.getKeyType().equals("USK")) {
       try {
         return new USKInserter(
-            new BlockInsertPayload(
-                data,
-                uri,
-                compressionCodec,
-                isMetadata,
-                sourceLength,
-                cryptoAlgorithm,
-                forceCryptoKey),
-            new BlockInsertParams(parent, ctx, cb, -1, this.token, true, context),
+            payload,
+            params,
             new BlockInsertOptions(
                 persistent,
                 realTimeFlag,
                 freeData,
                 forSplitfile
-                    ? ctx.getExtraInsertsSplitfileHeaderBlock()
-                    : ctx.getExtraInsertsSingleBlock()));
+                    ? params.ctx().getExtraInsertsSplitfileHeaderBlock()
+                    : params.ctx().getExtraInsertsSingleBlock()));
       } catch (MalformedURLException e) {
         throw new InsertException(InsertExceptionMode.INVALID_URI, e, null);
       }
     } else {
       SingleBlockInserter sbi =
           new SingleBlockInserter(
-              new BlockInsertPayload(
-                  data,
-                  uri,
-                  compressionCodec,
-                  isMetadata,
-                  sourceLength,
-                  cryptoAlgorithm,
-                  forceCryptoKey),
-              new BlockInsertParams(parent, ctx, cb, -1, this.token, true, context),
+              payload,
+              params,
               new BlockInsertOptions(
                   persistent,
                   realTimeFlag,
                   freeData,
                   forSplitfile
-                      ? ctx.getExtraInsertsSplitfileHeaderBlock()
-                      : ctx.getExtraInsertsSingleBlock()),
+                      ? params.ctx().getExtraInsertsSplitfileHeaderBlock()
+                      : params.ctx().getExtraInsertsSingleBlock()),
               false);
       // pass uri to SBI
       block.nullURI();
@@ -972,7 +904,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
    * it constructs and schedules a dedicated metadata inserter.
    *
    * <p>Lifecycle: the handler tolerates out-of-order completion (metadata first or data first),
-   * idempotently ignores duplicate notifications, and ensures both branches are cancelled on
+   * idempotently ignores duplicate notifications, and ensures both branches are canceled on
    * failure. On resume, it rewires missing callbacks for deserialized children and restarts work as
    * permitted by policy.
    */
@@ -1329,28 +1261,27 @@ class SingleFileInserter implements ClientPutState, Serializable {
         ClientContext context) {
       InsertBlock newBlock = new InsertBlock(metadataBucket, m, block.desiredURI);
       synchronized (this) {
-        metadataPutter =
-            new SingleFileInserter(
-                parent,
-                this,
-                newBlock,
-                true,
-                ctx,
-                realTimeFlag,
-                false,
-                false,
-                token,
-                archiveType,
-                true,
-                metaPutterTargetFilename,
-                true,
-                persistent,
-                origDataLength,
-                origCompressedDataLength,
-                origHashes,
-                cryptoAlgorithm,
-                forceCryptoKey,
-                metadataThreshold);
+        InsertExecutionOptions execOptions =
+            new InsertExecutionOptions(
+                false, false, archiveType, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
+        SingleFileInserterParams params =
+            new SingleFileInserterParams()
+                .withParent(parent)
+                .withCallback(this)
+                .withBlock(newBlock)
+                .withMetadata(true)
+                .withCtx(ctx)
+                .withExecutionOptions(execOptions)
+                .withToken(token)
+                .withFreeData(true)
+                .withTargetFilename(metaPutterTargetFilename)
+                .withForSplitfile(true)
+                .withPersistent(persistent)
+                .withOrigDataLength(origDataLength)
+                .withOrigCompressedDataLength(origCompressedDataLength)
+                .withOrigHashes(origHashes)
+                .withMetadataThreshold(metadataThreshold);
+        metadataPutter = new SingleFileInserter(params);
         if (origHashes != null) {
           SingleFileInserter.this.origHashes = null;
         }
