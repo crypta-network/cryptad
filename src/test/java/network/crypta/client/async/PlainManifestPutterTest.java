@@ -73,14 +73,15 @@ class PlainManifestPutterTest {
     // Act
     PlainManifestPutter putter =
         new PlainManifestPutter(
-            cb,
-            root,
-            /*prioClass*/ (short) 0,
-            FreenetURI.EMPTY_CHK_URI,
-            /*defaultName*/ "index.html",
-            ctx,
-            forceKey,
-            /*context*/ mock(ClientContext.class));
+            new ManifestPutterParams(
+                cb,
+                root,
+                /*prioClass*/ (short) 0,
+                FreenetURI.EMPTY_CHK_URI,
+                /*defaultName*/ "index.html",
+                ctx,
+                forceKey,
+                /*context*/ mock(ClientContext.class)));
 
     // Assert
     assertEquals(2, putter.countFiles(), "counts only external data elements");
@@ -115,14 +116,15 @@ class PlainManifestPutterTest {
         ClientContext context)
         throws TooManyFilesInsertException {
       super(
-          cb,
-          manifest,
-          /*prioClass*/ (short) 0,
-          FreenetURI.EMPTY_CHK_URI,
-          /*defaultName*/ "index.html",
-          ctx,
-          forceKey,
-          context);
+          new ManifestPutterParams(
+              cb,
+              manifest,
+              /*prioClass*/ (short) 0,
+              FreenetURI.EMPTY_CHK_URI,
+              /*defaultName*/ "index.html",
+              ctx,
+              forceKey,
+              context));
     }
 
     void setInjectedBuilder(FreeFormBuilder b) {
@@ -265,14 +267,15 @@ class PlainManifestPutterTest {
 
     PlainManifestPutter putter =
         new PlainManifestPutter(
-            cb,
-            new HashMap<>(),
-            /*prioClass*/ (short) 0,
-            FreenetURI.EMPTY_CHK_URI,
-            /*defaultName*/ "index.html",
-            ctx,
-            forceKey,
-            mock(ClientContext.class));
+            new ManifestPutterParams(
+                cb,
+                new HashMap<>(),
+                /*prioClass*/ (short) 0,
+                FreenetURI.EMPTY_CHK_URI,
+                /*defaultName*/ "index.html",
+                ctx,
+                forceKey,
+                mock(ClientContext.class)));
 
     // We expect notifyClients() to call getJobRunner(true).queueNormalOrDrop(...)
     ClientContext context = mock(ClientContext.class);

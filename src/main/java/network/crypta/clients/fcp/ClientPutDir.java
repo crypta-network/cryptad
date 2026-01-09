@@ -20,6 +20,7 @@ import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.ContainerInserter;
 import network.crypta.client.async.DefaultManifestPutter;
 import network.crypta.client.async.ManifestPutter;
+import network.crypta.client.async.ManifestPutterParams;
 import network.crypta.client.async.TooManyFilesInsertException;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
@@ -421,15 +422,16 @@ public class ClientPutDir extends ClientPutBase {
   private void makePutter(ClientContext context) throws TooManyFilesInsertException {
     putter =
         new DefaultManifestPutter(
-            this,
-            manifestElements,
-            priorityClass,
-            uri,
-            defaultName,
-            ctx,
-            persistence == Persistence.FOREVER,
-            overrideSplitfileCryptoKey,
-            context);
+            new ManifestPutterParams(
+                this,
+                manifestElements,
+                priorityClass,
+                uri,
+                defaultName,
+                ctx,
+                overrideSplitfileCryptoKey,
+                context),
+            persistence == Persistence.FOREVER);
   }
 
   /**

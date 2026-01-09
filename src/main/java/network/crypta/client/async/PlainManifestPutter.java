@@ -65,29 +65,37 @@ public class PlainManifestPutter extends BaseManifestPutter {
    * Map<String, Object> root = new HashMap<>();
    * root.put("dir", sub);
    * root.put("readme.txt", elementReadme);
-   * var putter = new PlainManifestPutter(cb, root, prio, target, "index.html", ctx, key, context);
+   * var params = new ManifestPutterParams(cb, root, prio, target, "index.html", ctx, key, context);
+   * var putter = new PlainManifestPutter(params);
    * }</pre>
    *
-   * @param clientCallback callback receiving progress and completion events; must be non-null and
-   *     remain valid for the lifetime of the putter.
-   * @param manifestElements directory tree where keys are entry names and values are either {@code
-   *     Map<String, Object>} for subdirectories or {@code ManifestElement} for files; map
-   *     implementations may be immutable or mutable and are normalized internally.
-   * @param prioClass scheduler priority class for the request; higher values may receive greater
-   *     priority under the active scheduling policy.
-   * @param target desired target URI for the top-level manifest; the final URI may include metadata
-   *     as determined by the insert process.
-   * @param defaultName default document name considered within each directory level; compared by
-   *     exact name equality against child file entries.
-   * @param ctx insert context providing sizes, retry limits, and feature toggles; must match the
-   *     caller’s expectations for compatibility.
-   * @param forceCryptoKey optional explicit key material for splitfiles; when {@code null} and the
-   *     {@code target}/{@code ctx} imply randomization, a key may be generated internally.
-   * @param context client context providing randomness sources and scheduler access; must remain
-   *     accessible for the duration of the insert.
+   * @param params shared manifest putter parameters including callback, manifest map, and context
+   *     required by the base putter.
    * @throws TooManyFilesInsertException if the manifest contains more items than supported or
    *     exceeds structural limits during handler creation.
    */
+  public PlainManifestPutter(ManifestPutterParams params) throws TooManyFilesInsertException {
+    super(
+        new InitParams()
+            .withCb(params.clientCallback())
+            .withManifestElements(params.manifestElements())
+            .withPrioClass(params.prioClass())
+            .withTarget(params.target())
+            .withDefaultName(params.defaultName())
+            .withCtx(params.ctx())
+            .withRandomiseCryptoKeys(
+                ClientPutter.randomiseSplitfileKeys(params.target(), params.ctx()))
+            .withForceCryptoKey(params.forceCryptoKey())
+            .withContext(params.context()));
+  }
+
+  /**
+   * Legacy constructor retained for callers that do not yet use {@link ManifestPutterParams}.
+   *
+   * @deprecated Use {@link #PlainManifestPutter(ManifestPutterParams)} instead.
+   */
+  @Deprecated
+  @SuppressWarnings("java:S107")
   public PlainManifestPutter(
       ClientPutCallback clientCallback,
       Map<String, Object> manifestElements,
@@ -98,17 +106,16 @@ public class PlainManifestPutter extends BaseManifestPutter {
       byte[] forceCryptoKey,
       ClientContext context)
       throws TooManyFilesInsertException {
-    super(
-        new InitParams()
-            .withCb(clientCallback)
-            .withManifestElements(manifestElements)
-            .withPrioClass(prioClass)
-            .withTarget(target)
-            .withDefaultName(defaultName)
-            .withCtx(ctx)
-            .withRandomiseCryptoKeys(ClientPutter.randomiseSplitfileKeys(target, ctx))
-            .withForceCryptoKey(forceCryptoKey)
-            .withContext(context));
+    this(
+        new ManifestPutterParams(
+            clientCallback,
+            manifestElements,
+            prioClass,
+            target,
+            defaultName,
+            ctx,
+            forceCryptoKey,
+            context));
   }
 
   /**
