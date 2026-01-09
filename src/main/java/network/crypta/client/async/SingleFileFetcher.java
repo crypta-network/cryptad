@@ -170,68 +170,54 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   private final transient SnoopBucket bucketSnoop;
 
   /**
+   * Bundle of constructor inputs for {@link SingleFileFetcher}.
+   *
+   * <p>Callers should populate the required fields directly before constructing a new fetcher. This
+   * type mirrors the {@code InitParams} pattern used across the async fetch classes to avoid
+   * excessively long parameter lists.
+   */
+  public static final class InitParams {
+    ClientRequester parent;
+    GetCompletionCallback cb;
+    ClientMetadata metadata;
+    ClientKey key;
+    List<String> metaStrings;
+    FreenetURI origURI;
+    int addedMetaStrings;
+    FetchContext ctx;
+    boolean deleteFetchContext;
+    ArchiveContext actx;
+    ArchiveHandler ah;
+    Metadata archiveMetadata;
+    CreationPolicy policy;
+    CreationRuntime runtime;
+    boolean topDontCompress;
+    short topCompatibilityMode;
+  }
+
+  /**
    * Create a new SingleFileFetcher and register self. Called when following a redirect, or direct
    * from ClientGet. Note: Many times when this is called internally we might be better off using a
    * copy constructor?
    *
-   * @param parent the owning requester responsible for accounting and notifications
-   * @param cb completion callback receiving progress, success, and failure events
-   * @param metadata initial client metadata; {@code null} creates an empty instance
-   * @param key the starting key to fetch (CHK/SSK/USK-derived)
-   * @param metaStrings path-like metadata elements applied to the URI
-   * @param origURI the original URI used to report redirects and errors
-   * @param addedMetaStrings count of meta strings added due to redirects or processing
-   * @param ctx fetch context defining limits, policies, and allowed MIME types
-   * @param deleteFetchContext whether to delete the fetch context after completion
-   * @param realTimeFlag whether the request should use real‑time scheduling/latency trade‑offs
-   * @param actx archive context used when a container must be read or extracted
-   * @param ah existing archive handler, or {@code null} to create one when needed
-   * @param archiveMetadata pre-existing container metadata, {@code null} when not in a container
-   * @param maxRetries maximum number of retries before surfacing a fatal error
-   * @param recursionLevel current recursion depth used to detect cycles
-   * @param dontTellClientGet whether to suppress some ClientGet notifications during transitions
-   * @param l opaque token propagated to callbacks for request correlation
-   * @param isEssential whether this request contributes to must‑succeed block accounting
-   * @param isFinal whether this leg is final with respect to path component enforcement
-   * @param topDontCompress top-level splitfile compression preference propagated to the client
-   * @param topCompatibilityMode splitfile compatibility mode reported by a top block
-   * @param context client context used for notification side effects during construction
-   * @param hasInitialMetadata whether the caller already has initial metadata for {@code key}
+   * @param params initialization bundle containing request inputs, policy, and runtime values
    * @throws FetchException if recursion limits are exceeded or policy checks fail during setup
    */
-  public SingleFileFetcher(
-      ClientRequester parent,
-      GetCompletionCallback cb,
-      ClientMetadata metadata,
-      ClientKey key,
-      List<String> metaStrings,
-      FreenetURI origURI,
-      int addedMetaStrings,
-      FetchContext ctx,
-      boolean deleteFetchContext,
-      boolean realTimeFlag,
-      ArchiveContext actx,
-      ArchiveHandler ah,
-      Metadata archiveMetadata,
-      int maxRetries,
-      int recursionLevel,
-      boolean dontTellClientGet,
-      long l,
-      boolean isEssential,
-      boolean isFinal,
-      boolean topDontCompress,
-      short topCompatibilityMode,
-      ClientContext context,
-      boolean hasInitialMetadata)
-      throws FetchException {
-    super(key, maxRetries, ctx, parent, deleteFetchContext, realTimeFlag);
+  public SingleFileFetcher(InitParams params) throws FetchException {
+    super(
+        params.key,
+        params.policy.maxRetries,
+        params.ctx,
+        params.parent,
+        params.deleteFetchContext,
+        params.runtime.realTimeFlag);
     // Completion callback + token as used by SimpleSingleFileFetcher
-    this.rcb = cb;
-    this.token = l;
+    this.rcb = params.cb;
+    this.token = params.runtime.token;
     // Mirror SimpleSingleFileFetcher constructor side effects (dontAdd == false)
-    if (isEssential) parent.addMustSucceedBlocks(1);
-    else parent.addBlock();
-    parent.notifyClients(context);
+    if (params.policy.isEssential) params.parent.addMustSucceedBlocks(1);
+    else params.parent.addBlock();
+    params.parent.notifyClients(params.runtime.context);
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Creating SingleFileFetcher"
@@ -239,38 +225,41 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
               + "{} from {}"
               + LOG_META_LABEL
               + "{} persistent={}",
-          key,
-          origURI,
-          metaStrings.toString(),
+          params.key,
+          params.origURI,
+          params.metaStrings.toString(),
           persistent,
           new Exception("debug"));
-    this.isFinal = isFinal;
+    this.isFinal = params.policy.isFinal;
     this.cancelled = false;
-    this.dontTellClientGet = dontTellClientGet;
+    this.dontTellClientGet = params.policy.dontTellClientGet;
     // Archive handler
-    this.ah = selectArchiveHandler(ah);
-    this.archiveMetadata = archiveMetadata;
+    this.ah = selectArchiveHandler(params.ah);
+    this.archiveMetadata = params.archiveMetadata;
 
     // Meta strings
-    this.metaStrings = prepareMetaStrings(metaStrings);
-    this.addedMetaStrings = addedMetaStrings;
-    if (LOG.isDebugEnabled()) LOG.debug("Metadata: {}", metadata);
+    this.metaStrings = prepareMetaStrings(params.metaStrings);
+    this.addedMetaStrings = params.addedMetaStrings;
+    if (LOG.isDebugEnabled()) LOG.debug("Metadata: {}", params.metadata);
     this.clientMetadata =
-        (metadata != null ? ClientMetadata.copyOf(metadata) : new ClientMetadata());
-    thisKey = hasInitialMetadata ? FreenetURI.EMPTY_CHK_URI : key.getURI();
-    if (origURI == null) throw new NullPointerException();
-    this.uri = persistent ? new FreenetURI(origURI) : origURI;
-    this.actx = actx;
-    this.recursionLevel = recursionLevel + 1;
-    if (recursionLevel > ctx.getMaxRecursionLevel())
+        (params.metadata != null ? ClientMetadata.copyOf(params.metadata) : new ClientMetadata());
+    thisKey = params.policy.hasInitialMetadata ? FreenetURI.EMPTY_CHK_URI : params.key.getURI();
+    if (params.origURI == null) throw new NullPointerException();
+    this.uri = persistent ? new FreenetURI(params.origURI) : params.origURI;
+    this.actx = params.actx;
+    this.recursionLevel = params.policy.recursionLevel + 1;
+    if (params.policy.recursionLevel > params.ctx.getMaxRecursionLevel())
       throw new FetchException(
           FetchExceptionMode.TOO_MUCH_RECURSION,
-          "Too much recursion: " + recursionLevel + " > " + ctx.getMaxRecursionLevel());
+          "Too much recursion: "
+              + params.policy.recursionLevel
+              + " > "
+              + params.ctx.getMaxRecursionLevel());
     this.decompressors = new LinkedList<>();
-    this.topDontCompress = topDontCompress;
-    this.topCompatibilityMode = topCompatibilityMode;
-    metaSnoop = metaSnoopFrom(parent);
-    bucketSnoop = bucketSnoopFrom(parent);
+    this.topDontCompress = params.topDontCompress;
+    this.topCompatibilityMode = params.topCompatibilityMode;
+    metaSnoop = metaSnoopFrom(params.parent);
+    bucketSnoop = bucketSnoopFrom(params.parent);
   }
 
   private ArchiveHandler selectArchiveHandler(ArchiveHandler handler) {
@@ -483,7 +472,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       throw new FetchException(FetchExceptionMode.TOO_MUCH_RECURSION);
     this.thisKey = fetcher.thisKey;
     // Do not copy the decompressors. Whether the metadata/container is compressed
-    // is independant of whether the final data is; when we find the data we will
+    // is independent of whether the final data is; when we find the data we will
     // call back into the original fetcher.
     this.decompressors = new LinkedList<>();
     if (fetcher.uri == null) throw new NullPointerException();
@@ -1228,30 +1217,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     ClientKey redirectedKey = resolveRedirectedKey(newURI);
     addNewMetaStringsFrom(newURI);
     final SingleFileFetcher f =
-        new SingleFileFetcher(
-            parent,
-            rcb,
-            clientMetadata,
-            redirectedKey,
-            metaStrings,
-            this.uri,
-            addedMetaStrings,
-            ctx,
-            deleteFetchContext,
-            realTimeFlag,
-            actx,
-            ah,
-            archiveMetadata,
-            maxRetries,
-            recursionLevel,
-            false,
-            token,
-            true,
-            isFinal,
-            topDontCompress,
-            topCompatibilityMode,
-            context,
-            false);
+        new SingleFileFetcher(initParamsForRedirect(redirectedKey, clientMetadata, context));
     this.deleteFetchContext = false;
     if ((redirectedKey instanceof ClientCHK hK1) && !hK1.isMetadata()) {
       rcb.onBlockSetFinished(this, context);
@@ -1312,6 +1278,28 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       metaStrings.addFirst(o);
       addedMetaStrings++;
     }
+  }
+
+  private InitParams initParamsForRedirect(
+      ClientKey redirectedKey, ClientMetadata metadataForRedirect, ClientContext context) {
+    InitParams p = new InitParams();
+    p.parent = parent;
+    p.cb = rcb;
+    p.metadata = metadataForRedirect;
+    p.key = redirectedKey;
+    p.metaStrings = metaStrings;
+    p.origURI = this.uri;
+    p.addedMetaStrings = addedMetaStrings;
+    p.ctx = ctx;
+    p.deleteFetchContext = deleteFetchContext;
+    p.actx = actx;
+    p.ah = ah;
+    p.archiveMetadata = archiveMetadata;
+    p.policy = new CreationPolicy(maxRetries, recursionLevel, false, true, isFinal, false);
+    p.runtime = new CreationRuntime(context, realTimeFlag, token);
+    p.topDontCompress = topDontCompress;
+    p.topCompatibilityMode = topCompatibilityMode;
+    return p;
   }
 
   private boolean processSplitfileStep(final ClientContext context)
@@ -1942,7 +1930,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     }
   }
 
-  /** Compact arguments holder for USK create helpers. */
+  /** Compact arguments holder for USK create helpers and callback construction. */
   static final class UskCreateArgs {
     ClientRequester requester;
     GetCompletionCallback cb;
@@ -1996,32 +1984,26 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
               .deleteFetchContext(false)
               .realTime(runtime.realTimeFlag));
     }
-    if (key instanceof ClientKey || policy.hasInitialMetadata)
-      return new SingleFileFetcher(
-          requester,
-          cb,
-          null,
-          (ClientKey) key,
-          new ArrayList<>(uri.listMetaStrings()),
-          uri,
-          0,
-          ctx,
-          false,
-          runtime.realTimeFlag,
-          actx,
-          null,
-          null,
-          policy.maxRetries,
-          policy.recursionLevel,
-          policy.dontTellClientGet,
-          runtime.token,
-          policy.isEssential,
-          policy.isFinal,
-          false,
-          (short) 0,
-          runtime.context,
-          policy.hasInitialMetadata);
-    else {
+    if (key instanceof ClientKey || policy.hasInitialMetadata) {
+      InitParams p = new InitParams();
+      p.parent = requester;
+      p.cb = cb;
+      p.metadata = null;
+      p.key = (ClientKey) key;
+      p.metaStrings = new ArrayList<>(uri.listMetaStrings());
+      p.origURI = uri;
+      p.addedMetaStrings = 0;
+      p.ctx = ctx;
+      p.deleteFetchContext = false;
+      p.actx = actx;
+      p.ah = null;
+      p.archiveMetadata = null;
+      p.policy = policy;
+      p.runtime = runtime;
+      p.topDontCompress = false;
+      p.topCompatibilityMode = (short) 0;
+      return new SingleFileFetcher(p);
+    } else {
       UskCreateArgs a = new UskCreateArgs();
       a.requester = requester;
       a.cb = cb;
@@ -2081,20 +2063,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
               false,
               a.requester.persistent(),
               a.runtime.realTimeFlag,
-              new MyUSKFetcherCallback(
-                  a.requester,
-                  a.cb,
-                  a.usk,
-                  a.metaStrings,
-                  a.ctx,
-                  a.actx,
-                  a.runtime.realTimeFlag,
-                  a.policy.maxRetries,
-                  a.policy.recursionLevel,
-                  a.policy.dontTellClientGet,
-                  a.runtime.token,
-                  a.requester.persistent(),
-                  true),
+              new MyUSKFetcherCallback(a, true),
               false,
               a.runtime.context,
               true);
@@ -2103,30 +2072,24 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     }
     GetCompletionCallback myCB =
         new USKProxyCompletionCallback(a.usk, a.cb, a.requester.persistent());
-    return new SingleFileFetcher(
-        a.requester,
-        myCB,
-        null,
-        a.usk.getSSK(),
-        a.metaStrings,
-        a.usk.getURI().addMetaStrings(a.metaStrings),
-        0,
-        a.ctx,
-        false,
-        a.runtime.realTimeFlag,
-        a.actx,
-        null,
-        null,
-        a.policy.maxRetries,
-        a.policy.recursionLevel,
-        a.policy.dontTellClientGet,
-        a.runtime.token,
-        a.policy.isEssential,
-        a.policy.isFinal,
-        false,
-        (short) 0,
-        a.runtime.context,
-        false);
+    InitParams p = new InitParams();
+    p.parent = a.requester;
+    p.cb = myCB;
+    p.metadata = null;
+    p.key = a.usk.getSSK();
+    p.metaStrings = a.metaStrings;
+    p.origURI = a.usk.getURI().addMetaStrings(a.metaStrings);
+    p.addedMetaStrings = 0;
+    p.ctx = a.ctx;
+    p.deleteFetchContext = false;
+    p.actx = a.actx;
+    p.ah = null;
+    p.archiveMetadata = null;
+    p.policy = a.policy;
+    p.runtime = a.runtime;
+    p.topDontCompress = false;
+    p.topCompatibilityMode = (short) 0;
+    return new SingleFileFetcher(p);
   }
 
   private static ClientGetState uskCreateThoroughSearch(UskCreateArgs a) {
@@ -2137,20 +2100,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             false,
             a.requester.persistent(),
             a.runtime.realTimeFlag,
-            new MyUSKFetcherCallback(
-                a.requester,
-                a.cb,
-                a.usk,
-                a.metaStrings,
-                a.ctx,
-                a.actx,
-                a.runtime.realTimeFlag,
-                a.policy.maxRetries,
-                a.policy.recursionLevel,
-                a.policy.dontTellClientGet,
-                a.runtime.token,
-                a.requester.persistent(),
-                false),
+            new MyUSKFetcherCallback(a, false),
             false,
             a.runtime.context,
             false);
@@ -2183,40 +2133,27 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       this.tag = tag;
     }
 
-    public MyUSKFetcherCallback(
-        ClientRequester requester,
-        GetCompletionCallback cb,
-        USK usk,
-        List<String> metaStrings,
-        FetchContext ctx,
-        ArchiveContext actx,
-        boolean realTimeFlag,
-        int maxRetries,
-        int recursionLevel,
-        boolean dontTellClientGet,
-        long l,
-        boolean persistent,
-        boolean datastoreOnly) {
-      this.parent = requester;
-      this.cb = cb;
-      this.usk = usk;
-      this.metaStrings = metaStrings;
-      this.ctx = ctx;
-      this.actx = actx;
-      this.maxRetries = maxRetries;
-      this.recursionLevel = recursionLevel;
-      this.dontTellClientGet = dontTellClientGet;
-      this.token = l;
-      this.persistent = persistent;
+    public MyUSKFetcherCallback(UskCreateArgs args, boolean datastoreOnly) {
+      this.parent = args.requester;
+      this.cb = args.cb;
+      this.usk = args.usk;
+      this.metaStrings = args.metaStrings;
+      this.ctx = args.ctx;
+      this.actx = args.actx;
+      this.maxRetries = args.policy.maxRetries;
+      this.recursionLevel = args.policy.recursionLevel;
+      this.dontTellClientGet = args.policy.dontTellClientGet;
+      this.token = args.runtime.token;
+      this.persistent = args.requester.persistent();
       this.datastoreOnly = datastoreOnly;
       this.hashCode = super.hashCode();
-      this.realTimeFlag = realTimeFlag;
+      this.realTimeFlag = args.runtime.realTimeFlag;
       if (LOG.isDebugEnabled())
         LOG.debug(
             "Created {}" + LOG_FOR_LABEL + "{} and {} datastore only = {}",
             this,
-            usk,
-            cb,
+            this.usk,
+            this.cb,
             datastoreOnly);
     }
 
@@ -2261,31 +2198,26 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       ClientSSK key = usk.getSSK(l);
       try {
         if (l == usk.suggestedEdition || (l == 0 && usk.suggestedEdition == 1)) {
-          SingleFileFetcher sf =
-              new SingleFileFetcher(
-                  parent,
-                  cb,
-                  null,
-                  key,
-                  metaStrings,
-                  key.getURI().addMetaStrings(metaStrings),
-                  0,
-                  ctx,
-                  false,
-                  realTimeFlag,
-                  actx,
-                  null,
-                  null,
-                  maxRetries,
-                  recursionLevel + 1,
-                  dontTellClientGet,
-                  token,
-                  false,
-                  true,
-                  false,
-                  (short) 0,
-                  context,
-                  false);
+          InitParams p = new InitParams();
+          p.parent = parent;
+          p.cb = cb;
+          p.metadata = null;
+          p.key = key;
+          p.metaStrings = metaStrings;
+          p.origURI = key.getURI().addMetaStrings(metaStrings);
+          p.addedMetaStrings = 0;
+          p.ctx = ctx;
+          p.deleteFetchContext = false;
+          p.actx = actx;
+          p.ah = null;
+          p.archiveMetadata = null;
+          p.policy =
+              new CreationPolicy(
+                  maxRetries, recursionLevel + 1, dontTellClientGet, false, true, false);
+          p.runtime = new CreationRuntime(context, realTimeFlag, token);
+          p.topDontCompress = false;
+          p.topCompatibilityMode = (short) 0;
+          SingleFileFetcher sf = new SingleFileFetcher(p);
           if (tag != null) {
             cb.onTransition(tag, sf, context);
           }
