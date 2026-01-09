@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.USKCallback;
+import network.crypta.client.async.USKFoundEdition;
 import network.crypta.client.async.USKProgressCallback;
 import network.crypta.keys.USK;
 import network.crypta.node.NodeClientCore;
@@ -97,31 +98,23 @@ public class SubscribeUSK implements USKProgressCallback {
    * closed, in which case it unsubscribes to conserve resources. Data bytes are not sent here; only
    * edition and freshness metadata travel across the connection.
    *
-   * @param l edition number that was found; typically monotonically increasing over time.
-   * @param key USK key associated with the subscription; matches the key provided at construction.
-   * @param context client context for the ongoing fetch; may provide shared state across callbacks.
-   * @param wasMetadata {@code true} when the retrieved payload consists solely of metadata blocks.
-   * @param codec codec hint used during retrieval; supplied by the node to describe the data type.
-   * @param data raw payload bytes; may be empty if only metadata was requested or delivered.
-   * @param newKnownGood {@code true} when this edition improved the known-good marker for the key.
-   * @param newSlotToo {@code true} when a newer slot (latest edition) was discovered alongside it.
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
   @Override
-  public void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean wasMetadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo) {
+  public void onFoundEdition(USKFoundEdition foundEdition) {
+    USK key = foundEdition.key();
     if (handler.isClosed()) {
       core.getUskManager().unsubscribe(key, toUnsub);
       return;
     }
     // if(newKnownGood && !newSlotToo) return;
-    FCPMessage msg = new SubscribedUSKUpdate(clientIdentifier, l, key, newKnownGood, newSlotToo);
+    FCPMessage msg =
+        new SubscribedUSKUpdate(
+            clientIdentifier,
+            foundEdition.edition(),
+            key,
+            foundEdition.newKnownGood(),
+            foundEdition.newSlotToo());
     handler.send(msg);
   }
 

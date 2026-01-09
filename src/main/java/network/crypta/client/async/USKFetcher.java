@@ -770,14 +770,15 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
         if (ed == -1) c.onFailure(context);
         else
           c.onFoundEdition(
-              ed,
-              origUSK.copy(ed),
-              context,
-              lastWasMetadata,
-              lastCompressionCodec,
-              data,
-              false,
-              false);
+              new USKFoundEdition(
+                  ed,
+                  origUSK.copy(ed),
+                  context,
+                  lastWasMetadata,
+                  lastCompressionCodec,
+                  data,
+                  false,
+                  false));
       } catch (Exception e) {
         LOG.error(
             "An exception occured while dealing with a callback:{}\n{}", c, e.getMessage(), e);
@@ -1687,35 +1688,25 @@ public class USKFetcher implements ClientGetState, USKCallback, HasKeyListener, 
    * other cases, the method updates the manager and continues the discovery loop as appropriate for
    * the configured mode.
    *
-   * @param ed the edition that was discovered or confirmed; non-negative
-   * @param key the USK associated with the edition; must not be {@code null}
-   * @param context execution context used to schedule any follow-up actions; must not be {@code
-   *     null}
-   * @param metadata whether the payload represents metadata rather than content; used when decoding
-   * @param codec the compression codec identifier, if any, reported by the fetch pipeline
-   * @param data optional byte content of the edition when decoding was requested and succeeded; may
-   *     be {@code null}
-   * @param newKnownGood whether this edition is a new known-good for the USK
-   * @param newSlotToo whether a corresponding new slot has been discovered in the index
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
   @Override
-  public void onFoundEdition(
-      long ed,
-      USK key,
-      final ClientContext context,
-      boolean metadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo) {
-    if (newKnownGood && !newSlotToo) return; // Only interested in slots
+  public void onFoundEdition(USKFoundEdition foundEdition) {
+    if (foundEdition.newKnownGood() && !foundEdition.newSlotToo())
+      return; // Only interested in slots
     // Because this is frequently run off-thread, it is actually possible that the looked up edition
     // is not the same as the edition we are being notified of.
-    FoundPlan plan = prepareFoundPlan(ed, data, context);
+    FoundPlan plan =
+        prepareFoundPlan(foundEdition.edition(), foundEdition.data(), foundEdition.context());
     if (plan == null) return;
-    finishCancelBefore(plan.killAttempts, context);
-    if (plan.registerNow) registerAttempts(context);
-    applyFoundDecodedData(plan.decode, metadata, codec, data, context);
+    finishCancelBefore(plan.killAttempts, foundEdition.context());
+    if (plan.registerNow) registerAttempts(foundEdition.context());
+    applyFoundDecodedData(
+        plan.decode,
+        foundEdition.metadata(),
+        foundEdition.codec(),
+        foundEdition.data(),
+        foundEdition.context());
   }
 
   /**

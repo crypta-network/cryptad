@@ -2,7 +2,6 @@ package network.crypta.client.async;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -231,32 +230,23 @@ class USKSparseProxyCallbackTest {
     // Act: two updates before the round finishes; should not pass through yet
     byte[] data12 = new byte[] {1, 2};
     byte[] data345 = new byte[] {3, 4, 5};
-    proxy.onFoundEdition(1L, usk, context, true, (short) 7, data12, false, false);
-    proxy.onFoundEdition(2L, usk, context, false, (short) 9, data345, true, true);
+    proxy.onFoundEdition(foundEdition(1L, usk, context, true, (short) 7, data12, false, false));
+    proxy.onFoundEdition(foundEdition(2L, usk, context, false, (short) 9, data345, true, true));
 
     // Assert: no call yet
-    verify(target, never())
-        .onFoundEdition(
-            any(Long.class),
-            eq(usk),
-            eq(context),
-            any(Boolean.class),
-            any(Short.class),
-            any(),
-            any(Boolean.class),
-            any(Boolean.class));
+    verify(target, never()).onFoundEdition(any(USKFoundEdition.class));
 
     // Act: finish the round; should flush a single latest notification (edition 2)
     proxy.onRoundFinished(context);
 
     // Assert: exactly once with latest values and knownGood propagated
     verify(target, times(1))
-        .onFoundEdition(2L, usk, context, false, (short) 9, data345, true, true);
+        .onFoundEdition(foundEdition(2L, usk, context, false, (short) 9, data345, true, true));
 
     // Act: finishing again without new updates should not duplicate
     proxy.onRoundFinished(context);
     verify(target, times(1))
-        .onFoundEdition(2L, usk, context, false, (short) 9, data345, true, true);
+        .onFoundEdition(foundEdition(2L, usk, context, false, (short) 9, data345, true, true));
   }
 
   @Test
@@ -267,17 +257,17 @@ class USKSparseProxyCallbackTest {
 
     // Act: update then flush via sending-to-network
     byte[] data8 = new byte[] {8};
-    proxy.onFoundEdition(5L, usk, context, false, (short) 1, data8, false, false);
+    proxy.onFoundEdition(foundEdition(5L, usk, context, false, (short) 1, data8, false, false));
     proxy.onSendingToNetwork(context);
 
     // Assert: flushed once with wasKnownGood=false → both flags false
     verify(target, times(1))
-        .onFoundEdition(5L, usk, context, false, (short) 1, data8, false, false);
+        .onFoundEdition(foundEdition(5L, usk, context, false, (short) 1, data8, false, false));
 
     // Act: call again without new updates — should not duplicate
     proxy.onSendingToNetwork(context);
     verify(target, times(1))
-        .onFoundEdition(5L, usk, context, false, (short) 1, data8, false, false);
+        .onFoundEdition(foundEdition(5L, usk, context, false, (short) 1, data8, false, false));
   }
 
   @Test
@@ -288,29 +278,11 @@ class USKSparseProxyCallbackTest {
 
     // Case 1: with no prior editions seen, guard returns early and nothing is forwarded
     proxy.onRoundFinished(context);
-    verify(target, never())
-        .onFoundEdition(
-            any(Long.class),
-            eq(usk),
-            eq(context),
-            any(Boolean.class),
-            any(Short.class),
-            any(),
-            any(Boolean.class),
-            any(Boolean.class));
+    verify(target, never()).onFoundEdition(any(USKFoundEdition.class));
 
     // Case 2: calling again without any prior edition still results in no call
     proxy.onRoundFinished(context);
-    verify(target, never())
-        .onFoundEdition(
-            any(Long.class),
-            eq(usk),
-            eq(context),
-            any(Boolean.class),
-            any(Short.class),
-            any(),
-            any(Boolean.class),
-            any(Boolean.class));
+    verify(target, never()).onFoundEdition(any(USKFoundEdition.class));
   }
 
   @Test
@@ -320,17 +292,18 @@ class USKSparseProxyCallbackTest {
     // Arrange
     USKSparseProxyCallback proxy = new USKSparseProxyCallback(target, usk);
     byte[] data1 = new byte[] {1};
-    proxy.onFoundEdition(5L, usk, context, false, (short) 0, data1, false, false);
+    proxy.onFoundEdition(foundEdition(5L, usk, context, false, (short) 0, data1, false, false));
     proxy.onRoundFinished(context); // finish the round so subsequent older edition may pass through
 
     // Act: older edition but newKnownGood=true should call through immediately
     byte[] data9 = new byte[] {9};
-    proxy.onFoundEdition(4L, usk, context, true, (short) 2, data9, true, false);
+    proxy.onFoundEdition(foundEdition(4L, usk, context, true, (short) 2, data9, true, false));
 
     // Assert: called with the older edition's parameters
     verify(target, times(1))
-        .onFoundEdition(5L, usk, context, false, (short) 0, data1, false, false);
-    verify(target, times(1)).onFoundEdition(4L, usk, context, true, (short) 2, data9, true, false);
+        .onFoundEdition(foundEdition(5L, usk, context, false, (short) 0, data1, false, false));
+    verify(target, times(1))
+        .onFoundEdition(foundEdition(4L, usk, context, true, (short) 2, data9, true, false));
   }
 
   @Test
@@ -341,12 +314,13 @@ class USKSparseProxyCallbackTest {
 
     // Act: first store the edition (knownGood=false), then mark same edition as knownGood
     byte[] data23 = new byte[] {2, 3};
-    proxy.onFoundEdition(7L, usk, context, true, (short) 11, data23, false, false);
-    proxy.onFoundEdition(7L, usk, context, true, (short) 11, data23, true, false);
+    proxy.onFoundEdition(foundEdition(7L, usk, context, true, (short) 11, data23, false, false));
+    proxy.onFoundEdition(foundEdition(7L, usk, context, true, (short) 11, data23, true, false));
     proxy.onRoundFinished(context);
 
     // Assert: the flush uses wasKnownGood=true for both flags
-    verify(target, times(1)).onFoundEdition(7L, usk, context, true, (short) 11, data23, true, true);
+    verify(target, times(1))
+        .onFoundEdition(foundEdition(7L, usk, context, true, (short) 11, data23, true, true));
   }
 
   @Test
@@ -359,5 +333,18 @@ class USKSparseProxyCallbackTest {
 
     assertEquals(12, proxy.getPollingPriorityNormal());
     assertEquals(34, proxy.getPollingPriorityProgress());
+  }
+
+  private USKFoundEdition foundEdition(
+      long edition,
+      USK key,
+      ClientContext context,
+      boolean metadata,
+      short codec,
+      byte[] data,
+      boolean newKnownGood,
+      boolean newSlotToo) {
+    return new USKFoundEdition(
+        edition, key, context, metadata, codec, data, newKnownGood, newSlotToo);
   }
 }

@@ -364,28 +364,11 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
    * the callback on the appropriate executor depending on persistence. The provided data may be
    * {@code null} when only metadata is available.
    *
-   * @param l The edition number that was found; expected to be non‑negative.
-   * @param key The concrete {@link USK} (possibly copied/adjusted) that produced the result.
-   * @param context Client context to execute the callback or to enqueue a persistent job.
-   * @param metadata {@code true} when only metadata was retrieved; {@code false} when content data
-   *     is available.
-   * @param codec Codec identifier used for the data, if any; interpretation is upstream‑defined.
-   * @param data Byte array containing fetched data; may be {@code null} when {@code metadata} is
-   *     {@code true}.
-   * @param newKnownGood {@code true} if this edition improved the best known good value.
-   * @param newSlotToo {@code true} if a new slot was also confirmed during this fetch.
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
   @Override
-  public void onFoundEdition(
-      final long l,
-      final USK key,
-      ClientContext context,
-      final boolean metadata,
-      final short codec,
-      final byte[] data,
-      final boolean newKnownGood,
-      final boolean newSlotToo) {
-    if (LOG.isDebugEnabled()) LOG.debug("Found edition {} on {}", l, this);
+  public void onFoundEdition(final USKFoundEdition foundEdition) {
+    if (LOG.isDebugEnabled()) LOG.debug("Found edition {} on {}", foundEdition.edition(), this);
     synchronized (this) {
       if (fetcher == null) {
         LOG.warn(
@@ -399,6 +382,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
       finished = true;
       fetcher = null;
     }
+    ClientContext context = foundEdition.context();
     if (persistent) {
       try {
         context.jobRunner.queue(
@@ -406,8 +390,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
                 context1 -> {
                   if (callback instanceof USKFetcherTagCallback tagCallback)
                     tagCallback.setTag(USKFetcherTag.this, context1);
-                  callback.onFoundEdition(
-                      l, key, context1, metadata, codec, data, newKnownGood, newSlotToo);
+                  callback.onFoundEdition(foundEdition.withContext(context1));
                   return false;
                 },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
@@ -417,7 +400,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
     } else {
       if (callback instanceof USKFetcherTagCallback tagCallback)
         tagCallback.setTag(USKFetcherTag.this, context);
-      callback.onFoundEdition(l, key, context, metadata, codec, data, newKnownGood, newSlotToo);
+      callback.onFoundEdition(foundEdition);
     }
   }
 

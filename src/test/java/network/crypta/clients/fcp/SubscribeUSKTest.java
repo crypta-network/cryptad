@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.USKFoundEdition;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.async.USKSparseProxyCallback;
 import network.crypta.keys.USK;
@@ -90,7 +91,8 @@ class SubscribeUSKTest {
     when(handler.isClosed()).thenReturn(true);
 
     subscription.onFoundEdition(
-        7L, message.key, clientContext, false, (short) 1, new byte[0], true, false);
+        new USKFoundEdition(
+            7L, message.key, clientContext, false, (short) 1, new byte[0], true, false));
 
     verify(uskManager).unsubscribe(message.key, subscription);
     verify(handler, never()).send(any());
@@ -105,7 +107,7 @@ class SubscribeUSKTest {
     when(handler.isClosed()).thenReturn(false);
 
     subscription.onFoundEdition(
-        12L, message.key, clientContext, false, (short) 1, null, true, false);
+        new USKFoundEdition(12L, message.key, clientContext, false, (short) 1, null, true, false));
 
     ArgumentCaptor<SubscribedUSKUpdate> captor = ArgumentCaptor.forClass(SubscribedUSKUpdate.class);
     verify(handler).send(captor.capture());

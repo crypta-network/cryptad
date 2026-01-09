@@ -718,14 +718,15 @@ public class USKManager {
             .execute(
                 () ->
                     callback.onFoundEdition(
-                        number,
-                        usk, // non-persistent
-                        context,
-                        false,
-                        (short) -1,
-                        null,
-                        true,
-                        newSlotToo),
+                        new USKFoundEdition(
+                            number,
+                            usk, // non-persistent
+                            context,
+                            false,
+                            (short) -1,
+                            null,
+                            true,
+                            newSlotToo)),
                 "USKManager callback executor for " + callback);
     }
   }
@@ -760,14 +761,15 @@ public class USKManager {
             .execute(
                 () ->
                     callback.onFoundEdition(
-                        number,
-                        usk, // non-persistent
-                        context,
-                        false,
-                        (short) -1,
-                        null,
-                        false,
-                        false),
+                        new USKFoundEdition(
+                            number,
+                            usk, // non-persistent
+                            context,
+                            false,
+                            (short) -1,
+                            null,
+                            false,
+                            false)),
                 "USKManager callback executor for " + callback);
     }
   }
@@ -842,9 +844,12 @@ public class USKManager {
 
     if (goodEd > ed)
       cb.onFoundEdition(
-          goodEd, origUSK.copy(curEd), context, false, (short) -1, null, true, curEd > ed);
+          new USKFoundEdition(
+              goodEd, origUSK.copy(curEd), context, false, (short) -1, null, true, curEd > ed));
     else if (curEd > ed)
-      cb.onFoundEdition(curEd, origUSK.copy(curEd), context, false, (short) -1, null, false, false);
+      cb.onFoundEdition(
+          new USKFoundEdition(
+              curEd, origUSK.copy(curEd), context, false, (short) -1, null, false, false));
 
     final USKFetcher fetcher = plan.toSchedule;
     if (fetcher != null) {

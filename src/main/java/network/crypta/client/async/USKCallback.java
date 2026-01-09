@@ -1,7 +1,5 @@
 package network.crypta.client.async;
 
-import network.crypta.keys.USK;
-
 /**
  * Callback interface notified about updates to a USK subscription.
  *
@@ -11,12 +9,12 @@ import network.crypta.keys.USK;
  * maintains background fetchers, and receive callbacks on internal worker threads whenever the
  * observed state changes. The same implementation may be shared across multiple subscriptions.
  *
- * <p>Typical usage is to subscribe, react to {@link #onFoundEdition(long, USK, ClientContext,
- * boolean, short, byte[], boolean, boolean)} events, and decide whether to request further work or
- * update downstream state. Implementations should keep callbacks short and avoid blocking: heavy
- * processing should be dispatched to application executors to prevent head-of-line blocking of
- * internal polling. Callers can influence background polling by returning priority values from the
- * {@link #getPollingPriorityNormal()} and {@link #getPollingPriorityProgress()} methods.
+ * <p>Typical usage is to subscribe, react to {@link #onFoundEdition(USKFoundEdition)} events, and
+ * decide whether to request further work or update downstream state. Implementations should keep
+ * callbacks short and avoid blocking: heavy processing should be dispatched to application
+ * executors to prevent head-of-line blocking of internal polling. Callers can influence background
+ * polling by returning priority values from the {@link #getPollingPriorityNormal()} and {@link
+ * #getPollingPriorityProgress()} methods.
  *
  * <ul>
  *   <li>State model: callbacks may be invoked repeatedly as the latest known edition advances.
@@ -42,26 +40,9 @@ public interface USKCallback {
    * the first indicates that the highest edition known to fetch successfully has increased; the
    * second indicates that the highest examined SSK slot has advanced as well.
    *
-   * @param l The discovered logical edition number. Higher values represent newer editions.
-   * @param key A copy of the key with the discovered edition set for this notification.
-   * @param context Execution context with client-layer services and schedulers for follow-up work.
-   * @param metadata True when the bytes correspond to metadata for the edition rather than content.
-   * @param codec Short identifier of the content codec associated with the returned byte payload.
-   * @param data Raw byte payload for the discovered edition or its metadata, as provided by
-   *     fetcher.
-   * @param newKnownGood True when the highest known-good, successfully fetched edition has
-   *     advanced.
-   * @param newSlotToo True when the highest known SSK slot has also advanced alongside known-good.
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
-  void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean metadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo);
+  void onFoundEdition(USKFoundEdition foundEdition);
 
   /**
    * Returns the steady-state priority used for background polling.
