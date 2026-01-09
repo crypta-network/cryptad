@@ -307,8 +307,8 @@ class ContainerInserterTest {
             manifest,
             new FreenetURI("CHK", null, (byte[]) null, null, null),
             newInsertContext(),
-            new ContainerInserter.Options(
-                true, false, null, ARCHIVE_TYPE.ZIP, null, (byte) 0, false));
+            new InsertExecutionOptions(true, false, ARCHIVE_TYPE.ZIP, null, (byte) 0, false),
+            null);
 
     // Act
     inserter.cancel(clientContext);
@@ -333,8 +333,8 @@ class ContainerInserterTest {
             new HashMap<>(),
             new FreenetURI("CHK", null, (byte[]) null, null, null),
             newInsertContext(),
-            new ContainerInserter.Options(
-                true, false, token, ARCHIVE_TYPE.ZIP, null, (byte) 0, false));
+            new InsertExecutionOptions(true, false, ARCHIVE_TYPE.ZIP, null, (byte) 0, false),
+            token);
 
     assertEquals(parent, inserter.getParent());
     assertEquals(token, inserter.getToken());
@@ -407,8 +407,8 @@ class ContainerInserterTest {
             manifest,
             new FreenetURI("CHK", null, (byte[]) null, null, null),
             newInsertContext(),
-            new ContainerInserter.Options(
-                true, false, null, ARCHIVE_TYPE.TAR, null, (byte) 0, false));
+            new InsertExecutionOptions(true, false, ARCHIVE_TYPE.TAR, null, (byte) 0, false),
+            null);
 
     // Act
     inserter.onResume(clientContext);
@@ -526,8 +526,8 @@ class ContainerInserterTest {
             manifest,
             new FreenetURI("CHK", null, (byte[]) null, null, null),
             newInsertContext(),
-            new ContainerInserter.Options(
-                false, false, null, ARCHIVE_TYPE.ZIP, null, (byte) 0, false));
+            new InsertExecutionOptions(false, false, ARCHIVE_TYPE.ZIP, null, (byte) 0, false),
+            null);
 
     // Act: schedule and stop after inspection
     try {
@@ -628,8 +628,8 @@ class ContainerInserterTest {
             manifest,
             new FreenetURI("CHK", null, (byte[]) null, null, null),
             newInsertContext(),
-            new ContainerInserter.Options(
-                false, false, null, ARCHIVE_TYPE.TAR, null, (byte) 0, false));
+            new InsertExecutionOptions(false, false, ARCHIVE_TYPE.TAR, null, (byte) 0, false),
+            null);
 
     try {
       inserter.schedule(clientContext);
@@ -660,8 +660,8 @@ class ContainerInserterTest {
             manifest,
             new FreenetURI("CHK", null, (byte[]) null, null, null),
             newInsertContext(),
-            new ContainerInserter.Options(
-                false, false, null, ARCHIVE_TYPE.ZIP, null, (byte) 0, false));
+            new InsertExecutionOptions(false, false, ARCHIVE_TYPE.ZIP, null, (byte) 0, false),
+            null);
 
     // Act
     inserter.schedule(clientContext);

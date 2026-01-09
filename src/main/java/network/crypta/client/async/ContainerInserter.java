@@ -66,92 +66,6 @@ public class ContainerInserter implements ClientPutState, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 
-  /**
-   * Options used to configure a {@link ContainerInserter}. Reduces constructor parameter count and
-   * captures flags that influence archive creation and insertion behavior.
-   *
-   * <p>Instances of this class are serializable. The {@link #token} is marked {@code transient}
-   * because it is an application-supplied correlation object that may not be serializable and is
-   * not required to restore insertion state.
-   */
-  public static final class Options implements Serializable {
-    @Serial private static final long serialVersionUID = 1L;
-
-    /**
-     * When {@code true}, disables content compression. For {@link ARCHIVE_TYPE#ZIP} this is forced
-     * to {@code true} regardless of the requested value so entries are stored uncompressed.
-     */
-    public final boolean dontCompress;
-
-    /**
-     * When {@code true}, perform the metadata preparation flow only and report results without
-     * starting the actual network insertion. Useful for dry-run or inspection scenarios.
-     */
-    public final boolean reportMetadataOnly;
-
-    /**
-     * Application correlation token passed through callbacks. It is never serialized; callers own
-     * its lifecycle and may supply any object (including {@code null}).
-     */
-    public final transient Object token;
-
-    /** Archive type to create for the container (e.g., TAR or ZIP). */
-    public final ARCHIVE_TYPE archiveType;
-
-    /**
-     * Optional explicit encryption key material. When non-{@code null}, it overrides derived keys
-     * in downstream inserters. Ownership is not transferred and the array is not defensively
-     * copied.
-     */
-    public final byte[] forceCryptoKey;
-
-    /**
-     * Crypto algorithm identifier consumed by downstream inserters. Acceptable values depend on the
-     * network configuration; unknown values will cause insertion to fail early.
-     */
-    public final byte cryptoAlgorithm;
-
-    /**
-     * Enables real-time insertion behavior when {@code true}. This can reduce latency at the cost
-     * of increased resource use depending on the insertion context.
-     */
-    public final boolean realTimeFlag;
-
-    /**
-     * Constructs an {@link Options} bundle describing how the container and downstream insertion
-     * should behave.
-     *
-     * @param dontCompress set to {@code true} to disable compression of the container contents; ZIP
-     *     containers are stored uncompressed regardless of this flag
-     * @param reportMetadataOnly set to {@code true} to prepare metadata and report it without
-     *     starting the network insertion; used for dry-run and diagnostics
-     * @param token arbitrary application token forwarded to callbacks; never serialized and may be
-     *     {@code null}
-     * @param archiveType the archive format to build for the container; typically TAR or ZIP
-     * @param forceCryptoKey optional explicit encryption key material; when non-{@code null},
-     *     overrides derived keys in downstream components
-     * @param cryptoAlgorithm algorithm identifier understood by downstream inserters; invalid
-     *     values will cause the insertion to fail
-     * @param realTimeFlag when {@code true}, requests lower-latency, real-time insertion behavior
-     */
-    public Options(
-        boolean dontCompress,
-        boolean reportMetadataOnly,
-        Object token,
-        ARCHIVE_TYPE archiveType,
-        byte[] forceCryptoKey,
-        byte cryptoAlgorithm,
-        boolean realTimeFlag) {
-      this.dontCompress = dontCompress;
-      this.reportMetadataOnly = reportMetadataOnly;
-      this.token = token;
-      this.archiveType = archiveType;
-      this.forceCryptoKey = forceCryptoKey;
-      this.cryptoAlgorithm = cryptoAlgorithm;
-      this.realTimeFlag = realTimeFlag;
-    }
-  }
-
   private record ContainerElement(Bucket data, String targetInArchive) {}
 
   /** Items to include in the container archive; populated during metadata resolution. */
@@ -222,7 +136,9 @@ public class ContainerInserter implements ClientPutState, Serializable {
    * @param targetURI2 target URI; callers should provide a cloned, persistent instance suitable for
    *     serialization
    * @param ctx2 insert context supplying bucket factories and operational settings
-   * @param options additional options configuring compression, report-only mode, crypto, and token
+   * @param options execution options configuring compression, report-only mode, archive type, and
+   *     crypto settings
+   * @param token application correlation token echoed through callbacks; may be {@code null}
    */
   public ContainerInserter(
       BaseClientPutter parent2,
@@ -230,22 +146,23 @@ public class ContainerInserter implements ClientPutState, Serializable {
       Map<String, Object> metadata2,
       FreenetURI targetURI2,
       InsertContext ctx2,
-      Options options) {
+      InsertExecutionOptions options,
+      Object token) {
     parent = parent2;
     cb = cb2;
     hashCode = super.hashCode();
     persistent = parent.persistent();
     origMetadata = Metadata.forceMap(metadata2);
-    archiveType = options.archiveType;
+    archiveType = options.archiveType();
     targetURI = targetURI2;
-    token = options.token;
+    this.token = token;
     ctx = ctx2;
-    dontCompress = options.dontCompress;
-    reportMetadataOnly = options.reportMetadataOnly;
+    dontCompress = options.dontCompress();
+    reportMetadataOnly = options.reportMetadataOnly();
     containerItems = new ArrayList<>();
-    this.forceCryptoKey = options.forceCryptoKey;
-    this.cryptoAlgorithm = options.cryptoAlgorithm;
-    this.realTimeFlag = options.realTimeFlag;
+    this.forceCryptoKey = options.forceCryptoKey();
+    this.cryptoAlgorithm = options.cryptoAlgorithm();
+    this.realTimeFlag = options.realTimeFlag();
   }
 
   /**
@@ -349,27 +266,27 @@ public class ContainerInserter implements ClientPutState, Serializable {
     }
 
     // Treat it as a splitfile for purposes of determining reinsert count.
-    return new SingleFileInserter(
-        parent,
-        cb,
-        block,
-        false,
-        ctx,
-        realTimeFlag,
-        dc,
-        reportMetadataOnly,
-        token,
-        archiveType,
-        true,
-        null,
-        true,
-        persistent,
-        0,
-        0,
-        null,
-        cryptoAlgorithm,
-        forceCryptoKey,
-        -1);
+    InsertExecutionOptions execOptions =
+        new InsertExecutionOptions(
+            dc, reportMetadataOnly, archiveType, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
+    SingleFileInserterParams params =
+        new SingleFileInserterParams()
+            .withParent(parent)
+            .withCallback(cb)
+            .withBlock(block)
+            .withMetadata(false)
+            .withCtx(ctx)
+            .withExecutionOptions(execOptions)
+            .withToken(token)
+            .withFreeData(true)
+            .withTargetFilename(null)
+            .withForSplitfile(true)
+            .withPersistent(persistent)
+            .withOrigDataLength(0)
+            .withOrigCompressedDataLength(0)
+            .withOrigHashes(null)
+            .withMetadataThreshold(-1);
+    return new SingleFileInserter(params);
   }
 
   private void makeMetadata(ClientContext context) {

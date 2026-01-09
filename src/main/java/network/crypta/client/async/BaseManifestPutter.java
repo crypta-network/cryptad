@@ -113,21 +113,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         HashMap<String, Object> data,
         FreenetURI insertURI) {
       super(bmp, parent, name, null, containerPutHandlers);
-      this.origSFI =
-          new ContainerInserter(
-              this,
-              this,
-              data,
-              insertURI,
-              ctx,
-              new ContainerInserter.Options(
-                  false,
-                  false,
-                  null,
-                  ARCHIVE_TYPE.TAR,
-                  forceCryptoKey,
-                  cryptoAlgorithm,
-                  realTimeFlag));
+      InsertExecutionOptions execOptions =
+          new InsertExecutionOptions(
+              false, false, ARCHIVE_TYPE.TAR, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
+      this.origSFI = new ContainerInserter(this, this, data, insertURI, ctx, execOptions, null);
     }
 
     @Override
@@ -192,21 +181,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         FreenetURI insertURI,
         HashSet<PutHandler> runningMap) {
       super(bmp, parent, name, null, runningMap);
-      this.origSFI =
-          new ContainerInserter(
-              this,
-              this,
-              data,
-              insertURI,
-              ctx,
-              new ContainerInserter.Options(
-                  false,
-                  false,
-                  null,
-                  ARCHIVE_TYPE.TAR,
-                  forceCryptoKey,
-                  cryptoAlgorithm,
-                  realTimeFlag));
+      InsertExecutionOptions execOptions =
+          new InsertExecutionOptions(
+              false, false, ARCHIVE_TYPE.TAR, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
+      this.origSFI = new ContainerInserter(this, this, data, insertURI, ctx, execOptions, null);
     }
 
     @Override
@@ -262,28 +240,27 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         ClientMetadata cm2) {
       super(bmp, parent, name, cm2, runningPutHandlers);
       InsertBlock block = new InsertBlock(data, cm, FreenetURI.EMPTY_CHK_URI);
-      this.origSFI =
-          new SingleFileInserter(
-              this,
-              this,
-              block,
-              false,
-              ctx,
-              realTimeFlag,
-              false,
-              true,
-              null,
-              null,
-              false,
-              null,
-              false,
-              persistent(),
-              0,
-              0,
-              null,
-              cryptoAlgorithm,
-              forceCryptoKey,
-              -1);
+      InsertExecutionOptions execOptions =
+          new InsertExecutionOptions(
+              false, true, null, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
+      SingleFileInserterParams params =
+          new SingleFileInserterParams()
+              .withParent(this)
+              .withCallback(this)
+              .withBlock(block)
+              .withMetadata(false)
+              .withCtx(ctx)
+              .withExecutionOptions(execOptions)
+              .withToken(null)
+              .withFreeData(false)
+              .withTargetFilename(null)
+              .withForSplitfile(false)
+              .withPersistent(persistent())
+              .withOrigDataLength(0)
+              .withOrigCompressedDataLength(0)
+              .withOrigHashes(null)
+              .withMetadataThreshold(-1);
+      this.origSFI = new SingleFileInserter(params);
     }
 
     @Override
@@ -378,28 +355,26 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     private MetaPutHandler(BaseManifestPutter smp, PutHandler parent, InsertBlock insertBlock) {
       super(smp, parent, null, null, null);
       // Treat as splitfile for purposes of determining number of reinserts.
-      this.origSFI =
-          new SingleFileInserter(
-              this,
-              this,
-              insertBlock,
-              true,
-              ctx,
-              realTimeFlag,
-              false,
-              false,
-              null,
-              null,
-              true,
-              null,
-              true,
-              persistent(),
-              0,
-              0,
-              null,
-              cryptoAlgorithm,
-              null,
-              -1);
+      InsertExecutionOptions execOptions =
+          new InsertExecutionOptions(false, false, null, null, cryptoAlgorithm, realTimeFlag);
+      SingleFileInserterParams params =
+          new SingleFileInserterParams()
+              .withParent(this)
+              .withCallback(this)
+              .withBlock(insertBlock)
+              .withMetadata(true)
+              .withCtx(ctx)
+              .withExecutionOptions(execOptions)
+              .withToken(null)
+              .withFreeData(true)
+              .withTargetFilename(null)
+              .withForSplitfile(true)
+              .withPersistent(persistent())
+              .withOrigDataLength(0)
+              .withOrigCompressedDataLength(0)
+              .withOrigHashes(null)
+              .withMetadataThreshold(-1);
+      this.origSFI = new SingleFileInserter(params);
       if (LOG.isDebugEnabled()) LOG.debug("Inserting root metadata: {}", origSFI);
     }
 
@@ -412,28 +387,26 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       metadata = toResolve;
       // Treat as splitfile for purposes of determining number of reinserts.
       InsertBlock ib = new InsertBlock(b, null, FreenetURI.EMPTY_CHK_URI);
-      this.origSFI =
-          new SingleFileInserter(
-              this,
-              this,
-              ib,
-              true,
-              ctx,
-              realTimeFlag,
-              false,
-              false,
-              toResolve,
-              null,
-              true,
-              null,
-              true,
-              persistent(),
-              0,
-              0,
-              null,
-              cryptoAlgorithm,
-              null,
-              -1);
+      InsertExecutionOptions execOptions =
+          new InsertExecutionOptions(false, false, null, null, cryptoAlgorithm, realTimeFlag);
+      SingleFileInserterParams params =
+          new SingleFileInserterParams()
+              .withParent(this)
+              .withCallback(this)
+              .withBlock(ib)
+              .withMetadata(true)
+              .withCtx(ctx)
+              .withExecutionOptions(execOptions)
+              .withToken(toResolve)
+              .withFreeData(true)
+              .withTargetFilename(null)
+              .withForSplitfile(true)
+              .withPersistent(persistent())
+              .withOrigDataLength(0)
+              .withOrigCompressedDataLength(0)
+              .withOrigHashes(null)
+              .withMetadataThreshold(-1);
+      this.origSFI = new SingleFileInserter(params);
       if (LOG.isDebugEnabled())
         LOG.debug("Inserting subsidiary metadata: {} for {}", origSFI, toResolve);
     }

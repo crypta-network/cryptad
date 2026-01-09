@@ -341,28 +341,26 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     if (!binaryBlob) {
       ClientMetadata meta = cm;
       if (meta != null) meta = persistent() ? ClientMetadata.copyOf(meta) : meta;
-      currentState =
-          new SingleFileInserter(
-              this,
-              this,
-              new InsertBlock(data, meta, targetURI),
-              isMetadata,
-              ctx,
-              realTimeFlag,
-              false,
-              false,
-              null,
-              null,
-              false,
-              targetFilename,
-              false,
-              persistent(),
-              0,
-              0,
-              null,
-              cryptoAlgorithm,
-              cryptoKey,
-              metadataThreshold);
+      InsertExecutionOptions execOptions =
+          new InsertExecutionOptions(false, false, null, cryptoKey, cryptoAlgorithm, realTimeFlag);
+      SingleFileInserterParams params =
+          new SingleFileInserterParams()
+              .withParent(this)
+              .withCallback(this)
+              .withBlock(new InsertBlock(data, meta, targetURI))
+              .withMetadata(isMetadata)
+              .withCtx(ctx)
+              .withExecutionOptions(execOptions)
+              .withToken(null)
+              .withFreeData(false)
+              .withTargetFilename(targetFilename)
+              .withForSplitfile(false)
+              .withPersistent(persistent())
+              .withOrigDataLength(0)
+              .withOrigCompressedDataLength(0)
+              .withOrigHashes(null)
+              .withMetadataThreshold(metadataThreshold);
+      currentState = new SingleFileInserter(params);
     } else {
       currentState =
           new BinaryBlobInserter(data, this, getClient(), false, priorityClass, ctx, context);

@@ -96,27 +96,26 @@ class SingleFileInserterTest {
   private static SingleFileInserter buildSfiForStartCompression(
       BaseClientPutter parentAndCb, PutCompletionCallback cb, InsertContext ctx) {
     InsertBlock block = new InsertBlock(new ArrayBucket(), null, FreenetURI.EMPTY_CHK_URI);
-    return new SingleFileInserter(
-        parentAndCb,
-        cb,
-        block,
-        false,
-        ctx,
-        false,
-        false,
-        false,
-        new Object(),
-        null,
-        false,
-        null,
-        false,
-        false,
-        0L,
-        0L,
-        null,
-        (byte) 0,
-        null,
-        0L);
+    InsertExecutionOptions execOptions =
+        new InsertExecutionOptions(false, false, null, null, (byte) 0, false);
+    SingleFileInserterParams params =
+        new SingleFileInserterParams()
+            .withParent(parentAndCb)
+            .withCallback(cb)
+            .withBlock(block)
+            .withMetadata(false)
+            .withCtx(ctx)
+            .withExecutionOptions(execOptions)
+            .withToken(new Object())
+            .withFreeData(false)
+            .withTargetFilename(null)
+            .withForSplitfile(false)
+            .withPersistent(false)
+            .withOrigDataLength(0L)
+            .withOrigCompressedDataLength(0L)
+            .withOrigHashes(null)
+            .withMetadataThreshold(0L);
+    return new SingleFileInserter(params);
   }
 
   private static RandomAccessBucket makeData(byte[] bytes) throws Exception {
@@ -140,28 +139,26 @@ class SingleFileInserterTest {
     RandomAccessBucket data = makeData("hello".getBytes());
     InsertBlock block =
         new InsertBlock(data, null, new FreenetURI("ABC", null, (byte[]) null, null, null));
-    SingleFileInserter sfi =
-        new SingleFileInserter(
-            /*parent*/ mock(BaseClientPutter.class),
-            /*cb*/ cb,
-            /*block*/ block,
-            /*metadata*/ false,
-            /*ctx*/ insertCtx,
-            /*realTimeFlag*/ false,
-            /*dontCompress*/ false,
-            /*reportMetadataOnly*/ false,
-            /*token*/ new Object(),
-            /*archiveType*/ null,
-            /*freeData*/ false,
-            /*targetFilename*/ null,
-            /*forSplitfile*/ false,
-            /*persistent*/ false,
-            /*origDataLength*/ 0L,
-            /*origCompressedDataLength*/ 0L,
-            /*origHashes*/ null,
-            /*cryptoAlgorithm*/ (byte) 0,
-            /*forceCryptoKey*/ null,
-            /*metadataThreshold*/ 0L);
+    InsertExecutionOptions execOptions =
+        new InsertExecutionOptions(false, false, null, null, (byte) 0, false);
+    SingleFileInserterParams params =
+        new SingleFileInserterParams()
+            .withParent(mock(BaseClientPutter.class))
+            .withCallback(cb)
+            .withBlock(block)
+            .withMetadata(false)
+            .withCtx(insertCtx)
+            .withExecutionOptions(execOptions)
+            .withToken(new Object())
+            .withFreeData(false)
+            .withTargetFilename(null)
+            .withForSplitfile(false)
+            .withPersistent(false)
+            .withOrigDataLength(0L)
+            .withOrigCompressedDataLength(0L)
+            .withOrigHashes(null)
+            .withMetadataThreshold(0L);
+    SingleFileInserter sfi = new SingleFileInserter(params);
 
     ClientContext context = mockContextWithInlineExecution(inlineExecutor);
     CompressionOutput output = new CompressionOutput(block.getData(), null, null);
@@ -192,26 +189,23 @@ class SingleFileInserterTest {
 
     SingleFileInserter sfi =
         new SingleFileInserter(
-            /*parent*/ mock(BaseClientPutter.class),
-            /*cb*/ cb,
-            /*block*/ block,
-            /*metadata*/ false,
-            /*ctx*/ insertCtx,
-            /*realTimeFlag*/ false,
-            /*dontCompress*/ false,
-            /*reportMetadataOnly*/ false,
-            /*token*/ new Object(),
-            /*archiveType*/ null,
-            /*freeData*/ false,
-            /*targetFilename*/ null,
-            /*forSplitfile*/ false,
-            /*persistent*/ false,
-            /*origDataLength*/ 0L,
-            /*origCompressedDataLength*/ 0L,
-            /*origHashes*/ null,
-            /*cryptoAlgorithm*/ (byte) 0,
-            /*forceCryptoKey*/ null,
-            /*metadataThreshold*/ 0L);
+            new SingleFileInserterParams()
+                .withParent(mock(BaseClientPutter.class))
+                .withCallback(cb)
+                .withBlock(block)
+                .withMetadata(false)
+                .withCtx(insertCtx)
+                .withExecutionOptions(
+                    new InsertExecutionOptions(false, false, null, null, (byte) 0, false))
+                .withToken(new Object())
+                .withFreeData(false)
+                .withTargetFilename(null)
+                .withForSplitfile(false)
+                .withPersistent(false)
+                .withOrigDataLength(0L)
+                .withOrigCompressedDataLength(0L)
+                .withOrigHashes(null)
+                .withMetadataThreshold(0L));
 
     ClientContext context = mockContextWithInlineExecution(inlineExecutor);
     CompressionOutput output = new CompressionOutput(block.getData(), null, null);
@@ -235,26 +229,23 @@ class SingleFileInserterTest {
     InsertBlock block = new InsertBlock(data, null, FreenetURI.EMPTY_CHK_URI);
     SingleFileInserter sfi =
         new SingleFileInserter(
-            /*parent*/ mock(BaseClientPutter.class),
-            /*cb*/ cb,
-            /*block*/ block,
-            /*metadata*/ false,
-            /*ctx*/ insertCtx,
-            /*realTimeFlag*/ false,
-            /*dontCompress*/ false,
-            /*reportMetadataOnly*/ false,
-            /*token*/ new Object(),
-            /*archiveType*/ null,
-            /*freeData*/ true,
-            /*targetFilename*/ null,
-            /*forSplitfile*/ false,
-            /*persistent*/ false,
-            /*origDataLength*/ 0L,
-            /*origCompressedDataLength*/ 0L,
-            /*origHashes*/ null,
-            /*cryptoAlgorithm*/ (byte) 0,
-            /*forceCryptoKey*/ null,
-            /*metadataThreshold*/ 0L);
+            new SingleFileInserterParams()
+                .withParent(mock(BaseClientPutter.class))
+                .withCallback(cb)
+                .withBlock(block)
+                .withMetadata(false)
+                .withCtx(insertCtx)
+                .withExecutionOptions(
+                    new InsertExecutionOptions(false, false, null, null, (byte) 0, false))
+                .withToken(new Object())
+                .withFreeData(true)
+                .withTargetFilename(null)
+                .withForSplitfile(false)
+                .withPersistent(false)
+                .withOrigDataLength(0L)
+                .withOrigCompressedDataLength(0L)
+                .withOrigHashes(null)
+                .withMetadataThreshold(0L));
 
     ClientContext context = mockContextWithInlineExecution(inlineExecutor);
 
@@ -316,26 +307,23 @@ class SingleFileInserterTest {
 
     SingleFileInserter sfi =
         new SingleFileInserter(
-            /*parent*/ mock(BaseClientPutter.class),
-            /*cb*/ cb,
-            /*block*/ block,
-            /*metadata*/ false,
-            /*ctx*/ insertCtx,
-            /*realTimeFlag*/ false,
-            /*dontCompress*/ false,
-            /*reportMetadataOnly*/ false,
-            /*token*/ new Object(),
-            /*archiveType*/ null,
-            /*freeData*/ false,
-            /*targetFilename*/ null,
-            /*forSplitfile*/ false,
-            /*persistent*/ false,
-            /*origDataLength*/ 0L,
-            /*origCompressedDataLength*/ 0L,
-            /*origHashes*/ null,
-            /*cryptoAlgorithm*/ (byte) 0,
-            /*forceCryptoKey*/ null,
-            /*metadataThreshold*/ 0L);
+            new SingleFileInserterParams()
+                .withParent(mock(BaseClientPutter.class))
+                .withCallback(cb)
+                .withBlock(block)
+                .withMetadata(false)
+                .withCtx(insertCtx)
+                .withExecutionOptions(
+                    new InsertExecutionOptions(false, false, null, null, (byte) 0, false))
+                .withToken(new Object())
+                .withFreeData(false)
+                .withTargetFilename(null)
+                .withForSplitfile(false)
+                .withPersistent(false)
+                .withOrigDataLength(0L)
+                .withOrigCompressedDataLength(0L)
+                .withOrigHashes(null)
+                .withMetadataThreshold(0L));
 
     ClientContext context = mock(ClientContext.class);
     Mockito.lenient().when(context.getMainExecutor()).thenReturn(inlineExecutor);
