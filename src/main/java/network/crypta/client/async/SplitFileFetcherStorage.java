@@ -394,19 +394,18 @@ public class SplitFileFetcherStorage {
     SplitFileFetcherStoragePersistence.PreparedMetadata prepared = null;
     byte[] encodedBasicSettings;
     if (persistent) {
+      SplitFileFetchOriginalDetails originalDetails =
+          new SplitFileFetchOriginalDetails(p.thisKey, p.origKey, p.clientDetails, p.isFinalFetch);
+      SplitFileFetchRetryPolicy retryPolicy =
+          new SplitFileFetchRetryPolicy(maxRetries, cooldownTries, cooldownLength);
       prepared =
           SplitFileFetcherStoragePersistence.preparePersistent(
               p.metadata,
               p.tempBucketFactory,
-              p.thisKey,
-              p.origKey,
-              p.clientDetails,
-              p.isFinalFetch,
+              originalDetails,
               offsetOriginalMetadata,
               checksumChecker,
-              maxRetries,
-              cooldownTries,
-              cooldownLength);
+              retryPolicy);
       offsetOriginalDetails = prepared.offsetOriginalDetails();
       this.offsetBasicSettings = prepared.offsetBasicSettings();
       // Now offsets are final, we can encode the basic settings which embed them.
