@@ -98,35 +98,40 @@ class SplitFileInserterStorageTest {
                     || cmode.ordinal() >= InsertContext.CompatibilityMode.COMPAT_1255.ordinal()))
             ? new byte[32]
             : null;
-    return new SplitFileInserterStorage(
-        original,
-        /* decompressedLength= */ original.size(),
-        callback,
-        /* compressionCodec= */ null,
-        new ClientMetadata("application/octet-stream"),
-        /* isMetadata= */ false,
-        /* archiveType= */ null,
-        rafFactory,
-        persistent,
-        ctx,
-        /* splitfileCryptoAlgorithm= */ (byte) 0,
-        /* splitfileCryptoKey= */ explicitSplitfileKey,
-        /* hashThisLayerOnly= */ hashThisLayerOnly,
-        /* hashes= */ null,
-        bucketFactory,
-        checker,
-        random,
-        mlRunner,
-        // DummyJobRunner queues onto our immediate executor via the context normally; we only need
-        // a runner for callbacks
-        new network.crypta.support.DummyJobRunner(executor, null),
-        ticker,
-        keysFetching,
-        /* topDontCompress= */ false,
-        /* topRequiredBlocks= */ 0,
-        /* topTotalBlocks= */ 0,
-        /* origDataSize= */ original.size(),
-        /* origCompressedDataSize= */ original.size());
+    SplitFileInserterStorageRuntimeParams runtimeParams =
+        new SplitFileInserterStorageRuntimeParams.Builder()
+            .callback(callback)
+            .random(random)
+            .memoryLimitedJobRunner(mlRunner)
+            .jobRunner(new network.crypta.support.DummyJobRunner(executor, null))
+            .ticker(ticker)
+            .keysFetching(keysFetching)
+            .build();
+    SplitFileInserterStorageInitParams initParams =
+        new SplitFileInserterStorageInitParams.Builder()
+            .originalData(original)
+            .decompressedLength(original.size())
+            .runtime(runtimeParams)
+            .compressionCodec(null)
+            .meta(new ClientMetadata("application/octet-stream"))
+            .isMetadata(false)
+            .archiveType(null)
+            .rafFactory(rafFactory)
+            .persistent(persistent)
+            .ctx(ctx)
+            .splitfileCryptoAlgorithm((byte) 0)
+            .splitfileCryptoKey(explicitSplitfileKey)
+            .hashThisLayerOnly(hashThisLayerOnly)
+            .hashes(null)
+            .tempBucketFactory(bucketFactory)
+            .checker(checker)
+            .topDontCompress(false)
+            .topRequiredBlocks(0)
+            .topTotalBlocks(0)
+            .origDataSize(original.size())
+            .origCompressedDataSize(original.size())
+            .build();
+    return new SplitFileInserterStorage(initParams);
   }
 
   @Test
@@ -141,32 +146,38 @@ class SplitFileInserterStorageTest {
               InsertException.class,
               () ->
                   new SplitFileInserterStorage(
-                      original,
-                      /* decompressedLength= */ huge,
-                      callback,
-                      /* compressionCodec= */ null,
-                      new ClientMetadata("text/plain"),
-                      /* isMetadata= */ false,
-                      /* archiveType= */ null,
-                      rafFactory,
-                      /* persistent= */ false,
-                      ctx,
-                      /* splitfileCryptoAlgorithm= */ (byte) 0,
-                      /* splitfileCryptoKey= */ null,
-                      /* hashThisLayerOnly= */ null,
-                      /* hashes= */ null,
-                      bucketFactory,
-                      checker,
-                      random,
-                      mlRunner,
-                      new network.crypta.support.DummyJobRunner(executor, null),
-                      ticker,
-                      keysFetching,
-                      /* topDontCompress= */ false,
-                      /* topRequiredBlocks= */ 0,
-                      /* topTotalBlocks= */ 0,
-                      /* origDataSize= */ huge,
-                      /* origCompressedDataSize= */ huge));
+                      new SplitFileInserterStorageInitParams.Builder()
+                          .originalData(original)
+                          .decompressedLength(huge)
+                          .runtime(
+                              new SplitFileInserterStorageRuntimeParams.Builder()
+                                  .callback(callback)
+                                  .random(random)
+                                  .memoryLimitedJobRunner(mlRunner)
+                                  .jobRunner(
+                                      new network.crypta.support.DummyJobRunner(executor, null))
+                                  .ticker(ticker)
+                                  .keysFetching(keysFetching)
+                                  .build())
+                          .compressionCodec(null)
+                          .meta(new ClientMetadata("text/plain"))
+                          .isMetadata(false)
+                          .archiveType(null)
+                          .rafFactory(rafFactory)
+                          .persistent(false)
+                          .ctx(ctx)
+                          .splitfileCryptoAlgorithm((byte) 0)
+                          .splitfileCryptoKey(null)
+                          .hashThisLayerOnly(null)
+                          .hashes(null)
+                          .tempBucketFactory(bucketFactory)
+                          .checker(checker)
+                          .topDontCompress(false)
+                          .topRequiredBlocks(0)
+                          .topTotalBlocks(0)
+                          .origDataSize(huge)
+                          .origCompressedDataSize(huge)
+                          .build()));
       assertEquals(InsertExceptionMode.TOO_BIG, ex.getMode());
     }
   }

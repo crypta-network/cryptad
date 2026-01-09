@@ -116,32 +116,37 @@ class ClientRequestSelectorTest {
     ClientRequestSelector keys = new ClientRequestSelector(true, false, false, null);
     SplitFileInserterStorage storage =
         new SplitFileInserterStorage(
-            data,
-            size,
-            cb,
-            null,
-            new ClientMetadata(),
-            false,
-            null,
-            smallRAFFactory,
-            false,
-            context,
-            cryptoAlgorithm,
-            cryptoKey,
-            null,
-            hashes,
-            smallBucketFactory,
-            checker,
-            r,
-            memoryLimitedJobRunner,
-            jobRunner,
-            ticker,
-            keys,
-            false,
-            0,
-            0,
-            0,
-            0);
+            new SplitFileInserterStorageInitParams.Builder()
+                .originalData(data)
+                .decompressedLength(size)
+                .runtime(
+                    new SplitFileInserterStorageRuntimeParams.Builder()
+                        .callback(cb)
+                        .random(r)
+                        .memoryLimitedJobRunner(memoryLimitedJobRunner)
+                        .jobRunner(jobRunner)
+                        .ticker(ticker)
+                        .keysFetching(keys)
+                        .build())
+                .compressionCodec(null)
+                .meta(new ClientMetadata())
+                .isMetadata(false)
+                .archiveType(null)
+                .rafFactory(smallRAFFactory)
+                .persistent(false)
+                .ctx(context)
+                .splitfileCryptoAlgorithm(cryptoAlgorithm)
+                .splitfileCryptoKey(cryptoKey)
+                .hashThisLayerOnly(null)
+                .hashes(hashes)
+                .tempBucketFactory(smallBucketFactory)
+                .checker(checker)
+                .topDontCompress(false)
+                .topRequiredBlocks(0)
+                .topTotalBlocks(0)
+                .origDataSize(0)
+                .origCompressedDataSize(0)
+                .build());
     storage.start();
     cb.waitForFinishedEncode();
     assertEquals(1, storage.segments.length);
