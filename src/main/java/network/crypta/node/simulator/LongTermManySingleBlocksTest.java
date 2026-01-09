@@ -241,11 +241,12 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
      * <p>Array indices match {@link #getURIs()} and {@link #getTimes()}. Each entry is {@code null}
      * when the corresponding insert succeeded; otherwise it contains the {@link InsertException}
      * that was thrown by the client. Callers should typically invoke {@link #waitUntilFinished()}
-     * first so that all failures have been recorded.
+     * first so that all failures have been recorded. This accessor is synchronized to provide
+     * visibility of failures recorded by worker threads.
      *
      * @return snapshot array of insert exceptions; {@code null} indicates success
      */
-    public InsertException[] getErrors() {
+    public synchronized InsertException[] getErrors() {
       InsertException[] errors = new InsertException[inserts.size()];
       for (int i = 0; i < errors.length; i++) errors[i] = inserts.get(i).failed;
       return errors;
