@@ -18,7 +18,9 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.CompatibilityAnalyser;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
+import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
@@ -73,7 +75,9 @@ class ClientGetTest {
   void progressAccessors_whenProgressPresent_returnEventValues() {
     ClientGet clientGet = newClientGet();
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(10, 7, new Date(1_000L), 2, 1, new Date(2_000L), 8, 5, true);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(10, 7, 2, 1, 8, 5, true),
+            new SplitfileProgressTimestamps(new Date(1_000L), new Date(2_000L)));
     SimpleProgressMessage progress = new SimpleProgressMessage("req", false, event);
     setField(clientGet, "progressPending", progress);
 

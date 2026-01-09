@@ -7,7 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Date;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
+import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +23,9 @@ class SimpleProgressMessageTest {
   @Test
   void getFieldSet_whenMinSuccessFetchZero_excludesOptionalField() {
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(10, 4, SUCCESS_TIME, 2, 1, FAILURE_TIME, 6, 0, true);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(10, 4, 2, 1, 6, 0, true),
+            new SplitfileProgressTimestamps(SUCCESS_TIME, FAILURE_TIME));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, true, event);
 
     SimpleFieldSet fieldSet = message.getFieldSet();
@@ -40,7 +44,10 @@ class SimpleProgressMessageTest {
 
   @Test
   void getFieldSet_whenMinSuccessFetchPresent_includesOptionalField() {
-    SplitfileProgressEvent event = new SplitfileProgressEvent(8, 2, null, 1, 0, null, 5, 3, false);
+    SplitfileProgressEvent event =
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(8, 2, 1, 0, 5, 3, false),
+            new SplitfileProgressTimestamps(null, null));
     SimpleProgressMessage message = new SimpleProgressMessage("other", false, event);
 
     SimpleFieldSet fieldSet = message.getFieldSet();
@@ -52,7 +59,10 @@ class SimpleProgressMessageTest {
 
   @Test
   void run_whenInvoked_throwsMessageInvalidException() {
-    SplitfileProgressEvent event = new SplitfileProgressEvent(1, 0, null, 0, 0, null, 1, 0, false);
+    SplitfileProgressEvent event =
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(1, 0, 0, 0, 1, 0, false),
+            new SplitfileProgressTimestamps(null, null));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, true, event);
 
     MessageInvalidException thrown =
@@ -68,7 +78,9 @@ class SimpleProgressMessageTest {
   @Test
   void getFraction_whenPartialProgress_returnsRatio() {
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(20, 5, SUCCESS_TIME, 0, 0, null, 10, 0, false);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(20, 5, 0, 0, 10, 0, false),
+            new SplitfileProgressTimestamps(SUCCESS_TIME, null));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, false, event);
 
     assertEquals(0.25d, message.getFraction(), 1e-9);
@@ -77,7 +89,9 @@ class SimpleProgressMessageTest {
   @Test
   void getLatestSuccess_whenModified_doesNotAffectStoredValue() {
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(5, 3, SUCCESS_TIME, 0, 0, null, 4, 0, false);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(5, 3, 0, 0, 4, 0, false),
+            new SplitfileProgressTimestamps(SUCCESS_TIME, null));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, false, event);
 
     Date returned = message.getLatestSuccess();
@@ -90,7 +104,9 @@ class SimpleProgressMessageTest {
   @Test
   void getLatestFailure_whenModified_doesNotAffectStoredValue() {
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(5, 3, SUCCESS_TIME, 0, 1, FAILURE_TIME, 4, 0, false);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(5, 3, 0, 1, 4, 0, false),
+            new SplitfileProgressTimestamps(SUCCESS_TIME, FAILURE_TIME));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, false, event);
 
     Date returned = message.getLatestFailure();
@@ -103,7 +119,9 @@ class SimpleProgressMessageTest {
   @Test
   void getters_whenCalled_returnUnderlyingCounts() {
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(12, 9, SUCCESS_TIME, 2, 1, FAILURE_TIME, 10, 4, true);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(12, 9, 2, 1, 10, 4, true),
+            new SplitfileProgressTimestamps(SUCCESS_TIME, FAILURE_TIME));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, true, event);
 
     assertEquals(0.75d, message.getFraction(), 1e-9);

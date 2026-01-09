@@ -18,7 +18,10 @@ class SplitfileProgressEventTest {
 
   @Test
   void api_whenQueried_expectImplementsClientEventAndStableCode() {
-    SplitfileProgressEvent event = new SplitfileProgressEvent(10, 3, null, 1, 0, null, 5, 2, false);
+    SplitfileProgressEvent event =
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(10, 3, 1, 0, 5, 2, false),
+            new SplitfileProgressTimestamps(null, null));
 
     assertInstanceOf(ClientEvent.class, event, "Event must implement ClientEvent");
     assertEquals(SplitfileProgressEvent.CODE, event.getCode(), "getCode must return CODE");
@@ -31,7 +34,9 @@ class SplitfileProgressEventTest {
     Date failure = new Date(2_000_000L);
 
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(1, 0, success, 0, 0, failure, 1, 0, false);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(1, 0, 0, 0, 1, 0, false),
+            new SplitfileProgressTimestamps(success, failure));
 
     // Mutate the original inputs after construction
     success.setTime(9_999_999L);
@@ -45,7 +50,10 @@ class SplitfileProgressEventTest {
 
   @Test
   void constructor_whenNullDatesProvided_storesNulls() {
-    SplitfileProgressEvent event = new SplitfileProgressEvent(0, 0, null, 0, 0, null, 1, 0, false);
+    SplitfileProgressEvent event =
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(0, 0, 0, 0, 1, 0, false),
+            new SplitfileProgressTimestamps(null, null));
 
     assertNull(event.latestSuccess, "Null latestSuccess input must store null");
     assertNull(event.latestFailure, "Null latestFailure input must store null");
@@ -77,13 +85,15 @@ class SplitfileProgressEventTest {
   void getDescription_whenNormalValues_formatsPercentAndFields() {
     SplitfileProgressEvent event =
         new SplitfileProgressEvent(
-            100, // total
-            25, // succeed
-            null, 2, // failed
-            1, // fatally failed
-            null, 50, // minSuccessfulBlocks
-            5, // minSuccessFetchBlocks
-            false);
+            new SplitfileProgressCounts(
+                100, // total
+                25, // succeed
+                2, // failed
+                1, // fatally failed
+                50, // minSuccessfulBlocks
+                5, // minSuccessFetchBlocks
+                false),
+            new SplitfileProgressTimestamps(null, null));
 
     String desc = event.getDescription();
 
@@ -95,7 +105,10 @@ class SplitfileProgressEventTest {
   @Test
   @DisplayName("getDescription_whenFinalizedTrue_appendsFinalizedLabel")
   void getDescription_whenFinalizedTrue_appendsFinalizedLabel() {
-    SplitfileProgressEvent event = new SplitfileProgressEvent(10, 5, null, 0, 0, null, 10, 0, true);
+    SplitfileProgressEvent event =
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(10, 5, 0, 0, 10, 0, true),
+            new SplitfileProgressTimestamps(null, null));
 
     String desc = event.getDescription();
 
@@ -108,7 +121,10 @@ class SplitfileProgressEventTest {
       "getDescription_whenMinSuccessfulZeroAndSucceedZero_normalizesDenominatorAndShowsZeroPercent")
   void
       getDescription_whenMinSuccessfulZeroAndSucceedZero_normalizesDenominatorAndShowsZeroPercent() {
-    SplitfileProgressEvent event = new SplitfileProgressEvent(0, 0, null, 0, 0, null, 0, 0, false);
+    SplitfileProgressEvent event =
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(0, 0, 0, 0, 0, 0, false),
+            new SplitfileProgressTimestamps(null, null));
 
     String desc = event.getDescription();
 
@@ -124,7 +140,10 @@ class SplitfileProgressEventTest {
       "getDescription_whenMinSuccessfulZeroAndSucceedPositive_omitsPercentAndKeepsDenominatorZero")
   void
       getDescription_whenMinSuccessfulZeroAndSucceedPositive_omitsPercentAndKeepsDenominatorZero() {
-    SplitfileProgressEvent event = new SplitfileProgressEvent(0, 3, null, 0, 0, null, 0, 0, false);
+    SplitfileProgressEvent event =
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(0, 3, 0, 0, 0, 0, false),
+            new SplitfileProgressTimestamps(null, null));
 
     String desc = event.getDescription();
 
@@ -147,7 +166,9 @@ class SplitfileProgressEventTest {
   void getDescription_whenVariousRatios_formatsIntegerPercent(
       int succeed, int minSuccessful, int expectedPercent) {
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(0, succeed, null, 0, 0, null, minSuccessful, 0, false);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(0, succeed, 0, 0, minSuccessful, 0, false),
+            new SplitfileProgressTimestamps(null, null));
 
     String desc = event.getDescription();
 

@@ -31,7 +31,9 @@ import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.ExpectedMIMEEvent;
 import network.crypta.client.events.SendingToNetworkEvent;
 import network.crypta.client.events.SplitfileCompatibilityModeEvent;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
+import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.FilterMIMEType;
 import network.crypta.client.filter.UnsafeContentTypeException;
@@ -958,15 +960,15 @@ public class ClientGetter extends BaseClientGetter
       }
       e =
           new SplitfileProgressEvent(
-              total,
-              this.successfulBlocks,
-              this.latestSuccess,
-              this.failedBlocks,
-              this.fatallyFailedBlocks,
-              this.latestFailure,
-              minSuccess,
-              0,
-              finalized);
+              new SplitfileProgressCounts(
+                  total,
+                  this.successfulBlocks,
+                  this.failedBlocks,
+                  this.fatallyFailedBlocks,
+                  minSuccess,
+                  0,
+                  finalized),
+              new SplitfileProgressTimestamps(this.latestSuccess, this.latestFailure));
     }
     // Already off-thread.
     ctx.getEventProducer().produceEvent(e, context);

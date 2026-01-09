@@ -37,7 +37,9 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.events.ClientEventListener;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
+import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -240,7 +242,9 @@ class PluginDownLoaderFreenetTest {
 
       reset(progress);
       SplitfileProgressEvent split =
-          new SplitfileProgressEvent(100, 40, null, 3, 1, null, 80, 0, /* finalizedTotal= */ true);
+          new SplitfileProgressEvent(
+              new SplitfileProgressCounts(100, 40, 3, 1, 80, 0, true),
+              new SplitfileProgressTimestamps(null, null));
       hookHolder[0].receive(split, mock(ClientContext.class));
 
       verify(progress).setDownloadProgress(80, 40, 100, 3, 1, true);
@@ -295,7 +299,9 @@ class PluginDownLoaderFreenetTest {
 
       reset(progress);
       SplitfileProgressEvent split =
-          new SplitfileProgressEvent(100, 40, null, 3, 1, null, 80, 0, /* finalizedTotal= */ false);
+          new SplitfileProgressEvent(
+              new SplitfileProgressCounts(100, 40, 3, 1, 80, 0, false),
+              new SplitfileProgressTimestamps(null, null));
       hookHolder[0].receive(split, mock(ClientContext.class));
 
       verify(progress, never())
