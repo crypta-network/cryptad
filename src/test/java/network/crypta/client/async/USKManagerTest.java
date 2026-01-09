@@ -516,13 +516,14 @@ class USKManagerTest {
         manager.getFetcher(
             usk,
             fctx,
-            /* keepLast= */ true,
-            /* persistent= */ true,
-            /* realTime= */ true,
             cb,
-            /* ownFetchContext= */ true,
-            context,
-            /* checkStoreOnly= */ false);
+            new USKFetcherTagOptions(
+                /* keepLastData= */ true,
+                /* persistent= */ true,
+                /* realTime= */ true,
+                /* ownFetchContext= */ true,
+                context,
+                /* checkStoreOnly= */ false));
 
     // Assert: tag preserves key/callback/context and maps flags as expected
     assertSame(usk, tag.origUSK);

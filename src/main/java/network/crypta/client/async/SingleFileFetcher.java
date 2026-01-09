@@ -2060,13 +2060,14 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
           a.runtime.context.uskManager.getFetcher(
               a.usk.copy(a.usk.suggestedEdition),
               a.ctx,
-              false,
-              a.requester.persistent(),
-              a.runtime.realTimeFlag,
               new MyUSKFetcherCallback(a, true),
-              false,
-              a.runtime.context,
-              true);
+              new USKFetcherTagOptions(
+                  false,
+                  a.requester.persistent(),
+                  a.runtime.realTimeFlag,
+                  false,
+                  a.runtime.context,
+                  true));
       if (a.policy.isEssential) a.requester.addMustSucceedBlocks(1);
       return tag;
     }
@@ -2097,13 +2098,14 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
         a.runtime.context.uskManager.getFetcher(
             a.usk.copy(-a.usk.suggestedEdition),
             a.ctx,
-            false,
-            a.requester.persistent(),
-            a.runtime.realTimeFlag,
             new MyUSKFetcherCallback(a, false),
-            false,
-            a.runtime.context,
-            false);
+            new USKFetcherTagOptions(
+                false,
+                a.requester.persistent(),
+                a.runtime.realTimeFlag,
+                false,
+                a.runtime.context,
+                false));
     if (a.policy.isEssential) a.requester.addMustSucceedBlocks(1);
     return tag;
   }
