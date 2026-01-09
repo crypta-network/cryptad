@@ -190,41 +190,29 @@ public class USKManager {
    *
    * @param usk The USK to monitor or fetch; the suggested edition may be used as a starting point.
    * @param ctx Fetch context controlling limits, timeouts, and local-only behavior; never mutated.
-   * @param keepLast When true, requests that the last data be retained for callbacks or inspection.
-   * @param persistent Whether the fetch should survive restarts when supported by the client.
-   * @param realTime If true, schedules using the real-time client; otherwise bulk scheduling.
    * @param callback Optional callback notified of fetcher events; may be {@code null}.
-   * @param ownFetchContext If true, clones the provided context to isolate fetcher mutations.
-   * @param context The client context used by some implementations; may be {@code null}.
-   * @param checkStoreOnly When true or when {@code ctx.localRequestOnly} is true, restricts lookups
-   *     to the local store and avoids network access.
+   * @param options Bundle of behavioral flags and optional caller context.
    * @return A tag describing the configured fetcher; immutable and safe to share across threads.
    */
   public USKFetcherTag getFetcher(
-      USK usk,
-      FetchContext ctx,
-      boolean keepLast,
-      boolean persistent,
-      boolean realTime,
-      USKFetcherCallback callback,
-      boolean ownFetchContext,
-      ClientContext context,
-      boolean checkStoreOnly) {
+      USK usk, FetchContext ctx, USKFetcherCallback callback, USKFetcherTagOptions options) {
     if (LOG.isTraceEnabled()) {
       LOG.trace(
           "getFetcher flags: ownFetchContext={}, contextPresent={}",
-          ownFetchContext,
-          context != null);
+          options.ownFetchContext(),
+          options.context() != null);
     }
     return USKFetcherTag.create(
         usk,
         callback,
         ctx,
         0,
-        persistent ? USKFetcherTag.Flag.PERSISTENT : null,
-        realTime ? USKFetcherTag.Flag.REAL_TIME : null,
-        keepLast ? USKFetcherTag.Flag.KEEP_LAST_DATA : null,
-        (checkStoreOnly || ctx.getLocalRequestOnly()) ? USKFetcherTag.Flag.CHECK_STORE_ONLY : null);
+        options.persistent() ? USKFetcherTag.Flag.PERSISTENT : null,
+        options.realTime() ? USKFetcherTag.Flag.REAL_TIME : null,
+        options.keepLastData() ? USKFetcherTag.Flag.KEEP_LAST_DATA : null,
+        (options.checkStoreOnly() || ctx.getLocalRequestOnly())
+            ? USKFetcherTag.Flag.CHECK_STORE_ONLY
+            : null);
   }
 
   USKFetcher getFetcher(
@@ -271,13 +259,9 @@ public class USKManager {
     return getFetcher(
         usk,
         persistent ? new FetchContext(fctx, FetchContext.IDENTICAL_MASK) : fctx,
-        true,
-        client.persistent(),
-        client.realTimeFlag(),
         cb,
-        true,
-        context,
-        false);
+        new USKFetcherTagOptions(
+            true, client.persistent(), client.realTimeFlag(), true, context, false));
   }
 
   /**
@@ -839,7 +823,8 @@ public class USKManager {
 
     SubscribePlan plan =
         subscribeLocked(
-            origUSK, cb, runBackgroundFetch, ignoreUSKDatehints, client, ed, curEd, goodEd);
+            new SubscribeRequest(origUSK, cb, runBackgroundFetch, ignoreUSKDatehints, client),
+            new SubscribeEditions(ed, curEd, goodEd));
     if (plan.earlyReturn) return;
 
     if (goodEd > ed)
@@ -862,27 +847,40 @@ public class USKManager {
     }
   }
 
+  /** Bundles inputs that determine how a subscription should be established. */
+  private record SubscribeRequest(
+      USK origUSK,
+      USKCallback callback,
+      boolean runBackgroundFetch,
+      boolean ignoreUSKDatehints,
+      RequestClient client) {}
+
+  /** Carries the edition values computed during subscription setup. */
+  private record SubscribeEditions(
+      long requestedEdition, long currentEdition, long knownGoodEdition) {}
+
   private record SubscribePlan(USKFetcher toSchedule, boolean earlyReturn) {}
 
   private synchronized SubscribePlan subscribeLocked(
-      USK origUSK,
-      USKCallback cb,
-      boolean runBackgroundFetch,
-      boolean ignoreUSKDatehints,
-      RequestClient client,
-      long ed,
-      long curEd,
-      long goodEd) {
-    USK clear = origUSK.clearCopy();
-    USKCallback[] callbacks = ensureSubscriberList(clear, cb, ed, curEd, goodEd);
+      SubscribeRequest request, SubscribeEditions editions) {
+    USK clear = request.origUSK().clearCopy();
+    USKCallback[] callbacks =
+        ensureSubscriberList(
+            clear,
+            request.callback(),
+            editions.requestedEdition(),
+            editions.currentEdition(),
+            editions.knownGoodEdition());
     if (callbacks.length == 0) return new SubscribePlan(null, true);
     subscribersByClearUSK.put(clear, callbacks);
 
     USKFetcher toSchedule = null;
-    if (runBackgroundFetch) {
-      FetcherInfo info = ensureBackgroundFetcher(clear, origUSK, ignoreUSKDatehints, client);
+    if (request.runBackgroundFetch()) {
+      FetcherInfo info =
+          ensureBackgroundFetcher(
+              clear, request.origUSK(), request.ignoreUSKDatehints(), request.client());
       toSchedule = info.created ? info.fetcher : null;
-      info.fetcher.addSubscriber(cb, origUSK.suggestedEdition);
+      info.fetcher.addSubscriber(request.callback(), request.origUSK().suggestedEdition);
     }
 
     return new SubscribePlan(toSchedule, false);
@@ -943,7 +941,7 @@ public class USKManager {
   /**
    * Unsubscribes the given callback from updates related to the USK.
    *
-   * <p>If a background fetcher remains with no subscribers it is cancelled; temporary background
+   * <p>If a background fetcher remains with no subscribers it is canceled; temporary background
    * fetchers are unaffected because they self-terminate.
    *
    * @param origUSK The USK to unsubscribe from.
@@ -1123,7 +1121,7 @@ public class USKManager {
       if (backgroundFetchersByClearUSK.get(clear) == fetcher) {
         backgroundFetchersByClearUSK.remove(clear);
         if (!ignoreError) {
-          // This shouldn't happen, it's a sanity check: the only way we get cancelled is from
+          // This shouldn't happen, it's a sanity check: the only way we get canceled is from
           // USKManager, which removes us before calling cancel().
           LOG.error(
               "onCancelled for {} - was still registered, how did this happen??",
