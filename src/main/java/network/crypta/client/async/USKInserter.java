@@ -273,25 +273,11 @@ public class USKInserter
             BucketTools.makeImmutableBucket(context.getBucketFactory(persistent), hintData);
         SingleBlockInserter sb =
             new SingleBlockInserter(
-                parent,
-                bucket,
-                (short) -1,
-                uri,
-                ctx,
-                realTimeFlag,
-                m,
-                false,
-                sourceLength,
-                token,
-                true,
-                true /* we don't use it */,
-                null,
-                context,
-                persistent,
-                true,
-                extraInserts,
-                cryptoAlgorithm,
-                forceCryptoKey);
+                new BlockInsertPayload(
+                    bucket, uri, (short) -1, false, sourceLength, cryptoAlgorithm, forceCryptoKey),
+                new BlockInsertParams(parent, ctx, m, token, null, true, context),
+                new BlockInsertOptions(persistent, realTimeFlag, true, extraInserts),
+                true /* we don't use it */);
         LOG.info("Inserting {} with {} for insert of {}", uri, sb, pubUSK);
         m.add(sb);
         sb.schedule(context);
@@ -327,25 +313,17 @@ public class USKInserter
       if (LOG.isDebugEnabled()) LOG.debug("scheduling insert for {} {}", pubUSK.getURI(), edition);
       sbi =
           new SingleBlockInserter(
-              parent,
-              data,
-              compressionCodec,
-              privUSK.getInsertableSSK(edition).getInsertURI(),
-              ctx,
-              realTimeFlag,
-              this,
-              isMetadata,
-              sourceLength,
-              token,
-              false,
-              true /* we don't use it */,
-              tokenObject,
-              context,
-              persistent,
-              false,
-              extraInserts,
-              cryptoAlgorithm,
-              forceCryptoKey);
+              new BlockInsertPayload(
+                  data,
+                  privUSK.getInsertableSSK(edition).getInsertURI(),
+                  compressionCodec,
+                  isMetadata,
+                  sourceLength,
+                  cryptoAlgorithm,
+                  forceCryptoKey),
+              new BlockInsertParams(parent, ctx, this, token, tokenObject, false, context),
+              new BlockInsertOptions(persistent, realTimeFlag, false, extraInserts),
+              true /* we don't use it */);
     }
     try {
       sbi.schedule(context);
@@ -456,78 +434,43 @@ public class USKInserter
   }
 
   /**
-   * Creates a new inserter for the given USK and payload.
+   * Creates a new inserter for the given USK payload.
    *
    * <p>The constructor captures all parameters needed to discover the target edition and perform an
    * SSK block insert. No I/O or scheduling occurs until {@link #schedule(ClientContext)} is called.
    * Callers may choose to have the payload freed automatically upon terminal completion.
    *
-   * @param parent parent putter coordinating progress, priority, and client identity; non-null
-   * @param data source bucket providing the bytes to insert; may be freed on completion when
-   *     enabled
-   * @param compressionCodec compression codec identifier to apply to {@code data} prior to insert
-   * @param uri base USK URI that will be used to derive concrete per-edition insert URIs
-   * @param ctx insert context controlling behavior such as priorities, retries, and date hints
-   * @param cb completion callback receiving success, failure, and encode notifications
-   * @param isMetadata whether {@code data} represents metadata rather than primary content
-   * @param sourceLength original content length in bytes, when known; used for progress reporting
-   * @param token numeric token associated with this insert for correlation and logging
-   * @param addToParent if {@code true}, increments parent accounting and notifies clients
-   *     immediately
-   * @param tokenObject opaque token to return in callbacks; may be {@code null}
-   * @param context client context used for immediate parent notifications performed by the
-   *     constructor
-   * @param freeData if {@code true}, frees {@code data} on terminal completion (success/failure)
-   * @param persistent whether this inserter is persistent and can be resumed after restart
-   * @param realTimeFlag real-time scheduling hint that may influence downstream prioritization
-   * @param extraInserts additional insert attempts or related tuning delegated to lower layers
-   * @param cryptoAlgorithm crypto algorithm identifier for the underlying SSK insert
-   * @param forceCryptoKey optional crypto key override; {@code null} to auto-select
-   * @throws MalformedURLException if {@code uri} does not form a valid insertable USK
+   * @param payload block data and encoding parameters for the USK insert
+   * @param params shared inserter parameters including parent, callbacks, and insert context
+   * @param options persistence and scheduling options for this insert
+   * @throws MalformedURLException if {@code payload.uri()} does not form a valid insertable USK
    */
   public USKInserter(
-      BaseClientPutter parent,
-      Bucket data,
-      short compressionCodec,
-      FreenetURI uri,
-      InsertContext ctx,
-      PutCompletionCallback cb,
-      boolean isMetadata,
-      int sourceLength,
-      int token,
-      boolean addToParent,
-      Object tokenObject,
-      ClientContext context,
-      boolean freeData,
-      boolean persistent,
-      boolean realTimeFlag,
-      int extraInserts,
-      byte cryptoAlgorithm,
-      byte[] forceCryptoKey)
+      BlockInsertPayload payload, BlockInsertParams params, BlockInsertOptions options)
       throws MalformedURLException {
     this.hashCode = super.hashCode();
-    this.tokenObject = tokenObject;
-    this.persistent = persistent;
-    this.parent = parent;
-    this.data = data;
-    this.compressionCodec = compressionCodec;
-    this.ctx = ctx;
-    this.cb = cb;
-    this.isMetadata = isMetadata;
-    this.sourceLength = sourceLength;
-    this.token = token;
-    if (addToParent) {
-      parent.addMustSucceedBlocks(1);
-      parent.notifyClients(context);
+    this.tokenObject = params.tokenObject();
+    this.persistent = options.persistent();
+    this.parent = params.parent();
+    this.data = payload.data();
+    this.compressionCodec = payload.compressionCodec();
+    this.ctx = params.ctx();
+    this.cb = params.callback();
+    this.isMetadata = payload.isMetadata();
+    this.sourceLength = payload.sourceLength();
+    this.token = params.token();
+    if (params.addToParent()) {
+      params.parent().addMustSucceedBlocks(1);
+      params.parent().notifyClients(params.context());
     }
-    privUSK = InsertableUSK.createInsertable(uri, persistent);
+    privUSK = InsertableUSK.createInsertable(payload.uri(), options.persistent());
     pubUSK = privUSK.getUSK();
     edition = pubUSK.suggestedEdition;
-    this.freeData = freeData;
-    this.extraInserts = extraInserts;
-    this.cryptoAlgorithm = cryptoAlgorithm;
-    this.forceCryptoKey = forceCryptoKey;
-    this.realTimeFlag = realTimeFlag;
+    this.freeData = options.freeData();
+    this.extraInserts = options.extraInserts();
+    this.cryptoAlgorithm = payload.cryptoAlgorithm();
+    this.forceCryptoKey = payload.cryptoKey();
+    this.realTimeFlag = options.realTimeFlag();
   }
 
   /**
@@ -622,7 +565,7 @@ public class USKInserter
   }
 
   /**
-   * Indicates that the fetcher was cancelled unexpectedly.
+   * Indicates that the fetcher was canceled unexpectedly.
    *
    * <p>Treats this as an error and cancels the overall operation, reporting a cancellation failure
    * to the completion callback.

@@ -185,74 +185,42 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
    * register it with the scheduler or {@link #tryEncode(ClientContext)} to trigger an early encode
    * when the context enables it.
    *
-   * @param parent The owning putter; must be active and used for progress aggregation.
-   * @param data The source {@link Bucket} containing the bytes to encode and insert; never null.
-   * @param compressionCodec Compression codec id; {@code -1} delegates to context/implementation.
-   * @param uri Base URI whose key type determines CHK/SSK/KSK behavior and encoding rules.
-   * @param ctx Insert policy and limits (retries, RNF heuristics, compressor descriptor, etc.).
-   * @param realTimeFlag Whether to schedule this insert as real-time in the underlying framework.
-   * @param cb Callback notified on encode and when the request finally succeeds or fails.
-   * @param isMetadata Whether the data should be encoded as metadata rather than ordinary content.
-   * @param sourceLength Length of the original, uncompressed data (bytes), or {@code -1} if
-   *     unknown.
-   * @param token Integer token used by callers to correlate this block (e.g., splitfile indices).
-   * @param addToParent When true, increments the parent's must-succeed counter and notifies
-   *     clients.
+   * @param payload block data and encoding parameters for this insert
+   * @param params shared inserter parameters including parent, callbacks, and insert context
+   * @param options persistence and scheduling options for this block insert
    * @param dontSendEncoded Suppress the early on-encode callback even if a key is available.
-   * @param tokenObject Opaque token exposed via {@link #getToken()} to identify this request.
-   * @param context Runtime context used immediately for parent notifications on construction.
-   * @param persistent Whether this request is persistent across restarts in the client framework.
-   * @param freeData Whether to free {@code data} when the request reaches a terminal state.
-   * @param extraInserts Number of additional successful inserts to perform after the first success.
-   * @param cryptoAlgorithm Identifier for optional per-block cryptography; {@code 0} for none.
-   * @param cryptoKey Raw key bytes used with {@code cryptoAlgorithm}; {@code null} when not used.
    */
   public SingleBlockInserter(
-      BaseClientPutter parent,
-      Bucket data,
-      short compressionCodec,
-      FreenetURI uri,
-      InsertContext ctx,
-      boolean realTimeFlag,
-      PutCompletionCallback cb,
-      boolean isMetadata,
-      int sourceLength,
-      int token,
-      boolean addToParent,
-      boolean dontSendEncoded,
-      Object tokenObject,
-      ClientContext context,
-      boolean persistent,
-      boolean freeData,
-      int extraInserts,
-      byte cryptoAlgorithm,
-      byte[] cryptoKey) {
-    super(persistent, realTimeFlag);
+      BlockInsertPayload payload,
+      BlockInsertParams params,
+      BlockInsertOptions options,
+      boolean dontSendEncoded) {
+    super(options.persistent(), options.realTimeFlag());
     this.consecutiveRNFs = 0;
-    this.tokenObject = tokenObject;
-    this.token = token;
-    this.parent = parent;
+    this.tokenObject = params.tokenObject();
+    this.token = params.token();
+    this.parent = params.parent();
     this.dontSendEncoded = dontSendEncoded;
     this.retries = 0;
     this.finished = false;
-    this.ctx = ctx;
-    this.freeData = freeData;
+    this.ctx = params.ctx();
+    this.freeData = options.freeData();
     errors = new FailureCodeTracker(true);
-    this.cb = cb;
-    this.uri = uri;
-    this.compressionCodec = compressionCodec;
-    this.sourceData = data;
+    this.cb = params.callback();
+    this.uri = payload.uri();
+    this.compressionCodec = payload.compressionCodec();
+    this.sourceData = payload.data();
     if (sourceData == null) throw new NullPointerException();
-    this.isMetadata = isMetadata;
-    this.sourceLength = sourceLength;
+    this.isMetadata = payload.isMetadata();
+    this.sourceLength = payload.sourceLength();
     isSSK = uri.getKeyType().equalsIgnoreCase("SSK");
-    if (addToParent) {
-      parent.addMustSucceedBlocks(1);
-      parent.notifyClients(context);
+    if (params.addToParent()) {
+      params.parent().addMustSucceedBlocks(1);
+      params.parent().notifyClients(params.context());
     }
-    this.extraInserts = extraInserts;
-    this.cryptoAlgorithm = cryptoAlgorithm;
-    this.cryptoKey = cryptoKey;
+    this.extraInserts = options.extraInserts();
+    this.cryptoAlgorithm = payload.cryptoAlgorithm();
+    this.cryptoKey = payload.cryptoKey();
   }
 
   /**
@@ -271,14 +239,15 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     try {
       return innerEncode(
           random,
-          uri,
-          sourceData,
-          isMetadata,
-          compressionCodec,
-          sourceLength,
-          ctx.getCompressorDescriptor(),
-          cryptoAlgorithm,
-          cryptoKey);
+          new BlockInsertPayload(
+              sourceData,
+              uri,
+              compressionCodec,
+              isMetadata,
+              sourceLength,
+              cryptoAlgorithm,
+              cryptoKey),
+          ctx.getCompressorDescriptor());
     } catch (KeyEncodeException | InvalidCompressionCodecException e) {
       throw new InsertException(InsertExceptionMode.INTERNAL_ERROR, e, null);
     } catch (MalformedURLException e) {
@@ -298,15 +267,8 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
    * implementation may choose whether to compress. Callers must provide a non-null {@code random}.
    *
    * @param random Randomness provider required by the encoders; must not be {@code null}.
-   * @param uri Target URI whose key type selects the encoding path (CHK/SSK/KSK).
-   * @param sourceData Bucket containing the bytes to encode; implementations may read it multiple
-   *     times.
-   * @param isMetadata Whether the content should be marked as metadata in the encoded block.
-   * @param compressionCodec Compression codec id; {@code -1} lets the encoder decide.
-   * @param sourceLength Uncompressed source length in bytes, when known; {@code -1} if unknown.
+   * @param payload Block payload and encoding parameters; must not be {@code null}.
    * @param compressorDescriptor Human-readable compressor descriptor used by encoders and logs.
-   * @param cryptoAlgorithm Optional algorithm id for per-block cryptography; {@code 0} for none.
-   * @param cryptoKey Raw key material for {@code cryptoAlgorithm}; may be {@code null} when unused.
    * @return Encoded block ready for scheduling and transmission.
    * @throws InsertException If the URI type is unknown or otherwise invalid for insertion.
    * @throws CHKEncodeException If CHK encoding fails due to content or configuration issues.
@@ -315,40 +277,32 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
    * @throws InvalidCompressionCodecException If the codec id is not recognized by encoders.
    */
   protected static ClientKeyBlock innerEncode(
-      RandomSource random,
-      FreenetURI uri,
-      Bucket sourceData,
-      boolean isMetadata,
-      short compressionCodec,
-      int sourceLength,
-      String compressorDescriptor,
-      byte cryptoAlgorithm,
-      byte[] cryptoKey)
+      RandomSource random, BlockInsertPayload payload, String compressorDescriptor)
       throws InsertException,
           CHKEncodeException,
           IOException,
           SSKEncodeException,
           InvalidCompressionCodecException {
     Objects.requireNonNull(random, "random");
-    String uriType = uri.getKeyType();
+    String uriType = payload.uri().getKeyType();
     if (uriType.equals("CHK")) {
       return ClientCHKBlock.encode(
-          sourceData,
-          isMetadata,
-          compressionCodec == -1,
-          compressionCodec,
-          sourceLength,
+          payload.data(),
+          payload.isMetadata(),
+          payload.compressionCodec() == -1,
+          payload.compressionCodec(),
+          payload.sourceLength(),
           compressorDescriptor,
-          cryptoKey,
-          cryptoAlgorithm);
+          payload.cryptoKey(),
+          payload.cryptoAlgorithm());
     } else if (uriType.equals("SSK") || uriType.equals("KSK")) {
-      InsertableClientSSK ik = InsertableClientSSK.create(uri);
+      InsertableClientSSK ik = InsertableClientSSK.create(payload.uri());
       return ik.encode(
-          sourceData,
-          isMetadata,
-          compressionCodec == -1,
-          compressionCodec,
-          sourceLength,
+          payload.data(),
+          payload.isMetadata(),
+          payload.compressionCodec() == -1,
+          payload.compressionCodec(),
+          payload.sourceLength(),
           compressorDescriptor);
     } else {
       throw new InsertException(
@@ -743,14 +697,15 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     try {
       return innerEncode(
           context.random,
-          block.uri,
-          block.copyBucket,
-          block.isMetadata,
-          block.compressionCodec,
-          block.sourceLength,
-          compressorDescriptor,
-          block.cryptoAlgorithm,
-          block.cryptoKey);
+          new BlockInsertPayload(
+              block.copyBucket,
+              block.uri,
+              block.compressionCodec,
+              block.isMetadata,
+              block.sourceLength,
+              block.cryptoAlgorithm,
+              block.cryptoKey),
+          compressorDescriptor);
     } catch (CHKEncodeException
         | SSKEncodeException
         | InsertException
@@ -950,14 +905,9 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
       }
       return new BlockItem(
           key,
-          data,
-          isMetadata,
-          compressionCodec,
-          sourceLength,
-          u,
-          persistent,
-          cryptoAlgorithm,
-          cryptoKey);
+          new BlockInsertPayload(
+              data, u, compressionCodec, isMetadata, sourceLength, cryptoAlgorithm, cryptoKey),
+          persistent);
     } catch (IOException e) {
       throw new InsertException(InsertExceptionMode.BUCKET_ERROR, e, null);
     }
@@ -1005,25 +955,16 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     private final byte cryptoAlgorithm;
     private final byte[] cryptoKey;
 
-    BlockItem(
-        BlockItemKey key,
-        Bucket bucket,
-        boolean meta,
-        short codec,
-        int srclen,
-        FreenetURI u,
-        boolean persistent,
-        byte cryptoAlgorithm,
-        byte[] cryptoKey) {
+    BlockItem(BlockItemKey key, BlockInsertPayload payload, boolean persistent) {
       this.key = key;
-      this.copyBucket = bucket;
-      this.uri = u;
-      this.isMetadata = meta;
-      this.compressionCodec = codec;
-      this.sourceLength = srclen;
+      this.copyBucket = payload.data();
+      this.uri = payload.uri();
+      this.isMetadata = payload.isMetadata();
+      this.compressionCodec = payload.compressionCodec();
+      this.sourceLength = payload.sourceLength();
       this.persistent = persistent;
-      this.cryptoAlgorithm = cryptoAlgorithm;
-      this.cryptoKey = cryptoKey;
+      this.cryptoAlgorithm = payload.cryptoAlgorithm();
+      this.cryptoKey = payload.cryptoKey();
     }
 
     @Override

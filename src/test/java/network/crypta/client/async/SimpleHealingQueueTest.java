@@ -151,25 +151,17 @@ class SimpleHealingQueueTest {
 
     SingleBlockInserter sbi =
         new SingleBlockInserter(
-            queue,
-            data,
-            (short) -1,
-            FreenetURI.EMPTY_CHK_URI,
-            insertCtx,
-            /*realTime*/ false,
-            queue,
-            /*isMetadata*/ false,
-            /*sourceLength*/ 0,
-            /*token*/ 123,
-            /*addToParent*/ false,
-            /*dontSendEncoded*/ true,
-            /*tokenObject*/ data,
-            clientCtx,
-            /*persistent*/ false,
-            /*freeData*/ false,
-            /*extraInserts*/ 0,
-            /*cryptoAlgorithm*/ Key.ALGO_AES_CTR_256_SHA256,
-            /*cryptoKey*/ null);
+            new BlockInsertPayload(
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                (short) -1,
+                /*isMetadata*/ false,
+                /*sourceLength*/ 0,
+                /*cryptoAlgorithm*/ Key.ALGO_AES_CTR_256_SHA256,
+                /*cryptoKey*/ null),
+            new BlockInsertParams(queue, insertCtx, queue, 123, data, false, clientCtx),
+            new BlockInsertOptions(false, false, false, 0),
+            /*dontSendEncoded*/ true);
 
     // Put into the running map as SimpleHealingQueue does when healing is accepted
     queue.runningInserters.put(data, sbi);
