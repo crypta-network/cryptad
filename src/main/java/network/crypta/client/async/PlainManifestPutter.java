@@ -3,9 +3,7 @@ package network.crypta.client.async;
 import java.io.Serial;
 import java.util.HashMap;
 import java.util.Map;
-import network.crypta.client.InsertContext;
 import network.crypta.client.Metadata;
-import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.ManifestElement;
 import network.crypta.support.io.ResumeFailedException;
 import org.slf4j.Logger;
@@ -87,35 +85,6 @@ public class PlainManifestPutter extends BaseManifestPutter {
                 ClientPutter.randomiseSplitfileKeys(params.target(), params.ctx()))
             .withForceCryptoKey(params.forceCryptoKey())
             .withContext(params.context()));
-  }
-
-  /**
-   * Legacy constructor retained for callers that do not yet use {@link ManifestPutterParams}.
-   *
-   * @deprecated Use {@link #PlainManifestPutter(ManifestPutterParams)} instead.
-   */
-  @Deprecated
-  @SuppressWarnings("java:S107")
-  public PlainManifestPutter(
-      ClientPutCallback clientCallback,
-      Map<String, Object> manifestElements,
-      short prioClass,
-      FreenetURI target,
-      String defaultName,
-      InsertContext ctx,
-      byte[] forceCryptoKey,
-      ClientContext context)
-      throws TooManyFilesInsertException {
-    this(
-        new ManifestPutterParams(
-            clientCallback,
-            manifestElements,
-            prioClass,
-            target,
-            defaultName,
-            ctx,
-            forceCryptoKey,
-            context));
   }
 
   /**
