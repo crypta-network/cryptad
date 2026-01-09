@@ -71,9 +71,8 @@ class SplitFileFetcherSegmentBlockChooserTest {
             3, /*cooldownTries*/
             0,
             /*cooldownTime*/ 0L,
-            seg,
-            keysFetching, /*ignoreLastBlock*/
-            0);
+            new SplitFileFetcherSegmentBlockChooserParams(
+                seg, keysFetching, /*ignoreLastBlock*/ 0));
 
     // Act
     int chosen = chooser.chooseKey();
@@ -104,7 +103,12 @@ class SplitFileFetcherSegmentBlockChooserTest {
 
     SplitFileFetcherSegmentBlockChooser chooser =
         new SplitFileFetcherSegmentBlockChooser(
-            1, new Random(7L), /*maxRetries*/ 3, /*cooldownTries*/ 0, 0L, seg, keysFetching, -1);
+            1,
+            new Random(7L),
+            /*maxRetries*/ 3,
+            /*cooldownTries*/ 0,
+            0L,
+            new SplitFileFetcherSegmentBlockChooserParams(seg, keysFetching, -1));
 
     // Act
     int chosen = chooser.chooseKey();
@@ -134,7 +138,12 @@ class SplitFileFetcherSegmentBlockChooserTest {
 
     SplitFileFetcherSegmentBlockChooser chooser =
         new SplitFileFetcherSegmentBlockChooser(
-            1, new Random(99L), /*maxRetries*/ 3, /*cooldownTries*/ 0, 0L, seg, keysFetching, -1);
+            1,
+            new Random(99L),
+            /*maxRetries*/ 3,
+            /*cooldownTries*/ 0,
+            0L,
+            new SplitFileFetcherSegmentBlockChooserParams(seg, keysFetching, -1));
 
     // Act
     int chosen = chooser.chooseKey();
@@ -156,7 +165,12 @@ class SplitFileFetcherSegmentBlockChooserTest {
 
     SplitFileFetcherSegmentBlockChooser chooser =
         new SplitFileFetcherSegmentBlockChooser(
-            1, new Random(1L), /*maxRetries*/ 3, /*cooldownTries*/ 0, 0L, seg, keysFetching, -1);
+            1,
+            new Random(1L),
+            /*maxRetries*/ 3,
+            /*cooldownTries*/ 0,
+            0L,
+            new SplitFileFetcherSegmentBlockChooserParams(seg, keysFetching, -1));
 
     // Act
     int chosen = chooser.chooseKey();
