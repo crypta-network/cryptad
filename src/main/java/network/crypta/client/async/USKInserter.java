@@ -197,28 +197,18 @@ public class USKInserter
    * present by comparing data and codec. If the payload is already inserted at the reported
    * edition, completes successfully. Otherwise, schedules an insert attempt at the next edition.
    *
-   * @param l the discovered latest edition number (non-negative)
-   * @param key the USK associated with the discovery callback; same logical USK as this inserter
-   * @param context the client context used to schedule subsequent work
-   * @param lastContentWasMetadata whether the discovered edition contains metadata content
-   * @param codec the compression codec detected on the discovered edition
-   * @param hisData the discovered edition bytes when available; may be {@code null}
-   * @param newKnownGood true if this discovery advanced the known-good edition state
-   * @param newSlotToo true if the next slot is now known to exist or be reserved
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
   @Override
-  public void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean lastContentWasMetadata,
-      short codec,
-      byte[] hisData,
-      boolean newKnownGood,
-      boolean newSlotToo) {
+  public void onFoundEdition(USKFoundEdition foundEdition) {
+    long editionFound = foundEdition.edition();
+    ClientContext context = foundEdition.context();
+    boolean lastContentWasMetadata = foundEdition.metadata();
+    short codec = foundEdition.codec();
+    byte[] hisData = foundEdition.data();
     boolean alreadyInserted = false;
     synchronized (this) {
-      edition = Math.max(l, edition);
+      edition = Math.max(editionFound, edition);
       consecutiveCollisions = 0;
       if ((lastContentWasMetadata == isMetadata)
           && hisData != null
@@ -243,7 +233,7 @@ public class USKInserter
       // Success!
       parent.completedBlock(true, context);
       cb.onEncode(pubUSK.copy(edition), this, context);
-      insertSucceeded(context, l);
+      insertSucceeded(context, editionFound);
       if (freeData) {
         data.free();
       }

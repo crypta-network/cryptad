@@ -83,32 +83,15 @@ public class USKSparseProxyCallback implements USKProgressCallback {
    * boundary has been signalled; otherwise the information is retained and may be forwarded later
    * from {@link #onSendingToNetwork(ClientContext)} or {@link #onRoundFinished(ClientContext)}.
    *
-   * @param l The logical edition discovered by the fetcher; higher values denote newer editions and
-   *     should be non-negative where available.
-   * @param key A copy of the USK associated with this discovery; typically carries {@code l} as its
-   *     edition component.
-   * @param context Execution context for the request; non-null and scoped to the current
-   *     subscription lifecycle.
-   * @param metadata True when {@code data} represents metadata for the edition rather than full
-   *     content; consumers may use this to defer expensive processing.
-   * @param codec Short identifier of the content codec for {@code data}; a negative value indicates
-   *     that no codec applies to the current payload.
-   * @param data Raw bytes for the discovered edition or its metadata; may be {@code null} when only
-   *     structural advancement is being reported.
-   * @param newKnownGood True when the highest successfully fetched (known-good) edition increased
-   *     as a result of this discovery.
-   * @param newSlotToo True when the highest examined SSK slot also advanced alongside known-good.
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
   @Override
-  public void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean metadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo) {
+  public void onFoundEdition(USKFoundEdition foundEdition) {
+    long l = foundEdition.edition();
+    boolean metadata = foundEdition.metadata();
+    short codec = foundEdition.codec();
+    byte[] data = foundEdition.data();
+    boolean newKnownGood = foundEdition.newKnownGood();
     synchronized (this) {
       if (l < lastEdition) {
         if (!roundFinished) return;
@@ -124,7 +107,7 @@ public class USKSparseProxyCallback implements USKProgressCallback {
       }
       if (!roundFinished) return;
     }
-    target.onFoundEdition(l, key, context, metadata, codec, data, newKnownGood, newSlotToo);
+    target.onFoundEdition(foundEdition);
   }
 
   /**
@@ -201,6 +184,7 @@ public class USKSparseProxyCallback implements USKProgressCallback {
       wasKnownGood = false;
     }
     // At this point, either we returned above or ed is guaranteed != -1
-    target.onFoundEdition(ed, key, context, meta, codec, data, wasKnownGood, wasKnownGood);
+    target.onFoundEdition(
+        new USKFoundEdition(ed, key, context, meta, codec, data, wasKnownGood, wasKnownGood));
   }
 }

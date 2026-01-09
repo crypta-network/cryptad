@@ -356,7 +356,8 @@ class USKInserterTest {
 
     // Act: Found matching edition with identical data
     long foundEdition = 7L;
-    inserter.onFoundEdition(foundEdition, publicUSK, context, false, (short) 3, bytes, true, true);
+    inserter.onFoundEdition(
+        new USKFoundEdition(foundEdition, publicUSK, context, false, (short) 3, bytes, true, true));
 
     // Assert: parent and callback methods invoked; success path without date hints
     verify(parent, times(1)).completedBlock(true, context);

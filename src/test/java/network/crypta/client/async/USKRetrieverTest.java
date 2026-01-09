@@ -489,11 +489,15 @@ class USKRetrieverTest {
 
     // Negative edition: early return
     assertDoesNotThrow(
-        () -> retriever.onFoundEdition(-1L, usk, ctx, false, (short) -1, null, false, false));
+        () ->
+            retriever.onFoundEdition(
+                new USKFoundEdition(-1L, usk, ctx, false, (short) -1, null, false, false)));
 
     // Lower than requested (origUSK.suggestedEdition == 100): early return
     assertDoesNotThrow(
-        () -> retriever.onFoundEdition(50L, usk, ctx, false, (short) -1, null, false, false));
+        () ->
+            retriever.onFoundEdition(
+                new USKFoundEdition(50L, usk, ctx, false, (short) -1, null, false, false)));
   }
 
   @Test

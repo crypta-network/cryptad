@@ -1,7 +1,5 @@
 package network.crypta.client.async;
 
-import network.crypta.keys.USK;
-
 /**
  * Callback interface used by the asynchronous USK fetch machinery.
  *
@@ -64,34 +62,11 @@ public interface USKFetcherCallback extends USKCallback {
    *
    * <pre>{@code
    * // Example: record the resolved edition then hand off for processing
-   * callback.onFoundEdition(edition, usk, ctx, false, codec, bytes, true, false);
+   * callback.onFoundEdition(new USKFoundEdition(edition, usk, ctx, false, codec, bytes, true, false));
    * }</pre>
    *
-   * @param l the resolved edition number for the USK; non-negative and monotonically increasing
-   *     across successful updates for the same key within the network
-   * @param key the USK identifying the namespace and site; the reference is owned by the caller and
-   *     should not be mutated by the callback implementation
-   * @param context the client execution context that initiated the fetch; provides access to
-   *     environment services useful for post-processing and logging
-   * @param metadata whether the {@code data} buffer represents metadata rather than primary
-   *     content; consumers should branch appropriately when this flag is {@code true}
-   * @param codec a short identifier for the data’s encoding or transport codec; value ranges and
-   *     semantics are defined by the surrounding client protocol version
-   * @param data the raw bytes of the fetched object or its metadata; the array may be reused by the
-   *     caller and should not be retained or modified by the callee without copying
-   * @param newKnownGood whether this edition advanced the known-good marker for the key within the
-   *     local client; {@code true} implies subsequent fetches may use this as a baseline
-   * @param newSlotToo whether a new slot was also discovered alongside the edition; used by the
-   *     caller to convey additional progress that might influence scheduling heuristics
+   * @param foundEdition The payload describing the discovered edition and its metadata.
    */
   @Override
-  void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean metadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo);
+  void onFoundEdition(USKFoundEdition foundEdition);
 }

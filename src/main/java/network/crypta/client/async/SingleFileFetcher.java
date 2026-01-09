@@ -2183,21 +2183,16 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     }
 
     @Override
-    public void onFoundEdition(
-        long l,
-        USK newUSK,
-        ClientContext context,
-        boolean metadata,
-        short codec,
-        byte[] data,
-        boolean newKnownGood,
-        boolean newSlotToo) {
-      if (l < usk.suggestedEdition && datastoreOnly) {
-        l = usk.suggestedEdition;
+    public void onFoundEdition(USKFoundEdition foundEdition) {
+      long edition = foundEdition.edition();
+      USK newUSK = foundEdition.key();
+      ClientContext context = foundEdition.context();
+      if (edition < usk.suggestedEdition && datastoreOnly) {
+        edition = usk.suggestedEdition;
       }
-      ClientSSK key = usk.getSSK(l);
+      ClientSSK key = usk.getSSK(edition);
       try {
-        if (l == usk.suggestedEdition || (l == 0 && usk.suggestedEdition == 1)) {
+        if (edition == usk.suggestedEdition || (edition == 0 && usk.suggestedEdition == 1)) {
           InitParams p = new InitParams();
           p.parent = parent;
           p.cb = cb;
@@ -2240,7 +2235,9 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       FetchException e = null;
       if (datastoreOnly) {
         try {
-          onFoundEdition(usk.suggestedEdition, usk, context, false, (short) -1, null, false, false);
+          onFoundEdition(
+              new USKFoundEdition(
+                  usk.suggestedEdition, usk, context, false, (short) -1, null, false, false));
           return;
         } catch (Exception t) {
           e = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);

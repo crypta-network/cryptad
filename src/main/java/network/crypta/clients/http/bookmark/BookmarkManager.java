@@ -10,8 +10,8 @@ import java.net.MalformedURLException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.USKCallback;
+import network.crypta.client.async.USKFoundEdition;
 import network.crypta.clients.http.FProxyToadlet;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
@@ -195,17 +195,9 @@ public class BookmarkManager implements RequestClient {
   private class USKUpdatedCallback implements USKCallback {
 
     @Override
-    public void onFoundEdition(
-        long edition,
-        USK key,
-        ClientContext context,
-        boolean wasMetadata,
-        short codec,
-        byte[] data,
-        boolean newKnownGood,
-        boolean newSlotToo) {
-      if (!newKnownGood) {
-        FreenetURI uri = key.copy(edition).getURI();
+    public void onFoundEdition(USKFoundEdition foundEdition) {
+      if (!foundEdition.newKnownGood()) {
+        FreenetURI uri = foundEdition.key().copy(foundEdition.edition()).getURI();
         node.makeClient(PRIORITY_PROGRESS, false, false)
             .prefetch(
                 uri,
@@ -215,6 +207,8 @@ public class BookmarkManager implements RequestClient {
                 PRIORITY_PROGRESS);
         return;
       }
+      long edition = foundEdition.edition();
+      USK key = foundEdition.key();
       List<BookmarkItem> items = MAIN_CATEGORY.getAllItems();
       boolean matched = false;
       boolean updated = false;

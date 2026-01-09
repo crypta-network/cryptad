@@ -23,6 +23,7 @@ import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.USKCallback;
+import network.crypta.client.async.USKFoundEdition;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.node.Node;
@@ -183,22 +184,14 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   @Override
-  public void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean wasMetadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo) {
-    if (newKnownGood && !newSlotToo) return;
+  public void onFoundEdition(USKFoundEdition foundEdition) {
+    if (foundEdition.newKnownGood() && !foundEdition.newSlotToo()) return;
     // Debug gating derives from LOG.isDebugEnabled() where needed
-    if (LOG.isDebugEnabled()) LOG.debug("Found edition {}", l);
+    if (LOG.isDebugEnabled()) LOG.debug("Found edition {}", foundEdition.edition());
     int found;
     synchronized (this) {
       if (!isRunning) return;
-      found = (int) key.suggestedEdition;
+      found = (int) foundEdition.key().suggestedEdition;
 
       realAvailableVersion = found;
       if (found > maxDeployVersion) {
@@ -206,7 +199,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
           LOG.warn(
               "Ignoring {} update edition {}: version too new (min {} max {})",
               artifactName(),
-              l,
+              foundEdition.edition(),
               minDeployVersion,
               maxDeployVersion);
         found = maxDeployVersion;

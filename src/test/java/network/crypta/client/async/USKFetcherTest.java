@@ -160,15 +160,7 @@ class USKFetcherTest {
           }
 
           @Override
-          public void onFoundEdition(
-              long ed,
-              USK key,
-              ClientContext context,
-              boolean metadata,
-              short codec,
-              byte[] data,
-              boolean newKnownGood,
-              boolean newSlotToo) {
+          public void onFoundEdition(USKFoundEdition foundEdition) {
             // Intentionally empty for this test: the callback exists only to
             // exercise subscriber add/remove mechanics. No behavior under test
             // depends on receiving or handling edition notifications here.

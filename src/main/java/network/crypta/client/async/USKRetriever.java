@@ -43,10 +43,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Typical usage is to construct the retriever with a {@link FetchContext}, a priority and a
  * {@link RequestClient}, subscribe it through a {@code USKManager}, and wait for {@linkplain
- * #onFoundEdition(long, USK, ClientContext, boolean, short, byte[], boolean, boolean) edition
- * notifications}. When an edition equal to or newer than the requested one is seen, the retriever
- * schedules a {@code SingleFileFetcher} to download the data, decompresses it when needed, and
- * reports a {@link FetchResult} to the provided {@link USKRetrieverCallback}.
+ * #onFoundEdition(USKFoundEdition) edition notifications}. When an edition equal to or newer than
+ * the requested one is seen, the retriever schedules a {@code SingleFileFetcher} to download the
+ * data, decompresses it when needed, and reports a {@link FetchResult} to the provided {@link
+ * USKRetrieverCallback}.
  *
  * <ul>
  *   <li>Thread safety: instances are not documented as thread‑safe. Callbacks are invoked on
@@ -126,30 +126,26 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
   }
 
   @Override
-  public void onFoundEdition(
-      long l,
-      USK key,
-      ClientContext context,
-      boolean metadata,
-      short codec,
-      byte[] data,
-      boolean newKnownGood,
-      boolean newSlotToo) {
-    if (l < 0) {
-      LOG.error("Found negative edition: {} for {} !!!", l, key);
+  public void onFoundEdition(USKFoundEdition foundEdition) {
+    long edition = foundEdition.edition();
+    USK key = foundEdition.key();
+    ClientContext context = foundEdition.context();
+    if (edition < 0) {
+      LOG.error("Found negative edition: {} for {} !!!", edition, key);
       return;
     }
-    if (l < origUSK.suggestedEdition) {
-      LOG.info("Found edition {} < requested {} for {}", l, origUSK.suggestedEdition, origUSK);
+    if (edition < origUSK.suggestedEdition) {
+      LOG.info(
+          "Found edition {} < requested {} for {}", edition, origUSK.suggestedEdition, origUSK);
       return;
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Found edition {} for {} - fetching...", l, this);
+    if (LOG.isDebugEnabled()) LOG.debug("Found edition {} for {} - fetching...", edition, this);
     // Create a SingleFileFetcher for the key (as an SSK).
     // Put the edition number into its context object.
     // Put ourselves as callback.
     // Fetch it. If it fails, ignore it, if it succeeds, return the data with the edition # to the
     // client.
-    FreenetURI uri = key.getSSK(l).getURI();
+    FreenetURI uri = key.getSSK(edition).getURI();
     try {
       SingleFileFetcher getter =
           (SingleFileFetcher)
@@ -161,7 +157,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
                   new ArchiveContext(ctx.getMaxTempLength(), ctx.getMaxArchiveLevels()),
                   new SingleFileFetcher.CreationPolicy(
                       ctx.getMaxNonSplitfileRetries(), 0, true, true, false, false),
-                  new SingleFileFetcher.CreationRuntime(context, realTimeFlag, l));
+                  new SingleFileFetcher.CreationRuntime(context, realTimeFlag, edition));
       getter.schedule(context);
     } catch (MalformedURLException e) {
       LOG.error("Impossible: {}", e, e);

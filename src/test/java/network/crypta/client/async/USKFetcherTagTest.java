@@ -9,8 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.times;
@@ -449,51 +447,29 @@ class USKFetcherTagTest {
     byte[] data = new byte[] {1, 2, 3};
 
     // Act
-    tag.onFoundEdition(edition, usk.copy(edition), mockContext, false, codec, data, true, true);
+    tag.onFoundEdition(
+        new USKFoundEdition(
+            edition, usk.copy(edition), mockContext, false, codec, data, true, true));
 
     // Assert
     verify(cb, times(1)).setTag(tag, mockContext);
     // Capture and assert arguments instead of eq(...)
-    ArgumentCaptor<Long> lCap = ArgumentCaptor.forClass(Long.class);
-    ArgumentCaptor<USK> uCap = ArgumentCaptor.forClass(USK.class);
-    ArgumentCaptor<ClientContext> cCap = ArgumentCaptor.forClass(ClientContext.class);
-    ArgumentCaptor<Boolean> mCap = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<Short> codecCap = ArgumentCaptor.forClass(Short.class);
-    ArgumentCaptor<byte[]> dataCap = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Boolean> kCap = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<Boolean> sCap = ArgumentCaptor.forClass(Boolean.class);
-    verify(cb, times(1))
-        .onFoundEdition(
-            lCap.capture(),
-            uCap.capture(),
-            cCap.capture(),
-            mCap.capture(),
-            codecCap.capture(),
-            dataCap.capture(),
-            kCap.capture(),
-            sCap.capture());
-    assertEquals(edition, lCap.getValue());
-    assertEquals(mockContext, cCap.getValue());
-    assertFalse(mCap.getValue());
-    assertEquals(codec, codecCap.getValue());
-    assertArrayEquals(data, dataCap.getValue());
-    assertTrue(kCap.getValue());
-    assertTrue(sCap.getValue());
+    ArgumentCaptor<USKFoundEdition> foundEdition = ArgumentCaptor.forClass(USKFoundEdition.class);
+    verify(cb, times(1)).onFoundEdition(foundEdition.capture());
+    assertEquals(edition, foundEdition.getValue().edition());
+    assertEquals(mockContext, foundEdition.getValue().context());
+    assertFalse(foundEdition.getValue().metadata());
+    assertEquals(codec, foundEdition.getValue().codec());
+    assertArrayEquals(data, foundEdition.getValue().data());
+    assertTrue(foundEdition.getValue().newKnownGood());
+    assertTrue(foundEdition.getValue().newSlotToo());
     assertTrue(tag.isFinished());
 
     // Calling again should be ignored because finished
     tag.onFoundEdition(
-        edition + 1, usk.copy(edition + 1), mockContext, false, codec, data, true, true);
-    verify(cb, times(1))
-        .onFoundEdition(
-            anyLong(),
-            any(USK.class),
-            any(ClientContext.class),
-            anyBoolean(),
-            anyShort(),
-            any(),
-            anyBoolean(),
-            anyBoolean());
+        new USKFoundEdition(
+            edition + 1, usk.copy(edition + 1), mockContext, false, codec, data, true, true));
+    verify(cb, times(1)).onFoundEdition(any(USKFoundEdition.class));
   }
 
   @Test

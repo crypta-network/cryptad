@@ -386,22 +386,14 @@ class USKManagerTest {
     final AtomicInteger calls = new AtomicInteger();
 
     @Override
-    public void onFoundEdition(
-        long l,
-        USK key,
-        ClientContext context,
-        boolean metadata,
-        short codec,
-        byte[] data,
-        boolean newKnownGood,
-        boolean newSlotToo) {
-      this.l = l;
-      this.key = key;
-      this.metadata = metadata;
-      this.codec = codec;
-      this.data = data;
-      this.newKnownGood = newKnownGood;
-      this.newSlotToo = newSlotToo;
+    public void onFoundEdition(USKFoundEdition foundEdition) {
+      this.l = foundEdition.edition();
+      this.key = foundEdition.key();
+      this.metadata = foundEdition.metadata();
+      this.codec = foundEdition.codec();
+      this.data = foundEdition.data();
+      this.newKnownGood = foundEdition.newKnownGood();
+      this.newSlotToo = foundEdition.newSlotToo();
       calls.incrementAndGet();
     }
 
@@ -485,15 +477,7 @@ class USKManagerTest {
   // Simple USKFetcherCallback for tag creation tests
   private static final class DummyFetcherCallback implements USKFetcherCallback {
     @Override
-    public void onFoundEdition(
-        long l,
-        USK key,
-        ClientContext context,
-        boolean metadata,
-        short codec,
-        byte[] data,
-        boolean newKnownGood,
-        boolean newSlotToo) {
+    public void onFoundEdition(USKFoundEdition foundEdition) {
       // Intentionally no-op: test stub does not assert fetcher callback payloads.
       // These tests only verify tag creation/mapping, not callback behavior.
     }
