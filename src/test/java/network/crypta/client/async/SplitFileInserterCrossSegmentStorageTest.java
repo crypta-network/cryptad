@@ -73,32 +73,37 @@ class SplitFileInserterCrossSegmentStorageTest {
             16 * 1024 * 1024L, 4, executor, NativeThread.JAVA_PRIORITY_RANGE);
     SplitFileInserterStorage parent =
         new SplitFileInserterStorage(
-            data,
-            size,
-            new NoopCallback(),
-            null,
-            new ClientMetadata(),
-            false,
-            null,
-            rafFactory,
-            false,
-            baseContext,
-            Key.ALGO_AES_CTR_256_SHA256,
-            key,
-            null,
-            null,
-            new ArrayBucketFactory(),
-            checker,
-            new SecureRandom(),
-            mlr,
-            new DummyJobRunner(executor, null),
-            ticker,
-            new NoopKeysFetchingLocally(),
-            false,
-            0,
-            0,
-            0,
-            0);
+            new SplitFileInserterStorageInitParams.Builder()
+                .originalData(data)
+                .decompressedLength(size)
+                .runtime(
+                    new SplitFileInserterStorageRuntimeParams.Builder()
+                        .callback(new NoopCallback())
+                        .random(new SecureRandom())
+                        .memoryLimitedJobRunner(mlr)
+                        .jobRunner(new DummyJobRunner(executor, null))
+                        .ticker(ticker)
+                        .keysFetching(new NoopKeysFetchingLocally())
+                        .build())
+                .compressionCodec(null)
+                .meta(new ClientMetadata())
+                .isMetadata(false)
+                .archiveType(null)
+                .rafFactory(rafFactory)
+                .persistent(false)
+                .ctx(baseContext)
+                .splitfileCryptoAlgorithm(Key.ALGO_AES_CTR_256_SHA256)
+                .splitfileCryptoKey(key)
+                .hashThisLayerOnly(null)
+                .hashes(null)
+                .tempBucketFactory(new ArrayBucketFactory())
+                .checker(checker)
+                .topDontCompress(false)
+                .topRequiredBlocks(0)
+                .topTotalBlocks(0)
+                .origDataSize(0)
+                .origCompressedDataSize(0)
+                .build());
     // Spy to neutralize the callback invoked after encoding so we don't depend on crossSegments.
     SplitFileInserterStorage spyParent = spy(parent);
     doNothing().when(spyParent).onFinishedEncoding(any(SplitFileInserterCrossSegmentStorage.class));
@@ -259,32 +264,37 @@ class SplitFileInserterCrossSegmentStorageTest {
       LockableRandomAccessBuffer data = rafFactory.makeRAF(size);
       byte[] key = new byte[32];
       return new SplitFileInserterStorage(
-          data,
-          size,
-          new NoopCallback(),
-          null,
-          new ClientMetadata(),
-          false,
-          null,
-          rafFactory,
-          false,
-          baseContext,
-          Key.ALGO_AES_CTR_256_SHA256,
-          key,
-          null,
-          null,
-          new ArrayBucketFactory(),
-          checker,
-          new SecureRandom(),
-          runner,
-          new DummyJobRunner(executor, null),
-          ticker,
-          new NoopKeysFetchingLocally(),
-          false,
-          0,
-          0,
-          0,
-          0);
+          new SplitFileInserterStorageInitParams.Builder()
+              .originalData(data)
+              .decompressedLength(size)
+              .runtime(
+                  new SplitFileInserterStorageRuntimeParams.Builder()
+                      .callback(new NoopCallback())
+                      .random(new SecureRandom())
+                      .memoryLimitedJobRunner(runner)
+                      .jobRunner(new DummyJobRunner(executor, null))
+                      .ticker(ticker)
+                      .keysFetching(new NoopKeysFetchingLocally())
+                      .build())
+              .compressionCodec(null)
+              .meta(new ClientMetadata())
+              .isMetadata(false)
+              .archiveType(null)
+              .rafFactory(rafFactory)
+              .persistent(false)
+              .ctx(baseContext)
+              .splitfileCryptoAlgorithm(Key.ALGO_AES_CTR_256_SHA256)
+              .splitfileCryptoKey(key)
+              .hashThisLayerOnly(null)
+              .hashes(null)
+              .tempBucketFactory(new ArrayBucketFactory())
+              .checker(checker)
+              .topDontCompress(false)
+              .topRequiredBlocks(0)
+              .topTotalBlocks(0)
+              .origDataSize(0)
+              .origCompressedDataSize(0)
+              .build());
     } catch (IOException | InsertException e) {
       throw new AssertionError("Failed to create minimal parent storage", e);
     }

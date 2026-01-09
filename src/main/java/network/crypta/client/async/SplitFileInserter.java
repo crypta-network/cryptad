@@ -462,34 +462,43 @@ public class SplitFileInserter
     this.freeData = freeData;
     SplitFileInserterStorage s;
     try {
-      SplitFileInserterStorage storage =
-          new SplitFileInserterStorage(
-              originalData,
-              options.decompressedLength,
-              this,
-              options.compressionCodec,
-              options.meta,
-              options.isMetadata,
-              options.archiveType,
-              options.context.getRandomAccessBufferFactory(persistent),
-              persistent,
-              options.ctx,
-              options.splitfileCryptoAlgorithm,
-              options.splitfileCryptoKey,
-              options.hashThisLayerOnly,
-              options.hashes,
-              options.context.tempBucketFactory /* only used for temporaries within constructor */,
-              new CRCChecksumChecker(),
-              options.context.fastWeakRandom,
-              options.context.memoryLimitedJobRunner,
-              options.context.getJobRunner(persistent),
-              options.context.ticker,
-              options.context.getChkInsertScheduler(options.realTime).fetchingKeys(),
-              options.topDontCompress,
-              options.topRequiredBlocks,
-              options.topTotalBlocks,
-              options.origDataSize,
-              options.origCompressedDataSize);
+      SplitFileInserterStorageRuntimeParams runtimeParams =
+          new SplitFileInserterStorageRuntimeParams.Builder()
+              .callback(this)
+              .random(options.context.fastWeakRandom)
+              .memoryLimitedJobRunner(options.context.memoryLimitedJobRunner)
+              .jobRunner(options.context.getJobRunner(persistent))
+              .ticker(options.context.ticker)
+              .keysFetching(options.context.getChkInsertScheduler(options.realTime).fetchingKeys())
+              .build();
+      SplitFileInserterStorageInitParams initParams =
+          new SplitFileInserterStorageInitParams.Builder()
+              .originalData(originalData)
+              .decompressedLength(options.decompressedLength)
+              .runtime(runtimeParams)
+              .compressionCodec(options.compressionCodec)
+              .meta(options.meta)
+              .isMetadata(options.isMetadata)
+              .archiveType(options.archiveType)
+              .rafFactory(options.context.getRandomAccessBufferFactory(persistent))
+              .persistent(persistent)
+              .ctx(options.ctx)
+              .splitfileCryptoAlgorithm(options.splitfileCryptoAlgorithm)
+              .splitfileCryptoKey(options.splitfileCryptoKey)
+              .hashThisLayerOnly(options.hashThisLayerOnly)
+              .hashes(options.hashes)
+              .tempBucketFactory(
+                  options
+                      .context
+                      .tempBucketFactory /* only used for temporaries within constructor */)
+              .checker(new CRCChecksumChecker())
+              .topDontCompress(options.topDontCompress)
+              .topRequiredBlocks(options.topRequiredBlocks)
+              .topTotalBlocks(options.topTotalBlocks)
+              .origDataSize(options.origDataSize)
+              .origCompressedDataSize(options.origCompressedDataSize)
+              .build();
+      SplitFileInserterStorage storage = new SplitFileInserterStorage(initParams);
       int mustSucceed = storage.topRequiredBlocks - options.topRequiredBlocks;
       parent.addMustSucceedBlocks(mustSucceed);
       parent.addRedundantBlocksInsert(
@@ -581,19 +590,25 @@ public class SplitFileInserter
     try {
       raf.onResume(context);
       originalData.onResume(context);
-      SplitFileInserterStorage storage =
-          new SplitFileInserterStorage(
-              raf,
-              originalData,
-              this,
-              context.fastWeakRandom,
-              context.memoryLimitedJobRunner,
-              context.getJobRunner(true),
-              context.ticker,
-              context.getChkInsertScheduler(realTime).fetchingKeys(),
-              context.persistentFG,
-              context.getPersistentFileTracker(),
-              context.getPersistentMasterSecret());
+      SplitFileInserterStorageRuntimeParams runtimeParams =
+          new SplitFileInserterStorageRuntimeParams.Builder()
+              .callback(this)
+              .random(context.fastWeakRandom)
+              .memoryLimitedJobRunner(context.memoryLimitedJobRunner)
+              .jobRunner(context.getJobRunner(true))
+              .ticker(context.ticker)
+              .keysFetching(context.getChkInsertScheduler(realTime).fetchingKeys())
+              .build();
+      SplitFileInserterStorageResumeParams resumeParams =
+          new SplitFileInserterStorageResumeParams.Builder()
+              .raf(raf)
+              .originalData(originalData)
+              .runtime(runtimeParams)
+              .persistentFG(context.persistentFG)
+              .persistentFileTracker(context.getPersistentFileTracker())
+              .masterKey(context.getPersistentMasterSecret())
+              .build();
+      SplitFileInserterStorage storage = new SplitFileInserterStorage(resumeParams);
       storage.onResume(context);
       this.storageRef = new AtomicReference<>();
       this.senderRef = new AtomicReference<>();
