@@ -72,17 +72,19 @@ class ClientPutterTest {
   void start_whenDataNull_expectClientFailureAndFinished() throws Exception {
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            /*data*/ null,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata("text/plain"),
-            insertContextCurrent,
-            /*priorityClass*/ (short) 0,
-            /*isMetadata*/ false,
-            /*targetFilename*/ null,
-            /*binaryBlob*/ false,
-            /*overrideSplitfileCrypto*/ null,
-            /*metadataThreshold*/ 0L);
+            new ClientPutterRequest(
+                clientCallback,
+                /*data*/ null,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata("text/plain"),
+                insertContextCurrent,
+                /*priorityClass*/ (short) 0,
+                /*isMetadata*/ false),
+            new ClientPutterOptions(
+                /*targetFilename*/ null,
+                /*binaryBlob*/ false,
+                /*overrideSplitfileCrypto*/ null,
+                /*metadataThreshold*/ 0L));
 
     boolean result = putter.start(false, mock(ClientContext.class));
 
@@ -101,17 +103,15 @@ class ClientPutterTest {
     byte[] badOverride = new byte[16];
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            badOverride,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, badOverride, 0L));
 
     boolean result = putter.start(false, mock(ClientContext.class));
 
@@ -147,17 +147,15 @@ class ClientPutterTest {
     RandomAccessBucket data = mock(RandomAccessBucket.class);
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, null, 0L));
 
     // Simulate a re-entry while a start is already in progress
     Field startedStartingField = ClientPutter.class.getDeclaredField("startedStarting");
@@ -174,17 +172,15 @@ class ClientPutterTest {
       throws NoSuchFieldException, IllegalAccessException {
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            new FreenetURI("SSK", "doc"),
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            override,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                new FreenetURI("SSK", "doc"),
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, override, 0L));
 
     // Set the protected 'cancelled' flag to true via reflection to simulate pre-cancel state.
     Field cancelledField = ClientRequester.class.getDeclaredField("cancelled");
@@ -221,17 +217,15 @@ class ClientPutterTest {
     RandomAccessBucket data = mock(RandomAccessBucket.class);
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            "file.txt",
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions("file.txt", false, null, 0L));
 
     FreenetURI base = new FreenetURI("CHK", null, new byte[32], new byte[32], null);
     BaseClientKey key = mock(BaseClientKey.class);
@@ -256,17 +250,15 @@ class ClientPutterTest {
     RandomAccessBucket data = mock(RandomAccessBucket.class);
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, null, 0L));
 
     Bucket bucket1 = mock(Bucket.class);
     Bucket bucket2 = mock(Bucket.class);
@@ -285,17 +277,15 @@ class ClientPutterTest {
     RandomAccessBucket data = mock(RandomAccessBucket.class);
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, null, 0L));
 
     ClientPutState state = mock(ClientPutState.class);
     // Set currentState via onTransition(null, state, ...)
@@ -316,17 +306,15 @@ class ClientPutterTest {
     RandomAccessBucket data = mock(RandomAccessBucket.class);
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, null, 0L));
 
     // Initially: no current state, data present
     assertTrue(putter.canRestart());
@@ -347,17 +335,15 @@ class ClientPutterTest {
     RandomAccessBucket data = mock(RandomAccessBucket.class);
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, null, 0L));
 
     assertEquals(0, putter.getMinSuccessFetchBlocks());
     putter.addBlock();
@@ -371,17 +357,15 @@ class ClientPutterTest {
     RandomAccessBucket data = mock(RandomAccessBucket.class);
     ClientPutter putter =
         new ClientPutter(
-            clientCallback,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                clientCallback,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, null, 0L));
 
     ClientPutState state = mock(ClientPutState.class);
     putter.onSuccess(state, mock(ClientContext.class));
@@ -422,17 +406,15 @@ class ClientPutterTest {
   private byte[] getDetail(ClientPutCallback multiCb, RandomAccessBucket data) throws IOException {
     ClientPutter putter =
         new ClientPutter(
-            multiCb,
-            data,
-            FreenetURI.EMPTY_CHK_URI,
-            new ClientMetadata(),
-            insertContextCurrent,
-            (short) 0,
-            false,
-            null,
-            false,
-            null,
-            0L);
+            new ClientPutterRequest(
+                multiCb,
+                data,
+                FreenetURI.EMPTY_CHK_URI,
+                new ClientMetadata(),
+                insertContextCurrent,
+                (short) 0,
+                false),
+            new ClientPutterOptions(null, false, null, 0L));
 
     // Use a minimal ChecksumChecker stub; methods unused in this path
     ChecksumChecker checker =

@@ -39,6 +39,8 @@ import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
+import network.crypta.client.async.ClientPutterOptions;
+import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.SimpleBlockSet;
 import network.crypta.crypt.SHA256;
@@ -1612,17 +1614,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
             .getInsertContext(true);
     ClientPutter putter =
         new ClientPutter(
-            callback,
-            bucket,
-            FreenetURI.EMPTY_CHK_URI,
-            null,
-            ctx,
-            priority,
-            false,
-            null,
-            true,
-            null,
-            -1);
+            new ClientPutterRequest(
+                callback, bucket, FreenetURI.EMPTY_CHK_URI, null, ctx, priority, false),
+            new ClientPutterOptions(null, true, null, -1));
     try {
       updateManager.getNode().services().clientCore().getClientContext().start(putter);
     } catch (InsertException e1) {
