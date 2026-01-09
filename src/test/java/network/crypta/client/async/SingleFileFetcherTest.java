@@ -85,30 +85,24 @@ class SingleFileFetcherTest {
     FreenetURI uri = new FreenetURI("CHK", null);
     when(key.getURI()).thenReturn(uri);
 
-    return new SingleFileFetcher(
-        parent,
-        cb,
-        null, /* clientMetadata */
-        key,
-        new ArrayList<>(metaStrings),
-        uri,
-        addedMetaStrings,
-        ctx,
-        false, /* deleteFetchContext */
-        false, /* realTimeFlag */
-        null, /* actx */
-        null, /* ah */
-        null, /* archiveMetadata */
-        0, /* maxRetries */
-        0, /* recursionLevel */
-        false, /* dontTellClientGet */
-        token,
-        false, /* isEssential */
-        isFinal,
-        false, /* topDontCompress */
-        (short) 0, /* topCompatibilityMode */
-        clientContext,
-        false /* hasInitialMetadata */);
+    SingleFileFetcher.InitParams p = new SingleFileFetcher.InitParams();
+    p.parent = parent;
+    p.cb = cb;
+    p.metadata = null; /* clientMetadata */
+    p.key = key;
+    p.metaStrings = new ArrayList<>(metaStrings);
+    p.origURI = uri;
+    p.addedMetaStrings = addedMetaStrings;
+    p.ctx = ctx;
+    p.deleteFetchContext = false;
+    p.actx = null;
+    p.ah = null;
+    p.archiveMetadata = null;
+    p.policy = new SingleFileFetcher.CreationPolicy(0, 0, false, false, isFinal, false);
+    p.runtime = new SingleFileFetcher.CreationRuntime(clientContext, false, token);
+    p.topDontCompress = false;
+    p.topCompatibilityMode = (short) 0;
+    return new SingleFileFetcher(p);
   }
 
   @Test
