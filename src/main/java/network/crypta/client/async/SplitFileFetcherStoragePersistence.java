@@ -15,7 +15,6 @@ import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashType;
 import network.crypta.crypt.MultiHashOutputStream;
-import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.LockableRandomAccessBuffer;
@@ -154,22 +153,26 @@ final class SplitFileFetcherStoragePersistence {
    * staged bucket and the computed offsets; the bucket remains open until it is copied.
    *
    * <pre>{@code
-   * PreparedMetadata prepared = SplitFileFetcherStoragePersistence.preparePersistent(
-   *     metadata, tempBucketFactory, thisKey, origKey, clientDetails, isFinalFetch,
-   *     offsetOriginalMetadata, checksumChecker, maxRetries, cooldownTries, cooldownLength);
+   * SplitFileFetchOriginalDetails details =
+   *     new SplitFileFetchOriginalDetails(thisKey, origKey, clientDetails, isFinalFetch);
+   * SplitFileFetchRetryPolicy retryPolicy =
+   *     new SplitFileFetchRetryPolicy(maxRetries, cooldownTries, cooldownLength);
+   * PreparedMetadata prepared =
+   *     SplitFileFetcherStoragePersistence.preparePersistent(
+   *         metadata,
+   *         tempBucketFactory,
+   *         details,
+   *         offsetOriginalMetadata,
+   *         checksumChecker,
+   *         retryPolicy);
    * }</pre>
    *
    * @param metadata resolved metadata to serialize into the persistent layout
    * @param tempBucketFactory factory used to allocate the temporary metadata bucket
-   * @param thisKey key of the fetch currently being persisted
-   * @param origKey original request key that seeded the fetch
-   * @param clientDetails non-null client detail bytes written verbatim to storage
-   * @param isFinalFetch true when the request is a final-fetch operation
+   * @param originalDetails original fetch request details persisted alongside metadata
    * @param offsetOriginalMetadata base byte offset for metadata placement in storage
    * @param checksumChecker checksum provider used for metadata and details framing
-   * @param maxRetries maximum retry count persisted for future resume logic
-   * @param cooldownTries number of retry attempts before cooldown applies
-   * @param cooldownLength cooldown duration in milliseconds for retry scheduling
+   * @param retryPolicy retry and cooldown settings persisted for future resume logic
    * @return prepared metadata with staged bytes and computed offset positions
    * @throws FetchException if metadata is unresolved or encoding fails internally
    * @throws IOException if bucket I/O or checksum output cannot complete
@@ -177,15 +180,10 @@ final class SplitFileFetcherStoragePersistence {
   static PreparedMetadata preparePersistent(
       Metadata metadata,
       BucketFactory tempBucketFactory,
-      FreenetURI thisKey,
-      FreenetURI origKey,
-      byte[] clientDetails,
-      boolean isFinalFetch,
+      SplitFileFetchOriginalDetails originalDetails,
       long offsetOriginalMetadata,
       ChecksumChecker checksumChecker,
-      int maxRetries,
-      int cooldownTries,
-      long cooldownLength)
+      SplitFileFetchRetryPolicy retryPolicy)
       throws FetchException, IOException {
     Bucket metadataTemp = tempBucketFactory.makeBucket(-1);
     try (OutputStream os = metadataTemp.getOutputStream();
@@ -204,15 +202,7 @@ final class SplitFileFetcherStoragePersistence {
     long computedOffsetOriginalDetails = offsetOriginalMetadata + metadataLength;
 
     byte[] encodedURI =
-        encodeAndChecksumOriginalDetails(
-            thisKey,
-            origKey,
-            clientDetails,
-            isFinalFetch,
-            checksumChecker,
-            maxRetries,
-            cooldownTries,
-            cooldownLength);
+        encodeAndChecksumOriginalDetails(originalDetails, checksumChecker, retryPolicy);
     long computedOffsetBasicSettings = computedOffsetOriginalDetails + encodedURI.length;
 
     return new PreparedMetadata(
@@ -299,37 +289,27 @@ final class SplitFileFetcherStoragePersistence {
    * persistence layout. The returned byte array contains the encoded payload followed by the
    * checksum bytes produced by {@link ChecksumChecker#appendChecksum(byte[])}.
    *
-   * @param thisKey key of the fetch currently being persisted
-   * @param origKey original request key that seeded the fetch
-   * @param clientDetails non-null client detail bytes written verbatim to storage
-   * @param isFinalFetch true when the request is a final-fetch operation
+   * @param originalDetails original fetch request details persisted alongside metadata
    * @param checksumChecker checksum provider used to append checksum bytes
-   * @param maxRetries maximum retry count persisted for future resume logic
-   * @param cooldownTries number of retry attempts before cooldown applies
-   * @param cooldownLength cooldown duration in milliseconds for retry scheduling
+   * @param retryPolicy retry and cooldown settings persisted for future resume logic
    * @return encoded payload followed by checksum bytes for persistence
    * @throws IOException if an unexpected stream write fails
    */
   private static byte[] encodeAndChecksumOriginalDetails(
-      FreenetURI thisKey,
-      FreenetURI origKey,
-      byte[] clientDetails,
-      boolean isFinalFetch,
+      SplitFileFetchOriginalDetails originalDetails,
       ChecksumChecker checksumChecker,
-      int maxRetries,
-      int cooldownTries,
-      long cooldownLength)
+      SplitFileFetchRetryPolicy retryPolicy)
       throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
-    dos.writeUTF(thisKey.toASCIIString());
-    dos.writeUTF(origKey.toASCIIString());
-    dos.writeBoolean(isFinalFetch);
-    dos.writeInt(clientDetails.length);
-    dos.write(clientDetails);
-    dos.writeInt(maxRetries);
-    dos.writeInt(cooldownTries);
-    dos.writeLong(cooldownLength);
+    dos.writeUTF(originalDetails.thisKey().toASCIIString());
+    dos.writeUTF(originalDetails.origKey().toASCIIString());
+    dos.writeBoolean(originalDetails.isFinalFetch());
+    dos.writeInt(originalDetails.clientDetails().length);
+    dos.write(originalDetails.clientDetails());
+    dos.writeInt(retryPolicy.maxRetries());
+    dos.writeInt(retryPolicy.cooldownTries());
+    dos.writeLong(retryPolicy.cooldownLength());
     return checksumChecker.appendChecksum(baos.toByteArray());
   }
 

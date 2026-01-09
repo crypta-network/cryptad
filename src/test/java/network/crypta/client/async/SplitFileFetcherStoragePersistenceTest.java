@@ -162,19 +162,13 @@ class SplitFileFetcherStoragePersistenceTest {
     FreenetURI origKey = new FreenetURI(WANNA_USK_1);
     byte[] clientDetails = "client-details".getBytes(StandardCharsets.UTF_8);
 
+    SplitFileFetchOriginalDetails originalDetails =
+        new SplitFileFetchOriginalDetails(thisKey, origKey, clientDetails, isFinalFetch);
+    SplitFileFetchRetryPolicy retryPolicy =
+        new SplitFileFetchRetryPolicy(maxRetries, cooldownTries, cooldownLength);
     SplitFileFetcherStoragePersistence.PreparedMetadata prepared =
         SplitFileFetcherStoragePersistence.preparePersistent(
-            metadata,
-            bucketFactory,
-            thisKey,
-            origKey,
-            clientDetails,
-            isFinalFetch,
-            offset,
-            checksumChecker,
-            maxRetries,
-            cooldownTries,
-            cooldownLength);
+            metadata, bucketFactory, originalDetails, offset, checksumChecker, retryPolicy);
 
     byte[] metadataBytes = serializeMetadata(metadata);
     byte[] bucketBytes = BucketTools.toByteArray(prepared.metadataTemp());
@@ -216,22 +210,16 @@ class SplitFileFetcherStoragePersistenceTest {
         new MetadataUnresolvedException(new Metadata[0], "unresolved");
     doThrow(unresolved).when(metadata).writeTo(any(DataOutputStream.class));
 
+    SplitFileFetchOriginalDetails originalDetails =
+        new SplitFileFetchOriginalDetails(
+            new FreenetURI(WANNA_CHK_1), new FreenetURI(WANNA_USK_1), new byte[] {9}, false);
+    SplitFileFetchRetryPolicy retryPolicy = new SplitFileFetchRetryPolicy(1, 1, 5L);
     FetchException thrown =
         assertThrows(
             FetchException.class,
             () ->
                 SplitFileFetcherStoragePersistence.preparePersistent(
-                    metadata,
-                    bucketFactory,
-                    new FreenetURI(WANNA_CHK_1),
-                    new FreenetURI(WANNA_USK_1),
-                    new byte[] {9},
-                    false,
-                    12L,
-                    checksumChecker,
-                    1,
-                    1,
-                    5L));
+                    metadata, bucketFactory, originalDetails, 12L, checksumChecker, retryPolicy));
 
     assertEquals(FetchExceptionMode.INTERNAL_ERROR, thrown.getMode());
     assertSame(unresolved, thrown.getCause());
@@ -248,19 +236,16 @@ class SplitFileFetcherStoragePersistenceTest {
             null,
             new FreenetURI(WANNA_CHK_1),
             new ClientMetadata("text/plain"));
-    SplitFileFetcherStoragePersistence.PreparedMetadata prepared =
-        SplitFileFetcherStoragePersistence.preparePersistent(
-            metadata,
-            bucketFactory,
+    SplitFileFetchOriginalDetails originalDetails =
+        new SplitFileFetchOriginalDetails(
             new FreenetURI(WANNA_CHK_1),
             new FreenetURI(WANNA_USK_1),
             "client-details".getBytes(StandardCharsets.UTF_8),
-            true,
-            32L,
-            checksumChecker,
-            2,
-            1,
-            99L);
+            true);
+    SplitFileFetchRetryPolicy retryPolicy = new SplitFileFetchRetryPolicy(2, 1, 99L);
+    SplitFileFetcherStoragePersistence.PreparedMetadata prepared =
+        SplitFileFetcherStoragePersistence.preparePersistent(
+            metadata, bucketFactory, originalDetails, 32L, checksumChecker, retryPolicy);
 
     byte[] metadataBytes = BucketTools.toByteArray(prepared.metadataTemp());
     byte[] basicPayload = "basic-settings".getBytes(StandardCharsets.UTF_8);
