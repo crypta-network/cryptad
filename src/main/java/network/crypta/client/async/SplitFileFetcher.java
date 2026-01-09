@@ -1,6 +1,11 @@
 package network.crypta.client.async;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.List;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
@@ -131,7 +136,7 @@ public class SplitFileFetcher
   /** Indicates that the fetch has failed permanently and callbacks have been informed. */
   private boolean failed;
 
-  /** Set when completion was signalled successfully; prevents duplicate notifications. */
+  /** Set when completion was signaled successfully; prevents duplicate notifications. */
   private boolean succeeded;
 
   /** Whether the parent wants keys collected into a binary blob during fetching. */
@@ -180,16 +185,7 @@ public class SplitFileFetcher
       callbackCompleteViaTruncation = trunc.callback();
       fileCompleteViaTruncation = trunc.tempFile();
 
-      storage =
-          buildStorage(
-              p.metadata,
-              p.decompressors,
-              p.clientMetadata,
-              p.topDontCompress,
-              p.topCompatibilityMode,
-              p.fetchContext,
-              p.isFinalFetch,
-              fileCompleteViaTruncation);
+      storage = buildStorage(p, fileCompleteViaTruncation);
     } catch (InsufficientDiskSpaceException _) {
       throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
     } catch (IOException e) {
@@ -248,31 +244,23 @@ public class SplitFileFetcher
     return new TruncationConfig(null, null);
   }
 
-  private SplitFileFetcherStorage buildStorage(
-      Metadata metadata,
-      List<COMPRESSOR_TYPE> decompressors,
-      ClientMetadata clientMetadata,
-      boolean topDontCompress,
-      short topCompatibilityMode,
-      FetchContext fetchContext,
-      boolean isFinalFetch,
-      File fileCompleteViaTruncation)
+  private SplitFileFetcherStorage buildStorage(InitParams params, File fileCompleteViaTruncation)
       throws IOException, FetchException, MetadataParseException {
     ChecksumChecker checker = new CRCChecksumChecker();
     return new SplitFileFetcherStorage(
         new SplitFileFetcherStorageInitParams.Builder()
-            .metadata(metadata)
+            .metadata(params.metadata)
             .fetcher(this)
-            .decompressors(decompressors)
-            .clientMetadata(clientMetadata)
-            .topDontCompress(topDontCompress)
-            .topCompatibilityMode(topCompatibilityMode)
-            .fetchContext(fetchContext)
+            .decompressors(params.decompressors)
+            .clientMetadata(params.clientMetadata)
+            .topDontCompress(params.topDontCompress)
+            .topCompatibilityMode(params.topCompatibilityMode)
+            .fetchContext(params.fetchContext)
             .realTime(realTimeFlag)
             .salt(getSalter())
             .thisKey(requestKey)
             .origKey(parent.getURI())
-            .isFinalFetch(isFinalFetch)
+            .isFinalFetch(params.isFinalFetch)
             .clientDetails(parent.getClientDetail(checker))
             .random(context.random)
             .tempBucketFactory(context.tempBucketFactory)
@@ -350,7 +338,7 @@ public class SplitFileFetcher
    * client callback exactly once.
    *
    * <p>Subsequent invocations are ignored. Any pending keys are removed from the scheduler, the
-   * sendable getter is cancelled, and storage is asked to cancel outstanding jobs. The provided
+   * sendable getter is canceled, and storage is asked to cancel outstanding jobs. The provided
    * exception is delivered to the client with context.
    *
    * @param e reason for failure to report to the client; must not be {@code null}
@@ -368,7 +356,7 @@ public class SplitFileFetcher
   }
 
   /**
-   * Cancels the request at the client’s direction and reports a cancelled failure to listeners.
+   * Cancels the request at the client’s direction and reports a canceled failure to listeners.
    *
    * <p>Cancellation is treated as a terminal state. Any scheduled work is withdrawn and storage
    * cleanup is initiated. The callback receives a {@link FetchExceptionMode#CANCELLED} result.
