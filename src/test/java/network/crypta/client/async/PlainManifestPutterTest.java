@@ -139,6 +139,7 @@ class PlainManifestPutterTest {
   }
 
   @Test
+  @SuppressWarnings("java:S125")
   void makePutHandlers_whenNestedTree_expectBuilderDirOpsAndAddsCalled() throws Exception {
     // Arrange manifest: { dir: { index.html }, readme.txt }
     RandomAccessBucket b10 = bucketWithBytes(10);
@@ -186,6 +187,7 @@ class PlainManifestPutterTest {
   }
 
   @Test
+  @SuppressWarnings("java:S125")
   void makePutHandlers_whenNestedImmutableMap_expectBuilderDirOpsAndAddsCalled() throws Exception {
     // Arrange manifest: { dir: Map.of("index.html", eIndex), readme.txt }
     RandomAccessBucket b10 = bucketWithBytes(10);
