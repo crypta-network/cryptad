@@ -101,35 +101,35 @@ public class ClientGet extends ClientRequest {
   private boolean succeeded;
 
   /**
-   * Length of the found data. Will be updated from ClientGetter in onResume() but we persist it
+   * Length of the found data. Will be updated from ClientGetter in onResume(), but we persist it
    * anyway.
    */
   private long foundDataLength = -1;
 
   /**
-   * MIME type of the found data. Will be updated from ClientGetter in onResume() but we persist it
+   * MIME type of the found data. Will be updated from ClientGetter in onResume(), but we persist it
    * anyway.
    */
   private String foundDataMimeType;
 
-  /** Details of request failure. */
+  /** Details of the request failure. */
   private GetFailedMessage getFailedMessage;
 
-  /** Last progress message. Not persistent, ClientGetter will update on onResume(). */
+  /** Last progress message. Not persistently, ClientGetter will update on onResume(). */
   private transient SimpleProgressMessage progressPending;
 
   /** Have we received a SendingToNetworkEvent? */
   private boolean sentToNetwork;
 
   /**
-   * Current compatibility mode. This is updated over time as the request progresses, and can be
-   * used e.g. to reinsert the file. This is NOT transient, as the ClientGetter does not retain this
+   * Current compatibility mode. This is updated over time as the request progresses and can be used
+   * e.g., to reinsert the file. This is NOT transient, as the ClientGetter does not retain this
    * information.
    */
   private CompatibilityAnalyser compatMode;
 
   /**
-   * Expected hashes of the final data. Will be updated from ClientGetter in onResume() but we
+   * Expected hashes of the final data. Will be updated from ClientGetter in onResume(), but we
    * persist it anyway.
    */
   private ExpectedHashes expectedHashes;
@@ -216,14 +216,22 @@ public class ClientGet extends ClientRequest {
    * Bundles configuration for persistent global GET requests to keep constructors concise.
    *
    * <p>Instances capture all per-request tuning parameters that are otherwise passed positionally.
-   * The record is intentionally immutable so callers can safely reuse it across retries or
-   * validation steps without worrying about concurrent mutation.
+   * The record is intentionally immutable, so callers can safely reuse it across retries or
+   * validation steps without worrying about concurrent mutation. Callers typically populate it from
+   * parsed FCP messages or persisted metadata before invoking the global-queue constructor, and the
+   * values are meant to be safe for logging or storage because they avoid holding live buckets.
+   *
+   * <ul>
+   *   <li>Queue scope: persistence flags, identifiers, and real-time scheduling hints.
+   *   <li>Data handling: maximum output sizes, return type, and disk destination path.
+   *   <li>Behavior flags: datastore reachability, filtering, and cache-write preferences.
+   * </ul>
    *
    * @param dsOnly true to confine fetching to the local datastore only.
    * @param ignoreDS bypasses the datastore entirely when evaluating availability hints.
    * @param filterData applies MIME filtering before writing or returning data.
    * @param maxSplitfileRetries maximum block retries for splitfile reconstruction attempts.
-   * @param maxNonSplitfileRetries retry ceiling for non-splitfile requests before failing.
+   * @param maxNonSplitfileRetries retry the ceiling for non-splitfile requests before failing.
    * @param maxOutputLength upper bound in bytes for payload and temporary storage usage.
    * @param returnType delivery strategy describing whether bytes stream, persist, or skip.
    * @param persistRebootOnly true to persist only across reboots instead of forever.
@@ -359,7 +367,7 @@ public class ClientGet extends ClientRequest {
     if (message.persistence == Persistence.CONNECTION) {
       ensureConnectionIdentifierAvailable(handler, message.identifier);
     }
-    // Create a Fetcher directly in order to get more fine-grained control,
+    // Create a Fetcher directly to get more fine-grained control,
     // since the client may override a few context elements.
     fctx = core.getClientContext().getDefaultPersistentFetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
@@ -456,7 +464,7 @@ public class ClientGet extends ClientRequest {
   }
 
   /**
-   * Must be called just after construction, but within a transaction.
+   * Must be called just after construction but within a transaction.
    *
    * @throws IdentifierCollisionException If the identifier is already in use.
    */
@@ -799,7 +807,7 @@ public class ClientGet extends ClientRequest {
   private boolean isRealTime() {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
-      // resulted in it getting deleted, and also possibly failed deletions.
+      // resulted in it getting deleted and also possibly failed deletions.
       LOG.warn("lowLevelClient == null");
       return false;
     }
@@ -839,7 +847,7 @@ public class ClientGet extends ClientRequest {
   /**
    * Cleans up when the owning queue removes the request, either manually or due to shut down.
    *
-   * <p>If the fetch was still running it fabricates a cancellation {@link FetchException} so the
+   * <p>If the fetch was still running, it fabricates a cancellation {@link FetchException} so the
    * client receives a {@link GetFailedMessage} with an explicit code. Afterward it notifies the
    * connection or persistent client that the entry disappeared, frees associated buckets, and calls
    * the superclass hook so shared accounting (such as tag persistence) also runs. This method is
@@ -849,7 +857,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public void requestWasRemoved(ClientContext context) {
-    // if request is still running, send a GetFailed with code=canceled
+    // if the request is still running, send a GetFailed with code=canceled
     if (!finished) {
       synchronized (this) {
         succeeded = false;
@@ -859,7 +867,7 @@ public class ClientGet extends ClientRequest {
       }
       trySendDataFoundOrGetFailed(null, null);
     }
-    // notify client that request was removed
+    // notify client that the request was removed
     FCPMessage msg = new PersistentRequestRemovedMessage(getIdentifier(), global);
     if (persistence != Persistence.CONNECTION) {
       client.queueClientRequestMessage(msg, 0);
@@ -940,7 +948,7 @@ public class ClientGet extends ClientRequest {
    * <p>This method intentionally does not remove data written to disk, because disk-backed requests
    * are expected to leave the payload in place for the caller. It clears and frees any
    * direct-return buckets and the initial metadata bucket if present. The method is safe to call
-   * multiple times; subsequent invocations become no-ops.
+   * multiple times; later invocations become no-ops.
    */
   @Override
   protected void freeData() {
@@ -1173,11 +1181,11 @@ public class ClientGet extends ClientRequest {
    * precompressed.
    *
    * <p>This flag is derived from splitfile metadata analysis and is persisted across restarts. It
-   * is intended for downstream insert flows that want to preserve original byte structure rather
-   * than applying a second compression pass. The value is informational and does not affect the
-   * fetch itself.
+   * is intended for downstream insert flows that want to preserve the original byte structure
+   * rather than applying a second compression pass. The value is informational and does not affect
+   * the fetch itself.
    *
-   * @return {@code true} when compression should not be applied to subsequent insert contexts.
+   * @return {@code true} when compression should not be applied to later insert contexts.
    */
   public boolean getDontCompress() {
     return compatMode.dontCompress();
@@ -1285,7 +1293,7 @@ public class ClientGet extends ClientRequest {
    * Indicates whether the request can be restarted after a failure.
    *
    * <p>The getter must support restart semantics, the request must have finished, and it must not
-   * have succeeded already. Success cases require manual deletion or explicit reset before another
+   * have succeeded yet. Success cases require manual deletion or explicit reset before another
    * attempt. This method performs the minimal checks needed to decide if {@link
    * #restart(ClientContext, boolean)} is likely to proceed without immediate failure.
    *
@@ -1384,8 +1392,10 @@ public class ClientGet extends ClientRequest {
    *
    * <p>This flag is derived from the most recent {@link GetFailedMessage} and is used by restart
    * logic to decide whether a redirect should be applied automatically. The value is only
-   * meaningful after a failure has been recorded; otherwise it will return {@code false}. The
-   * method is synchronized to read the cached failure state consistently.
+   * meaningful after a failure has been recorded; otherwise it will return {@code false}. A {@code
+   * false} result means no redirect hint was captured for the last failure and no further redirect
+   * inference is attempted here. The method is synchronized to read the cached failure state
+   * consistently.
    *
    * @return {@code true} when {@link GetFailedMessage#redirectURI} is non-null.
    */
@@ -1398,7 +1408,9 @@ public class ClientGet extends ClientRequest {
    *
    * <p>The flag controls whether content filtering is applied before delivery. It can be toggled
    * during restart flows to temporarily disable filtering for a retry. This method simply reads the
-   * current {@link FetchContext} setting and does not alter any state.
+   * current {@link FetchContext} setting and does not alter any state. Because restarts can change
+   * the flag between attempts, callers should treat the value as a point-in-time snapshot rather
+   * than a promise about future retries.
    *
    * @return {@code true} when payloads should be filtered before delivery.
    */
@@ -1439,7 +1451,7 @@ public class ClientGet extends ClientRequest {
    * return types, binary-blob preferences, fetch contexts, metadata buckets, and—when finished—
    * either the success bucket or the failure descriptor. It also streams recent progress snapshots
    * so restarts can resume without re-downloading already verified blocks. Callers should provide a
-   * stream that is already framed by the persistence layer.
+   * stream already framed by the persistence layer.
    *
    * @param dos destination stream receiving the serialized form with embedded checksums.
    * @param checker checksum helper that wraps streams to guard against corruption.
@@ -1497,8 +1509,8 @@ public class ClientGet extends ClientRequest {
       }
     }
     // Not finished, or was recently not finished.
-    // Don't hold lock while calling getter.
-    // If it's just finished we get a race and restart. That's okay.
+    // Don't hold the lock while calling getter.
+    // If it's just finished, we get a race and restart. That's okay.
     try (DataOutputStream progressStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
       if (getter.writeTrivialProgress(progressStream)) {
         writeTransientProgressFields(progressStream);
@@ -1518,7 +1530,7 @@ public class ClientGet extends ClientRequest {
    * @param dis input stream positioned at the serialized client detail block.
    * @param reqID identifier tuple describing the owner and reference type.
    * @param context client context supplying factories used during restoration.
-   * @param checker checksum helper verifying integrity of embedded buckets.
+   * @param checker checksum helper verifying the integrity of embedded buckets.
    * @return fully reconstructed {@link ClientRequest} instance ready for resumption.
    * @throws StorageFormatException serialized data failed validation or used unknown versions.
    * @throws IOException stream IO failed while reading buckets or metadata.
@@ -1650,7 +1662,7 @@ public class ClientGet extends ClientRequest {
    * <p>This hook is invoked by the base resume flow once serialization has recreated the request
    * and the {@link ClientGetter}. It forwards the resume signal to any retained buckets and then
    * repopulates size and MIME hints from the getter if they were not stored explicitly. The method
-   * does not trigger network activity; it only rebinds state so subsequent status queries are
+   * does not trigger network activity; it only rebinds state so later status queries are
    * consistent.
    *
    * @param context client context used for bucket resume callbacks and defaults.
@@ -1690,7 +1702,7 @@ public class ClientGet extends ClientRequest {
    *
    * <p>Equality is defined by {@link ClientRequest} and typically reflects request identity rather
    * than mutable progress state. This override exists to preserve the base semantics while keeping
-   * the contract explicit in this subtype. The comparison is side-effect free.
+   * the contract explicit in this subtype. The comparison is side-effect-free.
    *
    * @param obj object to compare against, possibly {@code null}.
    * @return {@code true} when the base implementation considers the objects equal.
