@@ -13,13 +13,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.node.Node;
@@ -210,19 +211,13 @@ class FilterMessageTest {
           .when(
               () ->
                   ContentFilter.filter(
-                      Mockito.any(InputStream.class),
-                      Mockito.any(OutputStream.class),
-                      Mockito.eq("text/plain"),
-                      Mockito.any(URI.class),
-                      Mockito.isNull(),
-                      Mockito.isNull(),
-                      Mockito.isNull(),
-                      Mockito.isNull(),
-                      Mockito.isNull()))
+                      Mockito.any(ContentFilterRequest.class),
+                      Mockito.any(ContentFilterCallbacks.class)))
           .thenAnswer(
               invocation -> {
-                InputStream input = invocation.getArgument(0);
-                OutputStream output = invocation.getArgument(1);
+                ContentFilterRequest request = invocation.getArgument(0);
+                InputStream input = request.input();
+                OutputStream output = request.output();
                 output.write(input.readAllBytes());
                 return status;
               });
@@ -279,15 +274,8 @@ class FilterMessageTest {
           .when(
               () ->
                   ContentFilter.filter(
-                      Mockito.any(InputStream.class),
-                      Mockito.any(OutputStream.class),
-                      Mockito.eq("text/plain"),
-                      Mockito.any(URI.class),
-                      Mockito.isNull(),
-                      Mockito.isNull(),
-                      Mockito.isNull(),
-                      Mockito.isNull(),
-                      Mockito.isNull()))
+                      Mockito.any(ContentFilterRequest.class),
+                      Mockito.any(ContentFilterCallbacks.class)))
           .thenThrow(unsafe);
 
       message.run(handler, Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS));

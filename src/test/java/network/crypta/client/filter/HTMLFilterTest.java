@@ -219,16 +219,11 @@ class HTMLFilterTest {
     String html = "<!DOCTYPE html><html><body><a href=\"/x\" >Hello</a></body></html>";
     ByteArrayInputStream in = new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8));
     ByteArrayOutputStream out = new ByteArrayOutputStream();
-    assertDoesNotThrow(
-        () ->
-            ContentFilter.filter(
-                in,
-                out,
-                "text/html; charset=UTF-8",
-                new java.net.URI("http://example.com/"),
-                "http://example.com",
-                null,
-                null,
-                "UTF-8"));
+    ContentFilterRequest request =
+        new ContentFilterRequest(
+            in, out, "text/html; charset=UTF-8", "UTF-8", "http://example.com", null);
+    ContentFilterCallbacks callbacks =
+        new ContentFilterCallbacks(new java.net.URI("http://example.com/"), null, null, null);
+    assertDoesNotThrow(() -> ContentFilter.filter(request, callbacks));
   }
 }

@@ -52,7 +52,8 @@ class M3UFilterTest {
             StandardCharsets.UTF_8.name(),
             Map.of(),
             SCHEME_HOST_PORT,
-            new GenericReadFilterCallback(new URI(BASE_URI), null, null, null));
+            new GenericReadFilterCallback(
+                new ContentFilterCallbacks(new URI(BASE_URI), null, null, null)));
 
         String result = normalizeEol(processed.toString());
         assertEquals(

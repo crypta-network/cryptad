@@ -43,7 +43,8 @@ class GenericReadFilterCallbackTest {
 
   private GenericReadFilterCallback newCallback(String base) throws URISyntaxException {
     return new GenericReadFilterCallback(
-        new URI(base), foundURICallback, tagReplacerCallback, linkFilterExceptionProvider);
+        new ContentFilterCallbacks(
+            new URI(base), foundURICallback, tagReplacerCallback, linkFilterExceptionProvider));
   }
 
   @Test

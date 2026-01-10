@@ -35,7 +35,8 @@ class TagVerifierTest {
             null,
             null,
             "utf-8",
-            new GenericReadFilterCallback(new URI(ALT_BASE_URI), null, null, null),
+            new GenericReadFilterCallback(
+                new ContentFilterCallbacks(new URI(ALT_BASE_URI), null, null, null)),
             false);
   }
 

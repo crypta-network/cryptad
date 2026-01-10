@@ -12,6 +12,8 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.l10n.NodeL10n;
@@ -531,16 +533,11 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
       throws IOException {
     validateOperation(operation);
     URI fakeUri = resolveFilterUri();
-    return ContentFilter.filter(
-        input,
-        output,
-        mimeType,
-        fakeUri,
-        null,
-        null,
-        null,
-        null,
-        core.getEndpoints().getToadletContainer());
+    ContentFilterRequest request =
+        new ContentFilterRequest(input, output, mimeType, null, null, null);
+    ContentFilterCallbacks callbacks =
+        new ContentFilterCallbacks(fakeUri, null, null, core.getEndpoints().getToadletContainer());
+    return ContentFilter.filter(request, callbacks);
   }
 
   private void validateOperation(FilterOperation operation) {

@@ -12,6 +12,8 @@ import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FoundURICallback;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.client.filter.TagReplacerCallback;
@@ -217,17 +219,12 @@ public class ClientGetWorkerThread extends Thread {
         throw new IOException("Insufficient arguments to worker thread");
       }
       // Send XHTML as HTML because we can't use web-pushing on XHTML.
-      FilterStatus filterStatus =
-          ContentFilter.filter(
-              currentInput,
-              managedOutput,
-              mimeType,
-              uri,
-              schemeHostAndPort,
-              prefetchHook,
-              tagReplacer,
-              charset,
-              linkFilterExceptionProvider);
+      ContentFilterRequest request =
+          new ContentFilterRequest(
+              currentInput, managedOutput, mimeType, charset, schemeHostAndPort, null);
+      ContentFilterCallbacks callbacks =
+          new ContentFilterCallbacks(uri, prefetchHook, tagReplacer, linkFilterExceptionProvider);
+      FilterStatus filterStatus = ContentFilter.filter(request, callbacks);
 
       String detectedMIMEType =
           filterStatus.mimeType.concat(
