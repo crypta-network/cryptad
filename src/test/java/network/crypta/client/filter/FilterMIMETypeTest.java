@@ -51,24 +51,16 @@ class FilterMIMETypeTest {
     // Act
     FilterMIMEType mt =
         new FilterMIMEType(
-            type,
-            ext,
-            extraTypes,
-            extraExts,
-            safeToRead,
-            safeToWrite,
-            null,
-            dangerousLinks,
-            dangerousInlines,
-            dangerousScripting,
-            dangerousReadMetadata,
-            dangerousWriteMetadata,
-            dangerousToWriteEvenWithFilter,
-            readDescription,
-            takesACharset,
-            defaultCharset,
-            null,
-            useMaybeCharset);
+            new FilterMIMETypeNames(type, ext, extraTypes, extraExts),
+            new FilterMIMETypeSafety(safeToRead, safeToWrite, null, readDescription),
+            new FilterMIMETypeDangerousFlags(
+                dangerousLinks,
+                dangerousInlines,
+                dangerousScripting,
+                dangerousReadMetadata,
+                dangerousWriteMetadata,
+                dangerousToWriteEvenWithFilter),
+            new FilterMIMETypeCharsetPolicy(takesACharset, defaultCharset, null, useMaybeCharset));
 
     // Assert
     assertEquals(type, mt.primaryMimeType);
@@ -97,8 +89,10 @@ class FilterMIMETypeTest {
     String mime = "text/html<svg>"; // include characters that require HTML escaping
     FilterMIMEType mt =
         new FilterMIMEType(
-            mime, "html", null, null, false, false, null, false, false, true, false, false, false,
-            "desc", true, "UTF-8", null, false);
+            new FilterMIMETypeNames(mime, "html", null, null),
+            new FilterMIMETypeSafety(false, false, null, "desc"),
+            new FilterMIMETypeDangerousFlags(false, false, true, false, false, false),
+            new FilterMIMETypeCharsetPolicy(true, "UTF-8", null, false));
 
     // Act + Assert
     KnownUnsafeContentTypeException ex =
@@ -131,24 +125,10 @@ class FilterMIMETypeTest {
     // Arrange: all flags false
     FilterMIMEType mt =
         new FilterMIMEType(
-            "application/x-none",
-            "bin",
-            null,
-            null,
-            false,
-            false,
-            null,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            "",
-            false,
-            null,
-            null,
-            false);
+            new FilterMIMETypeNames("application/x-none", "bin", null, null),
+            new FilterMIMETypeSafety(false, false, null, ""),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false));
 
     // Act
     KnownUnsafeContentTypeException ex =
@@ -165,24 +145,10 @@ class FilterMIMETypeTest {
     // Arrange: scripting true, others false (reflects current implementation logic)
     FilterMIMEType mt =
         new FilterMIMEType(
-            "application/x-scr",
-            "scr",
-            null,
-            null,
-            false,
-            false,
-            null,
-            false,
-            false,
-            true,
-            false,
-            false,
-            false,
-            "",
-            false,
-            null,
-            null,
-            false);
+            new FilterMIMETypeNames("application/x-scr", "scr", null, null),
+            new FilterMIMETypeSafety(false, false, null, ""),
+            new FilterMIMETypeDangerousFlags(false, false, true, false, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false));
 
     KnownUnsafeContentTypeException ex =
         assertThrows(KnownUnsafeContentTypeException.class, mt::throwUnsafeContentTypeException);
@@ -203,24 +169,10 @@ class FilterMIMETypeTest {
     // Arrange: inlines + links true
     FilterMIMEType mt =
         new FilterMIMEType(
-            "application/x-img",
-            "img",
-            null,
-            null,
-            false,
-            false,
-            null,
-            true,
-            true,
-            false,
-            false,
-            false,
-            false,
-            "",
-            false,
-            null,
-            null,
-            false);
+            new FilterMIMETypeNames("application/x-img", "img", null, null),
+            new FilterMIMETypeSafety(false, false, null, ""),
+            new FilterMIMETypeDangerousFlags(true, true, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false));
 
     KnownUnsafeContentTypeException ex =
         assertThrows(KnownUnsafeContentTypeException.class, mt::throwUnsafeContentTypeException);
@@ -241,24 +193,13 @@ class FilterMIMETypeTest {
     // Arrange: metadata flags true but scripting false
     FilterMIMEType mt =
         new FilterMIMEType(
-            "application/x-meta",
-            "mta",
-            null,
-            null,
-            false,
-            false,
-            null,
-            false,
-            false,
-            false,
-            true, // dangerousReadMetadata
-            true, // dangerousWriteMetadata
-            false,
-            "",
-            false,
-            null,
-            null,
-            false);
+            new FilterMIMETypeNames("application/x-meta", "mta", null, null),
+            new FilterMIMETypeSafety(false, false, null, ""),
+            new FilterMIMETypeDangerousFlags(
+                false, false, false, true, // dangerousReadMetadata
+                true, // dangerousWriteMetadata
+                false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false));
 
     KnownUnsafeContentTypeException ex =
         assertThrows(KnownUnsafeContentTypeException.class, mt::throwUnsafeContentTypeException);

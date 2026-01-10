@@ -201,42 +201,28 @@ public class FilterMIMEType {
   public final boolean useMaybeCharset;
 
   FilterMIMEType(
-      String type,
-      String ext,
-      String[] extraTypes,
-      String[] extraExts,
-      boolean safeToRead,
-      boolean safeToWrite,
-      ContentDataFilter readFilter,
-      boolean dangerousLinks,
-      boolean dangerousInlines,
-      boolean dangerousScripting,
-      boolean dangerousReadMetadata,
-      boolean dangerousWriteMetadata,
-      boolean dangerousToWriteEvenWithFilter,
-      String readDescription,
-      boolean takesACharset,
-      String defaultCharset,
-      CharsetExtractor charsetExtractor,
-      boolean useMaybeCharset) {
-    this.primaryMimeType = type;
-    this.primaryExtension = ext;
-    this.alternateMimeTypes = extraTypes;
-    this.alternateExtensions = extraExts;
-    this.safeToRead = safeToRead;
-    this.safeToWrite = safeToWrite;
-    this.readFilter = readFilter;
-    this.dangerousLinks = dangerousLinks;
-    this.dangerousInlines = dangerousInlines;
-    this.dangerousScripting = dangerousScripting;
-    this.dangerousReadMetadata = dangerousReadMetadata;
-    this.dangerousWriteMetadata = dangerousWriteMetadata;
-    this.dangerousToWriteEvenWithFilter = dangerousToWriteEvenWithFilter;
-    this.readDescription = readDescription;
-    this.takesACharset = takesACharset;
-    this.defaultCharset = defaultCharset;
-    this.charsetExtractor = charsetExtractor;
-    this.useMaybeCharset = useMaybeCharset;
+      FilterMIMETypeNames names,
+      FilterMIMETypeSafety safety,
+      FilterMIMETypeDangerousFlags dangerousFlags,
+      FilterMIMETypeCharsetPolicy charsetPolicy) {
+    this.primaryMimeType = names.primaryMimeType();
+    this.primaryExtension = names.primaryExtension();
+    this.alternateMimeTypes = names.alternateMimeTypes();
+    this.alternateExtensions = names.alternateExtensions();
+    this.safeToRead = safety.safeToRead();
+    this.safeToWrite = safety.safeToWrite();
+    this.readFilter = safety.readFilter();
+    this.dangerousLinks = dangerousFlags.dangerousLinks();
+    this.dangerousInlines = dangerousFlags.dangerousInlines();
+    this.dangerousScripting = dangerousFlags.dangerousScripting();
+    this.dangerousReadMetadata = dangerousFlags.dangerousReadMetadata();
+    this.dangerousWriteMetadata = dangerousFlags.dangerousWriteMetadata();
+    this.dangerousToWriteEvenWithFilter = dangerousFlags.dangerousToWriteEvenWithFilter();
+    this.readDescription = safety.readDescription();
+    this.takesACharset = charsetPolicy.takesACharset();
+    this.defaultCharset = charsetPolicy.defaultCharset();
+    this.charsetExtractor = charsetPolicy.charsetExtractor();
+    this.useMaybeCharset = charsetPolicy.useMaybeCharset();
   }
 
   /**

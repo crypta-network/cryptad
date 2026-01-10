@@ -831,24 +831,14 @@ class ContentFilterTest {
     RecordingEchoFilter echo = new RecordingEchoFilter();
     FilterMIMEType mt =
         new FilterMIMEType(
-            "application/x-unit-test",
-            "ut",
-            new String[0],
-            new String[0],
-            /*safeToRead*/ false,
-            /*safeToWrite*/ false,
-            echo,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            "desc",
-            /*takesACharset*/ true,
-            /*defaultCharset*/ WINDOWS_1252,
-            extractor,
-            /*useMaybeCharset*/ false);
+            new FilterMIMETypeNames("application/x-unit-test", "ut", new String[0], new String[0]),
+            new FilterMIMETypeSafety(/*safeToRead*/ false, /*safeToWrite*/ false, echo, "desc"),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(
+                /*takesACharset*/ true, /*defaultCharset*/
+                WINDOWS_1252,
+                extractor,
+                /*useMaybeCharset*/ false));
     ContentFilter.register(mt);
 
     String typeName = "application/x-unit-test; foo=bar; boundary=abc";
@@ -882,24 +872,10 @@ class ContentFilterTest {
     byte[] utf8 = new byte[] {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF, 'x'};
     FilterMIMEType dummy =
         new FilterMIMEType(
-            "text/x-dummy",
-            "dum",
-            new String[0],
-            new String[0],
-            true,
-            true,
-            null,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            "desc",
-            true,
-            null,
-            null,
-            false);
+            new FilterMIMETypeNames("text/x-dummy", "dum", new String[0], new String[0]),
+            new FilterMIMETypeSafety(true, true, null, "desc"),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(true, null, null, false));
     assertEquals("UTF-8", ContentFilter.detectCharset(utf8, utf8.length, dummy, null));
 
     // UTF-16LE BOM
@@ -921,24 +897,10 @@ class ContentFilterTest {
     byte[] bad = new byte[] {0, 0, (byte) 0xFF, (byte) 0xFE, 'x'};
     FilterMIMEType dummy =
         new FilterMIMEType(
-            "text/x-dummy",
-            "dum",
-            new String[0],
-            new String[0],
-            true,
-            true,
-            null,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            "desc",
-            true,
-            null,
-            null,
-            false);
+            new FilterMIMETypeNames("text/x-dummy", "dum", new String[0], new String[0]),
+            new FilterMIMETypeSafety(true, true, null, "desc"),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(true, null, null, false));
     assertThrows(
         UnsupportedCharsetInFilterException.class,
         () -> ContentFilter.detectCharset(bad, bad.length, dummy, null));
