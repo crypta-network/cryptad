@@ -10,7 +10,9 @@ import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
 import network.crypta.client.events.SendingToNetworkEvent;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
+import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.BaseClientKey;
 import network.crypta.keys.FreenetURI;
@@ -662,15 +664,15 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     synchronized (this) {
       e =
           new SplitfileProgressEvent(
-              this.totalBlocks,
-              this.successfulBlocks,
-              this.latestSuccess,
-              this.failedBlocks,
-              this.fatallyFailedBlocks,
-              this.latestFailure,
-              this.minSuccessBlocks,
-              this.minSuccessFetchBlocks,
-              this.blockSetFinalized);
+              new SplitfileProgressCounts(
+                  this.totalBlocks,
+                  this.successfulBlocks,
+                  this.failedBlocks,
+                  this.fatallyFailedBlocks,
+                  this.minSuccessBlocks,
+                  this.minSuccessFetchBlocks,
+                  this.blockSetFinalized),
+              new SplitfileProgressTimestamps(this.latestSuccess, this.latestFailure));
     }
     ctx.getEventProducer().produceEvent(e, context);
   }

@@ -99,44 +99,28 @@ public class SplitfileProgressEvent implements ClientEvent {
   /**
    * Creates a new snapshot of splitfile progress.
    *
-   * <p>All counts are non-negative. Date parameters may be {@code null} when no corresponding event
-   * has occurred. {@code latestSuccess} and {@code latestFailure} are defensively copied to
-   * preserve immutability of the event instance.
+   * <p>All counts are non-negative. Timestamp values may be {@code null} when no corresponding
+   * event has occurred. Timestamps are defensively copied to preserve immutability of the event
+   * instance.
    *
-   * @param totalBlocks the total number of blocks known at creation time; may grow until {@code
-   *     finalizedTotal} becomes {@code true}
-   * @param succeedBlocks the number of blocks completed successfully; monotonically non-decreasing
-   * @param latestSuccess timestamp of the most recent successful block, or {@code null} if none
-   * @param failedBlocks the number of non-fatal failures that may be retried by the client
-   * @param fatallyFailedBlocks the number of permanent failures that will not be retried
-   * @param latestFailure timestamp of the most recent failure, or {@code null} if none
-   * @param minSuccessfulBlocks the success threshold that determines when the overall operation can
-   *     finish successfully
-   * @param minSuccessFetchBlocks the minimum number of blocks that must be fetchable to proceed;
-   *     used for fetch-side progress modeling
-   * @param finalizedTotal whether {@code totalBlocks} represents a finalized, non-growing count
+   * @param counts numeric progress counters for the splitfile operation
+   * @param timestamps latest success and failure timestamps, or {@code null} values when unknown
    */
   public SplitfileProgressEvent(
-      int totalBlocks,
-      int succeedBlocks,
-      Date latestSuccess,
-      int failedBlocks,
-      int fatallyFailedBlocks,
-      Date latestFailure,
-      int minSuccessfulBlocks,
-      int minSuccessFetchBlocks,
-      boolean finalizedTotal) {
-    this.totalBlocks = totalBlocks;
-    this.succeedBlocks = succeedBlocks;
-    // Defensive copy because Date is mutable.
-    this.latestSuccess = latestSuccess != null ? new Date(latestSuccess.getTime()) : null;
-    this.failedBlocks = failedBlocks;
-    this.fatallyFailedBlocks = fatallyFailedBlocks;
-    // Defensive copy because Date is mutable.
-    this.latestFailure = latestFailure != null ? new Date(latestFailure.getTime()) : null;
-    this.minSuccessfulBlocks = minSuccessfulBlocks;
-    this.finalizedTotal = finalizedTotal;
-    this.minSuccessFetchBlocks = minSuccessFetchBlocks;
+      SplitfileProgressCounts counts, SplitfileProgressTimestamps timestamps) {
+    this.totalBlocks = counts.totalBlocks();
+    this.succeedBlocks = counts.succeedBlocks();
+    Date latestSuccessTimestamp = timestamps.latestSuccess();
+    this.latestSuccess =
+        latestSuccessTimestamp != null ? new Date(latestSuccessTimestamp.getTime()) : null;
+    this.failedBlocks = counts.failedBlocks();
+    this.fatallyFailedBlocks = counts.fatallyFailedBlocks();
+    Date latestFailureTimestamp = timestamps.latestFailure();
+    this.latestFailure =
+        latestFailureTimestamp != null ? new Date(latestFailureTimestamp.getTime()) : null;
+    this.minSuccessfulBlocks = counts.minSuccessfulBlocks();
+    this.finalizedTotal = counts.finalizedTotal();
+    this.minSuccessFetchBlocks = counts.minSuccessFetchBlocks();
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Created SplitfileProgressEvent: total={} succeed={} failed={} fatally={} min success={}"

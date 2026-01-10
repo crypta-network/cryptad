@@ -28,7 +28,9 @@ import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.ExpectedMIMEEvent;
 import network.crypta.client.events.SendingToNetworkEvent;
 import network.crypta.client.events.SplitfileCompatibilityModeEvent;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
+import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
 import network.crypta.support.io.NativeThread;
@@ -382,7 +384,9 @@ class ClientGetEventHandlingTest {
   }
 
   private static SplitfileProgressEvent newProgressEvent() {
-    return new SplitfileProgressEvent(10, 2, new Date(0L), 1, 0, new Date(0L), 10, 10, true);
+    return new SplitfileProgressEvent(
+        new SplitfileProgressCounts(10, 2, 1, 0, 10, 10, true),
+        new SplitfileProgressTimestamps(new Date(0L), new Date(0L)));
   }
 
   private static HashResult newSha256Hash() {

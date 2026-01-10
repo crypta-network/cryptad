@@ -20,7 +20,9 @@ import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ContainerInserter;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
+import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.ManifestElement;
@@ -100,7 +102,9 @@ class ClientPutDirTest {
     setField(ClientPutDir.class, putDir, "totalSize", 2048L);
     setField(ClientPutDir.class, putDir, "numberOfFiles", 7);
     SplitfileProgressEvent event =
-        new SplitfileProgressEvent(50, 10, new Date(1000), 4, 2, new Date(2000), 20, 5, true);
+        new SplitfileProgressEvent(
+            new SplitfileProgressCounts(50, 10, 4, 2, 20, 5, true),
+            new SplitfileProgressTimestamps(new Date(1000), new Date(2000)));
     setField(
         ClientPutBase.class,
         putDir,
