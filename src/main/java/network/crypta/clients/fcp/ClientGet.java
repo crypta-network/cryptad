@@ -5,7 +5,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
-import java.nio.file.Files;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Objects;
@@ -221,21 +220,13 @@ public class ClientGet extends ClientRequest {
     }
   }
 
-  private record ReturnSetup(Bucket bucket, File targetFile, String extension) {}
-
   /**
-   * Builds a persistent GET request for callers that enqueue work outside live FCP sessions.
+   * Bundles configuration for persistent global GET requests to keep constructors concise.
    *
-   * <p>This constructor clones the node's default {@link FetchContext}, wires up event listeners,
-   * normalizes retry limits, and resolves the return path before handing everything to a dedicated
-   * {@link ClientGetter}. It is typically used by built-in services that want their requests to be
-   * restartable across reboots and obey the global queue semantics rather than the per-connection
-   * queue. The supplied flags control datastore reachability, filtering, cache writes, and the
-   * maximum size of the temporary buckets allocated for the request. The resulting instance is
-   * ready to register and start once constructed.
+   * <p>Instances capture all per-request tuning parameters that are otherwise passed positionally.
+   * The record is intentionally immutable so callers can safely reuse it across retries or
+   * validation steps without worrying about concurrent mutation.
    *
-   * @param globalClient persistent client facade owning the global queue slot.
-   * @param uri FreenetURI describing the content key and optional metadata.
    * @param dsOnly true to confine fetching to the local datastore only.
    * @param ignoreDS bypasses the datastore entirely when evaluating availability hints.
    * @param filterData applies MIME filtering before writing or returning data.
@@ -252,15 +243,8 @@ public class ClientGet extends ClientRequest {
    * @param writeToClientCache allows writing the payload into the client HTTP cache.
    * @param realTimeFlag true when the request participates in the realtime scheduler lane.
    * @param binaryBlob enables BinaryBlob writer semantics instead of classic bucket delivery.
-   * @param core node client core providing factories, permission checks, and trackers.
-   * @throws IdentifierCollisionException identifier already present on the owning persistent
-   *     client.
-   * @throws NotAllowedException download target rejected by DDA or security policy.
-   * @throws IOException filesystem errors while preparing disk buckets or output locations.
    */
-  public ClientGet(
-      PersistentRequestClient globalClient,
-      FreenetURI uri,
+  public record GlobalRequestConfig(
       boolean dsOnly,
       boolean ignoreDS,
       boolean filterData,
@@ -276,41 +260,70 @@ public class ClientGet extends ClientRequest {
       String charset,
       boolean writeToClientCache,
       boolean realTimeFlag,
-      boolean binaryBlob,
+      boolean binaryBlob) {}
+
+  /**
+   * Builds a persistent GET request for callers that enqueue work outside live FCP sessions.
+   *
+   * <p>This constructor clones the node's default {@link FetchContext}, wires up event listeners,
+   * normalizes retry limits, and resolves the return path before handing everything to a dedicated
+   * {@link ClientGetter}. It is typically used by built-in services that want their requests to be
+   * restartable across reboots and obey the global queue semantics rather than the per-connection
+   * queue. The supplied {@link GlobalRequestConfig} controls datastore reachability, filtering,
+   * cache writes, and the maximum size of the temporary buckets allocated for the request. The
+   * resulting instance is ready to register and start once constructed.
+   *
+   * @param globalClient persistent client facade owning the global queue slot.
+   * @param uri FreenetURI describing the content key and optional metadata.
+   * @param requestConfig configuration bundle describing retry limits and return handling.
+   * @param core node client core providing factories, permission checks, and trackers.
+   * @throws IdentifierCollisionException identifier already present on the owning persistent
+   *     client.
+   * @throws NotAllowedException download target rejected by DDA or security policy.
+   * @throws IOException filesystem errors while preparing disk buckets or output locations.
+   */
+  public ClientGet(
+      PersistentRequestClient globalClient,
+      FreenetURI uri,
+      GlobalRequestConfig requestConfig,
       NodeClientCore core)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     super(
         uri,
-        identifier,
-        verbosity,
+        requestConfig.identifier(),
+        requestConfig.verbosity(),
         null,
         globalClient,
-        prioClass,
-        (persistRebootOnly ? Persistence.REBOOT : Persistence.FOREVER),
-        realTimeFlag,
+        requestConfig.prioClass(),
+        (requestConfig.persistRebootOnly() ? Persistence.REBOOT : Persistence.FOREVER),
+        requestConfig.realTimeFlag(),
         null,
         true);
 
-    ensureGlobalIdentifierAvailable(globalClient, identifier);
+    ensureGlobalIdentifierAvailable(globalClient, requestConfig.identifier());
     fctx = core.getClientContext().getDefaultPersistentFetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
-    fctx.setLocalRequestOnly(dsOnly);
-    fctx.setIgnoreStore(ignoreDS);
-    fctx.setMaxNonSplitfileRetries(maxNonSplitfileRetries);
-    fctx.setMaxSplitfileBlockRetries(maxSplitfileRetries);
-    fctx.setFilterData(filterData);
-    fctx.setMaxOutputLength(maxOutputLength);
-    fctx.setMaxTempLength(maxOutputLength);
-    fctx.setCanWriteClientCache(writeToClientCache);
+    fctx.setLocalRequestOnly(requestConfig.dsOnly());
+    fctx.setIgnoreStore(requestConfig.ignoreDS());
+    fctx.setMaxNonSplitfileRetries(requestConfig.maxNonSplitfileRetries());
+    fctx.setMaxSplitfileBlockRetries(requestConfig.maxSplitfileRetries());
+    fctx.setFilterData(requestConfig.filterData());
+    fctx.setMaxOutputLength(requestConfig.maxOutputLength());
+    fctx.setMaxTempLength(requestConfig.maxOutputLength());
+    fctx.setCanWriteClientCache(requestConfig.writeToClientCache());
     compatMode = new CompatibilityAnalyser();
     // USK date hints are configured explicitly for FCP messages.
-    this.returnType = returnType;
-    this.binaryBlob = binaryBlob;
-    if (charset != null && LOG.isDebugEnabled()) {
-      LOG.debug("Charset parameter is ignored for ClientGet global queue requests: {}", charset);
+    this.returnType = requestConfig.returnType();
+    this.binaryBlob = requestConfig.binaryBlob();
+    if (requestConfig.charset() != null && LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Charset parameter is ignored for ClientGet global queue requests: {}",
+          requestConfig.charset());
     }
-    ReturnSetup setup =
-        configureReturnHandlingForGlobalRequest(returnType, returnFilename, filterData, core);
+    ClientGetReturnPlanner returnPlanner = new ClientGetReturnPlanner(identifier, global, fctx);
+    ClientGetReturnPlanner.ReturnSetup setup =
+        returnPlanner.forGlobalRequest(
+            returnType, requestConfig.returnFilename(), requestConfig.filterData(), core);
     this.targetFile = setup.targetFile();
     this.extensionCheck = setup.extension();
     this.initialMetadata = null;
@@ -374,7 +387,8 @@ public class ClientGet extends ClientRequest {
 
     this.returnType = message.returnType;
     this.binaryBlob = message.binaryBlob;
-    ReturnSetup setup = configureReturnHandlingForMessage(message, core, handler);
+    ClientGetReturnPlanner returnPlanner = new ClientGetReturnPlanner(identifier, global, fctx);
+    ClientGetReturnPlanner.ReturnSetup setup = returnPlanner.forMessage(message, core, handler);
     this.targetFile = setup.targetFile();
     this.extensionCheck = setup.extension();
     initialMetadata = message.getInitialMetadata();
@@ -382,98 +396,6 @@ public class ClientGet extends ClientRequest {
       getter = makeGetter(core, setup.bucket());
     } catch (IOException e) {
       throw bucketCreationFailure(e);
-    }
-  }
-
-  private ReturnSetup configureReturnHandlingForGlobalRequest(
-      ReturnType type, File returnFilename, boolean filterData, NodeClientCore core)
-      throws NotAllowedException, IOException {
-    if (type == ReturnType.DISK) {
-      File file = Objects.requireNonNull(returnFilename, "returnFilename");
-      ensureDownloadAllowed(core, file);
-      return createDiskReturnSetup(file, filterData);
-    }
-    return new ReturnSetup(null, null, null);
-  }
-
-  private ReturnSetup configureReturnHandlingForMessage(
-      ClientGetMessage message, NodeClientCore core, FCPConnectionHandler handler)
-      throws MessageInvalidException {
-    if (message.returnType == ReturnType.DISK) {
-      return buildDiskSetupForMessage(message, core, handler);
-    }
-    return new ReturnSetup(null, null, null);
-  }
-
-  private ReturnSetup buildDiskSetupForMessage(
-      ClientGetMessage message, NodeClientCore core, FCPConnectionHandler handler)
-      throws MessageInvalidException {
-    File diskFile = message.diskFile;
-    if (!core.allowDownloadTo(diskFile)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.ACCESS_DENIED,
-          "Not allowed to download to " + diskFile,
-          identifier,
-          global);
-    }
-    if (!handler.ddaAccessController().allowDDAFrom(diskFile, true)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED,
-          "Not allowed to download to "
-              + diskFile
-              + ". You might need to do a "
-              + TestDdaRequestMessage.NAME
-              + " first.",
-          identifier,
-          global);
-    }
-    try {
-      handleExistingTargetFile(diskFile);
-    } catch (IOException e) {
-      MessageInvalidException mie =
-          new MessageInvalidException(
-              ProtocolErrorMessage.INTERNAL_ERROR,
-              "Target filename exists already: " + diskFile,
-              identifier,
-              global);
-      mie.initCause(e);
-      throw mie;
-    }
-    return createDiskReturnSetup(diskFile, fctx.getFilterData());
-  }
-
-  private ReturnSetup createDiskReturnSetup(File file, boolean filterData) {
-    Bucket bucket = ClientGetGetterFactory.diskReturnBucket(file);
-    return new ReturnSetup(bucket, file, filterData ? deriveExtension(file) : null);
-  }
-
-  private static String deriveExtension(File file) {
-    String name = file.getName();
-    int idx = name.lastIndexOf('.');
-    if (idx == -1 || idx == name.length() - 1) {
-      return null;
-    }
-    return name.substring(idx + 1);
-  }
-
-  private void ensureDownloadAllowed(NodeClientCore core, File file)
-      throws NotAllowedException, IOException {
-    if (!core.allowDownloadTo(file)) {
-      throw new NotAllowedException();
-    }
-    handleExistingTargetFile(file);
-  }
-
-  private void handleExistingTargetFile(File file) throws IOException {
-    if (!file.exists()) {
-      return;
-    }
-    if (file.length() == 0) {
-      Files.delete(file.toPath());
-      LOG.error("Target file already exists but is zero length, deleting...");
-    }
-    if (file.exists()) {
-      throw new IOException("Target filename exists already: " + file);
     }
   }
 
