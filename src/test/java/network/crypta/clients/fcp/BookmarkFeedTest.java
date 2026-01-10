@@ -32,20 +32,7 @@ class BookmarkFeedTest {
   void getFieldSet_whenBookmarkHasMetadata_exportsNameUriAndFlags() throws Exception {
     FreenetURI uri = sampleUri();
     BookmarkFeed feed =
-        new BookmarkFeed(
-            HEADER,
-            SHORT_TEXT,
-            BODY_TEXT,
-            PRIORITY_CLASS,
-            UPDATED_TIME,
-            SOURCE_NODE_NAME,
-            COMPOSED,
-            SENT,
-            RECEIVED,
-            BOOKMARK_NAME,
-            uri,
-            "A bookmark description",
-            true);
+        new BookmarkFeed(baseParams(), BOOKMARK_NAME, uri, "A bookmark description", true);
 
     SimpleFieldSet fieldSet = feed.getFieldSet();
 
@@ -93,7 +80,11 @@ class BookmarkFeedTest {
   }
 
   private static BookmarkFeed createFeedWithDescription(String description) {
-    return new BookmarkFeed(
+    return new BookmarkFeed(baseParams(), BOOKMARK_NAME, sampleUri(), description, false);
+  }
+
+  private static N2NFeedMessageParams baseParams() {
+    return new N2NFeedMessageParams(
         HEADER,
         SHORT_TEXT,
         BODY_TEXT,
@@ -102,11 +93,7 @@ class BookmarkFeedTest {
         SOURCE_NODE_NAME,
         COMPOSED,
         SENT,
-        RECEIVED,
-        BOOKMARK_NAME,
-        sampleUri(),
-        description,
-        false);
+        RECEIVED);
   }
 
   private static FreenetURI sampleUri() {

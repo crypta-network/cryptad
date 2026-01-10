@@ -32,8 +32,8 @@ class TextFeedMessageTest {
     long received = 300L;
     String messageText = "Additional message text";
 
-    TextFeedMessage message =
-        new TextFeedMessage(
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
             header,
             shortText,
             text,
@@ -42,8 +42,8 @@ class TextFeedMessageTest {
             sourceNodeName,
             composed,
             sent,
-            received,
-            messageText);
+            received);
+    TextFeedMessage message = new TextFeedMessage(params, messageText);
 
     // Act
     SimpleFieldSet fieldSet = message.getFieldSet();
@@ -86,18 +86,10 @@ class TextFeedMessageTest {
     String sourceNodeName = "UnknownNode";
     String messageText = "Message payload";
 
-    TextFeedMessage message =
-        new TextFeedMessage(
-            header,
-            shortText,
-            text,
-            priorityClass,
-            updatedTime,
-            sourceNodeName,
-            -1L,
-            -1L,
-            -1L,
-            messageText);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            header, shortText, text, priorityClass, updatedTime, sourceNodeName, -1L, -1L, -1L);
+    TextFeedMessage message = new TextFeedMessage(params, messageText);
 
     // Act
     SimpleFieldSet fieldSet = message.getFieldSet();
@@ -119,9 +111,10 @@ class TextFeedMessageTest {
     short priorityClass = 3;
     long updatedTime = 1234L;
 
-    TextFeedMessage message =
-        new TextFeedMessage(
-            "Header", "Short", text, priorityClass, updatedTime, "SomeNode", 10L, 20L, 30L, null);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            "Header", "Short", text, priorityClass, updatedTime, "SomeNode", 10L, 20L, 30L);
+    TextFeedMessage message = new TextFeedMessage(params, null);
 
     // Act
     SimpleFieldSet fieldSet = message.getFieldSet();
@@ -141,9 +134,9 @@ class TextFeedMessageTest {
   @Test
   void getName_whenCalled_expectTextFeedConstantReturned() {
     // Arrange
-    TextFeedMessage message =
-        new TextFeedMessage(
-            "Header", "Short", "Body", (short) 1, 0L, "Node", -1L, -1L, -1L, "message");
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams("Header", "Short", "Body", (short) 1, 0L, "Node", -1L, -1L, -1L);
+    TextFeedMessage message = new TextFeedMessage(params, "message");
 
     // Act & Assert
     assertEquals(TextFeedMessage.NAME, message.getName());

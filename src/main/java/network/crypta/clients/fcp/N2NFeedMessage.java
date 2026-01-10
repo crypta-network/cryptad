@@ -65,55 +65,24 @@ public abstract class N2NFeedMessage extends FeedMessage {
   /**
    * Create a new node‑to‑node feed message with timing metadata and textual content.
    *
-   * <p>The textual arguments mirror those of {@link FeedMessage}: a short {@code header}, a
-   * secondary {@code shortText}, and a full {@code text} body that is stored as a binary payload.
-   * The {@code priorityClass} and {@code updatedTime} parameters are passed through to the
-   * superclass unchanged, while {@code sourceNodeName} and the three timestamp values are retained
-   * to describe the origin and life‑cycle of the message as it flows between nodes.
+   * <p>The supplied {@link N2NFeedMessageParams} bundles the base feed text fields, priority and
+   * update timestamps, and the node timing metadata. The values are forwarded unchanged to the
+   * superclass and stored for later serialization.
    *
-   * @param header short one‑line summary describing the message; callers should avoid embedding
-   *     newline characters because the value is placed directly into the textual FCP header and may
-   *     be {@code null} when no separate title is required.
-   * @param shortText secondary summary that gives additional context beyond {@code header}; like
-   *     the header it is expected to be a single logical line of text and may be {@code null} if
-   *     there is no distinct short description.
-   * @param text full body of the feed entry that will be sent as payload bytes; this string is
-   *     converted to UTF‑8 and may contain arbitrary characters, including newlines, but must not
-   *     be {@code null} when constructing an instance.
-   * @param priorityClass numeric priority hint used by the surrounding FCP infrastructure to order
-   *     outgoing messages; higher values typically indicate entries that should be delivered before
-   *     lower‑priority ones on the same connection.
-   * @param updatedTime timestamp representing the last update time of the feed entry from the
-   *     perspective of the sender or alerting subsystem; the concrete semantics are defined by the
-   *     code that constructs the message and are not interpreted further here.
-   * @param sourceNodeName human‑readable name of the node that originated the message; this value
-   *     is exported in the {@code "SourceNodeName"} header field and may be {@code null} or empty
-   *     when no friendly identifier is available for the peer.
-   * @param composed time at which the sender composed the message content, expressed in
-   *     milliseconds since the Unix epoch; use {@code -1} when the composition time is unknown or
-   *     not tracked by the upstream component.
-   * @param sent time at which the sender transmitted the message towards this node, also in epoch
-   *     milliseconds; use {@code -1} if the transport does not expose a precise send time or if it
-   *     is otherwise unavailable.
-   * @param received time at which this node received the message from the network, in epoch
-   *     milliseconds; a value of {@code -1} indicates that the receipt time could not be recorded
-   *     or is intentionally left unspecified.
+   * @param params bundled feed metadata describing the text fields, priority, update time, source
+   *     node name, and lifecycle timestamps for this message.
    */
-  protected N2NFeedMessage(
-      String header,
-      String shortText,
-      String text,
-      short priorityClass,
-      long updatedTime,
-      String sourceNodeName,
-      long composed,
-      long sent,
-      long received) {
-    super(header, shortText, text, priorityClass, updatedTime);
-    this.sourceNodeName = sourceNodeName;
-    this.composed = composed;
-    this.sent = sent;
-    this.received = received;
+  protected N2NFeedMessage(N2NFeedMessageParams params) {
+    super(
+        params.header(),
+        params.shortText(),
+        params.text(),
+        params.priorityClass(),
+        params.updatedTime());
+    this.sourceNodeName = params.sourceNodeName();
+    this.composed = params.composed();
+    this.sent = params.sent();
+    this.received = params.received();
   }
 
   /**

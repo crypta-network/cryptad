@@ -54,49 +54,14 @@ public class TextFeedMessage extends N2NFeedMessage {
    * <p>The resulting instance is ready to be serialized and sent to an FCP client. No further
    * mutation of bucket contents is expected once construction completes.
    *
-   * @param header short human‑readable title for the feed entry; may be {@code null} when no
-   *     dedicated header line is required by the caller.
-   * @param shortText secondary summary line providing compact context beyond {@code header}; may be
-   *     {@code null} if the feed entry does not use a short description.
-   * @param text full body text for the main feed payload; converted to UTF‑8 bytes and stored in a
-   *     {@code "Text"} bucket, and therefore must not be {@code null}.
-   * @param priorityClass numeric priority hint used by the surrounding FCP infrastructure when
-   *     ordering outgoing messages; higher values generally indicate more urgent notifications.
-   * @param updatedTime timestamp in milliseconds since the Unix epoch indicating when the feed
-   *     entry was last updated from the perspective of the producer.
-   * @param sourceNodeName descriptive name of the remote node that originated this message; written
-   *     to the {@code "SourceNodeName"} header field and may be {@code null} or empty.
-   * @param composed time at which the sender composed the message body, expressed in epoch
-   *     milliseconds; use {@code -1} when the composition time is unknown or not tracked.
-   * @param sent time at which the message was transmitted towards this node, in epoch milliseconds;
-   *     use {@code -1} when a precise send time is unavailable or intentionally omitted.
-   * @param received time at which this node received the message, in epoch milliseconds; use {@code
-   *     -1} when the receipt time could not be recorded or is not meaningful.
+   * @param params bundled feed metadata describing the header, body text, priority, update time,
+   *     source node name, and timing information for this entry.
    * @param messageText optional additional textual payload carried in the {@code "MessageText"}
    *     bucket; when {@code null}, an empty {@link NullBucket} is used instead of an {@link
    *     ArrayBucket}.
    */
-  public TextFeedMessage(
-      String header,
-      String shortText,
-      String text,
-      short priorityClass,
-      long updatedTime,
-      String sourceNodeName,
-      long composed,
-      long sent,
-      long received,
-      String messageText) {
-    super(
-        header,
-        shortText,
-        text,
-        priorityClass,
-        updatedTime,
-        sourceNodeName,
-        composed,
-        sent,
-        received);
+  public TextFeedMessage(N2NFeedMessageParams params, String messageText) {
+    super(params);
     final Bucket messageTextBucket;
     if (messageText != null) {
       messageTextBucket = new ArrayBucket(messageText.getBytes(StandardCharsets.UTF_8));

@@ -37,8 +37,8 @@ class URIFeedMessageTest {
     long received = 300L;
     String description = "Description with UTF-8 ✓";
 
-    URIFeedMessage message =
-        new URIFeedMessage(
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
             header,
             shortText,
             text,
@@ -47,9 +47,8 @@ class URIFeedMessageTest {
             sourceNodeName,
             composed,
             sent,
-            received,
-            uriMock,
-            description);
+            received);
+    URIFeedMessage message = new URIFeedMessage(params, uriMock, description);
 
     int textBytes = text.getBytes(StandardCharsets.UTF_8).length;
     int descriptionBytes = description.getBytes(StandardCharsets.UTF_8).length;
@@ -84,19 +83,10 @@ class URIFeedMessageTest {
     short priorityClass = 3;
     long updatedTime = 1234L;
 
-    URIFeedMessage message =
-        new URIFeedMessage(
-            "Header",
-            "Short",
-            text,
-            priorityClass,
-            updatedTime,
-            "SomeNode",
-            10L,
-            20L,
-            30L,
-            uriMock,
-            null);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            "Header", "Short", text, priorityClass, updatedTime, "SomeNode", 10L, 20L, 30L);
+    URIFeedMessage message = new URIFeedMessage(params, uriMock, null);
 
     int textBytes = text.getBytes(StandardCharsets.UTF_8).length;
 
@@ -125,19 +115,10 @@ class URIFeedMessageTest {
     short priorityClass = 2;
     long updatedTime = 99L;
 
-    URIFeedMessage message =
-        new URIFeedMessage(
-            "Header",
-            "Short",
-            text,
-            priorityClass,
-            updatedTime,
-            "Node",
-            1L,
-            2L,
-            3L,
-            uriMock,
-            description);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            "Header", "Short", text, priorityClass, updatedTime, "Node", 1L, 2L, 3L);
+    URIFeedMessage message = new URIFeedMessage(params, uriMock, description);
 
     int textBytes = text.getBytes(StandardCharsets.UTF_8).length;
 
@@ -171,8 +152,8 @@ class URIFeedMessageTest {
     String uriString = "KSK@some-doc";
     org.mockito.Mockito.when(uriMock.toString()).thenReturn(uriString);
 
-    URIFeedMessage message =
-        new URIFeedMessage(
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
             header,
             shortText,
             text,
@@ -181,9 +162,8 @@ class URIFeedMessageTest {
             sourceNodeName,
             composed,
             sent,
-            received,
-            uriMock,
-            description);
+            received);
+    URIFeedMessage message = new URIFeedMessage(params, uriMock, description);
 
     // Act
     SimpleFieldSet fieldSet = message.getFieldSet();
@@ -226,19 +206,10 @@ class URIFeedMessageTest {
 
     org.mockito.Mockito.when(uriMock.toString()).thenReturn(uriString);
 
-    URIFeedMessage message =
-        new URIFeedMessage(
-            "Header",
-            "Short",
-            text,
-            priorityClass,
-            updatedTime,
-            sourceNodeName,
-            -1L,
-            -1L,
-            -1L,
-            uriMock,
-            description);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            "Header", "Short", text, priorityClass, updatedTime, sourceNodeName, -1L, -1L, -1L);
+    URIFeedMessage message = new URIFeedMessage(params, uriMock, description);
 
     // Act
     SimpleFieldSet fieldSet = message.getFieldSet();
@@ -256,19 +227,9 @@ class URIFeedMessageTest {
   @Test
   void getName_whenCalled_expectUriFeedConstantReturned() {
     // Arrange
-    URIFeedMessage message =
-        new URIFeedMessage(
-            "Header",
-            "Short",
-            "Text",
-            (short) 1,
-            0L,
-            "Node",
-            -1L,
-            -1L,
-            -1L,
-            uriMock,
-            "Description");
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams("Header", "Short", "Text", (short) 1, 0L, "Node", -1L, -1L, -1L);
+    URIFeedMessage message = new URIFeedMessage(params, uriMock, "Description");
 
     // Act & Assert
     assertEquals(URIFeedMessage.NAME, message.getName());

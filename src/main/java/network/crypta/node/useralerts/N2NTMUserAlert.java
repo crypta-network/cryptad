@@ -4,6 +4,7 @@ import java.lang.ref.WeakReference;
 import java.text.DateFormat;
 import java.util.Date;
 import network.crypta.clients.fcp.FCPMessage;
+import network.crypta.clients.fcp.N2NFeedMessageParams;
 import network.crypta.clients.fcp.TextFeedMessage;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.l10n.NodeL10n;
@@ -256,17 +257,18 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
    */
   @Override
   public FCPMessage getFCPMessage() {
-    return new TextFeedMessage(
-        getTitle(),
-        getShortText(),
-        getText(),
-        getPriorityClass(),
-        getUpdatedTime(),
-        sourceNodeName,
-        composedTime,
-        sentTime,
-        receivedTime,
-        messageText);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            getTitle(),
+            getShortText(),
+            getText(),
+            getPriorityClass(),
+            getUpdatedTime(),
+            sourceNodeName,
+            composedTime,
+            sentTime,
+            receivedTime);
+    return new TextFeedMessage(params, messageText);
   }
 
   /**
