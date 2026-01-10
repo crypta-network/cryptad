@@ -6,10 +6,14 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.Objects;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
+import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchResult;
+import network.crypta.client.InsertContext;
 import network.crypta.client.async.BinaryBlob;
 import network.crypta.client.async.BinaryBlobWriter;
 import network.crypta.client.async.ClientContext;
@@ -18,6 +22,7 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientGetterOptions;
 import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.PersistentClientCallback;
+import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
@@ -28,6 +33,9 @@ import network.crypta.support.io.ArrayBucketFactory;
 import network.crypta.support.io.FileBucket;
 import network.crypta.support.io.NullBucket;
 import network.crypta.support.io.ResumeFailedException;
+import network.crypta.support.io.StorageFormatException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Creates {@link ClientGetter} instances for {@link ClientGet} requests, including Binary Blob
@@ -56,6 +64,8 @@ import network.crypta.support.io.ResumeFailedException;
  * @see BinaryBlobWriter
  */
 final class ClientGetGetterFactory {
+  private static final Logger LOG = LoggerFactory.getLogger(ClientGet.class);
+
   /**
    * Reusable {@link NullBucket} to discard output without allocating per call.
    *
@@ -147,6 +157,297 @@ final class ClientGetGetterFactory {
   static DataOutputStream checksummedWriter(DataOutputStream target, ChecksumChecker checker)
       throws IOException {
     return new DataOutputStream(checker.checksumWriterWithLength(target, new ArrayBucketFactory()));
+  }
+
+  /**
+   * Applies allowed MIME types to a fetch context.
+   *
+   * <p>The method initializes the allowed MIME type set when configured in the request message.
+   * Passing {@code null} leaves the fetch context unchanged.
+   *
+   * @param fetchContext fetch context to update with allowed MIME types.
+   * @param allowedMimeTypes optional list of allowed MIME type strings.
+   */
+  static void applyAllowedMimeTypes(FetchContext fetchContext, String[] allowedMimeTypes) {
+    if (allowedMimeTypes == null) {
+      return;
+    }
+    fetchContext.setAllowedMIMETypes(new HashSet<>());
+    for (String mime : allowedMimeTypes) {
+      fetchContext.getAllowedMIMETypes().add(mime);
+    }
+  }
+
+  /**
+   * Builds a {@link RequestStatus} snapshot for a download request.
+   *
+   * <p>The helper mirrors the status construction from {@link ClientGet} while keeping additional
+   * dependencies out of the request class.
+   *
+   * @param identifier request identifier to report.
+   * @param persistence persistence mode for the request.
+   * @param started whether the request has started.
+   * @param finished whether the request has finished.
+   * @param succeeded whether the request has succeeded.
+   * @param progressPending last recorded progress snapshot, if any.
+   * @param failedMessage cached failure message, if any.
+   * @param foundDataMimeType MIME type discovered for the data.
+   * @param foundDataLength data length recorded for the request.
+   * @param destinationFile destination file for disk requests.
+   * @param dataBucket bucket containing result data.
+   * @param fetchContext fetch context providing filter and MIME overrides.
+   * @param priorityClass scheduler priority class.
+   * @param compatModes compatibility modes observed for the request.
+   * @param splitfileKey splitfile crypto key override, if any.
+   * @param uri request URI to report.
+   * @param dontCompress whether reinsertion should skip compression.
+   * @return a populated {@link DownloadRequestStatus} instance.
+   */
+  static RequestStatus buildStatus(
+      String identifier,
+      Persistence persistence,
+      boolean started,
+      boolean finished,
+      boolean succeeded,
+      SimpleProgressMessage progressPending,
+      GetFailedMessage failedMessage,
+      String foundDataMimeType,
+      long foundDataLength,
+      File destinationFile,
+      Bucket dataBucket,
+      FetchContext fetchContext,
+      short priorityClass,
+      InsertContext.CompatibilityMode[] compatModes,
+      byte[] splitfileKey,
+      FreenetURI uri,
+      boolean dontCompress) {
+    boolean totalFinalized = false;
+    int total = 0;
+    int min = 0;
+    int fetched = 0;
+    int fatal = 0;
+    int failed = 0;
+    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    Date latestSuccess = new Date();
+    Date latestFailure = null;
+
+    if (progressPending != null) {
+      totalFinalized = progressPending.isTotalFinalized();
+      // The progress API reports doubles to preserve partial block counts from the splitter.
+      total = (int) progressPending.getTotalBlocks();
+      min = (int) progressPending.getMinBlocks();
+      fetched = (int) progressPending.getFetchedBlocks();
+      latestSuccess = progressPending.getLatestSuccess();
+      fatal = (int) progressPending.getFatalyFailedBlocks();
+      failed = (int) progressPending.getFailedBlocks();
+      latestFailure = progressPending.getLatestFailure();
+    }
+    if (finished && succeeded) totalFinalized = true;
+    FetchExceptionMode failureCode = null;
+    String failureReasonShort = null;
+    String failureReasonLong = null;
+    if (failedMessage != null) {
+      failureCode = failedMessage.failureMode;
+      failureReasonShort = failedMessage.getShortFailedMessage();
+      failureReasonLong = failedMessage.getLongFailedMessage();
+    }
+    String mimeType = foundDataMimeType;
+    long dataSize = foundDataLength;
+    File target = destinationFile;
+    if (target != null) target = new File(target.getPath());
+
+    Bucket shadow = (finished && succeeded) ? dataBucket : null;
+    if (shadow != null) {
+      if (dataSize != shadow.size()) {
+        LOG.error(
+            "Size of downloaded data has changed: {} -> {} on {}", dataSize, shadow.size(), shadow);
+        shadow = null;
+      } else {
+        shadow = shadow.createShadow();
+      }
+    }
+
+    boolean filterData = fetchContext.getFilterData();
+    boolean overriddenDataType =
+        fetchContext.getOverrideMIME() != null || fetchContext.getCharset() != null;
+
+    return new DownloadRequestStatus(
+        identifier,
+        persistence,
+        started,
+        finished,
+        succeeded,
+        total,
+        min,
+        fetched,
+        latestSuccess,
+        fatal,
+        failed,
+        latestFailure,
+        totalFinalized,
+        priorityClass,
+        failureCode,
+        mimeType,
+        dataSize,
+        target,
+        compatModes,
+        splitfileKey,
+        uri,
+        failureReasonShort,
+        failureReasonLong,
+        overriddenDataType,
+        shadow,
+        filterData,
+        dontCompress);
+  }
+
+  /**
+   * Plans return handling for a global request.
+   *
+   * <p>The returned array contains the return bucket, target file, and extension hint in that
+   * order.
+   *
+   * @param identifier request identifier used for policy checks.
+   * @param global whether the request uses the global identifier namespace.
+   * @param fetchContext fetch context for return planning.
+   * @param returnType configured return type.
+   * @param returnFilename target file for disk returns.
+   * @param filterData whether to derive an extension hint when filtering.
+   * @param core node core used for policy checks.
+   * @return array containing {@link Bucket}, {@link File}, and extension {@link String}.
+   * @throws NotAllowedException if the node policy rejects the requested target path.
+   * @throws IOException if an existing target file cannot be removed or is unsafe to overwrite.
+   */
+  static Object[] planReturnForGlobal(
+      String identifier,
+      boolean global,
+      FetchContext fetchContext,
+      ClientGet.ReturnType returnType,
+      File returnFilename,
+      boolean filterData,
+      NodeClientCore core)
+      throws NotAllowedException, IOException {
+    ClientGetReturnPlanner returnPlanner =
+        new ClientGetReturnPlanner(identifier, global, fetchContext);
+    ClientGetReturnPlanner.ReturnSetup setup =
+        returnPlanner.forGlobalRequest(returnType, returnFilename, filterData, core);
+    return new Object[] {setup.bucket(), setup.targetFile(), setup.extension()};
+  }
+
+  /**
+   * Plans return handling for a client message.
+   *
+   * <p>The returned array contains the return bucket, target file, and extension hint in that
+   * order.
+   *
+   * @param identifier request identifier used for policy checks.
+   * @param global whether the request uses the global identifier namespace.
+   * @param fetchContext fetch context for return planning.
+   * @param message message containing return settings.
+   * @param core node core used for policy checks.
+   * @param handler connection handler providing DDA validation.
+   * @return array containing {@link Bucket}, {@link File}, and extension {@link String}.
+   * @throws MessageInvalidException if policy checks fail or the target file is unsafe to use.
+   */
+  static Object[] planReturnForMessage(
+      String identifier,
+      boolean global,
+      FetchContext fetchContext,
+      ClientGetMessage message,
+      NodeClientCore core,
+      FCPConnectionHandler handler)
+      throws MessageInvalidException {
+    ClientGetReturnPlanner returnPlanner =
+        new ClientGetReturnPlanner(identifier, global, fetchContext);
+    ClientGetReturnPlanner.ReturnSetup setup = returnPlanner.forMessage(message, core, handler);
+    return new Object[] {setup.bucket(), setup.targetFile(), setup.extension()};
+  }
+
+  /**
+   * Restores a {@link FetchContext} or defaults when recovery fails.
+   *
+   * @param dis input stream positioned at the fetch context data.
+   * @param context client context providing default fetch settings.
+   * @param checker checksum helper used to verify the serialized block.
+   * @return restored {@link FetchContext} or the default when recovery fails.
+   */
+  static FetchContext readFetchContextOrDefault(
+      DataInputStream dis, ClientContext context, ChecksumChecker checker) {
+    return ClientGetPersistenceIO.readFetchContextOrDefault(dis, context, checker);
+  }
+
+  /**
+   * Restores an initial metadata bucket for the request, if present.
+   *
+   * @param dis input stream positioned at the metadata bucket marker.
+   * @param context client context owning persistent bucket services.
+   * @param checker checksum helper used to verify the bucket metadata.
+   * @return restored bucket or {@code null} when no metadata marker was set.
+   * @throws IOException if the underlying stream cannot be read.
+   * @throws StorageFormatException if metadata integrity checks fail.
+   * @throws ResumeFailedException if bucket restoration fails.
+   */
+  static Bucket readInitialMetadata(
+      DataInputStream dis, ClientContext context, ChecksumChecker checker)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    return ClientGetPersistenceIO.readInitialMetadata(dis, context, checker);
+  }
+
+  /**
+   * Restores a completed direct bucket from persistent storage.
+   *
+   * @param dis input stream positioned at the bucket payload.
+   * @param context client context owning persistent bucket services.
+   * @param checker checksum helper used to verify the bucket metadata.
+   * @return restored bucket, or {@code null} when restoration failed.
+   * @throws ResumeFailedException if bucket restoration fails.
+   */
+  static Bucket restoreCompletedDirectBucketOrNull(
+      DataInputStream dis, ClientContext context, ChecksumChecker checker)
+      throws ResumeFailedException {
+    return ClientGetPersistenceIO.restoreCompletedDirectBucketOrNull(dis, context, checker);
+  }
+
+  /**
+   * Restores the failure message for a finished request.
+   *
+   * @param dis input stream positioned at the failure message payload.
+   * @param reqID request identifier used to populate the failure message.
+   * @param foundDataLength recorded data length for the request.
+   * @param foundDataMimeType recorded MIME type for the request.
+   * @param context client context providing checksum helpers.
+   * @param checker checksum helper used to verify the payload.
+   * @return restored {@link GetFailedMessage} or {@code null} when recovery fails.
+   */
+  static GetFailedMessage restoreFailureMessageOrNull(
+      DataInputStream dis,
+      RequestIdentifier reqID,
+      long foundDataLength,
+      String foundDataMimeType,
+      ClientContext context,
+      ChecksumChecker checker) {
+    return ClientGetPersistenceIO.restoreFailureMessageOrNull(
+        dis, reqID, foundDataLength, foundDataMimeType, context, checker);
+  }
+
+  /**
+   * Restores in-progress getter state along with transient progress fields.
+   *
+   * @param dis input stream positioned at the progress data block.
+   * @param context client context used to resume the getter.
+   * @param checker checksum helper used to validate the block.
+   * @param inProgressGetter getter instance to resume.
+   * @param request request instance for restoring transient fields.
+   * @throws StorageFormatException if the serialized state is invalid.
+   */
+  static void restoreInProgressState(
+      DataInputStream dis,
+      ClientContext context,
+      ChecksumChecker checker,
+      ClientGetter inProgressGetter,
+      ClientGet request)
+      throws StorageFormatException {
+    ClientGetPersistenceIO.restoreInProgressState(dis, context, checker, inProgressGetter, request);
   }
 
   /**

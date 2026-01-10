@@ -5,9 +5,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Objects;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -19,11 +16,9 @@ import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
-import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
 import network.crypta.support.api.Bucket;
-import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.ResumeFailedException;
 import network.crypta.support.io.StorageFormatException;
 import org.slf4j.Logger;
@@ -138,11 +133,6 @@ public class ClientGet extends ClientRequest {
   private ExpectedHashes expectedHashes;
 
   // Legacy threshold callback removed.
-
-  private static final String COMPLETED_DOWNLOAD_RESTORE_FAILURE =
-      "Failed to restore completed download-to-temp-space request, restarting instead";
-  private static final String FETCH_SETTINGS_FALLBACK_MESSAGE =
-      "Unable to read fetch settings, will use default settings";
 
   /**
    * Defines how fetched bytes are delivered to the remote FCP caller.
@@ -320,14 +310,20 @@ public class ClientGet extends ClientRequest {
           "Charset parameter is ignored for ClientGet global queue requests: {}",
           requestConfig.charset());
     }
-    ClientGetReturnPlanner returnPlanner = new ClientGetReturnPlanner(identifier, global, fctx);
-    ClientGetReturnPlanner.ReturnSetup setup =
-        returnPlanner.forGlobalRequest(
-            returnType, requestConfig.returnFilename(), requestConfig.filterData(), core);
-    this.targetFile = setup.targetFile();
-    this.extensionCheck = setup.extension();
+    Object[] setup =
+        ClientGetGetterFactory.planReturnForGlobal(
+            identifier,
+            global,
+            fctx,
+            returnType,
+            requestConfig.returnFilename(),
+            requestConfig.filterData(),
+            core);
+    Bucket returnBucket = (Bucket) setup[0];
+    this.targetFile = (File) setup[1];
+    this.extensionCheck = (String) setup[2];
     this.initialMetadata = null;
-    getter = makeGetter(core, setup.bucket());
+    getter = makeGetter(core, returnBucket);
   }
 
   /**
@@ -378,22 +374,19 @@ public class ClientGet extends ClientRequest {
     fctx.setIgnoreUSKDatehints(message.ignoreUSKDatehints);
     compatMode = new CompatibilityAnalyser();
 
-    if (message.allowedMIMETypes != null) {
-      fctx.setAllowedMIMETypes(new HashSet<>());
-      for (String mime : message.allowedMIMETypes) {
-        fctx.getAllowedMIMETypes().add(mime);
-      }
-    }
+    ClientGetGetterFactory.applyAllowedMimeTypes(fctx, message.allowedMIMETypes);
 
     this.returnType = message.returnType;
     this.binaryBlob = message.binaryBlob;
-    ClientGetReturnPlanner returnPlanner = new ClientGetReturnPlanner(identifier, global, fctx);
-    ClientGetReturnPlanner.ReturnSetup setup = returnPlanner.forMessage(message, core, handler);
-    this.targetFile = setup.targetFile();
-    this.extensionCheck = setup.extension();
+    Object[] setup =
+        ClientGetGetterFactory.planReturnForMessage(
+            identifier, global, fctx, message, core, handler);
+    Bucket returnBucket = (Bucket) setup[0];
+    this.targetFile = (File) setup[1];
+    this.extensionCheck = (String) setup[2];
     initialMetadata = message.getInitialMetadata();
     try {
-      getter = makeGetter(core, setup.bucket());
+      getter = makeGetter(core, returnBucket);
     } catch (IOException e) {
       throw bucketCreationFailure(e);
     }
@@ -473,8 +466,10 @@ public class ClientGet extends ClientRequest {
   void register(boolean noTags) throws IdentifierCollisionException {
     assert client == null || (this.persistence == client.persistence);
     if (persistence != Persistence.CONNECTION) {
-      PersistentRequestClient persistentClient =
-          Objects.requireNonNull(client, "Persistent client must be available to register");
+      if (client == null) {
+        throw new NullPointerException("Persistent client must be available to register");
+      }
+      PersistentRequestClient persistentClient = client;
       persistentClient.register(this);
       if (!noTags) {
         FCPMessage msg = persistentTagMessage();
@@ -612,7 +607,9 @@ public class ClientGet extends ClientRequest {
   @SuppressWarnings("unused")
   public void setSuccessForMigration(ClientContext context, long completionTime, Bucket data)
       throws ResumeFailedException {
-    Objects.requireNonNull(context, "context");
+    if (context == null) {
+      throw new NullPointerException("context");
+    }
     synchronized (this) {
       succeeded = true;
       started = true;
@@ -1413,84 +1410,23 @@ public class ClientGet extends ClientRequest {
 
   @Override
   synchronized RequestStatus getStatus() {
-    boolean totalFinalized = false;
-    int total = 0;
-    int min = 0;
-    int fetched = 0;
-    int fatal = 0;
-    int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
-    Date latestSuccess = new Date();
-    Date latestFailure = null;
-
-    if (progressPending != null) {
-      totalFinalized = progressPending.isTotalFinalized();
-      // The progress API reports doubles to preserve partial block counts from the splitter.
-      total = (int) progressPending.getTotalBlocks();
-      min = (int) progressPending.getMinBlocks();
-      fetched = (int) progressPending.getFetchedBlocks();
-      latestSuccess = progressPending.getLatestSuccess();
-      fatal = (int) progressPending.getFatalyFailedBlocks();
-      failed = (int) progressPending.getFailedBlocks();
-      latestFailure = progressPending.getLatestFailure();
-    }
-    if (finished && succeeded) totalFinalized = true;
-    FetchExceptionMode failureCode = null;
-    String failureReasonShort = null;
-    String failureReasonLong = null;
-    if (getFailedMessage != null) {
-      failureCode = getFailedMessage.failureMode;
-      failureReasonShort = getFailedMessage.getShortFailedMessage();
-      failureReasonLong = getFailedMessage.getLongFailedMessage();
-    }
-    String mimeType = foundDataMimeType;
-    long dataSize = foundDataLength;
-    File target = getDestFilename();
-    if (target != null) target = new File(target.getPath());
-
-    Bucket shadow = (finished && succeeded) ? getBucket() : null;
-    if (shadow != null) {
-      if (dataSize != shadow.size()) {
-        LOG.error(
-            "Size of downloaded data has changed: {} -> {} on {}", dataSize, shadow.size(), shadow);
-        shadow = null;
-      } else {
-        shadow = shadow.createShadow();
-      }
-    }
-
-    boolean filterData;
-    boolean overriddenDataType;
-    filterData = fctx.getFilterData();
-    overriddenDataType = fctx.getOverrideMIME() != null || fctx.getCharset() != null;
-
-    return new DownloadRequestStatus(
+    return ClientGetGetterFactory.buildStatus(
         identifier,
         persistence,
         started,
         finished,
         succeeded,
-        total,
-        min,
-        fetched,
-        latestSuccess,
-        fatal,
-        failed,
-        latestFailure,
-        totalFinalized,
+        progressPending,
+        getFailedMessage,
+        foundDataMimeType,
+        foundDataLength,
+        getDestFilename(),
+        getBucket(),
+        fctx,
         priorityClass,
-        failureCode,
-        mimeType,
-        dataSize,
-        target,
         getCompatibilityMode(),
         getOverriddenSplitfileCryptoKey(),
         getURI(),
-        failureReasonShort,
-        failureReasonLong,
-        overriddenDataType,
-        shadow,
-        filterData,
         getDontCompress());
   }
 
@@ -1604,10 +1540,10 @@ public class ClientGet extends ClientRequest {
     returnType = parseReturnType(dis.readShort());
     targetFile = returnType == ReturnType.DISK ? new File(dis.readUTF()) : null;
     binaryBlob = dis.readBoolean();
-    this.fctx = readFetchContext(dis, context, checker);
+    this.fctx = ClientGetGetterFactory.readFetchContextOrDefault(dis, context, checker);
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
     extensionCheck = dis.readBoolean() ? dis.readUTF() : null;
-    initialMetadata = readInitialMetadata(dis, context, checker);
+    initialMetadata = ClientGetGetterFactory.readInitialMetadata(dis, context, checker);
     ClientGetter restoredGetter = restoreState(dis, reqID, context, checker);
     if (compatMode == null) {
       compatMode = new CompatibilityAnalyser();
@@ -1646,37 +1582,6 @@ public class ClientGet extends ClientRequest {
     }
   }
 
-  private FetchContext readFetchContext(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker) {
-    try (DataInputStream inner = createChecksummedInput(dis, context, checker)) {
-      return new FetchContext(inner);
-    } catch (StorageFormatException | IOException e) {
-      LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE, e);
-    } catch (ChecksumFailedException _) {
-      LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE);
-    }
-    return context.getDefaultPersistentFetchContext();
-  }
-
-  private Bucket readInitialMetadata(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
-      throws IOException, StorageFormatException, ResumeFailedException {
-    if (!dis.readBoolean()) {
-      return null;
-    }
-    try (DataInputStream metadataStream = createChecksummedInput(dis, context, checker)) {
-      return BucketTools.restoreFrom(
-          metadataStream,
-          context.persistentFG,
-          context.getPersistentFileTracker(),
-          context.getPersistentMasterSecret());
-    } catch (ChecksumFailedException e) {
-      StorageFormatException sfe = new StorageFormatException("Unable to restore initial metadata");
-      sfe.initCause(e);
-      throw sfe;
-    }
-  }
-
   private ClientGetter restoreState(
       DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
@@ -1685,7 +1590,7 @@ public class ClientGet extends ClientRequest {
       return null;
     }
     ClientGetter inProgressGetter = makeGetter(makeBucket(false));
-    restoreInProgressState(dis, context, checker, inProgressGetter);
+    ClientGetGetterFactory.restoreInProgressState(dis, context, checker, inProgressGetter, this);
     return inProgressGetter;
   }
 
@@ -1695,74 +1600,32 @@ public class ClientGet extends ClientRequest {
     succeeded = dis.readBoolean();
     readTransientProgressFields(dis);
     if (succeeded) {
-      restoreCompletedBucket(dis, context, checker);
-    } else {
-      restoreFailureMessage(dis, reqID, context, checker);
-    }
-  }
-
-  private void restoreCompletedBucket(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
-      throws ResumeFailedException {
-    if (returnType != ReturnType.DIRECT) {
-      return;
-    }
-    try (DataInputStream inner = createChecksummedInput(dis, context, checker)) {
-      returnBucketDirect =
-          BucketTools.restoreFrom(
-              inner,
-              context.persistentFG,
-              context.getPersistentFileTracker(),
-              context.getPersistentMasterSecret());
-    } catch (IOException | ChecksumFailedException | StorageFormatException e) {
-      LOG.error(COMPLETED_DOWNLOAD_RESTORE_FAILURE, e);
-      returnBucketDirect = null;
-      succeeded = false;
-      finished = false;
-    }
-  }
-
-  private void restoreFailureMessage(
-      DataInputStream dis,
-      RequestIdentifier reqID,
-      ClientContext context,
-      ChecksumChecker checker) {
-    try (DataInputStream inner = createChecksummedInput(dis, context, checker)) {
-      getFailedMessage = new GetFailedMessage(inner, reqID, foundDataLength, foundDataMimeType);
-      started = true;
-    } catch (IOException | ChecksumFailedException | StorageFormatException e) {
-      LOG.error("Unable to restore reason for failure, restarting request", e);
-      finished = false;
-      getFailedMessage = null;
-    }
-  }
-
-  private void restoreInProgressState(
-      DataInputStream dis,
-      ClientContext context,
-      ChecksumChecker checker,
-      ClientGetter inProgressGetter)
-      throws StorageFormatException {
-    try (DataInputStream inner = createChecksummedInput(dis, context, checker)) {
-      if (inProgressGetter.resumeFromTrivialProgress(inner, context)) {
-        readTransientProgressFields(inner);
+      if (returnType == ReturnType.DIRECT) {
+        Bucket restoredBucket =
+            ClientGetGetterFactory.restoreCompletedDirectBucketOrNull(dis, context, checker);
+        if (restoredBucket != null) {
+          returnBucketDirect = restoredBucket;
+        } else {
+          returnBucketDirect = null;
+          succeeded = false;
+          finished = false;
+        }
       }
-    } catch (IOException e) {
-      LOG.error("Unable to restore splitfile, restarting: {}", e.toString());
-    } catch (ChecksumFailedException _) {
-      LOG.error("Unable to restore splitfile, restarting (checksum failed)");
+    } else {
+      GetFailedMessage restoredMessage =
+          ClientGetGetterFactory.restoreFailureMessageOrNull(
+              dis, reqID, foundDataLength, foundDataMimeType, context, checker);
+      if (restoredMessage != null) {
+        getFailedMessage = restoredMessage;
+        started = true;
+      } else {
+        finished = false;
+        getFailedMessage = null;
+      }
     }
   }
 
-  private DataInputStream createChecksummedInput(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
-      throws IOException, ChecksumFailedException {
-    return new DataInputStream(
-        checker.checksumReaderWithLength(dis, context.tempBucketFactory, 65536));
-  }
-
-  private void readTransientProgressFields(DataInputStream dis)
-      throws IOException, StorageFormatException {
+  void readTransientProgressFields(DataInputStream dis) throws IOException, StorageFormatException {
     foundDataLength = dis.readLong();
     if (dis.readBoolean()) foundDataMimeType = dis.readUTF();
     else foundDataMimeType = null;

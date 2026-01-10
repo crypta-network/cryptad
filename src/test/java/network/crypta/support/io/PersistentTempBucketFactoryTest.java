@@ -120,7 +120,9 @@ class PersistentTempBucketFactoryTest {
         assertInstanceOf(PersistentTempFileBucket.class, wrapper.getUnderlying());
     assertTrue(underlying.getFile().exists(), "Backing file should exist");
     assertEquals(
-        tempDir.toFile(), underlying.getFile().getParentFile(), "File should live in temp dir");
+        tempDir.toRealPath(),
+        underlying.getFile().getParentFile().toPath().toRealPath(),
+        "File should live in temp dir");
   }
 
   @Test
