@@ -12,8 +12,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import network.crypta.support.Fields;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -6359,8 +6361,11 @@ class CSSTokenizerFilter {
       int lowerLimit = Integer.parseInt(strLimits[0]);
       int upperLimit = Integer.parseInt(strLimits[1]);
 
-      return recursiveVariableOccuranceVerifier(
-          index, words, lowerLimit, upperLimit, tokensLower, tokensUpper, secondPart, cb);
+      VariableOccurrenceLimits limits =
+          new VariableOccurrenceLimits(lowerLimit, upperLimit, tokensLower, tokensUpper);
+      VariableOccurrenceParams params =
+          new VariableOccurrenceParams(index, words, limits, secondPart, cb);
+      return recursiveVariableOccuranceVerifier(params);
     }
 
     private int[] parseGivenLimits(String expression, int tindex) {
@@ -6527,30 +6532,103 @@ class CSSTokenizerFilter {
     }
 
     /**
-     * Verifies part of a parse expression that uses the {@code []} repetition operator.
+     * Limits governing repetitions and token consumption for variable-occurrence checks.
+     *
+     * @param lowerLimit minimum allowed repetitions.
+     * @param upperLimit maximum allowed repetitions (inclusive), or zero for none.
+     * @param tokensLower minimum number of tokens that the sub-expression may consume.
+     * @param tokensUpper maximum number of tokens that the sub-expression may consume.
+     */
+    private record VariableOccurrenceLimits(
+        int lowerLimit, int upperLimit, int tokensLower, int tokensUpper) {
+      private VariableOccurrenceLimits withBounds(int newLowerLimit, int newUpperLimit) {
+        return new VariableOccurrenceLimits(newLowerLimit, newUpperLimit, tokensLower, tokensUpper);
+      }
+    }
+
+    /**
+     * Parameters for verifying parse expressions that use the {@code []} repetition operator.
      *
      * @param verifierIndex index into {@code auxilaryVerifiers} for the repeated sub-expression.
      * @param valueParts token sequence to validate.
-     * @param lowerLimit minimum allowed repetitions.
-     * @param upperLimit maximum allowed repetitions (inclusive), or zero for none.
-     * @param tokensCanBeGivenLowerLimit minimum number of tokens that the sub-expression may
-     *     consume.
-     * @param tokensCanBeGivenUpperLimit maximum number of tokens that the sub-expression may
-     *     consume.
+     * @param limits repetition bounds and token consumption limits.
      * @param secondPart expression to validate after the repeated part.
      * @param cb callback consulted by nested verifiers when URLs are encountered.
+     */
+    private record VariableOccurrenceParams(
+        int verifierIndex,
+        ParsedWord[] valueParts,
+        VariableOccurrenceLimits limits,
+        String secondPart,
+        FilterCallback cb) {
+      @Override
+      public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (!(obj
+            instanceof
+            VariableOccurrenceParams(
+                int otherVerifierIndex,
+                ParsedWord[] otherValueParts,
+                VariableOccurrenceLimits otherLimits,
+                String otherSecondPart,
+                FilterCallback otherCb))) return false;
+        return verifierIndex == otherVerifierIndex
+            && Arrays.equals(valueParts, otherValueParts)
+            && Objects.equals(limits, otherLimits)
+            && Objects.equals(secondPart, otherSecondPart)
+            && Objects.equals(cb, otherCb);
+      }
+
+      @Override
+      public int hashCode() {
+        int result = Integer.hashCode(verifierIndex);
+        result = 31 * result + Arrays.hashCode(valueParts);
+        result = 31 * result + Objects.hashCode(limits);
+        result = 31 * result + Objects.hashCode(secondPart);
+        result = 31 * result + Objects.hashCode(cb);
+        return result;
+      }
+
+      @Override
+      public @NotNull String toString() {
+        return "VariableOccurrenceParams["
+            + "verifierIndex="
+            + verifierIndex
+            + ", valueParts="
+            + Arrays.toString(valueParts)
+            + ", limits="
+            + limits
+            + ", secondPart="
+            + secondPart
+            + ", cb="
+            + cb
+            + "]";
+      }
+
+      private VariableOccurrenceParams withPartsAndLimits(
+          ParsedWord[] newValueParts, VariableOccurrenceLimits newLimits) {
+        return new VariableOccurrenceParams(
+            verifierIndex, newValueParts, newLimits, secondPart, cb);
+      }
+    }
+
+    /**
+     * Verifies part of a parse expression that uses the {@code []} repetition operator.
+     *
+     * @param params grouped parameters for the repetition check.
      * @return {@code true} if a partitioning satisfies the repetition bounds and validates the
      *     tail.
      */
-    public boolean recursiveVariableOccuranceVerifier(
-        int verifierIndex,
-        ParsedWord[] valueParts,
-        int lowerLimit,
-        int upperLimit,
-        int tokensCanBeGivenLowerLimit,
-        int tokensCanBeGivenUpperLimit,
-        String secondPart,
-        FilterCallback cb) {
+    private boolean recursiveVariableOccuranceVerifier(VariableOccurrenceParams params) {
+      int verifierIndex = params.verifierIndex();
+      ParsedWord[] valueParts = params.valueParts();
+      VariableOccurrenceLimits limits = params.limits();
+      int lowerLimit = limits.lowerLimit();
+      int upperLimit = limits.upperLimit();
+      int tokensLower = limits.tokensLower();
+      int tokensUpper = limits.tokensUpper();
+      String secondPart = params.secondPart();
+      FilterCallback cb = params.cb();
       if (LOG.isDebugEnabled())
         LOG.debug(
             "recursiveVariableOccurranceVerifier({},{},{},{},{},{},{})",
@@ -6558,23 +6636,15 @@ class CSSTokenizerFilter {
             toString(valueParts),
             lowerLimit,
             upperLimit,
-            tokensCanBeGivenLowerLimit,
-            tokensCanBeGivenUpperLimit,
+            tokensLower,
+            tokensUpper,
             secondPart);
 
       if (canSucceedWithZero(valueParts, lowerLimit)) return true;
       if (lowerLimit <= 0 && trySecondPartOnly(secondPart, valueParts, cb)) return true;
       if (upperLimit == 0) return false; // no more parts allowed
 
-      return attemptPrefixMatches(
-          verifierIndex,
-          valueParts,
-          lowerLimit,
-          upperLimit,
-          tokensCanBeGivenLowerLimit,
-          tokensCanBeGivenUpperLimit,
-          secondPart,
-          cb);
+      return attemptPrefixMatches(params);
     }
 
     private boolean canSucceedWithZero(ParsedWord[] valueParts, int lowerLimit) {
@@ -6591,15 +6661,16 @@ class CSSTokenizerFilter {
       return false;
     }
 
-    private boolean attemptPrefixMatches(
-        int verifierIndex,
-        ParsedWord[] valueParts,
-        int lowerLimit,
-        int upperLimit,
-        int tokensLower,
-        int tokensUpper,
-        String secondPart,
-        FilterCallback cb) {
+    private boolean attemptPrefixMatches(VariableOccurrenceParams params) {
+      int verifierIndex = params.verifierIndex();
+      ParsedWord[] valueParts = params.valueParts();
+      VariableOccurrenceLimits limits = params.limits();
+      int lowerLimit = limits.lowerLimit();
+      int upperLimit = limits.upperLimit();
+      int tokensLower = limits.tokensLower();
+      int tokensUpper = limits.tokensUpper();
+      String secondPart = params.secondPart();
+      FilterCallback cb = params.cb();
       for (int i = tokensLower; i <= tokensUpper && i <= valueParts.length; i++) {
         ParsedWord[] before = Arrays.copyOf(valueParts, i);
         if (!CSSTokenizerFilter.auxilaryVerifiers[verifierIndex].checkValidity(before, cb))
@@ -6613,15 +6684,9 @@ class CSSTokenizerFilter {
 
         ParsedWord[] after = Arrays.copyOfRange(valueParts, i, valueParts.length);
         if (LOG.isTraceEnabled()) LOG.trace("rest of tokens: {}", toString(after));
-        if (recursiveVariableOccuranceVerifier(
-            verifierIndex,
-            after,
-            lowerLimit - 1,
-            upperLimit - 1,
-            tokensLower,
-            tokensUpper,
-            secondPart,
-            cb)) return true;
+        VariableOccurrenceLimits nextLimits = limits.withBounds(lowerLimit - 1, upperLimit - 1);
+        VariableOccurrenceParams nextParams = params.withPartsAndLimits(after, nextLimits);
+        if (recursiveVariableOccuranceVerifier(nextParams)) return true;
       }
       return false;
     }
@@ -6969,16 +7034,16 @@ class CSSTokenizerFilter {
         ParsedWord word = value[i];
         StartDecision start = analyzeStartWord(word, i);
 
-        if (start.kind == StartDecision.Kind.CONTINUE) {
+        if (start.kind() == StartDecision.Kind.CONTINUE) {
           i++;
           continue;
         }
-        if (start.kind == StartDecision.Kind.INVALID) return false;
+        if (start.kind() == StartDecision.Kind.INVALID) return false;
 
         // START of an unquoted, possibly multi-word font name
         fontWords.clear();
-        fontWords.add(start.firstWord);
-        if (LOG.isTraceEnabled()) LOG.trace("first word: \"{}\"", start.firstWord);
+        fontWords.add(start.firstWord());
+        if (LOG.isTraceEnabled()) LOG.trace("first word: \"{}\"", start.firstWord());
 
         ProcessResult pr = consumeUnquotedFont(value, i, fontWords);
         if (pr.shouldReturn) return pr.returnValue;
@@ -7108,19 +7173,11 @@ class CSSTokenizerFilter {
       return ProcessResult.returning(false);
     }
 
-    private static final class StartDecision {
+    private record StartDecision(Kind kind, String firstWord) {
       enum Kind {
         CONTINUE,
         INVALID,
         START
-      }
-
-      final Kind kind;
-      final String firstWord;
-
-      private StartDecision(Kind kind, String firstWord) {
-        this.kind = kind;
-        this.firstWord = firstWord;
       }
 
       static StartDecision continueNext() {
