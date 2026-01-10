@@ -223,7 +223,7 @@ class HTMLFilterTest {
         new ContentFilterRequest(
             in, out, "text/html; charset=UTF-8", "UTF-8", "http://example.com", null);
     ContentFilterCallbacks callbacks =
-        new ContentFilterCallbacks(new java.net.URI("http://example.com/"), null, null, null);
+        new ContentFilterCallbacks(java.net.URI.create("http://example.com/"), null, null, null);
     assertDoesNotThrow(() -> ContentFilter.filter(request, callbacks));
   }
 }
