@@ -62,54 +62,16 @@ public class URIFeedMessage extends N2NFeedMessage {
    * "TimeComposed"}, {@code "TimeSent"}, or {@code "TimeReceived"} field so callers can signal
    * unknown times without inventing placeholder values.
    *
-   * @param header short, user-visible title shown most prominently; may be {@code null} and should
-   *     not contain embedded newlines because it is copied into the textual FCP header.
-   * @param shortText secondary summary providing additional context; may be {@code null} and is
-   *     likewise expected to be a single logical line of text without newlines.
-   * @param text full body of the feed entry to be delivered as the primary payload; must be
-   *     non-{@code null} and may contain arbitrary characters, including Unicode and line breaks.
-   * @param priorityClass numeric priority hint used by the FCP infrastructure when ordering
-   *     outgoing messages; higher values typically indicate more urgent notifications.
-   * @param updatedTime timestamp in milliseconds since the Unix epoch representing when the entry
-   *     was last updated from the server's perspective; the value is forwarded unchanged.
-   * @param sourceNodeName human-readable name of the peer that announced the URI; may be {@code
-   *     null} or empty when no friendly identifier is available, and is exported as the {@code
-   *     "SourceNodeName"} header field.
-   * @param composed time at which the remote peer composed the announcement, expressed in epoch
-   *     milliseconds; use {@code -1} to indicate that this information is not known.
-   * @param sent time when the remote peer sent the announcement towards this node, in epoch
-   *     milliseconds; {@code -1} again indicates an unknown or unavailable value.
-   * @param received time when this node received the announcement from the network, in epoch
-   *     milliseconds; {@code -1} suppresses the corresponding header field in {@link
-   *     #getFieldSet()}.
+   * @param params bundled feed metadata describing the header, body text, priority, update time,
+   *     source node name, and timing information for this entry.
    * @param uri target {@link FreenetURI} that identifies the advertised content; must not be {@code
    *     null} and is neither normalized nor modified by this constructor.
    * @param description optional textual description associated with the URI; when non-{@code null}
    *     it is encoded as UTF-8 bytes into a {@link Bucket} named {@code "Description"}, otherwise a
    *     {@link NullBucket} is used to represent the absence of description data.
    */
-  public URIFeedMessage(
-      String header,
-      String shortText,
-      String text,
-      short priorityClass,
-      long updatedTime,
-      String sourceNodeName,
-      long composed,
-      long sent,
-      long received,
-      FreenetURI uri,
-      String description) {
-    super(
-        header,
-        shortText,
-        text,
-        priorityClass,
-        updatedTime,
-        sourceNodeName,
-        composed,
-        sent,
-        received);
+  public URIFeedMessage(N2NFeedMessageParams params, FreenetURI uri, String description) {
+    super(params);
     this.uri = Objects.requireNonNull(uri, "uri");
     final Bucket descriptionBucket;
     if (description != null) {

@@ -60,24 +60,8 @@ public class BookmarkFeed extends N2NFeedMessage {
    * with a {@link NullBucket} placeholder to keep payload structure stable. All supplied strings
    * are treated as display text, so callers should pre-sanitize any user-provided content.
    *
-   * @param header single-line headline shown most prominently in feed readers; may be {@code null}
-   *     when the short text already summarizes the recommendation.
-   * @param shortText concise secondary summary that elaborates on {@code header}; {@code null}
-   *     values omit the field from the serialized header.
-   * @param text long-form body of the recommendation encoded in UTF-8 and stored as payload bytes;
-   *     must be non-{@code null}, and callers keep ownership of the original string.
-   * @param priorityClass numeric priority hint (higher values are sent sooner) mirrored into the
-   *     {@link SimpleFieldSet}; typical ranges align with other feed messages.
-   * @param updatedTime timestamp in milliseconds representing the producer's notion of freshness;
-   *     readers can use it to deduplicate edits.
-   * @param sourceNodeName human-readable identifier of the peer that originated the bookmark; may
-   *     be {@code null} or empty when anonymity is preferred.
-   * @param composed epoch milliseconds when the peer composed the message; pass {@code -1} if
-   *     unknown so the field is omitted from the serialized header.
-   * @param sent epoch milliseconds describing when the peer transmitted the entry; negative values
-   *     indicate the timestamp is not available.
-   * @param received milliseconds since epoch recording when this node ingested the message;
-   *     negative values omit the field, mirroring the other timestamps' conventions.
+   * @param params bundled feed metadata describing the header, body text, priority, update time,
+   *     source node name, and timing information for this entry.
    * @param bookmarkTitle short label for the bookmark being recommended; appears as {@code "Name"}
    *     in the outgoing field set and should not contain newlines.
    * @param bookmarkUri parsed Freenet URI pointing to the recommended resource; the constructor
@@ -88,29 +72,12 @@ public class BookmarkFeed extends N2NFeedMessage {
    *     merely informational content.
    */
   public BookmarkFeed(
-      String header,
-      String shortText,
-      String text,
-      short priorityClass,
-      long updatedTime,
-      String sourceNodeName,
-      long composed,
-      long sent,
-      long received,
+      N2NFeedMessageParams params,
       String bookmarkTitle,
       FreenetURI bookmarkUri,
       String description,
       boolean hasAnActivelink) {
-    super(
-        header,
-        shortText,
-        text,
-        priorityClass,
-        updatedTime,
-        sourceNodeName,
-        composed,
-        sent,
-        received);
+    super(params);
     this.bookmarkTitle = bookmarkTitle;
     this.bookmarkUri = bookmarkUri;
     this.hasAnActivelink = hasAnActivelink;

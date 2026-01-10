@@ -2,6 +2,7 @@ package network.crypta.node.useralerts;
 
 import java.lang.ref.WeakReference;
 import network.crypta.clients.fcp.FCPMessage;
+import network.crypta.clients.fcp.N2NFeedMessageParams;
 import network.crypta.clients.fcp.URIFeedMessage;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
@@ -218,18 +219,18 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
    */
   @Override
   public FCPMessage getFCPMessage() {
-    return new URIFeedMessage(
-        getTitle(),
-        getShortText(),
-        getText(),
-        getPriorityClass(),
-        getUpdatedTime(),
-        sourceNodeName,
-        composed,
-        sent,
-        received,
-        uri,
-        description);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            getTitle(),
+            getShortText(),
+            getText(),
+            getPriorityClass(),
+            getUpdatedTime(),
+            sourceNodeName,
+            composed,
+            sent,
+            received);
+    return new URIFeedMessage(params, uri, description);
   }
 
   /**

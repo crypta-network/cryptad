@@ -2,6 +2,7 @@ package network.crypta.node.useralerts;
 
 import java.lang.ref.WeakReference;
 import network.crypta.clients.fcp.BookmarkFeed;
+import network.crypta.clients.fcp.N2NFeedMessageParams;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
@@ -242,20 +243,18 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
    */
   @Override
   public BookmarkFeed getFCPMessage() {
-    return new BookmarkFeed(
-        getTitle(),
-        getShortText(),
-        getText(),
-        getPriorityClass(),
-        getUpdatedTime(),
-        sourceNodeName,
-        composed,
-        sent,
-        received,
-        name,
-        uri,
-        description,
-        hasAnActivelink);
+    N2NFeedMessageParams params =
+        new N2NFeedMessageParams(
+            getTitle(),
+            getShortText(),
+            getText(),
+            getPriorityClass(),
+            getUpdatedTime(),
+            sourceNodeName,
+            composed,
+            sent,
+            received);
+    return new BookmarkFeed(params, name, uri, description, hasAnActivelink);
   }
 
   /**
