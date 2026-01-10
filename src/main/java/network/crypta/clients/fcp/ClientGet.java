@@ -12,6 +12,8 @@ import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.ClientGetterOptions;
+import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
@@ -310,7 +312,7 @@ public class ClientGet extends ClientRequest {
           "Charset parameter is ignored for ClientGet global queue requests: {}",
           requestConfig.charset());
     }
-    Object[] setup =
+    ClientGetReturnPlanner.ReturnSetup setup =
         ClientGetGetterFactory.planReturnForGlobal(
             identifier,
             global,
@@ -319,9 +321,9 @@ public class ClientGet extends ClientRequest {
             requestConfig.returnFilename(),
             requestConfig.filterData(),
             core);
-    Bucket returnBucket = (Bucket) setup[0];
-    this.targetFile = (File) setup[1];
-    this.extensionCheck = (String) setup[2];
+    Bucket returnBucket = setup.bucket();
+    this.targetFile = setup.targetFile();
+    this.extensionCheck = setup.extension();
     this.initialMetadata = null;
     getter = makeGetter(core, returnBucket);
   }
@@ -378,12 +380,12 @@ public class ClientGet extends ClientRequest {
 
     this.returnType = message.returnType;
     this.binaryBlob = message.binaryBlob;
-    Object[] setup =
+    ClientGetReturnPlanner.ReturnSetup setup =
         ClientGetGetterFactory.planReturnForMessage(
             identifier, global, fctx, message, core, handler);
-    Bucket returnBucket = (Bucket) setup[0];
-    this.targetFile = (File) setup[1];
-    this.extensionCheck = (String) setup[2];
+    Bucket returnBucket = setup.bucket();
+    this.targetFile = setup.targetFile();
+    this.extensionCheck = setup.extension();
     initialMetadata = message.getInitialMetadata();
     try {
       getter = makeGetter(core, returnBucket);
@@ -422,18 +424,14 @@ public class ClientGet extends ClientRequest {
   }
 
   private ClientGetter makeGetter(NodeClientCore core, Bucket ret) throws IOException {
-    return ClientGetGetterFactory.createGetter(
-        this,
-        uri,
-        fctx,
-        priorityClass,
-        ret,
-        initialMetadata,
-        extensionCheck,
-        returnType == ReturnType.NONE,
-        binaryBlob,
-        persistence == Persistence.FOREVER,
-        core);
+    ClientGetterRequest getterRequest =
+        ClientGetGetterFactory.createGetterRequest(this, uri, fctx, priorityClass);
+    ClientGetterOptions options =
+        new ClientGetterOptions(ret, null, false, initialMetadata, extensionCheck);
+    ClientGetGetterFlags flags =
+        new ClientGetGetterFlags(
+            returnType == ReturnType.NONE, binaryBlob, persistence == Persistence.FOREVER);
+    return ClientGetGetterFactory.createGetter(getterRequest, options, flags, core);
   }
 
   /**
@@ -1411,23 +1409,24 @@ public class ClientGet extends ClientRequest {
   @Override
   synchronized RequestStatus getStatus() {
     return ClientGetGetterFactory.buildStatus(
-        identifier,
-        persistence,
-        started,
-        finished,
-        succeeded,
-        progressPending,
-        getFailedMessage,
-        foundDataMimeType,
-        foundDataLength,
-        getDestFilename(),
-        getBucket(),
-        fctx,
-        priorityClass,
-        getCompatibilityMode(),
-        getOverriddenSplitfileCryptoKey(),
-        getURI(),
-        getDontCompress());
+        new ClientGetStatusSnapshot(
+            identifier,
+            persistence,
+            started,
+            finished,
+            succeeded,
+            progressPending,
+            getFailedMessage,
+            foundDataMimeType,
+            foundDataLength,
+            getDestFilename(),
+            getBucket(),
+            fctx,
+            priorityClass,
+            getCompatibilityMode(),
+            getOverriddenSplitfileCryptoKey(),
+            getURI(),
+            getDontCompress()));
   }
 
   private static final long CLIENT_DETAIL_MAGIC = 0x67145b675d2e22f4L;

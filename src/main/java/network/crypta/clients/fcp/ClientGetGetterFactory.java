@@ -44,8 +44,8 @@ import org.slf4j.LoggerFactory;
  * <p>This utility centralizes the wiring required to build a {@link ClientGetter} with the correct
  * callback adapter, bucket choices, and optional {@link BinaryBlobWriter} so the request class can
  * focus on persistence and lifecycle duties. Callers typically invoke it during request creation or
- * resume paths to obtain a fully configured fetcher while keeping Binary Blob concerns out of
- * {@link ClientGet} and under the Sonar coupling limit (rule {@code java:S6539}).
+ * resume paths to get a fully configured fetcher while keeping Binary Blob concerns out of {@link
+ * ClientGet} and under the Sonar coupling limit (rule {@code java:S6539}).
  *
  * <p>There is no mutable-shared state beyond a reusable {@link NullBucket} instance, so the class
  * is effectively stateless. Thread-safety is therefore determined by the collaborators passed in,
@@ -64,7 +64,7 @@ import org.slf4j.LoggerFactory;
  * @see BinaryBlobWriter
  */
 final class ClientGetGetterFactory {
-  private static final Logger LOG = LoggerFactory.getLogger(ClientGet.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ClientGetGetterFactory.class);
 
   /**
    * Reusable {@link NullBucket} to discard output without allocating per call.
@@ -184,52 +184,37 @@ final class ClientGetGetterFactory {
    * <p>The helper mirrors the status construction from {@link ClientGet} while keeping additional
    * dependencies out of the request class.
    *
-   * @param identifier request identifier to report.
-   * @param persistence persistence mode for the request.
-   * @param started whether the request has started.
-   * @param finished whether the request has finished.
-   * @param succeeded whether the request has succeeded.
-   * @param progressPending last recorded progress snapshot, if any.
-   * @param failedMessage cached failure message, if any.
-   * @param foundDataMimeType MIME type discovered for the data.
-   * @param foundDataLength data length recorded for the request.
-   * @param destinationFile destination file for disk requests.
-   * @param dataBucket bucket containing result data.
-   * @param fetchContext fetch context providing filter and MIME overrides.
-   * @param priorityClass scheduler priority class.
-   * @param compatModes compatibility modes observed for the request.
-   * @param splitfileKey splitfile crypto key override, if any.
-   * @param uri request URI to report.
-   * @param dontCompress whether reinsertion should skip compression.
+   * @param snapshot captured request state used to populate the status.
    * @return a populated {@link DownloadRequestStatus} instance.
    */
-  static RequestStatus buildStatus(
-      String identifier,
-      Persistence persistence,
-      boolean started,
-      boolean finished,
-      boolean succeeded,
-      SimpleProgressMessage progressPending,
-      GetFailedMessage failedMessage,
-      String foundDataMimeType,
-      long foundDataLength,
-      File destinationFile,
-      Bucket dataBucket,
-      FetchContext fetchContext,
-      short priorityClass,
-      InsertContext.CompatibilityMode[] compatModes,
-      byte[] splitfileKey,
-      FreenetURI uri,
-      boolean dontCompress) {
+  @SuppressWarnings("resource")
+  static RequestStatus buildStatus(ClientGetStatusSnapshot snapshot) {
     boolean totalFinalized = false;
     int total = 0;
     int min = 0;
     int fetched = 0;
     int fatal = 0;
     int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
     Date latestSuccess = new Date();
     Date latestFailure = null;
+    String identifier = snapshot.identifier();
+    Persistence persistence = snapshot.persistence();
+    boolean started = snapshot.started();
+    boolean finished = snapshot.finished();
+    boolean succeeded = snapshot.succeeded();
+    SimpleProgressMessage progressPending = snapshot.progressPending();
+    GetFailedMessage failedMessage = snapshot.failedMessage();
+    String foundDataMimeType = snapshot.foundDataMimeType();
+    long foundDataLength = snapshot.foundDataLength();
+    File destinationFile = snapshot.destinationFile();
+    Bucket dataBucket = snapshot.dataBucket();
+    FetchContext fetchContext = snapshot.fetchContext();
+    short priorityClass = snapshot.priorityClass();
+    InsertContext.CompatibilityMode[] compatModes = snapshot.compatModes();
+    byte[] splitfileKey = snapshot.splitfileKey();
+    FreenetURI uri = snapshot.uri();
+    boolean dontCompress = snapshot.dontCompress();
 
     if (progressPending != null) {
       totalFinalized = progressPending.isTotalFinalized();
@@ -251,16 +236,17 @@ final class ClientGetGetterFactory {
       failureReasonShort = failedMessage.getShortFailedMessage();
       failureReasonLong = failedMessage.getLongFailedMessage();
     }
-    String mimeType = foundDataMimeType;
-    long dataSize = foundDataLength;
     File target = destinationFile;
     if (target != null) target = new File(target.getPath());
 
     Bucket shadow = (finished && succeeded) ? dataBucket : null;
     if (shadow != null) {
-      if (dataSize != shadow.size()) {
+      if (foundDataLength != shadow.size()) {
         LOG.error(
-            "Size of downloaded data has changed: {} -> {} on {}", dataSize, shadow.size(), shadow);
+            "Size of downloaded data has changed: {} -> {} on {}",
+            foundDataLength,
+            shadow.size(),
+            shadow);
         shadow = null;
       } else {
         shadow = shadow.createShadow();
@@ -287,8 +273,8 @@ final class ClientGetGetterFactory {
         totalFinalized,
         priorityClass,
         failureCode,
-        mimeType,
-        dataSize,
+        foundDataMimeType,
+        foundDataLength,
         target,
         compatModes,
         splitfileKey,
@@ -304,7 +290,7 @@ final class ClientGetGetterFactory {
   /**
    * Plans return handling for a global request.
    *
-   * <p>The returned array contains the return bucket, target file, and extension hint in that
+   * <p>The returned setup contains the return bucket, target file, and extension hint in that
    * order.
    *
    * @param identifier request identifier used for policy checks.
@@ -314,11 +300,11 @@ final class ClientGetGetterFactory {
    * @param returnFilename target file for disk returns.
    * @param filterData whether to derive an extension hint when filtering.
    * @param core node core used for policy checks.
-   * @return array containing {@link Bucket}, {@link File}, and extension {@link String}.
+   * @return setup containing {@link Bucket}, {@link File}, and extension {@link String}.
    * @throws NotAllowedException if the node policy rejects the requested target path.
    * @throws IOException if an existing target file cannot be removed or is unsafe to overwrite.
    */
-  static Object[] planReturnForGlobal(
+  static ClientGetReturnPlanner.ReturnSetup planReturnForGlobal(
       String identifier,
       boolean global,
       FetchContext fetchContext,
@@ -329,15 +315,13 @@ final class ClientGetGetterFactory {
       throws NotAllowedException, IOException {
     ClientGetReturnPlanner returnPlanner =
         new ClientGetReturnPlanner(identifier, global, fetchContext);
-    ClientGetReturnPlanner.ReturnSetup setup =
-        returnPlanner.forGlobalRequest(returnType, returnFilename, filterData, core);
-    return new Object[] {setup.bucket(), setup.targetFile(), setup.extension()};
+    return returnPlanner.forGlobalRequest(returnType, returnFilename, filterData, core);
   }
 
   /**
    * Plans return handling for a client message.
    *
-   * <p>The returned array contains the return bucket, target file, and extension hint in that
+   * <p>The returned setup contains the return bucket, target file, and extension hint in that
    * order.
    *
    * @param identifier request identifier used for policy checks.
@@ -346,10 +330,10 @@ final class ClientGetGetterFactory {
    * @param message message containing return settings.
    * @param core node core used for policy checks.
    * @param handler connection handler providing DDA validation.
-   * @return array containing {@link Bucket}, {@link File}, and extension {@link String}.
+   * @return setup containing {@link Bucket}, {@link File}, and extension {@link String}.
    * @throws MessageInvalidException if policy checks fail or the target file is unsafe to use.
    */
-  static Object[] planReturnForMessage(
+  static ClientGetReturnPlanner.ReturnSetup planReturnForMessage(
       String identifier,
       boolean global,
       FetchContext fetchContext,
@@ -359,8 +343,7 @@ final class ClientGetGetterFactory {
       throws MessageInvalidException {
     ClientGetReturnPlanner returnPlanner =
         new ClientGetReturnPlanner(identifier, global, fetchContext);
-    ClientGetReturnPlanner.ReturnSetup setup = returnPlanner.forMessage(message, core, handler);
-    return new Object[] {setup.bucket(), setup.targetFile(), setup.extension()};
+    return returnPlanner.forMessage(message, core, handler);
   }
 
   /**
@@ -451,7 +434,7 @@ final class ClientGetGetterFactory {
   }
 
   /**
-   * Creates a disk-backed bucket intended to receive final download output.
+   * Creates a disk-backed bucket intended to receive the final download output.
    *
    * <p>The bucket is configured so the file must not pre-exist on first write, helping prevent
    * accidental overwrites. The bucket is writable by default and does not register for
@@ -516,14 +499,10 @@ final class ClientGetGetterFactory {
   }
 
   /**
-   * Creates a configured {@link ClientGetter} for a {@link ClientGet} request.
+   * Builds the {@link ClientGetterRequest} used to start a {@link ClientGet} fetch.
    *
-   * <p>The factory wires a {@link CallbackAdapter}, chooses the correct return bucket strategy, and
-   * optionally sets up a {@link BinaryBlobWriter} when Binary Blob recording is requested. If
-   * {@code binaryBlob} is enabled and {@code returnBucket} is {@code null}, the method uses {@code
-   * core} to allocate a bucket sized to {@link FetchContext#getMaxOutputLength()}. When {@code
-   * discardData} is true and Binary Blob is disabled, the returned fetcher writes into a shared
-   * {@link NullBucket} instead of the provided bucket.
+   * <p>The request wires a {@link CallbackAdapter} so persistence operations and result delivery
+   * are delegated to the owning {@link ClientGet} instance.
    *
    * @param request owning request to receive callbacks and resume signals; must not be {@code
    *     null}.
@@ -531,43 +510,53 @@ final class ClientGetGetterFactory {
    * @param fetchContext fetch configuration that defines size limits and filters; must not be
    *     {@code null}.
    * @param priorityClass scheduler priority class for the request.
-   * @param returnBucket bucket for final data, or {@code null} to let the getter allocate one.
-   * @param initialMetadata optional metadata bucket to seed the fetcher, may be {@code null}.
-   * @param extensionCheck optional extension used by MIME filtering; may be {@code null}.
-   * @param discardData whether to discard payload bytes entirely when Binary Blob is disabled.
-   * @param binaryBlob whether to record a Binary Blob stream instead of regular output data.
-   * @param persistenceForever whether the request is persisted across restarts for bucket choice.
-   * @param core node core used to allocate buckets when needed; required if {@code binaryBlob} is
-   *     true and {@code returnBucket} is {@code null}.
+   * @return a {@link ClientGetterRequest} configured for the provided request context.
+   */
+  static ClientGetterRequest createGetterRequest(
+      ClientGet request, FreenetURI uri, FetchContext fetchContext, short priorityClass) {
+    ClientGetCallback callback = new CallbackAdapter(request);
+    return new ClientGetterRequest(callback, uri, fetchContext, priorityClass);
+  }
+
+  /**
+   * Creates a configured {@link ClientGetter} for a {@link ClientGet} request.
+   *
+   * <p>The factory chooses the correct return bucket strategy and optionally sets up a {@link
+   * BinaryBlobWriter} when Binary Blob recording is requested. If Binary Blob recording is enabled
+   * and the options do not specify a return bucket, the method uses {@code core} to allocate a
+   * bucket sized to {@link FetchContext#getMaxOutputLength()}. When {@link
+   * ClientGetGetterFlags#discardData()} is true and Binary Blob is disabled, the returned fetcher
+   * writes into a shared {@link NullBucket} instead of the provided bucket.
+   *
+   * @param request request parameters including the callback, URI, and fetch context.
+   * @param options return bucket, metadata, and extension options for the fetcher.
+   * @param flags behavior flags for Binary Blob recording and discard handling.
+   * @param core node core used to allocate buckets when needed; required if Binary Blob recording
+   *     is enabled and no return bucket is supplied.
    * @return a fully constructed {@link ClientGetter} ready to start.
    * @throws IOException if bucket allocation fails or underlying stream setup fails.
    * @throws NullPointerException if {@code core} is required but not provided.
    */
   static ClientGetter createGetter(
-      ClientGet request,
-      FreenetURI uri,
-      FetchContext fetchContext,
-      short priorityClass,
-      Bucket returnBucket,
-      Bucket initialMetadata,
-      String extensionCheck,
-      boolean discardData,
-      boolean binaryBlob,
-      boolean persistenceForever,
+      ClientGetterRequest request,
+      ClientGetterOptions options,
+      ClientGetGetterFlags flags,
       NodeClientCore core)
       throws IOException {
-    ClientGetCallback callback = new CallbackAdapter(request);
+    Bucket returnBucket = options.returnBucket();
+    Bucket initialMetadata = options.initialMetadata();
+    String extensionCheck = options.forceCompatibleExtension();
     Bucket blobBucket = returnBucket;
-    if (binaryBlob) {
+    if (flags.binaryBlob()) {
       if (blobBucket == null) {
         Objects.requireNonNull(core, "core");
         blobBucket =
             core.getClientContext()
-                .getBucketFactory(persistenceForever)
-                .makeBucket(fetchContext.getMaxOutputLength());
+                .getBucketFactory(flags.persistenceForever())
+                .makeBucket(request.ctx().getMaxOutputLength());
       }
       return new ClientGetter(
-          new ClientGetterRequest(callback, uri, fetchContext, priorityClass),
+          request,
           new ClientGetterOptions(
               NULL_BUCKET,
               new BinaryBlobWriter(blobBucket),
@@ -575,11 +564,11 @@ final class ClientGetGetterFactory {
               initialMetadata,
               extensionCheck));
     }
-    if (discardData) {
+    if (flags.discardData()) {
       returnBucket = NULL_BUCKET;
     }
     return new ClientGetter(
-        new ClientGetterRequest(callback, uri, fetchContext, priorityClass),
+        request,
         new ClientGetterOptions(returnBucket, null, false, initialMetadata, extensionCheck));
   }
 }

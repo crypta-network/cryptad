@@ -32,6 +32,8 @@ import network.crypta.client.async.BinaryBlobWriter;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
+import network.crypta.client.async.ClientGetterOptions;
+import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.PersistentClientCallback;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
@@ -177,7 +179,7 @@ class ClientGetGetterFactoryTest {
     Bucket returnBucket = mock(Bucket.class);
 
     ClientGetter getter =
-        ClientGetGetterFactory.createGetter(
+        createGetter(
             request,
             mock(FreenetURI.class),
             fetchContext,
@@ -206,7 +208,7 @@ class ClientGetGetterFactoryTest {
     assertThrows(
         NullPointerException.class,
         () ->
-            ClientGetGetterFactory.createGetter(
+            createGetter(
                 request,
                 mock(FreenetURI.class),
                 fetchContext,
@@ -235,7 +237,7 @@ class ClientGetGetterFactoryTest {
     when(bucketFactory.makeBucket(128L)).thenReturn(createdBucket);
 
     ClientGetter getter =
-        ClientGetGetterFactory.createGetter(
+        createGetter(
             request,
             mock(FreenetURI.class),
             fetchContext,
@@ -260,7 +262,7 @@ class ClientGetGetterFactoryTest {
     Bucket returnBucket = mock(Bucket.class);
 
     ClientGetter getter =
-        ClientGetGetterFactory.createGetter(
+        createGetter(
             request,
             mock(FreenetURI.class),
             fetchContext,
@@ -285,7 +287,7 @@ class ClientGetGetterFactoryTest {
     Bucket returnBucket = mock(Bucket.class);
 
     ClientGetter getter =
-        ClientGetGetterFactory.createGetter(
+        createGetter(
             request,
             mock(FreenetURI.class),
             fetchContext,
@@ -320,7 +322,7 @@ class ClientGetGetterFactoryTest {
     doNothing().when(request).getClientDetail(dos, checker);
 
     ClientGetter getter =
-        ClientGetGetterFactory.createGetter(
+        createGetter(
             request,
             mock(FreenetURI.class),
             fetchContext,
@@ -357,7 +359,7 @@ class ClientGetGetterFactoryTest {
     NodeClientCore core = mock(NodeClientCore.class);
     Bucket returnBucket = mock(Bucket.class);
 
-    ClientGetGetterFactory.createGetter(
+    createGetter(
         request,
         mock(FreenetURI.class),
         fetchContext,
@@ -371,6 +373,28 @@ class ClientGetGetterFactoryTest {
         core);
 
     verifyNoInteractions(core);
+  }
+
+  private static ClientGetter createGetter(
+      ClientGet request,
+      FreenetURI uri,
+      FetchContext fetchContext,
+      short priorityClass,
+      Bucket returnBucket,
+      Bucket initialMetadata,
+      String extensionCheck,
+      boolean discardData,
+      boolean binaryBlob,
+      boolean persistenceForever,
+      NodeClientCore core)
+      throws IOException {
+    ClientGetterRequest getterRequest =
+        ClientGetGetterFactory.createGetterRequest(request, uri, fetchContext, priorityClass);
+    ClientGetterOptions options =
+        new ClientGetterOptions(returnBucket, null, false, initialMetadata, extensionCheck);
+    ClientGetGetterFlags flags =
+        new ClientGetGetterFlags(discardData, binaryBlob, persistenceForever);
+    return ClientGetGetterFactory.createGetter(getterRequest, options, flags, core);
   }
 
   private static HashResult hashFor(HashType type, byte seed) {
