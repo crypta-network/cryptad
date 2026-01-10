@@ -2024,7 +2024,8 @@ class CSSParserTest {
   private String filter(String css) throws IOException, URISyntaxException {
     StringWriter w = new StringWriter();
     GenericReadFilterCallback cb =
-        new GenericReadFilterCallback(new URI(TEST_BASE_URI), null, null, null);
+        new GenericReadFilterCallback(
+            new ContentFilterCallbacks(new URI(TEST_BASE_URI), null, null, null));
     CSSParser p = new CSSParser(new StringReader(css), w, cb, CHARSET_UTF8, false, false);
     p.parse();
     return w.toString();
@@ -2266,16 +2267,11 @@ class CSSParserTest {
         ArrayBucket outputBucket = new ArrayBucket()) {
       try (InputStream inputStream = inputBucket.getInputStream();
           OutputStream outputStream = outputBucket.getOutputStream()) {
-        filterStatus =
-            ContentFilter.filter(
-                inputStream,
-                outputStream,
-                CONTENT_TYPE_CSS,
-                new URI(TEST_BASE_URI),
-                null,
-                null,
-                null,
-                null);
+        ContentFilterRequest request =
+            new ContentFilterRequest(inputStream, outputStream, CONTENT_TYPE_CSS, null, null, null);
+        ContentFilterCallbacks callbacks =
+            new ContentFilterCallbacks(new URI(TEST_BASE_URI), null, null, null);
+        filterStatus = ContentFilter.filter(request, callbacks);
       }
       filtered = new String(BucketTools.toByteArray(outputBucket), charset);
     }
@@ -2323,16 +2319,11 @@ class CSSParserTest {
         ArrayBucket outputBucket = new ArrayBucket()) {
       try (InputStream inputStream = inputBucket.getInputStream();
           OutputStream outputStream = outputBucket.getOutputStream()) {
-        filterStatus =
-            ContentFilter.filter(
-                inputStream,
-                outputStream,
-                CONTENT_TYPE_CSS,
-                new URI(TEST_BASE_URI),
-                null,
-                null,
-                null,
-                null);
+        ContentFilterRequest request =
+            new ContentFilterRequest(inputStream, outputStream, CONTENT_TYPE_CSS, null, null, null);
+        ContentFilterCallbacks callbacks =
+            new ContentFilterCallbacks(new URI(TEST_BASE_URI), null, null, null);
+        filterStatus = ContentFilter.filter(request, callbacks);
       }
       filtered = new String(BucketTools.toByteArray(outputBucket), charset);
     }
@@ -2380,16 +2371,12 @@ class CSSParserTest {
         ArrayBucket outputBucket = new ArrayBucket()) {
       try (InputStream inputStream = inputBucket.getInputStream();
           OutputStream outputStream = outputBucket.getOutputStream()) {
-        filterStatus =
-            ContentFilter.filter(
-                inputStream,
-                outputStream,
-                CONTENT_TYPE_CSS,
-                new URI(TEST_BASE_URI),
-                null,
-                null,
-                null,
-                charset);
+        ContentFilterRequest request =
+            new ContentFilterRequest(
+                inputStream, outputStream, CONTENT_TYPE_CSS, charset, null, null);
+        ContentFilterCallbacks callbacks =
+            new ContentFilterCallbacks(new URI(TEST_BASE_URI), null, null, null);
+        filterStatus = ContentFilter.filter(request, callbacks);
       }
       filtered = new String(BucketTools.toByteArray(outputBucket), charset);
     }

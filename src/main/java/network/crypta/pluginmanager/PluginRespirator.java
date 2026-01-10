@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.UUID;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.filter.ContentFilterCallbacks;
 import network.crypta.client.filter.FilterCallback;
 import network.crypta.client.filter.GenericReadFilterCallback;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
@@ -137,7 +138,8 @@ public class PluginRespirator {
       ToadletContainer container = getToadletContainer();
       LinkFilterExceptionProvider provider =
           container instanceof LinkFilterExceptionProvider linkProvider ? linkProvider : null;
-      return new GenericReadFilterCallback(URIPreEncoder.encodeURI(path), null, null, provider);
+      return new GenericReadFilterCallback(
+          new ContentFilterCallbacks(URIPreEncoder.encodeURI(path), null, null, provider));
     } catch (URISyntaxException e) {
       throw new AssertionError("Invalid filter callback path: " + path, e);
     }

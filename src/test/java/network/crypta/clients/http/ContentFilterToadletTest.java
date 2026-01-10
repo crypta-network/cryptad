@@ -26,6 +26,8 @@ import java.nio.charset.StandardCharsets;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.node.ClientEndpoints;
@@ -117,10 +119,11 @@ class ContentFilterToadletTest {
             .when(
                 () ->
                     ContentFilter.filter(
-                        any(), any(), anyString(), any(), any(), any(), any(), any(), any()))
+                        any(ContentFilterRequest.class), any(ContentFilterCallbacks.class)))
             .thenAnswer(
                 invocation -> {
-                  OutputStream output = invocation.getArgument(1);
+                  ContentFilterRequest request = invocation.getArgument(0);
+                  OutputStream output = request.output();
                   output.write(filtered);
                   try {
                     return newFilterStatus("utf-8", "text/plain");
@@ -161,10 +164,11 @@ class ContentFilterToadletTest {
             .when(
                 () ->
                     ContentFilter.filter(
-                        any(), any(), anyString(), any(), any(), any(), any(), any(), any()))
+                        any(ContentFilterRequest.class), any(ContentFilterCallbacks.class)))
             .thenAnswer(
                 invocation -> {
-                  OutputStream output = invocation.getArgument(1);
+                  ContentFilterRequest request = invocation.getArgument(0);
+                  OutputStream output = request.output();
                   output.write(filtered);
                   try {
                     return newFilterStatus(null, "application/octet-stream");
@@ -234,7 +238,7 @@ class ContentFilterToadletTest {
             .when(
                 () ->
                     ContentFilter.filter(
-                        any(), any(), anyString(), any(), any(), any(), any(), any(), any()))
+                        any(ContentFilterRequest.class), any(ContentFilterCallbacks.class)))
             .thenThrow(
                 new UnsafeContentTypeException() {
                   @Serial private static final long serialVersionUID = 1L;

@@ -497,6 +497,9 @@ public class ContentFilter {
   /**
    * Filter content from an input stream and write the sanitized result to an output stream.
    *
+   * <p>This legacy overload is retained for source compatibility. Prefer {@link
+   * #filter(ContentFilterRequest, ContentFilterCallbacks)}.
+   *
    * <p>The method chooses a handler based on {@code typeName}, resolves an effective charset when
    * needed, and invokes the handler's read filter. During processing, it may report discovered
    * links through {@code cb} and perform tag substitutions via {@code trc}. When the MIME type is
@@ -522,6 +525,7 @@ public class ContentFilter {
    *     {@link UnsafeContentTypeException} subclasses may be used to classify unsafe types
    * @throws IllegalStateException when input is structurally invalid and the handler cannot recover
    */
+  @SuppressWarnings("java:S107")
   public static FilterStatus filter(
       InputStream input,
       OutputStream output,
@@ -537,6 +541,9 @@ public class ContentFilter {
 
   /**
    * Filter content with an optional provider for link-related exceptions.
+   *
+   * <p>This legacy overload is retained for source compatibility. Prefer {@link
+   * #filter(ContentFilterRequest, ContentFilterCallbacks)}.
    *
    * <p>This overload is identical to {@link #filter(InputStream, OutputStream, String, URI, String,
    * FoundURICallback, TagReplacerCallback, String)} but additionally accepts a provider that
@@ -565,6 +572,7 @@ public class ContentFilter {
    *     {@link UnsafeContentTypeException} subclasses may be used to classify unsafe types
    * @throws IllegalStateException when input is structurally invalid and the handler cannot recover
    */
+  @SuppressWarnings("java:S107")
   public static FilterStatus filter(
       InputStream input,
       OutputStream output,
@@ -576,13 +584,31 @@ public class ContentFilter {
       String maybeCharset,
       LinkFilterExceptionProvider linkFilterExceptionProvider)
       throws IOException {
-    return filter(
-        input,
-        output,
-        typeName,
-        maybeCharset,
-        schemeHostAndPort,
-        new GenericReadFilterCallback(baseURI, cb, trc, linkFilterExceptionProvider));
+    ContentFilterRequest request =
+        new ContentFilterRequest(input, output, typeName, maybeCharset, schemeHostAndPort, null);
+    ContentFilterCallbacks callbacks =
+        new ContentFilterCallbacks(baseURI, cb, trc, linkFilterExceptionProvider);
+    return filter(request, callbacks);
+  }
+
+  /**
+   * Filter content with a structured request and callbacks.
+   *
+   * <p>This overload mirrors {@link #filter(ContentFilterRequest)} but derives the {@link
+   * FilterCallback} from the provided {@link ContentFilterCallbacks}.
+   *
+   * @param request immutable filtering request data
+   * @param callbacks callback bundle for link discovery and tag replacement; may be {@code null}
+   * @return a {@link FilterStatus} carrying the effective charset and MIME type chosen during
+   *     processing
+   * @throws IOException on I/O errors while reading, writing, or decoding the stream; specific
+   *     {@link UnsafeContentTypeException} subclasses may be used to classify unsafe types
+   * @throws IllegalStateException when input is structurally invalid and the handler cannot recover
+   */
+  public static FilterStatus filter(ContentFilterRequest request, ContentFilterCallbacks callbacks)
+      throws IOException {
+    FilterCallback filterCallback = callbacks == null ? null : callbacks.toFilterCallback();
+    return filter(request.withFilterCallback(filterCallback));
   }
 
   /**
@@ -618,33 +644,55 @@ public class ContentFilter {
       String schemeHostAndPort,
       FilterCallback filterCallback)
       throws IOException {
-    if (LOG.isDebugEnabled()) LOG.debug("Filtering data of type{}", typeName);
-    ParsedMime parsed = parseMimeType(typeName);
-    BufferedInputStream buffered = new BufferedInputStream(input);
+    return filter(
+        new ContentFilterRequest(
+            input, output, typeName, maybeCharset, schemeHostAndPort, filterCallback));
+  }
+
+  /**
+   * Core filtering entry point used by higher-level overloads.
+   *
+   * <p>Parses {@link ContentFilterRequest#typeName()}, determines the appropriate handler, resolves
+   * a charset when applicable, and either runs the handler's read filter or copies the bytes
+   * unchanged when marked safe. The callback receives lifecycle notifications and any discovered
+   * links. The output stream is flushed before returning but is not closed.
+   *
+   * @param request immutable request describing the input/output streams and filtering context
+   * @return a {@link FilterStatus} carrying the effective charset and MIME type chosen during
+   *     processing
+   * @throws IOException on I/O errors while reading, writing, or decoding the stream; specific
+   *     {@link UnsafeContentTypeException} subclasses may be used to classify unsafe types
+   * @throws IllegalStateException when input is structurally invalid and the handler cannot recover
+   */
+  public static FilterStatus filter(ContentFilterRequest request) throws IOException {
+    if (LOG.isDebugEnabled()) LOG.debug("Filtering data of type{}", request.typeName());
+    ParsedMime parsed = parseMimeType(request.typeName());
+    BufferedInputStream buffered = new BufferedInputStream(request.input());
+    OutputStream output = request.output();
 
     FilterMIMEType handler = getMIMEType(parsed.type);
-    if (handler == null) throw new UnknownContentTypeException(typeName);
+    if (handler == null) throw new UnknownContentTypeException(request.typeName());
 
     if (handler.readFilter != null) {
       String charset = parsed.charset;
       if (handler.takesACharset && (charset == null || charset.isEmpty())) {
-        charset = readCharsetIfNeeded(buffered, handler, maybeCharset);
+        charset = readCharsetIfNeeded(buffered, handler, request.maybeCharset());
       }
-      return runReadFilter(
-          handler,
-          buffered,
-          output,
-          charset,
-          parsed.otherParams,
-          schemeHostAndPort,
-          filterCallback,
-          typeName);
+      ReadFilterRequest readFilterRequest =
+          new ReadFilterRequest(
+              buffered,
+              output,
+              charset,
+              parsed.otherParams,
+              request.schemeHostAndPort(),
+              request.filterCallback());
+      return runReadFilter(handler, readFilterRequest, request.typeName());
     }
 
     if (handler.safeToRead) {
       FileUtil.copy(buffered, output, -1);
       output.flush();
-      return new FilterStatus(parsed.charset, typeName);
+      return new FilterStatus(parsed.charset, request.typeName());
     }
 
     handler.throwUnsafeContentTypeException();
@@ -794,30 +842,36 @@ public class ContentFilter {
     return detectCharset(charsetBuffer, offset, handler, maybeCharset);
   }
 
+  @SuppressWarnings("resource")
   private static FilterStatus runReadFilter(
-      FilterMIMEType handler,
+      FilterMIMEType handler, ReadFilterRequest request, String typeName) throws IOException {
+    try {
+      handler.readFilter.readFilter(
+          request.input(),
+          request.output(),
+          request.charset(),
+          request.otherMimeTypeParams(),
+          request.schemeHostAndPort(),
+          request.filterCallback());
+    } catch (EOFException e) {
+      LOG.error("EOFException caught: {}", e, e);
+      throw new DataFilterException(l10n("EOFMessage"), l10n("EOFMessage"), l10n("EOFDescription"));
+    } finally {
+      if (request.filterCallback() != null) request.filterCallback().onFinished();
+    }
+    request.output().flush();
+    return new FilterStatus(request.charset(), typeName);
+  }
+
+  private record ParsedMime(String type, String charset, HashMap<String, String> otherParams) {}
+
+  private record ReadFilterRequest(
       InputStream input,
       OutputStream output,
       String charset,
       HashMap<String, String> otherMimeTypeParams,
       String schemeHostAndPort,
-      FilterCallback filterCallback,
-      String typeName)
-      throws IOException {
-    try {
-      handler.readFilter.readFilter(
-          input, output, charset, otherMimeTypeParams, schemeHostAndPort, filterCallback);
-    } catch (EOFException e) {
-      LOG.error("EOFException caught: {}", e, e);
-      throw new DataFilterException(l10n("EOFMessage"), l10n("EOFMessage"), l10n("EOFDescription"));
-    } finally {
-      if (filterCallback != null) filterCallback.onFinished();
-    }
-    output.flush();
-    return new FilterStatus(charset, typeName);
-  }
-
-  private record ParsedMime(String type, String charset, HashMap<String, String> otherParams) {}
+      FilterCallback filterCallback) {}
 
   /**
    * Detect a Byte Order Mark, a sequence of bytes which identifies a document as encoded with a

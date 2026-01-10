@@ -10,6 +10,8 @@ import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterOperation;
 import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.node.FSParseException;
@@ -349,16 +351,11 @@ public class FilterMessage extends DataCarryingMessage {
     URI fakeUri = resolveFilterUri();
     // ContentFilter currently only supports read filtering; update once write filtering is
     // available.
-    return ContentFilter.filter(
-        input,
-        output,
-        mimeType,
-        fakeUri,
-        null,
-        null,
-        null,
-        null,
-        clientContext.linkFilterExceptionProvider);
+    ContentFilterRequest request =
+        new ContentFilterRequest(input, output, mimeType, null, null, null);
+    ContentFilterCallbacks callbacks =
+        new ContentFilterCallbacks(fakeUri, null, null, clientContext.linkFilterExceptionProvider);
+    return ContentFilter.filter(request, callbacks);
   }
 
   private URI resolveFilterUri() {

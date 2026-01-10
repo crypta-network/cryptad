@@ -44,6 +44,8 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.DumperSnoopMetadata;
 import network.crypta.client.events.EventDumper;
 import network.crypta.client.filter.ContentFilter;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.clients.fcp.AddPeer;
 import network.crypta.crypt.RandomSource;
 import network.crypta.fs.AppEnv;
@@ -685,16 +687,12 @@ public class TextModeClientInterface implements Runnable {
     byte[] inBytes = content.getBytes(StandardCharsets.UTF_8);
     try (InputStream inputStream = new ByteArrayInputStream(inBytes);
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-      ContentFilter.filter(
-          inputStream,
-          outputStream,
-          "text/html",
-          new URI(FILTER_BASE_URL),
-          null,
-          null,
-          null,
-          null,
-          core.getEndpoints().getToadletContainer());
+      ContentFilterRequest request =
+          new ContentFilterRequest(inputStream, outputStream, "text/html", null, null, null);
+      ContentFilterCallbacks callbacks =
+          new ContentFilterCallbacks(
+              new URI(FILTER_BASE_URL), null, null, core.getEndpoints().getToadletContainer());
+      ContentFilter.filter(request, callbacks);
       outsb.append(outputStream.toString(StandardCharsets.UTF_8));
     } catch (IOException e) {
       outsb.append("Bucket error?: ").append(e.getMessage());

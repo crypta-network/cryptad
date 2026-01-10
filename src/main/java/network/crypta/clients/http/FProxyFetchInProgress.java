@@ -28,6 +28,8 @@ import network.crypta.client.events.ExpectedMIMEEvent;
 import network.crypta.client.events.SendingToNetworkEvent;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.filter.ContentFilter;
+import network.crypta.client.filter.ContentFilterCallbacks;
+import network.crypta.client.filter.ContentFilterRequest;
 import network.crypta.client.filter.FilterMIMEType;
 import network.crypta.client.filter.UnknownContentTypeException;
 import network.crypta.keys.FreenetURI;
@@ -442,17 +444,13 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     try (Bucket output = context.tempBucketFactory.makeBucket(-1);
         InputStream is = cachedData.getInputStream();
         OutputStream os = output.getOutputStream()) {
-      ContentFilter.filter(
-          is,
-          os,
-          fullMimeType,
-          uri.toURI("/"),
-          fctx.getSchemeHostAndPort(),
-          null,
-          null,
-          fctx.getCharset(),
-          // charset moved behind accessor for S1104
-          context.linkFilterExceptionProvider);
+      ContentFilterRequest request =
+          new ContentFilterRequest(
+              is, os, fullMimeType, fctx.getCharset(), fctx.getSchemeHostAndPort(), null);
+      ContentFilterCallbacks callbacks =
+          new ContentFilterCallbacks(
+              uri.toURI("/"), null, null, context.linkFilterExceptionProvider);
+      ContentFilter.filter(request, callbacks);
       // Since we are not re-using the data bucket, we can happily stay in the
       // FProxyFetchTracker.
       this.onSuccess(new FetchResult(new ClientMetadata(fullMimeType), output), null);

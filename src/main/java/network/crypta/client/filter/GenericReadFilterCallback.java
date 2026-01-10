@@ -124,6 +124,20 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
   private static final String ERROR_KEY = "error";
 
   /**
+   * Creates a new callback from a {@link ContentFilterCallbacks} bundle.
+   *
+   * @param callbacks bundle describing the base URI and optional callbacks; must not be {@code
+   *     null}
+   */
+  public GenericReadFilterCallback(ContentFilterCallbacks callbacks) {
+    this(
+        callbacks.baseURI(),
+        callbacks.foundUriCallback(),
+        callbacks.tagReplacerCallback(),
+        callbacks.linkFilterExceptionProvider());
+  }
+
+  /**
    * Creates a new callback bound to a specific base {@link URI}. The base is used to resolve
    * relative references and may be updated later via a valid {@code <base href>} discovered during
    * processing.

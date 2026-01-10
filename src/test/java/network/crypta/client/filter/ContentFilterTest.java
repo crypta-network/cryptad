@@ -88,7 +88,10 @@ class ContentFilterTest {
         AutoFreeArrayBucket output = new AutoFreeArrayBucket()) {
       try (OutputStream outputStream = output.getOutputStream();
           InputStream inputStream = input.getInputStream()) {
-        ContentFilter.filter(inputStream, outputStream, typeName, baseURI, null, null, null, null);
+        ContentFilterRequest request =
+            new ContentFilterRequest(inputStream, outputStream, typeName, null, null, null);
+        ContentFilterCallbacks callbacks = new ContentFilterCallbacks(baseURI, null, null, null);
+        ContentFilter.filter(request, callbacks);
       }
       return output.toString();
     }
@@ -374,7 +377,8 @@ class ContentFilterTest {
           AutoFreeArrayBucket out = new AutoFreeArrayBucket()) {
         fo =
             ContentFilter.filter(
-                in.getInputStream(), out.getOutputStream(), TEXT_HTML, null, null, null);
+                new ContentFilterRequest(
+                    in.getInputStream(), out.getOutputStream(), TEXT_HTML, null, null, null));
         fos.write(out.toByteArray());
       }
       failures.add(
@@ -779,7 +783,8 @@ class ContentFilterTest {
 
     // Act
     FilterStatus status =
-        ContentFilter.filter(in, out, typeName, /*maybeCharset*/ null, /*scheme*/ null, null);
+        ContentFilter.filter(
+            new ContentFilterRequest(in, out, typeName, /*maybeCharset*/ null, null, null));
 
     // Assert
     assertArrayEquals(input, out.toByteArray());
@@ -796,7 +801,8 @@ class ContentFilterTest {
         UnknownContentTypeException.class,
         () ->
             ContentFilter.filter(
-                in, out, "application/x-unknown-type", /*maybeCharset*/ null, null, null));
+                new ContentFilterRequest(
+                    in, out, "application/x-unknown-type", /*maybeCharset*/ null, null, null)));
   }
 
   @Test
@@ -805,7 +811,10 @@ class ContentFilterTest {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     assertThrows(
         KnownUnsafeContentTypeException.class,
-        () -> ContentFilter.filter(in, out, "application/pdf", /*maybeCharset*/ null, null, null));
+        () ->
+            ContentFilter.filter(
+                new ContentFilterRequest(
+                    in, out, "application/pdf", /*maybeCharset*/ null, null, null)));
   }
 
   @Test
@@ -848,7 +857,8 @@ class ContentFilterTest {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
 
     // Act
-    FilterStatus status = ContentFilter.filter(in, out, typeName, null, null, null);
+    FilterStatus status =
+        ContentFilter.filter(new ContentFilterRequest(in, out, typeName, null, null, null));
 
     // Assert: data copied and charset detected via extractor
     assertArrayEquals(payload, out.toByteArray());
