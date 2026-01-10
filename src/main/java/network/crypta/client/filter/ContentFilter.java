@@ -82,147 +82,72 @@ public class ContentFilter {
     // Plain text
     register(
         new FilterMIMEType(
-            "text/plain",
-            "txt",
-            new String[0],
-            new String[] {"text", "pot"},
-            true,
-            true,
-            null,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            l10n("textPlainReadAdvice"),
-            true,
-            "US-ASCII",
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "text/plain", "txt", new String[0], new String[] {"text", "pot"}),
+            new FilterMIMETypeSafety(true, true, null, l10n("textPlainReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(true, "US-ASCII", null, false)));
 
     // Images
     // GIF - has a filter
     register(
         new FilterMIMEType(
-            "image/gif",
-            "gif",
-            new String[0],
-            new String[0],
-            true,
-            false,
-            new GIFFilter(),
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            l10n("imageGifReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames("image/gif", "gif", new String[0], new String[0]),
+            new FilterMIMETypeSafety(true, false, new GIFFilter(), l10n("imageGifReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // JPEG - has a filter
     register(
         new FilterMIMEType(
-            "image/jpeg",
-            "jpeg",
-            new String[0],
-            new String[] {"jpg"},
-            true,
-            false,
-            new JPEGFilter(true, true),
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            l10n("imageJpegReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames("image/jpeg", "jpeg", new String[0], new String[] {"jpg"}),
+            new FilterMIMETypeSafety(
+                true, false, new JPEGFilter(true, true), l10n("imageJpegReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // PNG - has a filter
     register(
         new FilterMIMEType(
-            "image/png",
-            "png",
-            new String[] {"image/x-png"},
-            new String[0],
-            true,
-            false,
-            new PNGFilter(true, true, true),
-            false,
-            false,
-            false,
-            false,
-            true,
-            false,
-            l10n("imagePngReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "image/png", "png", new String[] {"image/x-png"}, new String[0]),
+            new FilterMIMETypeSafety(
+                true, false, new PNGFilter(true, true, true), l10n("imagePngReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, true, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // BMP - has a filter
     // Reference: http://filext.com/file-extension/BMP
     register(
         new FilterMIMEType(
-            "image/bmp",
-            "bmp",
-            new String[] {
-              "image/x-bmp",
-              "image/x-bitmap",
-              "image/x-xbitmap",
-              "image/x-win-bitmap",
-              "image/x-windows-bmp",
-              "image/ms-bmp",
-              "image/x-ms-bmp",
-              "application/bmp",
-              "application/x-bmp",
-              "application/x-win-bitmap"
-            },
-            new String[0],
-            true,
-            false,
-            new BMPFilter(),
-            false,
-            false,
-            false,
-            false,
-            true,
-            false,
-            l10n("imageBMPReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "image/bmp",
+                "bmp",
+                new String[] {
+                  "image/x-bmp",
+                  "image/x-bitmap",
+                  "image/x-xbitmap",
+                  "image/x-win-bitmap",
+                  "image/x-windows-bmp",
+                  "image/ms-bmp",
+                  "image/x-ms-bmp",
+                  "application/bmp",
+                  "application/x-bmp",
+                  "application/x-win-bitmap"
+                },
+                new String[0]),
+            new FilterMIMETypeSafety(true, false, new BMPFilter(), l10n("imageBMPReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, true, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // WEBP - has a filter
     register(
         new FilterMIMEType(
-            "image/webp",
-            "webp",
-            new String[] {"image/webp"},
-            new String[0],
-            true,
-            false,
-            new WebPFilter(),
-            false,
-            false,
-            false,
-            false,
-            true,
-            false,
-            l10n("imageWebPReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "image/webp", "webp", new String[] {"image/webp"}, new String[0]),
+            new FilterMIMETypeSafety(true, false, new WebPFilter(), l10n("imageWebPReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, true, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // Audio
     /* Ogg - has a filter
@@ -233,24 +158,14 @@ public class ContentFilter {
      */
     register(
         new FilterMIMEType(
-            "application/ogg",
-            "ogx",
-            new String[] {"video/ogg", "audio/ogg"},
-            new String[] {"ogg", "oga", "ogv"},
-            true,
-            false,
-            new OggFilter(),
-            true,
-            true,
-            false,
-            true,
-            false,
-            false,
-            l10n("containerOggReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "application/ogg",
+                "ogx",
+                new String[] {"video/ogg", "audio/ogg"},
+                new String[] {"ogg", "oga", "ogv"}),
+            new FilterMIMETypeSafety(true, false, new OggFilter(), l10n("containerOggReadAdvice")),
+            new FilterMIMETypeDangerousFlags(true, true, false, true, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     /* FLAC - has a filter
      * Lossless audio format. This data is sometimes encapsulated inside
@@ -260,51 +175,28 @@ public class ContentFilter {
      */
     register(
         new FilterMIMEType(
-            "audio/flac",
-            "flac",
-            new String[] {"application/x-flac"},
-            new String[0],
-            true,
-            true,
-            new FlacFilter(),
-            true,
-            true,
-            false,
-            true,
-            false,
-            false,
-            l10n("audioFLACReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "audio/flac", "flac", new String[] {"application/x-flac"}, new String[0]),
+            new FilterMIMETypeSafety(true, true, new FlacFilter(), l10n("audioFLACReadAdvice")),
+            new FilterMIMETypeDangerousFlags(true, true, false, true, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // M3U - strict filter
     register(
         new FilterMIMEType(
-            "audio/mpegurl",
-            "m3u",
-            new String[] {
-              "application/vnd.apple.mpegurl",
-              "application/mpegurl",
-              "application/x-mpegurl",
-              "audio/x-mpegurl"
-            },
-            new String[] {"m3u8"},
-            false,
-            false,
-            new M3UFilter(),
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            l10n("audioM3UReadAdvice"),
-            false,
-            "utf-8",
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "audio/mpegurl",
+                "m3u",
+                new String[] {
+                  "application/vnd.apple.mpegurl",
+                  "application/mpegurl",
+                  "application/x-mpegurl",
+                  "audio/x-mpegurl"
+                },
+                new String[] {"m3u8"}),
+            new FilterMIMETypeSafety(false, false, new M3UFilter(), l10n("audioM3UReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(false, "utf-8", null, false)));
 
     /* MP3
      *
@@ -312,55 +204,35 @@ public class ContentFilter {
      */
     register(
         new FilterMIMEType(
-            "audio/mpeg",
-            "mp3",
-            new String[] {
-              "audio/mp3",
-              "audio/x-mp3",
-              "audio/x-mpeg",
-              "audio/mpeg3",
-              "audio/x-mpeg3",
-              "audio/mpg",
-              "audio/x-mpg",
-              "audio/mpegaudio"
-            },
-            new String[0],
-            true,
-            false,
-            new MP3Filter(),
-            true,
-            true,
-            false,
-            true,
-            false,
-            false,
-            l10n("audioMP3ReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "audio/mpeg",
+                "mp3",
+                new String[] {
+                  "audio/mp3",
+                  "audio/x-mp3",
+                  "audio/x-mpeg",
+                  "audio/mpeg3",
+                  "audio/x-mpeg3",
+                  "audio/mpg",
+                  "audio/x-mpg",
+                  "audio/mpegaudio"
+                },
+                new String[0]),
+            new FilterMIMETypeSafety(true, false, new MP3Filter(), l10n("audioMP3ReadAdvice")),
+            new FilterMIMETypeDangerousFlags(true, true, false, true, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // WAV - has a filter
     register(
         new FilterMIMEType(
-            "audio/vnd.wave",
-            "wav",
-            new String[] {"audio/x-wav", "audio/wav", "audio/wave"},
-            new String[0],
-            true,
-            true,
-            new WAVFilter(),
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            l10n("audioWAVReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "audio/vnd.wave",
+                "wav",
+                new String[] {"audio/x-wav", "audio/wav", "audio/wave"},
+                new String[0]),
+            new FilterMIMETypeSafety(true, true, new WAVFilter(), l10n("audioWAVReadAdvice")),
+            new FilterMIMETypeDangerousFlags(false, false, false, false, false, false),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // ICO needs filtering.
     // Format is not the same as BMP iirc.
@@ -372,68 +244,33 @@ public class ContentFilter {
     // PDF - very dangerous - ideally we would have a filter as this is a very common format.
     register(
         new FilterMIMEType(
-            "application/pdf",
-            "pdf",
-            new String[] {"application/x-pdf"},
-            new String[0],
-            false,
-            false,
-            null,
-            true,
-            true,
-            true,
-            false,
-            true,
-            true,
-            l10n("applicationPdfReadAdvice"),
-            false,
-            null,
-            null,
-            false));
+            new FilterMIMETypeNames(
+                "application/pdf", "pdf", new String[] {"application/x-pdf"}, new String[0]),
+            new FilterMIMETypeSafety(false, false, null, l10n("applicationPdfReadAdvice")),
+            new FilterMIMETypeDangerousFlags(true, true, true, false, true, true),
+            new FilterMIMETypeCharsetPolicy(false, null, null, false)));
 
     // HTML - dangerous if not filtered
     register(
         new FilterMIMEType(
-            HTML_MIME_TYPES[0],
-            "html",
-            Arrays.copyOfRange(HTML_MIME_TYPES, 1, HTML_MIME_TYPES.length),
-            new String[] {"htm"},
-            false,
-            false /* maybe? */,
-            new HTMLFilter(),
-            true,
-            true,
-            true,
-            true,
-            true,
-            true,
-            l10n("textHtmlReadAdvice"),
-            true,
-            "iso-8859-1",
-            new HTMLFilter(),
-            false));
+            new FilterMIMETypeNames(
+                HTML_MIME_TYPES[0],
+                "html",
+                Arrays.copyOfRange(HTML_MIME_TYPES, 1, HTML_MIME_TYPES.length),
+                new String[] {"htm"}),
+            new FilterMIMETypeSafety(
+                false, false /* maybe? */, new HTMLFilter(), l10n("textHtmlReadAdvice")),
+            new FilterMIMETypeDangerousFlags(true, true, true, true, true, true),
+            new FilterMIMETypeCharsetPolicy(true, "iso-8859-1", new HTMLFilter(), false)));
 
     // CSS - dangerous if not filtered, not sure about the filter
     register(
         new FilterMIMEType(
-            "text/css",
-            "css",
-            new String[0],
-            new String[0],
-            false,
-            false /* unknown */,
-            new CSSReadFilter(),
-            true,
-            true,
-            true,
-            true,
-            true,
-            false,
-            l10n("textCssReadAdvice"),
-            true,
-            "utf-8",
-            new CSSReadFilter(),
-            true));
+            new FilterMIMETypeNames("text/css", "css", new String[0], new String[0]),
+            new FilterMIMETypeSafety(
+                false, false /* unknown */, new CSSReadFilter(), l10n("textCssReadAdvice")),
+            new FilterMIMETypeDangerousFlags(true, true, true, true, true, false),
+            new FilterMIMETypeCharsetPolicy(true, "utf-8", new CSSReadFilter(), true)));
   }
 
   private static String l10n(String key) {
