@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.util.EnumSet;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 
@@ -10,7 +11,7 @@ import network.crypta.support.SimpleFieldSet;
  * immutable thereafter; each boolean flag records whether the client wants current values,
  * defaults, ordering hints, expert visibility, force-write allowances, and both short and long
  * textual descriptions. The request is executed by the FCP server thread that owns the connection
- * and never touches mutable node state directly, making it safe to reuse across concurrent
+ * and never touches the mutable node state directly, making it safe to reuse across concurrent
  * connections as long as each instance is used once.
  *
  * <p>Typical usage constructs {@code GetConfig} immediately after parsing inbound fields and calls
@@ -46,8 +47,8 @@ public class GetConfig extends FCPMessage {
    * <p>The constructor copies all optional inclusion flags from the provided field set, falling
    * back to {@code false} when a flag is absent, and captures the caller-specified identifier for
    * correlation in the response. After extracting the identifier it removes it from the mutable
-   * {@link SimpleFieldSet} to avoid leaking the token into subsequent processing. The resulting
-   * instance is ready to be executed once and does not modify the provided field set again.
+   * {@link SimpleFieldSet} to avoid leaking the token into later processing. The resulting instance
+   * is ready to be executed once and does not modify the provided field set again.
    *
    * @param fs incoming fields that describe which configuration details the caller wants; must not
    *     be {@code null} and is consumed for flag and identifier extraction.
@@ -68,7 +69,7 @@ public class GetConfig extends FCPMessage {
   /**
    * Returns an empty field set because this message is built solely from incoming data.
    *
-   * <p>The FCP framework invokes this method when it needs to serialise a request. For {@code
+   * <p>The FCP framework invokes this method when it needs to serialize a request. For {@code
    * GetConfig} instances created from client input, the outbound representation is blank and acts
    * only as a signal to trigger the configuration transfer using the previously cached flags.
    * Callers should treat the returned field set as immutable and discard it after sending.
@@ -122,17 +123,35 @@ public class GetConfig extends FCPMessage {
           requestIdentifier,
           false);
     }
-    handler.send(
-        new ConfigData(
-            node,
-            withCurrent,
-            withDefaults,
-            withSortOrder,
-            withExpertFlag,
-            withForceWriteFlag,
-            withShortDescription,
-            withLongDescription,
-            withDataTypes,
-            requestIdentifier));
+    handler.send(new ConfigData(node, buildSections(), requestIdentifier));
+  }
+
+  private EnumSet<ConfigData.Section> buildSections() {
+    EnumSet<ConfigData.Section> sections = EnumSet.noneOf(ConfigData.Section.class);
+    if (withCurrent) {
+      sections.add(ConfigData.Section.CURRENT);
+    }
+    if (withDefaults) {
+      sections.add(ConfigData.Section.DEFAULTS);
+    }
+    if (withSortOrder) {
+      sections.add(ConfigData.Section.SORT_ORDER);
+    }
+    if (withExpertFlag) {
+      sections.add(ConfigData.Section.EXPERT_FLAG);
+    }
+    if (withForceWriteFlag) {
+      sections.add(ConfigData.Section.FORCE_WRITE_FLAG);
+    }
+    if (withShortDescription) {
+      sections.add(ConfigData.Section.SHORT_DESCRIPTION);
+    }
+    if (withLongDescription) {
+      sections.add(ConfigData.Section.LONG_DESCRIPTION);
+    }
+    if (withDataTypes) {
+      sections.add(ConfigData.Section.DATA_TYPES);
+    }
+    return sections;
   }
 }

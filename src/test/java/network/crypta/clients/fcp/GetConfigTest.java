@@ -11,6 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.EnumSet;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
@@ -108,14 +109,15 @@ class GetConfigTest {
     ConfigData sent = captor.getValue();
 
     assertEquals(node, sent.node);
-    assertTrue(sent.withCurrent);
-    assertTrue(sent.withDefaults);
-    assertFalse(sent.withSortOrder);
-    assertTrue(sent.withExpertFlag);
-    assertFalse(sent.withForceWriteFlag);
-    assertTrue(sent.withShortDescription);
-    assertFalse(sent.withLongDescription);
-    assertTrue(sent.withDataTypes);
+    EnumSet<ConfigData.Section> sections = sent.getSections();
+    assertTrue(sections.contains(ConfigData.Section.CURRENT));
+    assertTrue(sections.contains(ConfigData.Section.DEFAULTS));
+    assertFalse(sections.contains(ConfigData.Section.SORT_ORDER));
+    assertTrue(sections.contains(ConfigData.Section.EXPERT_FLAG));
+    assertFalse(sections.contains(ConfigData.Section.FORCE_WRITE_FLAG));
+    assertTrue(sections.contains(ConfigData.Section.SHORT_DESCRIPTION));
+    assertFalse(sections.contains(ConfigData.Section.LONG_DESCRIPTION));
+    assertTrue(sections.contains(ConfigData.Section.DATA_TYPES));
     assertEquals("cfg-7", sent.requestIdentifier);
   }
 }

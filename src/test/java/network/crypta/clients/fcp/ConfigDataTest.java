@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.EnumSet;
 import java.util.Map;
 import network.crypta.config.Config.RequestType;
 import network.crypta.config.PersistentConfig;
@@ -52,7 +53,7 @@ class ConfigDataTest {
     when(config.exportFieldSet(RequestType.DATA_TYPE, false)).thenReturn(dataTypes);
 
     ConfigData configData =
-        new ConfigData(node, true, true, true, true, true, true, true, true, "request-42");
+        new ConfigData(node, EnumSet.allOf(ConfigData.Section.class), "request-42");
 
     SimpleFieldSet result = configData.getFieldSet();
 
@@ -71,8 +72,7 @@ class ConfigDataTest {
 
   @Test
   void getFieldSet_whenNoFlagsEnabled_expectEmptyResultAndNoConfigAccess() {
-    ConfigData configData =
-        new ConfigData(node, false, false, false, false, false, false, false, false, null);
+    ConfigData configData = new ConfigData(node, EnumSet.noneOf(ConfigData.Section.class), null);
 
     SimpleFieldSet result = configData.getFieldSet();
 
@@ -89,7 +89,7 @@ class ConfigDataTest {
         .thenReturn(new SimpleFieldSet(true));
 
     ConfigData configData =
-        new ConfigData(node, false, false, false, false, false, true, false, false, "id");
+        new ConfigData(node, EnumSet.of(ConfigData.Section.SHORT_DESCRIPTION), "id");
 
     SimpleFieldSet result = configData.getFieldSet();
 
@@ -100,16 +100,14 @@ class ConfigDataTest {
 
   @Test
   void getName_whenCalled_returnsStaticName() {
-    ConfigData configData =
-        new ConfigData(node, false, false, false, false, false, false, false, false, null);
+    ConfigData configData = new ConfigData(node, EnumSet.noneOf(ConfigData.Section.class), null);
 
     assertEquals("ConfigData", configData.getName());
   }
 
   @Test
   void run_whenInvoked_throwsMessageInvalidException() {
-    ConfigData configData =
-        new ConfigData(node, false, false, false, false, false, false, false, false, null);
+    ConfigData configData = new ConfigData(node, EnumSet.noneOf(ConfigData.Section.class), null);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> configData.run(connectionHandler, node));
