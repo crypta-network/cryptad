@@ -1,0 +1,65 @@
+---
+name: cryptad-build-test
+description: "Build, test, and run Cryptad safely using the Gradle wrapper (Java 25+, JUnit 6)."
+compatibility: opencode
+metadata:
+  area: build
+  domain: cryptad
+  lang: java-kotlin
+---
+
+## When to use
+Use this skill when you need to:
+- Build the node JAR, run tests, or compile the project.
+- Run a single test class/method during debugging.
+- Validate that your local build can be deployed to a running node.
+- Diagnose Gradle/Java toolchain issues (Java 25+, Kotlin 2.3+).
+
+## Guardrails (must follow)
+- Always use the Gradle wrapper: `./gradlew …`
+- Do **not** use `--no-daemon`.
+- Do **not** pass `--parallel` or any custom JVM args on the CLI. Parallelism/JVM settings are controlled by `gradle.properties`.
+- If Java runtime/toolchain cannot be located **or any command errors occur**, stop and ask for user approval before proceeding. Do not skip the command.
+
+## Core build commands
+- Build the node JAR:
+  - `./gradlew buildJar`
+- Clean build:
+  - `./gradlew clean buildJar`
+- The build prints the SHA-256 of `build/libs/cryptad.jar`.
+
+## Testing
+- Run all tests:
+  - `./gradlew test`
+- Run one test class:
+  - `./gradlew test --tests *TestClassName`
+- Run one test method:
+  - `./gradlew test --tests *TestClassName.methodName`
+
+## Compile-only / quick checks
+- Compile only:
+  - `./gradlew compileJava`
+
+## Run your build (manual deployment)
+1. Build: `./gradlew buildJar`
+2. Stop the running node
+3. Replace the existing node JAR with `build/libs/cryptad.jar`
+4. Restart the node
+
+## Environment expectations
+- Java: 25 or higher
+- Kotlin: 2.3.0 or higher (matches `gradle/libs.versions.toml`)
+- The `ki` shell is installed in the environment.
+
+## JUnit 6 notes (when touching tests)
+- Tests run on the JUnit Platform (`useJUnitPlatform()` in build logic).
+- Prefer JUnit Jupiter + Kotlin test utilities; do not add JUnit 4/Vintage unless explicitly requested for migration-only work.
+- JUnit 6 introduces `org.jspecify:jspecify` (nullability annotations). If strict dependency verification blocks resolution, follow the project’s dependency-verification refresh procedure (see the build tooling skill).
+
+## Test helpers (test sources only)
+- Package: `network.crypta.testsupport`
+- Utility: `FileTestUtils` provides deterministic fill helpers for `OutputStream` / `Bucket` / `RandomAccessBuffer`.
+- Do **not** call these helpers from production (`src/main`) code. If production code needs fill helpers, use the non-test utilities (for example `FileUtil.fill(OutputStream, long)`).
+
+## Tip: GitHub API rate limits during builds
+If builds hit GitHub API rate limits, set `GITHUB_TOKEN` in the environment.
