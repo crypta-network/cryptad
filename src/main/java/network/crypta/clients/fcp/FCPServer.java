@@ -139,6 +139,37 @@ public class FCPServer implements Runnable, DownloadCache {
   private int maxMessageQueueLength;
 
   /**
+   * Constructs a server instance from precomputed configuration and dependencies.
+   *
+   * @param config immutable configuration values for the FCP server.
+   * @param dependencies node services required by the server.
+   */
+  public FCPServer(FcpServerConfig config, FcpServerDependencies dependencies) {
+    this.bindTo = config.bindTo();
+    this.allowedHosts = config.allowedHosts();
+    this.allowedHostsFullAccess = new AllowedHosts(config.allowedHostsFullAccess());
+    this.port = config.port();
+    this.enabled = config.enabled();
+    this.node = dependencies.node();
+    this.core = dependencies.core();
+    this.assumeDownloadDDAIsAllowed = config.assumeDownloadDDAAllowed();
+    this.assumeUploadDDAIsAllowed = config.assumeUploadDDAAllowed();
+    this.neverDropAMessage = config.neverDropAMessage();
+    this.maxMessageQueueLength = config.maxMessageQueueLength();
+    rebootClientsByName = new WeakHashMap<>();
+    this.persistentRoot = dependencies.persistentRoot();
+    globalForeverClient = persistentRoot.globalForeverClient;
+
+    pluginConnectionTracker = new FCPPluginConnectionTracker();
+    // pluginConnectionTracker.start() is called in maybeStart()
+
+    globalRebootClient =
+        new PersistentRequestClient("Global Queue", null, true, null, Persistence.REBOOT, null);
+
+    // Debug flag derives from SLF4J directly when needed
+  }
+
+  /**
    * Constructs a server instance wired to the provided node components and policy flags.
    *
    * <p>This constructor captures immutable configuration such as the bind address, allow-lists,
@@ -163,6 +194,7 @@ public class FCPServer implements Runnable, DownloadCache {
    *     backpressure.
    * @param persistentRoot persistence root used to access global clients and caches.
    */
+  @SuppressWarnings("java:S107")
   public FCPServer(
       String ipToBindTo,
       String allowedHosts,
@@ -176,28 +208,18 @@ public class FCPServer implements Runnable, DownloadCache {
       boolean neverDropAMessage,
       int maxMessageQueueLength,
       PersistentRequestRoot persistentRoot) {
-    this.bindTo = ipToBindTo;
-    this.allowedHosts = allowedHosts;
-    this.allowedHostsFullAccess = new AllowedHosts(allowedHostsFullAccess);
-    this.port = port;
-    this.enabled = isEnabled;
-    this.node = node;
-    this.core = core;
-    this.assumeDownloadDDAIsAllowed = assumeDDADownloadAllowed;
-    this.assumeUploadDDAIsAllowed = assumeDDAUploadAllowed;
-    this.neverDropAMessage = neverDropAMessage;
-    this.maxMessageQueueLength = maxMessageQueueLength;
-    rebootClientsByName = new WeakHashMap<>();
-    this.persistentRoot = persistentRoot;
-    globalForeverClient = persistentRoot.globalForeverClient;
-
-    pluginConnectionTracker = new FCPPluginConnectionTracker();
-    // pluginConnectionTracker.start() is called in maybeStart()
-
-    globalRebootClient =
-        new PersistentRequestClient("Global Queue", null, true, null, Persistence.REBOOT, null);
-
-    // Debug flag derives from SLF4J directly when needed
+    this(
+        new FcpServerConfig(
+            ipToBindTo,
+            allowedHosts,
+            allowedHostsFullAccess,
+            port,
+            isEnabled,
+            assumeDDADownloadAllowed,
+            assumeDDAUploadAllowed,
+            neverDropAMessage,
+            maxMessageQueueLength),
+        new FcpServerDependencies(node, core, persistentRoot));
   }
 
   /**
@@ -635,20 +657,19 @@ public class FCPServer implements Runnable, DownloadCache {
       ssl = fcpConfig.getBoolean("ssl");
     }
 
-    FCPServer fcp =
-        new FCPServer(
+    FcpServerConfig serverConfig =
+        new FcpServerConfig(
             fcpConfig.getString("bindTo"),
             fcpConfig.getString("allowedHosts"),
             fcpConfig.getString("allowedHostsFullAccess"),
             fcpConfig.getInt("port"),
-            node,
-            core,
             fcpConfig.getBoolean("enabled"),
             fcpConfig.getBoolean("assumeDownloadDDAIsAllowed"),
             fcpConfig.getBoolean("assumeUploadDDAIsAllowed"),
             fcpConfig.getBoolean("neverDropAMessage"),
-            fcpConfig.getInt("maxMessageQueueLength"),
-            root);
+            fcpConfig.getInt("maxMessageQueueLength"));
+    FcpServerDependencies dependencies = new FcpServerDependencies(node, core, root);
+    FCPServer fcp = new FCPServer(serverConfig, dependencies);
 
     cb4.server = fcp;
     cb5.server = fcp;
@@ -941,27 +962,12 @@ public class FCPServer implements Runnable, DownloadCache {
    * downloadsDir} with collision avoidance. Real-time and filtering flags are forwarded unchanged
    * to the underlying {@link ClientGet}.
    *
-   * @param fetchURI URI identifying the resource to fetch.
-   * @param filterData whether to filter the fetched data before exposing it to clients.
-   * @param expectedMimeType optional MIME hint used when deriving disk filenames.
-   * @param persistenceTypeString textual persistence specifier such as {@code reboot} or {@code
-   *     forever}.
-   * @param returnTypeString textual return type specifier mapped to {@link ReturnType}.
-   * @param realTimeFlag whether the request should be treated as real-time.
-   * @param downloadsDir target directory for disk returns; must be writable when disk return is
-   *     requested.
+   * @param params request parameters describing the fetch.
    * @throws NotAllowedException if policy or security checks reject the request.
    * @throws IOException if preparing disk output fails.
    * @throws PersistenceDisabledException if persistence layers are not available.
    */
-  public void makePersistentGlobalRequestBlocking(
-      final FreenetURI fetchURI,
-      final boolean filterData,
-      final String expectedMimeType,
-      final String persistenceTypeString,
-      final String returnTypeString,
-      final boolean realTimeFlag,
-      final File downloadsDir)
+  public void makePersistentGlobalRequestBlocking(PersistentGlobalRequestParams params)
       throws NotAllowedException, IOException, PersistenceDisabledException {
     final CountDownLatch done = new CountDownLatch(1);
     final AtomicReference<NotAllowedException> notAllowed = new AtomicReference<>();
@@ -979,14 +985,7 @@ public class FCPServer implements Runnable, DownloadCache {
               @Override
               public boolean run(ClientContext context) {
                 try {
-                  makePersistentGlobalRequest(
-                      fetchURI,
-                      filterData,
-                      expectedMimeType,
-                      persistenceTypeString,
-                      returnTypeString,
-                      realTimeFlag,
-                      downloadsDir);
+                  makePersistentGlobalRequest(params);
                   return true;
                 } catch (NotAllowedException e) {
                   notAllowed.set(e);
@@ -1012,6 +1011,26 @@ public class FCPServer implements Runnable, DownloadCache {
     }
     if (ioException.get() != null) throw ioException.get();
     if (notAllowed.get() != null) throw notAllowed.get();
+  }
+
+  public void makePersistentGlobalRequestBlocking(
+      FreenetURI fetchURI,
+      boolean filterData,
+      String expectedMimeType,
+      String persistenceTypeString,
+      String returnTypeString,
+      boolean realTimeFlag,
+      File downloadsDir)
+      throws NotAllowedException, IOException, PersistenceDisabledException {
+    makePersistentGlobalRequestBlocking(
+        new PersistentGlobalRequestParams(
+            fetchURI,
+            filterData,
+            expectedMimeType,
+            persistenceTypeString,
+            returnTypeString,
+            realTimeFlag,
+            downloadsDir));
   }
 
   /**
@@ -1085,11 +1104,70 @@ public class FCPServer implements Runnable, DownloadCache {
   }
 
   /**
+   * Creates a persistent globally queued fetch request with explicit return handling.
+   *
+   * @param params request parameters describing the persistent fetch.
+   * @throws NotAllowedException if local policy forbids creating the request.
+   * @throws IOException if disk output setup fails or the downloads directory is invalid.
+   */
+  public void makePersistentGlobalRequest(PersistentGlobalRequestParams params)
+      throws NotAllowedException, IOException {
+    boolean persistence = params.persistenceType().equalsIgnoreCase("reboot");
+    ReturnType returnType = ReturnType.valueOf(params.returnType().toUpperCase());
+    File returnFilename = null;
+    if (returnType == ReturnType.DISK) {
+      returnFilename =
+          makeReturnFilename(params.fetchURI(), params.expectedMimeType(), params.downloadsDir());
+    }
+    List<String> candidateIds = new ArrayList<>();
+    candidateIds.add(FPROXY_PREFIX + params.fetchURI().getPreferredFilename());
+    candidateIds.add(FPROXY_PREFIX + params.fetchURI().getDocName());
+    candidateIds.add(FPROXY_PREFIX + params.fetchURI().toString(false, false));
+    candidateIds.add("FProxy (" + System.currentTimeMillis() + ')');
+
+    for (String candidateId : candidateIds) {
+      if (candidateId == null) {
+        continue;
+      }
+      PersistentGlobalRequestSpec spec =
+          new PersistentGlobalRequestSpec(
+              params.fetchURI(),
+              params.filterData(),
+              persistence,
+              returnType,
+              candidateId,
+              returnFilename,
+              params.realTimeFlag());
+      if (tryPersistentGlobalRequest(spec)) {
+        return;
+      }
+    }
+
+    while (true) {
+      byte[] buf = new byte[8];
+      core.getRandom().nextBytes(buf);
+      String id = FPROXY_PREFIX + Base64.encode(buf);
+      PersistentGlobalRequestSpec spec =
+          new PersistentGlobalRequestSpec(
+              params.fetchURI(),
+              params.filterData(),
+              persistence,
+              returnType,
+              id,
+              returnFilename,
+              params.realTimeFlag());
+      if (tryPersistentGlobalRequest(spec)) {
+        return;
+      }
+    }
+  }
+
+  /**
    * Convenience overload that enqueues a persistent request using the default downloads directory.
    *
-   * <p>All parameters mirror {@link #makePersistentGlobalRequest(FreenetURI, boolean, String,
-   * String, String, boolean, File)}, substituting {@link NodeClientCore#getDownloadsDir()} for the
-   * target directory. The request is created synchronously but does not block on completion.
+   * <p>All parameters mirror {@link #makePersistentGlobalRequest(PersistentGlobalRequestParams)},
+   * substituting {@link NodeClientCore#getDownloadsDir()} for the target directory. The request is
+   * created synchronously but does not block on completion.
    *
    * @param fetchURI URI to fetch from the network.
    * @param filterData whether content should be filtered prior to delivery.
@@ -1100,7 +1178,7 @@ public class FCPServer implements Runnable, DownloadCache {
    * @throws NotAllowedException if download permissions deny the request.
    * @throws IOException if disk preparation fails while resolving the downloads directory.
    */
-  @SuppressWarnings("unused")
+  @SuppressWarnings({"java:S107", "unused"})
   public void makePersistentGlobalRequest(
       FreenetURI fetchURI,
       boolean filterData,
@@ -1110,13 +1188,14 @@ public class FCPServer implements Runnable, DownloadCache {
       boolean realTimeFlag)
       throws NotAllowedException, IOException {
     makePersistentGlobalRequest(
-        fetchURI,
-        filterData,
-        expectedMimeType,
-        persistenceTypeString,
-        returnTypeString,
-        realTimeFlag,
-        core.getDownloadsDir());
+        new PersistentGlobalRequestParams(
+            fetchURI,
+            filterData,
+            expectedMimeType,
+            persistenceTypeString,
+            returnTypeString,
+            realTimeFlag,
+            core.getDownloadsDir()));
   }
 
   /**
@@ -1151,57 +1230,21 @@ public class FCPServer implements Runnable, DownloadCache {
       boolean realTimeFlag,
       File downloadsDir)
       throws NotAllowedException, IOException {
-    boolean persistence = persistenceTypeString.equalsIgnoreCase("reboot");
-    ReturnType returnType = ReturnType.valueOf(returnTypeString.toUpperCase());
-    File returnFilename = null;
-    if (returnType == ReturnType.DISK) {
-      returnFilename = makeReturnFilename(fetchURI, expectedMimeType, downloadsDir);
-    }
-    List<String> candidateIds = new ArrayList<>();
-    candidateIds.add(FPROXY_PREFIX + fetchURI.getPreferredFilename());
-    candidateIds.add(FPROXY_PREFIX + fetchURI.getDocName());
-    candidateIds.add(FPROXY_PREFIX + fetchURI.toString(false, false));
-    candidateIds.add("FProxy (" + System.currentTimeMillis() + ')');
-
-    for (String candidateId : candidateIds) {
-      if (candidateId == null) {
-        continue;
-      }
-      if (tryPersistentGlobalRequest(
-          fetchURI,
-          filterData,
-          persistence,
-          returnType,
-          candidateId,
-          returnFilename,
-          realTimeFlag)) {
-        return;
-      }
-    }
-
-    while (true) {
-      byte[] buf = new byte[8];
-      core.getRandom().nextBytes(buf);
-      String id = FPROXY_PREFIX + Base64.encode(buf);
-      if (tryPersistentGlobalRequest(
-          fetchURI, filterData, persistence, returnType, id, returnFilename, realTimeFlag)) {
-        return;
-      }
-    }
+    makePersistentGlobalRequest(
+        new PersistentGlobalRequestParams(
+            fetchURI,
+            filterData,
+            expectedMimeType,
+            persistenceTypeString,
+            returnTypeString,
+            realTimeFlag,
+            downloadsDir));
   }
 
-  private boolean tryPersistentGlobalRequest(
-      FreenetURI fetchURI,
-      boolean filterData,
-      boolean persistence,
-      ReturnType returnType,
-      String identifier,
-      File returnFilename,
-      boolean realTimeFlag)
+  private boolean tryPersistentGlobalRequest(PersistentGlobalRequestSpec spec)
       throws NotAllowedException, IOException {
     try {
-      innerMakePersistentGlobalRequest(
-          fetchURI, filterData, persistence, returnType, identifier, returnFilename, realTimeFlag);
+      innerMakePersistentGlobalRequest(spec);
       return true;
     } catch (IdentifierCollisionException _) {
       return false;
@@ -1233,38 +1276,31 @@ public class FCPServer implements Runnable, DownloadCache {
     return f;
   }
 
-  private void innerMakePersistentGlobalRequest(
-      FreenetURI fetchURI,
-      boolean filterData,
-      boolean persistRebootOnly,
-      ReturnType returnType,
-      String id,
-      File returnFilename,
-      boolean realTimeFlag)
+  private void innerMakePersistentGlobalRequest(PersistentGlobalRequestSpec spec)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     FetchContext defaultFetchContext = core.getClientContext().getDefaultPersistentFetchContext();
     ClientGet.GlobalRequestConfig requestConfig =
         new ClientGet.GlobalRequestConfig(
             defaultFetchContext.getLocalRequestOnly(),
             defaultFetchContext.getIgnoreStore(),
-            filterData,
+            spec.filterData(),
             QUEUE_MAX_RETRIES,
             QUEUE_MAX_RETRIES,
             QUEUE_MAX_DATA_SIZE,
-            returnType,
-            persistRebootOnly,
-            id,
+            spec.returnType(),
+            spec.persistRebootOnly(),
+            spec.identifier(),
             Integer.MAX_VALUE,
             RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-            returnFilename,
+            spec.returnFilename(),
             null,
             false,
-            realTimeFlag,
+            spec.realTimeFlag(),
             false);
     final ClientGet cg =
         new ClientGet(
-            persistRebootOnly ? globalRebootClient : globalForeverClient,
-            fetchURI,
+            spec.persistRebootOnly() ? globalRebootClient : globalForeverClient,
+            spec.fetchURI(),
             requestConfig,
             core);
     cg.register(false);
