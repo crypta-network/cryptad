@@ -69,7 +69,7 @@ public abstract class RequestStatus {
 
   @SuppressWarnings("SameParameterValue")
   synchronized void restart(boolean started) {
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
     this.latestSuccess = new Date();
     this.hasFinished = false;
     this.hasSucceeded = false;
@@ -78,8 +78,7 @@ public abstract class RequestStatus {
   }
 
   /**
-   * Creates a mutable status holder for a request that may already be in flight or persisted on
-   * disk.
+   * Creates a mutable status holder from a preassembled snapshot.
    *
    * <p>Callers typically invoke this constructor while wiring {@code ClientRequest} instances at
    * submission time or when replaying stored jobs on startup. Each supplied metric is immediately
@@ -87,90 +86,33 @@ public abstract class RequestStatus {
    * The constructor does not perform validation beyond storing the snapshots, so upstream code must
    * ensure that block counts and flags reflect the latest durable state.
    *
-   * @param identifier stable token used to match external protocol events and cache lookups; must
-   *     be unique per running node.
-   * @param persistence persistence policy describing whether the request outlives disconnections or
-   *     restarts.
-   * @param started whether the request has already begun transferring data at creation time.
-   * @param finished indicates that the request reached a terminal outcome, successful or otherwise.
-   * @param success marks that the requested data was fetched or inserted successfully when finished
-   *     is true.
-   * @param total total number of blocks known for the operation; 0 means not yet discovered.
-   * @param min minimum number of successful blocks required before treating the request as complete
-   *     (e.g., redundancy threshold).
-   * @param fetched number of blocks already downloaded or uploaded according to the splitter.
-   * @param latestSuccess timestamp of the most recent successful block or completion, may be null
-   *     when never succeeded.
-   * @param fatal number of blocks that failed permanently and will not be retried.
-   * @param failed number of blocks that have failed transiently but may be retried.
-   * @param latestFailure timestamp of the last observed failure, may be null when nothing failed
-   *     yet.
-   * @param totalFinalized whether {@code total} is definitive (no more blocks will be discovered).
-   * @param prio scheduler priority used to arbitrate bandwidth between competing client requests.
-   */
-  RequestStatus(
-      String identifier,
-      Persistence persistence,
-      boolean started,
-      boolean finished,
-      boolean success,
-      int total,
-      int min,
-      int fetched,
-      Date latestSuccess,
-      int fatal,
-      int failed,
-      Date latestFailure,
-      boolean totalFinalized,
-      short prio) {
-    this.identifier = identifier;
-    this.hasStarted = started;
-    this.hasFinished = finished;
-    this.hasSucceeded = success;
-    this.priority = prio;
-    this.totalBlocks = total;
-    this.minBlocks = min;
-    this.fetchedBlocks = fetched;
-    // clone() because Date is mutable
-    this.latestSuccess = latestSuccess != null ? (Date) latestSuccess.clone() : null;
-    this.fatallyFailedBlocks = fatal;
-    this.failedBlocks = failed;
-    // clone() because Date is mutable
-    this.latestFailure = latestFailure != null ? (Date) latestFailure.clone() : null;
-    this.isTotalFinalized = totalFinalized;
-    this.persistence = persistence;
-  }
-
-  /**
-   * Creates a status instance using a preassembled snapshot of request counters.
-   *
-   * <p>The snapshot fields are copied verbatim, and mutable timestamps are cloned in the same way
-   * as the primary constructor.
-   *
    * @param snapshot bundle containing the base request status fields.
    */
   RequestStatus(RequestStatusSnapshot snapshot) {
-    this(
-        snapshot.identifier(),
-        snapshot.persistence(),
-        snapshot.started(),
-        snapshot.finished(),
-        snapshot.success(),
-        snapshot.total(),
-        snapshot.min(),
-        snapshot.fetched(),
-        snapshot.latestSuccess(),
-        snapshot.fatal(),
-        snapshot.failed(),
-        snapshot.latestFailure(),
-        snapshot.totalFinalized(),
-        snapshot.priority());
+    this.identifier = snapshot.identifier();
+    this.persistence = snapshot.persistence();
+    this.hasStarted = snapshot.started();
+    this.hasFinished = snapshot.finished();
+    this.hasSucceeded = snapshot.success();
+    this.priority = snapshot.priority();
+    this.totalBlocks = snapshot.total();
+    this.minBlocks = snapshot.min();
+    this.fetchedBlocks = snapshot.fetched();
+    // clone() because Date is mutable
+    this.latestSuccess =
+        snapshot.latestSuccess() != null ? (Date) snapshot.latestSuccess().clone() : null;
+    this.fatallyFailedBlocks = snapshot.fatal();
+    this.failedBlocks = snapshot.failed();
+    // clone() because Date is mutable
+    this.latestFailure =
+        snapshot.latestFailure() != null ? (Date) snapshot.latestFailure().clone() : null;
+    this.isTotalFinalized = snapshot.totalFinalized();
   }
 
   /**
    * Builds a defensive copy of another status instance so subclasses can expose snapshots.
    *
-   * <p>The constructor copies every scalar, clones mutable timestamps, and intentionally omits any
+   * <p>The constructor copies every scalar, clones, mutable timestamps, and intentionally omits any
    * shared references so callers can retain the resulting object beyond internal synchronization
    * windows. Subclasses typically delegate to this constructor within their own {@link #copy()}
    * implementation before adding subclass-specific state.
@@ -243,7 +185,7 @@ public abstract class RequestStatus {
   /**
    * Retrieves the stable external identifier backing this status entry.
    *
-   * <p>The identifier is the token exchanged over FCP and stored inside caches so UI components or
+   * <p>The identifier is the token exchanged over FCP and stored inside caches, so UI components or
    * remote clients can match asynchronous events to the originating submission. Identifiers are
    * opaque, case-sensitive strings; treat them as stable handles rather than deriving semantics
    * from their contents.
@@ -262,7 +204,7 @@ public abstract class RequestStatus {
    * accurate percentage calculations and disk predictions. Until then, treat the number as a moving
    * target and update progress displays dynamically.
    *
-   * @return number of blocks anticipated for the operation; may be zero while unknown.
+   * @return the number of blocks expected for the operation; may be zero while unknown.
    */
   public int getTotalBlocks() {
     return totalBlocks;
@@ -343,7 +285,7 @@ public abstract class RequestStatus {
   /**
    * Returns the canonical {@link FreenetURI} related to this request.
    *
-   * <p>Fetch requests report their original key while insert requests typically report the final
+   * <p>Fetch requests report their original key, while insert requests typically report the final
    * key assigned by the network once the data becomes addressable. Implementations must guarantee
    * that the returned URI accurately identifies the user-visible resource because UI and logging
    * layers surface it directly to end users.
@@ -355,7 +297,7 @@ public abstract class RequestStatus {
   /**
    * Provides the expected payload size expressed in bytes.
    *
-   * <p>Depending on the request type this value may come from manifest metadata or from a known
+   * <p>Depending on the request type, this value may come from manifest metadata or from a known
    * insert source. Subclasses should return {@code -1} when the size is unknown. Callers use the
    * information to preallocate disk space, enforce quotas, and display human-readable progress
    * indicators with estimated time remaining.
@@ -368,8 +310,8 @@ public abstract class RequestStatus {
    * Indicates whether the request is configured to persist indefinitely across restarts.
    *
    * <p>Requests marked {@link Persistence#FOREVER} remain queued until they succeed or are manually
-   * cancelled. Use this helper to distinguish between opportunistic and durable queue entries, and
-   * to surface warnings when users attempt to delete persistent jobs.
+   * canceled. Use this helper to distinguish between opportunistic and durable queue entries and to
+   * surface warnings when users attempt to delete persistent jobs.
    *
    * @return {@code true} if the persistence policy equals {@link Persistence#FOREVER}.
    */
@@ -475,9 +417,9 @@ public abstract class RequestStatus {
    * Updates the scheduler priority while holding the intrinsic lock.
    *
    * <p>Invocations originate from user commands or automatic QoS adjustments. The value takes
-   * effect immediately for subsequent queue decisions, so callers should avoid oscillating the
-   * priority rapidly. No validation is performed beyond storing the primitive; schedulers interpret
-   * the numeric range according to their own policy documents.
+   * effect immediately for later queue decisions, so callers should avoid oscillating the priority
+   * rapidly. No validation is performed beyond storing the primitive; schedulers interpret the
+   * numeric range according to their own policy documents.
    *
    * @param newPriority priority value to commit verbatim; callers must keep it within configured
    *     bounds.

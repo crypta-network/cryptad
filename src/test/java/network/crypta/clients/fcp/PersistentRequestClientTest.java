@@ -303,7 +303,21 @@ class PersistentRequestClientTest {
 
     TestRequestStatus(String identifier, Persistence persistence) {
       super(
-          identifier, persistence, false, false, false, 0, 0, 0, null, 0, 0, null, true, (short) 0);
+          new RequestStatusSnapshot(
+              identifier,
+              persistence,
+              false,
+              false,
+              false,
+              0,
+              0,
+              0,
+              null,
+              0,
+              0,
+              null,
+              true,
+              (short) 0));
       this.id = identifier;
       this.persistence = persistence;
     }
