@@ -46,10 +46,13 @@ import network.crypta.clients.fcp.ClientPut;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientPutDir;
+import network.crypta.clients.fcp.ClientPutUpload;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.DownloadRequestStatus;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpInsertOptions;
+import network.crypta.clients.fcp.FcpInsertRequest;
 import network.crypta.clients.fcp.IdentifierCollisionException;
 import network.crypta.clients.fcp.NotAllowedException;
 import network.crypta.clients.fcp.RequestCompletionCallback;
@@ -1353,32 +1356,36 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             IdentifierCollisionException,
             IOException {
       return new ClientPut(
-          fcp.getGlobalForeverClient(),
-          params.insertURI(),
-          params.identifier(),
-          Integer.MAX_VALUE,
-          null,
-          RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-          Persistence.FOREVER,
-          null,
-          false,
-          !params.compress(),
-          -1,
-          UploadFrom.DIRECT,
-          null,
-          params.file().getContentType(),
-          copiedBucket,
-          null,
-          params.filenameForKey(),
-          false,
-          false,
-          Node.FORK_ON_CACHEABLE_DEFAULT,
-          HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-          HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-          false,
-          params.cmode(),
-          params.overrideSplitfileKey(),
-          false,
+          new FcpInsertRequest(
+              fcp.getGlobalForeverClient(),
+              params.insertURI(),
+              params.identifier(),
+              Integer.MAX_VALUE,
+              null,
+              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
+              Persistence.FOREVER,
+              null,
+              true),
+          new FcpInsertOptions(
+              false,
+              !params.compress(),
+              -1,
+              false,
+              false,
+              Node.FORK_ON_CACHEABLE_DEFAULT,
+              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+              false,
+              params.cmode(),
+              params.overrideSplitfileKey()),
+          new ClientPutUpload(
+              UploadFrom.DIRECT,
+              null,
+              params.file().getContentType(),
+              copiedBucket,
+              null,
+              params.filenameForKey(),
+              false),
           fcp.getCore());
     }
 
@@ -1551,32 +1558,36 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             IdentifierCollisionException,
             IOException {
       return new ClientPut(
-          fcp.getGlobalForeverClient(),
-          params.uri(),
-          params.id(),
-          Integer.MAX_VALUE,
-          null,
-          RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-          Persistence.FOREVER,
-          null,
-          false,
-          !params.compress(),
-          -1,
-          UploadFrom.DISK,
-          params.file(),
-          params.contentType(),
-          bucket,
-          null,
-          params.target(),
-          false,
-          false,
-          Node.FORK_ON_CACHEABLE_DEFAULT,
-          HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-          HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-          false,
-          params.cmode(),
-          params.overrideSplitfileKey(),
-          false,
+          new FcpInsertRequest(
+              fcp.getGlobalForeverClient(),
+              params.uri(),
+              params.id(),
+              Integer.MAX_VALUE,
+              null,
+              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
+              Persistence.FOREVER,
+              null,
+              true),
+          new FcpInsertOptions(
+              false,
+              !params.compress(),
+              -1,
+              false,
+              false,
+              Node.FORK_ON_CACHEABLE_DEFAULT,
+              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+              false,
+              params.cmode(),
+              params.overrideSplitfileKey()),
+          new ClientPutUpload(
+              UploadFrom.DISK,
+              params.file(),
+              params.contentType(),
+              bucket,
+              null,
+              params.target(),
+              false),
           fcp.getCore());
     }
 
@@ -1701,28 +1712,32 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     private ClientPutDir createLocalDirPut(LocalDirInsertParams params)
         throws IOException, TooManyFilesInsertException {
       return new ClientPutDir(
-          fcp.getGlobalForeverClient(),
-          params.uri(),
-          params.identifier(),
-          Integer.MAX_VALUE,
-          RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
-          Persistence.FOREVER,
-          null,
-          false,
-          !params.compress(),
-          -1,
+          new FcpInsertRequest(
+              fcp.getGlobalForeverClient(),
+              params.uri(),
+              params.identifier(),
+              Integer.MAX_VALUE,
+              null,
+              RequestStarter.BULK_SPLITFILE_PRIORITY_CLASS,
+              Persistence.FOREVER,
+              null,
+              true),
+          new FcpInsertOptions(
+              false,
+              !params.compress(),
+              -1,
+              false,
+              false,
+              Node.FORK_ON_CACHEABLE_DEFAULT,
+              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+              false,
+              CompatibilityMode.COMPAT_DEFAULT,
+              params.overrideSplitfileKey()),
           params.file(),
           null,
           false,
           false,
-          true,
-          false,
-          false,
-          Node.FORK_ON_CACHEABLE_DEFAULT,
-          HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-          HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-          false,
-          params.overrideSplitfileKey(),
           fcp.getCore());
     }
 

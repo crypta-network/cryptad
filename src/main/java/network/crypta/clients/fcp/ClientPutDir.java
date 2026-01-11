@@ -11,7 +11,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
@@ -181,92 +180,77 @@ public class ClientPutDir extends ClientPutBase {
    * NodeClientCore}.
    *
    * <pre>{@code
-   * var request = new ClientPutDir(client, uri, "upload", 1, priority,
-   *     Persistence.CONNECTION, token, false, false, 3, new File("site"),
-   *     "index.html", false, false, false, false, true, false, 0, 0,
-   *     false, null, core);
+   * var request =
+   *     new ClientPutDir(
+   *         new FcpInsertRequest(
+   *             client, uri, "upload", 1, null, priority, Persistence.CONNECTION, token, false),
+   *         new FcpInsertOptions(
+   *             false,
+   *             false,
+   *             3,
+   *             false,
+   *             true,
+   *             false,
+   *             0,
+   *             0,
+   *             false,
+   *             InsertContext.CompatibilityMode.COMPAT_DEFAULT,
+   *             null),
+   *         new File("site"),
+   *         "index.html",
+   *         false,
+   *         false,
+   *         core);
    * request.start(core.getClientContext());
    * }</pre>
    *
-   * @param client persistent client coordinating request lifecycle and status notifications.
-   * @param uri destination URI that will anchor this directory insert request.
-   * @param identifier user-visible identifier echoed on status and completion messages.
-   * @param verbosity verbosity level applied to subsequent FCP progress messages.
-   * @param priorityClass priority bucket controlling scheduler weight and fairness.
-   * @param persistence persistence window determining whether the request survives restarts.
-   * @param clientToken opaque token echoed back so callers can correlate local state.
-   * @param getCHKOnly true to compute the resulting URI without storing persistent data.
-   * @param dontCompress true to spill raw blocks instead of applying automatic compression.
-   * @param maxRetries cap on automatic retries before the request is marked permanently failed.
+   * @param request persistent insert request metadata for the directory insert.
+   * @param options insert tuning options such as retries and compression choices.
    * @param dir root directory that will be enumerated and uploaded recursively.
    * @param defaultName default manifest document served when consumers fetch the directory.
    * @param allowUnreadableFiles true to skip unreadable entries instead of aborting immediately.
    * @param includeHiddenFiles true to include filesystem entries marked hidden by the OS.
-   * @param global true to expose the request across global queues, false for connection-only.
-   * @param earlyEncode true to pre-encode blocks before scheduling network transmission.
-   * @param canWriteClientCache true if client-side block caching is permitted for this insert.
-   * @param forkOnCacheable true to fork child requests when blocks become cacheable mid-insert.
-   * @param extraInsertsSingleBlock number of redundant inserts for single-block containers.
-   * @param extraInsertsSplitfileHeaderBlock number of redundant inserts for splitfile headers.
-   * @param realTimeFlag true to prefer real-time scheduling semantics and reduced latency.
-   * @param overrideSplitfileCryptoKey caller-supplied key material overriding generated keys.
    * @param core node client core providing context services and cryptographic settings.
    * @throws FileNotFoundException if unreadable files are encountered while not permitted.
    * @throws MalformedURLException if the URI cannot be parsed, normalized, or validated.
    * @throws TooManyFilesInsertException if the directory exceeds the configured file limit.
    */
   public ClientPutDir(
-      PersistentRequestClient client,
-      FreenetURI uri,
-      String identifier,
-      int verbosity,
-      short priorityClass,
-      Persistence persistence,
-      String clientToken,
-      boolean getCHKOnly,
-      boolean dontCompress,
-      int maxRetries,
+      FcpInsertRequest request,
+      FcpInsertOptions options,
       File dir,
       String defaultName,
       boolean allowUnreadableFiles,
       boolean includeHiddenFiles,
-      boolean global,
-      boolean earlyEncode,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      int extraInsertsSingleBlock,
-      int extraInsertsSplitfileHeaderBlock,
-      boolean realTimeFlag,
-      byte[] overrideSplitfileCryptoKey,
       NodeClientCore core)
       throws FileNotFoundException, MalformedURLException, TooManyFilesInsertException {
     super(
-        checkEmptySSK(uri, "site", core.getClientContext()),
-        identifier,
-        verbosity,
+        checkEmptySSK(request.uri(), "site", core.getClientContext()),
+        request.identifier(),
+        request.verbosity(),
+        request.charset(),
         null,
-        null,
-        client,
-        priorityClass,
-        persistence,
-        clientToken,
-        global,
-        getCHKOnly,
-        dontCompress,
-        maxRetries,
-        earlyEncode,
-        canWriteClientCache,
-        forkOnCacheable,
+        request.client(),
+        request.priorityClass(),
+        request.persistence(),
+        request.clientToken(),
+        request.global(),
+        options.getCHKOnly(),
+        options.dontCompress(),
+        options.maxRetries(),
+        options.earlyEncode(),
+        options.canWriteClientCache(),
+        options.forkOnCacheable(),
         false,
-        extraInsertsSingleBlock,
-        extraInsertsSplitfileHeaderBlock,
-        realTimeFlag,
+        options.extraInsertsSingleBlock(),
+        options.extraInsertsSplitfileHeaderBlock(),
+        options.realTimeFlag(),
         null,
-        InsertContext.CompatibilityMode.COMPAT_DEFAULT,
+        options.compatibilityMode(),
         false /*XXX ignoreUSKDatehints*/,
         core);
     wasDiskPut = true;
-    this.overrideSplitfileCryptoKey = overrideSplitfileCryptoKey;
+    this.overrideSplitfileCryptoKey = options.overrideSplitfileCryptoKey();
     // debug level captured via LOG.isDebugEnabled()
     this.manifestElements = makeDiskDirManifest(dir, "", allowUnreadableFiles, includeHiddenFiles);
     this.defaultName = defaultName;
