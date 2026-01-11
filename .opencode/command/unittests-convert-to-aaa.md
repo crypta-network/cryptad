@@ -1,0 +1,1 @@
+Convert all non AAA style test methods in file $1 to AAA style. Rename their name to method_whenCondition_expectOutcome.
