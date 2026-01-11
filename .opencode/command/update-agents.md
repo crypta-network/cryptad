@@ -1,0 +1,1 @@
+Revise and verify AGENTS.md to reflect your recent changes. Also refer to README.md and tmp_changes.md (if exists). Check each new and existing sentence for accuracy, remove duplicates, and eliminate unclear or meaningless wording.
