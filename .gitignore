@@ -59,3 +59,4 @@ tmp*
 # Local migration helpers
 tools/migrate_logger_slf4j.py
 /.opencode/
+.rooignore
