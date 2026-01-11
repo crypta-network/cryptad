@@ -16,7 +16,6 @@ import java.util.Date;
 import java.util.Objects;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
-import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata;
@@ -117,128 +116,65 @@ public class ClientPut extends ClientPutBase {
    * Use it whenever an external client wants the node to own persistence, resume points, and retry
    * state for an upload that might span restarts. Callers remain responsible for supplying buckets
    * that stay readable for the lifetime of the insert. Compression configuration is honored exactly
-   * as supplied so callers can trade throughput for determinism.
+   * as supplied, so callers can trade throughput for determinism.
    *
-   * @param globalClient Persistent queue owner used to detect identifier reuse collisions.
-   * @param uri Destination {@link FreenetURI} that will anchor the inserted content object.
-   * @param identifier Client-supplied identifier for queue deduplication and status updates.
-   * @param verbosity Verbosity bitmask controlling server-side progress and error callbacks.
-   * @param charset Optional charset hint announcing textual encoding for default metadata.
-   * @param priorityClass Scheduler priority communicated to the node's insert throttling logic.
-   * @param persistence Persistence mode (connection, forever) defining lifetime expectations and
-   *     restarts.
-   * @param clientToken Opaque token echoed back in async events to disambiguate clients.
-   * @param getCHKOnly When true, compute CHK but skip actually committing data to store.
-   * @param dontCompress Forces literal storage without compression, honoring caller-specific data
-   *     semantics.
-   * @param maxRetries Maximum automatic retries granted before failing the insert permanently.
-   * @param uploadFromType Describes source of bytes (disk, direct, redirect, memory bucket).
-   * @param origFilename Local disk path candidate; used for MIME guessing and DDA checks.
-   * @param contentType Explicit MIME type string overriding automatic guesses when supplied.
-   * @param data Random-access bucket carrying payload; may be null for redirects.
-   * @param redirectTarget Target URI for redirect inserts when {@code uploadFromType} requests
-   *     metadata.
-   * @param targetFilename Preferred remote filename advertised to downloaders lacking metadata
-   *     hints.
-   * @param earlyEncode Whether to start encoding blocks before full file arrival to pipeline.
-   * @param canWriteClientCache Allows storing data in the client's cache for resume efficiency.
-   * @param forkOnCacheable Creates forked insert contexts when cache writes are expected to
-   *     succeed.
-   * @param extraInsertsSingleBlock Additional low-level inserts for redundancy on single-block
-   *     payloads.
-   * @param extraInsertsSplitfileHeaderBlock Redundancy count for splitfile headers, improving
-   *     manifest durability.
-   * @param realTimeFlag True to favor low-latency routing; false to conserve resources.
-   * @param compatMode Compatibility hints guiding encoding parameters for legacy node
-   *     interoperability.
-   * @param overrideSplitfileKey Optional caller-provided crypto key overriding generated splitfile
-   *     secrets.
-   * @param binaryBlob Marks insert as opaque blob without metadata or URI derivation.
+   * @param request Persistent request metadata including URI, identifier, and queue settings.
+   * @param options Insert tuning options such as retries, compression, and redundancy.
+   * @param upload Upload payload metadata describing source and content hints.
    * @param core Owning {@link NodeClientCore} providing policies, factories, and scheduler hooks.
    * @throws IdentifierCollisionException Thrown when the chosen identifier already exists within
-   *     persistence scope.
-   * @throws NotAllowedException Raised when configured upload source violates server-side safety
+   *     the persistence scope.
+   * @throws NotAllowedException Raised when a configured upload source violates server-side safety
    *     policies.
    * @throws MetadataUnresolvedException Bubble-up if redirect metadata cannot serialize into a
    *     bucket factory.
    * @throws IOException Propagated for filesystem or bucket reads when preparing payload streams.
    */
   public ClientPut(
-      PersistentRequestClient globalClient,
-      FreenetURI uri,
-      String identifier,
-      int verbosity,
-      String charset,
-      short priorityClass,
-      Persistence persistence,
-      String clientToken,
-      boolean getCHKOnly,
-      boolean dontCompress,
-      int maxRetries,
-      UploadFrom uploadFromType,
-      File origFilename,
-      String contentType,
-      RandomAccessBucket data,
-      FreenetURI redirectTarget,
-      String targetFilename,
-      boolean earlyEncode,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      int extraInsertsSingleBlock,
-      int extraInsertsSplitfileHeaderBlock,
-      boolean realTimeFlag,
-      InsertContext.CompatibilityMode compatMode,
-      byte[] overrideSplitfileKey,
-      boolean binaryBlob,
+      FcpInsertRequest request,
+      FcpInsertOptions options,
+      ClientPutUpload upload,
       NodeClientCore core)
       throws IdentifierCollisionException,
           NotAllowedException,
           MetadataUnresolvedException,
           IOException {
-    super(
-        checkEmptySSK(uri, targetFilename, core.getClientContext()),
-        ensurePersistentIdentifierAvailable(globalClient, identifier),
-        verbosity,
-        charset,
-        null,
-        globalClient,
-        priorityClass,
-        persistence,
-        null,
-        true,
-        getCHKOnly,
-        dontCompress,
-        maxRetries,
-        earlyEncode,
-        canWriteClientCache,
-        forkOnCacheable,
-        false,
-        extraInsertsSingleBlock,
-        extraInsertsSplitfileHeaderBlock,
-        realTimeFlag,
-        null,
-        compatMode,
-        false /*XXX ignoreUSKDatehints*/,
-        core);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            checkEmptySSK(request.uri(), upload.targetFilename(), core.getClientContext()),
+            ensurePersistentIdentifierAvailable(request.client(), request.identifier()),
+            request.verbosity(),
+            request.priorityClass(),
+            request.persistence(),
+            options.realTimeFlag(),
+            null,
+            request.global());
+    super(requestParams, request.charset(), options, null, request.client(), core);
+    UploadFrom uploadFromType = upload.uploadFromType();
+    File uploadOrigFilename = upload.origFilename();
+    String contentType = upload.contentType();
+    String uploadTargetFilename = upload.targetFilename();
+    RandomAccessBucket tempData = upload.data();
+
     if (uploadFromType == UploadFrom.DISK) {
-      if (!core.allowUploadFrom(origFilename)) throw new NotAllowedException();
-      if (!(origFilename.exists() && origFilename.canRead())) throw new FileNotFoundException();
+      if (!core.allowUploadFrom(uploadOrigFilename)) throw new NotAllowedException();
+      if (!(uploadOrigFilename.exists() && uploadOrigFilename.canRead()))
+        throw new FileNotFoundException();
     }
 
-    this.binaryBlob = binaryBlob;
-    if (binaryBlob) contentType = null;
-    this.targetFilename = targetFilename;
+    this.binaryBlob = upload.binaryBlob();
+    if (this.binaryBlob) contentType = null;
+    this.targetFilename = uploadTargetFilename;
     this.uploadFrom = uploadFromType;
-    this.origFilename = origFilename;
+    this.origFilename = uploadOrigFilename;
     // Now go through the fields one at a time
     String mimeType = contentType;
-    this.clientToken = clientToken;
-    RandomAccessBucket tempData = data;
+    this.clientToken = request.clientToken();
     ClientMetadata cm = new ClientMetadata(mimeType);
     boolean isMetadata = false;
     if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
     if (uploadFrom == UploadFrom.REDIRECT) {
-      this.targetURI = redirectTarget;
+      this.targetURI = upload.redirectTarget();
       Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI, cm);
       tempData = m.toBucket(core.getClientContext().getBucketFactory(isPersistentForever()));
       isMetadata = true;
@@ -251,9 +187,9 @@ public class ClientPut extends ClientPutBase {
         new ClientPutter(
             new ClientPutterRequest(this, data, this.uri, cm, ctx, priorityClass, isMetadata),
             new ClientPutterOptions(
-                this.uri.getDocName() == null ? targetFilename : null,
-                binaryBlob,
-                overrideSplitfileKey,
+                this.uri.getDocName() == null ? uploadTargetFilename : null,
+                this.binaryBlob,
+                options.overrideSplitfileCryptoKey(),
                 -1));
   }
 
@@ -262,8 +198,8 @@ public class ClientPut extends ClientPutBase {
    *
    * <p>This constructor is used for transient or connection-scoped inserts issued over the socket
    * protocol. It verifies disk upload permissions, optional salted hashes, and MIME hints supplied
-   * by the client before crafting in-memory buckets or redirect metadata. Because the handler may
-   * multiplex many inserts, identifier validation is performed against the connection’s map to
+   * by the client before crafting in-memory buckets or redirecting metadata. Because the handler
+   * may multiplex many inserts, identifier validation is performed against the connection’s map to
    * avoid collisions that would otherwise corrupt status routing. All costly bucket conversions
    * happen before {@link ClientPutter} starts so any validation errors surface immediately to the
    * client.
@@ -275,36 +211,39 @@ public class ClientPut extends ClientPutBase {
    * @param server Owning server providing {@link NodeClientCore} accessors and capability checks.
    * @throws IdentifierCollisionException If another request on the connection already uses the
    *     identifier.
-   * @throws MessageInvalidException When client supplied fields (hashes, MIME, permissions) prove
-   *     invalid.
+   * @throws MessageInvalidException Throw when client supplied fields (hashes, MIME, permissions)
+   *     prove invalid.
    * @throws IOException If message-provided buckets cannot be read to compute salted hashes.
    */
   public ClientPut(FCPConnectionHandler handler, ClientPutMessage message, FCPServer server)
       throws IdentifierCollisionException, MessageInvalidException, IOException {
-    super(
-        checkEmptySSK(message.uri, message.targetFilename, server.getCore().getClientContext()),
-        ensureConnectionIdentifierAvailable(handler, message),
-        message.verbosity,
-        null,
-        handler,
-        message.priorityClass,
-        message.persistence,
-        message.clientToken,
-        message.global,
-        message.getCHKOnly,
-        message.dontCompress,
-        message.localRequestOnly,
-        message.maxRetries,
-        message.earlyEncode,
-        message.canWriteClientCache,
-        message.forkOnCacheable,
-        message.compressorDescriptor,
-        message.extraInsertsSingleBlock,
-        message.extraInsertsSplitfileHeaderBlock,
-        message.realTimeFlag,
-        message.compatibilityMode,
-        message.ignoreUSKDatehints,
-        server);
+    FcpInsertOptions options =
+        new FcpInsertOptions(
+            message.getCHKOnly,
+            message.dontCompress,
+            message.localRequestOnly,
+            message.maxRetries,
+            message.earlyEncode,
+            message.canWriteClientCache,
+            message.forkOnCacheable,
+            message.compressorDescriptor,
+            message.extraInsertsSingleBlock,
+            message.extraInsertsSplitfileHeaderBlock,
+            message.realTimeFlag,
+            message.compatibilityMode,
+            message.ignoreUSKDatehints,
+            message.overrideSplitfileCryptoKey);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            checkEmptySSK(message.uri, message.targetFilename, server.getCore().getClientContext()),
+            ensureConnectionIdentifierAvailable(handler, message),
+            message.verbosity,
+            message.priorityClass,
+            message.persistence,
+            options.realTimeFlag(),
+            message.clientToken,
+            message.global);
+    super(requestParams, null, options, handler, server);
     binaryBlob = message.binaryBlob;
 
     DiskUploadContext diskContext =
@@ -596,7 +535,7 @@ public class ClientPut extends ClientPutBase {
    *
    * @param in Source stream managed by Java serialization infrastructure.
    * @throws IOException If the serialized form is truncated or unreadable.
-   * @throws ClassNotFoundException If referenced classes in the stream cannot be resolved.
+   * @throws ClassNotFoundException If referenced, classes in the stream cannot be resolved.
    */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
@@ -619,8 +558,8 @@ public class ClientPut extends ClientPutBase {
    * <p>The method is idempotent: if the request already finished or the putter previously started,
    * it simply refreshes the persistent tag. Otherwise, it schedules the insert, updates
    * bookkeeping, and emits persistent-queue tags if necessary so external monitors observe the
-   * in-flight status. Callers should invoke this once after construction or resume to reattach UI
-   * state.
+   * in-flight status. Callers should invoke this once after construction or resume to reattach the
+   * UI state.
    *
    * @param context Client execution context providing schedulers, bucket factories, and thread
    *     pools.
@@ -707,7 +646,7 @@ public class ClientPut extends ClientPutBase {
   private boolean isRealTime() {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
-      // resulted in it getting deleted, and also possibly failed deletions.
+      // resulted in it getting deleted and also possibly failed deletions.
       LOG.warn("lowLevelClient == null");
       return false;
     }
@@ -723,7 +662,7 @@ public class ClientPut extends ClientPutBase {
    * immutable history. It is safe to poll frequently; the backing field is volatile through {@link
    * ClientPutBase} synchronization.
    *
-   * @return True once the insert commits and the node has acknowledged durable storage.
+   * @return True, once the insert commits and the node has acknowledged durable storage.
    */
   @Override
   public boolean hasSucceeded() {
@@ -839,8 +778,8 @@ public class ClientPut extends ClientPutBase {
    * Replays the insert after a failure, optionally skipping filter-data regeneration when
    * configured.
    *
-   * <p>Before scheduling the new attempt, the method resets local state, updates status caches, and
-   * notifies observers that the request left the finished state. Failures during {@link
+   * <p>Before scheduling the new attempt, the method resets the local state, updates status caches,
+   * and notifies observers that the request left the finished state. Failures during {@link
    * ClientPutter} startup are handed to {@link ClientPutBase#onFailure(InsertException,
    * network.crypta.client.async.BaseClientPutter)} so retry logic remains consistent with the
    * normal start path.
@@ -916,8 +855,8 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Enumerates the user-visible compression lifecycle so status polling can expose intuitive
-   * progress wording.
+   * Lists the user-visible compression lifecycle so status polling can expose intuitive progress
+   * wording.
    *
    * <p>The values summarize scheduler queues, CPU-bound work, and downstream insertion so clients
    * quickly understand whether throughput bottlenecks stem from contention or routing.
@@ -925,16 +864,16 @@ public class ClientPut extends ClientPutBase {
   public enum COMPRESS_STATE {
     /**
      * Waiting for a slot on the compression scheduler while previous inserts finish; users should
-     * expect zero CPU usage but the request remains queued for work.
+     * expect zero CPU usage, but the request remains queued for work.
      */
     WAITING,
     /**
-     * Actively compressing the payload or metadata; byte throughput is CPU-bound and restarts will
+     * Actively compressing the payload or metadata; byte throughput is CPU-bound, and restarts will
      * resume from the last fully written block rather than discarding work.
      */
     COMPRESSING,
     /**
-     * Compression finished and the request now streams blocks into the network or datastore,
+     * Compression finished, and the request now streams blocks into the network or datastore,
      * meaning failures are likely due to routing rather than preprocessing.
      */
     WORKING
@@ -1013,7 +952,7 @@ public class ClientPut extends ClientPutBase {
     int fetched = 0;
     int fatal = 0;
     int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
     Date latestSuccess = new Date();
     Date latestFailure = null;
     boolean totalFinalized = false;
@@ -1059,7 +998,7 @@ public class ClientPut extends ClientPutBase {
    * Reattaches transient resources (notably {@link RandomAccessBucket} instances) after the request
    * is brought back from persistent storage.
    *
-   * <p>Delegates to each bucket so they can reopen files, memory maps, or network handles. Failure
+   * <p>Delegates to each bucket, so they can reopen files, memory maps, or network handles. Failure
    * to resume throws {@link ResumeFailedException}, which bubbles to queue management for user
    * visibility.
    *

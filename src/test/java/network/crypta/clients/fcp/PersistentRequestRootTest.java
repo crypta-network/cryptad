@@ -146,7 +146,11 @@ class PersistentRequestRootTest {
         boolean global,
         boolean finished,
         boolean succeeded) {
-      super(null, identifier, 0, null, client, (short) 0, Persistence.FOREVER, false, null, global);
+      super(
+          new ClientRequestParams(
+              null, identifier, 0, (short) 0, Persistence.FOREVER, false, null, global),
+          null,
+          client);
       this.finished = finished;
       this.succeeded = succeeded;
     }

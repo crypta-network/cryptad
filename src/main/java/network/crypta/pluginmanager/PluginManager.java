@@ -28,8 +28,10 @@ import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.clients.fcp.ClientPut;
 import network.crypta.clients.http.PageMaker.THEME;
+import network.crypta.clients.http.ProgressCellContext;
 import network.crypta.clients.http.QueueToadlet;
 import network.crypta.clients.http.Toadlet;
 import network.crypta.config.InvalidConfigValueException;
@@ -120,7 +122,7 @@ public class PluginManager {
    * <p>This method does not start plugins. Call {@link #start()} after construction to schedule
    * plugin startup work.
    *
-   * @param node owning node instance whose services and configuration are used by plugins
+   * @param node owning a node instance whose services and configuration are used by plugins
    * @param lastVersion node build number used to apply upgrade-time compatibility adjustments
    * @return the newly created plugin manager instance for {@code node}
    */
@@ -564,8 +566,8 @@ public class PluginManager {
    * Starts a plugin from a Freenet URI specification.
    *
    * <p>The provided string is expected to be a key that the Freenet-based downloader can resolve.
-   * Depending on downloader policy, the manager may keep cached copies in the plugin directory and
-   * may schedule retries when the plugin cannot be fetched immediately.
+   * Depending on the downloader policy, the manager may keep cached copies in the plugin directory
+   * and may schedule retries when the plugin cannot be fetched immediately.
    *
    * @param filename freenet key string that identifies the plugin content
    * @param store whether to persist configuration after the load attempt completes
@@ -694,7 +696,7 @@ public class PluginManager {
         msg = e.getMessage();
         stacktrace = null;
       } else {
-        // If it's something wierd, we need to know what it is.
+        // If it's weird, we need to know what it is.
         msg = e.getClass() + ": " + e.getMessage();
         stacktrace = e.getStackTrace();
       }
@@ -871,7 +873,7 @@ public class PluginManager {
    * set to avoid reporting them as still loading.
    *
    * @param filename plugin name to match against starting plugins
-   * @param exceptFor progress instance that should not be canceled, or {@code null} to cancel all
+   * @param exceptFor progress instance that should not be canceled or {@code null} to cancel all
    */
   public void cancelRunningLoads(String filename, PluginProgress exceptFor) {
     LOG.info("Cancelling loads for plugin {}", filename);
@@ -946,7 +948,7 @@ public class PluginManager {
    */
   public void removeCachedCopy(String pluginSpecification) {
     if (pluginSpecification == null) {
-      // Will be null if the file for a given plugin can't be found, e.g. if it has already been
+      // Will be null if the file for a given plugin can't be found, e.g., if it has already been
       // removed. Ignore it since the file isn't there anyway
       LOG.warn("Can't remove null from cache. Ignoring");
       return;
@@ -959,7 +961,7 @@ public class PluginManager {
       lastSlash = pluginSpecification.lastIndexOf('\\');
     File pluginDirectory = node.getPluginDir();
     if (lastSlash == -1) {
-      /* it's an official plugin or filename without path */
+      /* it's an official plugin or filename without a path */
       if (pluginSpecification.toLowerCase().endsWith(".jar")) pluginFilename = pluginSpecification;
       else pluginFilename = pluginSpecification + ".jar";
     } else pluginFilename = pluginSpecification.substring(lastSlash + 1);
@@ -985,7 +987,7 @@ public class PluginManager {
    * Unregisters a plugin's HTTP handler mapping from the {@code /plugins/} namespace.
    *
    * <p>This method removes the plugin's class-name mapping from the internal handler registry. It
-   * is invoked as part of plugin unload, and can also be called defensively during cleanup.
+   * is invoked as part of a plugin unloaded and can also be called defensively during cleanup.
    *
    * @param pi wrapper for the plugin whose handler entry should be removed
    */
@@ -1029,7 +1031,7 @@ public class PluginManager {
    * Legacy method kept for compatibility.
    *
    * <p>This method removes the aliases from the internal registry and asks the wrapper to forget
-   * each alias so it will not be restored on subsequent operations.
+   * each alias so it will not be restored on later operations.
    *
    * @param pi wrapper for the plugin whose alias mappings should be removed
    */
@@ -1056,8 +1058,8 @@ public class PluginManager {
   /**
    * Returns a human-readable summary of currently loaded plugins.
    *
-   * <p>The returned string is primarily intended for diagnostics and may change format. Each line
-   * corresponds to a single {@link PluginInfoWrapper#toString()} value for a loaded plugin.
+   * <p>The returned string is primarily intended for diagnostics and may change the format. Each
+   * line corresponds to a single {@link PluginInfoWrapper#toString()} value for a loaded plugin.
    *
    * @return multi-line summary of loaded plugins, or an empty string when none are loaded
    */
@@ -1072,7 +1074,7 @@ public class PluginManager {
   /**
    * Returns the current set of loaded plugins.
    *
-   * <p>The returned set is a snapshot and may not reflect subsequent load/unload activity.
+   * <p>The returned set is a snapshot and may not reflect later load/unload activity.
    *
    * @return sorted snapshot set of currently loaded plugin wrappers
    */
@@ -1122,7 +1124,7 @@ public class PluginManager {
   }
 
   /**
-   * Look for PluginInfo for a Plugin with given classname or filename.
+   * Look for PluginInfo for a Plugin with a given classname or filename.
    *
    * @param plugname plugin class name or plugin filename to search for
    * @return the matching plugin info wrapper, or {@code null} if not found
@@ -1174,7 +1176,7 @@ public class PluginManager {
   }
 
   /**
-   * look for a Plugin with given classname
+   * look for a Plugin with a given classname
    *
    * @param plugname plugin class name or plugin filename to search for
    * @return {@code true} if the plugin is currently loaded, otherwise {@code false}
@@ -1271,7 +1273,7 @@ public class PluginManager {
    * PluginInfoWrapper#getThreadName()} and, if found, calls {@link
    * PluginInfoWrapper#stopPlugin(PluginManager, long, boolean)} on that wrapper.
    *
-   * @param name expected thread name of the plugin to stop
+   * @param name expected the thread name of the plugin to stop
    * @param maxWaitTime maximum time to wait in milliseconds for plugin shutdown
    * @param reloading whether this stop is part of a reload operation
    */
@@ -1361,8 +1363,8 @@ public class PluginManager {
   }
 
   /**
-   * Returns a list of the names of all available official plugins. Right now this list is hardcoded
-   * but in future we could retrieve this list from emu or from freenet itself.
+   * Returns a list of the names of all available official plugins. Right now this list is
+   * hardcoded, but in the future we could retrieve this list from emu or from freenet itself.
    *
    * @return A list of all available plugin names
    */
@@ -1423,9 +1425,9 @@ public class PluginManager {
   }
 
   /**
-   * Tries to load a plugin from the given name. If the name only contains the name of a plugin it
+   * Tries to load a plugin from the given name. If the name only contains the name of a plugin, it
    * is loaded from the plugin directory, if found, otherwise it's loaded from the project server.
-   * If the name contains a complete url and the short file already exists in the plugin directory
+   * If the name contains a complete url and the short file already exists in the plugin directory,
    * it's loaded from the plugin directory, otherwise it's retrieved from the remote server.
    *
    * @param pdl downloader that resolves and fetches the plugin content, if needed
@@ -1451,7 +1453,7 @@ public class PluginManager {
         getTargetFileForPluginDownload(
             pluginDirectory, filename, !pdl.isCachingProhibited() && !alwaysDownload);
 
-    /* check if file needs to be downloaded. */
+    /* check if a file needs to be downloaded. */
     if (LOG.isDebugEnabled())
       LOG.debug(
           "plugin file {} exists: {} downloader {} name {}",
@@ -1629,7 +1631,7 @@ public class PluginManager {
       }
       return pluginMainClassName;
     } catch (IOException ioe1) {
-      throw new PluginNotFoundException("error procesesing jar file", ioe1);
+      throw new PluginNotFoundException("error processing jar file", ioe1);
     }
   }
 
@@ -1745,7 +1747,7 @@ public class PluginManager {
 
   /**
    * This returns all existing instances of cached JAR files that start with the given filename
-   * followed by a dash (“-”), sorted numerically by the appendix, largest (i.e. newest) first.
+   * followed by a dash (“-”), sorted numerically by the appendix, largest (i.e., newest) first.
    *
    * @param pluginDirectory The plugin cache directory
    * @param filename The name of the JAR file
@@ -1825,7 +1827,7 @@ public class PluginManager {
      * Represents the coarse-grained phase of a plugin load operation.
      *
      * <p>This enum is intentionally small and UI-friendly: it describes whether a plugin is still
-     * being fetched/verified or whether it has transitioned into in-process startup.
+     * being fetched/verified or whether it has transitioned into an in-process startup.
      */
     public enum ProgressState {
       /** The plugin content is being fetched, cached, and verified. */
@@ -1912,7 +1914,7 @@ public class PluginManager {
 
     /**
      * If this object is one of the constants {@link ProgressState#DOWNLOADING} or {@link
-     * ProgressState#STARTING}, the name of those constants will be returned, otherwise a textual
+     * ProgressState#STARTING}, the name of those constants will be returned; otherwise a textual
      * representation of the plugin progress is returned.
      *
      * @return The name of a constant, or the plugin progress
@@ -1932,25 +1934,26 @@ public class PluginManager {
      * Returns a localized HTML node describing the current progress.
      *
      * <p>The returned node is intended for embedding into existing UI tables. For downloading
-     * progress it delegates to {@link QueueToadlet#createProgressCell(boolean, boolean,
-     * ClientPut.COMPRESS_STATE, int, int, int, int, int, boolean, boolean)}; otherwise it returns a
-     * localized label for the current {@link ProgressState}.
+     * progress it delegates to {@link QueueToadlet#createProgressCell(ProgressCellContext,
+     * network.crypta.client.events.SplitfileProgressCounts)}; otherwise it returns a localized
+     * label for the current {@link ProgressState}.
      *
      * @return a {@link HTMLNode} describing the current load state for UI display
      */
     public HTMLNode toLocalisedHTML() {
       if (pluginProgress == ProgressState.DOWNLOADING && total > 0) {
-        return QueueToadlet.createProgressCell(
-            false,
-            true,
-            ClientPut.COMPRESS_STATE.WORKING,
-            current,
-            failed,
-            fatallyFailed,
-            minSuccessful,
-            total,
-            finalisedTotal,
-            false);
+        SplitfileProgressCounts progressCounts =
+            new SplitfileProgressCounts(
+                total,
+                current,
+                failed,
+                fatallyFailed,
+                minSuccessful,
+                minSuccessful,
+                finalisedTotal);
+        ProgressCellContext progressContext =
+            new ProgressCellContext(false, true, ClientPut.COMPRESS_STATE.WORKING, false);
+        return QueueToadlet.createProgressCell(progressContext, progressCounts);
       } else if (pluginProgress == ProgressState.DOWNLOADING)
         return new HTMLNode(
             "td", NodeL10n.getBase().getString("PproxyToadlet.startingPluginStatus.downloading"));
@@ -1964,7 +1967,7 @@ public class PluginManager {
      * Updates download progress counters for this plugin.
      *
      * <p>The supplied values are treated as raw counters whose exact unit is defined by the loader
-     * (for example bytes versus blocks). This method does not perform validation; callers should
+     * (for example, bytes versus blocks). This method does not perform validation; callers should
      * provide consistent values across calls.
      *
      * @param minSuccess minimum successful units required to treat the download as complete
@@ -2103,7 +2106,7 @@ public class PluginManager {
   }
 
   /**
-   * Unregisters a plugin from node subsystems during unload.
+   * Unregisters a plugin from node subsystems during unloading.
    *
    * <p>This removes plugin-provided toadlets, configuration pages, and auxiliary integrations (IP
    * detector and port forwarding hooks). When not reloading, it also stops the plugin updater for
@@ -2111,7 +2114,7 @@ public class PluginManager {
    *
    * @param wrapper wrapper describing the plugin capabilities and registered components
    * @param plug plugin instance being unloaded; used for type-specific unregister calls
-   * @param reloading whether this unload is part of a plugin reload operation
+   * @param reloading whether this unloading is part of a plugin reload operation
    */
   public void unregisterPlugin(PluginInfoWrapper wrapper, FredPlugin plug, boolean reloading) {
     unregisterPluginToadlet(wrapper);
@@ -2132,7 +2135,7 @@ public class PluginManager {
   /**
    * Returns whether the plugin system is enabled for this node.
    *
-   * <p>This value is read from configuration at construction time and does not change until the
+   * <p>This value is read from the configuration at construction time and does not change until the
    * node restarts.
    *
    * @return {@code true} if the plugin manager will load plugins, otherwise {@code false}

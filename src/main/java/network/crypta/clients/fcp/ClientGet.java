@@ -287,16 +287,17 @@ public class ClientGet extends ClientRequest {
       NodeClientCore core)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     super(
-        uri,
-        requestConfig.identifier(),
-        requestConfig.verbosity(),
+        new ClientRequestParams(
+            uri,
+            requestConfig.identifier(),
+            requestConfig.verbosity(),
+            requestConfig.prioClass(),
+            (requestConfig.persistRebootOnly() ? Persistence.REBOOT : Persistence.FOREVER),
+            requestConfig.realTimeFlag(),
+            null,
+            true),
         null,
-        globalClient,
-        requestConfig.prioClass(),
-        (requestConfig.persistRebootOnly() ? Persistence.REBOOT : Persistence.FOREVER),
-        requestConfig.realTimeFlag(),
-        null,
-        true);
+        globalClient);
 
     ensureGlobalIdentifierAvailable(globalClient, requestConfig.identifier());
     fctx = core.getClientContext().getDefaultPersistentFetchContext();
@@ -353,15 +354,16 @@ public class ClientGet extends ClientRequest {
   public ClientGet(FCPConnectionHandler handler, ClientGetMessage message, NodeClientCore core)
       throws IdentifierCollisionException, MessageInvalidException {
     super(
-        message.uri,
-        message.identifier,
-        message.verbosity,
-        handler,
-        message.priorityClass,
-        message.persistence,
-        message.realTimeFlag,
-        message.clientToken,
-        message.global);
+        new ClientRequestParams(
+            message.uri,
+            message.identifier,
+            message.verbosity,
+            message.priorityClass,
+            message.persistence,
+            message.realTimeFlag,
+            message.clientToken,
+            message.global),
+        handler);
     if (message.persistence == Persistence.CONNECTION) {
       ensureConnectionIdentifierAvailable(handler, message.identifier);
     }
