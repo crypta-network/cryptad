@@ -779,21 +779,25 @@ public class ClientGet extends ClientRequest {
   }
 
   private FCPMessage persistentTagMessage() {
-    return new PersistentGet(
-        identifier,
-        uri,
-        verbosity,
-        priorityClass,
-        returnType,
-        persistence,
-        targetFile,
-        clientToken,
-        client.isGlobalQueue,
-        started,
-        fctx.getMaxNonSplitfileRetries(),
-        binaryBlob,
-        fctx.getMaxOutputLength(),
-        isRealTime());
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            uri,
+            identifier,
+            verbosity,
+            priorityClass,
+            persistence,
+            isRealTime(),
+            clientToken,
+            client.isGlobalQueue);
+    PersistentGetDescriptor descriptor =
+        new PersistentGetDescriptor(
+            returnType,
+            targetFile,
+            started,
+            fctx.getMaxNonSplitfileRetries(),
+            binaryBlob,
+            fctx.getMaxOutputLength());
+    return new PersistentGet(requestParams, descriptor);
   }
 
   // Mirrors ClientPut/ClientPutDir to keep low-level scheduling flags accessible to subclasses.

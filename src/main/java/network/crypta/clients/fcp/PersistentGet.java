@@ -10,9 +10,9 @@ import network.crypta.support.SimpleFieldSet;
 /**
  * Represents the server-to-client {@code PersistentGet} FCP message that describes a tracked
  * retrieval request. The node emits this immutable container while answering persistent-request
- * listings so a client can reconcile local state with the node table. Fields mirror the arguments
- * supplied in a {@link ClientGet} command but flow back to the client to resume monitoring or
- * decide whether to cancel stalled work.
+ * listings so a client can reconcile the local state with the node table. Fields mirror the
+ * arguments supplied in a {@link ClientGet} command but flow back to the client to resume
+ * monitoring or decide whether to cancel stalled work.
  *
  * <p>Instances carry the request identifier, target {@link FreenetURI}, persistence setting, return
  * policy, disk target, size bounds, retry budget, binary flag, and state flags such as {@code
@@ -54,60 +54,35 @@ public class PersistentGet extends FCPMessage {
    * be safely shared across threads that only read request metadata.
    *
    * <pre>{@code
-   * PersistentGet msg = new PersistentGet(
-   *     "req-1", uri, 1, priority, ReturnType.DISK, Persistence.PERMANENT,
-   *     file, "token", true, true, 5, false, 1_000_000L, false);
+   * ClientRequestParams requestParams =
+   *     new ClientRequestParams(uri, "req-1", 1, priority, persistence, false, "token", true);
+   * PersistentGetDescriptor descriptor =
+   *     new PersistentGetDescriptor(ReturnType.DISK, file, true, 5, false, 1_000_000L);
+   * PersistentGet msg = new PersistentGet(requestParams, descriptor);
    * SimpleFieldSet fs = msg.getFieldSet();
    * }</pre>
    *
-   * @param identifier unique message identifier that correlates responses for the requesting client
-   *     session; must not be empty.
-   * @param uri target {@link FreenetURI} being fetched; required and validated for non-null.
-   * @param verbosity verbosity hint used by the client to tune progress or log detail levels.
-   * @param priorityClass priority class applied by the scheduler; lower values typically win
-   *     earlier timeslices.
-   * @param returnType desired content delivery mode; may be memory or {@link ReturnType#DISK}.
-   * @param persistence persistence level indicating lifetime across restarts or session ends.
-   * @param targetFile absolute file path for {@link ReturnType#DISK} deliveries; ignored otherwise.
-   * @param clientToken optional opaque token used by clients to correlate application-level state.
-   * @param global whether the request is visible to other client connections sharing the node.
-   * @param started whether the request has already been scheduled or begun transferring data.
-   * @param maxRetries maximum automatic retries allowed before the node abandons the request.
-   * @param binaryBlob true when binary data handling is requested instead of decoded metadata.
-   * @param maxSize upper bound in bytes for the payload the client is willing to accept.
-   * @param realTime whether the request participates in real-time prioritization queues.
+   * @param requestParams shared request metadata describing identifiers, scheduling, and
+   *     visibility.
+   * @param descriptor persistent get-specific data such as return handling and retry limits.
    */
-  public PersistentGet(
-      String identifier,
-      FreenetURI uri,
-      int verbosity,
-      short priorityClass,
-      ReturnType returnType,
-      Persistence persistence,
-      File targetFile,
-      String clientToken,
-      boolean global,
-      boolean started,
-      int maxRetries,
-      boolean binaryBlob,
-      long maxSize,
-      boolean realTime) {
-    this.messageIdentifier = identifier;
-    this.uri = uri;
-    // This has been seen in practice (bug #3606), lets try to get an earlier stack trace...
+  public PersistentGet(ClientRequestParams requestParams, PersistentGetDescriptor descriptor) {
+    this.messageIdentifier = requestParams.identifier();
+    this.uri = requestParams.uri();
+    // This has been seen in practice (bug #3606), let's try to get an earlier stack trace...
     if (uri == null) throw new NullPointerException();
-    this.verbosity = verbosity;
-    this.priorityClass = priorityClass;
-    this.returnType = returnType;
-    this.persistence = persistence;
-    this.targetFile = targetFile;
-    this.clientToken = clientToken;
-    this.global = global;
-    this.started = started;
-    this.maxRetries = maxRetries;
-    this.binaryBlob = binaryBlob;
-    this.maxSize = maxSize;
-    this.realTime = realTime;
+    this.verbosity = requestParams.verbosity();
+    this.priorityClass = requestParams.priorityClass();
+    this.returnType = descriptor.returnType();
+    this.persistence = requestParams.persistence();
+    this.targetFile = descriptor.targetFile();
+    this.clientToken = requestParams.clientToken();
+    this.global = requestParams.global();
+    this.started = descriptor.started();
+    this.maxRetries = descriptor.maxRetries();
+    this.binaryBlob = descriptor.binaryBlob();
+    this.maxSize = descriptor.maxSize();
+    this.realTime = requestParams.realTime();
   }
 
   /**
@@ -162,7 +137,7 @@ public class PersistentGet extends FCPMessage {
    * intended only for server-to-client flow. If a client tries to submit it, the connection handler
    * throws a {@link MessageInvalidException} explaining the directionality violation, preventing
    * accidental misuse from bypassing validation or clogging the scheduler. The error uses the
-   * original identifier and global flag so the client can map the failure to its request context.
+   * original identifier and global flag, so the client can map the failure to its request context.
    *
    * @param handler connection handler that attempted to process the message; not used beyond error
    *     reporting.

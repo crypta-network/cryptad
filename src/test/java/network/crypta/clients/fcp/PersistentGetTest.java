@@ -34,46 +34,25 @@ class PersistentGetTest {
   void constructor_whenUriIsNull_throwsNullPointerException(@TempDir Path tempDir) {
     File targetFile = tempDir.resolve("target.bin").toFile();
 
-    assertThrows(
-        NullPointerException.class,
-        () ->
-            new PersistentGet(
-                IDENTIFIER,
-                null,
-                1,
-                (short) 2,
-                ReturnType.DIRECT,
-                Persistence.CONNECTION,
-                targetFile,
-                "token",
-                false,
-                true,
-                3,
-                false,
-                1024L,
-                false));
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            null, IDENTIFIER, 1, (short) 2, Persistence.CONNECTION, false, "token", false);
+    PersistentGetDescriptor descriptor =
+        new PersistentGetDescriptor(ReturnType.DIRECT, targetFile, true, 3, false, 1024L);
+
+    assertThrows(NullPointerException.class, () -> new PersistentGet(requestParams, descriptor));
   }
 
   @Test
   void getFieldSet_whenReturnTypeDisk_populatesAllExpectedFields(@TempDir Path tempDir) {
     FreenetURI uri = new FreenetURI("KSK", "file");
     File targetFile = tempDir.resolve("disk-output.bin").toFile();
-    PersistentGet persistentGet =
-        new PersistentGet(
-            IDENTIFIER,
-            uri,
-            5,
-            (short) 3,
-            ReturnType.DISK,
-            Persistence.FOREVER,
-            targetFile,
-            "client-token",
-            true,
-            true,
-            7,
-            true,
-            4096L,
-            true);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            uri, IDENTIFIER, 5, (short) 3, Persistence.FOREVER, true, "client-token", true);
+    PersistentGetDescriptor descriptor =
+        new PersistentGetDescriptor(ReturnType.DISK, targetFile, true, 7, true, 4096L);
+    PersistentGet persistentGet = new PersistentGet(requestParams, descriptor);
 
     SimpleFieldSet fieldSet = persistentGet.getFieldSet();
 
@@ -96,22 +75,12 @@ class PersistentGetTest {
   @Test
   void getFieldSet_whenReturnTypeNotDisk_omitsFilenameAndClientToken() {
     FreenetURI uri = new FreenetURI("KSK", "nodisk");
-    PersistentGet persistentGet =
-        new PersistentGet(
-            IDENTIFIER,
-            uri,
-            2,
-            (short) 1,
-            ReturnType.DIRECT,
-            Persistence.REBOOT,
-            null,
-            null,
-            false,
-            false,
-            0,
-            false,
-            0L,
-            false);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            uri, IDENTIFIER, 2, (short) 1, Persistence.REBOOT, false, null, false);
+    PersistentGetDescriptor descriptor =
+        new PersistentGetDescriptor(ReturnType.DIRECT, null, false, 0, false, 0L);
+    PersistentGet persistentGet = new PersistentGet(requestParams, descriptor);
 
     SimpleFieldSet fieldSet = persistentGet.getFieldSet();
 
@@ -127,22 +96,12 @@ class PersistentGetTest {
   @Test
   void run_whenInvoked_throwsMessageInvalidExceptionWithProtocolDetails() {
     FreenetURI uri = new FreenetURI("KSK", "run");
-    PersistentGet persistentGet =
-        new PersistentGet(
-            IDENTIFIER,
-            uri,
-            1,
-            (short) 1,
-            ReturnType.NONE,
-            Persistence.CONNECTION,
-            null,
-            "token",
-            true,
-            false,
-            1,
-            false,
-            10L,
-            false);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            uri, IDENTIFIER, 1, (short) 1, Persistence.CONNECTION, false, "token", true);
+    PersistentGetDescriptor descriptor =
+        new PersistentGetDescriptor(ReturnType.NONE, null, false, 1, false, 10L);
+    PersistentGet persistentGet = new PersistentGet(requestParams, descriptor);
 
     MessageInvalidException exception =
         assertThrows(MessageInvalidException.class, () -> persistentGet.run(handler, node));
