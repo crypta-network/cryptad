@@ -1243,10 +1243,8 @@ public class FCPServer implements Runnable, DownloadCache {
       boolean realTimeFlag)
       throws IdentifierCollisionException, NotAllowedException, IOException {
     FetchContext defaultFetchContext = core.getClientContext().getDefaultPersistentFetchContext();
-    final ClientGet cg =
-        new ClientGet(
-            persistRebootOnly ? globalRebootClient : globalForeverClient,
-            fetchURI,
+    ClientGet.GlobalRequestConfig requestConfig =
+        new ClientGet.GlobalRequestConfig(
             defaultFetchContext.getLocalRequestOnly(),
             defaultFetchContext.getIgnoreStore(),
             filterData,
@@ -1262,7 +1260,12 @@ public class FCPServer implements Runnable, DownloadCache {
             null,
             false,
             realTimeFlag,
-            false,
+            false);
+    final ClientGet cg =
+        new ClientGet(
+            persistRebootOnly ? globalRebootClient : globalForeverClient,
+            fetchURI,
+            requestConfig,
             core);
     cg.register(false);
     cg.start(core.getClientContext());
