@@ -748,28 +748,25 @@ public class ClientPutDir extends ClientPutBase {
       totalFinalized = msg.isTotalFinalized();
     }
 
-    return new UploadDirRequestStatus(
-        identifier,
-        persistence,
-        started,
-        finished,
-        succeeded,
-        total,
-        min,
-        fetched,
-        latestSuccess,
-        fatal,
-        failed,
-        latestFailure,
-        totalFinalized,
-        priorityClass,
-        finalURI,
-        uri,
-        failureCode,
-        failureReasonShort,
-        null,
-        totalSize,
-        numberOfFiles);
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            identifier,
+            persistence,
+            started,
+            finished,
+            succeeded,
+            total,
+            min,
+            fetched,
+            latestSuccess,
+            fatal,
+            failed,
+            latestFailure,
+            totalFinalized,
+            priorityClass);
+    UploadRequestStatusDetails details =
+        new UploadRequestStatusDetails(finalURI, uri, failureCode, failureReasonShort, null);
+    return new UploadDirRequestStatus(statusSnapshot, details, totalSize, numberOfFiles);
   }
 
   /**

@@ -1,10 +1,5 @@
 package network.crypta.clients.fcp;
 
-import java.util.Date;
-import network.crypta.client.InsertException.InsertExceptionMode;
-import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.keys.FreenetURI;
-
 /**
  * Captures the evolving status of a site or directory upload handled through the FCP layer.
  *
@@ -47,91 +42,19 @@ public class UploadDirRequestStatus extends UploadRequestStatus {
    * cache.put(status.getIdentifier(), status);
    * }</pre>
    *
-   * @param identifier unique string used to correlate request updates across the FCP layer; must
-   *     remain stable for the lifetime of the upload.
-   * @param persistence persistence mode describing whether the upload survives disconnections or
-   *     restarts; see {@link ClientRequest.Persistence} for the allowed values.
-   * @param started {@code true} when the underlying splitter already began transferring data;
-   *     otherwise {@code false} so new listeners know the request is dormant.
-   * @param finished flag indicating whether the upload is already in a terminal state at the moment
-   *     this status object is created.
-   * @param success outcome marker that is meaningful only when {@code finished} is {@code true}; it
-   *     reports whether the insert succeeded without fatal errors.
-   * @param total number of blocks currently known for the insert, typically the splitfile total or
-   *     an estimated upper bound.
-   * @param min minimum block count needed before the request can be considered complete even if the
-   *     total grows later.
-   * @param fetched number of blocks that have been successfully inserted so far; used for progress
-   *     ratios and ETA calculations.
-   * @param latestSuccess timestamp of the most recent successful block or finalization event; may
-   *     be {@code null} if nothing has succeeded yet.
-   * @param fatal number of blocks that permanently failed and will not be retried any further.
-   * @param failed number of retryable blocks that have failed so far but could still succeed on the
-   *     next attempt.
-   * @param latestFailure timestamp of the most recent failure notification; {@code null} when no
-   *     failures have occurred.
-   * @param totalFinalized {@code true} when {@code total} is final and additional blocks will not
-   *     be discovered by the splitter.
-   * @param prio scheduler priority controlling how the request competes for bandwidth relative to
-   *     other uploads.
-   * @param finalURI published {@link FreenetURI} when the upload already committed; may be {@code
-   *     null} until completion.
-   * @param targetURI desired {@link FreenetURI} originally requested by the client; usually
-   *     non-null even before the final URI exists.
-   * @param failureCode machine-readable failure classification explaining why the last attempt
-   *     failed; can be {@code null} when no error occurred.
-   * @param failureReasonShort concise failure description suitable for tables or notifications;
-   *     {@code null} when no failure is known.
-   * @param failureReasonLong long-form failure explanation for logs, REST responses, or verbose
-   *     status pages.
+   * @param statusSnapshot base request counters and timestamps.
+   * @param details upload-specific URI and failure metadata.
    * @param size aggregate payload size of the directory in bytes; callers may pass zero to indicate
    *     an empty manifest or unknown size.
    * @param files total number of files scheduled for insertion at this time; may be zero for
    *     metadata-only structures.
    */
   public UploadDirRequestStatus(
-      String identifier,
-      Persistence persistence,
-      boolean started,
-      boolean finished,
-      boolean success,
-      int total,
-      int min,
-      int fetched,
-      Date latestSuccess,
-      int fatal,
-      int failed,
-      Date latestFailure,
-      boolean totalFinalized,
-      short prio,
-      FreenetURI finalURI,
-      FreenetURI targetURI,
-      InsertExceptionMode failureCode,
-      String failureReasonShort,
-      String failureReasonLong,
-      // all of the above are passed to parent
+      RequestStatusSnapshot statusSnapshot,
+      UploadRequestStatusDetails details,
       long size,
       int files) {
-    super(
-        identifier,
-        persistence,
-        started,
-        finished,
-        success,
-        total,
-        min,
-        fetched,
-        latestSuccess,
-        fatal,
-        failed,
-        latestFailure,
-        totalFinalized,
-        prio,
-        finalURI,
-        targetURI,
-        failureCode,
-        failureReasonShort,
-        failureReasonLong);
+    super(statusSnapshot, details);
     this.totalDataSize = size;
     this.totalFiles = files;
   }

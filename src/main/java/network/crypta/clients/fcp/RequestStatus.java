@@ -142,6 +142,32 @@ public abstract class RequestStatus {
   }
 
   /**
+   * Creates a status instance using a preassembled snapshot of request counters.
+   *
+   * <p>The snapshot fields are copied verbatim, and mutable timestamps are cloned in the same way
+   * as the primary constructor.
+   *
+   * @param snapshot bundle containing the base request status fields.
+   */
+  RequestStatus(RequestStatusSnapshot snapshot) {
+    this(
+        snapshot.identifier(),
+        snapshot.persistence(),
+        snapshot.started(),
+        snapshot.finished(),
+        snapshot.success(),
+        snapshot.total(),
+        snapshot.min(),
+        snapshot.fetched(),
+        snapshot.latestSuccess(),
+        snapshot.fatal(),
+        snapshot.failed(),
+        snapshot.latestFailure(),
+        snapshot.totalFinalized(),
+        snapshot.priority());
+  }
+
+  /**
    * Builds a defensive copy of another status instance so subclasses can expose snapshots.
    *
    * <p>The constructor copies every scalar, clones mutable timestamps, and intentionally omits any

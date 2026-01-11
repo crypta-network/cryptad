@@ -93,27 +93,25 @@ class UploadDirRequestStatusTest {
       String failureReasonLong,
       long totalSize,
       int files) {
-    return new UploadDirRequestStatus(
-        "identifier",
-        Persistence.REBOOT,
-        true,
-        false,
-        false,
-        20,
-        10,
-        5,
-        SUCCESS_DATE,
-        1,
-        2,
-        FAILURE_DATE,
-        true,
-        (short) 5,
-        finalUri,
-        targetUri,
-        failureCode,
-        failureReasonShort,
-        failureReasonLong,
-        totalSize,
-        files);
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            "identifier",
+            Persistence.REBOOT,
+            true,
+            false,
+            false,
+            20,
+            10,
+            5,
+            SUCCESS_DATE,
+            1,
+            2,
+            FAILURE_DATE,
+            true,
+            (short) 5);
+    UploadRequestStatusDetails details =
+        new UploadRequestStatusDetails(
+            finalUri, targetUri, failureCode, failureReasonShort, failureReasonLong);
+    return new UploadDirRequestStatus(statusSnapshot, details, totalSize, files);
   }
 }

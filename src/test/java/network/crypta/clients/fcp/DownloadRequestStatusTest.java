@@ -111,13 +111,14 @@ class DownloadRequestStatusTest {
 
     status.setFinished(
         true,
-        2048L,
-        "image/png",
-        FetchExceptionMode.CONTENT_HASH_FAILED,
-        "new long",
-        "new short",
-        completedBucket,
-        true);
+        new DownloadOutcomeInfo(
+            2048L,
+            "image/png",
+            FetchExceptionMode.CONTENT_HASH_FAILED,
+            "new short",
+            "new long",
+            completedBucket,
+            true));
 
     assertTrue(status.hasFinished());
     assertTrue(status.hasSucceeded());
@@ -205,33 +206,40 @@ class DownloadRequestStatusTest {
 
   private static DownloadRequestStatus buildStatus(
       File destination, FreenetURI uri, boolean dontCompress, Bucket dataShadow) {
-    return new DownloadRequestStatus(
-        IDENTIFIER,
-        Persistence.CONNECTION,
-        true,
-        false,
-        false,
-        10,
-        5,
-        3,
-        new Date(0L),
-        0,
-        0,
-        null,
-        true,
-        PRIORITY,
-        FetchExceptionMode.DATA_NOT_FOUND,
-        "text/plain",
-        1024L,
-        destination,
-        COMPAT_SAMPLE.clone(),
-        SPLITFILE_KEY.clone(),
-        uri,
-        "Short reason",
-        "Detailed long reason",
-        false,
-        dataShadow,
-        false,
-        dontCompress);
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            IDENTIFIER,
+            Persistence.CONNECTION,
+            true,
+            false,
+            false,
+            10,
+            5,
+            3,
+            new Date(0L),
+            0,
+            0,
+            null,
+            true,
+            PRIORITY);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(
+            1024L,
+            "text/plain",
+            FetchExceptionMode.DATA_NOT_FOUND,
+            "Short reason",
+            "Detailed long reason",
+            dataShadow,
+            false);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(
+            outcome,
+            destination,
+            COMPAT_SAMPLE.clone(),
+            SPLITFILE_KEY.clone(),
+            uri,
+            false,
+            dontCompress);
+    return new DownloadRequestStatus(statusSnapshot, details);
   }
 }
