@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.util.EnumSet;
 import network.crypta.config.Config;
 import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
@@ -64,8 +65,8 @@ public class ModifyConfig extends FCPMessage {
    *
    * <p>This message type is purely request-oriented: clients send option overrides and expect a
    * {@link ConfigData} reply rather than a chained payload. Returning a fresh, empty structure
-   * maintains symmetry with other message classes while signalling to callers that no additional
-   * fields need to be serialized. The field set remains mutable so downstream code can augment it
+   * maintains symmetry with other message classes while signaling to callers that no additional
+   * fields need to be serialized. The field set remains mutable, so downstream code can augment it
    * if protocol extensions are introduced.
    *
    * @return new {@link SimpleFieldSet} instance with {@code true} indicating case-insensitive key
@@ -111,7 +112,7 @@ public class ModifyConfig extends FCPMessage {
    *     must not be {@code null} and should support full access for this message.
    * @param node target node whose configuration is adjusted; expected to be initialized and ready
    *     for persistence operations.
-   * @throws MessageInvalidException if the connection lacks full access or the message is not
+   * @throws MessageInvalidException if the connection lacks full access, or the message is not
    *     permitted in the current context.
    */
   @Override
@@ -132,16 +133,14 @@ public class ModifyConfig extends FCPMessage {
       }
     }
     node.services().clientCore().storeConfig();
-    handler.send(
-        new ConfigData(
-            node, true, false, false, false, false, false, false, false, requestIdentifier));
+    handler.send(new ConfigData(node, EnumSet.of(ConfigData.Section.CURRENT), requestIdentifier));
   }
 
   /**
    * Updates a single option when the incoming field set provides a new value.
    *
    * <p>Only different values are applied; unchanged entries are skipped to avoid unnecessary work
-   * and log noise. Invalid values are reported via the logger but do not interrupt processing so
+   * and log noise. Invalid values are reported via the logger but do not interrupt processing, so
    * the remaining options can still be evaluated.
    */
   private void updateOption(String prefix, Option<?> option) {
