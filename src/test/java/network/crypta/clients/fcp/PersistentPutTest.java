@@ -34,30 +34,22 @@ class PersistentPutTest {
     File originalFile = tempDir.resolve("upload.bin").toFile();
     byte[] cryptoKey = new byte[] {0x01, 0x02, 0x0A, (byte) 0xFF};
 
-    PersistentPut put =
-        new PersistentPut(
-            "id-123",
-            publicUri,
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            publicUri, "id-123", 2, (short) 5, Persistence.FOREVER, true, "token-abc", true);
+    ClientPutUpload upload =
+        new ClientPutUpload(
+            UploadFrom.DIRECT, originalFile, "text/plain", null, targetUri, "target.dat", true);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
             privateUri,
-            2,
-            (short) 5,
-            UploadFrom.DIRECT,
-            targetUri,
-            Persistence.FOREVER,
-            originalFile,
-            "text/plain",
-            true,
-            1024L,
-            "token-abc",
             true,
             3,
-            "target.dat",
-            true,
             InsertContext.CompatibilityMode.COMPAT_1468,
             true,
             "lzma",
-            true,
             cryptoKey);
+    PersistentPut put = new PersistentPut(requestParams, upload, metadata, 1024L);
 
     SimpleFieldSet fs = put.getFieldSet();
 
@@ -119,30 +111,22 @@ class PersistentPutTest {
 
   @Test
   void getName_alwaysReturnsConstant() {
-    PersistentPut put =
-        new PersistentPut(
-            "id-name",
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
             new FreenetURI("KSK", "name"),
-            null,
+            "id-name",
             1,
             (short) 1,
-            UploadFrom.DIRECT,
-            null,
             Persistence.REBOOT,
-            null,
-            null,
-            false,
-            -1,
-            null,
-            false,
-            0,
-            null,
-            false,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT,
             false,
             null,
-            false,
-            null);
+            false);
+    ClientPutUpload upload =
+        new ClientPutUpload(UploadFrom.DIRECT, null, null, null, null, null, false);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
+    PersistentPut put = new PersistentPut(requestParams, upload, metadata, -1);
 
     assertEquals("PersistentPut", put.getName());
   }
@@ -175,28 +159,13 @@ class PersistentPutTest {
       Persistence persistence,
       boolean global,
       UploadFrom uploadFrom) {
-    return new PersistentPut(
-        identifier,
-        publicUri,
-        null,
-        0,
-        (short) 0,
-        uploadFrom,
-        null,
-        persistence,
-        null,
-        null,
-        global,
-        -1,
-        null,
-        false,
-        0,
-        null,
-        false,
-        InsertContext.CompatibilityMode.COMPAT_UNKNOWN,
-        false,
-        null,
-        false,
-        null);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            publicUri, identifier, 0, (short) 0, persistence, false, null, global);
+    ClientPutUpload upload = new ClientPutUpload(uploadFrom, null, null, null, null, null, false);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            null, false, 0, InsertContext.CompatibilityMode.COMPAT_UNKNOWN, false, null, null);
+    return new PersistentPut(requestParams, upload, metadata, -1);
   }
 }

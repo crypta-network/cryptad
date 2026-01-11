@@ -526,25 +526,26 @@ public class ClientPutDir extends ClientPutBase {
     if (putter == null) LOG.warn("putter == null");
     HashMap<String, Object> manifestSnapshot =
         manifestElements != null ? new HashMap<>(manifestElements) : null;
-    return new PersistentPutDir(
-        identifier,
-        publicURI,
-        uri,
-        verbosity,
-        priorityClass,
-        persistence,
-        global,
-        defaultName,
-        manifestSnapshot,
-        clientToken,
-        started,
-        ctx.getMaxInsertRetries(),
-        ctx.isDontCompress(),
-        ctx.getCompressorDescriptor(),
-        wasDiskPut,
-        isRealTime(),
-        putter != null ? putter.getSplitfileCryptoKey() : null,
-        this.ctx.getCompatibilityMode());
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            publicURI,
+            identifier,
+            verbosity,
+            priorityClass,
+            persistence,
+            isRealTime(),
+            clientToken,
+            global);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            uri,
+            started,
+            ctx.getMaxInsertRetries(),
+            this.ctx.getCompatibilityMode(),
+            ctx.isDontCompress(),
+            ctx.getCompressorDescriptor(),
+            putter != null ? putter.getSplitfileCryptoKey() : null);
+    return new PersistentPutDir(requestParams, metadata, defaultName, manifestSnapshot, wasDiskPut);
   }
 
   private boolean isRealTime() {

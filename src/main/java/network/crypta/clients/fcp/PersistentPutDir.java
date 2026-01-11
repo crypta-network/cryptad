@@ -29,13 +29,13 @@ import org.slf4j.LoggerFactory;
  * that the server sends back to clients. The instance is immutable after construction; all data is
  * pre-flattened into a {@link SimpleFieldSet} so callers can transmit the message repeatedly
  * without re-walking the manifest tree. Use this class when the node needs to mirror a client's
- * persistent directory insertion, for example during reconnects or resumptions where the node must
- * restate the pending request.
+ * persistent directory insertion, for example, during reconnections or resumptions where the node
+ * must restate the pending request.
  *
  * <p>Concurrency: the object contains only final fields and is thread-safe for read-only access.
  * Large manifests are supported by avoiding eager string copies where possible; however, the
- * resulting field set can still be sizeable, so callers should reuse instances rather than building
- * them per send. The class does not perform I/O beyond inspecting the supplied buckets.
+ * resulting field set can still be sizable, so callers should reuse instances rather than building
+ * them per sending. The class does not perform I/O beyond inspecting the supplied buckets.
  *
  * <ul>
  *   <li><strong>Responsibilities:</strong> normalize manifest elements, emit stable message fields,
@@ -78,80 +78,39 @@ public class PersistentPutDir extends FCPMessage {
    * set so repeated invocations of {@link #getFieldSet()} are cheap. Callers should pass the URIs
    * exactly as issued by the node; no additional validation or escaping is performed here.
    *
-   * @param clientIdentifier unique identifier that ties the message to the originating client
-   *     session; may be any non-null token the client previously registered.
-   * @param publicURI public {@link FreenetURI} that names the target insert; used when announcing
-   *     the put to peers and to reconstruct state after restarts.
-   * @param privateURI optional private {@link FreenetURI} that enables resume or cancellation for
-   *     the same request; may be {@code null} when none was issued.
-   * @param verbosity server verbosity level requested by the client; higher values surface more
-   *     progress updates and diagnostics through FCP callbacks.
-   * @param priorityClass priority band for queueing; lower numbers generally represent faster
-   *     scheduling according to node policy.
-   * @param persistence persistence scope chosen by the client; defines whether the request survives
-   *     restarts or disconnects and maps directly to {@link Persistence} values.
-   * @param global whether the request is globally scoped across the node; {@code true} keeps it
-   *     active even if the originating client disconnects.
-   * @param defaultName default filename applied to manifest entries lacking an explicit name; also
-   *     used by UI layers when constructing links.
+   * @param requestParams core request identifiers, scheduling flags, and persistence settings
+   * @param metadata shared persistent insert metadata such as retries and compression flags
+   * @param defaultName the default filename applied to manifest entries lacking an explicit name;
+   *     also used by UI layers when constructing links.
    * @param manifestElements flattened or hierarchical manifest elements supplied by the client; any
    *     redirect entries must include a target URI while file entries must carry data buckets.
-   * @param token optional opaque token returned in progress callbacks; callers can use it to
-   *     correlate asynchronous updates without inspecting request identifiers.
-   * @param started whether the node should treat the request as already started, typically used
-   *     during resume flows to avoid requeuing work that was previously underway.
-   * @param maxRetries maximum retry attempts the node should perform for transient failures; zero
-   *     disables retries while positive values cap retry loops.
-   * @param dontCompress flag indicating the client disabled compression for the insert; honored as
-   *     a hint when constructing splitfiles.
-   * @param compressorDescriptor optional compressor descriptor string when compression is allowed;
-   *     may be {@code null} to use node defaults.
    * @param wasDiskPut whether the original request streamed from disk; affects how the node
    *     represents the upload source within the field set.
-   * @param realTime whether the insert participates in real-time scheduling, prioritizing latency
-   *     over throughput while consuming more bandwidth headroom.
-   * @param splitfileCryptoKey optional raw splitfile encryption key bytes; when provided, they are
-   *     hex-encoded into the outgoing message for client consumption.
-   * @param cmode compatibility mode derived from {@link InsertContext}; governs how manifests are
-   *     serialized for different protocol expectations.
    */
   public PersistentPutDir(
-      String clientIdentifier,
-      FreenetURI publicURI,
-      FreenetURI privateURI,
-      int verbosity,
-      short priorityClass,
-      Persistence persistence,
-      boolean global,
+      ClientRequestParams requestParams,
+      PersistentPutRequestMetadata metadata,
       String defaultName,
       Map<String, Object> manifestElements,
-      String token,
-      boolean started,
-      int maxRetries,
-      boolean dontCompress,
-      String compressorDescriptor,
-      boolean wasDiskPut,
-      boolean realTime,
-      byte[] splitfileCryptoKey,
-      InsertContext.CompatibilityMode cmode) {
-    this.clientIdentifier = clientIdentifier;
-    this.uri = publicURI;
-    this.privateURI = privateURI;
-    this.verbosity = verbosity;
-    this.priorityClass = priorityClass;
-    this.persistence = persistence;
-    this.global = global;
+      boolean wasDiskPut) {
+    this.clientIdentifier = requestParams.identifier();
+    this.uri = requestParams.uri();
+    this.privateURI = metadata.privateURI();
+    this.verbosity = requestParams.verbosity();
+    this.priorityClass = requestParams.priorityClass();
+    this.persistence = requestParams.persistence();
+    this.global = requestParams.global();
     this.defaultName = defaultName;
     this.manifestElements = manifestElements;
-    this.token = token;
-    this.started = started;
-    this.maxRetries = maxRetries;
+    this.token = requestParams.clientToken();
+    this.started = metadata.started();
+    this.maxRetries = metadata.maxRetries();
     this.wasDiskPut = wasDiskPut;
-    this.dontCompress = dontCompress;
-    this.compressorDescriptor = compressorDescriptor;
-    this.realTime = realTime;
-    this.splitfileCryptoKey = splitfileCryptoKey;
-    this.compatMode = cmode;
+    this.dontCompress = metadata.dontCompress();
+    this.compressorDescriptor = metadata.compressorDescriptor();
+    this.realTime = requestParams.realTime();
+    this.splitfileCryptoKey = metadata.splitfileCryptoKey();
+    this.compatMode = metadata.compatMode();
     cached = generateFieldSet();
   }
 
@@ -264,7 +223,7 @@ public class PersistentPutDir extends FCPMessage {
    * <p>The returned {@link SimpleFieldSet} is built once during construction and reused; callers
    * must not mutate it. The structure contains a flattened manifest, upload sources, and all
    * optional control flags so it can be sent directly over FCP. Because the field set is cached, it
-   * is safe to reuse this instance across reconnects or retransmissions without re-walking the
+   * is safe to reuse this instance across reconnections or retransmissions without re-walking the
    * manifest. The object is read-only after construction, making it suitable for sharing across
    * threads that only need to serialize the data.
    *

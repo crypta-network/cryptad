@@ -22,7 +22,7 @@ import network.crypta.support.SimpleFieldSet;
  *
  * <ul>
  *   <li>Report the state of an insert back to an FCP client.
- *   <li>Preserve the identifiers and upload source used during request creation.
+ *   <li>Preserve the identifiers and upload the source used during request creation.
  *   <li>Emit metadata such as MIME type, compression codecs, and crypto keys alongside persistence
  *       settings.
  * </ul>
@@ -68,74 +68,38 @@ public class PersistentPut extends FCPMessage {
    * serializes the message. The splitfile crypto key and compatibility mode are stored verbatim so
    * downstream components can honor the client's encryption and codec expectations.
    *
-   * @param identifier unique request token echoed back to clients when listing
-   * @param publicURI public insert URI associated with the persistent request
-   * @param privateURI optional private insert URI used for future control
-   * @param verbosity numeric verbosity flag requested by the originating client
-   * @param priorityClass scheduler priority assigned to the insert operation
-   * @param uploadFrom source indicating how the payload is supplied to FCP
-   * @param targetURI optional destination URI when the insert is redirected
-   * @param persistence desired persistence policy for the underlying request
-   * @param origFilename local file backing the upload when present on disk
-   * @param mimeType declared MIME type to include in metadata, if available
-   * @param global whether the request was marked global across client sessions
+   * @param requestParams core request identifiers, scheduling flags, and persistence settings
+   * @param upload upload metadata describing the payload source and MIME hints
+   * @param metadata shared persistent insert metadata such as retry and compression flags
    * @param size content length in bytes, or {@code -1} when unspecified
-   * @param clientToken opaque client-provided token preserved in responses
-   * @param started whether the insert has already begun processing
-   * @param maxRetries maximum retry attempts configured for this insert
-   * @param targetFilename preferred filename for on-disk storage when provided
-   * @param binaryBlob whether the payload should bypass metadata processing
-   * @param compatMode insert compatibility mode requested by the client
-   * @param dontCompress indicates compression avoidance despite default behavior
-   * @param compressorDescriptor explicit codec pipeline description, if supplied
-   * @param realTime whether the request should be treated with real-time bias
-   * @param splitfileCryptoKey encryption key for splitfile segments, if known
    */
   public PersistentPut(
-      String identifier,
-      FreenetURI publicURI,
-      FreenetURI privateURI,
-      int verbosity,
-      short priorityClass,
-      UploadFrom uploadFrom,
-      FreenetURI targetURI,
-      Persistence persistence,
-      File origFilename,
-      String mimeType,
-      boolean global,
-      long size,
-      String clientToken,
-      boolean started,
-      int maxRetries,
-      String targetFilename,
-      boolean binaryBlob,
-      InsertContext.CompatibilityMode compatMode,
-      boolean dontCompress,
-      String compressorDescriptor,
-      boolean realTime,
-      byte[] splitfileCryptoKey) {
-    this.requestIdentifier = identifier;
-    this.uri = publicURI;
-    this.privateURI = privateURI;
-    this.verbosity = verbosity;
-    this.priorityClass = priorityClass;
-    this.uploadFrom = uploadFrom;
-    this.targetURI = targetURI;
-    this.persistence = persistence;
-    this.origFilename = origFilename;
-    this.mimeType = mimeType;
-    this.global = global;
+      ClientRequestParams requestParams,
+      ClientPutUpload upload,
+      PersistentPutRequestMetadata metadata,
+      long size) {
+    this.requestIdentifier = requestParams.identifier();
+    this.uri = requestParams.uri();
+    this.privateURI = metadata.privateURI();
+    this.verbosity = requestParams.verbosity();
+    this.priorityClass = requestParams.priorityClass();
+    this.uploadFrom = upload.uploadFromType();
+    this.targetURI = upload.redirectTarget();
+    this.persistence = requestParams.persistence();
+    this.origFilename = upload.origFilename();
+    this.mimeType = upload.contentType();
+    this.global = requestParams.global();
     this.size = size;
-    this.token = clientToken;
-    this.started = started;
-    this.maxRetries = maxRetries;
-    this.targetFilename = targetFilename;
-    this.binaryBlob = binaryBlob;
-    this.compatMode = compatMode;
-    this.dontCompress = dontCompress;
-    this.compressorDescriptor = compressorDescriptor;
-    this.realTime = realTime;
-    this.splitfileCryptoKey = splitfileCryptoKey;
+    this.token = requestParams.clientToken();
+    this.started = metadata.started();
+    this.maxRetries = metadata.maxRetries();
+    this.targetFilename = upload.targetFilename();
+    this.binaryBlob = upload.binaryBlob();
+    this.compatMode = metadata.compatMode();
+    this.dontCompress = metadata.dontCompress();
+    this.compressorDescriptor = metadata.compressorDescriptor();
+    this.realTime = requestParams.realTime();
+    this.splitfileCryptoKey = metadata.splitfileCryptoKey();
   }
 
   /**

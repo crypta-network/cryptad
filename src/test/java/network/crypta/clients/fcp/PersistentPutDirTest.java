@@ -204,73 +204,78 @@ class PersistentPutDirTest {
 
   private SimpleFieldSet buildFullFieldSet(
       Map<String, Object> manifest, FreenetURI publicUri, FreenetURI privateUri, byte[] cryptoKey) {
-    PersistentPutDir message =
-        new PersistentPutDir(
-            "id-123",
-            publicUri,
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            publicUri, "id-123", 2, (short) 3, Persistence.FOREVER, true, "client-token", true);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
             privateUri,
-            2,
-            (short) 3,
-            Persistence.FOREVER,
-            true,
-            "index.html",
-            new LinkedHashMap<>(manifest),
-            "client-token",
             true,
             5,
+            InsertContext.CompatibilityMode.COMPAT_1468,
             true,
             "gzip",
-            true,
-            true,
-            cryptoKey,
-            InsertContext.CompatibilityMode.COMPAT_1468);
+            cryptoKey);
+    PersistentPutDir message =
+        new PersistentPutDir(
+            requestParams, metadata, "index.html", new LinkedHashMap<>(manifest), true);
     return message.getFieldSet();
   }
 
   private SimpleFieldSet buildOptionalFieldSet(Map<String, Object> manifest) {
-    PersistentPutDir message =
-        new PersistentPutDir(
-            "id-opt",
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
             new FreenetURI("CHK", "pub"),
-            null,
+            "id-opt",
             0,
             (short) 1,
             Persistence.CONNECTION,
             false,
-            DEFAULT_NAME,
-            new LinkedHashMap<>(manifest),
             null,
-            false,
-            0,
-            false,
-            null,
-            false,
-            false,
-            null,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+            false);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
+    PersistentPutDir message =
+        new PersistentPutDir(
+            requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
     return message.getFieldSet();
   }
 
   private PersistentPutDir buildWrappedMessage(Map<String, Object> manifest) {
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            new FreenetURI("CHK", "pub2"),
+            "id-wrap",
+            1,
+            (short) 1,
+            Persistence.REBOOT,
+            false,
+            null,
+            false);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            null, false, 1, InsertContext.CompatibilityMode.COMPAT_1250, false, null, null);
     return new PersistentPutDir(
-        "id-wrap",
-        new FreenetURI("CHK", "pub2"),
-        null,
-        1,
-        (short) 1,
-        Persistence.REBOOT,
-        false,
-        "wrapped",
-        new LinkedHashMap<>(manifest),
-        null,
-        false,
-        1,
-        false,
-        null,
-        false,
-        false,
-        null,
-        InsertContext.CompatibilityMode.COMPAT_1250);
+        requestParams, metadata, "wrapped", new LinkedHashMap<>(manifest), false);
+  }
+
+  private PersistentPutDir buildRunMessage(Map<String, Object> manifest) {
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            new FreenetURI("CHK", "pub3"),
+            "ident",
+            1,
+            (short) 1,
+            Persistence.CONNECTION,
+            false,
+            null,
+            true);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
+    return new PersistentPutDir(
+        requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
   }
 
   @Test
@@ -280,26 +285,7 @@ class PersistentPutDirTest {
     Map<String, Object> manifest = new LinkedHashMap<>();
     manifest.put(FILE_TXT_NAME, element);
 
-    PersistentPutDir message =
-        new PersistentPutDir(
-            "ident",
-            new FreenetURI("CHK", "pub3"),
-            null,
-            1,
-            (short) 1,
-            Persistence.CONNECTION,
-            true,
-            DEFAULT_NAME,
-            new LinkedHashMap<>(manifest),
-            null,
-            false,
-            0,
-            false,
-            null,
-            false,
-            false,
-            null,
-            InsertContext.CompatibilityMode.COMPAT_CURRENT);
+    PersistentPutDir message = buildRunMessage(manifest);
 
     MessageInvalidException ex =
         assertThrows(MessageInvalidException.class, () -> message.run(connectionHandler, node));
@@ -319,24 +305,20 @@ class PersistentPutDirTest {
   }
 
   private void createPersistentPutDirWith(Map<String, Object> manifest) {
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            new FreenetURI("CHK", "pub4"),
+            "id-bad",
+            0,
+            (short) 1,
+            Persistence.CONNECTION,
+            false,
+            null,
+            false);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            null, false, 0, InsertContext.CompatibilityMode.COMPAT_CURRENT, false, null, null);
     new PersistentPutDir(
-        "id-bad",
-        new FreenetURI("CHK", "pub4"),
-        null,
-        0,
-        (short) 1,
-        Persistence.CONNECTION,
-        false,
-        DEFAULT_NAME,
-        new LinkedHashMap<>(manifest),
-        null,
-        false,
-        0,
-        false,
-        null,
-        false,
-        false,
-        null,
-        InsertContext.CompatibilityMode.COMPAT_CURRENT);
+        requestParams, metadata, DEFAULT_NAME, new LinkedHashMap<>(manifest), false);
   }
 }
