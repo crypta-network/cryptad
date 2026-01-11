@@ -618,29 +618,35 @@ public class ClientPut extends ClientPutBase {
   @Override
   protected FCPMessage persistentTagMessage() {
     if (putter == null) LOG.warn("putter == null");
-    return new PersistentPut(
-        identifier,
-        publicURI,
-        uri,
-        verbosity,
-        priorityClass,
-        uploadFrom,
-        targetURI,
-        persistence,
-        origFilename,
-        clientMetadata.getMIMEType(),
-        client.isGlobalQueue,
-        getDataSize(),
-        clientToken,
-        started,
-        ctx.getMaxInsertRetries(),
-        targetFilename,
-        binaryBlob,
-        this.ctx.getCompatibilityMode(),
-        this.ctx.isDontCompress(),
-        this.ctx.getCompressorDescriptor(),
-        isRealTime(),
-        putter != null ? putter.getSplitfileCryptoKey() : null);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            publicURI,
+            identifier,
+            verbosity,
+            priorityClass,
+            persistence,
+            isRealTime(),
+            clientToken,
+            client.isGlobalQueue);
+    PersistentPutRequestMetadata metadata =
+        new PersistentPutRequestMetadata(
+            uri,
+            started,
+            ctx.getMaxInsertRetries(),
+            this.ctx.getCompatibilityMode(),
+            this.ctx.isDontCompress(),
+            this.ctx.getCompressorDescriptor(),
+            putter != null ? putter.getSplitfileCryptoKey() : null);
+    ClientPutUpload upload =
+        new ClientPutUpload(
+            uploadFrom,
+            origFilename,
+            clientMetadata.getMIMEType(),
+            null,
+            targetURI,
+            targetFilename,
+            binaryBlob);
+    return new PersistentPut(requestParams, upload, metadata, getDataSize());
   }
 
   private boolean isRealTime() {
