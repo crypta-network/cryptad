@@ -26,19 +26,19 @@ class FCPServerTest {
   @Mock private NodeClientCore core;
 
   private FCPServer newServer(boolean assumeDownloadAllowed, boolean assumeUploadAllowed) {
+    FcpServerConfig config =
+        new FcpServerConfig(
+            "127.0.0.1",
+            "127.0.0.1",
+            "127.0.0.1",
+            FCPServer.DEFAULT_FCP_PORT,
+            true,
+            assumeDownloadAllowed,
+            assumeUploadAllowed,
+            false,
+            10);
     return new FCPServer(
-        "127.0.0.1",
-        "127.0.0.1",
-        "127.0.0.1",
-        FCPServer.DEFAULT_FCP_PORT,
-        node,
-        core,
-        true,
-        assumeDownloadAllowed,
-        assumeUploadAllowed,
-        false,
-        10,
-        new PersistentRequestRoot());
+        config, new FcpServerDependencies(node, core, new PersistentRequestRoot()));
   }
 
   @Test
@@ -92,20 +92,18 @@ class FCPServerTest {
   void unregisterClient_whenForeverClient_delegatesToRoot() {
     // Arrange
     PersistentRequestRoot root = spy(new PersistentRequestRoot());
-    FCPServer server =
-        new FCPServer(
+    FcpServerConfig config =
+        new FcpServerConfig(
             "127.0.0.1",
             "127.0.0.1",
             "127.0.0.1",
             FCPServer.DEFAULT_FCP_PORT,
-            node,
-            core,
             true,
             false,
             false,
             false,
-            10,
-            root);
+            10);
+    FCPServer server = new FCPServer(config, new FcpServerDependencies(node, core, root));
     PersistentRequestClient forever = root.registerForeverClient("forever", null);
 
     // Act

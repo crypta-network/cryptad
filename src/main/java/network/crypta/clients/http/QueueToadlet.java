@@ -56,6 +56,7 @@ import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertRequest;
 import network.crypta.clients.fcp.IdentifierCollisionException;
 import network.crypta.clients.fcp.NotAllowedException;
+import network.crypta.clients.fcp.PersistentGlobalRequestParams;
 import network.crypta.clients.fcp.RequestCompletionCallback;
 import network.crypta.clients.fcp.RequestStatus;
 import network.crypta.clients.fcp.UploadDirRequestStatus;
@@ -794,7 +795,14 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
       try {
         fcp.makePersistentGlobalRequestBlocking(
-            fetchURI, filterData, expectedMIMEType, persistence, returnType, false, downloadsDir);
+            new PersistentGlobalRequestParams(
+                fetchURI,
+                filterData,
+                expectedMIMEType,
+                persistence,
+                returnType,
+                false,
+                downloadsDir));
       } catch (NotAllowedException _) {
         writeError(l10n("errorDToDisk"), l10n("errorDToDiskConfig"), ctx);
         return true;
@@ -872,13 +880,14 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         try {
           FreenetURI fetchURI = new FreenetURI(currentKey);
           fcp.makePersistentGlobalRequestBlocking(
-              fetchURI,
-              filterData,
-              null,
-              "forever",
-              downloadTarget.target(),
-              false,
-              downloadTarget.downloadsDir());
+              new PersistentGlobalRequestParams(
+                  fetchURI,
+                  filterData,
+                  null,
+                  "forever",
+                  downloadTarget.target(),
+                  false,
+                  downloadTarget.downloadsDir()));
           success.add(fetchURI.toString(true, false));
         } catch (Exception e) {
           failure.add(currentKey);
