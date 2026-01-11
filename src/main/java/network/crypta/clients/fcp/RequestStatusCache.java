@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.async.CacheFetchResult;
@@ -74,26 +73,10 @@ public class RequestStatusCache {
   }
 
   synchronized void finishedDownload(
-      String identifier,
-      boolean success,
-      long dataSize,
-      String mimeType,
-      FetchExceptionMode failureCode,
-      String failureReasonLong,
-      String failureReasonShort,
-      Bucket dataShadow,
-      boolean filtered) {
+      String identifier, boolean success, DownloadOutcomeInfo outcome) {
     DownloadRequestStatus status = (DownloadRequestStatus) requestsByIdentifier.get(identifier);
     if (status == null) return; // Can happen during cancel etc.
-    status.setFinished(
-        success,
-        dataSize,
-        mimeType,
-        failureCode,
-        failureReasonLong,
-        failureReasonShort,
-        dataShadow,
-        filtered);
+    status.setFinished(success, outcome);
   }
 
   synchronized void gotFinalURI(String identifier, FreenetURI finalURI) {

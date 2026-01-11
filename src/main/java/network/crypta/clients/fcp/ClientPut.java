@@ -968,30 +968,27 @@ public class ClientPut extends ClientPutBase {
       totalFinalized = msg.isTotalFinalized();
     }
 
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            identifier,
+            persistence,
+            started,
+            finished,
+            succeeded,
+            total,
+            min,
+            fetched,
+            latestSuccess,
+            fatal,
+            failed,
+            latestFailure,
+            totalFinalized,
+            priorityClass);
+    UploadRequestStatusDetails details =
+        new UploadRequestStatusDetails(
+            finalURI, uri, failureCode, failureReasonShort, failureReasonLong);
     return new UploadFileRequestStatus(
-        identifier,
-        persistence,
-        started,
-        finished,
-        succeeded,
-        total,
-        min,
-        fetched,
-        latestSuccess,
-        fatal,
-        failed,
-        latestFailure,
-        totalFinalized,
-        priorityClass,
-        finalURI,
-        uri,
-        failureCode,
-        failureReasonShort,
-        failureReasonLong,
-        getDataSize(),
-        mimeType,
-        fnam,
-        isCompressing());
+        statusSnapshot, details, getDataSize(), mimeType, fnam, isCompressing());
   }
 
   /**

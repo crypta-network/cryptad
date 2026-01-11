@@ -66,27 +66,12 @@ class RequestStatusCacheTest {
     cache.addDownload(status);
 
     Bucket bucket = mock(Bucket.class);
-    cache.finishedDownload(
-        "download-1",
-        true,
-        42L,
-        "text/plain",
-        FetchExceptionMode.BUCKET_ERROR,
-        "long",
-        "short",
-        bucket,
-        false);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(
+            42L, "text/plain", FetchExceptionMode.BUCKET_ERROR, "short", "long", bucket, false);
+    cache.finishedDownload("download-1", true, outcome);
 
-    verify(status)
-        .setFinished(
-            true,
-            42L,
-            "text/plain",
-            FetchExceptionMode.BUCKET_ERROR,
-            "long",
-            "short",
-            bucket,
-            false);
+    verify(status).setFinished(true, outcome);
   }
 
   @Test
@@ -112,8 +97,8 @@ class RequestStatusCacheTest {
     FreenetURI originalUri = mock(FreenetURI.class);
     FreenetURI redirectUri = mock(FreenetURI.class);
 
-    DownloadRequestStatus status =
-        new DownloadRequestStatus(
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
             "dl",
             Persistence.CONNECTION,
             false,
@@ -127,20 +112,12 @@ class RequestStatusCacheTest {
             0,
             null,
             false,
-            (short) 1,
-            null,
-            "text/plain",
-            1L,
-            null,
-            null,
-            null,
-            originalUri,
-            null,
-            null,
-            false,
-            null,
-            false,
-            false);
+            (short) 1);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(1L, "text/plain", null, null, null, null, false);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, originalUri, false, false);
+    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
 
     cache.addDownload(status);
 
@@ -160,8 +137,8 @@ class RequestStatusCacheTest {
     FreenetURI uri = mock(FreenetURI.class);
     Bucket bucket = new FixedBucket(8);
 
-    DownloadRequestStatus status =
-        new DownloadRequestStatus(
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
             "shadow",
             Persistence.CONNECTION,
             true,
@@ -175,20 +152,12 @@ class RequestStatusCacheTest {
             0,
             null,
             false,
-            (short) 1,
-            null,
-            "image/png",
-            8L,
-            null,
-            null,
-            null,
-            uri,
-            null,
-            null,
-            false,
-            bucket,
-            false,
-            false);
+            (short) 1);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(8L, "image/png", null, null, null, bucket, false);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
+    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
 
     cache.addDownload(status);
 
@@ -207,8 +176,8 @@ class RequestStatusCacheTest {
     FreenetURI uri = mock(FreenetURI.class);
     Bucket bucket = new FixedBucket(2);
 
-    DownloadRequestStatus status =
-        new DownloadRequestStatus(
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
             "shadow-filter",
             Persistence.CONNECTION,
             true,
@@ -222,20 +191,12 @@ class RequestStatusCacheTest {
             0,
             null,
             false,
-            (short) 1,
-            null,
-            "text/plain",
-            2L,
-            null,
-            null,
-            null,
-            uri,
-            null,
-            null,
-            false,
-            bucket,
-            true,
-            false);
+            (short) 1);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(2L, "text/plain", null, null, null, bucket, true);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
+    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
 
     cache.addDownload(status);
 
@@ -247,8 +208,8 @@ class RequestStatusCacheTest {
     RequestStatusCache cache = new RequestStatusCache();
 
     FreenetURI uri = mock(FreenetURI.class);
-    DownloadRequestStatus status =
-        new DownloadRequestStatus(
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
             "remove-dl",
             Persistence.CONNECTION,
             true,
@@ -262,20 +223,12 @@ class RequestStatusCacheTest {
             0,
             null,
             false,
-            (short) 1,
-            null,
-            "text/plain",
-            1L,
-            null,
-            null,
-            null,
-            uri,
-            null,
-            null,
-            false,
-            new FixedBucket(1),
-            false,
-            false);
+            (short) 1);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(1L, "text/plain", null, null, null, new FixedBucket(1), false);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
+    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
 
     cache.addDownload(status);
 

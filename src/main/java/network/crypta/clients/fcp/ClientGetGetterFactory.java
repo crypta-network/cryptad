@@ -257,34 +257,36 @@ final class ClientGetGetterFactory {
     boolean overriddenDataType =
         fetchContext.getOverrideMIME() != null || fetchContext.getCharset() != null;
 
-    return new DownloadRequestStatus(
-        identifier,
-        persistence,
-        started,
-        finished,
-        succeeded,
-        total,
-        min,
-        fetched,
-        latestSuccess,
-        fatal,
-        failed,
-        latestFailure,
-        totalFinalized,
-        priorityClass,
-        failureCode,
-        foundDataMimeType,
-        foundDataLength,
-        target,
-        compatModes,
-        splitfileKey,
-        uri,
-        failureReasonShort,
-        failureReasonLong,
-        overriddenDataType,
-        shadow,
-        filterData,
-        dontCompress);
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            identifier,
+            persistence,
+            started,
+            finished,
+            succeeded,
+            total,
+            min,
+            fetched,
+            latestSuccess,
+            fatal,
+            failed,
+            latestFailure,
+            totalFinalized,
+            priorityClass);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(
+            foundDataLength,
+            foundDataMimeType,
+            failureCode,
+            failureReasonShort,
+            failureReasonLong,
+            shadow,
+            filterData);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(
+            outcome, target, compatModes, splitfileKey, uri, overriddenDataType, dontCompress);
+
+    return new DownloadRequestStatus(statusSnapshot, details);
   }
 
   /**

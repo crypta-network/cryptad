@@ -118,29 +118,26 @@ class UploadFileRequestStatusTest {
       long dataSize,
       String mimeType,
       COMPRESS_STATE compressState) {
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
+            "identifier",
+            Persistence.CONNECTION,
+            true,
+            false,
+            false,
+            10,
+            5,
+            3,
+            SUCCESS_DATE,
+            1,
+            2,
+            FAILURE_DATE,
+            true,
+            (short) 3);
+    UploadRequestStatusDetails details =
+        new UploadRequestStatusDetails(
+            finalUri, targetUri, InsertExceptionMode.INTERNAL_ERROR, "short", "long");
     return new UploadFileRequestStatus(
-        "identifier",
-        Persistence.CONNECTION,
-        true,
-        false,
-        false,
-        10,
-        5,
-        3,
-        SUCCESS_DATE,
-        1,
-        2,
-        FAILURE_DATE,
-        true,
-        (short) 3,
-        finalUri,
-        targetUri,
-        InsertExceptionMode.INTERNAL_ERROR,
-        "short",
-        "long",
-        dataSize,
-        mimeType,
-        origFile,
-        compressState);
+        statusSnapshot, details, dataSize, mimeType, origFile, compressState);
   }
 }

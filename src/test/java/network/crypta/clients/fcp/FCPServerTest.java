@@ -152,8 +152,8 @@ class FCPServerTest {
     FCPServer server = newServer(false, false);
     PersistentRequestClient rebootClient = server.getGlobalRebootClient();
     FreenetURI uri = mock(FreenetURI.class);
-    DownloadRequestStatus status =
-        new DownloadRequestStatus(
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
             "id-1",
             Persistence.REBOOT,
             false,
@@ -167,20 +167,12 @@ class FCPServerTest {
             0,
             null,
             false,
-            (short) 0,
-            null,
-            "text/plain",
-            10,
-            null,
-            null,
-            null,
-            uri,
-            null,
-            null,
-            false,
-            mock(Bucket.class),
-            false,
-            false);
+            (short) 0);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(10, "text/plain", null, null, null, mock(Bucket.class), false);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
+    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
     rebootClient.getRequestStatusCache().addDownload(status);
 
     // Act
@@ -199,8 +191,8 @@ class FCPServerTest {
     FreenetURI uri = mock(FreenetURI.class);
     Bucket bucket = mock(Bucket.class);
     when(bucket.size()).thenReturn(5L);
-    DownloadRequestStatus status =
-        new DownloadRequestStatus(
+    RequestStatusSnapshot statusSnapshot =
+        new RequestStatusSnapshot(
             "cached",
             Persistence.FOREVER,
             false,
@@ -214,20 +206,12 @@ class FCPServerTest {
             0,
             null,
             true,
-            (short) 0,
-            null,
-            "image/png",
-            5,
-            null,
-            null,
-            null,
-            uri,
-            null,
-            null,
-            false,
-            bucket,
-            false,
-            false);
+            (short) 0);
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(5, "image/png", null, null, null, bucket, false);
+    DownloadRequestStatusDetails details =
+        new DownloadRequestStatusDetails(outcome, null, null, null, uri, false, false);
+    DownloadRequestStatus status = new DownloadRequestStatus(statusSnapshot, details);
     foreverClient.getRequestStatusCache().addDownload(status);
 
     // Act

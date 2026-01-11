@@ -1,11 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
-import java.util.Date;
-import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
-import network.crypta.clients.fcp.ClientRequest.Persistence;
-import network.crypta.keys.FreenetURI;
 
 /**
  * Captures the evolving status of a single file upload handled through the FCP client API.
@@ -42,51 +38,24 @@ public class UploadFileRequestStatus extends UploadRequestStatus {
 
   private COMPRESS_STATE compressing;
 
+  /**
+   * Creates a file upload status entry from bundled snapshots.
+   *
+   * @param statusSnapshot base request counters and timestamps.
+   * @param details upload-specific URI and failure metadata.
+   * @param dataSize size of the payload in bytes.
+   * @param mimeType MIME type hint for the upload.
+   * @param origFilename original filename, if known.
+   * @param compressing current compression state.
+   */
   UploadFileRequestStatus(
-      String identifier,
-      Persistence persistence,
-      boolean started,
-      boolean finished,
-      boolean success,
-      int total,
-      int min,
-      int fetched,
-      Date latestSuccess,
-      int fatal,
-      int failed,
-      Date latestFailure,
-      boolean totalFinalized,
-      short prio,
-      FreenetURI finalURI,
-      FreenetURI targetURI,
-      InsertExceptionMode failureCode,
-      String failureReasonShort,
-      String failureReasonLong,
-      // all of the above are passed to parent
+      RequestStatusSnapshot statusSnapshot,
+      UploadRequestStatusDetails details,
       long dataSize,
       String mimeType,
       File origFilename,
       COMPRESS_STATE compressing) {
-    super(
-        identifier,
-        persistence,
-        started,
-        finished,
-        success,
-        total,
-        min,
-        fetched,
-        latestSuccess,
-        fatal,
-        failed,
-        latestFailure,
-        totalFinalized,
-        prio,
-        finalURI,
-        targetURI,
-        failureCode,
-        failureReasonShort,
-        failureReasonLong);
+    super(statusSnapshot, details);
     this.dataSize = dataSize;
     this.mimeType = mimeType;
     this.origFilename = origFilename;

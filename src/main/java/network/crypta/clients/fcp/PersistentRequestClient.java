@@ -262,16 +262,16 @@ public class PersistentRequestClient {
     }
     Bucket shadow = download.getBucket();
     if (shadow != null) shadow = shadow.createShadow();
-    statusCache.finishedDownload(
-        download.getIdentifier(),
-        download.hasSucceeded(),
-        download.getDataSize(),
-        download.getMIMEType(),
-        failureCode,
-        longFailMessage,
-        shortFailMessage,
-        shadow,
-        download.filterData());
+    DownloadOutcomeInfo outcome =
+        new DownloadOutcomeInfo(
+            download.getDataSize(),
+            download.getMIMEType(),
+            failureCode,
+            shortFailMessage,
+            longFailMessage,
+            shadow,
+            download.filterData());
+    statusCache.finishedDownload(download.getIdentifier(), download.hasSucceeded(), outcome);
   }
 
   /**

@@ -1,12 +1,10 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
-import java.util.Date;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
-import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
@@ -25,7 +23,7 @@ import org.slf4j.LoggerFactory;
  * insert compatibility modes so that retry logic can make informed decisions about compression and
  * storage layout.
  *
- * <p>Thread-safety is deliberately coarse grained: most mutators are {@code synchronized} to
+ * <p>Thread-safety is deliberately coarsely grained: most mutators are {@code synchronized} to
  * simplify reasoning over state transitions, while getters expose the most recent consistent view
  * without additional locking. Callers should prefer cloning via {@link #copy()} when they need to
  * hold a reference beyond a single read, because inner arrays (such as split-file keys) are copied
@@ -66,92 +64,50 @@ public class DownloadRequestStatus extends RequestStatus {
 
   private boolean detectedDontCompress;
 
-  synchronized void setFinished(
-      boolean success,
-      long dataSize,
-      String mimeType,
-      FetchExceptionMode failureCode,
-      String failureReasonLong,
-      String failureReasonShort,
-      Bucket dataShadow,
-      boolean filtered) {
+  synchronized void setFinished(boolean success, DownloadOutcomeInfo outcome) {
     setFinished(success);
-    if (mimeType == null
-        && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
-            || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
-      logMimeTypeMismatch(failureCode, getIdentifier(), uri);
+    if (outcome.mimeType() == null
+        && (outcome.failureCode() == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
+            || outcome.failureCode() == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
+      logMimeTypeMismatch(outcome.failureCode(), getIdentifier(), uri);
     }
-    this.dataSize = dataSize;
-    this.mimeType = mimeType;
-    this.failureCode = failureCode;
-    this.failureReasonLong = failureReasonLong;
-    this.failureReasonShort = failureReasonShort;
-    this.dataShadow = dataShadow;
-    this.filterData = filtered;
+    this.dataSize = outcome.dataSize();
+    this.mimeType = outcome.mimeType();
+    this.failureCode = outcome.failureCode();
+    this.failureReasonLong = outcome.failureReasonLong();
+    this.failureReasonShort = outcome.failureReasonShort();
+    this.dataShadow = outcome.dataShadow();
+    this.filterData = outcome.filterData();
   }
 
+  /**
+   * Creates a new download status entry from preassembled snapshots.
+   *
+   * @param statusSnapshot base request counters and timestamps.
+   * @param details download-specific metadata and completion details.
+   */
   DownloadRequestStatus(
-      String identifier,
-      Persistence persistence,
-      boolean started,
-      boolean finished,
-      boolean success,
-      int total,
-      int min,
-      int fetched,
-      Date latestSuccess,
-      int fatal,
-      int failed,
-      Date latestFailure,
-      boolean totalFinalized,
-      short prio,
-      // all above these passed to parent
-      FetchExceptionMode failureCode,
-      String mime,
-      long size,
-      File dest,
-      CompatibilityMode[] compat,
-      byte[] splitfileKey,
-      FreenetURI uri,
-      String failureReasonShort,
-      String failureReasonLong,
-      boolean overriddenDataType,
-      Bucket dataShadow,
-      boolean filterData,
-      boolean dontCompress) {
-    super(
-        identifier,
-        persistence,
-        started,
-        finished,
-        success,
-        total,
-        min,
-        fetched,
-        latestSuccess,
-        fatal,
-        failed,
-        latestFailure,
-        totalFinalized,
-        prio);
-    if (mime == null
-        && (failureCode == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
-            || failureCode == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
-      logMimeTypeMismatch(failureCode, identifier, uri);
+      RequestStatusSnapshot statusSnapshot, DownloadRequestStatusDetails details) {
+    super(statusSnapshot);
+    DownloadOutcomeInfo outcome = details.outcome();
+    if (outcome.mimeType() == null
+        && (outcome.failureCode() == FetchExceptionMode.CONTENT_VALIDATION_UNKNOWN_MIME
+            || outcome.failureCode() == FetchExceptionMode.CONTENT_VALIDATION_BAD_MIME)) {
+      logMimeTypeMismatch(outcome.failureCode(), statusSnapshot.identifier(), details.uri());
     }
-    this.overriddenDataType = overriddenDataType;
-    this.failureCode = failureCode;
-    this.mimeType = mime;
-    this.dataSize = size;
-    this.destFilename = dest;
-    this.detectedCompatModes = compat;
-    this.detectedSplitfileKey = splitfileKey;
-    this.uri = uri;
-    this.failureReasonShort = failureReasonShort;
-    this.failureReasonLong = failureReasonLong;
-    this.dataShadow = dataShadow;
-    this.filterData = filterData;
-    this.detectedDontCompress = dontCompress;
+    this.overriddenDataType = details.overriddenDataType();
+    this.failureCode = outcome.failureCode();
+    this.mimeType = outcome.mimeType();
+    this.dataSize = outcome.dataSize();
+    this.destFilename = details.destFilename();
+    this.detectedCompatModes = details.compatModes();
+    this.detectedSplitfileKey = details.splitfileKey();
+    this.uri = details.uri();
+    this.failureReasonShort = outcome.failureReasonShort();
+    this.failureReasonLong = outcome.failureReasonLong();
+    this.dataShadow = outcome.dataShadow();
+    this.filterData = outcome.filterData();
+    this.detectedDontCompress = details.dontCompress();
   }
 
   private DownloadRequestStatus(DownloadRequestStatus source) {
@@ -269,7 +225,7 @@ public class DownloadRequestStatus extends RequestStatus {
   }
 
   /**
-   * Supplies the URI that is currently associated with the request, including redirects.
+   * Supplies the URI currently associated with the request, including redirects.
    *
    * <p>The value initially reflects the URI provided by the caller, but the worker may swap in a
    * redirection target once detected via {@link #redirect(FreenetURI)}. Consumers should therefore
@@ -353,8 +309,8 @@ public class DownloadRequestStatus extends RequestStatus {
    * Provides the filename clients should display when offering a save dialog or progress entry.
    *
    * <p>The destination filename takes precedence when explicitly provided. Otherwise, the method
-   * derives a name from {@link FreenetURI#getPreferredFilename()} provided the URI supplies meta
-   * strings or a document name. {@code null} is returned when no reasonable candidate exists.
+   * derives a name from {@link FreenetURI#getPreferredFilename()} provided the URI supplies
+   * meta-strings or a document name. {@code null} is returned when no reasonable candidate exists.
    *
    * @return a display-ready filename suggestion, or {@code null} when unavailable.
    */
