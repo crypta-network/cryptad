@@ -29,7 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Coordinates the lifecycle of FCP insert requests that persist across reconnects and restarts.
+ * Coordinates the lifecycle of FCP insert requests that persist across reconnections and restarts.
  *
  * <p>The class centralizes common state tracking for {@link ClientPut} and {@link ClientPutDir},
  * wiring FCP-facing identifiers, scheduling metadata, persistence constraints, and node callbacks
@@ -116,8 +116,8 @@ public abstract class ClientPutBase extends ClientRequest
   private Bucket generatedMetadata;
 
   /**
-   * Name of the FCP field carrying the SHA-256 hash of source data when clients request that value
-   * instead of a final URI.
+   * The name of the FCP field carrying the SHA-256 hash of source data when clients request that
+   * value instead of a final URI.
    */
   public static final String FILE_HASH = "FileHash";
 
@@ -126,9 +126,9 @@ public abstract class ClientPutBase extends ClientRequest
   private static final Map<Integer, UploadFrom> uploadFromByCode = new HashMap<>();
 
   /**
-   * Enumerates where the bytes for a put operation originate, which drives validation and bucket
+   * Lists where the bytes for a put operation originate, which drives validation and bucket
    * ownership rules during persistence and resume scenarios. The value is serialized with
-   * persistent requests so future versions can continue applying consistent invariants.
+   * persistent requests, so future versions can continue applying consistent invariants.
    */
   public enum UploadFrom { // Codes must be constant at least for migration
     /**
@@ -143,7 +143,7 @@ public abstract class ClientPutBase extends ClientRequest
     DISK(1),
     /**
      * The put represents a redirect and leverages an existing URI rather than raw data, so
-     * insert-time validation is minimal and no bucket ownership is required.
+     * insert-time validation is minimal, and no bucket ownership is required.
      */
     REDIRECT(2);
 
@@ -159,14 +159,14 @@ public abstract class ClientPutBase extends ClientRequest
 
     /**
      * Resolves a serialized upload source code back into the enum constant used to stage buckets
-     * and stubs after a restart. The helper keeps a static map so the conversion is O(1) even when
-     * invoked frequently. Callers typically load the integer from disk and feed it here before
-     * reconstructing bucket ownership policy.
+     * and stubs after a restart. The helper keeps a static map, so the conversion is O(1) even when
+     * invoked frequently. Callers typically load the integer from the disk and feed it here before
+     * reconstructing the bucket ownership policy.
      *
      * @param x integer code stored with persistent state or received via FCP, expected to be one of
      *     the constants defined in this enum
      * @return matching enum instance; never {@code null} for valid codes because results are cached
-     * @throws IllegalArgumentException when the caller supplies an unknown code, signalling corrupt
+     * @throws IllegalArgumentException when the caller supplies an unknown code, signaling corrupt
      *     or out-of-date persistence data that the caller must handle separately
      */
     public static UploadFrom getByCode(int x) {
@@ -185,82 +185,36 @@ public abstract class ClientPutBase extends ClientRequest
    * control returns because scheduling metadata, verbosity flags, and caches have all been
    * populated consistently.
    *
-   * @param uri canonical insert URI requested by the client; must not be {@code null}
-   * @param identifier unique identifier echoed back on all FCP messages for this insert
-   * @param verbosity bitmask describing which progress categories should be emitted
+   * @param requestParams request metadata including URI, identifiers, and scheduling flags
    * @param charset optional declared source charset; unsupported values trigger warnings only
+   * @param options insert tuning options covering retries, compression, and caching behavior
    * @param handler owning connection handler responsible for queuing outbound replies
-   * @param priorityClass scheduler priority class; must be within the node-supported range
-   * @param persistence requested persistence mode determining how long the request survives
-   * @param clientToken opaque token mirrored back during {@code ListPersistentRequests}
-   * @param global whether the request participates in the shared global queue instead of per-client
-   * @param getCHKOnly true when the caller only needs a CHK hash instead of storing data
-   * @param dontCompress true to forcefully disable on-the-fly compression stages
-   * @param localRequestOnly true to avoid advertising blocks beyond the local node
-   * @param maxRetries maximum block retries before surfacing failure to clients
-   * @param earlyEncode whether the inserter should pre-encode splitfiles before contacting peers
-   * @param canWriteClientCache true if the insert may touch the persistent client-side cache
-   * @param forkOnCacheable instructs the inserter to spawn redundancy when payloads are cacheable
-   * @param compressorDescriptor comma-separated list of compressor identifiers to attempt
-   * @param extraInsertsSingleBlock redundancy factor for standalone blocks outside splitfiles
-   * @param extraInsertsSplitfileHeader redundancy factor for splitfile header blocks
-   * @param realTimeFlag true to schedule the job in the latency-sensitive queue
-   * @param compatibilityMode compatibility profile that dictates metadata layouts and crypto tweaks
-   * @param ignoreUSKDatehints true to skip USK DATEHINT emission and consumption
    * @param server server providing node context, bucket factories, and persistent insert defaults
-   * @throws MalformedURLException if {@code uri} cannot be normalized into an insertable form
+   * @throws MalformedURLException if the URI cannot be normalized into an insertable form
    */
   protected ClientPutBase(
-      FreenetURI uri,
-      String identifier,
-      int verbosity,
+      ClientRequestParams requestParams,
       String charset,
+      FcpInsertOptions options,
       FCPConnectionHandler handler,
-      short priorityClass,
-      Persistence persistence,
-      String clientToken,
-      boolean global,
-      boolean getCHKOnly,
-      boolean dontCompress,
-      boolean localRequestOnly,
-      int maxRetries,
-      boolean earlyEncode,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      String compressorDescriptor,
-      int extraInsertsSingleBlock,
-      int extraInsertsSplitfileHeader,
-      boolean realTimeFlag,
-      InsertContext.CompatibilityMode compatibilityMode,
-      boolean ignoreUSKDatehints,
       FCPServer server)
       throws MalformedURLException {
-    super(
-        new ClientRequestParams(
-            uri,
-            identifier,
-            verbosity,
-            priorityClass,
-            persistence,
-            realTimeFlag,
-            clientToken,
-            global),
-        handler);
+    super(requestParams, handler);
     warnIfUnsupportedCharset(charset);
     ctx = server.getCore().getClientContext().getDefaultPersistentInsertContext();
-    ctx.setGetCHKOnly(getCHKOnly);
-    ctx.setDontCompress(dontCompress);
+    ctx.setGetCHKOnly(options.getCHKOnly());
+    ctx.setDontCompress(options.dontCompress());
     ctx.getEventProducer().addEventListener(this);
-    ctx.setMaxInsertRetries(maxRetries);
-    ctx.setCanWriteClientCache(canWriteClientCache);
-    ctx.setCompressorDescriptor(compressorDescriptor);
-    ctx.setForkOnCacheable(forkOnCacheable);
-    ctx.setExtraInsertsSingleBlock(extraInsertsSingleBlock);
-    ctx.setExtraInsertsSplitfileHeaderBlock(extraInsertsSplitfileHeader);
-    ctx.setCompatibilityMode(compatibilityMode);
-    ctx.setLocalRequestOnly(localRequestOnly);
-    ctx.setEarlyEncode(earlyEncode);
-    ctx.setIgnoreUSKDatehints(ignoreUSKDatehints);
+    ctx.setMaxInsertRetries(options.maxRetries());
+    ctx.setCanWriteClientCache(options.canWriteClientCache());
+    ctx.setCompressorDescriptor(options.compressorDescriptor());
+    ctx.setForkOnCacheable(options.forkOnCacheable());
+    ctx.setExtraInsertsSingleBlock(options.extraInsertsSingleBlock());
+    ctx.setExtraInsertsSplitfileHeaderBlock(options.extraInsertsSplitfileHeaderBlock());
+    ctx.setCompatibilityMode(options.compatibilityMode());
+    ctx.setLocalRequestOnly(options.localRequestOnly());
+    ctx.setEarlyEncode(options.earlyEncode());
+    ctx.setIgnoreUSKDatehints(options.ignoreUSKDatehints());
     publicURI = this.uri.deriveRequestURIFromInsertURI();
   }
 
@@ -307,85 +261,38 @@ public abstract class ClientPutBase extends ClientRequest
    * or resuming jobs to bypass socket handlers entirely while preserving the same configuration
    * surface.
    *
-   * @param uri canonical insert URI previously persisted for this request
-   * @param identifier client-supplied correlation identifier used across restarts
-   * @param verbosity bitmask of progress categories to forward to the persistent queue
+   * @param requestParams request metadata including URI, identifiers, and scheduling flags
    * @param charset optional charset hint that influences metadata generation when meaningful
+   * @param options insert tuning options that should persist across restarts
    * @param handler connection handler for immediate responses during the resume handshake
    * @param client persistent request owner used to enqueue outbound messages after resumption
-   * @param priorityClass scheduler priority class remembered from the original request
-   * @param persistence persistence tier expected for the resumed job; usually {@code FOREVER}
-   * @param clientToken opaque identifier mirrored to external monitoring dashboards
-   * @param global whether the resumed request rejoins the global queue or remains client-local
-   * @param getCHKOnly true to compute a CHK and drop payload storage like the connection variant
-   * @param dontCompress true when the resumed job must avoid compression for deterministic output
-   * @param maxRetries retry count retained from the previous incarnation for fairness
-   * @param earlyEncode whether pre-encoding should resume immediately, matching stored state
-   * @param canWriteClientCache true when cached blocks may be written again post-resume
-   * @param forkOnCacheable indicates whether cacheable content may spawn redundancy jobs
-   * @param localRequestOnly true when inserts must remain within the local node for privacy
-   * @param extraInsertsSingleBlock redundancy factor for single-block inserts that persists
-   * @param extraInsertsSplitfileHeader redundancy factor for splitfile headers that persists
-   * @param realTimeFlag true to push the resumed job into the real-time scheduler lanes
-   * @param compressorDescriptor list of compressor names that continue to apply
-   * @param compatMode compatibility mode pinned earlier to guarantee deterministic hashes
-   * @param ignoreUSKDatehints true when the job must avoid writing or reading USK hints
-   * @param core node core used to obtain shared factories and contexts for resumed jobs
-   * @throws MalformedURLException if {@code uri} cannot be normalized into a supported insert type
+   * @param core node core used to get shared factories and contexts for resumed jobs
+   * @throws MalformedURLException if the URI cannot be normalized into a supported insert type
    */
   protected ClientPutBase(
-      FreenetURI uri,
-      String identifier,
-      int verbosity,
+      ClientRequestParams requestParams,
       String charset,
+      FcpInsertOptions options,
       FCPConnectionHandler handler,
       PersistentRequestClient client,
-      short priorityClass,
-      Persistence persistence,
-      String clientToken,
-      boolean global,
-      boolean getCHKOnly,
-      boolean dontCompress,
-      int maxRetries,
-      boolean earlyEncode,
-      boolean canWriteClientCache,
-      boolean forkOnCacheable,
-      boolean localRequestOnly,
-      int extraInsertsSingleBlock,
-      int extraInsertsSplitfileHeader,
-      boolean realTimeFlag,
-      String compressorDescriptor,
-      InsertContext.CompatibilityMode compatMode,
-      boolean ignoreUSKDatehints,
       NodeClientCore core)
       throws MalformedURLException {
-    super(
-        new ClientRequestParams(
-            uri,
-            identifier,
-            verbosity,
-            priorityClass,
-            persistence,
-            realTimeFlag,
-            clientToken,
-            global),
-        handler,
-        client);
+    super(requestParams, handler, client);
     warnIfUnsupportedCharset(charset);
     ctx = core.getClientContext().getDefaultPersistentInsertContext();
-    ctx.setGetCHKOnly(getCHKOnly);
-    ctx.setDontCompress(dontCompress);
+    ctx.setGetCHKOnly(options.getCHKOnly());
+    ctx.setDontCompress(options.dontCompress());
     ctx.getEventProducer().addEventListener(this);
-    ctx.setMaxInsertRetries(maxRetries);
-    ctx.setCanWriteClientCache(canWriteClientCache);
-    ctx.setCompressorDescriptor(compressorDescriptor);
-    ctx.setForkOnCacheable(forkOnCacheable);
-    ctx.setExtraInsertsSingleBlock(extraInsertsSingleBlock);
-    ctx.setExtraInsertsSplitfileHeaderBlock(extraInsertsSplitfileHeader);
-    ctx.setLocalRequestOnly(localRequestOnly);
-    ctx.setCompatibilityMode(compatMode);
-    ctx.setIgnoreUSKDatehints(ignoreUSKDatehints);
-    ctx.setEarlyEncode(earlyEncode);
+    ctx.setMaxInsertRetries(options.maxRetries());
+    ctx.setCanWriteClientCache(options.canWriteClientCache());
+    ctx.setCompressorDescriptor(options.compressorDescriptor());
+    ctx.setForkOnCacheable(options.forkOnCacheable());
+    ctx.setExtraInsertsSingleBlock(options.extraInsertsSingleBlock());
+    ctx.setExtraInsertsSplitfileHeaderBlock(options.extraInsertsSplitfileHeaderBlock());
+    ctx.setLocalRequestOnly(options.localRequestOnly());
+    ctx.setCompatibilityMode(options.compatibilityMode());
+    ctx.setIgnoreUSKDatehints(options.ignoreUSKDatehints());
+    ctx.setEarlyEncode(options.earlyEncode());
     publicURI = this.uri.deriveRequestURIFromInsertURI();
   }
 
@@ -423,7 +330,7 @@ public abstract class ClientPutBase extends ClientRequest
   public void onSuccess(BaseClientPutter state) {
     synchronized (this) {
       // Including these helps with certain bugs...
-      started = true; // Keep started flag set for resume compatibility.
+      started = true; // Keep the started flag set for resume compatibility.
       succeeded = true;
       finished = true;
       completionTime = System.currentTimeMillis();
@@ -442,8 +349,8 @@ public abstract class ClientPutBase extends ClientRequest
    * Records a fatal insert failure, captures the {@link InsertException}, and notifies clients
    * through a {@code PutFailed} message.
    *
-   * <p>The method treats the first invocation as authoritative and ignores subsequent calls once
-   * {@link #finished} becomes {@code true}. Connection-scoped requests relinquish buffered data,
+   * <p>The method treats the first invocation as authoritative and ignores later calls once {@link
+   * #finished} becomes {@code true}. Connection-scoped requests relinquish buffered data,
    * persistent requests keep the failure payload so that reconnecting clients can inspect detailed
    * codes, and registered {@link PersistentRequestClient}s are notified immediately.
    *
@@ -454,7 +361,7 @@ public abstract class ClientPutBase extends ClientRequest
   public void onFailure(InsertException e, BaseClientPutter state) {
     if (finished) return;
     synchronized (this) {
-      started = true; // Keep started flag set for resume compatibility.
+      started = true; // Keep the started flag set for resume compatibility.
       finished = true;
       completionTime = System.currentTimeMillis();
       putFailedMessage = new PutFailedMessage(e, identifier, global);
@@ -518,9 +425,9 @@ public abstract class ClientPutBase extends ClientRequest
    * Captures metadata generated instead of a URI and either forwards or frees the supplied bucket
    * depending on whether another metadata payload is already stored.
    *
-   * <p>Only the first metadata bucket is retained so disconnecting clients cannot accidentally leak
-   * resources. Duplicate deliveries are logged and freed immediately. Non-duplicate metadata is
-   * queued for FCP delivery and persisted if the request survives restarts.
+   * <p>Only the first metadata bucket is retained, so disconnecting clients cannot accidentally
+   * leak resources. Duplicate deliveries are logged and freed immediately. Non-duplicate metadata
+   * is queued for FCP delivery and persisted if the request survives restarts.
    *
    * @param metadata metadata bucket; ownership transfers to this method on success
    * @param state inserter reporting metadata generation; used for logging context only
@@ -558,7 +465,7 @@ public abstract class ClientPutBase extends ClientRequest
    */
   @Override
   public void requestWasRemoved(ClientContext context) {
-    // if request is still running, send a PutFailed with code=cancelled
+    // if the request is still running, send a PutFailed with code=canceled
     if (!finished) {
       synchronized (this) {
         finished = true;
@@ -567,7 +474,7 @@ public abstract class ClientPutBase extends ClientRequest
       }
       trySendFinalMessage(null, null);
     }
-    // notify client that request was removed
+    // notify client that the request was removed
     FCPMessage msg = new PersistentRequestRemovedMessage(getIdentifier(), global);
     if (persistence == Persistence.CONNECTION) origHandler.send(msg);
     else client.queueClientRequestMessage(msg, 0);
@@ -656,7 +563,7 @@ public abstract class ClientPutBase extends ClientRequest
   }
 
   /**
-   * Invoked whenever the inserter finishes a compression phase so subclasses can flush UI state,
+   * Invoked whenever the inserter finishes a compression phase, so subclasses can flush UI state,
    * release temporary buffers, or update accounting that depends on compression ratios. The method
    * is called on the same thread that receives events and should therefore avoid blocking. Typical
    * implementations toggle a “compressing” flag or decrement a counter used by progress dialogs.
@@ -784,7 +691,7 @@ public abstract class ClientPutBase extends ClientRequest
    * client reconnects. Implementations should return inexpensive, side-effect-free objects because
    * the value is regenerated each time {@link #sendPendingMessages(FCPConnectionOutputHandler,
    * String, boolean, boolean)} runs, and they must embed enough metadata for clients to recognize
-   * which request the subsequent payload refers to.
+   * which request the later payload refers to.
    *
    * @return tag message describing the specific request type and identifiers
    */
@@ -866,9 +773,9 @@ public abstract class ClientPutBase extends ClientRequest
   }
 
   /**
-   * Returns the minimum number of fetched blocks needed to reconstruct the payload according to the
-   * most recent progress update. This helps UI code communicate resilience to failures because it
-   * represents the erasure-coded threshold that must be met. A return value of {@code -1} means
+   * Returns the minimum number of fetched blocks needed to reconstruct the payload, according to
+   * the most recent progress update. This helps UI code communicate resilience to failures because
+   * it represents the erasure-coded threshold that must be met. A return value of {@code -1} means
    * progress has not been reported yet or the job has just restarted.
    *
    * @return minimum required block count or {@code -1} when unknown
@@ -916,8 +823,8 @@ public abstract class ClientPutBase extends ClientRequest
   }
 
   /**
-   * Returns the number of blocks that have been fetched (or inserted) successfully according to the
-   * latest progress report. The value is monotonically non-decreasing for a given snapshot and
+   * Returns the number of blocks that have been fetched (or inserted) successfully, according to
+   * the latest progress report. The value is monotonically non-decreasing for a given snapshot and
    * gives clients a sense of throughput over time. A return value of {@code -1} mirrors the “no
    * progress yet” condition used by the other metrics.
    *
@@ -994,8 +901,8 @@ public abstract class ClientPutBase extends ClientRequest
    * Resets volatile fields so that a persistent request can be restarted cleanly without reusing
    * stale progress, failure state, or bookkeeping flags. This method does not alter persisted
    * metadata or tokens and is safe to call multiple times. Callers typically invoke it immediately
-   * before enqueuing a restarted request to guarantee that subsequent callbacks behave as if the
-   * job were freshly created.
+   * before enqueuing a restarted request to guarantee that later callbacks behave as if the job
+   * were freshly created.
    */
   public synchronized void setVarsRestart() {
     finished = false;

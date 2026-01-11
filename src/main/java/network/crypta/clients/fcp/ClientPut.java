@@ -139,31 +139,17 @@ public class ClientPut extends ClientPutBase {
           NotAllowedException,
           MetadataUnresolvedException,
           IOException {
-    super(
-        checkEmptySSK(request.uri(), upload.targetFilename(), core.getClientContext()),
-        ensurePersistentIdentifierAvailable(request.client(), request.identifier()),
-        request.verbosity(),
-        request.charset(),
-        null,
-        request.client(),
-        request.priorityClass(),
-        request.persistence(),
-        null,
-        request.global(),
-        options.getCHKOnly(),
-        options.dontCompress(),
-        options.maxRetries(),
-        options.earlyEncode(),
-        options.canWriteClientCache(),
-        options.forkOnCacheable(),
-        false,
-        options.extraInsertsSingleBlock(),
-        options.extraInsertsSplitfileHeaderBlock(),
-        options.realTimeFlag(),
-        null,
-        options.compatibilityMode(),
-        false /*XXX ignoreUSKDatehints*/,
-        core);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            checkEmptySSK(request.uri(), upload.targetFilename(), core.getClientContext()),
+            ensurePersistentIdentifierAvailable(request.client(), request.identifier()),
+            request.verbosity(),
+            request.priorityClass(),
+            request.persistence(),
+            options.realTimeFlag(),
+            null,
+            request.global());
+    super(requestParams, request.charset(), options, null, request.client(), core);
     UploadFrom uploadFromType = upload.uploadFromType();
     File uploadOrigFilename = upload.origFilename();
     String contentType = upload.contentType();
@@ -231,30 +217,33 @@ public class ClientPut extends ClientPutBase {
    */
   public ClientPut(FCPConnectionHandler handler, ClientPutMessage message, FCPServer server)
       throws IdentifierCollisionException, MessageInvalidException, IOException {
-    super(
-        checkEmptySSK(message.uri, message.targetFilename, server.getCore().getClientContext()),
-        ensureConnectionIdentifierAvailable(handler, message),
-        message.verbosity,
-        null,
-        handler,
-        message.priorityClass,
-        message.persistence,
-        message.clientToken,
-        message.global,
-        message.getCHKOnly,
-        message.dontCompress,
-        message.localRequestOnly,
-        message.maxRetries,
-        message.earlyEncode,
-        message.canWriteClientCache,
-        message.forkOnCacheable,
-        message.compressorDescriptor,
-        message.extraInsertsSingleBlock,
-        message.extraInsertsSplitfileHeaderBlock,
-        message.realTimeFlag,
-        message.compatibilityMode,
-        message.ignoreUSKDatehints,
-        server);
+    FcpInsertOptions options =
+        new FcpInsertOptions(
+            message.getCHKOnly,
+            message.dontCompress,
+            message.localRequestOnly,
+            message.maxRetries,
+            message.earlyEncode,
+            message.canWriteClientCache,
+            message.forkOnCacheable,
+            message.compressorDescriptor,
+            message.extraInsertsSingleBlock,
+            message.extraInsertsSplitfileHeaderBlock,
+            message.realTimeFlag,
+            message.compatibilityMode,
+            message.ignoreUSKDatehints,
+            message.overrideSplitfileCryptoKey);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            checkEmptySSK(message.uri, message.targetFilename, server.getCore().getClientContext()),
+            ensureConnectionIdentifierAvailable(handler, message),
+            message.verbosity,
+            message.priorityClass,
+            message.persistence,
+            options.realTimeFlag(),
+            message.clientToken,
+            message.global);
+    super(requestParams, null, options, handler, server);
     binaryBlob = message.binaryBlob;
 
     DiskUploadContext diskContext =

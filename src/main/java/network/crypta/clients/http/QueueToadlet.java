@@ -1095,6 +1095,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         String identifier,
         FreenetURI uri,
         boolean compress,
+        CompatibilityMode cmode,
         byte[] overrideSplitfileKey) {
       @Override
       public boolean equals(Object o) {
@@ -1105,8 +1106,10 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
                     var otherIdentifier,
                     var otherUri,
                     var otherCompress,
+                    var otherCmode,
                     var otherOverrideSplitfileKey)
             && compress == otherCompress
+            && cmode == otherCmode
             && Objects.equals(file, otherFile)
             && Objects.equals(identifier, otherIdentifier)
             && Objects.equals(uri, otherUri)
@@ -1115,7 +1118,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
       @Override
       public int hashCode() {
-        int result = Objects.hash(file, identifier, uri, compress);
+        int result = Objects.hash(file, identifier, uri, compress, cmode);
         return 31 * result + Arrays.hashCode(overrideSplitfileKey);
       }
 
@@ -1131,6 +1134,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             + uri
             + COMPRESS_LABEL
             + compress
+            + ", cmode="
+            + cmode
             + OVERRIDE_SPLITFILE_KEY_LABEL
             + Arrays.toString(overrideSplitfileKey)
             + '}';
@@ -1369,14 +1374,17 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           new FcpInsertOptions(
               false,
               !params.compress(),
+              false,
               -1,
               false,
               false,
               Node.FORK_ON_CACHEABLE_DEFAULT,
+              null,
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
               false,
               params.cmode(),
+              false,
               params.overrideSplitfileKey()),
           new ClientPutUpload(
               UploadFrom.DIRECT,
@@ -1571,14 +1579,17 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           new FcpInsertOptions(
               false,
               !params.compress(),
+              false,
               -1,
               false,
               false,
               Node.FORK_ON_CACHEABLE_DEFAULT,
+              null,
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
               false,
               params.cmode(),
+              false,
               params.overrideSplitfileKey()),
           new ClientPutUpload(
               UploadFrom.DISK,
@@ -1620,6 +1631,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       String identifier = file.getName() + FRED_SUFFIX + System.currentTimeMillis();
       String key = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
       boolean compress = request.isPartSet(COMPRESS_FIELD);
+      CompatibilityMode cmode = parseCompatibilityMode(request);
       byte[] overrideSplitfileKey =
           normalizeOverrideSplitfileKey(parseOverrideSplitfileKey(request));
       FreenetURI furi;
@@ -1633,7 +1645,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       } else {
         furi = new FreenetURI("CHK@");
       }
-      return new LocalDirInsertParams(file, identifier, furi, compress, overrideSplitfileKey);
+      return new LocalDirInsertParams(
+          file, identifier, furi, compress, cmode, overrideSplitfileKey);
     }
 
     private boolean queueLocalDirInsert(
@@ -1725,14 +1738,17 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           new FcpInsertOptions(
               false,
               !params.compress(),
+              false,
               -1,
               false,
               false,
               Node.FORK_ON_CACHEABLE_DEFAULT,
+              null,
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
               false,
               CompatibilityMode.COMPAT_DEFAULT,
+              false,
               params.overrideSplitfileKey()),
           params.file(),
           null,

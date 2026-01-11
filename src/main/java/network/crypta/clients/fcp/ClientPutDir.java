@@ -103,7 +103,7 @@ public class ClientPutDir extends ClientPutBase {
    * request.start(core.getClientContext());
    * }</pre>
    *
-   * @param handler connection handler responsible for routing progress replies to the caller.
+   * @param handler the connection handler responsible for routing progress replies to the caller.
    * @param message parsed message supplying URI, identifiers, persistence mode, and limits.
    * @param manifestElements manifest tree contributed by the caller, keyed by child names.
    * @param wasDiskPut true if the manifest originated from a disk enumeration on the node.
@@ -118,33 +118,36 @@ public class ClientPutDir extends ClientPutBase {
       boolean wasDiskPut,
       FCPServer server)
       throws MalformedURLException, TooManyFilesInsertException {
-    super(
-        checkEmptySSK(
-            message.uri,
-            message.targetFilename != null ? message.targetFilename : "site",
-            server.getCore().getClientContext()),
-        message.identifier,
-        message.verbosity,
-        null,
-        handler,
-        message.priorityClass,
-        message.persistence,
-        message.clientToken,
-        message.global,
-        message.getCHKOnly,
-        message.dontCompress,
-        message.localRequestOnly,
-        message.maxRetries,
-        message.earlyEncode,
-        message.canWriteClientCache,
-        message.forkOnCacheable,
-        message.compressorDescriptor,
-        message.extraInsertsSingleBlock,
-        message.extraInsertsSplitfileHeaderBlock,
-        message.realTimeFlag,
-        message.compatibilityMode,
-        message.ignoreUSKDatehints,
-        server);
+    FcpInsertOptions options =
+        new FcpInsertOptions(
+            message.getCHKOnly,
+            message.dontCompress,
+            message.localRequestOnly,
+            message.maxRetries,
+            message.earlyEncode,
+            message.canWriteClientCache,
+            message.forkOnCacheable,
+            message.compressorDescriptor,
+            message.extraInsertsSingleBlock,
+            message.extraInsertsSplitfileHeaderBlock,
+            message.realTimeFlag,
+            message.compatibilityMode,
+            message.ignoreUSKDatehints,
+            message.overrideSplitfileCryptoKey);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            checkEmptySSK(
+                message.uri,
+                message.targetFilename != null ? message.targetFilename : "site",
+                server.getCore().getClientContext()),
+            message.identifier,
+            message.verbosity,
+            message.priorityClass,
+            message.persistence,
+            options.realTimeFlag(),
+            message.clientToken,
+            message.global);
+    super(requestParams, null, options, handler, server);
     // debug level captured via LOG.isDebugEnabled()
     this.wasDiskPut = wasDiskPut;
     this.overrideSplitfileCryptoKey = message.overrideSplitfileCryptoKey;
@@ -174,7 +177,7 @@ public class ClientPutDir extends ClientPutBase {
    * the directory, optionally skipping hidden files, builds {@link ManifestElement} instances
    * backed by {@link FileBucket}s, and configures retry, compression, and persistence knobs before
    * the request is registered with a {@link PersistentRequestClient}. The constructor immediately
-   * counts files and bytes so progress meters have deterministic totals, and it captures the
+   * counts files and bytes, so progress meters have deterministic totals, and it captures the
    * optional override splitfile key for callers who precompute keys. After construction, invoke
    * {@link #start(ClientContext)} to stream blocks while leveraging the provided {@link
    * NodeClientCore}.
@@ -187,14 +190,17 @@ public class ClientPutDir extends ClientPutBase {
    *         new FcpInsertOptions(
    *             false,
    *             false,
+   *             false,
    *             3,
    *             false,
    *             true,
    *             false,
+   *             null,
    *             0,
    *             0,
    *             false,
    *             InsertContext.CompatibilityMode.COMPAT_DEFAULT,
+   *             false,
    *             null),
    *         new File("site"),
    *         "index.html",
@@ -224,31 +230,17 @@ public class ClientPutDir extends ClientPutBase {
       boolean includeHiddenFiles,
       NodeClientCore core)
       throws FileNotFoundException, MalformedURLException, TooManyFilesInsertException {
-    super(
-        checkEmptySSK(request.uri(), "site", core.getClientContext()),
-        request.identifier(),
-        request.verbosity(),
-        request.charset(),
-        null,
-        request.client(),
-        request.priorityClass(),
-        request.persistence(),
-        request.clientToken(),
-        request.global(),
-        options.getCHKOnly(),
-        options.dontCompress(),
-        options.maxRetries(),
-        options.earlyEncode(),
-        options.canWriteClientCache(),
-        options.forkOnCacheable(),
-        false,
-        options.extraInsertsSingleBlock(),
-        options.extraInsertsSplitfileHeaderBlock(),
-        options.realTimeFlag(),
-        null,
-        options.compatibilityMode(),
-        false /*XXX ignoreUSKDatehints*/,
-        core);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            checkEmptySSK(request.uri(), "site", core.getClientContext()),
+            request.identifier(),
+            request.verbosity(),
+            request.priorityClass(),
+            request.persistence(),
+            options.realTimeFlag(),
+            request.clientToken(),
+            request.global());
+    super(requestParams, request.charset(), options, null, request.client(), core);
     wasDiskPut = true;
     this.overrideSplitfileCryptoKey = options.overrideSplitfileCryptoKey();
     // debug level captured via LOG.isDebugEnabled()
@@ -462,8 +454,8 @@ public class ClientPutDir extends ClientPutBase {
    * <p>This hook is invoked once the request either finishes or transitions into a persisted state
    * where the manifest can be lazily rebuilt later. It recursively traverses the manifest map,
    * frees {@link ManifestElement} buckets, and nulls the root reference to allow garbage
-   * collection. The logic is conservative about synchronization so callers may invoke it regardless
-   * of the current persistence mode without risking double-free behavior.
+   * collection. The logic is conservative about synchronization, so callers may invoke it
+   * regardless of the current persistence mode without risking double-free behavior.
    */
   @Override
   protected void freeData() {
@@ -477,7 +469,7 @@ public class ClientPutDir extends ClientPutBase {
     }
     if (LOG.isDebugEnabled())
       LOG.debug("freeData() more on {} persistence type = {}", this, persistence);
-    // We have to commit everything, so activating everything here doesn't cost us much memory...?
+    // We have to commit everything, so activating everything here costs us little memory...?
     freeData(manifestElements);
     manifestElements = null;
   }
@@ -505,9 +497,9 @@ public class ClientPutDir extends ClientPutBase {
    *
    * <p>The manifest putter encapsulates all block scheduling and retry logic. Returning it here
    * lets the superclass manage cross-cutting behaviors such as throttling, serialization, and
-   * statistics updates in a uniform manner. Callers should treat the returned instance as
-   * transient; once {@link #freeData()} runs or the request completes, the putter may be {@code
-   * null} and should not be reused.
+   * statistics updates uniformly. Callers should treat the returned instance as transient; once
+   * {@link #freeData()} runs or the request completes, the putter may be {@code null} and should
+   * not be reused.
    *
    * @return currently active requester coordinating splitfile inserts, or {@code null} when torn
    *     down.
@@ -558,7 +550,7 @@ public class ClientPutDir extends ClientPutBase {
   private boolean isRealTime() {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
-      // resulted in it getting deleted, and also possibly failed deletions.
+      // resulted in it getting deleted and also possibly failed deletions.
       LOG.warn("lowLevelClient == null");
       return false;
     }
@@ -740,7 +732,7 @@ public class ClientPutDir extends ClientPutBase {
     int fetched = 0;
     int fatal = 0;
     int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
     Date latestSuccess = new Date();
     Date latestFailure = null;
     boolean totalFinalized = false;
