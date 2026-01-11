@@ -1749,7 +1749,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
               HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
               false,
-              CompatibilityMode.COMPAT_DEFAULT,
+              params.cmode(),
               false,
               params.overrideSplitfileKey()),
           params.file(),
