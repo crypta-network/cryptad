@@ -236,15 +236,16 @@ public abstract class ClientPutBase extends ClientRequest
       FCPServer server)
       throws MalformedURLException {
     super(
-        uri,
-        identifier,
-        verbosity,
-        handler,
-        priorityClass,
-        persistence,
-        realTimeFlag,
-        clientToken,
-        global);
+        new ClientRequestParams(
+            uri,
+            identifier,
+            verbosity,
+            priorityClass,
+            persistence,
+            realTimeFlag,
+            clientToken,
+            global),
+        handler);
     warnIfUnsupportedCharset(charset);
     ctx = server.getCore().getClientContext().getDefaultPersistentInsertContext();
     ctx.setGetCHKOnly(getCHKOnly);
@@ -359,16 +360,17 @@ public abstract class ClientPutBase extends ClientRequest
       NodeClientCore core)
       throws MalformedURLException {
     super(
-        uri,
-        identifier,
-        verbosity,
+        new ClientRequestParams(
+            uri,
+            identifier,
+            verbosity,
+            priorityClass,
+            persistence,
+            realTimeFlag,
+            clientToken,
+            global),
         handler,
-        client,
-        priorityClass,
-        persistence,
-        realTimeFlag,
-        clientToken,
-        global);
+        client);
     warnIfUnsupportedCharset(charset);
     ctx = core.getClientContext().getDefaultPersistentInsertContext();
     ctx.setGetCHKOnly(getCHKOnly);
