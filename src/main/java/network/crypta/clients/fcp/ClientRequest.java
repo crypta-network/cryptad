@@ -26,22 +26,22 @@ import org.slf4j.LoggerFactory;
 /**
  * Represents a single high-level request that the node carries out on behalf of an FCP client.
  *
- * <p>Instances of this class encapsulate the lifecycle, persistence configuration and bookkeeping
+ * <p>Instances of this class encapsulate the lifecycle, persistence configuration, and bookkeeping
  * for operations such as {@code ClientGet}, {@code ClientPut} and multi-key fetches. A {@code
  * ClientRequest} is created by the FCP layer when a client issues a request, then scheduled and
- * tracked by the node until it completes, fails or is explicitly cancelled. Subclasses implement
+ * tracked by the node until it completes, fails, or is explicitly canceled. Subclasses implement
  * the protocol-specific behavior while this base class coordinates common state and interaction
  * with the core node.
  *
- * <p>Requests may be connection-bound, reboot-persistent or fully persistent on disk. Each instance
- * keeps a stable identifier, priority class, client token and statistics that are used for progress
- * reporting and scheduling. Implementations are typically confined to the owning {@link
- * ClientContext} and must be safe to invoke from the node's worker threads.
+ * <p>Requests may be connection-bound, reboot-persistent, or fully persistent on disk. Each
+ * instance keeps a stable identifier, priority class, client token, and statistics that are used
+ * for progress reporting and scheduling. Implementations are typically confined to the owning
+ * {@link ClientContext} and must be safe to invoke from the node's worker threads.
  *
  * <ul>
  *   <li>Tracks client-visible metadata such as identifiers, tokens and verbosity.
- *   <li>Coordinates persistence, resumption and cancellation across reconnects and restarts.
- *   <li>Provides hooks for status reporting, restart and orderly shutdown.
+ *   <li>Coordinates persistence, resumption, and cancellation across reconnections and restarts.
+ *   <li>Provides hooks for status reporting, restart, and orderly shutdown.
  * </ul>
  *
  * @see RequestIdentifier
@@ -135,51 +135,35 @@ public abstract class ClientRequest implements Serializable {
    *
    * <p>This constructor is used when a {@link PersistentRequestClient} has already been resolved,
    * typically while resuming a request. It configures core metadata such as the requested {@link
-   * FreenetURI}, client-visible identifier, verbosity, priority class and persistence mode, and
+   * FreenetURI}, client-visible identifier, verbosity, priority class, and persistence mode, and
    * wires the request to the appropriate global or per-client queue.
    *
-   * @param uri2 target URI being fetched or inserted on behalf of the client
-   * @param identifier2 unique identifier string supplied by the FCP client for correlation
-   * @param verbosity2 requested verbosity level for progress and status messages
+   * @param params request metadata including identifiers, priority and persistence settings
    * @param handler connection handler owning the request while persistence is {@code CONNECTION}
    * @param client persistent request client instance that represents the owning FCP client
-   * @param priorityClass2 initial priority class used by the scheduler to order work
-   * @param persistenceType2 persistence mode controlling lifetime across disconnects and restarts
-   * @param realTime whether the request is scheduled as real-time instead of background bulk
-   * @param clientToken2 optional opaque token echoed back to the client in notifications
-   * @param global whether the request belongs to the shared global queue rather than a client
    */
   protected ClientRequest(
-      FreenetURI uri2,
-      String identifier2,
-      int verbosity2,
-      FCPConnectionHandler handler,
-      PersistentRequestClient client,
-      short priorityClass2,
-      Persistence persistenceType2,
-      boolean realTime,
-      String clientToken2,
-      boolean global) {
+      ClientRequestParams params, FCPConnectionHandler handler, PersistentRequestClient client) {
     int hash = super.hashCode();
     if (hash == 0) hash = 1;
     hashCode = hash;
-    this.uri = uri2;
-    this.identifier = identifier2;
-    if (global) {
+    this.uri = params.uri();
+    this.identifier = params.identifier();
+    if (params.global()) {
       this.verbosity = Integer.MAX_VALUE;
       this.clientName = null;
     } else {
-      this.verbosity = verbosity2;
+      this.verbosity = params.verbosity();
       this.clientName = client.name;
     }
     this.finished = false;
-    this.priorityClass = priorityClass2;
-    this.persistence = persistenceType2;
-    this.clientToken = clientToken2;
-    this.global = global;
+    this.priorityClass = params.priorityClass();
+    this.persistence = params.persistence();
+    this.clientToken = params.clientToken();
+    this.global = params.global();
     if (persistence == Persistence.CONNECTION) {
       this.origHandler = handler;
-      lowLevelClient = origHandler.connectionRequestClient(realTime);
+      lowLevelClient = origHandler.connectionRequestClient(params.realTime());
       this.client = null;
     } else {
       origHandler = null;
@@ -190,11 +174,11 @@ public abstract class ClientRequest implements Serializable {
       if (client.persistence != persistence) {
         throw new IllegalStateException("Persistent client has mismatched persistence");
       }
-      lowLevelClient = client.lowLevelClient(realTime);
+      lowLevelClient = client.lowLevelClient(params.realTime());
     }
     assert lowLevelClient != null;
     this.startupTime = System.currentTimeMillis();
-    this.realTime = realTime;
+    this.realTime = params.realTime();
   }
 
   /**
@@ -202,62 +186,46 @@ public abstract class ClientRequest implements Serializable {
    *
    * <p>This constructor is typically used when a request is first created from an FCP command. It
    * determines the appropriate persistent client (global or per-connection), configures the
-   * request's persistence mode, priority and verbosity and allocates a low-level {@link
+   * request's persistence mode, priority, and verbosity, and allocates a low-level {@link
    * RequestClient} suitable for either real-time or bulk scheduling.
    *
-   * @param uri2 target URI being fetched or inserted on behalf of the client
-   * @param identifier2 unique identifier string supplied by the FCP client for correlation
-   * @param verbosity2 requested verbosity level for progress and status messages
+   * @param params request metadata including identifiers, priority and persistence settings
    * @param handler connection handler from which persistent client information is derived
-   * @param priorityClass2 initial priority class used by the scheduler to order work
-   * @param persistenceType2 persistence mode controlling lifetime across disconnects and restarts
-   * @param realTime whether the request is scheduled as real-time instead of background bulk
-   * @param clientToken2 optional opaque token echoed back to the client in notifications
-   * @param global whether the request belongs to the shared global queue rather than a client
    */
-  protected ClientRequest(
-      FreenetURI uri2,
-      String identifier2,
-      int verbosity2,
-      FCPConnectionHandler handler,
-      short priorityClass2,
-      Persistence persistenceType2,
-      final boolean realTime,
-      String clientToken2,
-      boolean global) {
+  protected ClientRequest(ClientRequestParams params, FCPConnectionHandler handler) {
     int hash = super.hashCode();
     if (hash == 0) hash = 1;
     hashCode = hash;
-    this.uri = uri2;
-    this.identifier = identifier2;
+    this.uri = params.uri();
+    this.identifier = params.identifier();
     this.finished = false;
-    this.priorityClass = priorityClass2;
-    this.persistence = persistenceType2;
-    this.clientToken = clientToken2;
-    this.global = global;
+    this.priorityClass = params.priorityClass();
+    this.persistence = params.persistence();
+    this.clientToken = params.clientToken();
+    this.global = params.global();
     if (persistence == Persistence.CONNECTION) {
       this.origHandler = handler;
       client = null;
-      lowLevelClient = new RequestClientBuilder().realTime(realTime).build();
+      lowLevelClient = new RequestClientBuilder().realTime(params.realTime()).build();
       this.clientName = null;
-      this.verbosity = verbosity2;
+      this.verbosity = params.verbosity();
     } else {
       origHandler = null;
-      client = resolvePersistentClient(handler, persistenceType2, global);
-      if (global) {
+      client = resolvePersistentClient(handler, params.persistence(), params.global());
+      if (params.global()) {
         this.verbosity = Integer.MAX_VALUE;
         clientName = null;
       } else {
-        this.verbosity = verbosity2;
+        this.verbosity = params.verbosity();
         this.clientName = client.name;
       }
-      lowLevelClient = client.lowLevelClient(realTime);
+      lowLevelClient = client.lowLevelClient(params.realTime());
       if (lowLevelClient == null)
         throw new NullPointerException(
             "No lowLevelClient from client: "
                 + client
                 + " global = "
-                + global
+                + params.global()
                 + " persistence = "
                 + persistence);
     }
@@ -269,7 +237,7 @@ public abstract class ClientRequest implements Serializable {
               + persistence);
     assert client == null || (client.persistence == persistence);
     this.startupTime = System.currentTimeMillis();
-    this.realTime = realTime;
+    this.realTime = params.realTime();
   }
 
   private PersistentRequestClient resolvePersistentClient(
@@ -308,8 +276,8 @@ public abstract class ClientRequest implements Serializable {
    *
    * <p>The node calls this method when the underlying FCP connection terminates unexpectedly or is
    * closed by the client. Implementations typically record the condition, adjust any queued
-   * responses and decide whether the request should continue running as a persistent background job
-   * or be cancelled outright. This callback is invoked on a node worker thread and should return
+   * responses, and decide whether the request should continue running as a persistent background
+   * job or be canceled outright. This callback is invoked on a node worker thread and should return
    * quickly.
    *
    * @param context client context providing access to schedulers, queues and persistent roots
@@ -320,7 +288,7 @@ public abstract class ClientRequest implements Serializable {
    * Sends any queued protocol messages for this request to a reconnecting client.
    *
    * <p>This is used when the client lists persistent requests or re-establishes an FCP session and
-   * wants to receive outstanding messages such as progress updates, completion notifications or
+   * wants to receive outstanding messages such as progress updates, completion notifications, or
    * failure details. Implementations should respect {@code includeData} to avoid resending large
    * payloads unnecessarily and may honor {@code onlyData} when a client is interested only in bulk
    * data transfers.
@@ -342,7 +310,7 @@ public abstract class ClientRequest implements Serializable {
    * Describes how long a client request remains associated with the node.
    *
    * <p>The persistence mode determines whether a request is tied to the lifetime of a single FCP
-   * connection, survives reconnects within the same node process or is durably stored on disk
+   * connection, survives reconnections within the same node process, or is durably stored on disk
    * across restarts. The chosen value influences queue selection, resumption behavior and whether
    * {@link PersistentRequestClient} instances are created.
    */
@@ -350,7 +318,7 @@ public abstract class ClientRequest implements Serializable {
     /** Default: persists until connection loss. */
     CONNECTION,
     /**
-     * Reports to client by name; persists over connection loss. Not saved to disk, so dies on
+     * Reports to a client by name; persists over connection loss. Not saved to disk, so dies on
      * reboot.
      */
     REBOOT,
@@ -441,7 +409,7 @@ public abstract class ClientRequest implements Serializable {
    *
    * <p>This flag is set once the core node has either successfully completed the operation or
    * determined that it has irrecoverably failed. The request object may still remain registered,
-   * for example until the client acknowledges the completion message.
+   * for example, until the client acknowledges the completion message.
    *
    * @return {@code true} once the request has finished and will not perform further work
    */
@@ -513,8 +481,8 @@ public abstract class ClientRequest implements Serializable {
    * segment of a split file or key-based chunk. Implementations should return a value between
    * {@code 0.0} and {@code 1.0} when the total block count is known.
    *
-   * @return completion fraction in the range {@code 0.0} to {@code 1.0}, or an implementation
-   *     specific sentinel
+   * @return completion fraction in the range {@code 0.0} to {@code 1.0}, or an
+   *     implementation-specific sentinel
    */
   @SuppressWarnings("unused")
   public abstract double getSuccessFraction();
@@ -556,7 +524,7 @@ public abstract class ClientRequest implements Serializable {
    * Returns how many blocks have permanently failed during the current run.
    *
    * <p>Blocks counted here are not expected to succeed on their own without a restart.
-   * Implementations decide when to classify a failure as permanent, for example after exhausting
+   * Implementations decide when to classify a failure as permanent, for example, after exhausting
    * retry attempts.
    *
    * @return number of blocks that failed irrecoverably under the current request run
@@ -602,10 +570,10 @@ public abstract class ClientRequest implements Serializable {
    * Starts the request if it has not already been started.
    *
    * <p>Implementations are responsible for creating the underlying {@link ClientRequester},
-   * scheduling it on the appropriate queues and updating any status caches. This method may be
+   * scheduling it on the appropriate queues, and updating any status caches. This method may be
    * called again after a restart request but should avoid duplicating work when already running.
    *
-   * @param context client context providing access to schedulers, factories and persistent roots
+   * @param context client context providing access to schedulers, factories, and persistent roots
    */
   public abstract void start(ClientContext context);
 
@@ -649,9 +617,10 @@ public abstract class ClientRequest implements Serializable {
   /**
    * Restarts the request synchronously using the supplied client context.
    *
-   * <p>The implementation may reuse persistent on-disk state where available or start from scratch
-   * otherwise. Callers are responsible for checking {@link #canRestart()} beforehand. Depending on
-   * the request type this operation can be expensive and may block briefly while scheduling work.
+   * <p>The implementation may reuse a persistent on-disk state where available or start from
+   * scratch otherwise. Callers are responsible for checking {@link #canRestart()} beforehand.
+   * Depending on the request type, this operation can be expensive and may block briefly while
+   * scheduling work.
    *
    * @param context client context used to create new requesters and schedule work
    * @param disableFilterData whether associated filter data should be disabled for the restart
@@ -822,7 +791,7 @@ public abstract class ClientRequest implements Serializable {
    * <p>This may be {@code null} for connection-persistent requests that are not attached to a named
    * persistent client.
    *
-   * @return owning persistent client, or {@code null} for connection-bound requests
+   * @return owning a persistent client, or {@code null} for connection-bound requests
    */
   public PersistentRequestClient getClient() {
     return client;
@@ -863,7 +832,7 @@ public abstract class ClientRequest implements Serializable {
     // uri will be handled by subclasses.
     // This can change.
     dos.writeShort(priorityClass);
-    // This can change and is variable size.
+    // This can change and is a variable size.
     if (clientToken == null) dos.writeBoolean(false);
     else {
       dos.writeBoolean(true);
@@ -878,7 +847,7 @@ public abstract class ClientRequest implements Serializable {
    * encoding written by {@link #getClientDetail(DataOutputStream, ChecksumChecker)}.
    *
    * <p>This constructor is used when resuming requests from disk. It validates the magic number,
-   * version and {@link RequestIdentifier}, then restores scheduling parameters and recreates the
+   * version and {@link RequestIdentifier}, then restores scheduling parameters, and recreates the
    * {@link PersistentRequestClient} and {@link RequestClient} references needed for further
    * processing.
    *
@@ -946,7 +915,7 @@ public abstract class ClientRequest implements Serializable {
    * ClientRequester} tree to avoid recursion.
    *
    * @param context client context providing access to node-wide services required to resume
-   * @throws ResumeFailedException if required resources cannot be reacquired during resumption
+   * @throws ResumeFailedException if required, resources cannot be reacquired during resumption
    */
   protected abstract void innerResume(ClientContext context) throws ResumeFailedException;
 
@@ -1015,7 +984,7 @@ public abstract class ClientRequest implements Serializable {
   public abstract boolean fullyResumed();
 
   /**
-   * Called just before the node performs its final write during shutdown.
+   * Called just before the node performs its final writing during shutdown.
    *
    * <p>Subclasses can override this hook to flush any outstanding state to disk or perform
    * bookkeeping that cannot be recovered automatically after restart. The default implementation

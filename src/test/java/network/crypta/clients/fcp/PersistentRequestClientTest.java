@@ -168,7 +168,11 @@ class PersistentRequestClientTest {
     int requestRemovedCalls;
 
     TestClientRequest(PersistentRequestClient client, String identifier, boolean finished) {
-      super(null, identifier, 0, null, client, (short) 1, client.persistence, false, null, false);
+      super(
+          new ClientRequestParams(
+              null, identifier, 0, (short) 1, client.persistence, false, null, false),
+          null,
+          client);
       this.finished = finished;
     }
 
