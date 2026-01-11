@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 final class ClientGetPersistenceIO {
   private static final Logger LOG = LoggerFactory.getLogger(ClientGetPersistenceIO.class);
 
+  private static final long CHECKSUMMED_BLOCK_MAX_LENGTH = 65536L;
   private static final String COMPLETED_DOWNLOAD_RESTORE_FAILURE =
       "Failed to restore completed download-to-temp-space request, restarting instead";
   private static final String FETCH_SETTINGS_FALLBACK_MESSAGE =
@@ -36,15 +37,26 @@ final class ClientGetPersistenceIO {
    * @param dis input stream positioned at the checksummed payload.
    * @param context client context providing a temporary bucket factory.
    * @param checker checksum helper used to verify the payload.
+   * @param maxLength maximum length accepted for the checksummed payload.
    * @return a {@link DataInputStream} that validates checksums on close.
    * @throws IOException if the reader cannot be created.
-   * @throws ChecksumFailedException if checksum verification fails.
+   * @throws StorageFormatException if checksum verification fails.
    */
-  static DataInputStream checksummedReader(
-      DataInputStream dis, ClientContext context, ChecksumChecker checker)
-      throws IOException, ChecksumFailedException {
-    return new DataInputStream(
-        checker.checksumReaderWithLength(dis, context.tempBucketFactory, 65536));
+  static DataInputStream openChecksummed(
+      DataInputStream dis, ClientContext context, ChecksumChecker checker, long maxLength)
+      throws IOException, StorageFormatException {
+    try {
+      return new DataInputStream(
+          checker.checksumReaderWithLength(dis, context.tempBucketFactory, maxLength));
+    } catch (ChecksumFailedException e) {
+      StorageFormatException storageFormatException = new StorageFormatException("Checksum failed");
+      storageFormatException.initCause(e);
+      throw storageFormatException;
+    }
+  }
+
+  private static boolean isChecksumFailure(StorageFormatException exception) {
+    return exception.getCause() instanceof ChecksumFailedException;
   }
 
   /**
@@ -57,14 +69,43 @@ final class ClientGetPersistenceIO {
    */
   static FetchContext readFetchContextOrDefault(
       DataInputStream dis, ClientContext context, ChecksumChecker checker) {
-    try (DataInputStream inner = checksummedReader(dis, context, checker)) {
+    try (DataInputStream inner =
+        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
       return new FetchContext(inner);
-    } catch (StorageFormatException | IOException e) {
+    } catch (IOException e) {
       LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE, e);
-    } catch (ChecksumFailedException _) {
-      LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE);
+    } catch (StorageFormatException e) {
+      if (isChecksumFailure(e)) {
+        LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE);
+      } else {
+        LOG.error(FETCH_SETTINGS_FALLBACK_MESSAGE, e);
+      }
     }
     return context.getDefaultPersistentFetchContext();
+  }
+
+  /**
+   * Restores a bucket from a checksummed payload.
+   *
+   * @param dis input stream positioned at the bucket payload.
+   * @param context client context owning persistent bucket services.
+   * @param checker checksum helper used to verify the bucket metadata.
+   * @return restored bucket from the checksummed payload.
+   * @throws IOException if the underlying stream cannot be read.
+   * @throws StorageFormatException if checksum validation fails.
+   * @throws ResumeFailedException if bucket restoration fails.
+   */
+  static Bucket restoreBucketFromChecksummedBlock(
+      DataInputStream dis, ClientContext context, ChecksumChecker checker)
+      throws IOException, StorageFormatException, ResumeFailedException {
+    try (DataInputStream inner =
+        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
+      return BucketTools.restoreFrom(
+          inner,
+          context.persistentFG,
+          context.getPersistentFileTracker(),
+          context.getPersistentMasterSecret());
+    }
   }
 
   /**
@@ -84,16 +125,17 @@ final class ClientGetPersistenceIO {
     if (!dis.readBoolean()) {
       return null;
     }
-    try (DataInputStream metadataStream = checksummedReader(dis, context, checker)) {
-      return BucketTools.restoreFrom(
-          metadataStream,
-          context.persistentFG,
-          context.getPersistentFileTracker(),
-          context.getPersistentMasterSecret());
-    } catch (ChecksumFailedException e) {
-      StorageFormatException sfe = new StorageFormatException("Unable to restore initial metadata");
-      sfe.initCause(e);
-      throw sfe;
+    try {
+      return restoreBucketFromChecksummedBlock(dis, context, checker);
+    } catch (StorageFormatException e) {
+      if (isChecksumFailure(e)) {
+        StorageFormatException storageFormatException =
+            new StorageFormatException("Unable to restore initial metadata");
+        Throwable cause = e.getCause() == null ? e : e.getCause();
+        storageFormatException.initCause(cause);
+        throw storageFormatException;
+      }
+      throw e;
     }
   }
 
@@ -109,13 +151,9 @@ final class ClientGetPersistenceIO {
   static Bucket restoreCompletedDirectBucketOrNull(
       DataInputStream dis, ClientContext context, ChecksumChecker checker)
       throws ResumeFailedException {
-    try (DataInputStream inner = checksummedReader(dis, context, checker)) {
-      return BucketTools.restoreFrom(
-          inner,
-          context.persistentFG,
-          context.getPersistentFileTracker(),
-          context.getPersistentMasterSecret());
-    } catch (IOException | ChecksumFailedException | StorageFormatException e) {
+    try {
+      return restoreBucketFromChecksummedBlock(dis, context, checker);
+    } catch (IOException | StorageFormatException e) {
       LOG.error(COMPLETED_DOWNLOAD_RESTORE_FAILURE, e);
       return null;
     }
@@ -139,9 +177,10 @@ final class ClientGetPersistenceIO {
       String foundDataMimeType,
       ClientContext context,
       ChecksumChecker checker) {
-    try (DataInputStream inner = checksummedReader(dis, context, checker)) {
+    try (DataInputStream inner =
+        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
       return new GetFailedMessage(inner, reqID, foundDataLength, foundDataMimeType);
-    } catch (IOException | ChecksumFailedException | StorageFormatException e) {
+    } catch (IOException | StorageFormatException e) {
       LOG.error("Unable to restore reason for failure, restarting request", e);
       return null;
     }
@@ -164,14 +203,19 @@ final class ClientGetPersistenceIO {
       ClientGetter inProgressGetter,
       ClientGet request)
       throws StorageFormatException {
-    try (DataInputStream inner = checksummedReader(dis, context, checker)) {
+    try (DataInputStream inner =
+        openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
       if (inProgressGetter.resumeFromTrivialProgress(inner, context)) {
         request.readTransientProgressFields(inner);
       }
     } catch (IOException e) {
       LOG.error("Unable to restore splitfile, restarting: {}", e.toString());
-    } catch (ChecksumFailedException _) {
-      LOG.error("Unable to restore splitfile, restarting (checksum failed)");
+    } catch (StorageFormatException e) {
+      if (isChecksumFailure(e)) {
+        LOG.error("Unable to restore splitfile, restarting (checksum failed)");
+      } else {
+        throw e;
+      }
     }
   }
 }

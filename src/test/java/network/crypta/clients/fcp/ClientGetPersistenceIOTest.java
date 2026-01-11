@@ -69,8 +69,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ClientGetPersistenceIOTest {
 
   @Test
-  void checksummedReader_whenChecksumReturnsStream_readsPayload()
-      throws IOException, ChecksumFailedException {
+  void openChecksummed_whenChecksumReturnsStream_readsPayload()
+      throws IOException, ChecksumFailedException, StorageFormatException {
     ClientContext context = newClientContext();
     ChecksumChecker checker = mock(ChecksumChecker.class);
     ByteArrayOutputStream payloadBuffer = new ByteArrayOutputStream();
@@ -82,7 +82,8 @@ class ClientGetPersistenceIOTest {
     when(checker.checksumReaderWithLength(input, context.tempBucketFactory, 65536))
         .thenReturn(new ByteArrayInputStream(payloadBuffer.toByteArray()));
 
-    DataInputStream result = ClientGetPersistenceIO.checksummedReader(input, context, checker);
+    DataInputStream result =
+        ClientGetPersistenceIO.openChecksummed(input, context, checker, 65536L);
 
     assertEquals(42, result.readInt());
     verify(checker).checksumReaderWithLength(input, context.tempBucketFactory, 65536);

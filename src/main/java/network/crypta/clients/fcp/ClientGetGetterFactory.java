@@ -519,6 +519,39 @@ final class ClientGetGetterFactory {
   }
 
   /**
+   * Builds a {@link ClientGetter} for the supplied request settings.
+   *
+   * <p>This convenience wrapper keeps the request class free from option and flag types while still
+   * delegating to {@link #createGetter} for the actual fetcher creation.
+   *
+   * @param request owning request that receives fetch callbacks.
+   * @param returnBucket bucket holding returned data when not discarded.
+   * @param core node core used to allocate buckets when required.
+   * @return a configured {@link ClientGetter} ready to run.
+   * @throws IOException if bucket allocation fails.
+   */
+  static ClientGetter createGetterForRequest(
+      ClientGet request, Bucket returnBucket, NodeClientCore core) throws IOException {
+    ClientGetterRequest getterRequest =
+        createGetterRequest(
+            request, request.getURI(), request.fetchContextForGetter(), request.getPriority());
+    ClientGetterOptions options =
+        new ClientGetterOptions(
+            returnBucket,
+            null,
+            false,
+            request.initialMetadataBucket(),
+            request.extensionCheckForGetter());
+    ClientGet.ReturnType returnType = request.returnTypeForGetter();
+    ClientGetGetterFlags flags =
+        new ClientGetGetterFlags(
+            returnType == ClientGet.ReturnType.NONE,
+            request.binaryBlobRequested(),
+            request.persistence == ClientRequest.Persistence.FOREVER);
+    return createGetter(getterRequest, options, flags, core);
+  }
+
+  /**
    * Creates a configured {@link ClientGetter} for a {@link ClientGet} request.
    *
    * <p>The factory chooses the correct return bucket strategy and optionally sets up a {@link

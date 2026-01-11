@@ -12,8 +12,6 @@ import network.crypta.client.FetchResult;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
-import network.crypta.client.async.ClientGetterOptions;
-import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
@@ -432,14 +430,7 @@ public class ClientGet extends ClientRequest {
   }
 
   private ClientGetter makeGetter(NodeClientCore core, Bucket ret) throws IOException {
-    ClientGetterRequest getterRequest =
-        ClientGetGetterFactory.createGetterRequest(this, uri, fctx, priorityClass);
-    ClientGetterOptions options =
-        new ClientGetterOptions(ret, null, false, initialMetadata, extensionCheck);
-    ClientGetGetterFlags flags =
-        new ClientGetGetterFlags(
-            returnType == ReturnType.NONE, binaryBlob, persistence == Persistence.FOREVER);
-    return ClientGetGetterFactory.createGetter(getterRequest, options, flags, core);
+    return ClientGetGetterFactory.createGetterForRequest(this, ret, core);
   }
 
   /**
@@ -1018,6 +1009,51 @@ public class ClientGet extends ClientRequest {
    */
   public FreenetURI getURI() {
     return uri;
+  }
+
+  /**
+   * Exposes the fetch context for package-local helpers.
+   *
+   * @return live {@link FetchContext} backing this request.
+   */
+  FetchContext fetchContextForGetter() {
+    return fctx;
+  }
+
+  /**
+   * Exposes the metadata bucket associated with this request.
+   *
+   * @return initial metadata bucket, or {@code null} when unset.
+   */
+  Bucket initialMetadataBucket() {
+    return initialMetadata;
+  }
+
+  /**
+   * Returns the optional filename extension hint used for validation.
+   *
+   * @return extension hint or {@code null} when none is set.
+   */
+  String extensionCheckForGetter() {
+    return extensionCheck;
+  }
+
+  /**
+   * Returns the configured delivery strategy for the request.
+   *
+   * @return configured {@link ReturnType} for result delivery.
+   */
+  ReturnType returnTypeForGetter() {
+    return returnType;
+  }
+
+  /**
+   * Indicates whether Binary Blob recording is enabled for this request.
+   *
+   * @return {@code true} when Binary Blob output is expected.
+   */
+  boolean binaryBlobRequested() {
+    return binaryBlob;
   }
 
   /**
