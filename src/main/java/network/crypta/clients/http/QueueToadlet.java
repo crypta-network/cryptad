@@ -38,6 +38,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.TooManyFilesInsertException;
+import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.filter.ContentFilter;
 import network.crypta.client.filter.FilterMIMEType;
 import network.crypta.client.filter.KnownUnsafeContentTypeException;
@@ -90,15 +91,15 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This toadlet serves queue HTML pages, processes form submissions for starting, stopping,
  * deleting, or restarting requests, and emits user alerts when completed transfers need attention.
- * It coordinates with the {@link network.crypta.clients.fcp.FCPServer} to obtain live request
- * state, persists completed identifiers so notifications survive restarts, and delegates
- * file-browsing workflows to the dedicated local toadlets. Instances are bound either to the
- * download or upload queue and reuse shared rendering helpers that build tables, progress cells,
- * and bulk action forms.
+ * It coordinates with the {@link network.crypta.clients.fcp.FCPServer} to get live request state,
+ * persists completed identifiers so notifications survive restarts, and delegates file-browsing
+ * workflows to the dedicated local toadlets. Instances are bound either to the download or upload
+ * queue and reuse shared rendering helpers that build tables, progress cells, and bulk action
+ * forms.
  *
  * <p>The class is stateful and not thread-safe; it caches completed identifiers and keeps
- * per-request bookkeeping to avoid double-signalling events. All request-handling entry points are
- * invoked by the HTTP server on the same thread that processes the incoming toadlet request;
+ * per-request bookkeeping to avoid double-signaling events. The HTTP server invokes all
+ * request-handling entry points on the same thread that processes the incoming toadlet request;
  * longer-running operations are kept minimal to avoid blocking the request pipeline. Callers should
  * therefore avoid expensive per-request work and rely on the existing asynchronous FCP callbacks to
  * feed fresh status.
@@ -121,10 +122,10 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>Each value corresponds to a specific data point drawn from a {@link
    * network.crypta.clients.fcp.RequestStatus} and controls how headers, sort keys, and cells are
-   * emitted during rendering. The enum is shared by advanced and simple queue views so both modes
+   * emitted during rendering. The enum is shared by advanced and simple queue views, so both modes
    * can map the same underlying request state to different presentation layouts. Column selection
    * is intentionally conservative: it favors stable identifiers, sizes, and statuses that users can
-   * correlate with FCP logs over transient internal counters. Ordering is managed outside the enum
+   * correlate with FCP logs over transient internal counters. Ordering is managed outside the enum,
    * so callers can adapt to user-selected sorting without mutating the enum itself.
    */
   public enum QueueColumn {
@@ -179,9 +180,9 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
      */
     TOTAL_SIZE,
     /**
-     * Progress indicator displayed as counts or percentage depending on request type. Shows fetched
-     * versus total blocks, compression steps, and finalized markers so users can track long-running
-     * transfers.
+     * Progress indicator displayed as counts or percentage depending on the request type. Shows
+     * fetched versus total blocks, compression steps, and finalized markers so users can track
+     * long-running transfers.
      */
     PROGRESS,
     /**
@@ -257,6 +258,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String ERROR_ACCESS_DENIED_FILE_KEY = "errorAccessDeniedFile";
   private static final String ERROR_NO_FILE_OR_CANNOT_READ = "errorNoFileOrCannotRead";
   private static final String COMPRESS_LABEL = ", compress=";
+  private static final String CMODE_LABEL = ", cmode=";
   private static final String OVERRIDE_SPLITFILE_KEY_LABEL = ", overrideSplitfileKey=";
   private static final char[] HEX_ARRAY = "0123456789abcdef".toCharArray();
 
@@ -495,7 +497,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       try {
         throw new RedirectException(LocalDirectoryToadlet.basePath() + PATH_DOWNLOADS);
       } catch (URISyntaxException _) {
-        // Shouldn't happen, path is defined as such.
+        // Shouldn't happen, a path is defined as such.
       }
       return true;
     }
@@ -980,7 +982,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             + ", identifier='"
             + identifier
             + '\''
-            + ", cmode="
+            + CMODE_LABEL
             + cmode
             + OVERRIDE_SPLITFILE_KEY_LABEL
             + Arrays.toString(overrideSplitfileKey)
@@ -1019,7 +1021,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return "InsertOptions{"
             + COMPRESS_LABEL
             + compress
-            + ", cmode="
+            + CMODE_LABEL
             + cmode
             + OVERRIDE_SPLITFILE_KEY_LABEL
             + Arrays.toString(overrideSplitfileKey)
@@ -1134,7 +1136,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             + uri
             + COMPRESS_LABEL
             + compress
-            + ", cmode="
+            + CMODE_LABEL
             + cmode
             + OVERRIDE_SPLITFILE_KEY_LABEL
             + Arrays.toString(overrideSplitfileKey)
@@ -2079,7 +2081,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>The method enforces public-gateway restrictions, determines the requested intent (full HTML
    * view, count-only view, or key list export), and either renders synchronously or schedules
-   * background work to assemble results. When an intent requires background computation, the method
+   * background work to assemble results. When intent requires background computation, the method
    * waits for the job result and writes the response in the same HTTP request cycle. Errors related
    * to persistence or disabled FCP are mapped to user-friendly pages instead of propagating raw
    * exceptions.
@@ -2169,8 +2171,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
                     }
                   }
                 }
-                // Do not use maximal priority: There may be exceptional cases which have higher
-                // priority than the UI, to get rid of excessive garbage for example.
+                // Do not use maximal priority: There may be exceptional cases that have higher
+                // priority than the UI, to get rid of excessive garbage, for example.
               },
               NativeThread.PriorityLevel.HIGH_PRIORITY.value);
     } catch (PersistenceDisabledException _) {
@@ -3606,61 +3608,44 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    *
    * <p>The cell mirrors the appearance used on the queue page, including early status messages for
    * compression, unknown totals, and finalized uploads. The method is deterministic and does not
-   * mutate request state; it only formats progress based on the provided counters. Callers can
-   * reuse the returned node within larger tables, and should pass consistent counters so the
-   * percent calculations remain stable between refreshes.
+   * mutate the request state; it only formats progress based on the provided counters. Callers can
+   * reuse the returned node within larger tables and should pass consistent counters so the percent
+   * calculations remain stable between refreshes.
    *
-   * @param advancedMode {@code true} for detailed block counts, {@code false} for simplified view.
-   * @param started {@code true} once transfer starts; affects placeholder messaging.
-   * @param compressing current compression state; use {@code NONE} when inactive.
-   * @param fetched blocks transferred successfully so far; negative if unknown.
-   * @param failed blocks failed but still eligible for retry.
-   * @param fatallyFailed blocks failed permanently and will not retry.
-   * @param min minimum blocks required before completion is possible.
-   * @param total total expected blocks; non-positive when unavailable.
-   * @param finalized {@code true} once terminal state reached; suppresses updates.
-   * @param upload {@code true} for upload progress, {@code false} for downloads.
+   * @param context rendering context for the request state flags.
+   * @param counts progress counters for the request.
    * @return HTML node representing the progress cell, ready to attach.
    */
   public static HTMLNode createProgressCell(
-      boolean advancedMode,
-      boolean started,
-      COMPRESS_STATE compressing,
-      int fetched,
-      int failed,
-      int fatallyFailed,
-      int min,
-      int total,
-      boolean finalized,
-      boolean upload) {
+      ProgressCellContext context, SplitfileProgressCounts counts) {
     HTMLNode progressCell = new HTMLNode("td", ATTR_CLASS, "request-progress");
-    if (handleEarlyProgressMessages(advancedMode, started, compressing, progressCell)) {
+    if (handleEarlyProgressMessages(context, progressCell)) {
       return progressCell;
     }
 
-    int adjustedTotal = adjustTotal(advancedMode, min, total);
+    int adjustedTotal =
+        adjustTotal(context.advancedMode(), counts.minSuccessfulBlocks(), counts.totalBlocks());
 
-    if ((fetched < 0) || (adjustedTotal <= 0)) {
+    if ((counts.succeedBlocks() < 0) || (adjustedTotal <= 0)) {
       progressCell.addChild("span", ATTR_CLASS, "progress_fraction_unknown", l10n(UNKNOWN));
     } else {
-      ProgressBlockCounts progressCounts =
-          new ProgressBlockCounts(fetched, failed, fatallyFailed, min, adjustedTotal);
-      addProgressBar(progressCell, progressCounts, finalized, upload);
+      addProgressBar(
+          progressCell, counts, adjustedTotal, counts.finalizedTotal(), context.upload());
     }
     return progressCell;
   }
 
   private static boolean handleEarlyProgressMessages(
-      boolean advancedMode, boolean started, COMPRESS_STATE compressing, HTMLNode progressCell) {
-    if (!started) {
+      ProgressCellContext context, HTMLNode progressCell) {
+    if (!context.started()) {
       progressCell.addChild("#", l10n("starting"));
       return true;
     }
-    if (compressing == COMPRESS_STATE.WAITING && advancedMode) {
+    if (context.compressing() == COMPRESS_STATE.WAITING && context.advancedMode()) {
       progressCell.addChild("#", l10n("awaitingCompression"));
       return true;
     }
-    if (compressing != COMPRESS_STATE.WORKING) {
+    if (context.compressing() != COMPRESS_STATE.WORKING) {
       progressCell.addChild("#", l10n("compressing"));
       return true;
     }
@@ -3671,39 +3656,39 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     return (!advancedMode || total < min) ? min : total;
   }
 
-  private record ProgressBlockCounts(
-      int fetched, int failed, int fatallyFailed, int min, int total) {}
-
   private static void addProgressBar(
       HTMLNode progressCell,
-      ProgressBlockCounts progressCounts,
+      SplitfileProgressCounts progressCounts,
+      int adjustedTotal,
       boolean finalized,
       boolean upload) {
-    int fetchedPercent = (int) (progressCounts.fetched() / (double) progressCounts.total() * 100);
-    int failedPercent = (int) (progressCounts.failed() / (double) progressCounts.total() * 100);
+    int fetchedPercent = (int) (progressCounts.succeedBlocks() / (double) adjustedTotal * 100);
+    int failedPercent = (int) (progressCounts.failedBlocks() / (double) adjustedTotal * 100);
     int fatallyFailedPercent =
-        (int) (progressCounts.fatallyFailed() / (double) progressCounts.total() * 100);
-    int minPercent = (int) (progressCounts.min() / (double) progressCounts.total() * 100);
+        (int) (progressCounts.fatallyFailedBlocks() / (double) adjustedTotal * 100);
+    int minPercent = (int) (progressCounts.minSuccessfulBlocks() / (double) adjustedTotal * 100);
     HTMLNode progressBar = progressCell.addChild("div", ATTR_CLASS, "progressbar");
     progressBar.addChild(
         "div",
         new String[] {ATTR_CLASS, ATTR_STYLE},
         new String[] {"progressbar-done", CSS_WIDTH_PREFIX + fetchedPercent + "%;"});
 
-    if (progressCounts.failed() > 0) {
+    if (progressCounts.failedBlocks() > 0) {
       progressBar.addChild(
           "div",
           new String[] {ATTR_CLASS, ATTR_STYLE},
           new String[] {"progressbar-failed", CSS_WIDTH_PREFIX + failedPercent + "%;"});
     }
-    if (progressCounts.fatallyFailed() > 0) {
+    if (progressCounts.fatallyFailedBlocks() > 0) {
       progressBar.addChild(
           "div",
           new String[] {ATTR_CLASS, ATTR_STYLE},
           new String[] {"progressbar-failed2", CSS_WIDTH_PREFIX + fatallyFailedPercent + "%;"});
     }
-    if ((progressCounts.fetched() + progressCounts.failed() + progressCounts.fatallyFailed())
-        < progressCounts.min()) {
+    if ((progressCounts.succeedBlocks()
+            + progressCounts.failedBlocks()
+            + progressCounts.fatallyFailedBlocks())
+        < progressCounts.minSuccessfulBlocks()) {
       progressBar.addChild(
           "div",
           new String[] {ATTR_CLASS, ATTR_STYLE},
@@ -3713,9 +3698,18 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
 
     String prefix =
-        '(' + Integer.toString(progressCounts.fetched()) + "/ " + progressCounts.min() + "): ";
+        '('
+            + Integer.toString(progressCounts.succeedBlocks())
+            + "/ "
+            + progressCounts.minSuccessfulBlocks()
+            + "): ";
     addProgressTitle(
-        progressBar, progressCounts.fetched(), progressCounts.min(), finalized, upload, prefix);
+        progressBar,
+        progressCounts.succeedBlocks(),
+        progressCounts.minSuccessfulBlocks(),
+        finalized,
+        upload,
+        prefix);
   }
 
   private static void addProgressTitle(
@@ -3996,7 +3990,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
               TAG_INPUT,
               new String[] {ATTR_TYPE, ATTR_VALUE, ATTR_NAME, "id"},
               new String[] {"radio", "disk", TARGET, BULK_DOWNLOAD_SELECT_OPTION_DISK}
-              // Nicer spacing for radio button
+              // Nicer spacing for the radio button
               )
           .addChild(
               TAG_LABEL,
@@ -4076,10 +4070,10 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private HTMLNode createLastActivityCell(long now, Date lastActivity) {
     HTMLNode lastActivityCell = new HTMLNode("td", ATTR_CLASS, "request-last-activity");
     if (lastActivity == null) {
-      // During normal operation, lastActivity will never be null even if there was no
+      // During normal operation, the lastActivity will never be null even if there was no
       // activity yet. It will default to the Date when the request was added. (See
       // ClientRequester.getLatestSuccess() for the usability motivation behind that.)
-      // lastActivity can however be null if the user had been using a pre-release of
+      // lastActivity can, however, be null if the user had been using a pre-release of
       // purge-db4o which did not store the lastActivity Date to the database yet.
       // Thus, we initialize to "unknown" instead of "never" to stress that there was possibly
       // activity, but we cannot know because the Date was not stored yet.
@@ -4348,30 +4342,25 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
   private HTMLNode createProgressCellForRequest(
       ToadletContext ctx, RequestStatus clientRequest, boolean isUploadQueue) {
-    if (clientRequest instanceof UploadFileRequestStatus uploadStatus) {
-      return createProgressCell(
-          ctx.isAdvancedModeEnabled(),
-          clientRequest.isStarted(),
-          uploadStatus.isCompressing(),
-          clientRequest.getFetchedBlocks(),
-          clientRequest.getFailedBlocks(),
-          clientRequest.getFatalyFailedBlocks(),
-          clientRequest.getMinBlocks(),
-          clientRequest.getTotalBlocks(),
-          true,
-          isUploadQueue);
-    }
-    return createProgressCell(
-        ctx.isAdvancedModeEnabled(),
-        clientRequest.isStarted(),
-        COMPRESS_STATE.WORKING,
-        clientRequest.getFetchedBlocks(),
-        clientRequest.getFailedBlocks(),
-        clientRequest.getFatalyFailedBlocks(),
-        clientRequest.getMinBlocks(),
-        clientRequest.getTotalBlocks(),
-        clientRequest.isTotalFinalized(),
-        isUploadQueue);
+    COMPRESS_STATE compressing =
+        clientRequest instanceof UploadFileRequestStatus uploadStatus
+            ? uploadStatus.isCompressing()
+            : COMPRESS_STATE.WORKING;
+    boolean finalizedTotal =
+        clientRequest instanceof UploadFileRequestStatus || clientRequest.isTotalFinalized();
+    ProgressCellContext progressContext =
+        new ProgressCellContext(
+            ctx.isAdvancedModeEnabled(), clientRequest.isStarted(), compressing, isUploadQueue);
+    SplitfileProgressCounts progressCounts =
+        new SplitfileProgressCounts(
+            clientRequest.getTotalBlocks(),
+            clientRequest.getFetchedBlocks(),
+            clientRequest.getFailedBlocks(),
+            clientRequest.getFatalyFailedBlocks(),
+            clientRequest.getMinBlocks(),
+            clientRequest.getMinBlocks(),
+            finalizedTotal);
+    return createProgressCell(progressContext, progressCounts);
   }
 
   private static String toHex(byte[] data) {
@@ -4496,7 +4485,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   /**
    * Reports whether the queue toadlet is enabled for the current request context.
    *
-   * <p>The queue UI is available when the node is not operating in public-gateway mode, or when the
+   * <p>The queue UI is available when the node is not operating in public-gateway mode or when the
    * caller has full access permissions in the provided context. The check is intentionally
    * conservative and does not attempt to infer permissions from other request attributes. Callers
    * should pass the same context used for rendering to keep enablement decisions consistent.
