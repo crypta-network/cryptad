@@ -5,7 +5,6 @@ import java.net.InetAddress;
 import java.net.URI;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.PageMaker.THEME;
-import network.crypta.pluginmanager.FredPluginL10n;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BucketFactory;
 
@@ -36,81 +35,18 @@ import network.crypta.support.api.BucketFactory;
 public interface ToadletContainer {
 
   /**
-   * Register a {@link Toadlet} without adding a navigation link.
+   * Register a {@link Toadlet} and optionally expose it in the navigation menu.
    *
-   * <p>All incoming requests whose path begins with {@code urlPrefix} are routed to the supplied
-   * toadlet. The registration order controls precedence when prefixes overlap; placing a toadlet at
-   * the front allows it to shadow earlier registrations with the same prefix. This overload is
-   * useful for programmatic endpoints or internal hooks that do not need menu exposure but still
-   * need to be reachable through the HTTP surface.
+   * <p>All incoming requests whose path begins with {@code registration.urlPrefix()} are routed to
+   * the supplied toadlet. The registration order controls precedence when prefixes overlap; placing
+   * a toadlet at the front allows it shadowing earlier registrations with the same prefix. Menu
+   * metadata is honored when both {@code registration.menu()} and {@code registration.name()} are
+   * non-null.
    *
    * @param t the toadlet to register; must remain valid for the lifetime of the container
-   * @param menu menu category key that scopes navigation; ignored when no menu entry is created
-   * @param urlPrefix leading path segment (e.g., {@code /foo/bar}) used for handler resolution
-   * @param atFront whether this toadlet should win over earlier matching prefixes when resolving
-   * @param fullAccessOnly whether the link is hidden for reduced-permission clients; does not gate
-   *     dispatching, so handlers should still validate access before serving sensitive content
+   * @param registration immutable registration data (use {@link ToadletRegistration} factories)
    */
-  void register(Toadlet t, String menu, String urlPrefix, boolean atFront, boolean fullAccessOnly);
-
-  /**
-   * Register a {@link Toadlet} and, when possible, expose it in the navigation menu.
-   *
-   * <p>This overload allows callers to provide localized menu metadata and a callback that
-   * dynamically governs link visibility. Menu and name values may be {@code null} to suppress menu
-   * creation while still routing traffic. The registration process does not duplicate toadlets or
-   * mutate them; ownership and lifecycle stay with the caller. Overlapping prefixes follow the same
-   * precedence rules as the simpler overload.
-   *
-   * @param t the toadlet to register; must safely handle concurrent requests once exposed
-   * @param menu menu grouping key; {@code null} skips menu creation even when other metadata exists
-   * @param urlPrefix leading path segment (e.g., {@code /foo/bar}) used for request routing
-   * @param atFront whether this toadlet should be prioritized over earlier registrations
-   * @param name localization key that renders the menu label when a link is created
-   * @param title localization key that renders the tooltip for the link when present
-   * @param fullOnly whether the menu link is visible only to clients with full access permissions
-   * @param cb optional callback that can enable or hide the link based on runtime state
-   */
-  void register(
-      Toadlet t,
-      String menu,
-      String urlPrefix,
-      boolean atFront,
-      String name,
-      String title,
-      boolean fullOnly,
-      LinkEnabledCallback cb);
-
-  /**
-   * Register a {@link Toadlet} with menu metadata and localization support.
-   *
-   * <p>This variant mirrors {@link #register(Toadlet, String, String, boolean, String, String,
-   * boolean, LinkEnabledCallback)} while allowing localized strings to be resolved by the caller
-   * through a provided {@link FredPluginL10n}. Passing {@code null} for menu or name suppresses
-   * link creation and ignores presentation arguments. Implementations may cache translations or
-   * consult the callback for each render, so inputs should remain valid after registration.
-   *
-   * @param t the toadlet to register for the given prefix
-   * @param menu menu grouping key; {@code null} disables link creation regardless of other values
-   * @param urlPrefix leading path segment (e.g., {@code /foo/bar}) that this toadlet serves
-   * @param atFront whether this toadlet should override earlier registrations with matching
-   *     prefixes
-   * @param name localization key used for the visible link text when a menu entry is shown
-   * @param title localization key that supplies the link tooltip text where supported
-   * @param fullOnly whether the link is shown only to users with full access permissions enabled
-   * @param cb optional visibility callback consulted to decide whether the link is currently shown
-   * @param l10n optional localization provider used to resolve {@code name} and {@code title}
-   */
-  void register(
-      Toadlet t,
-      String menu,
-      String urlPrefix,
-      boolean atFront,
-      String name,
-      String title,
-      boolean fullOnly,
-      LinkEnabledCallback cb,
-      FredPluginL10n l10n);
+  void register(Toadlet t, ToadletRegistration registration);
 
   /**
    * Remove a previously registered toadlet and any associated navigation link metadata.
@@ -149,7 +85,7 @@ public interface ToadletContainer {
   THEME getTheme();
 
   /**
-   * Obtain the form password that protects sensitive POST submissions.
+   * Get the form password that protects sensitive POST submissions.
    *
    * <p>This value is commonly embedded into hidden fields by {@link #addFormChild(HTMLNode, String,
    * String)} to mitigate cross-site or automated attacks. Implementations should return a stable
@@ -311,7 +247,7 @@ public interface ToadletContainer {
    *
    * <p>When disabled, pages should fall back to polling or static updates to avoid relying on push
    * channels. Implementations can also use this signal to avoid allocating long-lived connections
-   * when the operator prefers strictly request/response traffic.
+   * when the operator prefers strict request/response traffic.
    *
    * @return {@code true} when push-style updates are permitted
    */
@@ -329,7 +265,7 @@ public interface ToadletContainer {
   boolean disableProgressPage();
 
   /**
-   * Obtain the page maker used to build HTML responses.
+   * Get the page maker used to build HTML responses.
    *
    * <p>Callers can reuse the returned {@link PageMaker} to assemble pages consistent with the
    * container's theme, localization, and layout conventions. The page maker may also embed common
@@ -353,10 +289,10 @@ public interface ToadletContainer {
   /**
    * Enable or disable advanced mode.
    *
-   * <p>Implementations should persist the chosen state and notify interested components as needed.
-   * Callers are expected to gate privileged UI elements on this value rather than direct authority
-   * checks. Changing this flag may have immediate UI effects, so consumers should re-render any
-   * cached views after toggling.
+   * <p>Implementations should persist in the chosen state and notify interested components as
+   * needed. Callers are expected to gate privileged UI elements on this value rather than direct
+   * authority checks. Changing this flag may have immediate UI effects, so consumers should
+   * re-render any cached views after toggling.
    *
    * @param enabled {@code true} to expose advanced mode features; {@code false} to hide them
    */

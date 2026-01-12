@@ -144,7 +144,7 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
     contentNode.addChild(createInsertBox(pageMaker, ctx, ctx.isAdvancedModeEnabled()));
     if (ctx.isAdvancedModeEnabled()) contentNode.addChild(createFilterBox(pageMaker, ctx));
 
-    writeHTMLReply(ctx, 200, "OK", null, page.generate());
+    writeHTMLReply(ctx, ReplyHeaders.of(200, "OK", "text/html; charset=utf-8"), page.generate());
   }
 
   private HTMLNode createInsertBox(

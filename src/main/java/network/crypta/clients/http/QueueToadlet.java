@@ -2140,7 +2140,10 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     try {
       RequestStatus[] reqs = fcp.getGlobalRequests();
       HTMLNode pageNode = handleGetInner(pageMaker, reqs, request, ctx);
-      writeHTMLReply(ctx, 200, "OK", new MultiValueTable<>(), pageNode.generate());
+      writeHTMLReply(
+          ctx,
+          ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", new MultiValueTable<>()),
+          pageNode.generate());
     } catch (PersistenceDisabledException _) {
       sendPersistenceDisabledError(ctx);
     }
@@ -2241,9 +2244,12 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private void writeOutput(ToadletContext ctx, OutputWrapper result)
       throws ToadletContextClosedException, IOException {
     if (result.pageNode != null) {
-      writeHTMLReply(ctx, 200, "OK", new MultiValueTable<>(), result.pageNode.generate());
+      writeHTMLReply(
+          ctx,
+          ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", new MultiValueTable<>()),
+          result.pageNode.generate());
     } else if (result.plainText != null) {
-      this.writeReply(ctx, 200, "text/plain", "OK", result.plainText);
+      this.writeReply(ctx, ReplyHeaders.of(200, "OK", "text/plain"), result.plainText);
     } else if (core.killedDatabase()) {
       sendPersistenceDisabledError(ctx);
     } else {

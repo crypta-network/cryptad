@@ -104,7 +104,7 @@ public class DarknetAddRefToadlet extends Toadlet {
       File installer = node.services().nodeUpdater().getInstallerWindows();
       if (installer != null) {
         FileBucket bucket = new FileBucket(installer, true, false, false, false);
-        this.writeReply(ctx, 200, "application/x-msdownload", "OK", bucket);
+        this.writeReply(ctx, ReplyHeaders.of(200, "OK", "application/x-msdownload"), bucket);
         return;
       }
     }
@@ -113,7 +113,7 @@ public class DarknetAddRefToadlet extends Toadlet {
       File installer = node.services().nodeUpdater().getInstallerNonWindows();
       if (installer != null) {
         FileBucket bucket = new FileBucket(installer, true, false, false, false);
-        this.writeReply(ctx, 200, "application/x-java-archive", "OK", bucket);
+        this.writeReply(ctx, ReplyHeaders.of(200, "OK", "application/x-java-archive"), bucket);
         return;
       }
     }

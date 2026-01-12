@@ -54,15 +54,14 @@ class ToadletContextImplTest {
     org.mockito.Mockito.when(container.isFProxyJavascriptEnabled()).thenReturn(false);
     org.mockito.Mockito.when(container.isSSL()).thenReturn(false);
 
+    ToadletRequestServices services =
+        new ToadletRequestServices(container, pageMaker, alertManager, bookmarkManager);
     context =
         new ToadletContextImpl(
             socket,
             new MultiValueTable<>(),
             bucketFactory,
-            pageMaker,
-            container,
-            alertManager,
-            bookmarkManager,
+            services,
             new URI("http://example.com/"),
             1L);
   }
@@ -130,8 +129,9 @@ class ToadletContextImplTest {
   void sendReplyHeaders_withoutModifiedTime_setsNoCacheAndCsp() throws Exception {
     MultiValueTable<String, String> headers = new MultiValueTable<>();
 
-    ToadletContextImpl.sendReplyHeaders(
-        outputStream, 200, "OK", headers, "text/plain", 10, null, true, false, false);
+    ReplyHeaders replyHeaders = ReplyHeaders.of(200, "OK", "text/plain", headers);
+    ReplyHeaderOptions options = new ReplyHeaderOptions(10, null, true, false, false);
+    ToadletContextImpl.sendReplyHeaders(outputStream, replyHeaders, options);
 
     Map<String, List<String>> parsed = parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
 
@@ -156,8 +156,9 @@ class ToadletContextImplTest {
     MultiValueTable<String, String> headers = new MultiValueTable<>();
     Date modified = new Date(0L);
 
-    ToadletContextImpl.sendReplyHeaders(
-        outputStream, 200, "OK", headers, "text/html", 5, modified, false, true, true);
+    ReplyHeaders replyHeaders = ReplyHeaders.of(200, "OK", "text/html", headers);
+    ReplyHeaderOptions options = new ReplyHeaderOptions(5, modified, false, true, true);
+    ToadletContextImpl.sendReplyHeaders(outputStream, replyHeaders, options);
 
     Map<String, List<String>> parsed = parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
 
@@ -221,7 +222,7 @@ class ToadletContextImplTest {
       if (idx <= 0) continue;
       String key = line.substring(0, idx).toLowerCase(Locale.ROOT);
       String value = line.substring(idx + 1).trim();
-      map.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(value);
+      map.computeIfAbsent(key, _ -> new java.util.ArrayList<>()).add(value);
     }
     return map;
   }

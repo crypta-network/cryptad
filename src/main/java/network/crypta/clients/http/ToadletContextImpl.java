@@ -53,12 +53,11 @@ import org.slf4j.LoggerFactory;
  * have been parsed and stays bound to that socket conversation until the handler decides whether to
  * keep the connection alive.
  *
- * <p>Typical usage flows from {@link #handle(Socket, ToadletContainer, PageMaker, UserAlertManager,
- * BookmarkManager)}: the container builds a {@code ToadletContextImpl}, passes it to the selected
- * toadlet, and the toadlet invokes convenience helpers such as {@link #sendReplyHeaders(int,
- * String, MultiValueTable, String, long)} or {@link #writeData(Bucket)}. The context tracks
- * cookies, form-password validation, CSP/HSTS headers, and other protocol details so individual
- * toadlets can focus on rendering content.
+ * <p>Typical usage flows from {@link #handle(Socket, ToadletRequestServices)}: the container builds
+ * a {@code ToadletContextImpl}, passes it to the selected toadlet, and the toadlet invokes
+ * convenience helpers such as {@link #sendReplyHeaders(int, String, MultiValueTable, String, long)}
+ * or {@link #writeData(Bucket)}. The context tracks cookies, form-password validation, CSP/HSTS
+ * headers, and other protocol details so individual toadlets can focus on rendering content.
  *
  * <p>The object is not thread-safe and is intended for single-request, single-thread use. Once
  * {@link #close()} or {@link #forceDisconnect()} flips the internal state, further writes throw
@@ -136,28 +135,18 @@ public class ToadletContextImpl implements ToadletContext {
    *     as delivered by the client.
    * @param bf Bucket factory used for request bodies and outgoing payload buffering during this
    *     context's lifetime.
-   * @param pageMaker Shared page renderer and localization helper used when toadlets generate HTML
-   *     responses or redirects.
-   * @param container Owning toadlet container controlling policy decisions such as Javascript
-   *     enablement, access control, and persistent-connection support.
-   * @param userAlertManager Manager used to route user-facing alerts originating from toadlet
-   *     handlers during request processing.
-   * @param bookmarkManager Bookmark subsystem entry point used by toadlets that need access to
-   *     bookmark data scoped to this HTTP interaction.
+   * @param services Shared request-handling services bundled by the HTTP listener.
    * @param uri Fully parsed and normalized request URI associated with the incoming HTTP request
    *     line.
    * @param uniqueID Monotonic identifier supplied by the container to correlate logs and responses
    *     across asynchronous callbacks.
-   * @throws IOException If the socket output stream cannot be obtained for subsequent replies.
+   * @throws IOException If the socket output stream cannot be obtained for later replies.
    */
   public ToadletContextImpl(
       Socket sock,
       MultiValueTable<String, String> headers,
       BucketFactory bf,
-      PageMaker pageMaker,
-      ToadletContainer container,
-      UserAlertManager userAlertManager,
-      BookmarkManager bookmarkManager,
+      ToadletRequestServices services,
       URI uri,
       long uniqueID)
       throws IOException {
@@ -170,10 +159,10 @@ public class ToadletContextImpl implements ToadletContext {
     remoteAddr = sock.getInetAddress();
     if (LOG.isTraceEnabled()) LOG.trace("Connection from {}", remoteAddr);
     this.bf = bf;
-    this.pagemaker = pageMaker;
-    this.container = container;
-    this.userAlertManager = userAlertManager;
-    this.bookmarkManager = bookmarkManager;
+    this.pagemaker = services.pageMaker();
+    this.container = services.container();
+    this.userAlertManager = services.userAlertManager();
+    this.bookmarkManager = services.bookmarkManager();
     // Generate a unique id
     uniqueId = String.valueOf(uniqueID);
   }
@@ -230,7 +219,7 @@ public class ToadletContextImpl implements ToadletContext {
   }
 
   /**
-   * Send an error message, containing full HTML from a String.
+   * Send an error message containing full HTML from a String.
    *
    * @param os The OutputStream to send the message to.
    * @param code The HTTP status code.
@@ -251,17 +240,10 @@ public class ToadletContextImpl implements ToadletContext {
       throws IOException {
     if (mvt == null) mvt = new MultiValueTable<>();
     byte[] messageBytes = htmlMessage.getBytes(StandardCharsets.UTF_8);
-    sendReplyHeaders(
-        os,
-        code,
-        httpReason,
-        mvt,
-        "text/html; charset=UTF-8",
-        messageBytes.length,
-        null,
-        disconnect,
-        false,
-        false);
+    ReplyHeaders replyHeaders = ReplyHeaders.of(code, httpReason, "text/html; charset=UTF-8", mvt);
+    ReplyHeaderOptions options =
+        new ReplyHeaderOptions(messageBytes.length, null, disconnect, false, false);
+    sendReplyHeaders(os, replyHeaders, options);
     os.write(messageBytes);
   }
 
@@ -291,7 +273,7 @@ public class ToadletContextImpl implements ToadletContext {
    * keeps scripting enabled according to container policy and assumes no modification time for
    * caching. Callers typically use it when streaming simple bodies where chunking is unnecessary
    * and connection reuse is allowed. The method must be called before writing any response bytes
-   * and only once per context instance; subsequent attempts raise an error to prevent malformed
+   * and only once per context instance; later attempts raise an error to prevent malformed
    * responses.
    *
    * @param code HTTP status code to emit toward the client connection.
@@ -306,7 +288,11 @@ public class ToadletContextImpl implements ToadletContext {
   public void sendReplyHeaders(
       int code, String desc, MultiValueTable<String, String> mvt, String mimeType, long length)
       throws ToadletContextClosedException, IOException {
-    sendReplyHeaders(code, desc, mvt, mimeType, length, false);
+    ReplyHeaders replyHeaders = ReplyHeaders.of(code, desc, mimeType, mvt);
+    ReplyHeaderOptions options =
+        new ReplyHeaderOptions(
+            length, null, shouldDisconnect, container.isFProxyJavascriptEnabled(), false);
+    sendReplyHeaders(replyHeaders, options);
   }
 
   /**
@@ -334,8 +320,11 @@ public class ToadletContextImpl implements ToadletContext {
       long length,
       boolean forceDisableJavascript)
       throws ToadletContextClosedException, IOException {
+    ReplyHeaders replyHeaders = ReplyHeaders.of(code, desc, mimeType, mvt, forceDisableJavascript);
     boolean enableJavascript = (!forceDisableJavascript) && container.isFProxyJavascriptEnabled();
-    sendReplyHeaders(code, desc, mvt, mimeType, length, null, false, enableJavascript);
+    ReplyHeaderOptions options =
+        new ReplyHeaderOptions(length, null, shouldDisconnect, enableJavascript, false);
+    sendReplyHeaders(replyHeaders, options);
   }
 
   /**
@@ -345,7 +334,7 @@ public class ToadletContextImpl implements ToadletContext {
    * framing disabled to align with typical static resource expectations.
    *
    * @param replyCode HTTP status code to emit for the static response payload.
-   * @param replyDescription Reason phrase to accompany the status code for client readability.
+   * @param replyDescription Reason phrase to go with the status code for client readability.
    * @param mvt Additional headers to merge into the response; may be {@code null} for none.
    * @param mimeType MIME type string; {@code null} sends no content-type header.
    * @param contentLength Exact number of bytes that will be written after the headers.
@@ -362,8 +351,10 @@ public class ToadletContextImpl implements ToadletContext {
       Date mTime)
       throws ToadletContextClosedException, IOException {
     if (mTime == null) throw new IllegalArgumentException();
-    sendReplyHeaders(
-        replyCode, replyDescription, mvt, mimeType, contentLength, mTime, false, false);
+    ReplyHeaders replyHeaders = ReplyHeaders.of(replyCode, replyDescription, mimeType, mvt);
+    ReplyHeaderOptions options =
+        new ReplyHeaderOptions(contentLength, mTime, shouldDisconnect, false, false);
+    sendReplyHeaders(replyHeaders, options);
   }
 
   /**
@@ -391,22 +382,15 @@ public class ToadletContextImpl implements ToadletContext {
       String mimeType,
       long contentLength)
       throws ToadletContextClosedException, IOException {
-    boolean enableJavascript;
-    enableJavascript =
+    boolean enableJavascript =
         container.isFProxyWebPushingEnabled() && container.isFProxyJavascriptEnabled();
-    sendReplyHeaders(
-        replyCode, replyDescription, mvt, mimeType, contentLength, null, true, enableJavascript);
+    ReplyHeaders replyHeaders = ReplyHeaders.of(replyCode, replyDescription, mimeType, mvt);
+    ReplyHeaderOptions options =
+        new ReplyHeaderOptions(contentLength, null, shouldDisconnect, enableJavascript, true);
+    sendReplyHeaders(replyHeaders, options);
   }
 
-  private void sendReplyHeaders(
-      int replyCode,
-      String replyDescription,
-      MultiValueTable<String, String> mvt,
-      String mimeType,
-      long contentLength,
-      Date mTime,
-      boolean allowFrames,
-      boolean enableJavascript)
+  private void sendReplyHeaders(ReplyHeaders replyHeaders, ReplyHeaderOptions options)
       throws ToadletContextClosedException, IOException {
     if (closed) throw new ToadletContextClosedException();
     if (firstReplySendingException != null) {
@@ -414,6 +398,7 @@ public class ToadletContextImpl implements ToadletContext {
     }
     firstReplySendingException = new Exception();
 
+    MultiValueTable<String, String> mvt = replyHeaders.headers();
     if (mvt == null) {
       mvt = new MultiValueTable<>();
     }
@@ -432,22 +417,20 @@ public class ToadletContextImpl implements ToadletContext {
     if (container.isSSL()) {
       String hsts = SSL.getHSTSHeader();
       if (!hsts.isEmpty() && !mvt.containsKey("strict-transport-security")) {
-        // SSL enabled, set strict-transport-security so that the user agent upgrade future requests
+        // SSL enabled, set strict-transport-security so that the user agent upgrades future
+        // requests
         // to SSL.
         mvt.put("strict-transport-security", hsts);
       }
     }
-    sendReplyHeaders(
-        sockOutputStream,
-        replyCode,
-        replyDescription,
-        mvt,
-        mimeType,
-        contentLength,
-        mTime,
-        shouldDisconnect,
-        enableJavascript,
-        allowFrames);
+    ReplyHeaders resolvedHeaders =
+        new ReplyHeaders(
+            replyHeaders.code(),
+            replyHeaders.description(),
+            replyHeaders.mimeType(),
+            mvt,
+            replyHeaders.forceDisableJavascript());
+    sendReplyHeaders(sockOutputStream, resolvedHeaders, options);
   }
 
   /**
@@ -482,7 +465,7 @@ public class ToadletContextImpl implements ToadletContext {
   /**
    * Validates that the supplied request carries the correct form password, redirecting to the root
    * path on failure. This helper centralizes CSRF enforcement for POST handlers and ensures callers
-   * do not accidentally leak response bodies before verifying credentials. When validation fails
+   * do not accidentally leak response bodies before verifying credentials. When validation fails,
    * the caller should stop processing and rely on the redirect that was already emitted.
    *
    * @param request HTTP request object containing parsed parameters and body parts for validation.
@@ -490,7 +473,7 @@ public class ToadletContextImpl implements ToadletContext {
    *     redirect has been sent to the client.
    * @throws ToadletContextClosedException If the context is already closed before the redirect is
    *     written.
-   * @throws IOException If header transmission fails while issuing the redirect response.
+   * @throws IOException If the header transmission fails while issuing the redirect response.
    */
   @Override
   public boolean checkFormPassword(HTTPRequest request)
@@ -510,7 +493,7 @@ public class ToadletContextImpl implements ToadletContext {
    *     redirect has been sent to the target location.
    * @throws ToadletContextClosedException If the context is already closed before the redirect is
    *     written.
-   * @throws IOException If header transmission fails while issuing the redirect response.
+   * @throws IOException If the header transmission fails while issuing the redirect response.
    */
   @Override
   public boolean checkFormPassword(HTTPRequest request, String redirectTo)
@@ -628,12 +611,12 @@ public class ToadletContextImpl implements ToadletContext {
   }
 
   /**
-   * Looks up a previously received cookie by name after parsing all {@code Cookie} headers. Domain
-   * and path arguments are currently unused but retained for interface compatibility. Invalid
-   * cookies are skipped with logging so a malformed entry does not prevent other cookies from being
-   * resolved.
+   * It looks up a previously received cookie by name after parsing all {@code Cookie} headers.
+   * Domain and path arguments are currently unused but retained for interface compatibility.
+   * Invalid cookies are skipped with logging, so a malformed entry does not prevent other cookies
+   * from being resolved.
    *
-   * @param domain Ignored domain hint; callers should pass the request host for future use.
+   * @param domain The ignored domain hint; callers should pass the request host for future use.
    * @param path Ignored path hint; callers should pass the request path for future use.
    * @param name Case-insensitive cookie name to retrieve from the parsed collection.
    * @return Matching {@link ReceivedCookie} or {@code null} when absent or parsing produced no
@@ -667,7 +650,7 @@ public class ToadletContextImpl implements ToadletContext {
    * cookie added here remains pending until the next call to one of the {@code sendReplyHeaders*}
    * helpers, which serializes the collection in insertion order. Because the context is tied to a
    * single request and not thread-safe, callers should add cookies before handing control to any
-   * asynchronous writers. Modifications after headers have been emitted are ignored because
+   * asynchronous writers. Modifications after headers have been emitted are ignored because the
    * response state is then fixed by HTTP semantics.
    *
    * @param newCookie Cookie instance to serialize into the outbound headers; must not be {@code
@@ -681,51 +664,46 @@ public class ToadletContextImpl implements ToadletContext {
   }
 
   static void sendReplyHeaders(
-      OutputStream sockOutputStream,
-      int replyCode,
-      String replyDescription,
-      MultiValueTable<String, String> mvt,
-      String mimeType,
-      long contentLength,
-      Date mTime,
-      boolean disconnect,
-      boolean allowScripts,
-      boolean allowFrames)
+      OutputStream sockOutputStream, ReplyHeaders replyHeaders, ReplyHeaderOptions options)
       throws IOException {
 
-    // Construct headers
+    MultiValueTable<String, String> mvt = replyHeaders.headers();
     if (mvt == null) {
       mvt = new MultiValueTable<>();
     }
-    addContentTypeHeader(mvt, mimeType);
-    if (contentLength >= 0) {
-      mvt.put("content-length", Long.toString(contentLength));
+    // Construct headers
+    addContentTypeHeader(mvt, replyHeaders.mimeType());
+    if (options.contentLength() >= 0) {
+      mvt.put("content-length", Long.toString(options.contentLength()));
     }
 
-    addCachingHeaders(mvt, mTime);
+    addCachingHeaders(mvt, options.modifiedTime());
 
     String nowString = TimeUtil.makeHTTPDate(System.currentTimeMillis());
-    String lastModString = mTime == null ? nowString : TimeUtil.makeHTTPDate(mTime.getTime());
+    String lastModString =
+        options.modifiedTime() == null
+            ? nowString
+            : TimeUtil.makeHTTPDate(options.modifiedTime().getTime());
 
     mvt.put("last-modified", lastModString);
     mvt.put("date", nowString);
-    if (disconnect) {
+    if (options.disconnect()) {
       mvt.put(CONNECTION_HEADER, "close");
     } else {
       mvt.put(CONNECTION_HEADER, "keep-alive");
     }
     mvt.put("cross-origin-embedder-policy", "require-corp");
     mvt.put("cross-origin-opener-policy", "same-origin");
-    String contentSecurityPolicy = generateCSP(allowScripts, allowFrames);
+    String contentSecurityPolicy = generateCSP(options.allowScripts(), options.allowFrames());
     mvt.put("content-security-policy", contentSecurityPolicy);
     mvt.put("x-content-security-policy", contentSecurityPolicy);
     mvt.put("x-webkit-csp", contentSecurityPolicy);
-    mvt.put("x-frame-options", allowFrames ? "SAMEORIGIN" : "DENY");
+    mvt.put("x-frame-options", options.allowFrames() ? "SAMEORIGIN" : "DENY");
     StringBuilder buf = new StringBuilder(1024);
     buf.append("HTTP/1.1 ");
-    buf.append(replyCode);
+    buf.append(replyHeaders.code());
     buf.append(' ');
-    buf.append(replyDescription);
+    buf.append(replyHeaders.description());
     buf.append("\r\n");
     for (Map.Entry<String, List<String>> entry : mvt.entrySet()) {
       String key = entry.getKey();
@@ -826,25 +804,15 @@ public class ToadletContextImpl implements ToadletContext {
    * and unexpected exceptions mapped to {@code 500 Internal Failure}. This method blocks on I/O and
    * should be invoked from a dedicated worker thread per connection.
    *
-   * @param sock Open client socket carrying the HTTP conversation for this handler thread.
-   * @param container Owning container that resolves toadlets and enforces policy decisions.
-   * @param pageMaker Shared page renderer used for error pages and UI responses.
-   * @param userAlertManager Manager used to emit user-facing alerts encountered during handling.
-   * @param bookmarkManager Bookmark subsystem reference available to toadlets for request handling.
+   * @param sock Open the client socket carrying the HTTP conversation for this handler thread.
+   * @param services Shared container services required for request handling.
    */
-  public static void handle(
-      Socket sock,
-      ToadletContainer container,
-      PageMaker pageMaker,
-      UserAlertManager userAlertManager,
-      BookmarkManager bookmarkManager) {
+  public static void handle(Socket sock, ToadletRequestServices services) {
     try (InputStream is = new BufferedInputStream(sock.getInputStream(), 4096);
         LineReadingInputStream lis = new LineReadingInputStream(is)) {
-      boolean keepProcessing =
-          processRequest(sock, container, pageMaker, userAlertManager, bookmarkManager, is, lis);
+      boolean keepProcessing = processRequest(sock, services, is, lis);
       while (keepProcessing) {
-        keepProcessing =
-            processRequest(sock, container, pageMaker, userAlertManager, bookmarkManager, is, lis);
+        keepProcessing = processRequest(sock, services, is, lis);
       }
     } catch (ParseException e) {
       try {
@@ -878,17 +846,11 @@ public class ToadletContextImpl implements ToadletContext {
         pw.flush();
         msg = msg + sw + "</pre></body></html>";
         byte[] messageBytes = msg.getBytes(StandardCharsets.UTF_8);
-        sendReplyHeaders(
-            sock.getOutputStream(),
-            500,
-            "Internal failure",
-            null,
-            "text/html; charset=UTF-8",
-            messageBytes.length,
-            null,
-            true,
-            false,
-            false);
+        ReplyHeaders replyHeaders =
+            ReplyHeaders.of(500, "Internal failure", "text/html; charset=UTF-8");
+        ReplyHeaderOptions options =
+            new ReplyHeaderOptions(messageBytes.length, null, true, false, false);
+        sendReplyHeaders(sock.getOutputStream(), replyHeaders, options);
         sock.getOutputStream().write(messageBytes);
       } catch (IOException _) {
         // ignore and return
@@ -897,19 +859,14 @@ public class ToadletContextImpl implements ToadletContext {
   }
 
   private static boolean processRequest(
-      Socket sock,
-      ToadletContainer container,
-      PageMaker pageMaker,
-      UserAlertManager userAlertManager,
-      BookmarkManager bookmarkManager,
-      InputStream is,
-      LineReadingInputStream lis)
+      Socket sock, ToadletRequestServices services, InputStream is, LineReadingInputStream lis)
       throws IOException,
           ParseException,
           ToadletContextClosedException,
           NoSuchMethodException,
           IllegalAccessException,
           ToadletInvocationException {
+    ToadletContainer container = services.container();
     String firstLine = lis.readLine(32768, 128, false); // ISO-8859-1 or US-ASCII, _not_ UTF-8
     if (firstLine == null) {
       sock.close();
@@ -936,15 +893,7 @@ public class ToadletContextImpl implements ToadletContext {
 
     ToadletContextImpl ctx =
         new ToadletContextImpl(
-            sock,
-            requestHeaders,
-            bf,
-            pageMaker,
-            container,
-            userAlertManager,
-            bookmarkManager,
-            requestLine.uri,
-            container.generateUniqueID());
+            sock, requestHeaders, bf, services, requestLine.uri, container.generateUniqueID());
     ctx.shouldDisconnect = disconnect;
 
     DataReadResult dataResult =
@@ -1318,7 +1267,7 @@ public class ToadletContextImpl implements ToadletContext {
    * @param offset Offset within the array where the payload to send begins.
    * @param length Number of bytes to write starting at {@code offset}; must not exceed array size.
    * @throws ToadletContextClosedException If the context has been closed and cannot accept output.
-   * @throws IOException If the socket write fails or the connection drops mid-transfer.
+   * @throws IOException If the socket writing fails or the connection drops mid-transfer.
    */
   @Override
   public void writeData(byte[] data, int offset, int length)
@@ -1335,7 +1284,7 @@ public class ToadletContextImpl implements ToadletContext {
    *
    * @param data Byte array to write to the socket; must not be {@code null}.
    * @throws ToadletContextClosedException If the context has been closed and cannot accept output.
-   * @throws IOException If the socket write fails or the connection drops mid-transfer.
+   * @throws IOException If the socket writing fails or the connection drops mid-transfer.
    */
   @Override
   public void writeData(byte[] data) throws ToadletContextClosedException, IOException {
@@ -1346,7 +1295,7 @@ public class ToadletContextImpl implements ToadletContext {
    * Streams the contents of the supplied {@link Bucket} to the client and then frees the bucket.
    * Callers transfer ownership to the context; if the data must remain available afterward, wrap it
    * in a {@link NoFreeBucket} before calling. The method copies until the bucket reports end-of-
-   * stream or the socket write fails, making it suitable for large payloads without loading the
+   * stream or the socket writing fails, making it suitable for large payloads without loading the
    * entire content into memory at once. It keeps the order of writes unchanged, allowing response
    * bodies generated earlier to be piped directly.
    *
@@ -1507,3 +1456,19 @@ public class ToadletContextImpl implements ToadletContext {
     return container.getReFilterPolicy();
   }
 }
+
+/**
+ * Bundle of response header options used when emitting reply metadata.
+ *
+ * @param contentLength length of the response body, or {@code -1} to omit the header
+ * @param modifiedTime optional last-modified timestamp for cache handling
+ * @param disconnect whether to close the socket after the response
+ * @param allowScripts whether scripts are permitted by the CSP
+ * @param allowFrames whether framing is permitted by the CSP
+ */
+record ReplyHeaderOptions(
+    long contentLength,
+    Date modifiedTime,
+    boolean disconnect,
+    boolean allowScripts,
+    boolean allowFrames) {}

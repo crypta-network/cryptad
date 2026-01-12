@@ -416,7 +416,10 @@ public abstract class ConnectionsToadlet extends Toadlet {
       String noderefString = fs.toOrderedStringWithBase64();
       MultiValueTable<String, String> extraHeaders =
           MultiValueTable.from("Content-Disposition", "attachment; filename=myref.fref");
-      writeReply(ctx, 200, "application/x-freenet-reference", "OK", extraHeaders, noderefString);
+      writeReply(
+          ctx,
+          ReplyHeaders.of(200, "OK", "application/x-freenet-reference", extraHeaders),
+          noderefString);
       return true;
     }
 

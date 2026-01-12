@@ -266,7 +266,8 @@ public class BrowserTestToadlet extends Toadlet {
         .addChild(
             "%", "document.getElementById('JSTEST').src = '/static/themes/clean/warning.png';");
 
-    this.writeHTMLReply(ctx, 200, "OK", null, page.generate(), true);
+    this.writeHTMLReply(
+        ctx, ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", null, true), page.generate());
   }
 
   /**
