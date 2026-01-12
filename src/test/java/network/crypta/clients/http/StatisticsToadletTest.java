@@ -16,6 +16,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStats;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerManager;
+import network.crypta.node.PeerStatusCounts;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.HTTPRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,23 +80,7 @@ class StatisticsToadletTest {
     StatisticsToadlet.drawPeerStatsBox(
         infobox,
         false,
-        0, // connected
-        0, // routingBackedOff
-        0, // tooNew
-        0, // tooOld
-        0, // disconnected
-        0, // neverConnected
-        0, // disabled
-        0, // bursting
-        0, // listening
-        0, // listenOnly
-        0, // seedServers
-        0, // seedClients
-        0, // routingDisabled
-        0, // clockProblem
-        0, // connError
-        0, // disconnecting
-        0, // noLoadStats
+        new PeerStatusCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
         nodeWithoutOpennet);
 
     String rendered = infobox.generate();
@@ -120,23 +105,7 @@ class StatisticsToadletTest {
     StatisticsToadlet.drawPeerStatsBox(
         infobox,
         true,
-        2, // connected
-        1, // routingBackedOff
-        1, // tooNew
-        0, // tooOld
-        0, // disconnected
-        0, // neverConnected
-        0, // disabled
-        0, // bursting
-        0, // listening
-        0, // listenOnly
-        0, // seedServers
-        1, // seedClients
-        0, // routingDisabled
-        0, // clockProblem
-        0, // connError
-        0, // disconnecting
-        0, // noLoadStats
+        new PeerStatusCounts(2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0),
         nodeWithOpennet);
 
     String rendered = infobox.generate();

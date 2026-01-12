@@ -43,6 +43,7 @@ import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerNodeLoadTracker.IncomingLoadSummaryStats;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.node.PeerStatusCounts;
 import network.crypta.node.Version;
 import network.crypta.support.Fields;
 import network.crypta.support.HTMLNode;
@@ -77,7 +78,7 @@ import org.slf4j.LoggerFactory;
  * <p>Thread-safety: instances rely on externally synchronized {@link Node}/{@link PeerManager}
  * methods. The toadlet itself holds no mutable request-scoped state except transient flags on the
  * stack, so it can service concurrent requests when the surrounding HTTP server invokes it in
- * parallel. Subclasses should preserve this behaviour when adding fields or caching.
+ * parallel. Subclasses should preserve this behavior when adding fields or caching.
  */
 public abstract class ConnectionsToadlet extends Toadlet {
   private static final Logger LOG = LoggerFactory.getLogger(ConnectionsToadlet.class);
@@ -103,7 +104,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /**
    * Comparator that orders {@link PeerNodeStatus} instances for table rendering.
    *
-   * <p>Sorting honours a user-selected column when present and otherwise falls back to status code
+   * <p>Sorting honors a user-selected column when present and otherwise falls back to status code
    * and peer hash for deterministic ordering. The {@code reversed} flag inverts the final result so
    * callers can reuse one comparator for ascending and descending views without allocating extra
    * helpers.
@@ -112,7 +113,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     /** Column key requested by the client, may be {@code null} for default ordering. */
     protected final String sortBy;
 
-    /** Whether the comparator should invert its result for descending presentation. */
+    /** Whether the comparator should invert its result for the descending presentation. */
     protected final boolean reversed;
 
     /**
@@ -127,7 +128,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
 
     /**
-     * Orders two peer rows using configured sort behaviour.
+     * Orders two peer rows using configured sort behavior.
      *
      * @param firstNode the first peer candidate; never mutated by this comparator.
      * @param secondNode the second peer candidate; never mutated by this comparator.
@@ -160,7 +161,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
 
     // xor: check why we do not just return the result of (long1-long2)
-    // j16sdiz: (Long.MAX_VALUE - (-1) ) would overflow and become negative
+    // j16sdiz: (Long.MAX_VALUE - (-1)) would overflow and become negative
     private int compareLongs(long long1, long long2) {
       int diff = Long.compare(long1, long2);
       if (diff == 0) return 0;
@@ -264,7 +265,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
   }
 
-  /** Reference to the running node that backs all connection state and operations. */
+  /** Reference to the running node that backs all connection states and operations. */
   protected final Node node;
 
   /** Core services used for filesystem paths, configuration, and network integration. */
@@ -276,7 +277,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /** Peer manager providing live peer state and addition helpers. */
   protected final PeerManager peers;
 
-  /** Tracks whether the current comparator reversed flag was requested by the user. */
+  /** Tracks whether the user requested the current comparator reversed flag. */
   protected boolean isReversed = false;
 
   /** Whether trivial FOAF connections should be displayed alongside non-trivial groups. */
@@ -340,9 +341,10 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * Renders the connections page and optional message-type breakdowns.
    *
    * <p>The handler validates access, resolves download endpoints for the current node reference,
-   * builds sorted peer tables, and writes the resulting HTML response. When no peers exist it still
-   * renders guidance and, depending on mode, may redirect to friend-adding flows. Download requests
-   * for {@code myref.fref} or {@code myref.txt} are served directly with appropriate headers.
+   * builds sorted peer tables, and writes the resulting HTML response. When no peers exist, it
+   * still renders guidance and, depending on mode, may redirect to friend-adding flows. Download
+   * requests for {@code myref.fref} or {@code myref.txt} are served directly with appropriate
+   * headers.
    *
    * @param uri request target URI, used to detect message-type view and download paths.
    * @param request HTTP request wrapper supplying parameters such as {@code sortBy} and {@code
@@ -370,7 +372,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         peerNodeStatuses,
         comparator(request.getParam("sortBy", null), request.isParameterSet("reversed")));
 
-    ConnectionCounts counts = computeConnectionCounts(peerNodeStatuses);
+    PeerStatusCounts counts = computePeerStatusCounts(peerNodeStatuses);
     String titleCountString = buildTitleCountString(counts);
 
     PageNode page = ctx.getPageMaker().getPageNode(getPageTitle(titleCountString), ctx);
@@ -427,37 +429,70 @@ public abstract class ConnectionsToadlet extends Toadlet {
     return false;
   }
 
-  private ConnectionCounts computeConnectionCounts(PeerNodeStatus[] peerNodeStatuses) {
-    return new ConnectionCounts(
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED),
+  private PeerStatusCounts computePeerStatusCounts(PeerNodeStatus[] peerNodeStatuses) {
+    int connected =
+        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED);
+    int routingBackedOff =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF),
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_NEW),
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_OLD),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF);
+    int tooNew =
+        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_NEW);
+    int tooOld =
+        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_OLD);
+    int disconnected =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTED),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTED);
+    int neverConnected =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED),
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISABLED),
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_BURSTING),
-        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTENING),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED);
+    int disabled =
+        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISABLED);
+    int bursting =
+        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_BURSTING);
+    int listening =
+        PeerNodeStatus.getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTENING);
+    int listenOnly =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTEN_ONLY),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTEN_ONLY);
+    int routingDisabled =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CLOCK_PROBLEM),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_DISABLED);
+    int clockProblem =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONN_ERROR),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CLOCK_PROBLEM);
+    int connError =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTING),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONN_ERROR);
+    int disconnecting =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_DISABLED),
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTING);
+    int noLoadStats =
         PeerNodeStatus.getPeerStatusCount(
-            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NO_LOAD_STATS));
+            peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NO_LOAD_STATS);
+
+    return new PeerStatusCounts(
+        connected,
+        routingBackedOff,
+        tooNew,
+        tooOld,
+        disconnected,
+        neverConnected,
+        disabled,
+        bursting,
+        listening,
+        listenOnly,
+        0,
+        0,
+        routingDisabled,
+        clockProblem,
+        connError,
+        disconnecting,
+        noLoadStats);
   }
 
-  private String buildTitleCountString(ConnectionCounts counts) {
+  private String buildTitleCountString(PeerStatusCounts counts) {
     if (!node.isAdvancedModeEnabled()) {
-      int numberOfSimpleConnected = counts.connected + counts.routingBackedOff;
+      int numberOfSimpleConnected = counts.connected() + counts.routingBackedOff();
       int numberOfNotConnected = counts.notConnected();
       return (numberOfNotConnected + numberOfSimpleConnected) > 0
           ? String.valueOf(numberOfSimpleConnected)
@@ -465,17 +500,17 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
 
     return "("
-        + counts.connected
+        + counts.connected()
         + '/'
-        + counts.routingBackedOff
+        + counts.routingBackedOff()
         + '/'
-        + counts.tooNew
+        + counts.tooNew()
         + '/'
-        + counts.tooOld
+        + counts.tooOld()
         + '/'
-        + counts.noLoadStats
+        + counts.noLoadStats()
         + '/'
-        + counts.routingDisabled
+        + counts.routingDisabled()
         + '/'
         + counts.notConnected()
         + ')';
@@ -498,7 +533,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   private void addOverviewSection(
-      HTMLNode contentNode, DecimalFormat percentageFormat, long now, ConnectionCounts counts) {
+      HTMLNode contentNode, DecimalFormat percentageFormat, long now, PeerStatusCounts counts) {
     long nodeUptimeSeconds = SECONDS.convert(now - node.getStartupTime(), MILLISECONDS);
     int bwlimitDelayTime = (int) stats.getBwlimitDelayTime();
     int nodeAveragePingTime = (int) stats.getNodeAveragePingTime();
@@ -571,29 +606,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
     }
   }
 
-  private void addPeerStatsSection(HTMLNode tableCell, ConnectionCounts counts) {
+  private void addPeerStatsSection(HTMLNode tableCell, PeerStatusCounts counts) {
     HTMLNode peerStatsInfobox = tableCell.addChild("div", ATTR_CLASS, INFOBOX_CLASS);
-    StatisticsToadlet.drawPeerStatsBox(
-        peerStatsInfobox,
-        true,
-        counts.connected,
-        counts.routingBackedOff,
-        counts.tooNew,
-        counts.tooOld,
-        counts.disconnected,
-        counts.neverConnected,
-        counts.disabled,
-        counts.bursting,
-        counts.listening,
-        counts.listenOnly,
-        0,
-        0,
-        counts.routingDisabled,
-        counts.clockProblem,
-        counts.connError,
-        counts.disconnecting,
-        counts.noLoadStats,
-        node);
+    StatisticsToadlet.drawPeerStatsBox(peerStatsInfobox, true, counts, node);
 
     addBackoffReasonBoxes(tableCell);
   }
@@ -1061,38 +1076,6 @@ public abstract class ConnectionsToadlet extends Toadlet {
     throw new RedirectException(URI.create("/addfriend/"));
   }
 
-  private record ConnectionCounts(
-      int connected,
-      int routingBackedOff,
-      int tooNew,
-      int tooOld,
-      int disconnected,
-      int neverConnected,
-      int disabled,
-      int bursting,
-      int listening,
-      int listenOnly,
-      int clockProblem,
-      int connError,
-      int disconnecting,
-      int routingDisabled,
-      int noLoadStats) {
-
-    int notConnected() {
-      return tooNew
-          + tooOld
-          + noLoadStats
-          + disconnected
-          + neverConnected
-          + disabled
-          + bursting
-          + listening
-          + listenOnly
-          + clockProblem
-          + connError;
-    }
-  }
-
   private record PeerTableContext(
       HTMLNode peerForm, HTMLNode peerTable, List<SimpleColumn> endCols) {}
 
@@ -1122,7 +1105,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       boolean advancedMode,
       HTMLNode contentNode,
       long now,
-      ConnectionCounts counts) {
+      PeerStatusCounts counts) {
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
@@ -1217,7 +1200,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
    *
    * <p>The handler verifies permissions, checks whether uploads are permitted, and dispatches to
    * add-peer logic or alternate actions based on submitted form parts. It logs debug detail only
-   * when enabled and leaves state unchanged if validation fails.
+   * when enabled and leaves the state unchanged if validation fails.
    *
    * @param uri target URI, used to route auxiliary POST actions.
    * @param request HTTP request containing multipart fields such as {@code add}, {@code ref}, or
@@ -1225,7 +1208,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * @param ctx toadlet context supplying authorization checks and response builders.
    * @throws ToadletContextClosedException if the client connection is already closed.
    * @throws IOException on I/O failures while reading parts or writing responses.
-   * @throws ConfigException when submitted trust or visibility values violate constraints.
+   * @throws ConfigException when submitted, trust or visibility values violate constraints.
    * @throws RedirectException when processing elects to redirect instead of generating a page.
    */
   public void handleMethodPOST(URI uri, final HTTPRequest request, ToadletContext ctx)
@@ -1573,7 +1556,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /**
    * Delegates POST actions not handled by {@link #handleMethodPOST} to subclass-specific logic.
    *
-   * <p>Default behaviour proxies the POST to the GET handler so subclasses only implementing GET
+   * <p>Default behavior proxies the POST to the GET handler, so subclasses only implementing GET
    * still behave correctly. Override to support extra form actions such as bulk operations.
    *
    * @param uri original request URI that determines routing of alternative actions.
@@ -1624,8 +1607,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * <p>A form and per-peer checkboxes are already present. Implementations should add controls and
    * submit buttons appropriate for their network mode.
    *
-   * @param peerForm form node that already wraps the peer table and checkboxes; implementations add
-   *     controls directly to this element.
+   * @param peerForm form a node that already wraps the peer table and checkboxes; implementations
+   *     add controls directly to this element.
    * @param advancedModeEnabled whether the UI is in advanced mode, enabling additional actions or
    *     diagnostics.
    */
@@ -1635,7 +1618,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * Determines whether the noderef textarea/download box should be displayed.
    *
    * <p>Darknet pages often show noderef exchange controls even for new users, whereas opennet pages
-   * may hide them unless advanced mode is active. Implementations should keep behaviour stable
+   * may hide them unless the advanced mode is active. Implementations should keep behavior stable
    * within a session so users are not surprised by disappearing controls.
    *
    * @param advancedModeEnabled whether the user requested advanced UI features.
@@ -1707,7 +1690,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * append the supplied count string or replace it entirely to match opennet/darknet conventions.
    * The method should remain deterministic for a given count input to aid testing.
    *
-   * @param titleCountString preformatted count string built from {@link ConnectionCounts}.
+   * @param titleCountString preformatted count string built from {@link PeerStatusCounts}.
    * @return complete title text to render for the current request.
    */
   protected abstract String getPageTitle(String titleCountString);
@@ -1715,7 +1698,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
   /**
    * Draws the add-a-peer box that follows the main peers table.
    *
-   * <p>The box includes textarea input, file upload control, and optional private note field.
+   * <p>The box includes textarea input, file upload control, and an optional private note field.
    * Subclasses may override to hide or extend the UI but should avoid altering form names to keep
    * POST handling compatible.
    *
@@ -1730,7 +1713,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * Static helper that renders the add-peer form with configurable target and mode.
    *
    * <p>Used by both opennet and darknet views to avoid code duplication. The contents include
-   * textarea paste input, file chooser, optional private note, and a submit button. The form posts
+   * textarea paste input, file chooser, optional private note, and a Submit button. The form posts
    * to {@code formTarget} using multipart encoding.
    *
    * @param contentNode HTML container receiving the generated infobox and form.
@@ -2205,7 +2188,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     messageCountRow.addChild("td", "colspan", "2");
     HTMLNode messageCountCell =
         messageCountRow.addChild(
-            "td", "colspan", "9"); // = total table row width - 2 from above colspan
+            "td", "colspan", "9"); // = total table row width - 2 from the above colspan
     HTMLNode messageCountTable =
         messageCountCell.addChild(ELEMENT_TABLE, ATTR_CLASS, "message-count");
     HTMLNode countHeaderRow = messageCountTable.addChild("tr");
