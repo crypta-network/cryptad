@@ -44,7 +44,7 @@ class SecurityLevelsToadletTest {
     HTMLNode formNode = content.addChild("form");
 
     SecurityLevelsToadlet.generatePasswordFormPage(
-        false, formNode, content, false, true, "HIGH", "/next");
+        new PasswordFormOptions(false, false, false, true, "HIGH", "/next"), formNode, content);
 
     assertFalse(findInputsByName(formNode, "masterPassword").isEmpty());
     assertFalse(findInputsByName(formNode, "confirmMasterPassword").isEmpty());
@@ -64,7 +64,7 @@ class SecurityLevelsToadletTest {
     HTMLNode formNode = content.addChild("form");
 
     SecurityLevelsToadlet.generatePasswordFormPage(
-        false, formNode, content, true, false, null, null);
+        new PasswordFormOptions(false, false, true, false, null, null), formNode, content);
 
     assertEquals(1, findInputsByName(formNode, "masterPassword").size());
     assertTrue(findInputsByName(formNode, "confirmMasterPassword").isEmpty());
@@ -88,7 +88,7 @@ class SecurityLevelsToadletTest {
             });
 
     SecurityLevelsToadlet.generatePasswordFormPage(
-        false, container, content, true, false, false, "LOW", null);
+        new PasswordFormOptions(false, true, false, false, "LOW", null), container, content);
 
     verify(container)
         .addFormChild(content, FirstTimeWizardToadlet.TOADLET_URL, "masterPasswordForm");

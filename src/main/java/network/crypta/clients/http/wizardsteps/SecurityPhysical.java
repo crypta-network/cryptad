@@ -3,6 +3,7 @@ package network.crypta.clients.http.wizardsteps;
 import java.io.IOException;
 import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
+import network.crypta.clients.http.PasswordFormOptions;
 import network.crypta.clients.http.SecurityLevelsToadlet;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.MasterKeysFileSizeException;
@@ -24,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * the corresponding form submission. The UI presents the available {@link
  * network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL physical threat levels}, and for the
  * “high” level it additionally collects and validates a master password. On POST, it may prompt
- * again for a password (for example when upgrading to high with an empty password, when the
+ * again for a password (for example, when upgrading to high with an empty password, when the
  * confirmation does not match, or when downgrading from high requires decrypting existing master
  * keys).
  *
@@ -86,8 +87,8 @@ public class SecurityPhysical implements Step {
    * {@link SecurityLevels.PHYSICAL_THREAT_LEVEL} radio options.
    *
    * <p>When the user selects the {@link SecurityLevels.PHYSICAL_THREAT_LEVEL#HIGH} option and the
-   * node is not already at high physical security, the form includes password and confirmation
-   * inputs for setting the master password.
+   * node is not yet at high physical security, the form includes password and confirmation inputs
+   * for setting the master password.
    *
    * @param request HTTP request providing query parameters that influence rendering (for example
    *     {@code error}, {@code type}, and the requested threat level).
@@ -156,7 +157,7 @@ public class SecurityPhysical implements Step {
               new HTMLNode[] {HTMLNode.STRONG});
       if (level == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH
           && core.getNode().services().securityLevels().getPhysicalThreatLevel() != level) {
-        // Add password form on high security if not already at high security.
+        // Add a password form on high security if not already at high security.
         HTMLNode p = div.addChild("p");
         p.addChild(TAG_LABEL, "for", "passwordBox", WizardL10n.l10nSec("setPasswordLabel") + ":");
         p.addChild(
@@ -210,7 +211,7 @@ public class SecurityPhysical implements Step {
         try {
           type = PASSWORD_PROMPT.valueOf(request.getParam("type"));
         } catch (IllegalArgumentException _) {
-          // Render the default page if unable to parse password prompt type.
+          // Render the default page if unable to parse the password prompt type.
           return false;
         }
 
@@ -259,13 +260,16 @@ public class SecurityPhysical implements Step {
         HTMLNode form = helper.addFormChild(content, ".", "masterPasswordForm");
 
         SecurityLevelsToadlet.generatePasswordFormPage(
-            wasWrong, form, content, forDowngrade, forUpgrade, newThreatLevel.name(), null);
+            new PasswordFormOptions(
+                wasWrong, true, forDowngrade, forUpgrade, newThreatLevel.name(), null),
+            form,
+            content);
 
         addBackToPhysicalSeclevelsButton(form);
         return true;
       }
       case "corrupt" -> {
-        // Password file corrupt
+        // Password file corrupts
         SecurityLevelsToadlet.sendPasswordFileCorruptedPageInner(
             helper, core.getNode().storage().getMasterKeysFile().getPath());
         return true;
@@ -276,7 +280,7 @@ public class SecurityPhysical implements Step {
         return true;
       }
       default -> {
-        // Error type was not recognized.
+        // The error type was not recognized.
         return false;
       }
     }

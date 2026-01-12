@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.clients.http.PasswordFormOptions;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.crypt.DSAPublicKey;
@@ -152,13 +153,13 @@ public final class NodeStorageSubsystem {
   private long maxCacheKeys;
   private long maxStoreKeys;
 
-  /** The maximum size of the datastore. Kept to avoid rounding turning 5G into 5368698672 */
+  /** The maximum size of the datastore. Kept to avoid rounding turning 5G into 5,368,698,672 */
   private long maxTotalDatastoreSize;
 
   /**
    * If true, store shrinks occur immediately even if they are over 10% of the store size. If false,
    * we just set the storeSize and do an offline shrink on the next startup. Online shrinks do not
-   * preserve the most recently used data so are not recommended.
+   * preserve the most recently used data, so are not recommended.
    */
   private boolean storeForceBigShrinks;
 
@@ -174,12 +175,12 @@ public final class NodeStorageSubsystem {
   /** Client cache store type */
   private String clientCacheType;
 
-  /** Client cache could not be opened so is a RAMFS until the correct password is entered */
+  /** Client cache could not be opened, so is a RAMFS until the correct password is entered */
   private boolean clientCacheAwaitingPassword;
 
   private boolean databaseAwaitingPassword;
 
-  /** Client cache maximum cached keys for each type */
+  /** Client caches maximum cached keys for each type */
   private long maxClientCacheKeys;
 
   /** Maximum size of the client cache. Kept to avoid rounding problems. */
@@ -394,14 +395,9 @@ public final class NodeStorageSubsystem {
         public HTMLNode getHTMLText() {
           HTMLNode content = new HTMLNode("div");
           network.crypta.clients.http.SecurityLevelsToadlet.generatePasswordFormPage(
-              false,
+              new PasswordFormOptions(false, false, false, false, null, null),
               node.services().clientCore().getEndpoints().getToadletContainer(),
-              content,
-              false,
-              false,
-              false,
-              null,
-              null);
+              content);
           return content;
         }
 
@@ -854,7 +850,7 @@ public final class NodeStorageSubsystem {
    * @param deep when {@code true}, writes to the main store if allowed; otherwise to the cache.
    * @param canWriteClientCache whether the client cache may be updated.
    * @param canWriteDatastore whether the persistent store may be updated (subject to policy).
-   * @param forULPR whether this write originates from ULPR processing (enables slashdot cache).
+   * @param forULPR whether this writing originates from ULPR processing (enables slashdot cache).
    * @throws KeyCollisionException if a conflicting entry exists and overwrite is not permitted for
    *     the specific block type.
    */
@@ -929,7 +925,7 @@ public final class NodeStorageSubsystem {
   }
 
   /**
-   * Stores the SSK block if this node is a sink according to routing policy.
+   * Stores the SSK block if this node is a sink, according to routing policy.
    *
    * @param block the SSK block to store.
    * @param deep when {@code true}, attempt to write to the main store; otherwise cache only.
@@ -951,14 +947,14 @@ public final class NodeStorageSubsystem {
   /**
    * Stores to caches only (never to the main store).
    *
-   * <p>Used by fetch paths where only cache promotion is desired. Persistent store writes are never
-   * performed by this method regardless of flags.
+   * <p>Used by fetch paths where only cache promotion is desired. This method never performs
+   * persistent store writes regardless of flags.
    *
    * @param block the SSK block to cache.
    * @param canWriteClientCache whether the client cache may be updated.
    * @param canWriteDatastore whether the datastore write flag is set; ignored here (never used).
-   * @param fromULPR whether the write originates from ULPR processing; enables slashdot cache.
-   * @throws KeyCollisionException if the cache write detects a key collision.
+   * @param fromULPR whether the writing originates from ULPR processing; enables slashdot cache.
+   * @throws KeyCollisionException if the cache writing detects a key collision.
    */
   public void storeShallow(
       SSKBlock block, boolean canWriteClientCache, boolean canWriteDatastore, boolean fromULPR)
@@ -1433,7 +1429,7 @@ public final class NodeStorageSubsystem {
       if (LOG.isDebugEnabled()) LOG.debug("Could not find key for {}", clientSSK);
       return null;
     }
-    // Move the pubkey to the top of the LRU, and fix it if it
+    // Move the pubkey to the top of the LRU and fix it if it
     // was corrupt.
     getPubKey.cacheKey(
         clientSSK.pubKeyHash,
@@ -2065,7 +2061,7 @@ public final class NodeStorageSubsystem {
   }
 
   public void changeClientCacheType(String value) throws InvalidConfigValueException {
-    synchronized (node) { // Serialise this part.
+    synchronized (node) { // Serialize this part.
       switch (value) {
         case Node.TYPE_SALT_HASH -> {
           byte[] key;

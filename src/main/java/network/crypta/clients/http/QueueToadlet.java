@@ -2025,7 +2025,9 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           ctx.getPageMaker().getInfobox(INFOBOX_ERROR, title, contentNode, null, true);
 
       SecurityLevelsToadlet.generatePasswordFormPage(
-          false, container, infoboxContent, false, false, false, null, path());
+          new PasswordFormOptions(false, false, false, false, null, path()),
+          container,
+          infoboxContent);
 
       addHomepageLink(infoboxContent);
 
