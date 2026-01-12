@@ -199,11 +199,7 @@ public class SubConfig implements Comparable<SubConfig> {
             this,
             optionName,
             defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
+            new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
             cb));
   }
 
@@ -305,11 +301,7 @@ public class SubConfig implements Comparable<SubConfig> {
             this,
             optionName,
             defaultValueString,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
+            new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
             cb));
   }
 
