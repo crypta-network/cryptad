@@ -132,7 +132,8 @@ class ImageElementTest {
 
     // Act
     ImageElement element =
-        ImageElement.createImageElement(tracker, key, maxSize, ctx, width, height, null, false);
+        ImageElement.createImageElement(
+            tracker, key, maxSize, ctx, new ImageElementAttributes(width, height, null), false);
 
     // Assert
     HTMLNode noscript = requireChildByName(element, TAG_NOSCRIPT);
@@ -157,7 +158,8 @@ class ImageElementTest {
 
     // Act
     ImageElement element =
-        ImageElement.createImageElement(tracker, key, 1L, ctx, -1, -1, name, false);
+        ImageElement.createImageElement(
+            tracker, key, 1L, ctx, new ImageElementAttributes(-1, -1, name), false);
 
     // Assert
     HTMLNode img = requireChildByName(requireChildByName(element, TAG_NOSCRIPT), "img");
@@ -169,7 +171,8 @@ class ImageElementTest {
   void updateState_whenInitialAndNotError_rendersInitializingImageAndHiddenInputs() {
     // Arrange
     ImageElement element =
-        ImageElement.createImageElement(tracker, key, 999L, ctx, 12, 34, "name", false);
+        ImageElement.createImageElement(
+            tracker, key, 999L, ctx, new ImageElementAttributes(12, 34, "name"), false);
     setWasError(element, false);
 
     // Act
@@ -301,7 +304,8 @@ class ImageElementTest {
     // Arrange
     long maxSize = 321L;
     ImageElement element =
-        ImageElement.createImageElement(tracker, key, maxSize, ctx, 12, 34, null, false);
+        ImageElement.createImageElement(
+            tracker, key, maxSize, ctx, new ImageElementAttributes(12, 34, null), false);
 
     FProxyFetchInProgress progress = mock(FProxyFetchInProgress.class);
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);

@@ -112,7 +112,8 @@ public class ImageElement extends BaseUpdatableElement {
       long maxSize,
       ToadletContext ctx,
       boolean pushed) {
-    return createImageElement(tracker, key, maxSize, ctx, -1, -1, null, pushed);
+    return createImageElement(
+        tracker, key, maxSize, ctx, ImageElementAttributes.unspecified(), pushed);
   }
 
   /**
@@ -136,10 +137,8 @@ public class ImageElement extends BaseUpdatableElement {
    *     upstream validation and may fail fetch initialization.
    * @param ctx the toadlet context providing server/container access for push updates; must not be
    *     {@code null}.
-   * @param width the width attribute in CSS pixels, or {@code -1} to omit the attribute entirely.
-   * @param height the height attribute in CSS pixels, or {@code -1} to omit the attribute entirely.
-   * @param name optional user-visible name used for {@code alt} and {@code title}; {@code null}
-   *     leaves attributes unchanged.
+   * @param attributes optional size and accessible-name attributes; when {@code null}, the default
+   *     of no size and no name is applied.
    * @param pushed {@code true} to attach a push listener and schedule immediate fetch observation;
    *     {@code false} to render passively without registering listeners.
    * @return a new image element configured with the requested attributes and update mode.
@@ -149,23 +148,24 @@ public class ImageElement extends BaseUpdatableElement {
       FreenetURI key,
       long maxSize,
       ToadletContext ctx,
-      int width,
-      int height,
-      String name,
+      ImageElementAttributes attributes,
       boolean pushed) {
-    Map<String, String> attributes = new HashMap<>();
-    attributes.put("src", key.toString());
-    if (width != -1) {
-      attributes.put(ATTR_WIDTH, String.valueOf(width));
+    ImageElementAttributes resolvedAttributes =
+        attributes != null ? attributes : ImageElementAttributes.unspecified();
+    Map<String, String> attributesMap = new HashMap<>();
+    attributesMap.put("src", key.toString());
+    if (resolvedAttributes.width() != -1) {
+      attributesMap.put(ATTR_WIDTH, String.valueOf(resolvedAttributes.width()));
     }
-    if (height != -1) {
-      attributes.put(ATTR_HEIGHT, String.valueOf(height));
+    if (resolvedAttributes.height() != -1) {
+      attributesMap.put(ATTR_HEIGHT, String.valueOf(resolvedAttributes.height()));
     }
-    if (name != null) {
-      attributes.put("alt", name);
-      attributes.put("title", name);
+    if (resolvedAttributes.name() != null) {
+      attributesMap.put("alt", resolvedAttributes.name());
+      attributesMap.put("title", resolvedAttributes.name());
     }
-    return new ImageElement(tracker, key, maxSize, ctx, new ParsedTag("img", attributes), pushed);
+    return new ImageElement(
+        tracker, key, maxSize, ctx, new ParsedTag("img", attributesMap), pushed);
   }
 
   /**
@@ -191,7 +191,7 @@ public class ImageElement extends BaseUpdatableElement {
    * @param originalImg parsed representation of the original {@code <img>} tag to re-render when
    *     complete or on error; must not be {@code null}.
    * @param pushed {@code true} to register for push updates; {@code false} to avoid listener
-   *     registration and cancellation on dispose.
+   *     registration and cancellation on disposal.
    */
   public ImageElement(
       FProxyFetchTracker tracker,
@@ -328,7 +328,7 @@ public class ImageElement extends BaseUpdatableElement {
    *
    * <p>The returned identifier is derived from the provided URI and a caller-supplied random
    * number. The random component allows multiple elements that refer to the same URI to coexist
-   * without collisions in the update system. The final identifier is Base64-encoded so it is safe
+   * without collisions in the update system. The final identifier is Base64-encoded, so it is safe
    * to embed into HTML attributes or JavaScript payloads.
    *
    * @param uri the logical image URI used as part of the identifier; must not be {@code null}.
