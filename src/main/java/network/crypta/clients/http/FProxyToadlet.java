@@ -990,7 +990,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
               l10n(ABORT_TO_HOMEPAGE_KEY));
 
       MultiValueTable<String, String> retHeaders = new MultiValueTable<>();
-      writeHTMLReply(ctx, 200, "OK", retHeaders, page.generate());
+      writeHTMLReply(
+          ctx, ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", retHeaders), page.generate());
       fetchResult.close();
       fetch.close();
     }

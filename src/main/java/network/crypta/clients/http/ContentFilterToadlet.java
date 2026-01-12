@@ -173,7 +173,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
 
     contentNode.addChild(createContent(pageMaker, ctx));
 
-    writeHTMLReply(ctx, 200, "OK", null, page.generate());
+    writeHTMLReply(ctx, ReplyHeaders.of(200, "OK", "text/html; charset=utf-8"), page.generate());
   }
 
   /**

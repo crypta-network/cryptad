@@ -1,5 +1,6 @@
 package network.crypta.clients.http;
 
+import com.onionnetworks.util.Buffer;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -8,7 +9,13 @@ import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
-import network.crypta.client.*;
+import network.crypta.client.FetchContext;
+import network.crypta.client.FetchException;
+import network.crypta.client.FetchResult;
+import network.crypta.client.FetchWaiter;
+import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.InsertBlock;
+import network.crypta.client.InsertException;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
@@ -69,7 +76,7 @@ public abstract class Toadlet {
 
   /**
    * Creates a toadlet bound to the high-level client helper used for fetch and insert operations.
-   * The client is typically shared across multiple toadlets so connection pooling, throttling, and
+   * The client is typically shared across multiple toadlets, so connection pooling, throttling, and
    * authentication remain consistent. Implementations should store configuration on the client
    * rather than subclass fields so that instances stay lightweight and easy to construct.
    *
@@ -151,7 +158,7 @@ public abstract class Toadlet {
    * @param ctx Execution context for writing replies, acquiring page builders, and tracking session
    *     state; guaranteed open when the method is entered.
    * @throws ToadletContextClosedException If the client disconnects before the response is written.
-   * @throws IOException If streaming the response fails or backing storage cannot be read.
+   * @throws IOException If streaming, the response fails or backing storage cannot be read.
    * @throws RedirectException If the handler deliberately triggers an HTTP redirect for navigation.
    */
   public abstract void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
@@ -160,7 +167,7 @@ public abstract class Toadlet {
   /**
    * Returns the canonical mount path for this toadlet within the HTTP namespace. The container uses
    * the value to route incoming requests and to build menu entries. Paths should start with a slash
-   * and remain stable so bookmarks and inter-toadlet links stay valid across releases.
+   * and remain stable, so bookmarks and inter-toadlet links stay valid across releases.
    *
    * @return Absolute path fragment (e.g., {@code "/welcome/"}) that uniquely identifies the
    *     toadlet.
@@ -168,21 +175,22 @@ public abstract class Toadlet {
   public abstract String path();
 
   /**
-   * Primary purpose of this function is being overridden in your Toadlet implementations - for the
-   * following purpose:
+   * The primary purpose of this function is being overridden in your Toadlet implementations - for
+   * the following purpose:
    *
    * <p>When displaying this Toadlet, the web interface should show the menu from which it was
-   * selected as opened, and mark the appropriate entry as selected in the menu. This function may
+   * selected as opened and mark the appropriate entry as selected in the menu. This function may
    * return the Toadlet whose menu shall be opened and whose entry shall be marked as selected in
    * the menu.
    *
    * <p>It is necessary to have this function instead of just marking <code>Toadlet.this</code> as
    * selected: Some Toadlets won't be added to a menu. They will be only accessible through other
-   * Toadlets. For example a Toadlet for deleting a single download might only be accessible through
-   * the Toadlet which shows all downloads. For still being able to figure out the menu entry
-   * through which those so-called invisible Toadlets where accessed, this function is necessary.
+   * Toadlets. For example, a Toadlet for deleting a single download might only be accessible
+   * through the Toadlet, which shows all downloads. For still being able to figure out the menu
+   * entry through which those so-called invisible Toadlets where accessed, this function is
+   * necessary.
    *
-   * @param context Can be used to decide the return value, for example to check session cookies
+   * @param context Can be used to decide the return value, for example, to check session cookies
    *     using {@link SessionManager}.
    * @return The result of {@link #showAsToadlet()}, which is <code>this</code> by default.<br>
    *     This behavior is for backwards compatibility with existing code which overrides that
@@ -196,17 +204,17 @@ public abstract class Toadlet {
   }
 
   /**
-   * Legacy compatibility hook; prefer {@link #showAsToadlet(ToadletContext)}. Internally fred will
-   * always call that function, which delegates to this legacy method by default so existing code
-   * continues to work. When removing this legacy function, change {@link
+   * Legacy compatibility hook; prefer {@link #showAsToadlet(ToadletContext)}. Internally, fred will
+   * always call that function, which delegates to this legacy method by default, so the existing
+   * code continues to work. When removing this legacy function, change {@link
    * #showAsToadlet(ToadletContext)} to return <code>this</code> by default, as already specified in
-   * its JavaDoc.
+   * its Javadoc.
    *
    * @return <code>this</code>
    */
   public Toadlet showAsToadlet() {
     // DO NOT CHANGE THIS ANYMORE: Otherwise showAsToadlet(ToadletContext) will not follow the
-    // contract of its JavaDoc.
+    // contract of its Javadoc.
     return resolveLegacyShowAsToadlet();
   }
 
@@ -263,7 +271,7 @@ public abstract class Toadlet {
   /**
    * Discovers the HTTP verbs implemented by this toadlet by scanning for methods whose names begin
    * with {@link #HANDLE_METHOD_PREFIX}. The result informs capability headers and tooling that
-   * enumerates available operations. Because reflection inspects inherited methods, subclasses can
+   * lists available operations. Because reflection inspects inherited methods, subclasses can
    * override this method to intentionally hide a parent implementation.
    *
    * @return Comma-separated list of supported verbs (e.g., {@code "GET, POST"}), cached per
@@ -339,29 +347,31 @@ public abstract class Toadlet {
    * when used for HTML or plain text bodies.
    *
    * @param ctx Request context that identifies the client connection receiving the payload.
-   * @param code HTTP status code to send, such as 200 or 500.
-   * @param mimeType MIME type string written verbatim to the response headers.
-   * @param desc Short reason phrase paired with the status code for debugging purposes.
-   * @param data Buffer containing the bytes to transmit; ownership is not transferred.
-   * @param offset Index of the first byte in {@code data} to include in the response.
-   * @param length Number of bytes to transmit starting at {@code offset}; must not exceed buffer
-   *     size.
+   * @param replyHeaders Status, MIME type, and header metadata for the response.
+   * @param data Buffer slice containing the bytes to transmit; ownership is not transferred.
    * @throws ToadletContextClosedException If the client disconnects before headers or body are
    *     sent.
    * @throws IOException If the underlying output stream fails during header or body transmission.
    */
-  @SuppressWarnings("SameParameterValue")
-  protected void writeReply(
-      ToadletContext ctx,
-      int code,
-      String mimeType,
-      String desc,
-      byte[] data,
-      int offset,
-      int length)
+  protected void writeReply(ToadletContext ctx, ReplyHeaders replyHeaders, Buffer data)
       throws ToadletContextClosedException, IOException {
-    ctx.sendReplyHeaders(code, desc, null, mimeType, length);
-    ctx.writeData(data, offset, length);
+    if (replyHeaders.forceDisableJavascript()) {
+      ctx.sendReplyHeaders(
+          replyHeaders.code(),
+          replyHeaders.description(),
+          replyHeaders.headers(),
+          replyHeaders.mimeType(),
+          data.len,
+          true);
+    } else {
+      ctx.sendReplyHeaders(
+          replyHeaders.code(),
+          replyHeaders.description(),
+          replyHeaders.headers(),
+          replyHeaders.mimeType(),
+          data.len);
+    }
+    ctx.writeData(data.b, data.off, data.len);
   }
 
   /**
@@ -370,47 +380,31 @@ public abstract class Toadlet {
    * bucket lifecycle and will free it after the response is transmitted; callers that need to
    * retain the bucket should wrap it in {@link NoFreeBucket} first.
    *
-   * @param ctx Context representing the active HTTP exchange that will receive the body.
-   * @param code HTTP status code to send to the client.
-   * @param mimeType MIME type string describing the bucket contents.
-   * @param desc Human-readable reason phrase aligned with {@code code} for logs and diagnostics.
-   * @param data Bucket containing the response payload; ownership is transferred to this method.
-   * @throws ToadletContextClosedException If the client closes the connection mid-transfer.
-   * @throws IOException If reading from the bucket or writing to the client fails.
-   * @see NoFreeBucket
-   */
-  @SuppressWarnings("SameParameterValue")
-  protected void writeReply(ToadletContext ctx, int code, String mimeType, String desc, Bucket data)
-      throws ToadletContextClosedException, IOException {
-    writeReply(ctx, code, mimeType, desc, null, data);
-  }
-
-  /**
-   * Writes a response backed by a {@link Bucket} while allowing custom headers such as {@code
-   * Content-Disposition} or redirects. This overload is useful when a caller needs fine-grained
-   * control over metadata but still wants the convenience of bucket streaming and lifecycle
-   * management handled by the toadlet.
-   *
    * @param context HTTP exchange context used to emit headers and stream the bucket data.
-   * @param code HTTP status code to transmit to the client.
-   * @param mimeType MIME type string describing the payload; written unchanged to the headers.
-   * @param desc Reason phrase accompanying the status code for readability.
-   * @param headers Optional additional headers; may be {@code null} when none are needed.
+   * @param replyHeaders Status, MIME type, and header metadata for the response.
    * @param data Bucket containing the response body; ownership is transferred and will be freed.
    * @throws ToadletContextClosedException If the client disconnects while headers or body are sent.
    * @throws IOException If reading from the bucket or writing to the output stream fails.
    * @see NoFreeBucket
    */
-  @SuppressWarnings("SameParameterValue")
-  protected void writeReply(
-      ToadletContext context,
-      int code,
-      String mimeType,
-      String desc,
-      MultiValueTable<String, String> headers,
-      Bucket data)
+  protected void writeReply(ToadletContext context, ReplyHeaders replyHeaders, Bucket data)
       throws ToadletContextClosedException, IOException {
-    context.sendReplyHeaders(code, desc, headers, mimeType, data.size());
+    if (replyHeaders.forceDisableJavascript()) {
+      context.sendReplyHeaders(
+          replyHeaders.code(),
+          replyHeaders.description(),
+          replyHeaders.headers(),
+          replyHeaders.mimeType(),
+          data.size(),
+          true);
+    } else {
+      context.sendReplyHeaders(
+          replyHeaders.code(),
+          replyHeaders.description(),
+          replyHeaders.headers(),
+          replyHeaders.mimeType(),
+          data.size());
+    }
     context.writeData(data);
   }
 
@@ -421,18 +415,15 @@ public abstract class Toadlet {
    * Bucket}-based overload.
    *
    * @param ctx Context representing the request whose response is being written.
-   * @param code HTTP status code that accompanies the response body.
-   * @param mimeType MIME type string, including charset when applicable.
-   * @param desc Human-readable reason phrase aligned with the status code.
+   * @param replyHeaders Status, MIME type, and header metadata for the response.
    * @param reply Textual body content to encode as UTF-8 before streaming.
    * @throws ToadletContextClosedException If the client closes the connection during the writing.
-   * @throws IOException If writing headers or encoding/streaming the body fails.
+   * @throws IOException If writing headers or encoding/streaming, the body fails.
    */
-  @SuppressWarnings("SameParameterValue")
-  protected void writeReply(
-      ToadletContext ctx, int code, String mimeType, String desc, String reply)
+  protected void writeReply(ToadletContext ctx, ReplyHeaders replyHeaders, String reply)
       throws ToadletContextClosedException, IOException {
-    writeReply(ctx, code, mimeType, desc, null, reply, false);
+    byte[] buffer = reply.getBytes(StandardCharsets.UTF_8);
+    writeReply(ctx, replyHeaders, new Buffer(buffer));
   }
 
   /**
@@ -445,11 +436,11 @@ public abstract class Toadlet {
    * @param desc Short reason phrase corresponding to {@code code}; appears in some browsers.
    * @param reply HTML markup to transmit; callers are responsible for ensuring it is well-formed.
    * @throws ToadletContextClosedException If the connection closes before headers or body finish.
-   * @throws IOException If writing headers or streaming the body fails.
+   * @throws IOException If writing headers or streaming, the body fails.
    */
   protected void writeHTMLReply(ToadletContext ctx, int code, String desc, String reply)
       throws ToadletContextClosedException, IOException {
-    writeReply(ctx, code, "text/html; charset=utf-8", desc, null, reply, false);
+    writeHTMLReply(ctx, ReplyHeaders.of(code, desc, "text/html; charset=utf-8"), reply);
   }
 
   /**
@@ -466,56 +457,24 @@ public abstract class Toadlet {
    */
   protected void writeTextReply(ToadletContext ctx, int code, String desc, String reply)
       throws ToadletContextClosedException, IOException {
-    writeTextReply(ctx, code, desc, null, reply);
+    writeTextReply(
+        ctx, ReplyHeaders.of(code, desc, "text/plain; charset=utf-8", null, true), reply);
   }
 
   /**
-   * Sends an HTML response while allowing callers to supply extra headers such as cache controls or
-   * download hints. The body is encoded as UTF-8 and streamed after the supplied headers have been
+   * Sends an HTML response while allowing callers to supply extra headers and optional JavaScript
+   * suppression. The body is encoded as UTF-8 and streamed after the supplied headers have been
    * merged with the default ones produced by the context.
    *
    * @param ctx Request context that handles header emission and output buffering.
-   * @param code HTTP status code to send with the HTML body.
-   * @param desc Reason phrase corresponding to the status code.
-   * @param headers Additional headers to include; may be {@code null} for none.
+   * @param replyHeaders Status, MIME type, and header metadata for the response.
    * @param reply HTML markup to encode as UTF-8 and stream to the client.
    * @throws ToadletContextClosedException If the connection closes before the response completes.
    * @throws IOException If writing headers or body data fails.
    */
-  protected void writeHTMLReply(
-      ToadletContext ctx,
-      int code,
-      String desc,
-      MultiValueTable<String, String> headers,
-      String reply)
+  protected void writeHTMLReply(ToadletContext ctx, ReplyHeaders replyHeaders, String reply)
       throws ToadletContextClosedException, IOException {
-    writeHTMLReply(ctx, code, desc, headers, reply, false);
-  }
-
-  /**
-   * Sends an HTML response with optional headers and a flag to disable injected JavaScript helpers.
-   * Use this overload when serving markup that must not include convenience scripts (for example
-   * when embedding into untrusted contexts) or when adding headers such as CSP and caching
-   * directives.
-   *
-   * @param ctx Context managing the outgoing HTTP exchange; not {@code null}.
-   * @param code HTTP status code to return to the caller.
-   * @param desc Reason phrase paired with the status code for readability.
-   * @param headers Additional headers to merge into the response; nullable.
-   * @param reply HTML markup to stream after UTF-8 encoding.
-   * @param forceDisableJavascript When true, suppresses default script helpers during rendering.
-   * @throws ToadletContextClosedException If the client disconnects mid-response.
-   * @throws IOException If header writing or body streaming fails.
-   */
-  protected void writeHTMLReply(
-      ToadletContext ctx,
-      int code,
-      String desc,
-      MultiValueTable<String, String> headers,
-      String reply,
-      boolean forceDisableJavascript)
-      throws ToadletContextClosedException, IOException {
-    writeReply(ctx, code, "text/html; charset=utf-8", desc, headers, reply, forceDisableJavascript);
+    writeReply(ctx, replyHeaders, reply);
   }
 
   /**
@@ -524,111 +483,15 @@ public abstract class Toadlet {
    * return a lightweight textual payload.
    *
    * @param ctx Context identifying the in-progress HTTP request/response exchange.
-   * @param code HTTP status code to return.
-   * @param desc Reason phrase aligned with {@code code} for human readers.
-   * @param headers Additional headers to merge into the response; nullable.
+   * @param replyHeaders Status, MIME type, and header metadata for the response.
    * @param reply Plain-text body content to encode as UTF-8.
-   * @throws ToadletContextClosedException If the client disconnects before transmission completes.
-   * @throws IOException If writing headers or streaming the body fails.
+   * @throws ToadletContextClosedException If the client disconnects before the transmission
+   *     completes.
+   * @throws IOException If writing headers or streaming, the body fails.
    */
-  @SuppressWarnings("SameParameterValue")
-  protected void writeTextReply(
-      ToadletContext ctx,
-      int code,
-      String desc,
-      MultiValueTable<String, String> headers,
-      String reply)
+  protected void writeTextReply(ToadletContext ctx, ReplyHeaders replyHeaders, String reply)
       throws ToadletContextClosedException, IOException {
-    writeReply(ctx, code, "text/plain; charset=utf-8", desc, headers, reply, true);
-  }
-
-  /**
-   * Writes a textual response with optional custom headers. This overload exists for callers that
-   * need to control the MIME type while still providing a string body and optional header set. The
-   * body is encoded as UTF-8 before being handed to the lower-level writer.
-   *
-   * @param context Context representing the connection and request being served.
-   * @param code HTTP status code to use in the response line.
-   * @param mimeType MIME type string to advertise for the string body.
-   * @param desc Reason phrase associated with the status code.
-   * @param headers Optional extra headers to merge; may be {@code null}.
-   * @param reply Body content to encode as UTF-8 and stream to the client.
-   * @throws ToadletContextClosedException If the client disconnects during header or body write.
-   * @throws IOException If an I/O failure occurs while writing the response.
-   */
-  @SuppressWarnings("SameParameterValue")
-  protected void writeReply(
-      ToadletContext context,
-      int code,
-      String mimeType,
-      String desc,
-      MultiValueTable<String, String> headers,
-      String reply)
-      throws ToadletContextClosedException, IOException {
-    writeReply(context, code, mimeType, desc, headers, reply, false);
-  }
-
-  /**
-   * Core string-based writer that controls MIME type, optional headers, and whether JavaScript
-   * helper snippets are suppressed. This method performs UTF-8 encoding once and then delegates to
-   * the lowest-level byte-array writer, minimizing duplication across higher-level helpers.
-   *
-   * @param context Active request context used to send headers and body bytes.
-   * @param code HTTP status code to emit.
-   * @param mimeType MIME type string to advertise for the encoded body.
-   * @param desc Reason phrase corresponding to {@code code}.
-   * @param headers Additional headers to include; pass {@code null} to omit.
-   * @param reply Body content to encode as UTF-8 before streaming.
-   * @param forceDisableJavascript When true, prevents auto-injected helper scripts on the response.
-   * @throws ToadletContextClosedException If the client disconnects midstream.
-   * @throws IOException If encoding or writing the response fails.
-   */
-  protected void writeReply(
-      ToadletContext context,
-      int code,
-      String mimeType,
-      String desc,
-      MultiValueTable<String, String> headers,
-      String reply,
-      boolean forceDisableJavascript)
-      throws ToadletContextClosedException, IOException {
-    byte[] buffer = reply.getBytes(StandardCharsets.UTF_8);
-    if (headers == null && !forceDisableJavascript) {
-      writeReply(context, code, mimeType, desc, buffer, 0, buffer.length);
-      return;
-    }
-    writeReply(
-        context, code, mimeType, desc, headers, buffer, 0, buffer.length, forceDisableJavascript);
-  }
-
-  /**
-   * Write a generated HTTP response, e.g. a page, an image, an error message, possibly with custom
-   * headers, for example, we may want to send a redirect, or a file with a specified filename. This
-   * should not be used for fproxy content i.e. content downloaded from Freenet.
-   *
-   * @param context The specific request to reply to.
-   * @param code The HTTP reply code to use.
-   * @param mimeType The MIME type of the data we are returning.
-   * @param desc The HTTP response description for the code.
-   * @param headers The additional HTTP headers to send.
-   * @param buffer The data to write as the response body; ownership is not transferred.
-   * @param startIndex The offset within {@code buffer} of the first byte to send.
-   * @param length The number of bytes of data to send as the response body.
-   */
-  @SuppressWarnings("SameParameterValue")
-  private void writeReply(
-      ToadletContext context,
-      int code,
-      String mimeType,
-      String desc,
-      MultiValueTable<String, String> headers,
-      byte[] buffer,
-      int startIndex,
-      int length,
-      boolean forceDisableJavascript)
-      throws ToadletContextClosedException, IOException {
-    context.sendReplyHeaders(code, desc, headers, mimeType, length, forceDisableJavascript);
-    context.writeData(buffer, startIndex, length);
+    writeReply(ctx, replyHeaders, reply);
   }
 
   /**
@@ -676,7 +539,7 @@ public abstract class Toadlet {
    * @param message Human-readable explanation shown inside the error infobox; not HTML-escaped
    *     here.
    * @throws ToadletContextClosedException If the client disconnects before the page is delivered.
-   * @throws IOException If building or streaming the error page fails.
+   * @throws IOException If building or streaming, the error page fails.
    */
   protected void sendErrorPage(ToadletContext ctx, int code, String desc, String message)
       throws ToadletContextClosedException, IOException {
@@ -686,14 +549,14 @@ public abstract class Toadlet {
   /**
    * Renders a full error page using a pre-built {@link HTMLNode} fragment. The fragment is inserted
    * into a standard infobox, augmented with navigation links, and then streamed with the supplied
-   * HTTP status code. Callers can pass rich markup to tailor the user experience while keeping
+   * HTTP status code. Callers can pass rich markup to tailor the user experience while keeping the
    * layout consistent.
    *
    * @param ctx Active request context used for rendering and output.
-   * @param code HTTP status code that accompanies the error page.
+   * @param code HTTP status code that goes with the error page.
    * @param desc Title for the page and infobox heading.
    * @param message Markup describing the error details; ownership remains with the caller.
-   * @throws ToadletContextClosedException If the client disconnects before output completes.
+   * @throws ToadletContextClosedException If the client disconnects before the output completes.
    * @throws IOException If writing the generated page to the client fails.
    */
   protected void sendErrorPage(ToadletContext ctx, int code, String desc, HTMLNode message)

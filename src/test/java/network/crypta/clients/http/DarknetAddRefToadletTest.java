@@ -214,12 +214,11 @@ class DarknetAddRefToadletTest {
     }
 
     @Override
-    protected void writeReply(
-        ToadletContext ctx, int code, String mimeType, String desc, Bucket data) {
+    protected void writeReply(ToadletContext ctx, ReplyHeaders replyHeaders, Bucket data) {
       this.writeReplyCalled = true;
-      this.lastCode = code;
-      this.lastMimeType = mimeType;
-      this.lastDescription = desc;
+      this.lastCode = replyHeaders.code();
+      this.lastMimeType = replyHeaders.mimeType();
+      this.lastDescription = replyHeaders.description();
       this.lastBucket = data;
     }
 

@@ -899,7 +899,8 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
         MultiValueTable.from(
             // Force download to disk
             "Content-Disposition", "attachment; filename=" + filename);
-    this.writeReply(ctx, 200, "application/x-freenet-reference", "OK", extraHeaders, content);
+    this.writeReply(
+        ctx, ReplyHeaders.of(200, "OK", "application/x-freenet-reference", extraHeaders), content);
     return true;
   }
 

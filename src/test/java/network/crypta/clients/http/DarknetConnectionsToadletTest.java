@@ -205,7 +205,7 @@ class DarknetConnectionsToadletTest {
     doNothing()
         .when(ctx)
         .sendReplyHeaders(
-            eq(200), eq("OK"), any(), eq("application/x-freenet-reference"), anyLong(), eq(false));
+            eq(200), eq("OK"), any(), eq("application/x-freenet-reference"), anyLong());
     doNothing().when(ctx).writeData(any(byte[].class), eq(0), anyInt());
 
     boolean handled = invokeTryHandlePeerNoderef(uri);
@@ -223,8 +223,7 @@ class DarknetConnectionsToadletTest {
             eq("OK"),
             headersCaptor.capture(),
             eq("application/x-freenet-reference"),
-            eq((long) expectedLength),
-            eq(false));
+            eq((long) expectedLength));
     verify(ctx).writeData(bodyCaptor.capture(), eq(0), eq(expectedLength));
 
     String headerValue = headersCaptor.getValue().getFirst("Content-Disposition");
