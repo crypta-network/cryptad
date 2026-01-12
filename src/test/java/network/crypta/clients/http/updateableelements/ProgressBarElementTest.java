@@ -23,7 +23,9 @@ import network.crypta.client.FetchException;
 import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchListener;
+import network.crypta.clients.http.FProxyFetchProgressCounts;
 import network.crypta.clients.http.FProxyFetchResult;
+import network.crypta.clients.http.FProxyFetchSnapshotInfo;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyFetchWaiter;
 import network.crypta.clients.http.SimpleToadletServer;
@@ -137,7 +139,7 @@ class ProgressBarElementTest {
 
     AtomicReference<FProxyFetchInProgress> progressRef = new AtomicReference<>(null);
     when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
-        .thenAnswer(i -> progressRef.get());
+        .thenAnswer(_ -> progressRef.get());
 
     ProgressBarElement element =
         new ProgressBarElement(tracker, key, fetchContext, 123L, toadletContext, false);
@@ -170,7 +172,7 @@ class ProgressBarElementTest {
         .thenReturn(progress);
     when(progress.getWaiter()).thenReturn(waiter);
     AtomicReference<FProxyFetchResult> resultRef = new AtomicReference<>();
-    when(waiter.getResult()).thenAnswer(i -> resultRef.get());
+    when(waiter.getResult()).thenAnswer(_ -> resultRef.get());
 
     resultRef.set(
         newFetchResultSnapshot(
@@ -400,34 +402,22 @@ class ProgressBarElementTest {
     Constructor<FProxyFetchResult> ctor =
         FProxyFetchResult.class.getDeclaredConstructor(
             FProxyFetchInProgress.class,
-            String.class,
+            FProxyFetchSnapshotInfo.class,
             long.class,
-            long.class,
-            boolean.class,
-            int.class,
-            int.class,
-            int.class,
-            int.class,
-            int.class,
-            boolean.class,
-            FetchException.class,
-            long.class,
-            boolean.class);
+            FProxyFetchProgressCounts.class,
+            FetchException.class);
     ctor.setAccessible(true);
     return ctor.newInstance(
         progress,
-        "text/plain",
+        new FProxyFetchSnapshotInfo("text/plain", 0L, false, -1L, false),
         /* size= */ 0L,
-        /* timeStarted= */ 0L,
-        /* goneToNetwork= */ false,
-        /* totalBlocks= */ requiredBlocks,
-        requiredBlocks,
-        fetchedBlocks,
-        failedBlocks,
-        fatallyFailedBlocks,
-        finalizedBlocks,
-        failedException,
-        /* eta= */ -1L,
-        /* hasWaited= */ false);
+        new FProxyFetchProgressCounts(
+            /* totalBlocks= */ requiredBlocks,
+            requiredBlocks,
+            fetchedBlocks,
+            failedBlocks,
+            fatallyFailedBlocks,
+            finalizedBlocks),
+        failedException);
   }
 }

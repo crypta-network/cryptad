@@ -16,7 +16,9 @@ import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
+import network.crypta.clients.http.FProxyFetchProgressCounts;
 import network.crypta.clients.http.FProxyFetchResult;
+import network.crypta.clients.http.FProxyFetchSnapshotInfo;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyFetchWaiter;
 import network.crypta.clients.http.ToadletContainer;
@@ -405,19 +407,10 @@ class ProgressInfoElementTest {
       Constructor<FProxyFetchResult> ctor =
           FProxyFetchResult.class.getDeclaredConstructor(
               FProxyFetchInProgress.class,
-              String.class,
+              FProxyFetchSnapshotInfo.class,
               long.class,
-              long.class,
-              boolean.class,
-              int.class,
-              int.class,
-              int.class,
-              int.class,
-              int.class,
-              boolean.class,
-              FetchException.class,
-              long.class,
-              boolean.class);
+              FProxyFetchProgressCounts.class,
+              FetchException.class);
       ctor.setAccessible(true);
       return ctor;
     } catch (ReflectiveOperationException e) {
@@ -512,19 +505,17 @@ class ProgressInfoElementTest {
     try {
       return PROGRESS_RESULT_CTOR.newInstance(
           mock(FProxyFetchInProgress.class),
-          spec.mimeType,
+          new FProxyFetchSnapshotInfo(
+              spec.mimeType, spec.timeStarted, spec.goneToNetwork, spec.eta, spec.hasWaited),
           spec.size,
-          spec.timeStarted,
-          spec.goneToNetwork,
-          spec.totalBlocks,
-          spec.requiredBlocks,
-          spec.fetchedBlocks,
-          spec.failedBlocks,
-          spec.fatallyFailedBlocks,
-          spec.finalizedBlocks,
-          spec.failed,
-          spec.eta,
-          spec.hasWaited);
+          new FProxyFetchProgressCounts(
+              spec.totalBlocks,
+              spec.requiredBlocks,
+              spec.fetchedBlocks,
+              spec.failedBlocks,
+              spec.fatallyFailedBlocks,
+              spec.finalizedBlocks),
+          spec.failed);
     } catch (ReflectiveOperationException e) {
       throw new AssertionError("Failed to create FProxyFetchResult via reflection", e);
     }

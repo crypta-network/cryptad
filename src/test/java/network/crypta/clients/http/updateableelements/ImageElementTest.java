@@ -20,7 +20,9 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
+import network.crypta.clients.http.FProxyFetchProgressCounts;
 import network.crypta.clients.http.FProxyFetchResult;
+import network.crypta.clients.http.FProxyFetchSnapshotInfo;
 import network.crypta.clients.http.FProxyFetchTracker;
 import network.crypta.clients.http.FProxyFetchWaiter;
 import network.crypta.clients.http.ToadletContext;
@@ -417,7 +419,7 @@ class ImageElementTest {
       FProxyFetchInProgress parent, Bucket bucket) {
     try {
       return RESULT_CTOR_FINISHED_WITH_DATA.newInstance(
-          parent, bucket, "image/png", 1000L, true, 0L, false);
+          parent, bucket, new FProxyFetchSnapshotInfo("image/png", 1000L, true, 0L, false));
     } catch (ReflectiveOperationException e) {
       throw new AssertionError("Failed to construct FProxyFetchResult (finished-with-data)", e);
     }
@@ -428,19 +430,10 @@ class ImageElementTest {
     try {
       return RESULT_CTOR_PROGRESS_OR_FAILURE.newInstance(
           parent,
-          "image/png",
+          new FProxyFetchSnapshotInfo("image/png", 1000L, true, 0L, false),
           -1L,
-          1000L,
-          true,
-          requiredBlocks,
-          requiredBlocks,
-          fetchedBlocks,
-          0,
-          0,
-          false,
-          failure,
-          0L,
-          false);
+          new FProxyFetchProgressCounts(requiredBlocks, requiredBlocks, fetchedBlocks, 0, 0, false),
+          failure);
     } catch (ReflectiveOperationException e) {
       throw new AssertionError("Failed to construct FProxyFetchResult (progress-or-failure)", e);
     }
@@ -450,13 +443,7 @@ class ImageElementTest {
     try {
       Constructor<FProxyFetchResult> ctor =
           FProxyFetchResult.class.getDeclaredConstructor(
-              FProxyFetchInProgress.class,
-              Bucket.class,
-              String.class,
-              long.class,
-              boolean.class,
-              long.class,
-              boolean.class);
+              FProxyFetchInProgress.class, Bucket.class, FProxyFetchSnapshotInfo.class);
       ctor.setAccessible(true);
       return ctor;
     } catch (ReflectiveOperationException e) {
@@ -470,19 +457,10 @@ class ImageElementTest {
       Constructor<FProxyFetchResult> ctor =
           FProxyFetchResult.class.getDeclaredConstructor(
               FProxyFetchInProgress.class,
-              String.class,
+              FProxyFetchSnapshotInfo.class,
               long.class,
-              long.class,
-              boolean.class,
-              int.class,
-              int.class,
-              int.class,
-              int.class,
-              int.class,
-              boolean.class,
-              FetchException.class,
-              long.class,
-              boolean.class);
+              FProxyFetchProgressCounts.class,
+              FetchException.class);
       ctor.setAccessible(true);
       return ctor;
     } catch (ReflectiveOperationException e) {
