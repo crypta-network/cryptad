@@ -56,7 +56,7 @@ public class PeerStatusBook {
    * <p>The provided roster supplies peer snapshots for status queries and periodic summaries. The
    * lock must be the same monitor used by the owning manager when it mutates or snapshots the
    * roster; this ensures that time-gated updates observe a consistent roster and timer state. The
-   * instance starts with empty counters and inactive timers; first updates occur on the first
+   * instance starts with empty counters and inactive timers; the first updates occur on the first
    * relevant method call.
    *
    * <pre>{@code
@@ -64,7 +64,7 @@ public class PeerStatusBook {
    * book.onPeerAdded(peer);
    * }</pre>
    *
-   * @param roster peer roster used to obtain peer snapshots; must be non-null
+   * @param roster peer roster used to get peer snapshots; must be non-null
    * @param lock shared monitor guarding roster snapshots and timer updates; must be non-null
    */
   public PeerStatusBook(PeerRoster roster, Object lock) {
@@ -228,7 +228,7 @@ public class PeerStatusBook {
    *
    * <p>The method iterates over the current roster snapshot and calls {@link
    * PeerNode#getStatus(boolean)} on each peer. The resulting array preserves the roster order and
-   * is independent of subsequent roster changes. The method performs no filtering beyond the roster
+   * is independent of later roster changes. The method performs no filtering beyond the roster
    * snapshot it receives.
    *
    * @param noHeavy whether to omit heavy-weight fields from the status snapshot
@@ -359,56 +359,7 @@ public class PeerStatusBook {
     return true;
   }
 
-  private static final class PeerStatusSummary {
-    private final int connected;
-    private final int routingBackedOff;
-    private final int tooNew;
-    private final int tooOld;
-    private final int disconnected;
-    private final int neverConnected;
-    private final int disabled;
-    private final int bursting;
-    private final int listening;
-    private final int listenOnly;
-    private final int clockProblem;
-    private final int connError;
-    private final int disconnecting;
-    private final int routingDisabled;
-    private final int noLoadStats;
-
-    private PeerStatusSummary(
-        int connected,
-        int routingBackedOff,
-        int tooNew,
-        int tooOld,
-        int disconnected,
-        int neverConnected,
-        int disabled,
-        int bursting,
-        int listening,
-        int listenOnly,
-        int clockProblem,
-        int connError,
-        int disconnecting,
-        int routingDisabled,
-        int noLoadStats) {
-      this.connected = connected;
-      this.routingBackedOff = routingBackedOff;
-      this.tooNew = tooNew;
-      this.tooOld = tooOld;
-      this.disconnected = disconnected;
-      this.neverConnected = neverConnected;
-      this.disabled = disabled;
-      this.bursting = bursting;
-      this.listening = listening;
-      this.listenOnly = listenOnly;
-      this.clockProblem = clockProblem;
-      this.connError = connError;
-      this.disconnecting = disconnecting;
-      this.routingDisabled = routingDisabled;
-      this.noLoadStats = noLoadStats;
-    }
-  }
+  private record PeerStatusSummary(PeerStatusCounts counts) {}
 
   private PeerStatusSummary computePeerStatusSummary(PeerNode[] peers) {
     int numberOfConnected = 0;
@@ -449,22 +400,26 @@ public class PeerStatusBook {
       }
     }
 
-    return new PeerStatusSummary(
-        numberOfConnected,
-        numberOfRoutingBackedOff,
-        numberOfTooNew,
-        numberOfTooOld,
-        numberOfDisconnected,
-        numberOfNeverConnected,
-        numberOfDisabled,
-        numberOfBursting,
-        numberOfListening,
-        numberOfListenOnly,
-        numberOfClockProblem,
-        numberOfConnError,
-        numberOfDisconnecting,
-        numberOfRoutingDisabled,
-        numberOfNoLoadStats);
+    PeerStatusCounts counts =
+        new PeerStatusCounts(
+            numberOfConnected,
+            numberOfRoutingBackedOff,
+            numberOfTooNew,
+            numberOfTooOld,
+            numberOfDisconnected,
+            numberOfNeverConnected,
+            numberOfDisabled,
+            numberOfBursting,
+            numberOfListening,
+            numberOfListenOnly,
+            0,
+            0,
+            numberOfRoutingDisabled,
+            numberOfClockProblem,
+            numberOfConnError,
+            numberOfDisconnecting,
+            numberOfNoLoadStats);
+    return new PeerStatusSummary(counts);
   }
 
   private void logPeerStatusSummary(PeerStatusSummary summary) {
@@ -472,21 +427,21 @@ public class PeerStatusBook {
         "Connected={} RoutingBackedOff={} TooNew={} TooOld={} Disconnected={} NeverConnected={}"
             + " Disabled={} Bursting={} Listening={} ListenOnly={} ClockProblem={}"
             + " ConnectionProblem={} Disconnecting={} RoutingDisabled={} NoLoadStats={}",
-        summary.connected,
-        summary.routingBackedOff,
-        summary.tooNew,
-        summary.tooOld,
-        summary.disconnected,
-        summary.neverConnected,
-        summary.disabled,
-        summary.bursting,
-        summary.listening,
-        summary.listenOnly,
-        summary.clockProblem,
-        summary.connError,
-        summary.disconnecting,
-        summary.routingDisabled,
-        summary.noLoadStats);
+        summary.counts.connected(),
+        summary.counts.routingBackedOff(),
+        summary.counts.tooNew(),
+        summary.counts.tooOld(),
+        summary.counts.disconnected(),
+        summary.counts.neverConnected(),
+        summary.counts.disabled(),
+        summary.counts.bursting(),
+        summary.counts.listening(),
+        summary.counts.listenOnly(),
+        summary.counts.clockProblem(),
+        summary.counts.connError(),
+        summary.counts.disconnecting(),
+        summary.counts.routingDisabled(),
+        summary.counts.noLoadStats());
   }
 
   /**

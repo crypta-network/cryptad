@@ -32,6 +32,7 @@ import network.crypta.node.NodeStatsHtmlRenderer;
 import network.crypta.node.OpennetManager;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerNodeStatus;
+import network.crypta.node.PeerStatusCounts;
 import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarterGroup;
 import network.crypta.node.RequestTracker;
@@ -84,30 +85,15 @@ public class StatisticsToadlet extends Toadlet {
 
   private static class PeerStatusSummary {
     final PeerNodeStatus[] peerNodeStatuses;
-    int numberOfConnected;
-    int numberOfRoutingBackedOff;
-    int numberOfTooNew;
-    int numberOfTooOld;
-    int numberOfDisconnected;
-    int numberOfNeverConnected;
-    int numberOfDisabled;
-    int numberOfBursting;
-    int numberOfListening;
-    int numberOfListenOnly;
-    int numberOfSeedServers;
-    int numberOfSeedClients;
-    int numberOfRoutingDisabled;
-    int numberOfClockProblem;
-    int numberOfConnError;
-    int numberOfDisconnecting;
-    int numberOfNoLoadStats;
+    final PeerStatusCounts counts;
 
-    PeerStatusSummary(PeerNodeStatus[] peerNodeStatuses) {
+    PeerStatusSummary(PeerNodeStatus[] peerNodeStatuses, PeerStatusCounts counts) {
       this.peerNodeStatuses = peerNodeStatuses;
+      this.counts = counts;
     }
 
     boolean hasConnectedOrBackedOffPeers() {
-      return numberOfConnected + numberOfRoutingBackedOff > 0;
+      return counts.connected() + counts.routingBackedOff() > 0;
     }
   }
 
@@ -170,7 +156,7 @@ public class StatisticsToadlet extends Toadlet {
   /**
    * Builds a statistics toadlet tied to the supplied node state and client wiring so it can
    * assemble runtime metrics on demand. The constructor caches frequently used collaborators
-   * (statistics snapshotter and peer manager) so individual requests avoid repeated lookups while
+   * (statistics snapshotter and peer manager), so individual requests avoid repeated lookups while
    * still reflecting the live node through fresh data pulls performed inside each handler.
    *
    * @param n node instance that owns the peer set, configuration, and counters displayed by the
@@ -230,7 +216,7 @@ public class StatisticsToadlet extends Toadlet {
    *
    * @param uri full request URI used mainly for consistency with the {@link Toadlet} contract; the
    *     path segment is inspected indirectly through {@code request}.
-   * @param request incoming HTTP request providing path, parameters, and user context for the
+   * @param request the incoming HTTP request providing path, parameters, and user context for the
    *     statistics view; must already be parsed by the calling toadlet framework.
    * @param ctx toadlet context that supplies page construction helpers, localization, and access
    *     control flags such as advanced mode; also used to emit the final response.
@@ -278,42 +264,59 @@ public class StatisticsToadlet extends Toadlet {
     PeerNodeStatus[] peerNodeStatuses = peers.statusBook().getPeerNodeStatuses(true);
     Arrays.sort(peerNodeStatuses, Comparator.comparingInt(PeerNodeStatus::getStatusValue));
 
-    PeerStatusSummary summary = new PeerStatusSummary(peerNodeStatuses);
-    summary.numberOfConnected =
+    int numberOfConnected =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONNECTED);
-    summary.numberOfRoutingBackedOff =
+    int numberOfRoutingBackedOff =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_BACKED_OFF);
-    summary.numberOfTooNew =
-        getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_NEW);
-    summary.numberOfTooOld =
-        getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_OLD);
-    summary.numberOfDisconnected =
+    int numberOfTooNew = getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_NEW);
+    int numberOfTooOld = getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_TOO_OLD);
+    int numberOfDisconnected =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTED);
-    summary.numberOfNeverConnected =
+    int numberOfNeverConnected =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NEVER_CONNECTED);
-    summary.numberOfDisabled =
+    int numberOfDisabled =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISABLED);
-    summary.numberOfBursting =
+    int numberOfBursting =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_BURSTING);
-    summary.numberOfListening =
+    int numberOfListening =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTENING);
-    summary.numberOfListenOnly =
+    int numberOfListenOnly =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_LISTEN_ONLY);
-    summary.numberOfSeedServers = getCountSeedServers(peerNodeStatuses);
-    summary.numberOfSeedClients = getCountSeedClients(peerNodeStatuses);
-    summary.numberOfRoutingDisabled =
+    int numberOfSeedServers = getCountSeedServers(peerNodeStatuses);
+    int numberOfSeedClients = getCountSeedClients(peerNodeStatuses);
+    int numberOfRoutingDisabled =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_ROUTING_DISABLED);
-    summary.numberOfClockProblem =
+    int numberOfClockProblem =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CLOCK_PROBLEM);
-    summary.numberOfConnError =
+    int numberOfConnError =
         getPeerStatusCount(peerNodeStatuses, PeerManager.PEER_NODE_STATUS_CONN_ERROR);
-    summary.numberOfDisconnecting =
+    int numberOfDisconnecting =
         PeerNodeStatus.getPeerStatusCount(
             peerNodeStatuses, PeerManager.PEER_NODE_STATUS_DISCONNECTING);
-    summary.numberOfNoLoadStats =
+    int numberOfNoLoadStats =
         PeerNodeStatus.getPeerStatusCount(
             peerNodeStatuses, PeerManager.PEER_NODE_STATUS_NO_LOAD_STATS);
-    return summary;
+
+    PeerStatusCounts counts =
+        new PeerStatusCounts(
+            numberOfConnected,
+            numberOfRoutingBackedOff,
+            numberOfTooNew,
+            numberOfTooOld,
+            numberOfDisconnected,
+            numberOfNeverConnected,
+            numberOfDisabled,
+            numberOfBursting,
+            numberOfListening,
+            numberOfListenOnly,
+            numberOfSeedServers,
+            numberOfSeedClients,
+            numberOfRoutingDisabled,
+            numberOfClockProblem,
+            numberOfConnError,
+            numberOfDisconnecting,
+            numberOfNoLoadStats);
+    return new PeerStatusSummary(peerNodeStatuses, counts);
   }
 
   private void renderStatisticsPage(
@@ -478,27 +481,7 @@ public class StatisticsToadlet extends Toadlet {
 
     HTMLNode peerStatsInfobox = rightColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
 
-    drawPeerStatsBox(
-        peerStatsInfobox,
-        advancedMode,
-        peerStatusSummary.numberOfConnected,
-        peerStatusSummary.numberOfRoutingBackedOff,
-        peerStatusSummary.numberOfTooNew,
-        peerStatusSummary.numberOfTooOld,
-        peerStatusSummary.numberOfDisconnected,
-        peerStatusSummary.numberOfNeverConnected,
-        peerStatusSummary.numberOfDisabled,
-        peerStatusSummary.numberOfBursting,
-        peerStatusSummary.numberOfListening,
-        peerStatusSummary.numberOfListenOnly,
-        peerStatusSummary.numberOfSeedServers,
-        peerStatusSummary.numberOfSeedClients,
-        peerStatusSummary.numberOfRoutingDisabled,
-        peerStatusSummary.numberOfClockProblem,
-        peerStatusSummary.numberOfConnError,
-        peerStatusSummary.numberOfDisconnecting,
-        peerStatusSummary.numberOfNoLoadStats,
-        node);
+    drawPeerStatsBox(peerStatsInfobox, advancedMode, peerStatusSummary.counts, node);
 
     HTMLNode bandwidthInfobox = rightColumn.addChild("div", ATTR_CLASS, CLASS_INFOBOX);
     drawBandwidthBox(bandwidthInfobox, nodeUptimeSeconds, advancedMode);
@@ -750,7 +733,7 @@ public class StatisticsToadlet extends Toadlet {
 
   private void drawLoadBalancingBox(HTMLNode loadStatsInfobox, boolean realTime) {
     // Load balancing box
-    // Include overall window, and RTTs for each
+    // Include an overall window, and RTTs for each
 
     loadStatsInfobox.addChild(
         "div",
@@ -1265,7 +1248,7 @@ public class StatisticsToadlet extends Toadlet {
    * Builds the peer statistics infobox, adding a localized header and list entries for every peer
    * status bucket that currently has a non-zero count. Routing back-off wording adapts to advanced
    * mode, while the other buckets always render their short and long labels. Entries use distinct
-   * CSS classes so the statistics page can visually differentiate states such as connected,
+   * CSS classes, so the statistics page can visually differentiate states such as connected,
    * disconnected, listen-only, or routing-disabled peers.
    *
    * <p>Counts of seed servers and seed clients are displayed using the listening class for visual
@@ -1275,112 +1258,82 @@ public class StatisticsToadlet extends Toadlet {
    *
    * @param peerStatsInfobox infobox root node receiving the generated header and list entries.
    * @param advancedModeEnabled whether advanced wording is allowed for routing back-off buckets.
-   * @param numberOfConnected peers currently connected and exchanging traffic with this node.
-   * @param numberOfRoutingBackedOff peers throttled due to routing limits or recent back-off.
-   * @param numberOfTooNew peers rejected because their software version is newer than supported.
-   * @param numberOfTooOld peers rejected because their software version predates the minimum.
-   * @param numberOfDisconnected peers known but currently disconnected from the node.
-   * @param numberOfNeverConnected peers configured but that have never completed a connection.
-   * @param numberOfDisabled peers manually disabled by the operator or configuration.
-   * @param numberOfBursting peers temporarily exceeding normal throughput allowances.
-   * @param numberOfListening peers accepting inbound connections and not otherwise restricted.
-   * @param numberOfListenOnly peers unable to accept incoming connections but still listed.
-   * @param numberOfSeedServers seed servers counted separately for advanced diagnostics.
-   * @param numberOfSeedClients seed clients counted separately for advanced diagnostics.
-   * @param numberOfRoutingDisabled peers explicitly prevented from routing traffic for this node.
-   * @param numberOfClockProblem peers flagged because of detected clock synchronization issues.
-   * @param numberOfConnError peers whose last connection attempts failed with errors.
-   * @param numberOfDisconnecting peers currently transitioning away from active connections.
-   * @param numberOfNoLoadStats peers missing current load statistics or refusing to provide them.
+   * @param counts peer status bucket counts for the current node snapshot.
    * @param node node whose opennet manager supplies configured target counts for display.
    */
   protected static void drawPeerStatsBox(
-      HTMLNode peerStatsInfobox,
-      boolean advancedModeEnabled,
-      int numberOfConnected,
-      int numberOfRoutingBackedOff,
-      int numberOfTooNew,
-      int numberOfTooOld,
-      int numberOfDisconnected,
-      int numberOfNeverConnected,
-      int numberOfDisabled,
-      int numberOfBursting,
-      int numberOfListening,
-      int numberOfListenOnly,
-      int numberOfSeedServers,
-      int numberOfSeedClients,
-      int numberOfRoutingDisabled,
-      int numberOfClockProblem,
-      int numberOfConnError,
-      int numberOfDisconnecting,
-      int numberOfNoLoadStats,
-      Node node) {
+      HTMLNode peerStatsInfobox, boolean advancedModeEnabled, PeerStatusCounts counts, Node node) {
 
     peerStatsInfobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_HEADER, l10n("peerStatsTitle"));
     HTMLNode peerStatsContent = peerStatsInfobox.addChild("div", ATTR_CLASS, CLASS_INFOBOX_CONTENT);
     HTMLNode peerStatsList = peerStatsContent.addChild("ul");
     addPeerStat(
-        peerStatsList, numberOfConnected, "peer_connected", CLASS_CONNECTED, "connectedShort");
+        peerStatsList, counts.connected(), "peer_connected", CLASS_CONNECTED, "connectedShort");
     addPeerStat(
         peerStatsList,
-        numberOfRoutingBackedOff,
+        counts.routingBackedOff(),
         "peer_backed_off",
         advancedModeEnabled ? "backedOff" : "busy",
         advancedModeEnabled ? "backedOffShort" : "busyShort");
-    addPeerStat(peerStatsList, numberOfTooNew, "peer_too_new", "tooNew", "tooNewShort");
-    addPeerStat(peerStatsList, numberOfTooOld, "peer_too_old", "tooOld", "tooOldShort");
+    addPeerStat(peerStatsList, counts.tooNew(), "peer_too_new", "tooNew", "tooNewShort");
+    addPeerStat(peerStatsList, counts.tooOld(), "peer_too_old", "tooOld", "tooOldShort");
     addPeerStat(
         peerStatsList,
-        numberOfDisconnected,
+        counts.disconnected(),
         "peer_disconnected",
         "notConnected",
         "notConnectedShort");
     addPeerStat(
         peerStatsList,
-        numberOfNeverConnected,
+        counts.neverConnected(),
         "peer_never_connected",
         "neverConnected",
         "neverConnectedShort");
-    addPeerStat(peerStatsList, numberOfDisabled, "peer_disabled", "disabled", "disabledShort");
-    addPeerStat(peerStatsList, numberOfBursting, "peer_bursting", "bursting", "burstingShort");
+    addPeerStat(peerStatsList, counts.disabled(), "peer_disabled", "disabled", "disabledShort");
+    addPeerStat(peerStatsList, counts.bursting(), "peer_bursting", "bursting", "burstingShort");
     addPeerStat(
-        peerStatsList, numberOfListening, PEER_LISTENING_CLASS, "listening", "listeningShort");
-    addPeerStat(
-        peerStatsList, numberOfListenOnly, PEER_LISTEN_ONLY_CLASS, "listenOnly", "listenOnlyShort");
+        peerStatsList, counts.listening(), PEER_LISTENING_CLASS, "listening", "listeningShort");
     addPeerStat(
         peerStatsList,
-        numberOfSeedServers,
+        counts.listenOnly(),
+        PEER_LISTEN_ONLY_CLASS,
+        "listenOnly",
+        "listenOnlyShort");
+    addPeerStat(
+        peerStatsList,
+        counts.seedServers(),
         PEER_LISTENING_CLASS,
         "seedServers",
         "seedServersShort");
     addPeerStat(
         peerStatsList,
-        numberOfSeedClients,
+        counts.seedClients(),
         PEER_LISTENING_CLASS,
         "seedClients",
         "seedClientsShort");
     addPeerStat(
         peerStatsList,
-        numberOfRoutingDisabled,
+        counts.routingDisabled(),
         "peer_routing_disabled",
         "routingDisabled",
         "routingDisabledShort");
     addPeerStat(
         peerStatsList,
-        numberOfClockProblem,
+        counts.clockProblem(),
         "peer_clock_problem",
         "clockProblem",
         "clockProblemShort");
-    addPeerStat(peerStatsList, numberOfConnError, "peer_conn_error", "connError", "connErrorShort");
+    addPeerStat(
+        peerStatsList, counts.connError(), "peer_conn_error", "connError", "connErrorShort");
     addPeerStat(
         peerStatsList,
-        numberOfDisconnecting,
+        counts.disconnecting(),
         "peer_disconnecting",
         "disconnecting",
         "disconnectingShort");
     addPeerStat(
         peerStatsList,
-        numberOfNoLoadStats,
+        counts.noLoadStats(),
         "peer_no_load_stats",
         "noLoadStats",
         "noLoadStatsShort");
