@@ -131,7 +131,7 @@ public class SecurityLevelsToadlet extends Toadlet {
    * Handles POST submissions for the security levels page and dispatches them to specialized
    * handlers. The method enforces full-access checks, routes master password updates separately
    * from threat-level changes, and persists configuration only after successful validation. When a
-   * request does not match any known handler it redirects the client back to the main security
+   * request does not match any known handler, it redirects the client back to the main security
    * levels view to maintain a predictable user path.
    *
    * @param uri request URI, retained for consistency with the toadlet contract and null-checked.
@@ -139,7 +139,7 @@ public class SecurityLevelsToadlet extends Toadlet {
    *     password-related fields.
    * @param ctx toadlet context responsible for authorization, page building, and response output.
    * @throws ToadletContextClosedException if the client disconnects before the response completes.
-   * @throws IOException if an I/O error occurs while writing HTML content or redirect headers.
+   * @throws IOException if an I/O error occurs while writing HTML content or redirects headers.
    */
   public void handleMethodPOST(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
@@ -469,7 +469,9 @@ public class SecurityLevelsToadlet extends Toadlet {
       content.addChild("p", l10nSec(PASSWORD_NOT_ZERO_LENGTH_KEY));
 
       SecurityLevelsToadlet.generatePasswordFormPage(
-          false, ctx.getContainer(), content, false, true, false, newPhysicalLevel.name(), null);
+          new PasswordFormOptions(false, false, true, false, newPhysicalLevel.name(), null),
+          ctx.getContainer(),
+          content);
 
       addBackToSeclevelsLink(content);
 
@@ -500,7 +502,9 @@ public class SecurityLevelsToadlet extends Toadlet {
                 true)
             .addChild(TAG_DIV, ATTR_CLASS, CLASS_INFOBOX_CONTENT);
     SecurityLevelsToadlet.generatePasswordFormPage(
-        true, ctx.getContainer(), content, false, forDowngrade, forUpgrade, physicalLevel, null);
+        new PasswordFormOptions(true, false, forDowngrade, forUpgrade, physicalLevel, null),
+        ctx.getContainer(),
+        content);
     addBackToSeclevelsLink(content);
     writeHTMLReply(ctx, 200, "OK", page.generate());
   }
@@ -635,14 +639,15 @@ public class SecurityLevelsToadlet extends Toadlet {
    * Constructs a full error page explaining that the master password file could not be deleted and
    * provides a retry action. It uses the supplied context to build a localized page shell, embeds
    * an infobox describing the failure, and returns the outer HTML node so callers can serialize the
-   * page themselves. When invoked from the wizard flow the generated form posts to the wizard; in
+   * page themselves. When invoked from the wizard flow, the generated form posts to the wizard; in
    * other contexts it posts back to this toadlet while keeping the chosen physical threat level.
    *
    * @param ctx toadlet context used for page construction and localization; must be non-null.
    * @param filename absolute path to the password file that failed deletion; shown to the user.
    * @param forFirstTimeWizard whether the retry form should target the first-time wizard handler.
-   * @param physicalSecurityLevel current physical threat level label persisted across submissions.
-   * @return outer HTML node containing the fully prepared page for immediate rendering.
+   * @param physicalSecurityLevel the current physical threat level label persisted across
+   *     submissions.
+   * @return the outer HTML node containing the fully prepared page for immediate rendering.
    */
   public static HTMLNode sendCantDeleteMasterKeysFileInner(
       ToadletContext ctx,
@@ -701,7 +706,7 @@ public class SecurityLevelsToadlet extends Toadlet {
    *
    * @param ctx toadlet context used to construct the page and write the response.
    * @param wrongPassword whether the previous attempt failed validation and should show an error.
-   * @param emptyPassword whether the previous submission omitted a password and requires a prompt.
+   * @param emptyPassword whether the previous submission omitted a password and required a prompt.
    * @param physicalSecurityLevel selected physical threat level to retain across form posts.
    * @throws IOException if an error occurs while generating or sending the HTML response body.
    * @throws ToadletContextClosedException if the client connection closes before the reply finishes
@@ -771,7 +776,9 @@ public class SecurityLevelsToadlet extends Toadlet {
     content.addChild("p", l10nSec(PASSWORD_NOT_ZERO_LENGTH_KEY));
 
     SecurityLevelsToadlet.generatePasswordFormPage(
-        false, ctx.getContainer(), content, false, false, true, threatlevel, null);
+        new PasswordFormOptions(false, false, false, true, threatlevel, null),
+        ctx.getContainer(),
+        content);
 
     addBackToSeclevelsLink(content);
 
@@ -786,7 +793,7 @@ public class SecurityLevelsToadlet extends Toadlet {
    * Renders the current security levels page for HTTP GET requests. It injects any accumulated
    * alerts, displays network and physical threat options with localized guidance, and ensures the
    * appropriate password prompts are visible based on the node state. The page is generated through
-   * the shared page maker to preserve consistent layout and theming across the UI.
+   * the shared page maker to preserve a consistent layout and theming across the UI.
    *
    * @param uri incoming request URI; retained for compatibility with the toadlet interface.
    * @param req HTTP request object supplying parameters used to pre-fill form fields when needed.
@@ -1103,8 +1110,8 @@ public class SecurityLevelsToadlet extends Toadlet {
    * entry points so the user can decide whether to retry, reset, or exit the wizard.
    *
    * @param helper wizard helper responsible for adding content to the current wizard step.
-   * @param masterPasswordFile absolute path to the corrupted master password file displayed to the
-   *     user for clarity.
+   * @param masterPasswordFile an absolute path to the corrupted master password file displayed to
+   *     the user for clarity.
    */
   public static void sendPasswordFileCorruptedPageInner(
       PageHelper helper, String masterPasswordFile) {
@@ -1154,7 +1161,7 @@ public class SecurityLevelsToadlet extends Toadlet {
    * Send a page asking what to do when the master password file has been corrupted.
    *
    * @param infoBox containing more information. Will be added to.
-   * @param masterPasswordFile path to master password file
+   * @param masterPasswordFile path to a master password file
    */
   private static void sendPasswordFileCorruptedPageInner(
       HTMLNode infoBox, String masterPasswordFile) {
@@ -1189,7 +1196,10 @@ public class SecurityLevelsToadlet extends Toadlet {
                 false)
             .addChild(TAG_DIV, ATTR_CLASS, CLASS_INFOBOX_CONTENT);
 
-    generatePasswordFormPage(true, ctx.getContainer(), content, false, false, false, null, null);
+    generatePasswordFormPage(
+        new PasswordFormOptions(true, false, false, false, null, null),
+        ctx.getContainer(),
+        content);
 
     addHomepageLink(content);
 
@@ -1223,7 +1233,9 @@ public class SecurityLevelsToadlet extends Toadlet {
             .addChild(TAG_DIV, ATTR_CLASS, CLASS_INFOBOX_CONTENT);
     content.addChild("p", l10nSec("passwordsDoNotMatch"));
     generatePasswordFormPage(
-        false, ctx.getContainer(), content, false, false, true, threatLevel, null);
+        new PasswordFormOptions(false, false, false, true, threatLevel, null),
+        ctx.getContainer(),
+        content);
     addBackToSeclevelsLink(content);
     writeHTMLReply(ctx, 200, "OK", page.generate());
   }
@@ -1235,30 +1247,19 @@ public class SecurityLevelsToadlet extends Toadlet {
    * adds contextual messages for wrong passwords, downgrade decryption, or upgrade confirmation,
    * and preserves physical threat level choices and optional redirect targets via hidden inputs.
    *
-   * @param wasWrong {@code true} when the previous submission failed password validation.
+   * @param options configuration for rendering the shared password form.
    * @param ctx container used to create the form element with the correct submission endpoint.
    * @param content HTML node that receives explanatory text and the generated form structure.
-   * @param forFirstTimeWizard whether to post the form back into the first-time wizard sequence.
-   * @param forDowngrade indicates the prompt relates to decrypting data during a downgrade flow.
-   * @param forUpgrade indicates the prompt is part of an upgrade requiring password confirmation.
-   * @param physicalSecurityLevel current physical threat level name to persist across submissions.
-   * @param redirect optional path the client should be redirected to after successful submission.
    */
   public static void generatePasswordFormPage(
-      boolean wasWrong,
-      ToadletContainer ctx,
-      HTMLNode content,
-      boolean forFirstTimeWizard,
-      boolean forDowngrade,
-      boolean forUpgrade,
-      String physicalSecurityLevel,
-      String redirect) {
+      PasswordFormOptions options, ToadletContainer ctx, HTMLNode content) {
 
     String postTo =
-        forFirstTimeWizard ? FirstTimeWizardToadlet.TOADLET_URL : SecurityLevelsToadlet.PATH;
+        options.forFirstTimeWizard()
+            ? FirstTimeWizardToadlet.TOADLET_URL
+            : SecurityLevelsToadlet.PATH;
     HTMLNode form = ctx.addFormChild(content, postTo, MASTER_PASSWORD_FORM);
-    generatePasswordFormPage(
-        wasWrong, form, content, forDowngrade, forUpgrade, physicalSecurityLevel, redirect);
+    generatePasswordFormPage(options, form, content);
   }
 
   private static void generatePasswordConfirmationForm(HTMLNode formNode) {
@@ -1288,37 +1289,28 @@ public class SecurityLevelsToadlet extends Toadlet {
    * Populates an existing form node with password controls and contextual messaging. The helper
    * tailors the surrounding {@code content} node to reflect whether the caller is prompting for a
    * downgrade decryption password, an upgrade confirmation, or a retry after failure. Hidden fields
-   * can retain the selected physical threat level and redirect target so follow-up requests remain
-   * consistent. Response writing remains the caller's responsibility.
+   * can retain the selected physical threat level and redirect the target so follow-up requests
+   * remain consistent. Response writing remains the caller's responsibility.
    *
-   * @param wasWrong {@code true} if the previous password attempt failed and the UI should warn.
-   * @param formNode form element that receives inputs, hidden fields, and the submit control.
+   * @param options configuration for rendering the shared password form.
+   * @param formNode form an element that receives inputs, hidden fields, and the submitting
+   *     control.
    * @param content container node used to display descriptive text adjacent to the form.
-   * @param forDowngrade indicates the prompt relates to decrypting data during a downgrade.
-   * @param forUpgrade indicates the prompt accompanies an upgrade requiring password confirmation.
-   * @param physicalSecurityLevel selected physical threat level to persist through submissions.
-   * @param redirect optional path to redirect the user to after a successful submission.
    */
   public static void generatePasswordFormPage(
-      boolean wasWrong,
-      HTMLNode formNode,
-      HTMLNode content,
-      boolean forDowngrade,
-      boolean forUpgrade,
-      String physicalSecurityLevel,
-      String redirect) {
-    if (forDowngrade && !wasWrong) {
+      PasswordFormOptions options, HTMLNode formNode, HTMLNode content) {
+    if (options.forDowngrade() && !options.wasWrong()) {
       content.addChild("#", l10nSec("passwordForDecrypt"));
-    } else if (wasWrong) {
+    } else if (options.wasWrong()) {
       content.addChild("#", l10nSec("passwordWrong"));
-    } else if (forUpgrade) {
+    } else if (options.forUpgrade()) {
       content.addChild("#", l10nSec("setPassword"));
     } else {
       content.addChild("#", l10nSec("enterPassword"));
     }
 
-    // Creates a table for password prompt and the confirmation box.
-    if (forUpgrade) {
+    // Creates a table for the password prompt and the confirmation box.
+    if (options.forUpgrade()) {
       generatePasswordConfirmationForm(formNode);
     } else {
       formNode.addChild(TAG_LABEL, "for", PASSWORD_BOX_NAME, l10nSec("passwordLabel"));
@@ -1328,21 +1320,23 @@ public class SecurityLevelsToadlet extends Toadlet {
           new String[] {PASSWORD_BOX_NAME, INPUT_PASSWORD, PARAM_MASTER_PASSWORD, "100"});
     }
 
-    if (physicalSecurityLevel != null) {
+    if (options.physicalSecurityLevel() != null) {
       formNode.addChild(
           TAG_INPUT,
           new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
-          new String[] {INPUT_HIDDEN, PARAM_PHYSICAL_THREAT_LEVEL, physicalSecurityLevel});
+          new String[] {
+            INPUT_HIDDEN, PARAM_PHYSICAL_THREAT_LEVEL, options.physicalSecurityLevel()
+          });
       formNode.addChild(
           TAG_INPUT,
           new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
           new String[] {INPUT_HIDDEN, PARAM_SECLEVELS, "true"});
     }
-    if (redirect != null) {
+    if (options.redirect() != null) {
       formNode.addChild(
           TAG_INPUT,
           new String[] {ATTR_TYPE, ATTR_NAME, ATTR_VALUE},
-          new String[] {INPUT_HIDDEN, PARAM_REDIRECT, redirect});
+          new String[] {INPUT_HIDDEN, PARAM_REDIRECT, options.redirect()});
     }
     formNode.addChild(
         TAG_INPUT,
