@@ -279,28 +279,21 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 
   synchronized FProxyFetchResult innerGetResult(boolean hasWaited) {
     lastTouched = System.currentTimeMillis();
+    FProxyFetchSnapshotInfo info =
+        new FProxyFetchSnapshotInfo(mimeType, timeStarted, goneToNetwork, getETA(), hasWaited);
     FProxyFetchResult res;
-    if (data != null)
-      res =
-          new FProxyFetchResult(
-              this, data, mimeType, timeStarted, goneToNetwork, getETA(), hasWaited);
-    else {
-      res =
-          new FProxyFetchResult(
-              this,
-              mimeType,
-              size,
-              timeStarted,
-              goneToNetwork,
+    if (data != null) {
+      res = new FProxyFetchResult(this, data, info);
+    } else {
+      FProxyFetchProgressCounts counts =
+          new FProxyFetchProgressCounts(
               totalBlocks,
               requiredBlocks,
               fetchedBlocks,
               failedBlocks,
               fatallyFailedBlocks,
-              finalizedBlocks,
-              failed,
-              getETA(),
-              hasWaited);
+              finalizedBlocks);
+      res = new FProxyFetchResult(this, info, size, counts, failed);
     }
     results.add(res);
     if (data != null || failed != null) {

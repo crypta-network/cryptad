@@ -56,8 +56,8 @@ public class FProxyFetchResult {
   public final boolean goneToNetwork;
 
   /**
-   * Total number of data blocks expected for the fetch according to the manifest at the time this
-   * snapshot was produced; useful for progress percentages when combined with block counters.
+   * The total number of data blocks expected for the fetch according to the manifest at the time
+   * this snapshot was produced; useful for progress percentages when combined with block counters.
    */
   public final int totalBlocks;
 
@@ -104,8 +104,8 @@ public class FProxyFetchResult {
   final boolean hasWaited;
 
   /**
-   * Estimated remaining time in milliseconds at snapshot creation; negative or zero values can be
-   * used by callers to signal that no reliable estimate is currently available.
+   * Estimated remaining time in milliseconds at snapshot creation; callers can use negative or zero
+   * values to signal that no reliable estimate is currently available.
    */
   public final long eta;
 
@@ -113,60 +113,44 @@ public class FProxyFetchResult {
   private final boolean finished;
 
   /** Constructor when we are returning the data */
-  FProxyFetchResult(
-      FProxyFetchInProgress parent,
-      Bucket data,
-      String mimeType,
-      long timeStarted,
-      boolean goneToNetwork,
-      long eta,
-      boolean hasWaited) {
+  FProxyFetchResult(FProxyFetchInProgress parent, Bucket data, FProxyFetchSnapshotInfo info) {
     assert (data != null);
     this.data = data;
-    this.mimeType = mimeType;
+    this.mimeType = info.mimeType();
     this.size = data.size();
-    this.timeStarted = timeStarted;
-    this.goneToNetwork = goneToNetwork;
+    this.timeStarted = info.timeStarted();
+    this.goneToNetwork = info.goneToNetwork();
     totalBlocks = requiredBlocks = fetchedBlocks = failedBlocks = fatallyFailedBlocks = 0;
     finalizedBlocks = true;
     failed = null;
     this.progress = parent;
-    this.eta = eta;
-    this.hasWaited = hasWaited;
+    this.eta = info.eta();
+    this.hasWaited = info.hasWaited();
     finished = true;
   }
 
   /** Constructor when we are not returning the data, because it is still running, or it failed */
   FProxyFetchResult(
       FProxyFetchInProgress parent,
-      String mimeType,
+      FProxyFetchSnapshotInfo info,
       long size,
-      long timeStarted,
-      boolean goneToNetwork,
-      int totalBlocks,
-      int requiredBlocks,
-      int fetchedBlocks,
-      int failedBlocks,
-      int fatallyFailedBlocks,
-      boolean finalizedBlocks,
-      FetchException failed,
-      long eta,
-      boolean hasWaited) {
+      FProxyFetchProgressCounts counts,
+      FetchException failed) {
     this.data = null;
-    this.mimeType = mimeType;
+    this.mimeType = info.mimeType();
     this.size = size;
-    this.timeStarted = timeStarted;
-    this.goneToNetwork = goneToNetwork;
-    this.totalBlocks = totalBlocks;
-    this.requiredBlocks = requiredBlocks;
-    this.fetchedBlocks = fetchedBlocks;
-    this.failedBlocks = failedBlocks;
-    this.fatallyFailedBlocks = fatallyFailedBlocks;
-    this.finalizedBlocks = finalizedBlocks;
+    this.timeStarted = info.timeStarted();
+    this.goneToNetwork = info.goneToNetwork();
+    this.totalBlocks = counts.totalBlocks();
+    this.requiredBlocks = counts.requiredBlocks();
+    this.fetchedBlocks = counts.fetchedBlocks();
+    this.failedBlocks = counts.failedBlocks();
+    this.fatallyFailedBlocks = counts.fatallyFailedBlocks();
+    this.finalizedBlocks = counts.finalizedBlocks();
     this.failed = failed;
     this.progress = parent;
-    this.eta = eta;
-    this.hasWaited = hasWaited;
+    this.eta = info.eta();
+    this.hasWaited = info.hasWaited();
     finished = (failed != null);
   }
 
@@ -231,9 +215,9 @@ public class FProxyFetchResult {
    * generated.
    *
    * <p>A finished snapshot may contain data, an exception, or neither if the operation concluded
-   * without payload. Use {@link #hasData()} to check for successful completion and {@link #failed}
-   * to inspect failures. Because the value is captured at creation time, callers polling for
-   * progress should request a new snapshot to observe later state changes.
+   * without a payload. Use {@link #hasData()} to check for successful completion and {@link
+   * #failed} to inspect failures. Because the value is captured at creation time, callers polling
+   * for progress should request a new snapshot to observe later state changes.
    *
    * @return {@code true} if the fetch was marked finished at snapshot time; otherwise {@code
    *     false}.
@@ -262,7 +246,7 @@ public class FProxyFetchResult {
    * reused across polling cycles. The value defaults to zero until explicitly set via {@link
    * #setFetchCount(int)}.
    *
-   * @return current fetch-count marker associated with this snapshot instance.
+   * @return the current fetch-count marker associated with this snapshot instance.
    */
   public int getFetchCount() {
     return fetchedCount;

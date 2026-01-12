@@ -30,7 +30,8 @@ class FProxyFetchResultTest {
     Mockito.when(bucket.size()).thenReturn(expectedSize);
 
     FProxyFetchResult result =
-        new FProxyFetchResult(progress, bucket, "text/plain", 100L, true, 200L, false);
+        new FProxyFetchResult(
+            progress, bucket, new FProxyFetchSnapshotInfo("text/plain", 100L, true, 200L, false));
 
     // Act & Assert
     assertTrue(result.hasData());
@@ -52,19 +53,10 @@ class FProxyFetchResultTest {
     FProxyFetchResult result =
         new FProxyFetchResult(
             progress,
-            "application/octet-stream",
+            new FProxyFetchSnapshotInfo("application/octet-stream", 50L, false, 500L, true),
             128L,
-            50L,
-            false,
-            10,
-            6,
-            4,
-            1,
-            0,
-            true,
-            exception,
-            500L,
-            true);
+            new FProxyFetchProgressCounts(10, 6, 4, 1, 0, true),
+            exception);
 
     assertFalse(result.hasData());
     assertTrue(result.isFinished());
@@ -85,7 +77,11 @@ class FProxyFetchResultTest {
 
     FProxyFetchResult result =
         new FProxyFetchResult(
-            progress, "text/html", -1L, 75L, true, 20, 15, 5, 0, 0, false, null, 1000L, false);
+            progress,
+            new FProxyFetchSnapshotInfo("text/html", 75L, true, 1000L, false),
+            -1L,
+            new FProxyFetchProgressCounts(20, 15, 5, 0, 0, false),
+            null);
 
     assertFalse(result.hasData());
     assertFalse(result.isFinished());
@@ -102,7 +98,8 @@ class FProxyFetchResultTest {
     Mockito.when(bucket.size()).thenReturn(1L);
 
     FProxyFetchResult result =
-        new FProxyFetchResult(progress, bucket, "text/plain", 0L, false, -1L, true);
+        new FProxyFetchResult(
+            progress, bucket, new FProxyFetchSnapshotInfo("text/plain", 0L, false, -1L, true));
 
     result.close();
 
@@ -115,7 +112,11 @@ class FProxyFetchResultTest {
 
     FProxyFetchResult result =
         new FProxyFetchResult(
-            progress, "text/plain", 0L, 0L, false, 0, 0, 0, 0, 0, true, null, -1L, false);
+            progress,
+            new FProxyFetchSnapshotInfo("text/plain", 0L, false, -1L, false),
+            0L,
+            new FProxyFetchProgressCounts(0, 0, 0, 0, 0, true),
+            null);
 
     result.setFetchCount(7);
 
