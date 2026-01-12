@@ -2,6 +2,7 @@ package network.crypta.clients.http.updateableelements;
 
 import java.text.NumberFormat;
 import network.crypta.client.FetchContext;
+import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchResult;
 import network.crypta.clients.http.FProxyFetchTracker;
@@ -68,9 +69,9 @@ public class ProgressBarElement extends BaseUpdatableElement {
    * element still renders on demand but no listener is registered and {@link #dispose()} becomes a
    * no-op.
    *
-   * <p>The {@code key}, {@code maxSize}, and {@code fctx} arguments are forwarded to {@link
-   * FProxyFetchTracker#getFetchInProgress(FreenetURI, long, FetchContext)} to select the correct
-   * in-progress fetch instance.
+   * <p>The {@code key}, {@code maxSize}, and {@code fctx} arguments are forwarded via {@link
+   * FProxyFetchCriteria} to {@link FProxyFetchTracker#getFetchInProgress(FProxyFetchCriteria)} to
+   * select the correct in-progress fetch instance.
    *
    * @param tracker tracker used to locate and observe the fetch progress for the given URI.
    * @param key URI identifying the fetch whose progress is displayed by this element.
@@ -103,7 +104,9 @@ public class ProgressBarElement extends BaseUpdatableElement {
     fetchListener =
         new NotifierFetchListener(
             ((SimpleToadletServer) ctx.getContainer()).getPushDataManager(), this);
-    tracker.getFetchInProgress(key, maxSize, fctx).addListener(fetchListener);
+    tracker
+        .getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx))
+        .addListener(fetchListener);
   }
 
   /**
@@ -126,7 +129,8 @@ public class ProgressBarElement extends BaseUpdatableElement {
   public void updateState(boolean initial) {
     children.clear();
 
-    FProxyFetchInProgress progress = tracker.getFetchInProgress(key, maxSize, fctx);
+    FProxyFetchInProgress progress =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx));
     FProxyFetchWaiter waiter = progress == null ? null : progress.getWaiter();
     FProxyFetchResult fr = waiter == null ? null : waiter.getResult();
     try {
@@ -259,7 +263,8 @@ public class ProgressBarElement extends BaseUpdatableElement {
   @Override
   public void dispose() {
     // Deregisters the FetchListener
-    FProxyFetchInProgress progress = tracker.getFetchInProgress(key, maxSize, fctx);
+    FProxyFetchInProgress progress =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx));
     if (progress != null) {
       progress.removeListener(fetchListener);
     }

@@ -47,7 +47,8 @@ class FProxyFetchTrackerTest {
 
     getFetchers(tracker).put(key, fetch);
 
-    FProxyFetchInProgress result = tracker.getFetchInProgress(key, 1024L, fetchContext);
+    FProxyFetchInProgress result =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, 1024L, fetchContext));
 
     assertSame(fetch, result);
   }
@@ -67,7 +68,8 @@ class FProxyFetchTrackerTest {
 
     getFetchers(tracker).put(key, fetch);
 
-    FProxyFetchInProgress result = tracker.getFetchInProgress(key, 123L, null);
+    FProxyFetchInProgress result =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, null));
 
     assertSame(fetch, result);
   }
@@ -89,7 +91,8 @@ class FProxyFetchTrackerTest {
 
     getFetchers(tracker).put(key, fetch);
 
-    FProxyFetchInProgress result = tracker.getFetchInProgress(key, 512L, requestedContext);
+    FProxyFetchInProgress result =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, 512L, requestedContext));
 
     assertNull(result);
   }
@@ -114,7 +117,8 @@ class FProxyFetchTrackerTest {
 
     FProxyFetchWaiter result =
         tracker.makeFetcher(
-            key, 1024L, fetchContext, FProxyFetchInProgress.REFILTER_POLICY.RE_FETCH);
+            new FProxyFetchCriteria(key, 1024L, fetchContext),
+            FProxyFetchInProgress.REFILTER_POLICY.RE_FETCH);
 
     assertSame(waiter, result);
     verify(fetch, never()).start(context);
@@ -146,7 +150,8 @@ class FProxyFetchTrackerTest {
               FetchException.class,
               () ->
                   tracker.makeFetcher(
-                      key, 2048L, fetchContext, FProxyFetchInProgress.REFILTER_POLICY.RE_FILTER));
+                      new FProxyFetchCriteria(key, 2048L, fetchContext),
+                      FProxyFetchInProgress.REFILTER_POLICY.RE_FILTER));
 
       assertSame(failure, thrown);
       assertTrue(getFetchers(tracker).values().isEmpty(), "fetcher should be removed on failure");
@@ -204,8 +209,8 @@ class FProxyFetchTrackerTest {
     tracker.run();
 
     verify(cancellable, times(1)).finishCancel();
-    assertNull(tracker.getFetchInProgress(key1, 0L, null));
-    assertSame(persistent, tracker.getFetchInProgress(key2, 0L, null));
+    assertNull(tracker.getFetchInProgress(new FProxyFetchCriteria(key1, 0L, null)));
+    assertSame(persistent, tracker.getFetchInProgress(new FProxyFetchCriteria(key2, 0L, null)));
     verify(ticker, times(2)).queueTimedJob(tracker, FProxyFetchInProgress.LIFETIME);
   }
 

@@ -872,7 +872,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     private void fetchContent() throws FetchException, ToadletContextClosedException, IOException {
       FProxyFetchWaiter fetch =
-          fetchTracker.makeFetcher(key, maxSize, fctx, ctx.getReFilterPolicy());
+          fetchTracker.makeFetcher(
+              new FProxyFetchCriteria(key, maxSize, fctx), ctx.getReFilterPolicy());
       boolean waitingForFetch = true;
       while (waitingForFetch && fetch != null) {
         fetchResult = fetch.getResult(!canSendProgress);
@@ -881,7 +882,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
             LOG.info("Loading later edition...");
             fetch.progress.requestImmediateCancel();
             fetchResult.close();
-            fetch = fetchTracker.makeFetcher(key, maxSize, fctx, ctx.getReFilterPolicy());
+            fetch =
+                fetchTracker.makeFetcher(
+                    new FProxyFetchCriteria(key, maxSize, fctx), ctx.getReFilterPolicy());
             waitingForFetch = fetch != null;
           } else {
             cacheFetcherData(fetch);
@@ -1269,7 +1272,8 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
     private void reuseInProgressFetch() {
       boolean needsFetch = true;
-      FProxyFetchInProgress progress = fetchTracker.getFetchInProgress(key, maxSize, fctx);
+      FProxyFetchInProgress progress =
+          fetchTracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx));
       if (progress == null) {
         return;
       }

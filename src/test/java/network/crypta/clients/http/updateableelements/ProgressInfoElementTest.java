@@ -14,6 +14,7 @@ import java.util.Deque;
 import java.util.function.Predicate;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
+import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchResult;
 import network.crypta.clients.http.FProxyFetchTracker;
@@ -59,7 +60,8 @@ class ProgressInfoElementTest {
   void getUpdaterId_whenCalled_expectDerivedFromKey() {
     FreenetURI uri = ksk("doc");
     stubUniqueId();
-    when(tracker.makeWaiterForFetchInProgress(uri, 123L, fetchContext)).thenReturn(null);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, 123L, fetchContext)))
+        .thenReturn(null);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, 123L, false, toadletContext, false);
@@ -73,7 +75,8 @@ class ProgressInfoElementTest {
   void getUpdaterType_whenCalled_expectReplacerUpdater() {
     FreenetURI uri = ksk("doc");
     stubUniqueId();
-    when(tracker.makeWaiterForFetchInProgress(uri, 1L, fetchContext)).thenReturn(null);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, 1L, fetchContext)))
+        .thenReturn(null);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, 1L, false, toadletContext, false);
@@ -87,7 +90,8 @@ class ProgressInfoElementTest {
     FreenetURI uri = ksk("doc");
     long maxSize = 42L;
     stubUniqueId();
-    when(tracker.makeWaiterForFetchInProgress(uri, maxSize, fetchContext)).thenReturn(null);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(null);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, maxSize, false, toadletContext, false);
@@ -108,14 +112,15 @@ class ProgressInfoElementTest {
   void updateState_whenNoWaiter_expectNoFetcherFoundMessage() {
     FreenetURI uri = ksk("no-waiter");
     stubUniqueId();
-    when(tracker.makeWaiterForFetchInProgress(uri, 1024L, fetchContext)).thenReturn(null);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, 1024L, fetchContext)))
+        .thenReturn(null);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, 1024L, false, toadletContext, false);
 
     assertTrue(element.generate().contains("No fetcher found"));
-    verify(tracker).makeWaiterForFetchInProgress(uri, 1024L, fetchContext);
-    verify(tracker, never()).getFetchInProgress(uri, 1024L, fetchContext);
+    verify(tracker).makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, 1024L, fetchContext));
+    verify(tracker, never()).getFetchInProgress(new FProxyFetchCriteria(uri, 1024L, fetchContext));
   }
 
   @Test
@@ -125,7 +130,8 @@ class ProgressInfoElementTest {
     FreenetURI uri = ksk("null-result");
     stubUniqueId();
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);
-    when(tracker.makeWaiterForFetchInProgress(uri, 1024L, fetchContext)).thenReturn(waiter);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, 1024L, fetchContext)))
+        .thenReturn(waiter);
     when(waiter.getResult()).thenReturn(null);
 
     ProgressInfoElement element =
@@ -133,7 +139,7 @@ class ProgressInfoElementTest {
 
     assertTrue(element.generate().contains("No fetcher found"));
     verify(waiter).getResult();
-    verify(tracker, never()).getFetchInProgress(uri, 1024L, fetchContext);
+    verify(tracker, never()).getFetchInProgress(new FProxyFetchCriteria(uri, 1024L, fetchContext));
   }
 
   @Test
@@ -160,11 +166,13 @@ class ProgressInfoElementTest {
                 .eta(etaTotal));
 
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);
-    when(tracker.makeWaiterForFetchInProgress(uri, maxSize, fetchContext)).thenReturn(waiter);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(waiter);
     when(waiter.getResult()).thenReturn(result);
 
     FProxyFetchInProgress progress = mock(FProxyFetchInProgress.class);
-    when(tracker.getFetchInProgress(uri, maxSize, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(progress);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, maxSize, false, toadletContext, false);
@@ -204,11 +212,13 @@ class ProgressInfoElementTest {
                 .eta(-1L));
 
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);
-    when(tracker.makeWaiterForFetchInProgress(uri, maxSize, fetchContext)).thenReturn(waiter);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(waiter);
     when(waiter.getResult()).thenReturn(result);
 
     FProxyFetchInProgress progress = mock(FProxyFetchInProgress.class);
-    when(tracker.getFetchInProgress(uri, maxSize, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(progress);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, maxSize, false, toadletContext, false);
@@ -241,11 +251,13 @@ class ProgressInfoElementTest {
                 .eta(-1L));
 
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);
-    when(tracker.makeWaiterForFetchInProgress(uri, maxSize, fetchContext)).thenReturn(waiter);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(waiter);
     when(waiter.getResult()).thenReturn(result);
 
     FProxyFetchInProgress progress = mock(FProxyFetchInProgress.class);
-    when(tracker.getFetchInProgress(uri, maxSize, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(progress);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, maxSize, false, toadletContext, false);
@@ -283,11 +295,13 @@ class ProgressInfoElementTest {
                 .eta(-1L));
 
     FProxyFetchWaiter waiter = mock(FProxyFetchWaiter.class);
-    when(tracker.makeWaiterForFetchInProgress(uri, maxSize, fetchContext)).thenReturn(waiter);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(waiter);
     when(waiter.getResult()).thenReturn(result);
 
     FProxyFetchInProgress progress = mock(FProxyFetchInProgress.class);
-    when(tracker.getFetchInProgress(uri, maxSize, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(progress);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, maxSize, true, toadletContext, false);
@@ -306,10 +320,12 @@ class ProgressInfoElementTest {
     FreenetURI uri = ksk("dispose");
     long maxSize = 10L;
     stubUniqueId();
-    when(tracker.makeWaiterForFetchInProgress(uri, maxSize, fetchContext)).thenReturn(null);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(null);
 
     FProxyFetchInProgress progress = mock(FProxyFetchInProgress.class);
-    when(tracker.getFetchInProgress(uri, maxSize, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(progress);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, maxSize, false, toadletContext, false);
@@ -324,14 +340,16 @@ class ProgressInfoElementTest {
     FreenetURI uri = ksk("dispose-null");
     long maxSize = 10L;
     stubUniqueId();
-    when(tracker.makeWaiterForFetchInProgress(uri, maxSize, fetchContext)).thenReturn(null);
-    when(tracker.getFetchInProgress(uri, maxSize, fetchContext)).thenReturn(null);
+    when(tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(null);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext)))
+        .thenReturn(null);
 
     ProgressInfoElement element =
         new ProgressInfoElement(tracker, uri, fetchContext, maxSize, false, toadletContext, false);
     element.dispose();
 
-    verify(tracker).getFetchInProgress(uri, maxSize, fetchContext);
+    verify(tracker).getFetchInProgress(new FProxyFetchCriteria(uri, maxSize, fetchContext));
   }
 
   private void stubUniqueId() {
