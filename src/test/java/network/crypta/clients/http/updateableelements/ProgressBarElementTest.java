@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
+import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchListener;
 import network.crypta.clients.http.FProxyFetchResult;
@@ -88,7 +89,8 @@ class ProgressBarElementTest {
     // Arrange
     when(key.toString()).thenReturn(KEY_STRING);
     when(toadletContext.getUniqueId()).thenReturn(REQUEST_ID);
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenReturn(null);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenReturn(null);
 
     // Act
     ProgressBarElement element =
@@ -104,7 +106,8 @@ class ProgressBarElementTest {
     // Arrange
     when(key.toString()).thenReturn(KEY_STRING);
     when(toadletContext.getUniqueId()).thenReturn(REQUEST_ID);
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenReturn(null);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenReturn(null);
 
     ProgressBarElement element =
         new ProgressBarElement(tracker, key, fetchContext, 123L, toadletContext, false);
@@ -122,7 +125,7 @@ class ProgressBarElementTest {
     HTMLNode messageText = getSingleChild(messageDiv);
     assertEquals("#", messageText.getName());
     assertEquals("No fetcher found", messageText.getContent());
-    verify(tracker).getFetchInProgress(key, 123L, fetchContext);
+    verify(tracker).getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext));
   }
 
   @Test
@@ -133,7 +136,8 @@ class ProgressBarElementTest {
     when(toadletContext.getUniqueId()).thenReturn(REQUEST_ID);
 
     AtomicReference<FProxyFetchInProgress> progressRef = new AtomicReference<>(null);
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenAnswer(i -> progressRef.get());
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenAnswer(i -> progressRef.get());
 
     ProgressBarElement element =
         new ProgressBarElement(tracker, key, fetchContext, 123L, toadletContext, false);
@@ -162,7 +166,8 @@ class ProgressBarElementTest {
     when(key.toString()).thenReturn(KEY_STRING);
     when(toadletContext.getUniqueId()).thenReturn(REQUEST_ID);
 
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenReturn(progress);
     when(progress.getWaiter()).thenReturn(waiter);
     AtomicReference<FProxyFetchResult> resultRef = new AtomicReference<>();
     when(waiter.getResult()).thenAnswer(i -> resultRef.get());
@@ -213,7 +218,8 @@ class ProgressBarElementTest {
     when(key.toString()).thenReturn(KEY_STRING);
     when(toadletContext.getUniqueId()).thenReturn(REQUEST_ID);
 
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenReturn(progress);
     when(progress.getWaiter()).thenReturn(waiter);
 
     FProxyFetchResult result =
@@ -276,7 +282,8 @@ class ProgressBarElementTest {
     when(toadletContext.getContainer()).thenReturn(server);
     when(server.getPushDataManager()).thenReturn(pushDataManager);
 
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenReturn(progress);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenReturn(progress);
     when(progress.getWaiter()).thenReturn(waiter);
     when(waiter.getResult())
         .thenReturn(
@@ -322,7 +329,8 @@ class ProgressBarElementTest {
     // Arrange
     when(key.toString()).thenReturn(KEY_STRING);
     when(toadletContext.getUniqueId()).thenReturn(REQUEST_ID);
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenReturn(null);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenReturn(null);
     ProgressBarElement element =
         new ProgressBarElement(tracker, key, fetchContext, 123L, toadletContext, false);
 
@@ -338,7 +346,8 @@ class ProgressBarElementTest {
     // Arrange
     when(key.toString()).thenReturn(KEY_STRING);
     when(toadletContext.getUniqueId()).thenReturn(REQUEST_ID);
-    when(tracker.getFetchInProgress(key, 123L, fetchContext)).thenReturn(null);
+    when(tracker.getFetchInProgress(new FProxyFetchCriteria(key, 123L, fetchContext)))
+        .thenReturn(null);
     long maxSize = 123L;
     ProgressBarElement element =
         new ProgressBarElement(tracker, key, fetchContext, maxSize, toadletContext, false);

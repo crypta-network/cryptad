@@ -132,8 +132,9 @@ class FProxyFetchInProgressTest {
     RequestClient requestClient = Mockito.mock(RequestClient.class);
     FreenetURI uri = new FreenetURI("KSK", "doc");
 
+    FProxyFetchCriteria criteria = new FProxyFetchCriteria(uri, 1024L, context);
     return new FProxyFetchInProgress(
-        tracker, uri, 1024L, 1L, clientContext, context, requestClient, REFILTER_POLICY.ACCEPT_OLD);
+        tracker, criteria, 1L, clientContext, requestClient, REFILTER_POLICY.ACCEPT_OLD);
   }
 
   private static FetchContext newFetchContext() {

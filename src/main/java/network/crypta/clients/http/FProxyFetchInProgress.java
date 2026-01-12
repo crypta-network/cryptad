@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * <p>This holder coordinates the shared state between the asynchronous {@link ClientGetter} running
  * inside the client layer and the lightweight waiter objects used by the HTTP toadlet. It owns the
  * request lifecycle, forwards network and splitfile events to listeners, and exposes progress
- * snapshots that are rendered into FProxy status pages. Typical callers obtain a waiter via {@link
+ * snapshots that are rendered into FProxy status pages. Typical callers get a waiter via {@link
  * #getWaiter()}, start the fetch with {@link #start(ClientContext)}, and poll {@link
  * #innerGetResult(boolean)} from the waiter thread until either data or an error arrives.
  *
@@ -58,8 +58,8 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Responsibilities: manage a single URI fetch, collect progress, and dispatch listener
  *       events.
- *   <li>Concurrency: all externally visible state is guarded by the instance monitor; callbacks may
- *       arrive from worker threads.
+ *   <li>Concurrency: the instance monitor guards all externally visible state; callbacks may arrive
+ *       from worker threads.
  *   <li>Lifecycle: constructed with immutable fetch parameters, started once, and then either
  *       finishes, fails, or is canceled by the tracker.
  * </ul>
@@ -113,7 +113,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   private final ClientGetter getter;
 
   /**
-   * Any request which is waiting for a progress screen or data. We may want to wake requests
+   * Any request that is waiting for a progress screen or data. We may want to wake requests
    * separately in the future.
    */
   private final ArrayList<FProxyFetchWaiter> waiters;
@@ -174,7 +174,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   final FProxyFetchTracker tracker;
 
   /**
-   * Show even non-fatal failures for 5 seconds. Necessary for javascript to work, because it
+   * Show even non-fatal failures for 5 seconds. Necessary for JavaScript to work, because it
    * fetches the page and then reloads it if it isn't a progress update.
    */
   private long timeFailed;
@@ -201,32 +201,28 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * does not start network activity; callers must invoke {@link #start(ClientContext)} after adding
    * any waiters or listeners.
    *
-   * @param tracker owning tracker that manages cancellation and lifecycle for this fetch
-   * @param key target Freenet URI, including edition information for USKs when present
-   * @param maxSize2 maximum response size in bytes allowed by the caller for output
+   * @param tracker the owning tracker that manages cancellation and lifecycle for this fetch
+   * @param criteria immutable request criteria containing URI, size limit, and fetch context
    * @param identifier monotonically increasing identifier used for UI correlation and logs
    * @param context initial client context providing caches and factories for the fetch
-   * @param fctx base fetch context copied and adjusted for this request's output limits
    * @param rc request client identity used for network scheduling and throttling
    * @param refilter policy describing how cached filtered data should be reused or refreshed
    */
   public FProxyFetchInProgress(
       FProxyFetchTracker tracker,
-      FreenetURI key,
-      long maxSize2,
+      FProxyFetchCriteria criteria,
       long identifier,
       ClientContext context,
-      FetchContext fctx,
       RequestClient rc,
       REFILTER_POLICY refilter) {
     this.identifier = identifier;
     this.initialContext = context;
     this.refilterPolicy = refilter;
     this.tracker = tracker;
-    this.uri = key;
-    this.maxSize = maxSize2;
+    this.uri = criteria.key();
+    this.maxSize = criteria.maxSize();
     this.timeStarted = System.currentTimeMillis();
-    this.fctx = fctx;
+    this.fctx = criteria.fetchContext();
     this.rc = rc;
     FetchContext alteredFctx = new FetchContext(fctx, FetchContext.IDENTICAL_MASK);
     alteredFctx.setMaxOutputLength(maxSize);
@@ -318,10 +314,9 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * Begins the fetch by consulting caches and, if necessary, scheduling network retrieval.
    *
    * <p>The method is idempotent for a given instance: it will only trigger the underlying {@link
-   * ClientGetter} once, and subsequent calls simply reflect the first result. Cache hits may
-   * immediately complete the fetch and notify listeners. Checked exceptions indicate startup
-   * failures such as malformed URIs or context misconfiguration and leave the instance marked as
-   * failed.
+   * ClientGetter} once, and later calls simply reflect the first result. Cache hits may immediately
+   * complete the fetch and notify listeners. Checked exceptions indicate startup failures such as
+   * malformed URIs or context misconfiguration and leave the instance marked as failed.
    *
    * @param context client context supplying caches, temp bucket factories, and scheduler access
    * @throws FetchException if initial validation or network scheduling fails before fetching starts
@@ -350,8 +345,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * @return True if it was found, and we don't need to start the request.
    */
   private boolean checkCache(ClientContext context) {
-    // Fproxy uses lookupInstant() with mustCopy = false. I.e. it can reuse stuff unsafely. If the
-    // user frees it's their fault.
+    // Fproxy uses lookupInstant() with mustCopy = false. I.e., it can reuse stuff unsafely. If the
+    // user frees, it's their fault.
     if (bogusUSK(context)) return false;
 
     CacheFetchResult result = lookupCachedResult(context);
@@ -465,8 +460,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   }
 
   /**
-   * If the key is a USK and a) we are requested to do an exhaustive search, or b) there is a later
-   * version, then we can't use the download queue as a cache.
+   * If the key is a USK and (a) we are requested to do an exhaustive search, or (b) there is a
+   * later version, then we can't use the download queue as a cache.
    *
    * @return True if we can't use the download queue, false if we can.
    */
@@ -749,7 +744,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       hasNotifiedFailure = true;
       return true;
     }
-    // Once for javascript and once for the user when it re-pulls.
+    // Once for JavaScript and once for the user when it re-pulls.
     return failed != null && (System.currentTimeMillis() - timeFailed < 1000 || fetched < 2);
   }
 
@@ -770,7 +765,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   /**
    * Returns whether any waiter has already waited for progress, used to throttle UI refreshes.
    *
-   * <p>The flag is set when a waiter first signals it is blocking so subsequent HTTP refreshes can
+   * <p>The flag is set when a waiter first signals it is blocking, so later HTTP refreshes can
    * avoid duplicate latency compensation. It remains true for the lifetime of the fetch because a
    * single wait indicates user interest that should not be throttled twice.
    *
@@ -797,7 +792,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    *
    * <p>Listeners are invoked outside the synchronized blocks but may still be called from worker
    * threads that deliver {@link ClientEvent}s, so implementations must be thread-safe and quick. If
-   * a listener slows down excessively it can delay UI refresh notifications for other watchers.
+   * a listener slows down excessively, it can delay UI refresh notifications for other watchers.
    *
    * @param listener the callback to add; must be thread-safe because notifications may cross
    *     threads
@@ -843,7 +838,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * Returns the timestamp (milliseconds since epoch) of the most recent waiter or result access.
    *
    * <p>The tracker uses this value to decide when the fetch entry has been idle long enough to
-   * cancel. It is updated on waiter creation and result reads; callers should treat it as a
+   * cancel. It is updated on waiter creation, and the result reads; callers should treat it as a
    * monotonic indicator of user interest.
    *
    * @return epoch millisecond timestamp of the last interaction with this fetch
@@ -910,8 +905,8 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
    * Returns a diagnostic string containing the identifier, URI, and initial client context.
    *
    * <p>The format is stable enough for logging and troubleshooting but not intended as a
-   * serialization contract. It avoids revealing internal mutable state and therefore remains safe
-   * to print even while callbacks mutate other fields.
+   * serialization contract. It avoids revealing the internal mutable state and therefore remains
+   * safe to print even while callbacks mutate other fields.
    *
    * @return human-readable summary suitable for debug logging and progress pages
    */

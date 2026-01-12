@@ -1,6 +1,7 @@
 package network.crypta.clients.http.updateableelements;
 
 import network.crypta.client.FetchContext;
+import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchResult;
 import network.crypta.clients.http.FProxyFetchTracker;
@@ -87,7 +88,9 @@ public class ProgressInfoElement extends BaseUpdatableElement {
     fetchListener =
         new NotifierFetchListener(
             ((SimpleToadletServer) ctx.getContainer()).getPushDataManager(), this);
-    tracker.getFetchInProgress(key, maxSize, fctx).addListener(fetchListener);
+    tracker
+        .getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx))
+        .addListener(fetchListener);
   }
 
   /**
@@ -108,7 +111,8 @@ public class ProgressInfoElement extends BaseUpdatableElement {
   public void updateState(boolean initial) {
     children.clear();
 
-    FProxyFetchWaiter waiter = tracker.makeWaiterForFetchInProgress(key, maxSize, fctx);
+    FProxyFetchWaiter waiter =
+        tracker.makeWaiterForFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx));
     FProxyFetchResult fr = waiter == null ? null : waiter.getResult();
     if (fr == null) {
       addChild("div", "No fetcher found");
@@ -152,8 +156,8 @@ public class ProgressInfoElement extends BaseUpdatableElement {
     else addChild("p", FProxyToadlet.l10n("progressCheckingStore"));
     if (!fr.finalizedBlocks) addChild("p", FProxyToadlet.l10n("progressNotFinalized"));
 
-    tracker.getFetchInProgress(key, maxSize, fctx).close(waiter);
-    tracker.getFetchInProgress(key, maxSize, fctx).close(fr);
+    tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx)).close(waiter);
+    tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx)).close(fr);
   }
 
   /**
@@ -198,7 +202,8 @@ public class ProgressInfoElement extends BaseUpdatableElement {
    */
   @Override
   public void dispose() {
-    FProxyFetchInProgress progress = tracker.getFetchInProgress(key, maxSize, fctx);
+    FProxyFetchInProgress progress =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, fctx));
     if (progress != null) {
       progress.removeListener(fetchListener);
     }

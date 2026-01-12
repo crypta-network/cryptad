@@ -20,10 +20,10 @@ import org.slf4j.LoggerFactory;
  * of stale work. Internally the registry is guarded by the {@code fetchers} monitor while lifecycle
  * state changes rely on {@link ClientContext#ticker} to avoid blocking the calling thread.
  *
- * <p>Typical call flow: a servlet asks for a fetcher via {@link #makeFetcher(FreenetURI, long,
- * FetchContext, REFILTER_POLICY)}, obtains a waiter, and later the tracker culls abandoned
- * instances through {@link #run()}. Instances are intentionally short-lived; they are cancelled
- * when a fetch completes, fails fatally, or the scheduled cleanup fires.
+ * <p>Typical call flow: a servlet asks for a fetcher via {@link #makeFetcher(FProxyFetchCriteria,
+ * REFILTER_POLICY)}, obtains a waiter, and later the tracker culls abandoned instances through
+ * {@link #run()}. Instances are intentionally short-lived; they are cancelled when a fetch
+ * completes, fails fatally, or the scheduled cleanup fires.
  *
  * <ul>
  *   <li>Responsibility: deduplicate fetch requests and manage their lifetime.
@@ -77,53 +77,51 @@ public class FProxyFetchTracker implements Runnable {
    * holding the registry lock to avoid races; network work is started after releasing the lock to
    * minimize contention.
    *
-   * @param key content key to retrieve; must uniquely identify the desired resource.
-   * @param maxSize maximum allowed size in bytes; the fetch is reused only when this matches an
-   *     existing task.
-   * @param fctx optional override fetch context; {@code null} falls back to the tracker's default
-   *     context.
+   * @param criteria immutable criteria containing URI, size limit, and optional fetch context. When
+   *     the context is {@code null}, the tracker default context is used.
    * @param refilterPolicy policy describing how client-side refiltering should be applied when the
    *     fetch completes.
    * @return waiter that exposes progress and completion for the matching or newly created fetch.
    * @throws FetchException if the underlying fetch cannot be started or the request client rejects
    *     the parameters.
    */
-  public FProxyFetchWaiter makeFetcher(
-      FreenetURI key, long maxSize, FetchContext fctx, REFILTER_POLICY refilterPolicy)
+  public FProxyFetchWaiter makeFetcher(FProxyFetchCriteria criteria, REFILTER_POLICY refilterPolicy)
       throws FetchException {
     FProxyFetchInProgress progress;
+    FProxyFetchCriteria effectiveCriteria = resolveCriteria(criteria);
     /* LOCKING:
      * Call getWaiter() inside the fetchers lock, since we will purge old
      * fetchers inside that lock, hence avoid a race condition. FetchInProgress
      * lock is always taken last. */
     synchronized (fetchers) {
-      FProxyFetchWaiter waiter =
-          makeWaiterForFetchInProgress(key, maxSize, fctx != null ? fctx : this.fctx);
+      FProxyFetchWaiter waiter = makeWaiterForFetchInProgress(effectiveCriteria);
       if (waiter != null) {
         return waiter;
       }
       progress =
           new FProxyFetchInProgress(
-              this,
-              key,
-              maxSize,
-              fetchIdentifiers++,
-              context,
-              fctx != null ? fctx : this.fctx,
-              rc,
-              refilterPolicy);
-      fetchers.put(key, progress);
+              this, effectiveCriteria, fetchIdentifiers++, context, rc, refilterPolicy);
+      fetchers.put(effectiveCriteria.key(), progress);
     }
     try {
       progress.start(context);
     } catch (FetchException e) {
       synchronized (fetchers) {
-        fetchers.removeElement(key, progress);
+        fetchers.removeElement(effectiveCriteria.key(), progress);
       }
       throw e;
     }
     if (LOG.isDebugEnabled()) LOG.debug("Created new fetcher: {}", progress);
     return progress.getWaiter();
+  }
+
+  private FProxyFetchCriteria resolveCriteria(FProxyFetchCriteria criteria) {
+    FetchContext resolvedContext =
+        criteria.fetchContext() != null ? criteria.fetchContext() : this.fctx;
+    if (resolvedContext == criteria.fetchContext()) {
+      return criteria;
+    }
+    return new FProxyFetchCriteria(criteria.key(), criteria.maxSize(), resolvedContext);
   }
 
   void removeFetcher(FProxyFetchInProgress progress) {
@@ -139,16 +137,11 @@ public class FProxyFetchTracker implements Runnable {
    * is equivalent according to {@link FProxyFetchInProgress#fetchContextEquivalent(FetchContext)}.
    * Callers use this to piggyback on in-flight work instead of launching a duplicate download.
    *
-   * @param key URI identifying the target object; {@code null} is not supported.
-   * @param maxSize required maximum payload size in bytes; must equal the running fetch size to
-   *     match.
-   * @param fctx optional {@link FetchContext} to compare against existing fetches; {@code null}
-   *     means any context is acceptable.
+   * @param criteria immutable criteria containing URI, size limit, and optional fetch context.
    * @return waiter for the matching fetch, or {@code null} when no acceptable fetch exists.
    */
-  public FProxyFetchWaiter makeWaiterForFetchInProgress(
-      FreenetURI key, long maxSize, FetchContext fctx) {
-    FProxyFetchInProgress progress = getFetchInProgress(key, maxSize, fctx);
+  public FProxyFetchWaiter makeWaiterForFetchInProgress(FProxyFetchCriteria criteria) {
+    FProxyFetchInProgress progress = getFetchInProgress(criteria);
     if (progress != null) {
       return progress.getWaiter();
     }
@@ -163,18 +156,14 @@ public class FProxyFetchTracker implements Runnable {
    * size and context constraints are returned. This helper underpins both waiter lookups and fetch
    * reuse decisions elsewhere in the tracker.
    *
-   * @param key URI of the fetch to locate; must match exactly the stored key.
-   * @param maxSize maximum size in bytes that the caller is willing to accept; mismatched sizes do
-   *     not reuse the fetch.
-   * @param fctx optional {@link FetchContext} describing filters and parameters; {@code null}
-   *     accepts any context.
+   * @param criteria immutable criteria containing URI, size limit, and optional fetch context.
    * @return an active {@link FProxyFetchInProgress} if one matches, otherwise {@code null} when
    *     none qualify.
    */
-  public FProxyFetchInProgress getFetchInProgress(FreenetURI key, long maxSize, FetchContext fctx) {
+  public FProxyFetchInProgress getFetchInProgress(FProxyFetchCriteria criteria) {
     synchronized (fetchers) {
-      for (FProxyFetchInProgress fetch : fetchers.getAllAsList(key)) {
-        if (matchesFetch(fetch, maxSize, fctx)) {
+      for (FProxyFetchInProgress fetch : fetchers.getAllAsList(criteria.key())) {
+        if (matchesFetch(fetch, criteria.maxSize(), criteria.fetchContext())) {
           return fetch;
         }
       }

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import network.crypta.client.FetchException;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
+import network.crypta.clients.http.FProxyFetchCriteria;
 import network.crypta.clients.http.FProxyFetchInProgress;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.FProxyFetchResult;
@@ -222,17 +223,20 @@ public class ImageElement extends BaseUpdatableElement {
               try {
                 FProxyFetchWaiter waiter =
                     ImageElement.this.tracker.makeFetcher(
-                        ImageElement.this.key,
-                        ImageElement.this.maxSize,
-                        null,
+                        new FProxyFetchCriteria(
+                            ImageElement.this.key, ImageElement.this.maxSize, null),
                         REFILTER_POLICY.RE_FILTER);
                 ImageElement.this
                     .tracker
-                    .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                    .getFetchInProgress(
+                        new FProxyFetchCriteria(
+                            ImageElement.this.key, ImageElement.this.maxSize, null))
                     .addListener(fetchListener);
                 ImageElement.this
                     .tracker
-                    .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                    .getFetchInProgress(
+                        new FProxyFetchCriteria(
+                            ImageElement.this.key, ImageElement.this.maxSize, null))
                     .close(waiter);
               } catch (FetchException fe) {
                 if (fe.newURI != null) {
@@ -240,17 +244,20 @@ public class ImageElement extends BaseUpdatableElement {
                     ImageElement.this.key = fe.newURI;
                     FProxyFetchWaiter waiter =
                         ImageElement.this.tracker.makeFetcher(
-                            ImageElement.this.key,
-                            ImageElement.this.maxSize,
-                            null,
+                            new FProxyFetchCriteria(
+                                ImageElement.this.key, ImageElement.this.maxSize, null),
                             REFILTER_POLICY.RE_FILTER);
                     ImageElement.this
                         .tracker
-                        .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                        .getFetchInProgress(
+                            new FProxyFetchCriteria(
+                                ImageElement.this.key, ImageElement.this.maxSize, null))
                         .addListener(fetchListener);
                     ImageElement.this
                         .tracker
-                        .getFetchInProgress(ImageElement.this.key, ImageElement.this.maxSize, null)
+                        .getFetchInProgress(
+                            new FProxyFetchCriteria(
+                                ImageElement.this.key, ImageElement.this.maxSize, null))
                         .close(waiter);
                   } catch (FetchException _) {
                     wasError = true;
@@ -285,7 +292,8 @@ public class ImageElement extends BaseUpdatableElement {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Disposing ImageElement");
     }
-    FProxyFetchInProgress progress = tracker.getFetchInProgress(key, maxSize, null);
+    FProxyFetchInProgress progress =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, null));
     if (progress != null) {
       progress.removeListener(fetchListener);
       if (LOG.isDebugEnabled()) {
@@ -455,7 +463,9 @@ public class ImageElement extends BaseUpdatableElement {
   private FetchResources fetchResources(HTMLNode whenJsEnabled) {
     FetchResources resources = new FetchResources();
     try {
-      resources.waiter = tracker.makeFetcher(key, maxSize, null, REFILTER_POLICY.RE_FILTER);
+      resources.waiter =
+          tracker.makeFetcher(
+              new FProxyFetchCriteria(key, maxSize, null), REFILTER_POLICY.RE_FILTER);
       resources.result = resources.waiter.getResultFast();
     } catch (FetchException _) {
       whenJsEnabled.addChild("div", "error");
@@ -467,7 +477,8 @@ public class ImageElement extends BaseUpdatableElement {
     if (fetchResources == null) {
       return;
     }
-    FProxyFetchInProgress progress = tracker.getFetchInProgress(key, maxSize, null);
+    FProxyFetchInProgress progress =
+        tracker.getFetchInProgress(new FProxyFetchCriteria(key, maxSize, null));
     if (progress == null) {
       return;
     }
