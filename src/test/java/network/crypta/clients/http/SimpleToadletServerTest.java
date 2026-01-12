@@ -30,7 +30,7 @@ class SimpleToadletServerTest {
     SimpleToadletServer server = newServerWithDefaults();
     DummyToadlet toadlet = new DummyToadlet("/test/");
 
-    server.register(toadlet, null, "/test/", true, false);
+    server.register(toadlet, ToadletRegistration.basic(null, "/test/", true, false));
 
     Toadlet result = server.findToadlet(new URI("http://localhost/test/resource"));
 
@@ -41,7 +41,7 @@ class SimpleToadletServerTest {
   void findToadlet_whenMissingTrailingSlash_redirectsToNormalizedPrefix() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
     DummyToadlet toadlet = new DummyToadlet("/redirect/");
-    server.register(toadlet, null, "/redirect/", true, false);
+    server.register(toadlet, ToadletRegistration.basic(null, "/redirect/", true, false));
 
     PermanentRedirectException ex =
         assertThrows(
@@ -71,7 +71,7 @@ class SimpleToadletServerTest {
   void isLinkExcepted_whenToadletDeclaresException_usesToadletDecision() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
     ExceptedToadlet toadlet = new ExceptedToadlet("/except/");
-    server.register(toadlet, null, "/except/", true, false);
+    server.register(toadlet, ToadletRegistration.basic(null, "/except/", true, false));
 
     boolean result = server.isLinkExcepted(new URI("http://localhost/except/page"));
 

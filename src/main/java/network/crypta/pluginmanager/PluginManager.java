@@ -34,6 +34,7 @@ import network.crypta.clients.http.PageMaker.THEME;
 import network.crypta.clients.http.ProgressCellContext;
 import network.crypta.clients.http.QueueToadlet;
 import network.crypta.clients.http.Toadlet;
+import network.crypta.clients.http.ToadletRegistration;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
 import network.crypta.config.SubConfig;
@@ -844,14 +845,15 @@ public class PluginManager {
             .getToadletContainer()
             .register(
                 toadlet,
-                "FProxyToadlet.categoryConfig",
-                toadlet.path(),
-                true,
-                "ConfigToadlet." + pi.getPluginClassName() + ".label",
-                "ConfigToadlet." + pi.getPluginClassName() + ".tooltip",
-                true,
-                null,
-                (FredPluginL10n) pi.getPlugin());
+                ToadletRegistration.menuLink(
+                    "FProxyToadlet.categoryConfig",
+                    toadlet.path(),
+                    true,
+                    "ConfigToadlet." + pi.getPluginClassName() + ".label",
+                    "ConfigToadlet." + pi.getPluginClassName() + ".tooltip",
+                    true,
+                    null,
+                    (FredPluginL10n) pi.getPlugin()));
       }
     }
 

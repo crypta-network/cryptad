@@ -102,121 +102,134 @@ final class FProxyRegistrar {
 
     server.register(
         fproxy,
-        FProxyToadlet.CATEGORY_BROWSING,
-        "/",
-        false,
-        "FProxyToadlet.welcomeTitle",
-        "FProxyToadlet.welcome",
-        false,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_BROWSING,
+            "/",
+            false,
+            "FProxyToadlet.welcomeTitle",
+            "FProxyToadlet.welcome",
+            false,
+            null));
 
     DecodeToadlet decodeKeywordURL = new DecodeToadlet(client, core);
-    server.register(decodeKeywordURL, null, "/decode/", true, false);
+    server.register(decodeKeywordURL, ToadletRegistration.basic(null, "/decode/", true, false));
 
     InsertFreesiteToadlet siteinsert = new InsertFreesiteToadlet(client);
     server.register(
         siteinsert,
-        FProxyToadlet.CATEGORY_BROWSING,
-        "/insertsite/",
-        true,
-        "FProxyToadlet.insertFreesiteTitle",
-        "FProxyToadlet.insertFreesite",
-        false,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_BROWSING,
+            "/insertsite/",
+            true,
+            "FProxyToadlet.insertFreesiteTitle",
+            "FProxyToadlet.insertFreesite",
+            false,
+            null));
 
     UserAlertsToadlet alerts = new UserAlertsToadlet(client);
     server.register(
         alerts,
-        FProxyToadlet.CATEGORY_STATUS,
-        "/alerts/",
-        true,
-        "FProxyToadlet.alertsTitle",
-        "FProxyToadlet.alerts",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_STATUS,
+            "/alerts/",
+            true,
+            "FProxyToadlet.alertsTitle",
+            "FProxyToadlet.alerts",
+            true,
+            null));
 
     QueueToadlet downloadToadlet =
         new QueueToadlet(core, core.getEndpoints().getFCPServer(), client, false);
     server.register(
         downloadToadlet,
-        FProxyToadlet.CATEGORY_QUEUE,
-        QueueToadlet.PATH_DOWNLOADS,
-        true,
-        "FProxyToadlet.downloadsTitle",
-        "FProxyToadlet.downloads",
-        false,
-        downloadToadlet);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_QUEUE,
+            QueueToadlet.PATH_DOWNLOADS,
+            true,
+            "FProxyToadlet.downloadsTitle",
+            "FProxyToadlet.downloads",
+            false,
+            downloadToadlet));
     LocalDownloadDirectoryToadlet localDownloadDirectoryToadlet =
         new LocalDownloadDirectoryToadlet(core, client, QueueToadlet.PATH_DOWNLOADS);
     server.register(
-        localDownloadDirectoryToadlet, null, localDownloadDirectoryToadlet.path(), true, false);
+        localDownloadDirectoryToadlet,
+        ToadletRegistration.basic(null, localDownloadDirectoryToadlet.path(), true, false));
     QueueToadlet uploadToadlet =
         new QueueToadlet(core, core.getEndpoints().getFCPServer(), client, true);
     server.register(
         uploadToadlet,
-        FProxyToadlet.CATEGORY_QUEUE,
-        QueueToadlet.PATH_UPLOADS,
-        true,
-        "FProxyToadlet.uploadsTitle",
-        "FProxyToadlet.uploads",
-        false,
-        uploadToadlet);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_QUEUE,
+            QueueToadlet.PATH_UPLOADS,
+            true,
+            "FProxyToadlet.uploadsTitle",
+            "FProxyToadlet.uploads",
+            false,
+            uploadToadlet));
 
     FileInsertWizardToadlet fiw = new FileInsertWizardToadlet(client, core);
     server.register(
         fiw,
-        FProxyToadlet.CATEGORY_QUEUE,
-        FileInsertWizardToadlet.PATH,
-        true,
-        "FProxyToadlet.uploadFileWizardTitle",
-        "FProxyToadlet.uploadFileWizard",
-        false,
-        fiw);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_QUEUE,
+            FileInsertWizardToadlet.PATH,
+            true,
+            "FProxyToadlet.uploadFileWizardTitle",
+            "FProxyToadlet.uploadFileWizard",
+            false,
+            fiw));
     uploadToadlet.setFIW(fiw);
 
     LocalFileInsertToadlet localFileInsertToadlet = new LocalFileInsertToadlet(core, client);
     server.register(
-        localFileInsertToadlet, null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false);
+        localFileInsertToadlet,
+        ToadletRegistration.basic(null, LocalFileInsertToadlet.INSERT_BROWSE_PATH, true, false));
 
     ContentFilterToadlet contentFilterToadlet = new ContentFilterToadlet(client, core);
     server.register(
         contentFilterToadlet,
-        FProxyToadlet.CATEGORY_QUEUE,
-        ContentFilterToadlet.CONTENT_FILTER_PATH,
-        true,
-        "FProxyToadlet.filterFileTitle",
-        "FProxyToadlet.filterFile",
-        false,
-        contentFilterToadlet);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_QUEUE,
+            ContentFilterToadlet.CONTENT_FILTER_PATH,
+            true,
+            "FProxyToadlet.filterFileTitle",
+            "FProxyToadlet.filterFile",
+            false,
+            contentFilterToadlet));
 
     LocalFileFilterToadlet localFileFilterToadlet = new LocalFileFilterToadlet(core, client);
-    server.register(localFileFilterToadlet, null, LocalFileFilterToadlet.BROWSE_PATH, true, false);
+    server.register(
+        localFileFilterToadlet,
+        ToadletRegistration.basic(null, LocalFileFilterToadlet.BROWSE_PATH, true, false));
 
     SymlinkerToadlet symlinkToadlet = new SymlinkerToadlet(client, node);
-    server.register(symlinkToadlet, null, "/sl/", true, false);
+    server.register(symlinkToadlet, ToadletRegistration.basic(null, "/sl/", true, false));
 
     SecurityLevelsToadlet seclevels = new SecurityLevelsToadlet(client, node, core);
     server.register(
         seclevels,
-        FProxyToadlet.CATEGORY_CONFIG,
-        "/seclevels/",
-        true,
-        "FProxyToadlet.seclevelsTitle",
-        "FProxyToadlet.seclevels",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_CONFIG,
+            "/seclevels/",
+            true,
+            "FProxyToadlet.seclevelsTitle",
+            "FProxyToadlet.seclevels",
+            true,
+            null));
 
     if (node.services().pluginManager().isEnabled()) {
       PproxyToadlet pproxy = new PproxyToadlet(client, node);
       server.register(
           pproxy,
-          FProxyToadlet.CATEGORY_CONFIG,
-          "/plugins/",
-          true,
-          "FProxyToadlet.pluginsTitle",
-          "FProxyToadlet.plugins",
-          true,
-          null);
+          ToadletRegistration.menuLink(
+              FProxyToadlet.CATEGORY_CONFIG,
+              "/plugins/",
+              true,
+              "FProxyToadlet.pluginsTitle",
+              "FProxyToadlet.plugins",
+              true,
+              null));
     }
 
     SubConfig[] sc = config.getConfigs();
@@ -231,163 +244,199 @@ final class FProxyRegistrar {
           new ConfigToadlet(localDirectoryConfigToadlet.path(), client, config, cfg, node, core);
       server.register(
           configtoadlet,
-          FProxyToadlet.CATEGORY_CONFIG,
-          FProxyToadlet.CONFIG_PATH + prefix,
-          true,
-          "ConfigToadlet." + prefix,
-          "ConfigToadlet.title." + prefix,
-          true,
-          configtoadlet);
+          ToadletRegistration.menuLink(
+              FProxyToadlet.CATEGORY_CONFIG,
+              FProxyToadlet.CONFIG_PATH + prefix,
+              true,
+              "ConfigToadlet." + prefix,
+              "ConfigToadlet.title." + prefix,
+              true,
+              configtoadlet));
       server.register(
-          localDirectoryConfigToadlet, null, localDirectoryConfigToadlet.path(), true, false);
+          localDirectoryConfigToadlet,
+          ToadletRegistration.basic(null, localDirectoryConfigToadlet.path(), true, false));
     }
 
     WelcomeToadlet welcometoadlet = new WelcomeToadlet(client, node);
-    server.register(welcometoadlet, null, FProxyToadlet.WELCOME_PATH, true, false);
+    server.register(
+        welcometoadlet, ToadletRegistration.basic(null, FProxyToadlet.WELCOME_PATH, true, false));
 
     ExternalLinkToadlet externalLinkToadlet = new ExternalLinkToadlet(client, node);
-    server.register(externalLinkToadlet, null, ExternalLinkToadlet.EXTERNAL_LINK_PATH, true, false);
+    server.register(
+        externalLinkToadlet,
+        ToadletRegistration.basic(null, ExternalLinkToadlet.EXTERNAL_LINK_PATH, true, false));
 
     CoreActionToadlet coreActionToadlet = new CoreActionToadlet(client, node);
-    server.register(coreActionToadlet, null, CORE_UPDATE_PATH, true, false);
+    server.register(
+        coreActionToadlet, ToadletRegistration.basic(null, CORE_UPDATE_PATH, true, false));
 
     DarknetConnectionsToadlet friendsToadlet = new DarknetConnectionsToadlet(node, core, client);
     server.register(
         friendsToadlet,
-        FProxyToadlet.CATEGORY_FRIENDS,
-        FProxyToadlet.FRIENDS_PATH,
-        true,
-        "FProxyToadlet.friendsTitle",
-        "FProxyToadlet.friends",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_FRIENDS,
+            FProxyToadlet.FRIENDS_PATH,
+            true,
+            "FProxyToadlet.friendsTitle",
+            "FProxyToadlet.friends",
+            true,
+            null));
 
     DarknetAddRefToadlet addRefToadlet = new DarknetAddRefToadlet(node, client, friendsToadlet);
     server.register(
         addRefToadlet,
-        FProxyToadlet.CATEGORY_FRIENDS,
-        "/addfriend/",
-        true,
-        "FProxyToadlet.addFriendTitle",
-        "FProxyToadlet.addFriend",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_FRIENDS,
+            "/addfriend/",
+            true,
+            "FProxyToadlet.addFriendTitle",
+            "FProxyToadlet.addFriend",
+            true,
+            null));
 
     OpennetConnectionsToadlet opennetToadlet = new OpennetConnectionsToadlet(node, core, client);
     server.register(
         opennetToadlet,
-        FProxyToadlet.CATEGORY_STATUS,
-        "/strangers/",
-        true,
-        "FProxyToadlet.opennetTitle",
-        "FProxyToadlet.opennet",
-        true,
-        opennetToadlet);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_STATUS,
+            "/strangers/",
+            true,
+            "FProxyToadlet.opennetTitle",
+            "FProxyToadlet.opennet",
+            true,
+            opennetToadlet));
 
     ChatForumsToadlet chatForumsToadlet =
         new ChatForumsToadlet(client, node.services().pluginManager());
     server.register(
         chatForumsToadlet,
-        "FProxyToadlet.categoryChat",
-        "/chat/",
-        true,
-        "FProxyToadlet.chatForumsTitle",
-        "FProxyToadlet.chatForums",
-        true,
-        chatForumsToadlet);
+        ToadletRegistration.menuLink(
+            "FProxyToadlet.categoryChat",
+            "/chat/",
+            true,
+            "FProxyToadlet.chatForumsTitle",
+            "FProxyToadlet.chatForums",
+            true,
+            chatForumsToadlet));
 
     N2NTMToadlet n2ntmToadlet = new N2NTMToadlet(node, core, client);
-    server.register(n2ntmToadlet, null, "/send_n2ntm/", true, true);
+    server.register(n2ntmToadlet, ToadletRegistration.basic(null, "/send_n2ntm/", true, true));
     LocalFileN2NMToadlet localFileN2NMToadlet = new LocalFileN2NMToadlet(core, client);
-    server.register(localFileN2NMToadlet, null, LocalFileN2NMToadlet.BROWSE_PATH, true, false);
+    server.register(
+        localFileN2NMToadlet,
+        ToadletRegistration.basic(null, LocalFileN2NMToadlet.BROWSE_PATH, true, false));
 
     BookmarkEditorToadlet bookmarkEditorToadlet = new BookmarkEditorToadlet(client, core);
-    server.register(bookmarkEditorToadlet, null, "/bookmarkEditor/", true, false);
+    server.register(
+        bookmarkEditorToadlet, ToadletRegistration.basic(null, "/bookmarkEditor/", true, false));
 
     BrowserTestToadlet browserTestToadlet = new BrowserTestToadlet(client);
-    server.register(browserTestToadlet, null, "/test/", true, false);
+    server.register(browserTestToadlet, ToadletRegistration.basic(null, "/test/", true, false));
 
     StatisticsToadlet statisticsToadlet = new StatisticsToadlet(node, core, client);
     server.register(
         statisticsToadlet,
-        FProxyToadlet.CATEGORY_STATUS,
-        "/stats/",
-        true,
-        "FProxyToadlet.statsTitle",
-        "FProxyToadlet.stats",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_STATUS,
+            "/stats/",
+            true,
+            "FProxyToadlet.statsTitle",
+            "FProxyToadlet.stats",
+            true,
+            null));
 
     DiagnosticToadlet diagnosticToadlet =
         new DiagnosticToadlet(node, core.getEndpoints().getFCPServer(), client);
     server.register(
         diagnosticToadlet,
-        FProxyToadlet.CATEGORY_STATUS,
-        "/diagnostic/",
-        true,
-        "FProxyToadlet.diagnosticTitle",
-        "FProxyToadlet.diagnostic",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_STATUS,
+            "/diagnostic/",
+            true,
+            "FProxyToadlet.diagnosticTitle",
+            "FProxyToadlet.diagnostic",
+            true,
+            null));
 
     ConnectivityToadlet connectivityToadlet = new ConnectivityToadlet(client, node);
     server.register(
         connectivityToadlet,
-        FProxyToadlet.CATEGORY_STATUS,
-        "/connectivity/",
-        true,
-        "ConnectivityToadlet.connectivityTitle",
-        "ConnectivityToadlet.connectivity",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_STATUS,
+            "/connectivity/",
+            true,
+            "ConnectivityToadlet.connectivityTitle",
+            "ConnectivityToadlet.connectivity",
+            true,
+            null));
 
     TranslationToadlet translationToadlet = new TranslationToadlet(client, core);
     server.register(
         translationToadlet,
-        FProxyToadlet.CATEGORY_CONFIG,
-        TranslationToadlet.TOADLET_URL,
-        true,
-        "TranslationToadlet.title",
-        "TranslationToadlet.titleLong",
-        true,
-        null);
+        ToadletRegistration.menuLink(
+            FProxyToadlet.CATEGORY_CONFIG,
+            TranslationToadlet.TOADLET_URL,
+            true,
+            "TranslationToadlet.title",
+            "TranslationToadlet.titleLong",
+            true,
+            null));
 
     FirstTimeWizardToadlet firstTimeWizardToadlet = new FirstTimeWizardToadlet(client, node, core);
-    server.register(firstTimeWizardToadlet, null, FirstTimeWizardToadlet.TOADLET_URL, true, false);
+    server.register(
+        firstTimeWizardToadlet,
+        ToadletRegistration.basic(null, FirstTimeWizardToadlet.TOADLET_URL, true, false));
 
     FirstTimeWizardNewToadlet firstTimeWizardNewToadlet =
         new FirstTimeWizardNewToadlet(client, core, config);
     server.register(
-        firstTimeWizardNewToadlet, null, FirstTimeWizardNewToadlet.TOADLET_URL, true, false);
+        firstTimeWizardNewToadlet,
+        ToadletRegistration.basic(null, FirstTimeWizardNewToadlet.TOADLET_URL, true, false));
 
     SimpleHelpToadlet simpleHelpToadlet = new SimpleHelpToadlet(client, core);
-    server.register(simpleHelpToadlet, null, "/help/", true, false);
+    server.register(simpleHelpToadlet, ToadletRegistration.basic(null, "/help/", true, false));
 
     PushDataToadlet pushDataToadlet = new PushDataToadlet(client);
-    server.register(pushDataToadlet, null, pushDataToadlet.path(), true, false);
+    server.register(
+        pushDataToadlet, ToadletRegistration.basic(null, pushDataToadlet.path(), true, false));
 
     PushNotificationToadlet pushNotificationToadlet = new PushNotificationToadlet(client);
-    server.register(pushNotificationToadlet, null, pushNotificationToadlet.path(), true, false);
+    server.register(
+        pushNotificationToadlet,
+        ToadletRegistration.basic(null, pushNotificationToadlet.path(), true, false));
 
     PushKeepaliveToadlet pushKeepaliveToadlet = new PushKeepaliveToadlet(client);
-    server.register(pushKeepaliveToadlet, null, pushKeepaliveToadlet.path(), true, false);
+    server.register(
+        pushKeepaliveToadlet,
+        ToadletRegistration.basic(null, pushKeepaliveToadlet.path(), true, false));
 
     PushFailoverToadlet pushFailoverToadlet = new PushFailoverToadlet(client);
-    server.register(pushFailoverToadlet, null, pushFailoverToadlet.path(), true, false);
+    server.register(
+        pushFailoverToadlet,
+        ToadletRegistration.basic(null, pushFailoverToadlet.path(), true, false));
 
     PushTesterToadlet pushTesterToadlet = new PushTesterToadlet(client);
-    server.register(pushTesterToadlet, null, pushTesterToadlet.path(), true, false);
+    server.register(
+        pushTesterToadlet, ToadletRegistration.basic(null, pushTesterToadlet.path(), true, false));
 
     PushLeavingToadlet pushLeavingToadlet = new PushLeavingToadlet(client);
-    server.register(pushLeavingToadlet, null, pushLeavingToadlet.path(), true, false);
+    server.register(
+        pushLeavingToadlet,
+        ToadletRegistration.basic(null, pushLeavingToadlet.path(), true, false));
 
     ImageCreatorToadlet imageCreatorToadlet = new ImageCreatorToadlet(client);
-    server.register(imageCreatorToadlet, null, imageCreatorToadlet.path(), true, false);
+    server.register(
+        imageCreatorToadlet,
+        ToadletRegistration.basic(null, imageCreatorToadlet.path(), true, false));
 
     LogWritebackToadlet logWritebackToadlet = new LogWritebackToadlet(client);
-    server.register(logWritebackToadlet, null, logWritebackToadlet.path(), true, false);
+    server.register(
+        logWritebackToadlet,
+        ToadletRegistration.basic(null, logWritebackToadlet.path(), true, false));
 
     DismissAlertToadlet dismissAlertToadlet = new DismissAlertToadlet(client);
-    server.register(dismissAlertToadlet, null, dismissAlertToadlet.path(), true, false);
+    server.register(
+        dismissAlertToadlet,
+        ToadletRegistration.basic(null, dismissAlertToadlet.path(), true, false));
   }
 }

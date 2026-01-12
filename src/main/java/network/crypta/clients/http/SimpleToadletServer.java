@@ -60,14 +60,14 @@ import org.tanukisoftware.wrapper.WrapperManager;
  *
  * <p>Concurrency: the network listener and request handling threads read shared state such as the
  * {@link #core} reference, panic flags, and theme settings. The core reference is published through
- * a volatile write in {@link #setCore(NodeClientCore)} so request threads see it once set.
+ * a volatile write-in {@link #setCore(NodeClientCore)} so request threads see it once set.
  * Mutability: most configuration is thread-safe via synchronized blocks or volatile fields; URL
  * registration is guarded by the server monitor. Extended configuration callbacks are invoked on
  * the configuration thread; request handlers run on the executor.
  *
  * <ul>
  *   <li>Responsibilities: bind sockets, dispatch toadlets, surface configuration, and relay alerts.
- *   <li>Notable behaviors: preserves startup toadlet until replaced; honours gateway/public mode;
+ *   <li>Notable behaviors: preserves startup toadlet until replaced; honors gateway/public mode;
  *       mirrors theme changes to plugins; emits panic button state based on physical threat level.
  * </ul>
  *
@@ -141,7 +141,7 @@ public final class SimpleToadletServer
   private boolean enableCachingForChkAndSskKeys;
 
   // Something does not really belong to here
-  static volatile boolean isPanicButtonToBeShown; // move to QueueToadlet ?
+  static volatile boolean isPanicButtonToBeShown; // move to QueueToadlet?
   static volatile boolean noConfirmPanic;
 
   private static void setPanicButtonVisibility(boolean value) {
@@ -152,7 +152,7 @@ public final class SimpleToadletServer
     noConfirmPanic = value;
   }
 
-  private BookmarkManager bookmarkManager; // move to WelcomeToadlet / BookmarkEditorToadlet ?
+  private BookmarkManager bookmarkManager; // move to WelcomeToadlet / BookmarkEditorToadlet?
   private volatile boolean fProxyJavascriptEnabled; // ugh?
   private volatile boolean fProxyWebPushingEnabled; // ugh?
   private volatile boolean fproxyHasCompletedWizard; // hmmm..
@@ -327,7 +327,7 @@ public final class SimpleToadletServer
         // Prevents user from specifying root dir.
         // They can still shoot themselves in the foot, but only when developing themes/using custom
         // themes.
-        // Because of the .. check above, any malicious thing cannot break out of the dir anyway.
+        // Because of the ".." check above, any malicious thing cannot break out of the dir anyway.
         if (parent.getParentFile() == null)
           throw new InvalidConfigValueException(
               l10n("cssOverrideCantUseRootDir", FILENAME_KEY, parent.toString()));
@@ -457,7 +457,7 @@ public final class SimpleToadletServer
    *
    * <p>Call this after {@link #setCore(NodeClientCore)} and before accepting requests to install
    * bookmark handling, interval push scheduling, and UI registration against the active node. This
-   * method is idempotent; subsequent calls are ignored after the first successful invocation. It
+   * method is idempotent; later calls are ignored after the first successful invocation. It
    * captures the current {@link #core} and {@link Node} references, wires the push managers to the
    * shared {@link Ticker}, and delegates to {@link FProxyRegistrar} to create request handlers and
    * configuration entries.
@@ -528,11 +528,10 @@ public final class SimpleToadletServer
     publicGatewayMode = fproxyConfig.getBoolean("publicGatewayMode");
     wasPublicGatewayMode = publicGatewayMode;
 
-    // This is OFF BY DEFAULT
-    // This is OFF BY DEFAULT because for example firefox has a limit of 2 persistent
+    // This is OFF BY DEFAULT because, for example, firefox has a limit of 2 persistent
     // connections per server, but 8 non-persistent connections per server. We need 8 conns
-    // more than we need the efficiency gain of reusing connections - especially on first
-    // install.
+    // more than we need the efficiency gain of reusing connections - especially on the first
+    // installation.
 
     configItemOrder = registerConnectionOptions(fproxyConfig, configItemOrder);
     allowedFullAccess = new AllowedHosts(fproxyConfig.getString("allowedHostsFullAccess"));
@@ -599,11 +598,11 @@ public final class SimpleToadletServer
     // Register static toadlet and startup toadlet
 
     StaticToadlet statictoadlet = new StaticToadlet();
-    register(statictoadlet, null, "/static/", false, false);
+    register(statictoadlet, ToadletRegistration.basic(null, "/static/", false, false));
 
     // "Freenet is starting up..." page, to be removed at #removeStartupToadlet()
     startupToadlet = new StartupToadlet(statictoadlet);
-    register(startupToadlet, null, "/", false, false);
+    register(startupToadlet, ToadletRegistration.basic(null, "/", false, false));
   }
 
   private int registerInitialOptions(SubConfig fproxyConfig) {
@@ -1258,43 +1257,23 @@ public final class SimpleToadletServer
   }
 
   @Override
-  public void register(
-      Toadlet t, String menu, String urlPrefix, boolean atFront, boolean fullOnly) {
-    register(t, menu, urlPrefix, atFront, null, null, fullOnly, null, null);
-  }
-
-  @Override
-  public void register(
-      Toadlet t,
-      String menu,
-      String urlPrefix,
-      boolean atFront,
-      String name,
-      String title,
-      boolean fullOnly,
-      LinkEnabledCallback cb) {
-    register(t, menu, urlPrefix, atFront, name, title, fullOnly, cb, null);
-  }
-
-  @Override
-  public void register(
-      Toadlet t,
-      String menu,
-      String urlPrefix,
-      boolean atFront,
-      String name,
-      String title,
-      boolean fullOnly,
-      LinkEnabledCallback cb,
-      FredPluginL10n l10n) {
-    ToadletElement te = new ToadletElement(t, urlPrefix, menu, name);
+  public void register(Toadlet t, ToadletRegistration registration) {
+    ToadletElement te =
+        new ToadletElement(t, registration.urlPrefix(), registration.menu(), registration.name());
     synchronized (toadlets) {
-      if (atFront) toadlets.addFirst(te);
+      if (registration.atFront()) toadlets.addFirst(te);
       else toadlets.addLast(te);
       t.container = this;
     }
-    if (menu != null && name != null) {
-      pageMaker.addNavigationLink(menu, urlPrefix, name, title, fullOnly, cb, l10n);
+    if (registration.menu() != null && registration.name() != null) {
+      pageMaker.addNavigationLink(
+          registration.menu(),
+          registration.urlPrefix(),
+          registration.name(),
+          registration.title(),
+          registration.fullOnly(),
+          registration.callback(),
+          registration.l10n());
     }
   }
 
@@ -1578,7 +1557,7 @@ public final class SimpleToadletServer
    * Toggles push support for FProxy web interfaces.
    *
    * <p>When enabled, pages may initiate push data channels to deliver live updates. The flag is
-   * stored and read concurrently; synchronization guards writes. Existing connections will read the
+   * stored and read concurrently; synchronization guards write. Existing connections will read the
    * latest value on their next push attempt, so callers can flip this at runtime to triage load or
    * feature issues without restarting the node.
    *
@@ -1642,7 +1621,7 @@ public final class SimpleToadletServer
    *
    * <p>This mirrors whether the server thread was created at construction. It does not confirm the
    * socket bind succeeded; callers should also observe logs for binding errors when transitioning
-   * to running state.
+   * to the running state.
    *
    * @return {@code true} when the listener thread exists, {@code false} otherwise.
    */
@@ -1654,7 +1633,7 @@ public final class SimpleToadletServer
    * Returns the bookmark manager backing user bookmark operations.
    *
    * <p>The manager may be {@code null} before {@link #createFproxy()} wires the supporting
-   * components. Once available it manages storage, import/export, and UI synchronization for saved
+   * components. Once available, it manages storage, import/export, and UI synchronization for saved
    * bookmarks. Callers should treat the reference as owned by the server.
    *
    * @return {@link BookmarkManager} instance or {@code null} when not yet available.
@@ -1677,7 +1656,7 @@ public final class SimpleToadletServer
   /**
    * Returns the URIs of all currently stored bookmarks.
    *
-   * <p>The returned array is a snapshot; subsequent modifications to the bookmark store are not
+   * <p>The returned array is a snapshot; later modifications to the bookmark store are not
    * reflected. Callers should not mutate the array contents.
    *
    * @return array of {@link FreenetURI} entries; empty when no bookmarks exist.
