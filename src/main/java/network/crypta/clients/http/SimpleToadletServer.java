@@ -1458,8 +1458,10 @@ public final class SimpleToadletServer
     public void run() {
       if (LOG.isDebugEnabled()) LOG.debug("Handling connection");
       try {
-        ToadletContextImpl.handle(
-            sock, SimpleToadletServer.this, pageMaker, getUserAlertManager(), bookmarkManager);
+        ToadletRequestServices services =
+            new ToadletRequestServices(
+                SimpleToadletServer.this, pageMaker, getUserAlertManager(), bookmarkManager);
+        ToadletContextImpl.handle(sock, services);
       } catch (Exception t) {
         LOG.error("Caught in SimpleToadletServer: {}", t, t);
       } finally {
