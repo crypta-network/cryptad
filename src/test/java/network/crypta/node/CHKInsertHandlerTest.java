@@ -56,19 +56,11 @@ class CHKInsertHandlerTest {
       long uid,
       long startTime,
       boolean realTime) {
-    // Constructor is package-private; test resides in the same package.
-    return new CHKInsertHandler(
-        key,
-        htl,
-        source,
-        uid,
-        node,
-        startTime,
-        tag,
-        /* forkOnCacheable= */ false,
-        /* preferInsert= */ true,
-        /* ignoreLowBackoff= */ false,
-        realTime);
+    // Constructor is package-private; the test resides in the same package.
+    InsertRoutingOptions options = new InsertRoutingOptions(true, false, false);
+    InsertHandlerContext context =
+        new InsertHandlerContext(node, source, uid, startTime, tag, options, realTime);
+    return new CHKInsertHandler(key, htl, context);
   }
 
   @BeforeEach
@@ -94,10 +86,10 @@ class CHKInsertHandlerTest {
     // Arrange: waitFor() returns null to simulate timeout waiting for FNPDataInsert
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(null);
 
-    // Peer interactions: allow sends without throwing
+    // Peer interactions: allow sending without throwing
     doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
-        .thenAnswer(inv -> null);
+        .thenAnswer(_ -> null);
 
     long uid = 42L;
     CHKInsertHandler handler =
@@ -165,7 +157,7 @@ class CHKInsertHandlerTest {
 
     doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
-        .thenAnswer(inv -> null);
+        .thenAnswer(_ -> null);
 
     CHKInsertHandler handler =
         newHandler(

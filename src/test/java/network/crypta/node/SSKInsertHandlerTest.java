@@ -60,22 +60,11 @@ class SSKInsertHandlerTest {
       long startTime,
       boolean canWriteDatastore,
       boolean realTime) {
-    // Constructor is package-private; test resides in the same package.
-    return new SSKInsertHandler(
-        key,
-        data,
-        headers,
-        htl,
-        source,
-        uid,
-        node,
-        startTime,
-        tag,
-        canWriteDatastore,
-        /* forkOnCacheable= */ false,
-        /* preferInsert= */ true,
-        /* ignoreLowBackoff= */ false,
-        realTime);
+    // Constructor is package-private; the test resides in the same package.
+    InsertRoutingOptions options = new InsertRoutingOptions(true, false, false);
+    InsertHandlerContext context =
+        new InsertHandlerContext(node, source, uid, startTime, tag, options, realTime);
+    return new SSKInsertHandler(key, data, headers, htl, context, canWriteDatastore);
   }
 
   @BeforeEach
@@ -84,14 +73,14 @@ class SSKInsertHandlerTest {
     when(node.network().stats()).thenReturn(nodeStats);
     when(node.storage().getPubKey()).thenReturn(getPubKey);
     when(source.transport()).thenReturn(transport);
-    // Minimal required stubbing for constructor path
+    // Minimal required stubbing for the constructor path
     when(nodeSSK.getPubKeyHash()).thenReturn(new byte[32]);
   }
 
   @Test
   @DisplayName("run_whenSendAsyncNotConnected_returnsEarlyAndUnlocks")
   void run_whenSendAsyncNotConnected_returnsEarlyAndUnlocks() throws Exception {
-    // Arrange: pubkey not in cache; initial Accepted send throws NotConnected
+    // Arrange: pubkey not in cache; initially Accepted send throws NotConnected
     when(getPubKey.getKey(any(byte[].class), eq(false), eq(false), eq(null))).thenReturn(null);
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class)))
         .thenThrow(new NotConnectedException());
@@ -128,7 +117,7 @@ class SSKInsertHandlerTest {
         .thenReturn(org.mockito.Mockito.mock(network.crypta.crypt.DSAPublicKey.class));
     when(usm.waitFor(any(MessageFilter.class), any(ByteCounter.class))).thenReturn(null);
 
-    // Allow sends
+    // Allow sending
     when(transport.sendAsync(any(Message.class), any(), any(ByteCounter.class))).thenReturn(null);
     doNothing().when(transport).sendSync(any(Message.class), any(ByteCounter.class), anyBoolean());
 
