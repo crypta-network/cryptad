@@ -121,11 +121,7 @@ public class SubConfig implements Comparable<SubConfig> {
             this,
             optionName,
             defaultValue,
-            normalizedMeta.sortOrder(),
-            normalizedMeta.expert(),
-            normalizedMeta.forceWrite(),
-            normalizedMeta.shortDesc(),
-            normalizedMeta.longDesc(),
+            normalizedMeta,
             cb,
             isSize ? Dimension.SIZE : Dimension.NOT));
   }
@@ -187,18 +183,7 @@ public class SubConfig implements Comparable<SubConfig> {
     if (cb == null) {
       cb = new NullIntCallback();
     }
-    register(
-        new IntOption(
-            this,
-            optionName,
-            defaultValueString,
-            normalizedMeta.sortOrder(),
-            normalizedMeta.expert(),
-            normalizedMeta.forceWrite(),
-            normalizedMeta.shortDesc(),
-            normalizedMeta.longDesc(),
-            cb,
-            dimension));
+    register(new IntOption(this, optionName, defaultValueString, normalizedMeta, cb, dimension));
   }
 
   /**

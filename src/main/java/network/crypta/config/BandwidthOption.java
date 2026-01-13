@@ -53,17 +53,7 @@ public class BandwidthOption extends IntOption {
    */
   public BandwidthOption(
       SubConfig conf, String optionName, Integer defaultValue, Option.Meta meta, IntCallback cb) {
-    super(
-        conf,
-        optionName,
-        defaultValue,
-        meta.sortOrder(),
-        meta.expert(),
-        meta.forceWrite(),
-        meta.shortDesc(),
-        meta.longDesc(),
-        cb,
-        Dimension.SIZE);
+    super(conf, optionName, defaultValue, meta, cb, Dimension.SIZE);
   }
 
   /**
