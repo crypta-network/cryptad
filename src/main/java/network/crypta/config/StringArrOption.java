@@ -17,7 +17,7 @@ import network.crypta.support.api.StringArrCallback;
  * token {@code ":"}.
  *
  * <p>Parsing accepts the format produced by {@link #toString(String[])} and tolerates certain
- * malformed escapes only until the first successful decode (see {@link URLDecoder}). Truncated or
+ * malformed escapes only until the first successful decoding (see {@link URLDecoder}). Truncated or
  * otherwise invalid encodings result in {@link InvalidConfigValueException}.
  *
  * <p>Unless coordinated by the surrounding configuration subsystem, this class performs no internal
@@ -41,29 +41,16 @@ public class StringArrOption extends Option<String[]> {
    * @param optionName canonical option name used in config and APIs
    * @param defaultValue default sequence when unspecified; {@code null} is treated as an empty
    *     array
-   * @param sortOrder relative ordering among sibling options
-   * @param expert whether the option targets advanced users
-   * @param forceWrite whether to persist even when equal to the default
-   * @param shortDesc localization key for a short label
-   * @param longDesc localization key for a detailed description
+   * @param meta descriptive and ordering metadata
    * @param cb callback that provides and accepts the effective value
    */
   public StringArrOption(
       SubConfig conf,
       String optionName,
       String[] defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       StringArrCallback cb) {
-    super(
-        conf,
-        optionName,
-        cb,
-        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
-        Option.DataType.STRING_ARRAY);
+    super(conf, optionName, cb, meta, Option.DataType.STRING_ARRAY);
     this.defaultValue = (defaultValue == null) ? new String[0] : defaultValue;
     this.currentValue = (defaultValue == null) ? new String[0] : defaultValue;
   }

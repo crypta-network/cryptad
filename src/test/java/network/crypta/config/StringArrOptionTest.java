@@ -30,11 +30,7 @@ class StringArrOptionTest {
         subConfig,
         "test.string.array",
         deflt,
-        10,
-        false,
-        false,
-        "short.desc.key",
-        "long.desc.key",
+        new Option.Meta(10, false, false, "short.desc.key", "long.desc.key"),
         callback);
   }
 
@@ -74,7 +70,7 @@ class StringArrOptionTest {
   @Test
   void parseString_whenMalformedAfterSuccessfulDecode_throwsInvalidConfigValue() {
     StringArrOption opt = newOption(new String[] {});
-    // First escape decodes (":"), second is malformed — tolerant mode now throws
+    // The first escape decoded (":"), the second is malformed — tolerant mode now throws
     String malformed = "%3a%zz";
     assertThrows(InvalidConfigValueException.class, () -> opt.parseString(malformed));
   }

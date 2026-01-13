@@ -274,17 +274,7 @@ public class SubConfig implements Comparable<SubConfig> {
   public void register(
       String optionName, String[] defaultValue, Option.Meta meta, StringArrCallback cb) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
-    register(
-        new StringArrOption(
-            this,
-            optionName,
-            defaultValue,
-            normalizedMeta.sortOrder(),
-            normalizedMeta.expert(),
-            normalizedMeta.forceWrite(),
-            normalizedMeta.shortDesc(),
-            normalizedMeta.longDesc(),
-            cb));
+    register(new StringArrOption(this, optionName, defaultValue, normalizedMeta, cb));
   }
 
   private static Option.Meta normalizeMeta(Option.Meta meta) {
