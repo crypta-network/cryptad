@@ -17,7 +17,7 @@ public abstract class ConfigException extends Exception {
    *
    * @param msg human-readable detail describing the configuration failure.
    */
-  public ConfigException(String msg) {
+  protected ConfigException(String msg) {
     super(msg);
   }
 
@@ -26,7 +26,7 @@ public abstract class ConfigException extends Exception {
    *
    * @param cause the underlying cause; may be {@code null}.
    */
-  public ConfigException(Throwable cause) {
+  protected ConfigException(Throwable cause) {
     super(cause);
   }
 }
