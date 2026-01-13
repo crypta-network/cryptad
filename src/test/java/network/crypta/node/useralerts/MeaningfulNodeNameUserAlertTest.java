@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.StringOption;
 import network.crypta.config.SubConfig;
@@ -70,11 +71,7 @@ class MeaningfulNodeNameUserAlertTest {
             nodeSc,
             "name",
             "DefaultName",
-            /*sortOrder*/ 0,
-            /*expert*/ false,
-            /*forceWrite*/ false,
-            /*shortDescKey*/ "node.name.short",
-            /*longDescKey*/ "node.name.long",
+            new Option.Meta(0, false, false, "node.name.short", "node.name.long"),
             new StringCallback() {
               private String v = "DefaultName";
 

@@ -21,29 +21,12 @@ public class StringOption extends Option<String> {
    * @param conf Owning {@link SubConfig} that manages registration and lookups.
    * @param optionName Canonical name used in configuration files and APIs.
    * @param defaultValue Initial value used before callbacks become authoritative.
-   * @param sortOrder Relative ordering among sibling options in UI and exports.
-   * @param expert Whether intended for advanced users (UIs may hide by default).
-   * @param forceWrite Whether to persist even when equal to the default value.
-   * @param shortDesc Message key for a short label (not the translated text).
-   * @param longDesc Message key for a longer description (not translated text).
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback used to read/apply values for this option.
    */
   public StringOption(
-      SubConfig conf,
-      String optionName,
-      String defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      StringCallback cb) {
-    super(
-        conf,
-        optionName,
-        cb,
-        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
-        Option.DataType.STRING);
+      SubConfig conf, String optionName, String defaultValue, Option.Meta meta, StringCallback cb) {
+    super(conf, optionName, cb, meta, Option.DataType.STRING);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
   }

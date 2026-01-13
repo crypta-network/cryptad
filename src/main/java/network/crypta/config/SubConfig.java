@@ -234,17 +234,7 @@ public class SubConfig implements Comparable<SubConfig> {
       String optionName, String defaultValue, Option.Meta meta, StringCallback cb) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullStringCallback();
-    register(
-        new StringOption(
-            this,
-            optionName,
-            defaultValue,
-            normalizedMeta.sortOrder(),
-            normalizedMeta.expert(),
-            normalizedMeta.forceWrite(),
-            normalizedMeta.shortDesc(),
-            normalizedMeta.longDesc(),
-            cb));
+    register(new StringOption(this, optionName, defaultValue, normalizedMeta, cb));
   }
 
   /**

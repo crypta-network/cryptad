@@ -31,6 +31,28 @@ Load only what you need. It’s normal to load multiple skills for one task.
 5. Run the relevant Gradle checks (see `cryptad-build-test` / `cryptad-build-tooling`).
 6. Update docs/tests when needed.
 
+## JetBrains IDE inspections (required after every edit)
+
+After **any** action that creates or modifies a file, immediately run JetBrains IDE inspections on that file via the IDE MCP server (`jetbrains`) tool `get_file_problems`.
+
+- Use `filePath` relative to the project root.
+- Always pass `projectPath` (repo root / current working directory) to reduce ambiguous calls.
+- Default to `errorsOnly: true` (errors only). If you are chasing quality issues, re-run with `errorsOnly: false` to include warnings.
+- If problems are reported, fix them and **re-run `get_file_problems` until the file is clean** before moving on.
+
+Example call:
+
+```
+get_file_problems({
+  "projectPath": "<repo-root>",
+  "filePath": "src/main/kotlin/…",
+  "errorsOnly": true,
+  "timeout": 30000
+})
+```
+
+If the IDE MCP server is unavailable, fall back to the relevant Gradle compile/test task but treat IDE inspections as the default fast feedback loop.
+
 ## Always-on rules (keep these in mind)
 
 - **Languages:** Kotlin + Java.

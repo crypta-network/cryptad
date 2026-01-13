@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.StringOption;
 import network.crypta.config.SubConfig;
@@ -89,7 +90,8 @@ class ModifyConfigTest {
     SubConfig subConfig = config.createSubConfig("node");
     CountingStringCallback callback = new CountingStringCallback("5");
     StringOption option =
-        new StringOption(subConfig, "maxPeers", "5", 0, false, false, null, null, callback);
+        new StringOption(
+            subConfig, "maxPeers", "5", new Option.Meta(0, false, false, null, null), callback);
     subConfig.register(option);
     when(node.getConfig()).thenReturn(config);
     network.crypta.node.subsystem.NodeServicesSubsystem services =
@@ -122,7 +124,8 @@ class ModifyConfigTest {
     SubConfig subConfig = config.createSubConfig("ui");
     CountingStringCallback callback = new CountingStringCallback("light");
     StringOption option =
-        new StringOption(subConfig, "theme", "light", 0, false, false, null, null, callback);
+        new StringOption(
+            subConfig, "theme", "light", new Option.Meta(0, false, false, null, null), callback);
     subConfig.register(option);
     when(node.getConfig()).thenReturn(config);
     network.crypta.node.subsystem.NodeServicesSubsystem services =
@@ -149,7 +152,8 @@ class ModifyConfigTest {
     SubConfig subConfig = config.createSubConfig("net");
     ThrowingStringCallback callback = new ThrowingStringCallback("8080");
     StringOption failingOption =
-        new StringOption(subConfig, "port", "8080", 0, false, false, null, null, callback);
+        new StringOption(
+            subConfig, "port", "8080", new Option.Meta(0, false, false, null, null), callback);
     subConfig.register(failingOption);
     when(node.getConfig()).thenReturn(config);
     network.crypta.node.subsystem.NodeServicesSubsystem services =
