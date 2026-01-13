@@ -15,6 +15,7 @@ import network.crypta.io.xfer.AbortedException;
 import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverCompletion;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverTimeoutHandler;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKVerifyException;
@@ -38,7 +39,7 @@ import org.slf4j.LoggerFactory;
  * <p>Lifecycle and threading: - An instance is executed once via {@link #run()} on a worker thread
  * (implements {@link PrioRunnable}). - A separate {@code DataReceiver} task is posted to the node's
  * executor to receive the block in parallel with downstream routing progress. - Completion and
- * error paths synchronize on internal locks to avoid double-finishing and to ensure that commit
+ * error paths synchronize on internal locks to avoid double-finishing and to ensure that the commit
  * happens only after downstream completion signals are observed.
  *
  * <p>Timeouts and retries: - Waits up to {@link #DATA_INSERT_TIMEOUT} milliseconds for the initial
@@ -52,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * by {@link #canWriteDatastore}.
  *
  * <p>Nullability and units: - All timeouts are expressed in milliseconds unless otherwise
- * documented. - {@code realTimeFlag} selects real-time vs bulk timeouts for transfer completion.
+ * documented. - {@code realTimeFlag} selects real-time vs. bulk timeouts for transfer completion.
  *
  * @author amphibian
  */
@@ -87,30 +88,20 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private final boolean ignoreLowBackoff;
   private final boolean realTimeFlag;
 
-  CHKInsertHandler(
-      NodeCHK key,
-      short htl,
-      PeerNode source,
-      long id,
-      Node node,
-      long startTime,
-      InsertTag tag,
-      boolean forkOnCacheable,
-      boolean preferInsert,
-      boolean ignoreLowBackoff,
-      boolean realTimeFlag) {
-    this.node = node;
-    this.uid = id;
-    this.source = source;
-    this.startTime = startTime;
-    this.tag = tag;
+  CHKInsertHandler(NodeCHK key, short htl, InsertHandlerContext context) {
+    this.node = context.node();
+    this.uid = context.uid();
+    this.source = context.source();
+    this.startTime = context.startTime();
+    this.tag = context.tag();
     this.key = key;
     this.htl = htl;
     canWriteDatastore = node.routing().canWriteDatastoreInsert(htl);
-    this.forkOnCacheable = forkOnCacheable;
-    this.preferInsert = preferInsert;
-    this.ignoreLowBackoff = ignoreLowBackoff;
-    this.realTimeFlag = realTimeFlag;
+    InsertRoutingOptions options = context.routingOptions();
+    this.forkOnCacheable = options.forkOnCacheable();
+    this.preferInsert = options.preferInsert();
+    this.ignoreLowBackoff = options.ignoreLowBackoff();
+    this.realTimeFlag = context.realTimeFlag();
   }
 
   /**
@@ -124,14 +115,14 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   }
 
   /**
-   * Entry point for the handler. Performs the upstream accept, waits for the data insert, starts
-   * the receiver task, and drives downstream routing until a terminal status is reached.
+   * Entry point for the handler. Performs the upstream acceptance, waits for the data insert,
+   * starts the receiver task, and drives downstream routing until a terminal status is reached.
    *
    * <p>All exceptions are caught and reported to the associated {@link InsertTag}; the tag is
    * unlocked in a {@code finally} block to avoid deadlocks on upstream cancellation.
    */
   @Override
-  @SuppressWarnings("java:S1181")
+  @SuppressWarnings({"java:S1181", "ResultOfMethodCallIgnored"})
   public void run() {
     try {
       realRun();
@@ -175,11 +166,11 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   }
 
   private boolean sendAccepted() {
-    // Consider inserting rate limiting here if the accept path requires backpressure.
+    // Consider inserting rate limiting here if the acceptance path requires backpressure.
     Message accepted = DMT.createFNPAccepted(uid);
     try {
       // Synchronous send here ensures the next message filter does not spuriously time out; we
-      // either block here, or inside the filter, but we prefer to fail early on send.
+      // either block here, or inside the filter, but we prefer to fail early on sending.
       source.transport().sendSync(accepted, this, realTimeFlag);
       return true;
     } catch (NotConnectedException _) {
@@ -237,13 +228,14 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
                       .withRealTimeFlag(realTimeFlag));
     br =
         new BlockReceiver(
-            node.network().usm(),
-            source,
-            uid,
-            prb,
-            this,
-            node.network().ticker(),
-            realTimeFlag,
+            new BlockTransferContext(
+                node.network().usm(),
+                node.network().ticker(),
+                source,
+                uid,
+                prb,
+                this,
+                realTimeFlag),
             myTimeoutHandler,
             false);
 
@@ -362,7 +354,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     finish(status);
   }
 
-  /** Finalizes the insert as a receive failure without sending additional messages. */
+  /** Finalizes the insert as a receiving failure without sending additional messages. */
   private void handleReceiveFailed() {
     finish(CHKInsertSender.RECEIVE_FAILED);
   }
@@ -443,13 +435,14 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       prb = new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
       br =
           new BlockReceiver(
-              node.network().usm(),
-              source,
-              uid,
-              prb,
-              this,
-              node.network().ticker(),
-              realTimeFlag,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  source,
+                  uid,
+                  prb,
+                  this,
+                  realTimeFlag),
               null,
               false);
       prb.abort(RetrievalException.NO_DATAINSERT, "No DataInsert", true);
@@ -489,7 +482,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
                       source.getBuildNumber());
                   // Fatal timeout. Something is seriously busted.
                   // We've waited long enough that we know it's not just a connectivity problem - if
-                  // it was we'd have disconnected by now.
+                  // it was, we'd have disconnected by now.
                   source.fatalTimeout();
                 }
 
@@ -542,7 +535,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
     if ((sender == null) && (!sentCompletionWasSet) && (canCommit)) {
       // There are no downstream senders, but we stored the data locally, report successful
-      // transfer. Note that this is done even if the verify fails.
+      // transfer. Note that this is done even if the verifying fails.
       m = DMT.createFNPInsertTransfersCompleted(uid, false /* no timeouts */);
     }
 
@@ -708,7 +701,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
         toSend = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_VERIFY_FAILED);
       } catch (AbortedException e) {
         LOG.error("Receive failed: {}", String.valueOf(e));
-        // Receiver thread (below) will handle sending the failure notice
+        // The receiver thread (below) will handle sending the failure notice
       }
     }
     if (toSend != null) {
@@ -740,23 +733,23 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     if (LOG.isDebugEnabled()) LOG.debug("Committed");
   }
 
-  /** Has the receive failed? If so, there's not much more that can be done... */
+  /** Has the receiving failed? If so, there's not much more that can be done... */
   private boolean receiveFailed;
 
   private boolean receiveStarted;
   private boolean receiveCompleted;
 
   /**
-   * Runnable that performs the actual block receive for this insert. Executed on the node's
-   * executor so downstream routing can proceed concurrently on the caller thread.
+   * Runnable that performs the actual block receiving for this insert. Executed on the node's
+   * executor, so downstream routing can proceed concurrently on the caller thread.
    */
   public class DataReceiver implements PrioRunnable {
 
     @Override
     public void run() {
       if (LOG.isDebugEnabled()) LOG.debug("Receiving data for {}", CHKInsertHandler.this);
-      // Don't log whether the transfer succeeded or failed as the transfer was initiated by the
-      // source therefore could be unreliable evidence.
+      // Don't log whether the transfer succeeded or failed as the source initiated the transfer,
+      // therefore, could be unreliable evidence.
       br.receive(new DataReceiveCompletion());
     }
 
@@ -792,15 +785,15 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       // Cancel the sender
       if (sender != null)
         sender.onReceiveFailed(); // tell it to stop if it hasn't already failed... unless
-      // it's sending from store
+      // it's sending it from the store
       runThread.interrupt();
-      tag.timedOutToHandlerButContinued(); // sender is finished, or will be very soon; we
-      // may however be waiting for the sendAborted downstream.
+      tag.timedOutToHandlerButContinued(); // sender is finished or will be very soon; we
+      // may, however, be waiting for the sendAborted downstream.
       Message msg = DMT.createFNPDataInsertRejected(uid, DMT.DATA_INSERT_REJECTED_RECEIVE_FAILED);
       try {
         source.transport().sendSync(msg, CHKInsertHandler.this, realTimeFlag);
       } catch (NotConnectedException ex) {
-        // If they are not connected, that's probably why the receive failed!
+        // If they are not connected, that's probably why the receiving failed!
         if (LOG.isDebugEnabled()) LOG.debug("Can't send {} to {}: {}", msg, source, ex, ex);
       } catch (SyncSendWaitedTooLongException _) {
         LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
@@ -907,9 +900,9 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       new BlockReceiverTimeoutHandler() {
 
         /**
-         * We timed out waiting for a block from the request sender. We do not know whether it is
-         * the fault of the request sender or that of some previous node. The PRB will be cancelled,
-         * resulting in all outgoing transfers for this insert being cancelled quickly. If the
+         * We timed-out waiting for a block from the request sender. We do not know whether it is
+         * the fault of the request sender or that of some previous node. The PRB will be canceled,
+         * resulting in all outgoing transfers for this insert being canceled quickly. If the
          * problem occurred on a previous node, we will receive a cancel. So we are consistent with
          * the nodes we routed to, and it is safe to wait for the node that routed to us to send an
          * explicit cancel. We do not need to do anything yet.

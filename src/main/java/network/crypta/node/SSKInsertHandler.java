@@ -69,34 +69,27 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       byte[] data,
       byte[] headers,
       short htl,
-      PeerNode source,
-      long id,
-      Node node,
-      long startTime,
-      InsertTag tag,
-      boolean canWriteDatastore,
-      boolean forkOnCacheable,
-      boolean preferInsert,
-      boolean ignoreLowBackoff,
-      boolean realTimeFlag) {
-    this.node = node;
-    this.uid = id;
-    this.source = source;
-    this.startTime = startTime;
+      InsertHandlerContext context,
+      boolean canWriteDatastore) {
+    this.node = context.node();
+    this.uid = context.uid();
+    this.source = context.source();
+    this.startTime = context.startTime();
     this.key = key;
     this.htl = htl;
     this.data = data;
     this.headers = headers;
-    this.tag = tag;
+    this.tag = context.tag();
     this.canWriteDatastore = canWriteDatastore;
     byte[] pubKeyHash = key.getPubKeyHash();
     pubKey = node.storage().getPubKey().getKey(pubKeyHash, false, false, null);
     canCommit = false;
 
-    this.forkOnCacheable = forkOnCacheable;
-    this.preferInsert = preferInsert;
-    this.ignoreLowBackoff = ignoreLowBackoff;
-    this.realTimeFlag = realTimeFlag;
+    InsertRoutingOptions options = context.routingOptions();
+    this.forkOnCacheable = options.forkOnCacheable();
+    this.preferInsert = options.preferInsert();
+    this.ignoreLowBackoff = options.ignoreLowBackoff();
+    this.realTimeFlag = context.realTimeFlag();
   }
 
   @Override
@@ -108,7 +101,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
    * Executes the insert flow.
    *
    * <p>Behavior: - Acknowledges the insert, receives remaining parts (headers, data, public key),
-   * assembles and verifies the block, and if needed forwards the insert. - Responds to the peer
+   * assembles and verifies the block, and if needed, forwards the insert. - Responds to the peer
    * with success, route-not-found, or overload messages as dictated by the sender status. - Always
    * unlocks the associated {@link InsertTag} on exit.
    *

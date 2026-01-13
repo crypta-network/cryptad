@@ -6,6 +6,7 @@ import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTransmitterCompletion;
 import network.crypta.io.xfer.BlockTransmitter.ReceiverAbortHandler;
@@ -36,7 +37,7 @@ import org.slf4j.LoggerFactory;
  * node references) and ensures final bookkeeping and slot release.
  *
  * <p>Threading: callbacks invoked by I/O subsystems may occur off the handler thread; methods that
- * record final outcomes ensure idempotent cleanup.
+ * record outcomes ensure idempotent cleanup.
  */
 public class RequestHandler
     implements PrioRunnable, HighHtlAware, ByteCounter, RequestSenderListener {
@@ -65,8 +66,8 @@ public class RequestHandler
       if (current != null && current.uid != RequestHandler.this.uid) {
         if (LOG.isDebugEnabled())
           LOG.debug("Do not cancel transfer; coalesced on {}", RequestHandler.this);
-        // No need to reassign tag since this UID will end immediately; the RequestSender is on a
-        // different one.
+        // No need to reassign the tag since this UID will end immediately; the RequestSender is on
+        // different.
         return false;
       }
       if (node.storage().hasKey(key, false, false)) return true; // Don't want it
@@ -155,35 +156,21 @@ public class RequestHandler
   /**
    * Creates a handler for a single incoming request.
    *
-   * @param source the upstream peer that sent the request to this node
-   * @param id unique request identifier (UID) assigned by the sender
-   * @param n the local {@link Node} that will coordinate the request
-   * @param htl hop-to-live value for the request (routing depth remaining)
-   * @param key the {@link Key} being requested (CHK or SSK)
-   * @param tag tracking tag used for accounting, slot management, and completion callbacks
+   * @param context request metadata including routing and accounting state
    * @param passedInKeyBlock if non-null, the block already fetched from the datastore to be
    *     returned locally; We ALWAYS look up in the datastore before starting a request. SECURITY:
-   *     Do not pass messages into handler constructors. See note at top of NodeDispatcher.
-   * @param realTimeFlag whether this request should use real-time prioritization
+   *     Do not pass messages into handler constructors. See the note at the top of NodeDispatcher.
    * @param needsPubKey whether an SSK response should include the publisher's public key
    */
   public RequestHandler(
-      PeerNode source,
-      long id,
-      Node n,
-      short htl,
-      Key key,
-      RequestTag tag,
-      KeyBlock passedInKeyBlock,
-      boolean realTimeFlag,
-      boolean needsPubKey) {
-    node = n;
-    uid = id;
-    this.realTimeFlag = realTimeFlag;
-    this.source = source;
-    this.htl = htl;
-    this.tag = tag;
-    this.key = key;
+      RequestHandlerContext context, KeyBlock passedInKeyBlock, boolean needsPubKey) {
+    node = context.node();
+    uid = context.uid();
+    this.realTimeFlag = context.realTimeFlag();
+    this.source = context.source();
+    this.htl = context.htl();
+    this.tag = context.tag();
+    this.key = context.key();
     this.passedInKeyBlock = passedInKeyBlock;
     this.needsPubKey = needsPubKey;
   }
@@ -339,7 +326,7 @@ public class RequestHandler
         // being false. (!IS_LOCAL)->!Terminal
         Message msg = DMT.createFNPRejectedOverload(uid, false);
         source.transport().sendAsync(msg, null, this);
-        // If the status changes (e.g. to SUCCESS), there is little need to send yet another reject
+        // If the status changes (e.g., to SUCCESS), there is little need to send yet another reject
         // overload.
         sentRejectedOverload = true;
       }
@@ -374,15 +361,16 @@ public class RequestHandler
       PartiallyReceivedBlock prb = rs.getPRB();
       bt =
           new BlockTransmitter(
-              node.network().usm(),
-              node.network().ticker(),
-              source,
-              uid,
-              prb,
-              this,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  source,
+                  uid,
+                  prb,
+                  this,
+                  realTimeFlag),
               new CHKReceiverAbortHandler(),
               new CHKBlockTransmitterCompletion(),
-              realTimeFlag,
               node.network().stats());
       tag.handlerTransferBegins();
       bt.sendAsync();
@@ -532,7 +520,7 @@ public class RequestHandler
               return rl == null ? "null" : rl.shortToString();
             })
         .log();
-    // We need to send the RejectedOverload (or whatever) anyway, for two-stage timeout.
+    // We need to send the RejectedOverload (or whatever) anyway, for a two-stage timeout.
     // Otherwise, the downstream node will assume it's our fault.
   }
 
@@ -563,7 +551,7 @@ public class RequestHandler
       RequestSender.TIMED_OUT,
       RequestSender.INTERNAL_ERROR:
         {
-          // Locally generated. Propagate back to source who needs to reduce send rate
+          // Locally generated. Propagate back to the source who needs to reduce send rate
           // @bug: we may not want to translate fatal timeouts into non-fatal timeouts.
           Message reject = DMT.createFNPRejectedOverload(uid, true);
           sendTerminal(reject);
@@ -645,7 +633,8 @@ public class RequestHandler
       else if (bt == null) {
         // Bug! This is impossible!
         LOG.error("Status {} but no transfer started for {}", status, uid);
-        // Obviously this node is confused, send a terminal reject to make sure the requestor is not
+        // Obviously, this node is confused, send a terminal reject to make sure the requestor is
+        // not
         // waiting forever.
         reject = DMT.createFNPRejectedOverload(uid, true);
       } else {
@@ -681,18 +670,19 @@ public class RequestHandler
             // As soon as the originator receives the messages, he can reuse the slot.
             // Unlocking on sent is a reasonable compromise between:
             // 1. Unlocking immediately avoids problems with the recipient reusing the slot when
-            // he's received the data, therefore us rejecting the request and getting a mandatory
+            // he's received the data, therefore, us rejecting the request and getting a mandatory
             // backoff, and
             // 2. However, we do want SSK requests from the datastore to be counted towards the
             // total when accepting requests.
             // This is safe, however.
-            // We have already done the request so there is no outgoing request.
+            // We have already done the request, so there is no outgoing request.
             // A node might be able to get a few more slots in flight by not acking the SSK
             // messages, but it would quickly stall.
-            // Furthermore, we would start sending hard rejections when the send queue gets past a
+            // Furthermore, we would start sending hard rejections when the sending queue gets past
+            // a
             // certain point.
             // So it is neither beneficial for the node nor a viable DoS.
-            // Alternative solution would be to wait until the pubkey and data have been acked
+            // An alternative solution would be to wait until the pubkey and data have been acked
             // before unlocking and sending the headers, but this appears not to be necessary.
             tag.unlockHandler();
           }
@@ -749,12 +739,14 @@ public class RequestHandler
           new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, block.getRawData());
       BlockTransmitter localBt =
           new BlockTransmitter(
-              node.network().usm(),
-              node.network().ticker(),
-              source,
-              uid,
-              prb,
-              this,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  source,
+                  uid,
+                  prb,
+                  this,
+                  realTimeFlag),
               BlockTransmitter.NEVER_CASCADE,
               success -> {
                 if (success) {
@@ -775,7 +767,6 @@ public class RequestHandler
                     .remoteRequest(
                         false, success, true, htl, key.toNormalizedDouble(), realTimeFlag, false);
               },
-              realTimeFlag,
               node.network().stats());
       tag.handlerTransferBegins();
       source.transport().sendAsync(df, null, this);
@@ -805,14 +796,14 @@ public class RequestHandler
       throw new IllegalStateException("sendTerminal should only be called once");
     else sendTerminalCalled = true;
 
-    // Unlock handler immediately.
+    // Unlock the handler immediately.
     // Otherwise, the request sender will think the slot is free as soon as it
     // receives it, but we won't, so we may reject his requests and get a mandatory backoff.
     tag.unlockHandler();
     try {
       source.transport().sendAsync(msg, new TerminalMessageByteCountCollector(), this);
     } catch (NotConnectedException _) {
-      // Will have called the callback, so caller doesn't need to worry about it.
+      // Will have called the callback, so the caller doesn't need to worry about it.
     }
   }
 
@@ -888,7 +879,7 @@ public class RequestHandler
 
   /**
    * There is no noderef to pass downstream. If we want a connection, send our noderef and wait for
-   * a reply, otherwise just send an ack.
+   * a reply, otherwise send an ack.
    */
   private void finishOpennetNoRelay() {
     OpennetManager om = node.network().opennet();
@@ -901,7 +892,7 @@ public class RequestHandler
   }
 
   /**
-   * Acknowledge the opennet path folding attempt without sending a reference. Once the send
+   * Acknowledge the opennet path folding attempt without sending a reference. Once the sending
    * completes (asynchronously), unlock everything.
    */
   private void ackOpennet() {
@@ -1032,8 +1023,8 @@ public class RequestHandler
   }
 
   /**
-   * Called when the node we routed the request to returned a valid noderef, and we don't want it.
-   * So we relay it downstream to somebody who does, and wait to relay the response back upstream.
+   * Called when the node we routed the request to return a valid noderef, and we don't want it. So
+   * we relay it downstream to somebody who does, and wait to relay the response back upstream.
    *
    * <p>Completion: Will call applyByteCounts(); unregisterRequestHandlerWithNode() asynchronously
    * after this method returns.
@@ -1051,13 +1042,13 @@ public class RequestHandler
       om.sendOpennetRef(false, uid, source, noderef, this);
     } catch (NotConnectedException _) {
       rs.ackOpennet(dataSource);
-      // Lost contact with request source, nothing we can do
+      // Lost contact with the request source, nothing we can do
       applyByteCounts();
       unregisterRequestHandlerWithNode();
       return;
     }
 
-    // Now wait for reply from the request source.
+    // Now wait for a reply from the request source.
 
     // We do not need to worry about timeouts here, because we have already sent our noderef.
 
@@ -1082,7 +1073,7 @@ public class RequestHandler
         // Null reply: acknowledge upstream but still finish bookkeeping below.
         rs.ackOpennet(dataSource);
       } else {
-        // Send it forward to the data source, if it is valid.
+        // Send it forward to the data source if it is valid.
         if (OpennetNoderefValidator.validateNoderef(newNoderef, source, false) != null) {
           try {
             if (LOG.isDebugEnabled())
@@ -1093,7 +1084,7 @@ public class RequestHandler
                 dataSource,
                 newNoderef,
                 RequestHandler.this,
-                anyFailed -> {
+                _ -> {
                   // As soon as the originator receives the three blocks, he can reuse the slot.
                   tag.finishedWaitingForOpennet(dataSource);
                   tag.unlockHandler();
@@ -1188,7 +1179,7 @@ public class RequestHandler
   /**
    * Priority used by {@link NativeThread} when scheduling this handler.
    *
-   * @return high-priority scheduling value
+   * @return The high priority scheduling value
    */
   @Override
   public int getPriority() {

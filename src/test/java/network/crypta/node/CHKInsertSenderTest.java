@@ -16,6 +16,7 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.Key;
 import network.crypta.keys.NodeCHK;
+import network.crypta.node.subsystem.NodeRoutingSubsystem.ChkInsertOptions;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -61,20 +62,14 @@ class CHKInsertSenderTest {
 
   private CHKInsertSender newSender(
       boolean forkOnCacheable, boolean preferInsert, boolean ignoreLowBackoff, boolean realtime) {
-    return new CHKInsertSender(
-        key,
-        uid,
-        insertTag,
-        headers,
-        htl,
-        sourcePeer,
-        node,
-        prb,
-        /* fromStore= */ false,
-        forkOnCacheable,
-        preferInsert,
-        ignoreLowBackoff,
-        realtime);
+    ChkInsertOptions options =
+        ChkInsertOptions.of(headers, prb)
+            .withFromStore(false)
+            .withForkOnCacheable(forkOnCacheable)
+            .withPreferInsert(preferInsert)
+            .withIgnoreLowBackoff(ignoreLowBackoff)
+            .withRealTimeFlag(realtime);
+    return new CHKInsertSender(key, uid, insertTag, htl, sourcePeer, node, options);
   }
 
   @Test

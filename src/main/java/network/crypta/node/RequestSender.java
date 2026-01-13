@@ -13,16 +13,14 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
-import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
 import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverCompletion;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverTimeoutHandler;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
-import network.crypta.keys.Key;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.keys.NodeCHK;
 import network.crypta.keys.NodeSSK;
@@ -32,6 +30,7 @@ import network.crypta.node.FailureTable.BlockOffer;
 import network.crypta.node.FailureTable.OfferList;
 import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.node.OpennetNoderefWaiter.WaitedTooLongForOpennetNoderefException;
+import network.crypta.node.subsystem.NodeRoutingSubsystem.RequestSenderOptions;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.SimpleFieldSet;
@@ -82,7 +81,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   // Constants
   static final long ACCEPTED_TIMEOUT = SECONDS.toMillis(10);
-  // After a get offered key fails, wait this long for two stage timeout. Probably we will
+  // After a get-offered key fails, wait this long for two stage timeout. Probably we will
   // have disconnected by then.
   static final long GET_OFFER_LONG_TIMEOUT = SECONDS.toMillis(60);
   final long getOfferedTimeout;
@@ -92,7 +91,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   /**
    * One in this many successful requests is randomly reinserted. This is probably a good idea
-   * anyway but with the split store it's essential.
+   * anyway, but with the split store it's essential.
    */
   static final int RANDOM_REINSERT_INTERVAL = 200;
 
@@ -163,45 +162,28 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   /**
    * Creates a new sender for a single key fetch.
    *
-   * @param key The target key. For SSKs the public key should already be known; this class does not
-   *     perform a lookup.
-   * @param pubKey Optional SSK public key used for verification. Ignored for CHKs; when {@code
-   *     null} and the protocol allows, a peer may provide it during the exchange.
-   * @param htl Initial hop-to-live. The value is decremented during routing according to node
-   *     policy.
-   * @param uid Unique message ID shared with downstream peers for correlating responses.
-   * @param tag Request-scoped tag used for coordination and coalescing with other components.
-   * @param n Owning node.
-   * @param source Originating peer for forwarded requests, or {@code null} for local requests.
-   * @param offersOnly When {@code true}, try only advertised offers and do not start regular
-   *     routing if none succeed.
-   * @param canWriteClientCache Whether verified data may be stored in the client cache.
+   * @param context Request metadata for the fetch, including key, HTL, UID, and tag references.
+   * @param options Policy flags governing offers, cache handling, and realtime scheduling.
    * @param canWriteDatastore Whether verified data may be stored in the main datastore.
-   * @param realTimeFlag When {@code true}, apply real-time timeouts and accounting; otherwise use
-   *     bulk/latency-tolerant settings.
    */
   public RequestSender(
-      Key key,
-      DSAPublicKey pubKey,
-      short htl,
-      long uid,
-      RequestTag tag,
-      Node n,
-      PeerNode source,
-      boolean offersOnly,
-      boolean canWriteClientCache,
-      boolean canWriteDatastore,
-      boolean realTimeFlag) {
-    super(key, realTimeFlag, source, n, htl, uid);
-    if (realTimeFlag) {
+      RequestSenderContext context, RequestSenderOptions options, boolean canWriteDatastore) {
+    super(
+        context.key(),
+        options.realTimeFlag(),
+        context.source(),
+        context.node(),
+        context.htl(),
+        context.uid());
+    if (options.realTimeFlag()) {
       getOfferedTimeout = BlockReceiver.RECEIPT_TIMEOUT_REALTIME;
     } else {
       getOfferedTimeout = BlockReceiver.RECEIPT_TIMEOUT_BULK;
     }
-    this.pubKey = pubKey;
-    this.origTag = tag;
-    this.tryOffersOnly = offersOnly;
-    this.canWriteClientCache = canWriteClientCache;
+    this.pubKey = context.pubKey();
+    this.origTag = context.tag();
+    this.tryOffersOnly = options.offersOnly();
+    this.canWriteClientCache = options.canWriteClientCache();
     this.canWriteDatastore = canWriteDatastore;
   }
 
@@ -242,7 +224,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
               }
 
               // We are still routing, yet we have exceeded the per-peer timeout, probably due to
-              // routing to multiple nodes e.g. RNFs and accepted timeouts.
+              // routing to multiple nodes e.g., RNFs and accepted timeouts.
               LOG.info("Reassigning to self on timeout: {}", RequestSender.this);
 
               reassignToSelfOnTimeout(fromOfferedKey);
@@ -255,7 +237,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       finish(INTERNAL_ERROR, null, false);
     } finally {
       // LOCKING: Normally receivingAsync is set by this thread, so there is no need to synchronize.
-      // If it is set by another thread it will only be after it was set by this thread.
+      // If it is set by another thread, it will only be after it was set by this thread.
       if (status == NOT_FINISHED && !receivingAsync) {
         LOG.error("Not finished: {}", this);
         finish(INTERNAL_ERROR, null, false);
@@ -301,8 +283,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   private boolean killedByRecentlyFailed = false;
 
   /**
-   * Route requests. Method is responsible for its own completion, e.g. finish or chaining to
-   * MainLoopCallback, i.e. the caller isn't going to do more stuff relevant to the request
+   * Route requests. Method is responsible for its own completion, e.g., finish or chaining to
+   * MainLoopCallback, i.e., the caller isn't going to do more stuff relevant to the request
    * afterward.
    */
   protected void routeRequests() {
@@ -431,7 +413,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       rfAnyway = killedByRecentlyFailed;
     }
     if (rfAnyway) {
-      // See comment in original code for rationale.
+      // See comment in the original code for rationale.
       synchronized (this) {
         recentlyFailedTimeLeft = 0;
       }
@@ -524,7 +506,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
     private DO handleMessage(
         Message msg, boolean wasFork, PeerNode source, MainLoopCallback waiter) {
-      // For debugging purposes, remember the number of responses AFTER the insert, and the last
+      // For debugging purposes, remember the number of responses AFTER the insert and the last
       // message type we received.
       gotMessages++;
       lastMessage = msg.getSpec().getName();
@@ -632,13 +614,13 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         int t = timeSinceSent();
         node.routing().failureTable().onFailed(key, next, htl, t, t);
         next.noLongerRoutingTo(origTag, false);
-        return false; // try next node
+        return false; // try the next node
       } catch (CryptFormatException e) {
         LOG.error("Invalid pubkey from {} on {} ({})", next, uid, e.getMessage(), e);
         int t = timeSinceSent();
         node.routing().failureTable().onFailed(key, next, htl, t, t);
         next.noLongerRoutingTo(origTag, false);
-        return false; // try next node
+        return false; // try the next node
       }
     }
 
@@ -711,7 +693,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         finish(TIMED_OUT, waitingFor, false);
       }
 
-      // Wait for second timeout synchronously.
+      // Wait for the second timeout synchronously.
       long secondDeadline = System.currentTimeMillis() + searchTimeout;
       while (true) {
 
@@ -885,13 +867,14 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       final long tStart = System.currentTimeMillis();
       final BlockReceiver br =
           new BlockReceiver(
-              node.network().usm(),
-              next,
-              uid,
-              localPrb,
-              RequestSender.this,
-              node.network().ticker(),
-              realTimeFlag,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  next,
+                  uid,
+                  localPrb,
+                  RequestSender.this,
+                  realTimeFlag),
               myTimeoutHandler,
               true);
       if (failNow) {
@@ -1443,10 +1426,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   /**
    * @return True if we successfully received the offer or failed fatally, or we started to receive
-   *     a block transfer asynchronously (in which case receivingAsync will be set, and if it fails
+   *     a block transfer asynchronously (in which case receivingAsync will be set, and if it fails,
    *     the whole request will fail). False if we should try the next offer and/or normal fetches.
    * @param offers The list of offered keys. Only used if we complete asynchronously. Null indicates
-   *     this is a fork due to two stage timeout.
+   *     this is a fork due to a two-stage timeout.
    */
   private OFFER_STATUS handleCHKOfferReply(
       Message reply, final PeerNode pn, final BlockOffer offer, final OfferList offers) {
@@ -1488,13 +1471,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       fireCHKTransferBegins();
       BlockReceiver br =
           new BlockReceiver(
-              node.network().usm(),
-              pn,
-              uid,
-              prb,
-              this,
-              node.network().ticker(),
-              realTimeFlag,
+              new BlockTransferContext(
+                  node.network().usm(), node.network().ticker(), pn, uid, prb, this, realTimeFlag),
               myTimeoutHandler,
               true);
       if (LOG.isDebugEnabled()) LOG.debug("Receiving data (for offer reply)");
@@ -1609,13 +1587,13 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             .setTimeout(acceptedTimeout)
             .setType(DMT.FNPRejectedOverload);
 
-    // The order of these filters is performance critical. The last or-filter is checked first.
-    // So the last filter in the or-"chain" must be the filter which matches most frequently.
+    // The order of these filters is performance-critical. The last or-filter is checked first.
+    // So the last filter in the "or-chain" must be the filter that matches most frequently.
     return mfRejectedOverload.or(mfRejectedLoop.or(mfAccepted));
   }
 
   /**
-   * Finish fetching an SSK. We must have received the data, the headers and the pubkey by this
+   * Finish fetching an SSK. We must have received the data, the headers, and the pubkey by this
    * point.
    *
    * @param next The node we received the data from.
@@ -1673,7 +1651,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       // Cache only in the cache, not the store. The reason for this is that
       // requests don't go to the full distance, and therefore pollute the
       // store; simulations it is best to only include data from requests
-      // which go all the way i.e. inserts.
+      // which go all the way i.e., inserts.
       node.storage().storeShallow(chkBlock, canWriteClientCache, canWriteDatastore, tryOffersOnly);
       if (node.bootstrap().random().nextInt(RANDOM_REINSERT_INTERVAL) == 0)
         node.services().clientCore().getTransfers().queueRandomReinsert(chkBlock);
@@ -1824,7 +1802,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    * Complete the request. Note that if the request was forked (which unfortunately is possible
    * because of timeouts awaiting Accepted/Rejected), it is *possible* that there are other forks
    * still running; UIDTag will wait for them. Hence, a fork that fails should NOT call this method,
-   * however a fork that succeeds SHOULD call it.
+   * however, a fork that succeeds SHOULD call it.
    *
    * @param code The completion code.
    * @param next The node being routed to.
@@ -1850,7 +1828,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       doOpennet = code == SUCCESS && !(fromOfferedKey || isSSK);
       if (doOpennet) origTag.waitingForOpennet(next); // Call this first so we don't unlock.
       if (next != null) next.noLongerRoutingTo(origTag, fromOfferedKey);
-      // After calling both, THEN tell handler.
+      // After calling both, THEN tell the handler.
       status = code;
       if (status == SUCCESS) successFrom = next;
       notifyAll();
@@ -1947,12 +1925,12 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   }
 
   /**
-   * Acknowledge the opennet path folding attempt without sending a reference. Once the send
+   * Acknowledge the opennet path folding attempt without sending a reference. Once the sending
    * completes (asynchronously), unlock everything.
    */
   void ackOpennet(final PeerNode next) {
     Message msg = DMT.createFNPOpennetCompletedAck(uid);
-    // We probably should set opennetFinished after the send completes.
+    // We probably should set opennetFinished after the sending completes.
     try {
       next.transport().sendAsync(msg, finishOpennetOnAck(next), this);
     } catch (NotConnectedException _) {
@@ -1989,14 +1967,6 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     try {
       byte[] noderef = OpennetNoderefWaiter.waitForOpennetNoderef(false, next, uid, this, node);
       return handleNoderefResult(next, noderef);
-    } catch (FSParseException | PeerParseException e) {
-      LOG.error("Could not parse opennet noderef for {} from {}", this, next, e);
-      ackOpennet(next);
-      return false;
-    } catch (ReferenceSignatureVerificationException e) {
-      LOG.error("Bad signature on opennet noderef for {} from {} : {}", this, next, e, e);
-      ackOpennet(next);
-      return false;
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
         LOG.debug("Not connected sending ConnectReply on {} to {}", this, next);
@@ -2012,11 +1982,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     return false;
   }
 
-  private boolean handleNoderefResult(PeerNode next, byte[] noderef)
-      throws FSParseException,
-          PeerParseException,
-          ReferenceSignatureVerificationException,
-          NotConnectedException {
+  private boolean handleNoderefResult(PeerNode next, byte[] noderef) throws NotConnectedException {
     if (noderef == null || noderef.length == 0) {
       ackOpennet(next);
       return false;
@@ -2104,7 +2070,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   /** Have we finished all opennet-related activities? */
   private boolean opennetFinished;
 
-  /** Did we timeout waiting for opennet noderef? */
+  /** Did we time out when waiting for opennet noderef? */
   private boolean opennetTimedOut;
 
   /** Opennet noderef from next node */
@@ -2405,10 +2371,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       new BlockReceiverTimeoutHandler() {
 
         /**
-         * The data receive has failed. A block timed out. The PRB will be cancelled as soon as we
+         * The data receiving has failed. A block timed out. The PRB will be canceled as soon as we
          * return, and that will cause the source node to consider the request finished. Meantime we
          * don't know whether the upstream node has finished or not. So we reassign the request to
-         * ourselves, and then wait for the second timeout.
+         * ourselves and then wait for the second timeout.
          */
         @Override
         public void onFirstTimeout() {
@@ -2417,7 +2383,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
         /**
          * The timeout appears to have been caused by the node we are directly connected to. So we
-         * need to disconnect the node, or take other fairly strong sanctions, to avoid load
+         * need to disconnect the node or take other fairly strong sanctions to avoid load
          * management problems.
          */
         @Override
@@ -2427,14 +2393,14 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         }
       };
 
-  // Note: This may be temporary; ideally listeners would provide this information directly.
+  // Note: This may be temporary; ideally, listeners would provide this information directly.
   // At present, NodeClientCore's realGetCHK and realGetSSK (blocking fetches) do not register a
   // RequestSenderListener. Future refactoring is expected to replace these usages.
 
   // Also consider whether a local RequestSenderListener added after the request starts should
   // impact
   // the decision; this may risk over-disclosure. Given existing signals, it is probably acceptable.
-  // When starting the request locally we still want to finish it even if incoming RequestHandler's
+  // When starting the request locally, we still want to finish it even if incoming RequestHandler's
   // are coalesced with it, and they fail onward transfers.
 
   private boolean transferCoalesced;
@@ -2459,7 +2425,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     onAccepted(next, false, htl);
   }
 
-  /** If we handled a timeout, and forked, we need to know the original HTL. */
+  /** If we handled a timeout and forked, we need to know the original HTL. */
   private void onAccepted(PeerNode next, boolean forked, short htl) {
     MainLoopCallback cb;
     synchronized (this) {
@@ -2485,9 +2451,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (htl < 0) htl = 0;
     // Timeouts while waiting for a slot are relatively normal.
     // That is, in an ideal world they wouldn't happen.
-    // They happen when the network is very small, or when there is a capacity bottleneck.
+    // They happen when the network is very small or when there is a capacity bottleneck.
     // They are best considered statistically, see the stats page.
-    // Individual timeouts are therefore not very interesting...
+    // Individual timeouts are, therefore, not very interesting...
     if (LOG.isDebugEnabled()) {
       if (source != null) LOG.debug("Timed out while waiting for a slot on {}", this);
       else LOG.debug("Local request timed out while waiting for a slot on {}", this);

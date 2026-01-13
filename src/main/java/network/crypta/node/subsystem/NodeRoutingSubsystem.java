@@ -14,6 +14,7 @@ import network.crypta.node.Location;
 import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
 import network.crypta.node.RequestSender;
+import network.crypta.node.RequestSenderContext;
 import network.crypta.node.RequestTag;
 import network.crypta.node.RequestTracker;
 import network.crypta.node.SSKInsertSender;
@@ -31,8 +32,8 @@ import org.slf4j.LoggerFactory;
  * startup, then route each request or insert through {@link #makeRequestSender(Key, short, long,
  * RequestTag, PeerNode, RequestSenderOptions)} or the appropriate insert factory.
  *
- * <p>The class maintains simple mutable state (tracker, failure table, and decrement policy flags)
- * but does not implement its own synchronization. It relies on the thread-safety of the
+ * <p>The class maintains a simple mutable state (tracker, failure table, and decrement policy
+ * flags) but does not implement its own synchronization. It relies on the thread-safety of the
  * collaborating components and the node's startup sequencing. The routing decisions are
  * deterministic given inputs, except for the probabilistic HTL decrement flags which are fixed at
  * initialization time and reused thereafter.
@@ -71,7 +72,7 @@ public final class NodeRoutingSubsystem {
    *
    * <p>This method constructs a {@link RequestTracker} using the node's peer manager and ticker,
    * and it constructs a {@link FailureTable} bound to the node. Call it once during startup before
-   * any routing operations are attempted. Re-invoking it replaces existing instances and may
+   * any routing operations are attempted. Re-invoking, it replaces existing instances and may
    * discard in-flight tracking state, so it is not intended to be idempotent.
    */
   public void init() {
@@ -103,7 +104,7 @@ public final class NodeRoutingSubsystem {
    *
    * @param key the target key used for distance calculations; must be non-null and normalized.
    * @param source the previous hop peer, or {@code null} for locally originated requests.
-   * @param routedTo peers selected for onward routing; array may be empty but not null.
+   * @param routedTo peers selected for onward routing; an array may be empty but not null.
    * @return {@code true} when this node is strictly closer than all high-uptime peers considered,
    *     indicating deep storage eligibility; {@code false} otherwise.
    */
@@ -254,7 +255,7 @@ public final class NodeRoutingSubsystem {
    * @param key the target key to request; must be a CHK or SSK key instance.
    * @param htl hop-to-live value, typically positive and bounded by {@link Node#maxHTL()}.
    * @param uid unique request identifier used by tracking and logging; must be stable per request.
-   * @param tag request tag that is populated with the created or coalesced sender reference.
+   * @param tag the request tag that is populated with the created or coalesced sender reference.
    * @param source previous hop peer, or {@code null} when the request originates locally.
    * @param opts policy flags governing storage, cache usage, and routing mode.
    * @return a {@link KeyBlock} for local hits, a {@link RequestSender} for routed requests, or
@@ -301,17 +302,9 @@ public final class NodeRoutingSubsystem {
 
     RequestSender created =
         new RequestSender(
-            key,
-            null,
-            htl,
-            uid,
-            tag,
-            node,
-            source,
-            offersOnly,
-            canWriteClientCache,
-            canWriteDatastore,
-            realTimeFlag);
+            new RequestSenderContext(key, null, htl, uid, tag, node, source),
+            opts,
+            canWriteDatastore);
     tag.setSender(created, false);
     created.start();
     if (LOG.isDebugEnabled()) LOG.debug("Created new sender: {}", created);
@@ -459,7 +452,7 @@ public final class NodeRoutingSubsystem {
      * Partially received block used to seed the insert, or {@code null} if not applicable.
      *
      * <p>This value allows the sender to reuse previously received data. When {@code null}, the
-     * sender behaves as a full insert without partial reuse.
+     * sender behaves as a full insert without a partial reuse.
      */
     public final PartiallyReceivedBlock prb;
 
@@ -474,23 +467,24 @@ public final class NodeRoutingSubsystem {
     /**
      * Whether the client cache may be updated as part of this insert.
      *
-     * <p>This flag is advisory to the sender and may be ignored when cache writes are unavailable.
-     * The value is fixed in the options instance and is not mutated after construction.
+     * <p>This flag is an advisory to the sender and may be ignored when cache writes are
+     * unavailable. The value is fixed in the options instance and is not mutated after
+     * construction.
      */
     public final boolean canWriteClientCache;
 
     /**
      * Whether to fork the insert when a cacheable response is detected.
      *
-     * <p>Forking can improve throughput but may increase network load. The flag is immutable and
-     * should be enabled only when the caller expects cacheable results.
+     * <p>Forking can improve throughput but may increase the network load. The flag is immutable
+     * and should be enabled only when the caller expects cacheable results.
      */
     public final boolean forkOnCacheable;
 
     /**
      * Whether to prefer inserting locally over forwarding the request onward.
      *
-     * <p>This hint is used by the sender to bias its behavior. It is immutable and is applied
+     * <p>The sender uses this hint to bias its behavior. It is immutable and is applied
      * consistently throughout the insert lifecycle.
      */
     public final boolean preferInsert;
@@ -562,7 +556,7 @@ public final class NodeRoutingSubsystem {
      * Returns a new options instance with the {@code fromStore} flag updated.
      *
      * <p>This method does not mutate the current instance; it returns a copy with the requested
-     * flag set or cleared. All other fields, including headers and partial block, are preserved.
+     * flag set or cleared. All other fields, including headers and partial blocks, are preserved.
      *
      * @param v {@code true} to mark the insert as store-originated; {@code false} otherwise.
      * @return a new options instance with the updated {@code fromStore} flag value.
@@ -588,7 +582,7 @@ public final class NodeRoutingSubsystem {
      * Returns a new options instance with the {@code forkOnCacheable} flag updated.
      *
      * <p>Forking behavior can affect routing fan-out; this method updates only that flag while
-     * preserving all other state.
+     * preserving all other states.
      *
      * @param v {@code true} to fork when cacheable; {@code false} to disable forking.
      * @return a new options instance with updated fork-on-cacheable behavior.
@@ -613,7 +607,7 @@ public final class NodeRoutingSubsystem {
     /**
      * Returns a new options instance with the {@code ignoreLowBackoff} flag updated.
      *
-     * <p>The method preserves all other fields and returns a new instance so callers can reuse the
+     * <p>The method preserves all other fields and returns a new instance, so callers can reuse the
      * original options safely.
      *
      * @param v {@code true} to ignore low-backoff signals; {@code false} to respect them.
@@ -626,11 +620,11 @@ public final class NodeRoutingSubsystem {
     /**
      * Returns a new options instance with the {@code realTimeFlag} value updated.
      *
-     * <p>Real-time inserts may be prioritized differently by schedulers. This method updates only
-     * that flag and keeps all other fields intact.
+     * <p>Schedulers may prioritize real-time inserts differently. This method updates only that
+     * flag and keeps all other fields intact.
      *
      * @param v {@code true} for real-time scheduling; {@code false} for bulk scheduling.
-     * @return a new options instance with updated real-time flag.
+     * @return a new options instance with the updated real-time flag.
      */
     public ChkInsertOptions withRealTimeFlag(boolean v) {
       return withFlag(F_REALTIME, v);
@@ -648,7 +642,7 @@ public final class NodeRoutingSubsystem {
    * @param key CHK key identifying the content to insert; must be non-null and valid.
    * @param htl hop-to-live for routing; typically positive and bounded by {@link Node#maxHTL()}.
    * @param uid unique insert identifier used for tracking and logging; must be stable per insert.
-   * @param tag insert tag that tracks lifecycle and success/failure outcomes.
+   * @param tag an insert tag that tracks lifecycle and success/failure outcomes.
    * @param source previous hop peer, or {@code null} for locally originated inserts.
    * @param opts immutable insert options controlling cache and routing behavior.
    * @return the started {@link CHKInsertSender} instance responsible for the insert.
@@ -658,21 +652,7 @@ public final class NodeRoutingSubsystem {
     if (LOG.isDebugEnabled())
       LOG.debug("makeInsertSender({},{},{},{},...,{}", key, htl, uid, source, opts.fromStore);
     CHKInsertSender is;
-    is =
-        new CHKInsertSender(
-            key,
-            uid,
-            tag,
-            opts.headers,
-            htl,
-            source,
-            node,
-            opts.prb,
-            opts.fromStore,
-            opts.forkOnCacheable,
-            opts.preferInsert,
-            opts.ignoreLowBackoff,
-            opts.realTimeFlag);
+    is = new CHKInsertSender(key, uid, tag, htl, source, node, opts);
     is.start();
     return is;
   }
@@ -838,7 +818,7 @@ public final class NodeRoutingSubsystem {
      * <p>Prefer-insert biases routing toward local insertion without guaranteeing it.
      *
      * @param v {@code true} to prefer inserts locally; {@code false} to remove the bias.
-     * @return a new options instance with updated preference value.
+     * @return a new options instance with an updated preference value.
      */
     public SskInsertOptions withPreferInsert(boolean v) {
       return withFlag(F_PREFER_INSERT, v);
@@ -862,7 +842,7 @@ public final class NodeRoutingSubsystem {
      * <p>Real-time scheduling may affect priorities and timeouts compared to bulk inserts.
      *
      * @param v {@code true} to mark the insert as real-time; {@code false} for bulk mode.
-     * @return a new options instance with updated real-time flag value.
+     * @return a new options instance with an updated real-time flag value.
      */
     public SskInsertOptions withRealTimeFlag(boolean v) {
       return withFlag(F_REALTIME, v);
@@ -880,7 +860,7 @@ public final class NodeRoutingSubsystem {
    * @param block SSK block containing the key and payload to insert; must be non-null.
    * @param htl hop-to-live for routing; typically positive and bounded by {@link Node#maxHTL()}.
    * @param uid unique insert identifier used for tracking and logging; must be stable per insert.
-   * @param tag insert tag that tracks lifecycle and success/failure outcomes.
+   * @param tag an insert tag that tracks lifecycle and success/failure outcomes.
    * @param source previous hop peer, or {@code null} for locally originated inserts.
    * @param opts immutable insert options controlling cache and routing behavior.
    * @return the started {@link SSKInsertSender} instance responsible for the insert.

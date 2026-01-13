@@ -111,7 +111,7 @@ class BlockReceiverTest {
     AtomicReference<byte[]> received = new AtomicReference<>();
     AtomicReference<RetrievalException> failed = new AtomicReference<>();
 
-    // Capture sendAsync to verify that an allReceived was emitted.
+    // Capture sendAsync to verify that allReceived was emitted.
     doAnswer(
             inv -> {
               Message msg = inv.getArgument(0, Message.class);
@@ -123,7 +123,7 @@ class BlockReceiverTest {
         .when(transport)
         .sendAsync(any(Message.class), eq(null), eq(byteCounter));
 
-    // Act: start receive
+    // Act: start to receive
     receiver.receive(
         new BlockReceiver.BlockReceiverCompletion() {
           @Override
@@ -168,13 +168,7 @@ class BlockReceiverTest {
     PartiallyReceivedBlock prb = new PartiallyReceivedBlock(2, 3);
     BlockReceiver receiver =
         new BlockReceiver(
-            messageCore,
-            senderPeer,
-            UID,
-            prb,
-            byteCounter,
-            ticker,
-            false,
+            new BlockTransferContext(messageCore, ticker, senderPeer, UID, prb, byteCounter, false),
             new NoopTimeoutHandler(),
             false);
 
@@ -224,7 +218,7 @@ class BlockReceiverTest {
     assertEquals(reason, ack.getInt(DMT.REASON));
     // Description is prefixed by the receiver code if it doesn't contain "Upstream"
     assertTrue(ack.getString(DMT.DESCRIPTION).contains("Upstream transmit error:"));
-    // Diagnostic counter not asserted; see note above.
+    // Diagnostic counter isn't asserted; see the note above.
   }
 
   @Test
@@ -235,13 +229,7 @@ class BlockReceiverTest {
 
     BlockReceiver receiver =
         new BlockReceiver(
-            messageCore,
-            sender,
-            UID,
-            prb,
-            byteCounter,
-            ticker,
-            true,
+            new BlockTransferContext(messageCore, ticker, sender, UID, prb, byteCounter, true),
             new NoopTimeoutHandler(),
             false);
 
@@ -250,7 +238,7 @@ class BlockReceiverTest {
     // Assert
     assertNotNull(failed.get(), "Expected immediate failure due to disconnection");
     assertEquals(RetrievalException.SENDER_DISCONNECTED, failed.get().getReason());
-    // Diagnostic counter not asserted; see note above.
+    // Diagnostic counter isn't asserted; see the note above.
   }
 
   @Test
@@ -266,7 +254,7 @@ class BlockReceiverTest {
     WeakReference<PeerContext> ref = new WeakReference<>(sender);
     org.mockito.Mockito.lenient().when(sender.getWeakRef()).thenReturn(ref);
 
-    // For all sends that happen outside sendSync (none expected here), return a MessageItem
+    // For all sending that happen outside sendSync (none expected here), return a MessageItem
 
     // Make sendSync throw the timeout to exercise the catch path; completion should still occur
     org.mockito.Mockito.doThrow(new SyncSendWaitedTooLongException())
@@ -304,7 +292,7 @@ class BlockReceiverTest {
     assertNotNull(received.get(), "Expected block completion");
     assertArrayEquals(data, received.get());
     verify(transport, times(1)).sendSync(any(Message.class), eq(byteCounter), eq(true));
-    // Diagnostic counter not asserted; see note above.
+    // Diagnostic counter isn't asserted; see the note above.
   }
 
   // --- helpers ---
@@ -314,18 +302,12 @@ class BlockReceiverTest {
    *
    * <p>Extraction keeps test methods concise and focused while centralizing the wiring of
    * frequently repeated constructor arguments. It returns only the created receiver (single output)
-   * and requires just two inputs plus a flag, keeping parameter count low.
+   * and requires just two inputs plus a flag, keeping the parameter count low.
    */
   private BlockReceiver newRealtimeReceiver(
       PeerContext sender, PartiallyReceivedBlock prb, boolean completeAfterAcked) {
     return new BlockReceiver(
-        messageCore,
-        sender,
-        UID,
-        prb,
-        byteCounter,
-        ticker,
-        true, // realtime path
+        new BlockTransferContext(messageCore, ticker, sender, UID, prb, byteCounter, true),
         new NoopTimeoutHandler(),
         completeAfterAcked);
   }
@@ -363,7 +345,7 @@ class BlockReceiverTest {
   }
 
   /**
-   * Starts a receive and returns a reference that will be set on failure.
+   * Starts receiving and returns a reference that will be set on failure.
    *
    * <p>This extracts the repeated callback wiring used by tests that only care about failure
    * outcomes, keeping the calling methods concise. The returned {@link AtomicReference} is the sole

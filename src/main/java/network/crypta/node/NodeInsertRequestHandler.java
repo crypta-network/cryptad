@@ -53,10 +53,10 @@ final class NodeInsertRequestHandler {
   private static final String LOG_ALREADY_RUNNING =
       "Lock contention for id {}; reject (already running)";
 
-  /** Owning node used for routing, network, and storage interactions. */
+  /** The owning node used for routing, network, and storage interactions. */
   private final Node node;
 
-  /** UID tracker for insert de-duplication and lifecycle bookkeeping. */
+  /** UID tracker for insert deduplication and lifecycle bookkeeping. */
   private final RequestTracker tracker;
 
   /** Current statistics instance used for overload checks and counters. */
@@ -82,7 +82,7 @@ final class NodeInsertRequestHandler {
    *
    * <p>This is a lightweight setter used when the networking subsystem swaps or initializes the
    * stats component. It is expected to be called during node startup and does not retroactively
-   * affect in-flight insert handlers; only subsequent admissions use the new reference.
+   * affect in-flight insert handlers; only later admissions use the new reference.
    *
    * @param stats active statistics instance; must be non-null for admission decisions
    */
@@ -116,7 +116,7 @@ final class NodeInsertRequestHandler {
 
   /**
    * Handle an incoming insert. We should parse it and determine whether it is valid before we
-   * accept it. However, in the case of inserts it *IS* possible for the request sender to cause it
+   * accept it. However, in the case of inserts, it *IS* possible for the request sender to cause it
    * to fail later during the receiving of the data or the DataInsert.
    *
    * @param m The incoming message.
@@ -131,11 +131,20 @@ final class NodeInsertRequestHandler {
     InsertTag tag = new InsertTag(isSSK, InsertTag.START.REMOTE, source, realTimeFlag, id, node);
     if (rejectAlreadyRunningInsert(id, isSSK, source, ctr, tag)) return;
 
-    InsertOptions opts = parseInsertOptions(m);
+    InsertRoutingOptions opts = parseInsertOptions(m);
     // SSKs don't fix bwlimitDelayTime so shouldn't be accepted when overloaded.
     RejectReason rejectReason =
         nodeStats.shouldRejectRequest(
-            !isSSK, true, isSSK, false, false, source, false, opts.preferInsert, realTimeFlag, tag);
+            !isSSK,
+            true,
+            isSSK,
+            false,
+            false,
+            source,
+            false,
+            opts.preferInsert(),
+            realTimeFlag,
+            tag);
     if (rejectReason != null) {
       LOG.info("Reject insert preemptively (peer={}, reason={})", source.getPeer(), rejectReason);
       Message rejected = DMT.createFNPRejectedOverload(id, true);
@@ -168,7 +177,7 @@ final class NodeInsertRequestHandler {
    * @param isSSK whether the insert targets an SSK key (otherwise CHK)
    * @param source upstream peer to notify when rejection is required
    * @param ctr byte counter used to attribute rejection overhead
-   * @param tag insert tag representing the UID lifecycle for this request
+   * @param tag the insert tag representing the UID lifecycle for this request
    * @return {@code true} if the insert was rejected due to a duplicate UID
    */
   private boolean rejectAlreadyRunningInsert(
@@ -188,30 +197,16 @@ final class NodeInsertRequestHandler {
   }
 
   /**
-   * Immutable insert option bundle derived from optional submessages.
-   *
-   * <p>Each flag mirrors a dedicated submessage and defaults to {@link Node} constants when the
-   * submessage is absent. The values are captured once per request to keep scheduling logic simple
-   * and avoid repeated message parsing.
-   *
-   * @param preferInsert true when the peer prefers insert routing over fetch-friendly behavior
-   * @param ignoreLowBackoff true when low-backoff suppression should be bypassed
-   * @param forkOnCacheable true when cacheable inserts are allowed to fork
-   */
-  private record InsertOptions(
-      boolean preferInsert, boolean ignoreLowBackoff, boolean forkOnCacheable) {}
-
-  /**
    * Parses insert option submessages into a consolidated option record.
    *
    * <p>Each option is optional and, when absent, falls back to the node defaults. This method does
    * not validate option consistency and performs no side effects beyond reading the message; it is
    * safe to call multiple times but is typically invoked once per request.
    *
-   * @param m insert request message that may carry option submessages
+   * @param m the insert request message that may carry option submessages
    * @return immutable option snapshot representing defaults plus any overrides present
    */
-  private InsertOptions parseInsertOptions(Message m) {
+  private InsertRoutingOptions parseInsertOptions(Message m) {
     boolean preferInsert = Node.PREFER_INSERT_DEFAULT;
     boolean ignoreLowBackoff = Node.IGNORE_LOW_BACKOFF_DEFAULT;
     boolean forkOnCacheable = Node.FORK_ON_CACHEABLE_DEFAULT;
@@ -222,7 +217,7 @@ final class NodeInsertRequestHandler {
     if (lowBackoff != null) ignoreLowBackoff = lowBackoff.getBoolean(DMT.IGNORE_LOW_BACKOFF);
     Message preference = m.getSubMessage(DMT.FNPSubInsertPreferInsert);
     if (preference != null) preferInsert = preference.getBoolean(DMT.PREFER_INSERT);
-    return new InsertOptions(preferInsert, ignoreLowBackoff, forkOnCacheable);
+    return new InsertRoutingOptions(preferInsert, ignoreLowBackoff, forkOnCacheable);
   }
 
   /**
@@ -246,8 +241,10 @@ final class NodeInsertRequestHandler {
       long id,
       boolean realTimeFlag,
       InsertTag tag,
-      InsertOptions opts) {
+      InsertRoutingOptions opts) {
     long now = System.currentTimeMillis();
+    InsertHandlerContext context =
+        new InsertHandlerContext(node, source, id, now, tag, opts, realTimeFlag);
     if (m.getSpec().equals(DMT.FNPSSKInsertRequest)) {
       NodeSSK key = (NodeSSK) m.getObject(DMT.FREENET_ROUTING_KEY);
       byte[] data = ((ShortBuffer) m.getObject(DMT.DATA)).getData();
@@ -256,20 +253,7 @@ final class NodeInsertRequestHandler {
       if (htl <= 0) htl = 1;
       SSKInsertHandler rh =
           new SSKInsertHandler(
-              key,
-              data,
-              headers,
-              htl,
-              source,
-              id,
-              node,
-              now,
-              tag,
-              node.routing().canWriteDatastoreInsert(htl),
-              opts.forkOnCacheable,
-              opts.preferInsert,
-              opts.ignoreLowBackoff,
-              realTimeFlag);
+              key, data, headers, htl, context, node.routing().canWriteDatastoreInsert(htl));
       rh.receivedBytes(m.receivedByteCount());
       node.network()
           .executor()
@@ -280,20 +264,7 @@ final class NodeInsertRequestHandler {
       if (htl <= 0) htl = 1;
       SSKInsertHandler rh =
           new SSKInsertHandler(
-              key,
-              null,
-              null,
-              htl,
-              source,
-              id,
-              node,
-              now,
-              tag,
-              node.routing().canWriteDatastoreInsert(htl),
-              opts.forkOnCacheable,
-              opts.preferInsert,
-              opts.ignoreLowBackoff,
-              realTimeFlag);
+              key, null, null, htl, context, node.routing().canWriteDatastoreInsert(htl));
       rh.receivedBytes(m.receivedByteCount());
       node.network()
           .executor()
@@ -302,19 +273,7 @@ final class NodeInsertRequestHandler {
       NodeCHK key = (NodeCHK) m.getObject(DMT.FREENET_ROUTING_KEY);
       short htl = m.getShort(DMT.HTL);
       if (htl <= 0) htl = 1;
-      CHKInsertHandler rh =
-          new CHKInsertHandler(
-              key,
-              htl,
-              source,
-              id,
-              node,
-              now,
-              tag,
-              opts.forkOnCacheable,
-              opts.preferInsert,
-              opts.ignoreLowBackoff,
-              realTimeFlag);
+      CHKInsertHandler rh = new CHKInsertHandler(key, htl, context);
       rh.receivedBytes(m.receivedByteCount());
       node.network()
           .executor()

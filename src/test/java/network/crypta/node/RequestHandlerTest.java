@@ -3,7 +3,12 @@ package network.crypta.node;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyShort;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
@@ -78,17 +83,11 @@ class RequestHandlerTest {
 
     RequestHandler rh =
         new RequestHandler(
-            source,
-            UID,
-            node,
-            HTL_ZERO,
-            key,
-            tag, /*passedInKeyBlock*/
+            RequestHandlerContext.of(node, source, UID, HTL_ZERO, key, tag, REAL_TIME),
             null,
-            REAL_TIME,
             NEEDS_PUBKEY);
 
-    // By default the mocked node will return null from makeRequestSender(..) which is what we need
+    // By default, the mocked node will return null from makeRequestSender(..) which is what we need
 
     // Act
     rh.run();
@@ -128,11 +127,13 @@ class RequestHandlerTest {
 
     RequestHandler rh =
         new RequestHandler(
-            source, UID, node, HTL, key, tag, /*passedInKeyBlock*/ null, REAL_TIME, NEEDS_PUBKEY);
+            RequestHandlerContext.of(node, source, UID, HTL, key, tag, REAL_TIME),
+            null,
+            NEEDS_PUBKEY);
 
     // Act
     rh.onReceivedRejectOverload();
-    rh.onReceivedRejectOverload(); // second call must be ignored
+    rh.onReceivedRejectOverload(); // the second call must be ignored
 
     // Assert
     assertEquals(1, sent.size(), "Only one RejectedOverload should be forwarded");
@@ -161,7 +162,9 @@ class RequestHandlerTest {
 
     RequestHandler rh =
         new RequestHandler(
-            source, UID, node, HTL, key, tag, /*passedInKeyBlock*/ null, REAL_TIME, NEEDS_PUBKEY);
+            RequestHandlerContext.of(node, source, UID, HTL, key, tag, REAL_TIME),
+            null,
+            NEEDS_PUBKEY);
 
     // Act: SUCCESS for CHK with no transfer started → maybeCompleteTransfer() sends local reject
     rh.onRequestSenderFinished(RequestSender.SUCCESS, /*fromOfferedKey*/ false, /*rs*/ null);
@@ -173,7 +176,7 @@ class RequestHandlerTest {
     assertTrue(terminal.getBoolean(DMT.IS_LOCAL), "Terminal reject must have isLocal=true");
     verify(tag, atLeastOnce()).unlockHandler();
 
-    // Also records success in remoteRequest accounting (not from offered key)
+    // Also records success in remoteRequest accounting (not from an offered key)
     verify(nodeStats, times(1))
         .remoteRequest(
             eq(false), eq(true), eq(false), anyShort(), anyDouble(), eq(REAL_TIME), eq(false));
@@ -185,9 +188,15 @@ class RequestHandlerTest {
     Key key = anyChkKey();
 
     RequestHandler high =
-        new RequestHandler(source, UID, node, (short) 9, key, tag, null, REAL_TIME, NEEDS_PUBKEY);
+        new RequestHandler(
+            RequestHandlerContext.of(node, source, UID, (short) 9, key, tag, REAL_TIME),
+            null,
+            NEEDS_PUBKEY);
     RequestHandler low =
-        new RequestHandler(source, UID, node, (short) 8, key, tag, null, REAL_TIME, NEEDS_PUBKEY);
+        new RequestHandler(
+            RequestHandlerContext.of(node, source, UID, (short) 8, key, tag, REAL_TIME),
+            null,
+            NEEDS_PUBKEY);
 
     assertTrue(high.isHighHtl());
     assertFalse(low.isHighHtl());
@@ -197,7 +206,10 @@ class RequestHandlerTest {
   void byteCounters_updateNodeStats_andSentPayloadAdjustsSign() {
     Key key = anyChkKey();
     RequestHandler rh =
-        new RequestHandler(source, UID, node, HTL, key, tag, null, REAL_TIME, NEEDS_PUBKEY);
+        new RequestHandler(
+            RequestHandlerContext.of(node, source, UID, HTL, key, tag, REAL_TIME),
+            null,
+            NEEDS_PUBKEY);
 
     rh.sentBytes(100);
     rh.receivedBytes(50);
@@ -214,7 +226,10 @@ class RequestHandlerTest {
   void getPriority_returnsHighPriority() {
     Key key = anyChkKey();
     RequestHandler rh =
-        new RequestHandler(source, UID, node, HTL, key, tag, null, REAL_TIME, NEEDS_PUBKEY);
+        new RequestHandler(
+            RequestHandlerContext.of(node, source, UID, HTL, key, tag, REAL_TIME),
+            null,
+            NEEDS_PUBKEY);
     assertEquals(NativeThread.PriorityLevel.HIGH_PRIORITY.value, rh.getPriority());
   }
 }

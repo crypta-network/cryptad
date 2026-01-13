@@ -50,7 +50,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Thread safety: internal transfer state ({@code unsent}, {@code sentPackets}, completion flags
  * and counters) is guarded by the {@code senderThread} monitor. Callers must respect the locking
- * notes in method Javadoc.
+ * notes in the method Javadoc.
  */
 public class BlockTransmitter {
   private static final Logger LOG = LoggerFactory.getLogger(BlockTransmitter.class);
@@ -102,7 +102,7 @@ public class BlockTransmitter {
   /** Reports the observed inter-packet interval for metrics/telemetry. */
   public interface BlockTimeCallback {
     /**
-     * Called with the measured interval between consecutive packet sends.
+     * Called with the measured interval between consecutive packet sending.
      *
      * @param interval time in milliseconds since the previous packet was sent; negative when not
      *     applicable (e.g., for the first packet).
@@ -119,13 +119,13 @@ public class BlockTransmitter {
    */
   private boolean receivedSendCompletion;
 
-  /** Was it an allReceived? */
+  /** Was it allReceived? */
   private boolean receivedSendSuccess;
 
-  /** Have we completed i.e. called the callback? */
+  /** Have we completed i.e., called the callback? */
   private boolean completed;
 
-  /** Have we failed e.g. due to PRB abort, disconnection? */
+  /** Have we failed e.g., due to PRB abort, disconnection? */
   private boolean failed;
 
   static int runningBlockTransmits = 0;
@@ -171,7 +171,7 @@ public class BlockTransmitter {
             copy = sentPackets.copy();
             sentPackets.setBit(packetNo, true);
             // Apply a small random delay before the final two packets at high HTL.
-            // Uses 'count' to detect the last two sends (packets 31 and 32 of the block).
+            // Uses 'count' to detect the last two sending (packets 31 and 32 of the block).
             count++;
             if (isHighHtl() && count >= (Node.PACKETS_IN_BLOCK - 2)) {
               state.set(STATE_WAITING);
@@ -211,7 +211,7 @@ public class BlockTransmitter {
             DMT.createPacketTransmit(uid, packetNo, copied, prb.getPacket(packetNo), realTime);
         MyAsyncMessageCallback cb = new MyAsyncMessageCallback();
         MessageItem item;
-        // All sends are throttled via the shared ByteCounter.
+        // All sending are throttled via the shared ByteCounter.
         item = destination.transport().sendAsync(msg, cb, ctr);
         synchronized (itemsPending) {
           itemsPending.add(item);
@@ -264,39 +264,28 @@ public class BlockTransmitter {
   /**
    * Creates a new transmitter for sending a partially received block to a specific peer.
    *
-   * @param usm message core used to send control/data messages.
-   * @param ticker scheduler providing the executor and timed jobs.
-   * @param destination remote peer that will receive the packets.
-   * @param uid transfer identifier shared with the receiver.
-   * @param source source block providing packet data and readiness notifications.
-   * @param ctr byte counter used for throttling and accounting; must be non-null.
+   * @param transferContext shared transfer context (message core, peer, uid, PRB, accounting, and
+   *     timing settings)
    * @param abortHandler callback invoked when the receiver cancels; determines whether to cascade
    *     the cancel to the {@code PartiallyReceivedBlock}.
    * @param callback completion callback invoked once per transfer with success status.
-   * @param realTime if {@code true}, use realtime timeouts; otherwise use bulk settings.
    * @param blockTimes optional callback for inter-packet timing metrics; may be {@code null}.
    */
   public BlockTransmitter(
-      MessageCore usm,
-      Ticker ticker,
-      PeerContext destination,
-      long uid,
-      PartiallyReceivedBlock source,
-      ByteCounter ctr,
+      BlockTransferContext transferContext,
       ReceiverAbortHandler abortHandler,
       BlockTransmitterCompletion callback,
-      boolean realTime,
       BlockTimeCallback blockTimes) {
-    this.realTime = realTime;
-    this.ticker = ticker;
+    this.realTime = transferContext.realTime();
+    this.ticker = transferContext.ticker();
     this.executor = this.ticker.getExecutor();
     this.callback = callback;
     this.abortHandler = abortHandler;
-    messageCore = usm;
-    this.destination = destination;
-    this.uid = uid;
-    prb = source;
-    this.ctr = ctr;
+    messageCore = transferContext.messageCore();
+    this.destination = transferContext.peer();
+    this.uid = transferContext.uid();
+    prb = transferContext.block();
+    this.ctr = transferContext.byteCounter();
     if (this.ctr == null) throw new NullPointerException();
     packetSize = DMT.packetTransmitSize(prb.packetSize, prb.packets);
     try {
@@ -311,7 +300,7 @@ public class BlockTransmitter {
           "Starting block transmit for {} to {} realtime={}",
           uid,
           destination.shortToString(),
-          realTime);
+          this.realTime);
   }
 
   private Runnable timeoutJob;
@@ -379,7 +368,7 @@ public class BlockTransmitter {
   }
 
   /**
-   * Determines whether all packets have been sent, and records the time if so.
+   * Determines whether all packets have been sent and records the time if so.
    *
    * <p>LOCKING: Must be called with the {@code senderThread} monitor held.
    *
@@ -424,7 +413,7 @@ public class BlockTransmitter {
     if (!receivedSendCompletion) {
       if (LOG.isDebugEnabled())
         LOG.debug("maybeComplete() not completing because send not completed on {}", this);
-      // All the block sends have completed, wait for the other side to acknowledge or timeout.
+      // All the block sending have completed, wait for the other side to acknowledge or timeout.
       scheduleTimeoutAfterBlockSends();
       return false;
     }
@@ -479,7 +468,7 @@ public class BlockTransmitter {
   }
 
   private Future handleFailBeforeAck(final int reason, final String description) {
-    // Don't actually time out until after we have an acknowledgement of the transfer cancel.
+    // Don't time out until after we have an acknowledgement of the transfer cancel.
     // This is important for keeping track of how many transfers are actually running, which will be
     // important for load management later on.
     // The caller will immediately call prepareSendAbort() then innerSendAborted().
@@ -555,9 +544,6 @@ public class BlockTransmitter {
     boolean onAbort();
   }
 
-  /** Cascades receiver aborts to the source block. */
-  public static final ReceiverAbortHandler ALWAYS_CASCADE = () -> true;
-
   /** Never cascades receiver aborts to the source block. */
   public static final ReceiverAbortHandler NEVER_CASCADE = () -> false;
 
@@ -602,7 +588,7 @@ public class BlockTransmitter {
         @Override
         public boolean shouldTimeout() {
           synchronized (senderThread) {
-            // We are waiting for the send completion, which is set on timeout as well as on
+            // We are waiting for the sending completion, which is set on timeout as well as on
             // receiving a message.
             // In some corner cases we might want to get the allReceived after setting _failed, so
             // don't time out on _failed.
@@ -657,7 +643,7 @@ public class BlockTransmitter {
         @Override
         public boolean shouldTimeout() {
           synchronized (senderThread) {
-            // We are waiting for the send completion, which is set on timeout as well as on
+            // We are waiting for the sending completion, which is set on timeout as well as on
             // receiving a message.
             // We don't want to timeout on _failed because we can set _failed, send sendAborted, and
             // then wait for the acknowledging sendAborted.
@@ -783,7 +769,7 @@ public class BlockTransmitter {
             };
         unsent = prb.addListener(myListener);
       }
-      // If all 32 packets are ready at once and HTL is high, shuffle to mix the send order.
+      // If all 32 packets are ready at once and HTL is high, shuffle to mix the sending order.
       if (isHighHtl() && unsent.size() == Node.PACKETS_IN_BLOCK) {
         List<Integer> temp = new ArrayList<>(unsent);
         unsent.clear();
@@ -901,7 +887,7 @@ public class BlockTransmitter {
         }
       }
       if (!failed)
-        // Everything is throttled, but payload is not reported.
+        // Everything is throttled, but the payload is not reported.
         ctr.sentPayload(packetSize);
       if (callCallback) {
         callCallback(success);

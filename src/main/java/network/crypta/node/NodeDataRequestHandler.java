@@ -55,7 +55,7 @@ final class NodeDataRequestHandler {
   private static final String LOG_ALREADY_RUNNING =
       "Lock contention for id {}; reject (already running)";
 
-  /** Owning node used for network, routing, and storage dependencies. */
+  /** The owning node used for network, routing, and storage dependencies. */
   private final Node node;
 
   /**
@@ -101,7 +101,7 @@ final class NodeDataRequestHandler {
         @Override
         public int getPriority() {
           // Slightly less than the actual requests themselves because accepting requests increases
-          // load.
+          // loads.
           return NativeThread.PriorityLevel.HIGH_PRIORITY.value - 1;
         }
 
@@ -125,8 +125,9 @@ final class NodeDataRequestHandler {
           nodeStats.reportIncomingRequestLocation(key.toNormalizedDouble());
 
           boolean needsPubKey = key instanceof NodeSSK && m.getBoolean(DMT.NEED_PUB_KEY);
-          RequestHandler rh =
-              new RequestHandler(source, id, node, htl, key, tag, block, realTimeFlag, needsPubKey);
+          RequestHandlerContext context =
+              RequestHandlerContext.of(node, source, id, htl, key, tag, realTimeFlag);
+          RequestHandler rh = new RequestHandler(context, block, needsPubKey);
           rh.receivedBytes(m.receivedByteCount());
           node.network()
               .executor()
@@ -247,7 +248,7 @@ final class NodeDataRequestHandler {
    * not start background processing; callers should invoke {@link #start(NodeStats)} after the node
    * executor and statistics subsystem are available.
    *
-   * @param node owning node that provides routing, network, and storage subsystems; must be
+   * @param node The owning node that provides routing, network, and storage subsystems; must be
    *     non-null
    */
   NodeDataRequestHandler(Node node) {
@@ -317,7 +318,7 @@ final class NodeDataRequestHandler {
    * <p>The rejection is sent asynchronously to the message source. If the peer disconnects before
    * sending, the rejection is silently ignored as the request is already invalid.
    *
-   * @param m request message being rejected; used to obtain UID and source peer
+   * @param m request message being rejected; used to get UID and source peer
    * @param ctr byte counter used for accounting of the rejection message on the wire
    */
   private void rejectRequest(Message m, ByteCounter ctr) {
