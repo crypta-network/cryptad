@@ -22,6 +22,7 @@ import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKVerifyException;
 import network.crypta.keys.NodeCHK;
+import network.crypta.node.subsystem.NodeRoutingSubsystem.ChkInsertOptions;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,9 +33,9 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This sender performs routing, transmits the {@code DataInsert} payload, and then waits for a
  * terminal outcome from the next hop (e.g., {@code InsertReply}, {@code RouteNotFound}, {@code
- * RejectedOverload}, or {@code RejectedTimeout}). The data transfer proceeds in the background and
+ * RejectedOverload}, or {@code RejectedTimeout}). The data transfer proceeds in the background, and
  * completion is tracked via a dedicated listener. A two‑stage timeout model is used: a first
- * timeout unlocks downstream routing and a second timeout is treated as fatal for the misbehaving
+ * timeout unlocks downstream routing, and a second timeout is treated as fatal for the misbehaving
  * peer.
  *
  * <p>Thread-safety: routing and state transitions are coordinated using the inherited sender lock
@@ -58,18 +59,18 @@ public final class CHKInsertSender extends BaseSender
     BlockTransmitter bt;
 
     /**
-     * Have we received notice of the downstream success or failure of dependant transfers from that
+     * Have we received notice of the downstream success or failure of dependent transfers from that
      * node? Includes timing out.
      */
     boolean receivedCompletionNotice;
 
-    /** Set on fatal timeout or on any non-timeout completion. */
+    /** Set on the fatal timeout or on any non-timeout completion. */
     boolean finishedWaiting;
 
-    /** Was the notification of successful transfer? */
+    /** Was the notification of a successful transfer? */
     boolean completionSucceeded;
 
-    /** True once the payload stream to the peer finishes (success or failure). */
+    /** True, once the payload stream to the peer finishes (success or failure). */
     boolean completedTransfer;
 
     /** Whether an {@code InsertReply}, RNF, or similar completion has been received. */
@@ -125,7 +126,7 @@ public final class CHKInsertSender extends BaseSender
     /**
      * Starts waiting for an acknowledgement or timeout.
      *
-     * <p>Preconditions: the data transfer to the peer succeeded and an RNF/InsertReply (or
+     * <p>Preconditions: the data transfer to the peer succeeded, and an RNF/InsertReply (or
      * equivalent) has been observed. The timeout is relative to this point to avoid counting time
      * spent routing.
      */
@@ -264,7 +265,7 @@ public final class CHKInsertSender extends BaseSender
         finishedWaiting = true;
         return new NoticeOutcome(false, false);
       }
-      // First timeout but not yet fatal: unlock downstream and wait for fatal timeout.
+      // First timeout but not yet fatal: unlock downstream and wait for the fatal timeout.
       // Safe to call the tag within the lock since UIDTag is taken last.
       thisTag.handlingTimeout(pn);
       return new NoticeOutcome(true, false);
@@ -312,7 +313,7 @@ public final class CHKInsertSender extends BaseSender
           "Timed out waiting for a final ack from: {} on {}", pn, this, new Exception("debug"));
       if (receivedNotice(false, true, false)) {
         pn.localRejectedOverload("InsertTimeoutNoFinalAck", realTimeFlag);
-        // First timeout. Wait for second timeout.
+        // First timeout. Wait for the second timeout.
         try {
           node.network()
               .usm()
@@ -375,27 +376,21 @@ public final class CHKInsertSender extends BaseSender
       NodeCHK myKey,
       long uid,
       InsertTag tag,
-      byte[] headers,
       short htl,
       PeerNode source,
       Node node,
-      PartiallyReceivedBlock prb,
-      boolean fromStore,
-      boolean forkOnCacheable,
-      boolean preferInsert,
-      boolean ignoreLowBackoff,
-      boolean realTimeFlag) {
-    super(myKey, realTimeFlag, source, node, htl, uid);
+      ChkInsertOptions opts) {
+    super(myKey, opts.realTimeFlag, source, node, htl, uid);
     this.origUID = uid;
     this.origTag = tag;
-    this.headers = headers;
-    this.prb = prb;
-    this.fromStore = fromStore;
+    this.headers = opts.headers;
+    this.prb = opts.prb;
+    this.fromStore = opts.fromStore;
     this.backgroundTransfers = new ArrayList<>();
-    this.forkOnCacheable = forkOnCacheable;
-    this.preferInsert = preferInsert;
-    this.ignoreLowBackoff = ignoreLowBackoff;
-    if (realTimeFlag) {
+    this.forkOnCacheable = opts.forkOnCacheable;
+    this.preferInsert = opts.preferInsert;
+    this.ignoreLowBackoff = opts.ignoreLowBackoff;
+    if (opts.realTimeFlag) {
       transferCompletionTimeout = TRANSFER_COMPLETION_ACK_TIMEOUT_REALTIME;
     } else {
       transferCompletionTimeout = TRANSFER_COMPLETION_ACK_TIMEOUT_BULK;
@@ -653,7 +648,7 @@ public final class CHKInsertSender extends BaseSender
   private void handleRejectedTimeout(Message msg, PeerNode next) {
     // Some severe lag problem.
     // However, it is not fatal because we can be confident now that even if the DataInsert
-    // is delivered late, it will not be acted on. I.e. we are certain how many requests
+    // is delivered late, it will not be acted on. I.e., we are certain how many requests
     // are running, which is what fatal timeouts are designed to deal with.
     LOG.warn(
         "Node timed out waiting for our DataInsert ({} from {}) after Accepted in insert - treating"
@@ -670,10 +665,10 @@ public final class CHKInsertSender extends BaseSender
   }
 
   /**
-   * @return True if fatal i.e. we should try another node.
+   * @return True if fatal, i.e., we should try another node.
    */
   private boolean handleRejectedOverload(Message msg, PeerNode next) {
-    // Probably non-fatal, if so, we have time left, can try next one
+    // Probably non-fatal, if so, we have time left, can try the next one
     if (msg.getBoolean(DMT.IS_LOCAL)) {
       next.localRejectedOverload("ForwardRejectedOverload6", realTimeFlag);
       if (LOG.isDebugEnabled()) LOG.debug("Local RejectedOverload, moving on to next peer");
@@ -745,7 +740,7 @@ public final class CHKInsertSender extends BaseSender
     try {
       if (prb.allReceived()) {
         // Probably caused by transient connectivity problems.
-        // Only fatal timeouts warrant ERROR's because they indicate something seriously wrong
+        // Only fatal timeouts warrant ERROR because they indicate something seriously wrong
         // that didn't result in a disconnection, and because they cause disconnections.
         LOG.warn("Received all data but send failed to {}", next);
       } else {
@@ -768,7 +763,7 @@ public final class CHKInsertSender extends BaseSender
    *
    * @param next peer from which an early outcome is expected
    * @param acceptedTimeout timeout (ms) for awaiting the outcome
-   * @param tag current routing tag carrying the UID; may differ when forking
+   * @param tag the current routing tag carrying the UID; may differ when forking
    * @return a configured {@link MessageFilter}
    */
   @Override
@@ -816,8 +811,8 @@ public final class CHKInsertSender extends BaseSender
   @Override
   protected void handleAcceptedRejectedTimeout(final PeerNode next, final UIDTag tag) {
     // It could still be running. So the timeout is fatal to the node.
-    // This is a WARNING not an ERROR because it's possible that the problem is we simply haven't
-    // been able to send the message yet, because we don't use sendSync().
+    // This is a WARNING, not an ERROR because it's possible that the problem is we simply haven't
+    // been able to send the message yet because we don't use sendSync().
     LOG.warn("Timeout awaiting Accepted/Rejected {} to {}", this, next);
     // Use the right UID here, in case we fork.
     final long uid = tag.uid;
@@ -848,7 +843,7 @@ public final class CHKInsertSender extends BaseSender
                           CHKInsertSender.this);
                     // We are not going to send the DataInsert.
                     // We have moved on, and we don't want inserts to fork unnecessarily.
-                    // However, we need to send a DataInsertRejected, or two-stage timeout will
+                    // However, we need to send a DataInsertRejected, or a two-stage timeout will
                     // happen.
                     sendTimeoutRejectedAfterAccepted(next, tag, uid);
                   } else {
@@ -1064,7 +1059,7 @@ public final class CHKInsertSender extends BaseSender
     return true;
   }
 
-  /** Called by CHKInsertHandler to notify that the receive has failed. */
+  /** Called by CHKInsertHandler to notify that the receiving has failed. */
   public void onReceiveFailed() {
     if (LOG.isDebugEnabled()) LOG.debug("Receive failed on {}", this);
     synchronized (backgroundTransfers) {
@@ -1082,7 +1077,7 @@ public final class CHKInsertSender extends BaseSender
       allTransfersCompleted = true;
       notifyAll();
     }
-    // Do not call finish(), that can only be called on the main thread and it will block.
+    // Do not call finish(), that can only be called on the main thread, and it will block.
   }
 
   /**
@@ -1147,7 +1142,7 @@ public final class CHKInsertSender extends BaseSender
           backgroundTransfers.wait(SECONDS.toMillis(100));
         } catch (InterruptedException _) {
           // Record and break out so higher-level shutdown paths can react promptly.
-          // Re-assert interrupt here to satisfy static analysis and preserve signal.
+          // Re-assert interrupt here to satisfy static analysis and preserve the signal.
           Thread.currentThread().interrupt();
           // We'll exit the loop and return promptly; callers can decide how to react.
           interrupted = true;
@@ -1211,8 +1206,8 @@ public final class CHKInsertSender extends BaseSender
   }
 
   /**
-   * Returns the header bytes that accompany the block; callers historically used this as a
-   * public‑key hash.
+   * Returns the header bytes that go with the block; callers historically used this as a public‑key
+   * hash.
    *
    * @return header bytes (non-null)
    */
@@ -1223,7 +1218,7 @@ public final class CHKInsertSender extends BaseSender
   /**
    * Waits up to {@code millis} for the sender to transition out of {@link #NOT_FINISHED}.
    *
-   * <p>Thread-safety: uses the sender's intrinsic monitor which is also used for notify/notifyAll
+   * <p>Thread-safety: uses the sender's intrinsic monitor, which is also used for notify/notifyAll
    * in this class. Callers should not synchronize on the sender instance directly; use this helper
    * instead to avoid synchronizing on parameters.
    */
@@ -1237,7 +1232,7 @@ public final class CHKInsertSender extends BaseSender
           try {
             this.wait(0); // indefinite wait
           } catch (InterruptedException _) {
-            // See rationale above: ignore to avoid busy-spin in polling callers.
+            // See the rationale above: ignore to avoid busy-spin in polling callers.
           }
         }
         return;
@@ -1257,7 +1252,7 @@ public final class CHKInsertSender extends BaseSender
             this.wait(waitMillis, waitNanos);
           }
         } catch (InterruptedException _) {
-          // Intentionally swallow interrupts here so callers that poll using wait/notify
+          // Intentionally swallow interrupts here, so callers that poll using wait/notify
           // do not busy-spin with an already-set interrupt flag. Shutdown/cancellation paths
           // may interrupt these threads; we still prefer to wait for a terminal status.
         }
@@ -1512,7 +1507,7 @@ public final class CHKInsertSender extends BaseSender
       return;
     } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Unable to send {} to {} in a reasonable time", dataInsert, next);
-      // Other side will fail. No need to do anything.
+      // Another side will fail. No need to do anything.
       next.noLongerRoutingTo(thisTag, false);
       routeRequests();
       return;
