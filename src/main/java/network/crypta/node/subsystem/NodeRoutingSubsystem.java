@@ -14,6 +14,7 @@ import network.crypta.node.Location;
 import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
 import network.crypta.node.RequestSender;
+import network.crypta.node.RequestSenderContext;
 import network.crypta.node.RequestTag;
 import network.crypta.node.RequestTracker;
 import network.crypta.node.SSKInsertSender;
@@ -301,17 +302,9 @@ public final class NodeRoutingSubsystem {
 
     RequestSender created =
         new RequestSender(
-            key,
-            null,
-            htl,
-            uid,
-            tag,
-            node,
-            source,
-            offersOnly,
-            canWriteClientCache,
-            canWriteDatastore,
-            realTimeFlag);
+            new RequestSenderContext(key, null, htl, uid, tag, node, source),
+            opts,
+            canWriteDatastore);
     tag.setSender(created, false);
     created.start();
     if (LOG.isDebugEnabled()) LOG.debug("Created new sender: {}", created);

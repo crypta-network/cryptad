@@ -18,6 +18,7 @@ import network.crypta.io.comm.Message;
 import network.crypta.keys.NodeCHK;
 import network.crypta.keys.NodeSSK;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
+import network.crypta.node.subsystem.NodeRoutingSubsystem.RequestSenderOptions;
 import network.crypta.support.PriorityAwareExecutor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,18 +46,11 @@ class RequestSenderTest {
     NodeCHK key = new NodeCHK(bytes(NodeCHK.KEY_LENGTH, 1), (byte) 1);
     when(node.maxHTL()).thenReturn((short) 18);
     when(node.network().enableNewLoadManagement(realtime)).thenReturn(false);
-    return new RequestSender(
-        key,
-        /* pubKey */ null,
-        htl,
-        uid,
-        mock(RequestTag.class),
-        node,
-        /* source */ null,
-        /* offersOnly */ false,
-        /* canWriteClientCache */ true,
-        /* canWriteDatastore */ true,
-        realtime);
+    RequestSenderContext context =
+        new RequestSenderContext(key, null, htl, uid, mock(RequestTag.class), node, null);
+    RequestSenderOptions options =
+        RequestSenderOptions.of(false, false, false, false, true, realtime);
+    return new RequestSender(context, options, true);
   }
 
   private RequestSender newSskSender(boolean realtime, long uid, short htl, DSAPublicKey pubKey) {
@@ -66,18 +60,18 @@ class RequestSenderTest {
     NodeSSK key = new NodeSSK(pkh, ehd, (byte) 1);
     when(node.maxHTL()).thenReturn((short) 18);
     when(node.network().enableNewLoadManagement(realtime)).thenReturn(false);
-    return new RequestSender(
-        key,
-        pubKey,
-        htl,
-        uid,
-        mock(RequestTag.class),
-        node,
-        /* source */ null,
-        /* offersOnly */ false,
-        /* canWriteClientCache */ true,
-        /* canWriteDatastore */ true,
-        realtime);
+    RequestSenderContext context =
+        new RequestSenderContext(key, pubKey, htl, uid, mock(RequestTag.class), node, null);
+    RequestSenderOptions options =
+        RequestSenderOptions.of(false, false, false, false, true, realtime);
+    return new RequestSender(context, options, true);
+  }
+
+  private void createSenderWithNullKey() {
+    RequestSenderContext context =
+        new RequestSenderContext(null, null, (short) 5, 99L, mock(RequestTag.class), node, null);
+    RequestSenderOptions options = RequestSenderOptions.of(false, false, false, false, true, false);
+    new RequestSender(context, options, true);
   }
 
   @ParameterizedTest
@@ -215,20 +209,6 @@ class RequestSenderTest {
 
   @Test
   void constructor_whenKeyIsNull_throwsNullPointerException() {
-    assertThrows(
-        NullPointerException.class,
-        () ->
-            new RequestSender(
-                /* key */ null,
-                /* pubKey */ null,
-                (short) 5,
-                99L,
-                mock(RequestTag.class),
-                node,
-                /* source */ null,
-                /* offersOnly */ false,
-                /* canWriteClientCache */ true,
-                /* canWriteDatastore */ true,
-                /* realtime */ false));
+    assertThrows(NullPointerException.class, this::createSenderWithNullKey);
   }
 }
