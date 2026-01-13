@@ -31,6 +31,7 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.fs.AppDirs;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.CHKVerifyException;
@@ -526,6 +527,12 @@ class NodeClientCoreSupportTest {
     InsertableClientSSK key = InsertableClientSSK.createRandom(random, SSK_DOC_NAME);
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(SSK_SAMPLE_BYTES);
     return key.encode(
-        bucket, false, true, (short) -1, bucket.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+        new BlockEncodeParams(
+            bucket,
+            false,
+            true,
+            (short) -1,
+            bucket.size(),
+            Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
   }
 }

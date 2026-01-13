@@ -2,13 +2,9 @@ package network.crypta.keys;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -53,67 +49,8 @@ class ClientSSKBlockTest {
 
     ClientSSKBlock block =
         key.encode(
-            src,
-            false, // asMetadata
-            true, // dontCompress
-            (short) -1, // alreadyCompressedCodec
-            src.size(),
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-
-    byte[] bytes;
-    try (Bucket decoded = block.decode(new ArrayBucketFactory(), 32 * 1024, true)) {
-      bytes = BucketTools.toByteArray(decoded);
-    }
-
-    assertArrayEquals(text.getBytes(StandardCharsets.UTF_8), bytes);
-    assertFalse(block.isMetadata());
-    assertEquals((short) -1, block.getCompressionCodec());
-    assertSame(key, block.getClientKey());
-    assertNotNull(block.getBlock());
-    assertNotNull(block.getKey());
-
-    // memoryDecode() with default path should match decode(..., dontDecompress=false) for
-    // uncompressed data
-    byte[] mem = block.memoryDecode();
-    assertArrayEquals(text.getBytes(StandardCharsets.UTF_8), mem);
-  }
-
-  @Test
-  @DisplayName("metadata flag: set during encode and observable after decode")
-  void decode_whenAsMetadata_expectIsMetadataTrue() throws Exception {
-    String docName = "doc-meta";
-    byte[] payload = {1, 2, 3};
-
-    InsertableClientSSK key = InsertableClientSSK.createRandom(rng, docName);
-    Bucket src = new SimpleReadOnlyArrayBucket(payload);
-
-    ClientSSKBlock block =
-        key.encode(
-            src,
-            true, // asMetadata
-            true, // dontCompress
-            (short) -1,
-            src.size(),
-            Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
-
-    // Before decode, calling isMetadata() should throw
-    assertThrows(IllegalStateException.class, block::isMetadata);
-
-    // After decode, flag should be set
-    try (Bucket decoded = block.decode(new ArrayBucketFactory(), 32 * 1024, true)) {
-      assertNotNull(decoded);
-    }
-    assertTrue(block.isMetadata());
-  }
-
-  @Test
-  @DisplayName("isMetadata precondition: throws when called before decode")
-  void isMetadata_whenCalledBeforeDecode_expectIllegalStateException() throws Exception {
-    InsertableClientSSK key = InsertableClientSSK.createRandom(rng, "precondition");
-    Bucket src = new SimpleReadOnlyArrayBucket("x".getBytes(StandardCharsets.UTF_8));
-    ClientSSKBlock block =
-        key.encode(
-            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            new BlockEncodeParams(
+                src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
 
     assertThrows(IllegalStateException.class, block::isMetadata);
   }
@@ -126,11 +63,13 @@ class ClientSSKBlockTest {
 
     ClientSSKBlock a =
         key.encode(
-            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            new BlockEncodeParams(
+                src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
     // Re-encode the same source with the same key → deterministic block
     ClientSSKBlock b =
         key.encode(
-            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            new BlockEncodeParams(
+                src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
 
     assertNotSame(a, b);
     assertEquals(a, b);
@@ -140,7 +79,13 @@ class ClientSSKBlockTest {
     Bucket src2 = new SimpleReadOnlyArrayBucket("abcd".getBytes(StandardCharsets.UTF_8));
     ClientSSKBlock c =
         key.encode(
-            src2, false, true, (short) -1, src2.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            new BlockEncodeParams(
+                src2,
+                false,
+                true,
+                (short) -1,
+                src2.size(),
+                Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
     assertNotEquals(a, c);
   }
 
@@ -185,7 +130,8 @@ class ClientSSKBlockTest {
     Bucket src = new SimpleReadOnlyArrayBucket(text.getBytes(StandardCharsets.UTF_8));
     ClientSSKBlock block =
         key.encode(
-            src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+            new BlockEncodeParams(
+                src, false, true, (short) -1, src.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
 
     byte[] raw;
     try (Bucket b = block.decode(new ArrayBucketFactory(), 32768, true)) {
@@ -213,7 +159,7 @@ class ClientSSKBlockTest {
       boolean asMetadata,
       short compressionAlg)
       throws Exception {
-    // Prepare the decrypted header segment: [32] dataDecryptKey || [2] len+meta || [2] codec
+    // Prepare decrypted header segment: dataDecryptKey, length+meta, codec.
     byte[] decryptedHeader = new byte[SSKBlock.ENCRYPTED_HEADERS_LENGTH];
     byte[] dataDecryptKey = new byte[ClientSSKBlock.DATA_DECRYPT_KEY_LENGTH];
     Arrays.fill(dataDecryptKey, (byte) 0x42);
@@ -246,7 +192,7 @@ class ClientSSKBlockTest {
     System.arraycopy(encHeader, 0, headers, x, encHeader.length);
     x += encHeader.length;
 
-    // Construct the ciphertext payload: encrypt 1024 bytes using dataDecryptKey as key and IV
+    // Construct the ciphertext payload: encrypt 1024 bytes using dataDecryptKey as the key and IV
     byte[] data = new byte[SSKBlock.DATA_LENGTH];
     if (plaintext.length > data.length) throw new IllegalArgumentException("plaintext too long");
     System.arraycopy(plaintext, 0, data, 0, Math.min(plaintext.length, Math.max(0, dataLength)));

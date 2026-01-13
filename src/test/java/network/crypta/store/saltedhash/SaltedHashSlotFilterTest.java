@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKDecodeException;
 import network.crypta.keys.CHKEncodeException;
@@ -458,12 +459,13 @@ class SaltedHashSlotFilterTest {
     byte[] data = test.getBytes(StandardCharsets.UTF_8);
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
     return ClientCHKBlock.encode(
-        bucket,
-        false,
-        false,
-        (short) -1,
-        bucket.size(),
-        Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
+        new BlockEncodeParams(
+            bucket,
+            false,
+            false,
+            (short) -1,
+            bucket.size(),
+            Compressor.DEFAULT_COMPRESSORDESCRIPTOR),
         null,
         (byte) 0);
   }

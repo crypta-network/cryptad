@@ -6,6 +6,7 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.keys.ClientKSK;
@@ -47,7 +48,7 @@ import org.slf4j.event.Level;
  * to diversify routing while ULPRs replicate content to nodes that previously requested it.
  *
  * <p>The simulation starts nodes with their own background threads and uses a simple polling loop
- * with a one-second tick to measure propagation time. It is not designed to be run concurrently in
+ * with a one-second tick to measure propagation time. It is not designed to be run concurrently on
  * the same JVM because it exits the process on failure and uses shared static configuration.
  *
  * <p><b>Responsibilities:</b>
@@ -72,18 +73,18 @@ public class RealNodeULPRTest extends RealNodeTest {
    *
    * <p>This value is derived from {@link RealNodePingTest#DARKNET_PORT_END} so the ULPR test can
    * run alongside other simulator tests without colliding on port assignments. Nodes are assigned
-   * consecutive ports starting at this base, so the range is deterministic across runs.
+   * to consecutive ports starting at this base, so the range is deterministic across runs.
    */
   public static final int DARKNET_PORT_BASE = RealNodePingTest.DARKNET_PORT_END;
 
   /**
    * Creates a new ULPR test harness instance.
    *
-   * <p>The class is typically used via its {@link #main(String[])} entry point, but a public
-   * constructor is provided to satisfy doclint requirements for public types. The constructor is
-   * intentionally side-effect free: it does not allocate nodes, create files, or start background
-   * threads. Callers are expected to invoke static setup routines explicitly rather than relying on
-   * instance initialization.
+   * <p>The class is typically used via its {@link #main()} entry point, but a public constructor is
+   * provided to satisfy doclint requirements for public types. The constructor is intentionally
+   * side-effect-free: it does not allocate nodes, create files, or start background threads.
+   * Callers are expected to invoke static setup routines explicitly rather than relying on instance
+   * initialization.
    */
   public RealNodeULPRTest() {
     // Intentionally empty: the harness is driven via static entry points.
@@ -104,7 +105,6 @@ public class RealNodeULPRTest extends RealNodeTest {
    * }
    * }</pre>
    *
-   * @param args command-line arguments; unused but reserved for future flags and harnesses
    * @throws FSParseException if a node reference cannot be parsed during linking
    * @throws PeerParseException if a peer record is malformed while connecting nodes
    * @throws CHKEncodeException if a CHK block cannot be encoded for the test key
@@ -117,7 +117,7 @@ public class RealNodeULPRTest extends RealNodeTest {
    * @throws InvalidCompressionCodecException if the default compression descriptor is unsupported
    * @throws PeerTooOldException if a peer is rejected due to an incompatible version
    */
-  public static void main(String[] args)
+  public static void main()
       throws FSParseException,
           PeerParseException,
           CHKEncodeException,
@@ -292,12 +292,13 @@ public class RealNodeULPRTest extends RealNodeTest {
       fetchKey = ClientKSK.create(testKey);
       block =
           insertKey.encode(
-              new ArrayBucket(buf),
-              false,
-              false,
-              (short) -1,
-              buf.length,
-              Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+              new BlockEncodeParams(
+                  new ArrayBucket(buf),
+                  false,
+                  false,
+                  (short) -1,
+                  buf.length,
+                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
     } else {
       block =
           ClientCHKBlock.encode(

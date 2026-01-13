@@ -83,12 +83,8 @@ class ClientCHKBlockTest {
     System.arraycopy(data, 0, copyOfData, 0, data.length);
     ClientCHKBlock encodedBlock =
         ClientCHKBlock.encode(
-            new ArrayBucket(data),
-            false,
-            false,
-            (short) -1,
-            data.length,
-            null,
+            new BlockEncodeParams(
+                new ArrayBucket(data), false, false, (short) -1, data.length, null),
             null,
             cryptoAlgorithm);
     // Not modified in-place.
@@ -98,12 +94,8 @@ class ClientCHKBlockTest {
       // Check with no JCA.
       ClientCHKBlock otherEncodedBlock =
           ClientCHKBlock.encode(
-              new ArrayBucket(data),
-              false,
-              false,
-              (short) -1,
-              data.length,
-              null,
+              new BlockEncodeParams(
+                  new ArrayBucket(data), false, false, (short) -1, data.length, null),
               null,
               cryptoAlgorithm,
               true);
@@ -257,18 +249,17 @@ class ClientCHKBlockTest {
     byte[] data = new byte[CHKBlock.DATA_LENGTH];
     byte[] encKey = new byte[Node.SYMMETRIC_KEY_LENGTH];
     MessageDigest md = network.crypta.crypt.SHA256.getMessageDigest();
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            ClientCHKBlock.encodeNew(
-                data,
-                /* dataLength= */ 0,
-                md,
-                encKey,
-                /* asMetadata= */ false,
-                (short) -1,
-                Key.ALGO_AES_PCFB_256_SHA256,
-                KeyBlock.HASH_SHA256));
+    ClientCHKEncodeParams params =
+        new ClientCHKEncodeParams(
+            data,
+            /* dataLength= */ 0,
+            md,
+            encKey,
+            /* asMetadata= */ false,
+            (short) -1,
+            Key.ALGO_AES_PCFB_256_SHA256,
+            KeyBlock.HASH_SHA256);
+    assertThrows(IllegalArgumentException.class, () -> ClientCHKBlock.encodeNew(params));
   }
 
   @Test
@@ -279,13 +270,15 @@ class ClientCHKBlockTest {
     MessageDigest md = network.crypta.crypt.SHA256.getMessageDigest();
     byte[] encKey = new byte[Node.SYMMETRIC_KEY_LENGTH];
     ClientCHKBlock.innerEncode(
-        data,
-        /* dataLength= */ 123,
-        md,
-        encKey,
-        /* asMetadata= */ false,
-        (short) -1,
-        Key.ALGO_AES_PCFB_256_SHA256);
+        new ClientCHKEncodeParams(
+            data,
+            /* dataLength= */ 123,
+            md,
+            encKey,
+            /* asMetadata= */ false,
+            (short) -1,
+            Key.ALGO_AES_PCFB_256_SHA256,
+            KeyBlock.HASH_SHA256));
     // Ensure the original input array was not mutated
     assertArrayEquals(original, data);
   }

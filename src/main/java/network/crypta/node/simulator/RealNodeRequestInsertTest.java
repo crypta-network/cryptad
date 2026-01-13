@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.keys.ClientKSK;
@@ -42,7 +43,7 @@ import org.slf4j.event.Level;
  * <p>This harness bootstraps a fixed-size darknet topology, inserts a small payload on a randomly
  * selected node, and attempts to fetch the same data from another node until a target number of
  * successful fetches is reached. It is intended for manual or batch execution to observe routing
- * health and basic data integrity in a controlled environment. The class owns all test state,
+ * health and basic data integrity in a controlled environment. The class owns all test states,
  * including node instances, request counters, and success tracking, and it is not thread-safe; run
  * it from a single driver thread and avoid sharing instances across concurrent tests.
  *
@@ -73,14 +74,14 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
   static final boolean ENABLE_FOAF = true;
   static final boolean FORK_ON_CACHEABLE = false;
   static final boolean DISABLE_PROBABILISTIC_HTLS = true;
-  // Set to true to cache everything. This depends on security level.
+  // Set to true to cache everything. This depends on the security level.
   static final boolean USE_SLASHDOT_CACHE = false;
   static final boolean REAL_TIME_FLAG = false;
 
   static final int TARGET_SUCCESSES = 20;
 
   // High bwlimit makes the "other" requests not affect the test requests.
-  // Real solution is to get rid of the "other" requests.
+  // The real solution is to get rid of the "other" requests.
   static final int BWLIMIT = 1000 * 1024;
 
   /**
@@ -110,13 +111,12 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
    * The method is not idempotent because it deletes and recreates the working directory on each
    * run. It is intended to be executed from the command line in a controlled environment.
    *
-   * @param args command-line arguments; unused and expected to be empty or ignored
    * @throws CHKEncodeException if CHK key generation fails for the test payload
    * @throws NodeInitException if node initialization fails during test setup
    * @throws InterruptedException if the test thread is interrupted while waiting
    */
-  public static void main(String[] args)
-      throws CHKEncodeException, NodeInitException, InterruptedException {
+  @SuppressWarnings("unused")
+  static void main() throws CHKEncodeException, NodeInitException, InterruptedException {
     String name = "realNodeRequestInsertTest";
     File wd = new File(name);
     if (!FileUtil.removeAll(wd)) {
@@ -235,7 +235,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
    * Executes a single insert and fetch attempt, updating success tracking.
    *
    * <p>The method selects a random insert node, generates an SSK-based key pair and encoded block,
-   * inserts the block, then selects a distinct fetch node and attempts to retrieve and decode the
+   * inserts the block, then selects a distinct fetch node, and attempts to retrieve and decode the
    * data. It returns {@code -1} to indicate the harness should continue, or a non-negative exit
    * code when a terminal success or failure condition is reached. Each call increments the request
    * counter and updates the running success average for reporting.
@@ -262,7 +262,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       LOG.warn("Interrupted while pausing before insert attempt {}", requestNumber, e1);
     }
     String dataString = baseString + requestNumber;
-    // Pick random node to insert to
+    // Pick a random node to insert to
     int node1 = random.nextInt(NUMBER_OF_NODES);
     Node randomNode = nodes[node1];
 
@@ -292,7 +292,7 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       LOG.error("Insert failed", putEx);
       return EXIT_INSERT_FAILED;
     }
-    // Pick random node to request from
+    // Pick a random node to request from
     int node2;
     do {
       node2 = random.nextInt(NUMBER_OF_NODES);
@@ -331,12 +331,13 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
       block =
           ((InsertableClientSSK) insertKey)
               .encode(
-                  new ArrayBucket(buf),
-                  false,
-                  false,
-                  (short) -1,
-                  buf.length,
-                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                  new BlockEncodeParams(
+                      new ArrayBucket(buf),
+                      false,
+                      false,
+                      (short) -1,
+                      buf.length,
+                      Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
     } else {
       block =
           ClientCHKBlock.encode(

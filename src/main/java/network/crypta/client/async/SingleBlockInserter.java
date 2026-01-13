@@ -11,6 +11,7 @@ import network.crypta.client.InsertContext;
 import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.crypt.RandomSource;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHKBlock;
 import network.crypta.keys.ClientKey;
@@ -105,13 +106,13 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
   /**
    * Target URI that determines the key type (e.g., {@code CHK}, {@code SSK}, or {@code KSK}).
    *
-   * <p>Uses essentially no RAM in the common case of a CHK because we use {@link
+   * <p>Essentially uses no RAM in the common case of a CHK because we use {@link
    * FreenetURI#EMPTY_CHK_URI}.
    */
-  final FreenetURI uri; // uses essentially no RAM in the common case of a CHK because we use
+  final FreenetURI uri; // essentially uses no RAM in the common case of a CHK because we use
 
   // FreenetURI.EMPTY_CHK_URI
-  /** The client key produced by a successful encode, or {@code null} until available. */
+  /** The client key produced by a successful encoding, or {@code null} until available. */
   private ClientKey resultingKey;
 
   /**
@@ -142,7 +143,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
   private final boolean dontSendEncoded;
 
   /** Per-block integer token used by higher-level constructs (e.g., splitfiles). */
-  final int token; // for e.g. splitfiles
+  final int token; // for e.g., splitfiles
 
   /** Opaque scheduling token returned by {@link #getToken()} to identify this request. */
   private final Object tokenObject;
@@ -182,8 +183,8 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
    * Creates a new inserter for a single block.
    *
    * <p>The instance is single-use. After construction, invoke {@link #schedule(ClientContext)} to
-   * register it with the scheduler or {@link #tryEncode(ClientContext)} to trigger an early encode
-   * when the context enables it.
+   * register it with the scheduler or {@link #tryEncode(ClientContext)} to trigger an early
+   * encoding when the context enables it.
    *
    * @param payload block data and encoding parameters for this insert
    * @param params shared inserter parameters including parent, callbacks, and insert context
@@ -260,11 +261,11 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
   /**
    * Static helper to encode the provided data and parameters into a {@link ClientKeyBlock}.
    *
-   * <p>For {@code CHK} URIs, this delegates to {@link
-   * ClientCHKBlock#encode(network.crypta.support.api.Bucket, boolean, boolean, short, long, String,
+   * <p>For {@code CHK} URIs, this delegates to {@link ClientCHKBlock#encode(BlockEncodeParams,
    * byte[], byte)}. For {@code SSK} and {@code KSK} URIs, it creates an {@link InsertableClientSSK}
-   * and delegates to its encoder. The {@code compressionCodec} of {@code -1} indicates that the
-   * implementation may choose whether to compress. Callers must provide a non-null {@code random}.
+   * and delegates to {@link InsertableClientSSK#encode(BlockEncodeParams)}. The {@code
+   * compressionCodec} of {@code -1} indicates that the implementation may choose whether to
+   * compress. Callers must provide a non-null {@code random}.
    *
    * @param random Randomness provider required by the encoders; must not be {@code null}.
    * @param payload Block payload and encoding parameters; must not be {@code null}.
@@ -285,25 +286,19 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
           InvalidCompressionCodecException {
     Objects.requireNonNull(random, "random");
     String uriType = payload.uri().getKeyType();
+    BlockEncodeParams encodeParams =
+        new BlockEncodeParams(
+            payload.data(),
+            payload.isMetadata(),
+            payload.compressionCodec() == -1,
+            payload.compressionCodec(),
+            payload.sourceLength(),
+            compressorDescriptor);
     if (uriType.equals("CHK")) {
-      return ClientCHKBlock.encode(
-          payload.data(),
-          payload.isMetadata(),
-          payload.compressionCodec() == -1,
-          payload.compressionCodec(),
-          payload.sourceLength(),
-          compressorDescriptor,
-          payload.cryptoKey(),
-          payload.cryptoAlgorithm());
+      return ClientCHKBlock.encode(encodeParams, payload.cryptoKey(), payload.cryptoAlgorithm());
     } else if (uriType.equals("SSK") || uriType.equals("KSK")) {
       InsertableClientSSK ik = InsertableClientSSK.create(payload.uri());
-      return ik.encode(
-          payload.data(),
-          payload.isMetadata(),
-          payload.compressionCodec() == -1,
-          payload.compressionCodec(),
-          payload.sourceLength(),
-          compressorDescriptor);
+      return ik.encode(encodeParams);
     } else {
       throw new InsertException(
           InsertExceptionMode.INVALID_URI, "Unknown keytype " + uriType, null);
@@ -516,7 +511,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
    * <p>If the key has not yet been derived, this method triggers encoding by calling {@link
    * #getBlock(ClientContext)} and then returns the URI once available.
    *
-   * @param context Runtime context used to perform an on-demand encode.
+   * @param context Runtime context used to perform an on-demand encoding.
    * @return The final content URI for the inserted block.
    */
   public FreenetURI getURI(ClientContext context) {
@@ -532,7 +527,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
   }
 
   /**
-   * Returns the resulting URI if already known without triggering a new encode.
+   * Returns the resulting URI if already known without triggering a new encoding.
    *
    * @return The content URI or {@code null} when encoding has not yet produced a key.
    */
@@ -541,7 +536,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
   }
 
   /**
-   * Returns the resulting {@link ClientKey} if already known without triggering a new encode.
+   * Returns the resulting {@link ClientKey} if already known without triggering a new encoding.
    *
    * @return The client key instance or {@code null} when not yet derived.
    */
@@ -572,7 +567,8 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     if (LOG.isDebugEnabled()) LOG.debug("Calling onSuccess for {}", cb);
     if (shouldSendKey)
       cb.onEncode(
-          key, this, context); // In case of race conditions etc., especially for LocalRequestOnly.
+          key, this,
+          context); // In the case of race conditions etc., especially for LocalRequestOnly.
     cb.onSuccess(this, context);
   }
 

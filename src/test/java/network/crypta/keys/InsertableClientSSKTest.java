@@ -200,12 +200,13 @@ class InsertableClientSSKTest {
     // Act
     ClientSSKBlock block =
         ssk.encode(
-            input,
-            /* asMetadata= */ false,
-            /* dontCompress= */ true,
-            /* alreadyCompressedCodec= */ (short) -1,
-            /* sourceLength= */ payload.length,
-            /* compressordescriptor= */ null);
+            new BlockEncodeParams(
+                input,
+                /* asMetadata= */ false,
+                /* dontCompress= */ true,
+                /* alreadyCompressedCodec= */ (short) -1,
+                /* sourceLength= */ payload.length,
+                /* compressordescriptor= */ null));
 
     byte[] decoded = block.memoryDecode(false);
 
@@ -233,12 +234,13 @@ class InsertableClientSSKTest {
 
     ClientSSKBlock block =
         ssk.encode(
-            input,
-            /* asMetadata= */ true,
-            /* dontCompress= */ true,
-            /* alreadyCompressedCodec= */ (short) -1,
-            /* sourceLength= */ payload.length,
-            /* compressordescriptor= */ null);
+            new BlockEncodeParams(
+                input,
+                /* asMetadata= */ true,
+                /* dontCompress= */ true,
+                /* alreadyCompressedCodec= */ (short) -1,
+                /* sourceLength= */ payload.length,
+                /* compressordescriptor= */ null));
 
     // Need to decode before isMetadata() is accessible
     block.memoryDecode(true);
@@ -259,7 +261,7 @@ class InsertableClientSSKTest {
   private static java.util.stream.Stream<Arguments> invalidInsertSskExtras() {
     byte[] base = ClientSSK.getExtraBytes(Key.ALGO_AES_PCFB_256_SHA256);
     byte[] notPrivate = base.clone();
-    notPrivate[1] = 0; // fetch/public, should be rejected for insert private URIs
+    notPrivate[1] = 0; // fetch/public should be rejected for insert private URIs
 
     byte[] wrongAlgo = base.clone();
     wrongAlgo[1] = 1;
@@ -278,7 +280,7 @@ class InsertableClientSSKTest {
     extras[1] = 1; // insert
     byte[] crypto = new byte[32];
 
-    // Missing routing key
+    // Missing the routing key
     FreenetURI noRouting = new FreenetURI("SSK", "d", null, null, crypto, extras);
     MalformedURLException ex1 =
         assertThrows(MalformedURLException.class, () -> InsertableClientSSK.create(noRouting));
