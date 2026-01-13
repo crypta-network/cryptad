@@ -38,11 +38,7 @@ public class LongOption extends Option<Long> {
    * @param conf Owning {@link SubConfig}.
    * @param optionName Canonical option name within {@code conf}.
    * @param defaultValueString Default value in text form.
-   * @param sortOrder Relative order among sibling options in UIs/exports.
-   * @param expert Whether the option targets advanced users.
-   * @param forceWrite Whether to persist even when equal to the default.
-   * @param shortDesc Message key for a short label.
-   * @param longDesc Message key for a detailed description.
+   * @param meta Presentation and ordering metadata.
    * @param cb Callback used to read/apply values.
    * @param isSize Enables IEC size formatting for display when {@code true}.
    */
@@ -50,24 +46,10 @@ public class LongOption extends Option<Long> {
       SubConfig conf,
       String optionName,
       String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       LongCallback cb,
       boolean isSize) {
-    this(
-        conf,
-        optionName,
-        Fields.parseLong(defaultValueString),
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        cb,
-        isSize);
+    this(conf, optionName, Fields.parseLong(defaultValueString), meta, cb, isSize);
   }
 
   /**
@@ -76,11 +58,7 @@ public class LongOption extends Option<Long> {
    * @param conf Owning {@link SubConfig}.
    * @param optionName Canonical option name within {@code conf}.
    * @param defaultValue Default numeric value.
-   * @param sortOrder Relative order among sibling options in UIs/exports.
-   * @param expert Whether the option targets advanced users.
-   * @param forceWrite Whether to persist even when equal to the default.
-   * @param shortDesc Message key for a short label.
-   * @param longDesc Message key for a detailed description.
+   * @param meta Presentation and ordering metadata.
    * @param cb Callback used to read/apply values.
    * @param isSize Enables IEC size formatting for display when {@code true}.
    */
@@ -88,19 +66,10 @@ public class LongOption extends Option<Long> {
       SubConfig conf,
       String optionName,
       Long defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       LongCallback cb,
       boolean isSize) {
-    super(
-        conf,
-        optionName,
-        cb,
-        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
-        Option.DataType.NUMBER);
+    super(conf, optionName, cb, meta, Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
     this.isSize = isSize;

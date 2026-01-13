@@ -139,18 +139,7 @@ public class SubConfig implements Comparable<SubConfig> {
       String optionName, long defaultValue, Option.Meta meta, LongCallback cb, boolean isSize) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullLongCallback();
-    register(
-        new LongOption(
-            this,
-            optionName,
-            defaultValue,
-            normalizedMeta.sortOrder(),
-            normalizedMeta.expert(),
-            normalizedMeta.forceWrite(),
-            normalizedMeta.shortDesc(),
-            normalizedMeta.longDesc(),
-            cb,
-            isSize));
+    register(new LongOption(this, optionName, defaultValue, normalizedMeta, cb, isSize));
   }
 
   /**
@@ -203,18 +192,7 @@ public class SubConfig implements Comparable<SubConfig> {
       boolean isSize) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullLongCallback();
-    register(
-        new LongOption(
-            this,
-            optionName,
-            defaultValueString,
-            normalizedMeta.sortOrder(),
-            normalizedMeta.expert(),
-            normalizedMeta.forceWrite(),
-            normalizedMeta.shortDesc(),
-            normalizedMeta.longDesc(),
-            cb,
-            isSize));
+    register(new LongOption(this, optionName, defaultValueString, normalizedMeta, cb, isSize));
   }
 
   /**
