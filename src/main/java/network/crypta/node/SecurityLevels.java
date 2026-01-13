@@ -3,6 +3,7 @@ package network.crypta.node;
 import java.util.ArrayList;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
@@ -174,11 +175,12 @@ public class SecurityLevels {
     myConfig.register(
         KEY_NETWORK_THREAT_LEVEL,
         "HIGH",
-        sortOrder++,
-        false,
-        true,
-        "SecurityLevels.networkThreatLevelShort",
-        "SecurityLevels.networkThreatLevel",
+        new Option.Meta(
+            sortOrder++,
+            false,
+            true,
+            "SecurityLevels.networkThreatLevelShort",
+            "SecurityLevels.networkThreatLevel"),
         networkThreatLevelCallback);
     NETWORK_THREAT_LEVEL netLevel =
         NETWORK_THREAT_LEVEL.valueOf(myConfig.getString(KEY_NETWORK_THREAT_LEVEL));
@@ -237,11 +239,12 @@ public class SecurityLevels {
     myConfig.register(
         KEY_PHYSICAL_THREAT_LEVEL,
         "NORMAL",
-        sortOrder,
-        false,
-        true,
-        "SecurityLevels.physicalThreatLevelShort",
-        "SecurityLevels.physicalThreatLevel",
+        new Option.Meta(
+            sortOrder,
+            false,
+            true,
+            "SecurityLevels.physicalThreatLevelShort",
+            "SecurityLevels.physicalThreatLevel"),
         physicalThreatLevelCallback);
     PHYSICAL_THREAT_LEVEL physLevel =
         PHYSICAL_THREAT_LEVEL.valueOf(myConfig.getString(KEY_PHYSICAL_THREAT_LEVEL));

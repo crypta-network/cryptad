@@ -18,6 +18,7 @@ import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.SSL;
 import network.crypta.io.AllowedHosts;
@@ -559,11 +560,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "fetchKeyBoxAboveBookmarks",
         cssTheme.fetchKeyBoxAboveBookmarks,
-        configItemOrder,
-        false,
-        false,
-        "SimpleToadletServer.fetchKeyBoxAboveBookmarks",
-        "SimpleToadletServer.fetchKeyBoxAboveBookmarksLong",
+        new Option.Meta(
+            configItemOrder,
+            false,
+            false,
+            "SimpleToadletServer.fetchKeyBoxAboveBookmarks",
+            "SimpleToadletServer.fetchKeyBoxAboveBookmarksLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -610,67 +612,74 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "enabled",
         true,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.enabled",
-        "SimpleToadletServer.enabledLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.enabled",
+            "SimpleToadletServer.enabledLong"),
         new FProxyEnabledCallback());
 
     fproxyConfig.register(
         "ssl",
         false,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.ssl",
-        "SimpleToadletServer.sslLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.ssl",
+            "SimpleToadletServer.sslLong"),
         new FProxySSLCallback());
     fproxyConfig.register(
         "port",
         DEFAULT_FPROXY_PORT,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.port",
-        "SimpleToadletServer.portLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.port",
+            "SimpleToadletServer.portLong"),
         new FProxyPortCallback(),
         false);
     fproxyConfig.register(
         "bindTo",
         NetworkInterface.DEFAULT_BIND_TO,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.bindTo",
-        "SimpleToadletServer.bindToLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.bindTo",
+            "SimpleToadletServer.bindToLong"),
         new FProxyBindtoCallback());
     fproxyConfig.register(
         "css",
         PageMaker.THEME.getDefault().code,
-        configItemOrder++,
-        false,
-        false,
-        "SimpleToadletServer.cssName",
-        "SimpleToadletServer.cssNameLong",
+        new Option.Meta(
+            configItemOrder++,
+            false,
+            false,
+            "SimpleToadletServer.cssName",
+            "SimpleToadletServer.cssNameLong"),
         new FProxyCSSNameCallback());
     fproxyConfig.register(
         CSS_OVERRIDE_KEY,
         "",
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.cssOverride",
-        "SimpleToadletServer.cssOverrideLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.cssOverride",
+            "SimpleToadletServer.cssOverrideLong"),
         new FProxyCSSOverrideCallback());
     fproxyConfig.register(
         "sendAllThemes",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.sendAllThemes",
-        "SimpleToadletServer.sendAllThemesLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.sendAllThemes",
+            "SimpleToadletServer.sendAllThemesLong"),
         new BooleanCallback() {
 
           @Override
@@ -688,21 +697,23 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "advancedModeEnabled",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.advancedMode",
-        "SimpleToadletServer.advancedModeLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.advancedMode",
+            "SimpleToadletServer.advancedModeLong"),
         new FProxyAdvancedModeEnabledCallback(this));
 
     fproxyConfig.register(
         "enableExtendedMethodHandling",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.enableExtendedMethodHandling",
-        "SimpleToadletServer.enableExtendedMethodHandlingLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.enableExtendedMethodHandling",
+            "SimpleToadletServer.enableExtendedMethodHandlingLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -718,29 +729,32 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "javascriptEnabled",
         true,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.enableJS",
-        "SimpleToadletServer.enableJSLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.enableJS",
+            "SimpleToadletServer.enableJSLong"),
         new FProxyJavascriptEnabledCallback(this));
     fproxyConfig.register(
         "webPushingEnabled",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.enableWP",
-        "SimpleToadletServer.enableWPLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.enableWP",
+            "SimpleToadletServer.enableWPLong"),
         new FProxyWebPushingEnabledCallback(this));
     fproxyConfig.register(
         "hasCompletedWizard",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.hasCompletedWizard",
-        "SimpleToadletServer.hasCompletedWizardLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.hasCompletedWizard",
+            "SimpleToadletServer.hasCompletedWizardLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -756,11 +770,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "disableProgressPage",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.disableProgressPage",
-        "SimpleToadletServer.disableProgressPageLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.disableProgressPage",
+            "SimpleToadletServer.disableProgressPageLong"),
         new BooleanCallback() {
 
           @Override
@@ -786,11 +801,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "showPanicButton",
         false,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.panicButton",
-        "SimpleToadletServer.panicButtonLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.panicButton",
+            "SimpleToadletServer.panicButtonLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -810,11 +826,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "noConfirmPanic",
         false,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.noConfirmPanic",
-        "SimpleToadletServer.noConfirmPanicLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.noConfirmPanic",
+            "SimpleToadletServer.noConfirmPanicLong"),
         new BooleanCallback() {
 
           @Override
@@ -835,11 +852,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "publicGatewayMode",
         false,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.publicGatewayMode",
-        "SimpleToadletServer.publicGatewayModeLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.publicGatewayMode",
+            "SimpleToadletServer.publicGatewayModeLong"),
         new BooleanCallback() {
 
           @Override
@@ -864,11 +882,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "enablePersistentConnections",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.enablePersistentConnections",
-        "SimpleToadletServer.enablePersistentConnectionsLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.enablePersistentConnections",
+            "SimpleToadletServer.enablePersistentConnectionsLong"),
         new BooleanCallback() {
 
           @Override
@@ -890,11 +909,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "enableInlinePrefetch",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.enableInlinePrefetch",
-        "SimpleToadletServer.enableInlinePrefetchLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.enableInlinePrefetch",
+            "SimpleToadletServer.enableInlinePrefetchLong"),
         new BooleanCallback() {
 
           @Override
@@ -916,11 +936,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "enableActivelinks",
         false,
-        configItemOrder++,
-        false,
-        false,
-        "SimpleToadletServer.enableActivelinks",
-        "SimpleToadletServer.enableActivelinksLong",
+        new Option.Meta(
+            configItemOrder++,
+            false,
+            false,
+            "SimpleToadletServer.enableActivelinks",
+            "SimpleToadletServer.enableActivelinksLong"),
         new BooleanCallback() {
 
           @Override
@@ -938,22 +959,24 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "passthroughMaxSize",
         FProxyToadlet.getMaxLengthNoProgress(),
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.passthroughMaxSize",
-        "SimpleToadletServer.passthroughMaxSizeLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.passthroughMaxSize",
+            "SimpleToadletServer.passthroughMaxSizeLong"),
         new FProxyPassthruMaxSizeNoProgress(),
         true);
     FProxyToadlet.setMaxLengthNoProgress(fproxyConfig.getLong("passthroughMaxSize"));
     fproxyConfig.register(
         PASSTHROUGH_MAX_SIZE_PROGRESS_KEY,
         FProxyToadlet.getMaxLengthWithProgress(),
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.passthroughMaxSizeProgress",
-        "SimpleToadletServer.passthroughMaxSizeProgressLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.passthroughMaxSizeProgress",
+            "SimpleToadletServer.passthroughMaxSizeProgressLong"),
         new FProxyPassthruMaxSizeProgress(),
         true);
     FProxyToadlet.setMaxLengthWithProgress(fproxyConfig.getLong(PASSTHROUGH_MAX_SIZE_PROGRESS_KEY));
@@ -966,11 +989,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "enableCachingForChkAndSskKeys",
         false,
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.enableCachingForChkAndSskKeys",
-        "SimpleToadletServer.enableCachingForChkAndSskKeysLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.enableCachingForChkAndSskKeys",
+            "SimpleToadletServer.enableCachingForChkAndSskKeysLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -990,20 +1014,22 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "allowedHosts",
         "127.0.0.1,0:0:0:0:0:0:0:1",
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.allowedHosts",
-        "SimpleToadletServer.allowedHostsLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.allowedHosts",
+            "SimpleToadletServer.allowedHostsLong"),
         new FProxyAllowedHostsCallback());
     fproxyConfig.register(
         "allowedHostsFullAccess",
         "127.0.0.1,0:0:0:0:0:0:0:1",
-        configItemOrder++,
-        true,
-        true,
-        "SimpleToadletServer.allowedFullAccess",
-        "SimpleToadletServer.allowedFullAccessLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            true,
+            "SimpleToadletServer.allowedFullAccess",
+            "SimpleToadletServer.allowedFullAccessLong"),
         new StringCallback() {
 
           @Override
@@ -1023,11 +1049,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "doRobots",
         false,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.doRobots",
-        "SimpleToadletServer.doRobotsLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.doRobots",
+            "SimpleToadletServer.doRobotsLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -1047,11 +1074,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "maxFproxyConnections",
         100,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.maxFproxyConnections",
-        "SimpleToadletServer.maxFproxyConnectionsLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.maxFproxyConnections",
+            "SimpleToadletServer.maxFproxyConnectionsLong"),
         new IntCallback() {
 
           @Override
@@ -1075,11 +1103,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "metaRefreshSamePageInterval",
         1,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.metaRefreshSamePageInterval",
-        "SimpleToadletServer.metaRefreshSamePageIntervalLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.metaRefreshSamePageInterval",
+            "SimpleToadletServer.metaRefreshSamePageIntervalLong"),
         new IntCallback() {
 
           @Override
@@ -1102,11 +1131,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "metaRefreshRedirectInterval",
         1,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.metaRefreshRedirectInterval",
-        "SimpleToadletServer.metaRefreshRedirectIntervalLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.metaRefreshRedirectInterval",
+            "SimpleToadletServer.metaRefreshRedirectIntervalLong"),
         new IntCallback() {
 
           @Override
@@ -1129,11 +1159,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "embedM3uPlayerInFreesites",
         true,
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.embedM3uPlayerInFreesites",
-        "SimpleToadletServer.embedM3uPlayerInFreesitesLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.embedM3uPlayerInFreesites",
+            "SimpleToadletServer.embedM3uPlayerInFreesitesLong"),
         new BooleanCallback() {
 
           @Override
@@ -1151,11 +1182,12 @@ public final class SimpleToadletServer
     fproxyConfig.register(
         "refilterPolicy",
         "RE_FILTER",
-        configItemOrder++,
-        true,
-        false,
-        "SimpleToadletServer.refilterPolicy",
-        "SimpleToadletServer.refilterPolicyLong",
+        new Option.Meta(
+            configItemOrder++,
+            true,
+            false,
+            "SimpleToadletServer.refilterPolicy",
+            "SimpleToadletServer.refilterPolicyLong"),
         new ReFilterCallback());
 
     this.refilterPolicy = REFILTER_POLICY.valueOf(fproxyConfig.getString("refilterPolicy"));

@@ -22,6 +22,7 @@ import network.crypta.client.FetchContext;
 import network.crypta.config.FreenetFilePersistentConfig;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
@@ -700,11 +701,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "name",
         myName,
-        sortOrder++,
-        false,
-        true,
-        "Node.nodeName",
-        "Node.nodeNameLong",
+        new Option.Meta(sortOrder++, false, true, "Node.nodeName", "Node.nodeNameLong"),
         configManager.new NodeNameCallback());
     myName = nodeConfig.getString("name");
 
@@ -712,11 +709,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "storeForceBigShrinks",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.forceBigShrink",
-        "Node.forceBigShrinkLong",
+        new Option.Meta(sortOrder++, true, false, "Node.forceBigShrink", "Node.forceBigShrinkLong"),
         new BooleanCallback() {
 
           @Override
@@ -735,11 +728,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "storeType",
         "ram",
-        sortOrder++,
-        true,
-        true,
-        "Node.storeType",
-        "Node.storeTypeLong",
+        new Option.Meta(sortOrder++, true, true, "Node.storeType", "Node.storeTypeLong"),
         configManager.new StoreTypeCallback());
 
     storage.setStoreType(nodeConfig.getString("storeType"));
@@ -751,11 +740,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "storeSize",
         NodeStorageSubsystem.DEFAULT_STORE_SIZE,
-        sortOrder++,
-        false,
-        true,
-        "Node.storeSize",
-        "Node.storeSizeLong",
+        new Option.Meta(sortOrder++, false, true, "Node.storeSize", "Node.storeSizeLong"),
         new LongCallback() {
 
           @Override
@@ -775,11 +760,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "storeUseSlotFilters",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.storeUseSlotFilters",
-        "Node.storeUseSlotFiltersLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.storeUseSlotFilters", "Node.storeUseSlotFiltersLong"),
         new BooleanCallback() {
 
           public Boolean get() {
@@ -796,11 +778,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "storeSaltHashSlotFilterPersistenceTime",
         NodeStorageSubsystem.DEFAULT_SALT_HASH_SLOT_FILTER_PERSISTENCE_TIME,
-        sortOrder++,
-        true,
-        false,
-        "Node.storeSaltHashSlotFilterPersistenceTime",
-        "Node.storeSaltHashSlotFilterPersistenceTimeLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.storeSaltHashSlotFilterPersistenceTime",
+            "Node.storeSaltHashSlotFilterPersistenceTimeLong"),
         new IntCallback() {
 
           @Override
@@ -820,11 +803,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "storeSaltHashResizeOnStart",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.storeSaltHashResizeOnStart",
-        "Node.storeSaltHashResizeOnStartLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.storeSaltHashResizeOnStart",
+            "Node.storeSaltHashResizeOnStartLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -866,11 +850,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         STORE_PREALLOCATE_KEY,
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.storePreallocate",
-        "Node.storePreallocateLong",
+        new Option.Meta(
+            sortOrder++, true, true, "Node.storePreallocate", "Node.storePreallocateLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -895,11 +876,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "cachingFreenetStoreMaxSize",
         defaultCacheSize,
-        sortOrder++,
-        true,
-        false,
-        "Node.cachingCryptaStoreMaxSize",
-        "Node.cachingCryptaStoreMaxSizeLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.cachingCryptaStoreMaxSize",
+            "Node.cachingCryptaStoreMaxSizeLong"),
         new LongCallback() {
           @Override
           public Long get() {
@@ -918,11 +900,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "cachingFreenetStorePeriod",
         "300k",
-        sortOrder++,
-        true,
-        false,
-        "Node.cachingCryptaStorePeriod",
-        "Node.cachingCryptaStorePeriod",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.cachingCryptaStorePeriod",
+            "Node.cachingCryptaStorePeriod"),
         new LongCallback() {
           @Override
           public Long get() {
@@ -948,11 +931,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "clientCacheType",
         "ram",
-        sortOrder++,
-        true,
-        true,
-        "Node.clientCacheType",
-        "Node.clientCacheTypeLong",
+        new Option.Meta(
+            sortOrder++, true, true, "Node.clientCacheType", "Node.clientCacheTypeLong"),
         configManager.new ClientCacheTypeCallback());
 
     storage.setClientCacheType(nodeConfig.getString("clientCacheType"));
@@ -960,11 +940,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "clientCacheSize",
         NodeStorageSubsystem.DEFAULT_CLIENT_CACHE_SIZE,
-        sortOrder++,
-        false,
-        true,
-        "Node.clientCacheSize",
-        "Node.clientCacheSizeLong",
+        new Option.Meta(
+            sortOrder++, false, true, "Node.clientCacheSize", "Node.clientCacheSizeLong"),
         new LongCallback() {
 
           @Override
@@ -987,11 +964,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "useSlashdotCache",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.useSlashdotCache",
-        "Node.useSlashdotCacheLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.useSlashdotCache", "Node.useSlashdotCacheLong"),
         new BooleanCallback() {
 
           @Override
@@ -1009,11 +983,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "writeLocalToDatastore",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.writeLocalToDatastore",
-        "Node.writeLocalToDatastoreLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.writeLocalToDatastore",
+            "Node.writeLocalToDatastoreLong"),
         new BooleanCallback() {
 
           @Override
@@ -1036,11 +1011,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "slashdotCacheLifetime",
         MINUTES.toMillis(30),
-        sortOrder++,
-        true,
-        false,
-        "Node.slashdotCacheLifetime",
-        "Node.slashdotCacheLifetimeLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.slashdotCacheLifetime",
+            "Node.slashdotCacheLifetimeLong"),
         new LongCallback() {
 
           @Override
@@ -1060,11 +1036,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "slashdotCacheSize",
         NodeStorageSubsystem.DEFAULT_SLASHDOT_CACHE_SIZE,
-        sortOrder++,
-        false,
-        true,
-        "Node.slashdotCacheSize",
-        "Node.slashdotCacheSizeLong",
+        new Option.Meta(
+            sortOrder++, false, true, "Node.slashdotCacheSize", "Node.slashdotCacheSizeLong"),
         new LongCallback() {
 
           @Override
@@ -1179,11 +1152,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "masterKeyFile",
         "master.keys",
-        sortOrder++,
-        true,
-        true,
-        "Node.masterKeyFile",
-        "Node.masterKeyFileLong",
+        new Option.Meta(sortOrder++, true, true, "Node.masterKeyFile", "Node.masterKeyFileLong"),
         new StringCallback() {
 
           @Override
@@ -1224,11 +1193,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "showFriendsVisibilityAlert",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.showFriendsVisibilityAlert",
-        "Node.showFriendsVisibilityAlert",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.showFriendsVisibilityAlert",
+            "Node.showFriendsVisibilityAlert"),
         new BooleanCallback() {
 
           @Override
@@ -1253,11 +1223,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "disableProbabilisticHTLs",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.disablePHTLS",
-        "Node.disablePHTLSLong",
+        new Option.Meta(sortOrder++, true, false, "Node.disablePHTLS", "Node.disablePHTLSLong"),
         new BooleanCallback() {
 
           @Override
@@ -1279,11 +1245,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "maxHTL",
         DEFAULT_MAX_HTL,
-        sortOrder++,
-        true,
-        false,
-        "Node.maxHTL",
-        "Node.maxHTLLong",
+        new Option.Meta(sortOrder++, true, false, "Node.maxHTL", "Node.maxHTLLong"),
         new ShortCallback() {
 
           @Override
@@ -1307,11 +1269,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enableARKs",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.enableARKs",
-        "Node.enableARKsLong",
+        new Option.Meta(sortOrder++, true, false, "Node.enableARKs", "Node.enableARKsLong"),
         new BooleanCallback() {
 
           @Override
@@ -1332,11 +1290,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enablePerNodeFailureTables",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.enablePerNodeFailureTables",
-        "Node.enablePerNodeFailureTablesLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.enablePerNodeFailureTables",
+            "Node.enablePerNodeFailureTablesLong"),
         new BooleanCallback() {
 
           @Override
@@ -1357,11 +1316,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enableULPRDataPropagation",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.enableULPRDataPropagation",
-        "Node.enableULPRDataPropagationLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.enableULPRDataPropagation",
+            "Node.enableULPRDataPropagationLong"),
         new BooleanCallback() {
 
           @Override
@@ -1382,11 +1342,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enableSwapping",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.enableSwapping",
-        "Node.enableSwappingLong",
+        new Option.Meta(sortOrder++, true, false, "Node.enableSwapping", "Node.enableSwappingLong"),
         new BooleanCallback() {
 
           @Override
@@ -1411,11 +1367,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "publishOurPeersLocation",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.publishOurPeersLocation",
-        "Node.publishOurPeersLocationLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.publishOurPeersLocation",
+            "Node.publishOurPeersLocationLong"),
         new BooleanCallback() {
 
           @Override
@@ -1433,11 +1390,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "routeAccordingToOurPeersLocation",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.routeAccordingToOurPeersLocation",
-        "Node.routeAccordingToOurPeersLocation",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.routeAccordingToOurPeersLocation",
+            "Node.routeAccordingToOurPeersLocation"),
         new BooleanCallback() {
 
           @Override
@@ -1455,11 +1413,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enableSwapQueueing",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.enableSwapQueueing",
-        "Node.enableSwapQueueingLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.enableSwapQueueing", "Node.enableSwapQueueingLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -1476,11 +1431,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enablePacketCoalescing",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.enablePacketCoalescing",
-        "Node.enablePacketCoalescingLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.enablePacketCoalescing",
+            "Node.enablePacketCoalescingLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -1582,11 +1538,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "skipWrapperWarning",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.skipWrapperWarning",
-        "Node.skipWrapperWarningLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.skipWrapperWarning", "Node.skipWrapperWarningLong"),
         new BooleanCallback() {
 
           @Override
@@ -1608,11 +1561,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "maxPacketSize",
         1280,
-        sortOrder++,
-        true,
-        true,
-        "Node.maxPacketSize",
-        "Node.maxPacketSizeLong",
+        new Option.Meta(sortOrder++, true, true, "Node.maxPacketSize", "Node.maxPacketSizeLong"),
         new IntCallback() {
 
           @Override
@@ -1645,11 +1594,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enableRoutedPing",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.enableRoutedPing",
-        "Node.enableRoutedPingLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.enableRoutedPing", "Node.enableRoutedPingLong"),
         new BooleanCallback() {
 
           @Override
@@ -1674,11 +1620,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "enableNodeDiagnostics",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.enableDiagnostics",
-        "Node.enableDiagnosticsLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.enableDiagnostics", "Node.enableDiagnosticsLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -1707,11 +1650,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     nodeConfig.register(
         "datastoreTooSmallDismissed",
         -1,
-        sortOrder++,
-        true,
-        false,
-        "Node.datastoreTooSmallDismissed",
-        "Node.datastoreTooSmallDismissedLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.datastoreTooSmallDismissed",
+            "Node.datastoreTooSmallDismissedLong"),
         new IntCallback() {
 
           @Override
@@ -2116,7 +2060,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     int sortOrder = ProgramDirectory.nextOrder();
     // forceWrite=true because currently it can't be changed on the fly, also for packages
     installConfig.register(
-        cfgKey, defaultValue, sortOrder, true, true, shortdesc, longdesc, dir.getStringCallback());
+        cfgKey,
+        defaultValue,
+        new Option.Meta(sortOrder, true, true, shortdesc, longdesc),
+        dir.getStringCallback());
     String dirName = installConfig.getString(cfgKey);
     try {
       dir.move(dirName);

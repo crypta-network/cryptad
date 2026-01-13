@@ -8,6 +8,7 @@ import network.crypta.client.async.ClientRequestScheduler.SchedulerMode;
 import network.crypta.config.Config;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
@@ -341,13 +342,14 @@ public class RequestStarterGroup {
     schedulerConfig.register(
         name + "_priority_policy",
         ClientRequestScheduler.PRIORITY_SOFT,
-        name.hashCode(),
-        true,
-        false,
-        "RequestStarterGroup.scheduler"
-            + (forSSKs ? "SSK" : "CHK")
-            + (forInserts ? "Inserts" : "Requests"),
-        "RequestStarterGroup.schedulerLong",
+        new Option.Meta(
+            name.hashCode(),
+            true,
+            false,
+            "RequestStarterGroup.scheduler"
+                + (forSSKs ? "SSK" : "CHK")
+                + (forInserts ? "Inserts" : "Requests"),
+            "RequestStarterGroup.schedulerLong"),
         callback);
     callback.init(csRT, csBulk, schedulerConfig.getString(name + "_priority_policy"));
   }

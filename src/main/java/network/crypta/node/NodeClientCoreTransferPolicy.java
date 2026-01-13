@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import java.io.File;
 import java.util.Arrays;
+import network.crypta.config.Option;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.support.api.StringArrCallback;
 import network.crypta.support.io.FileUtil;
@@ -114,11 +115,12 @@ final class NodeClientCoreTransferPolicy {
         .register(
             "downloadAllowedDirs",
             new String[] {"all"},
-            sortOrder,
-            true,
-            true,
-            "NodeClientCore.downloadAllowedDirs",
-            "NodeClientCore.downloadAllowedDirsLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                true,
+                "NodeClientCore.downloadAllowedDirs",
+                "NodeClientCore.downloadAllowedDirsLong"),
             new StringArrCallback() {
 
               @Override
@@ -162,11 +164,12 @@ final class NodeClientCoreTransferPolicy {
         .register(
             "uploadAllowedDirs",
             new String[] {"all"},
-            sortOrder,
-            true,
-            true,
-            "NodeClientCore.uploadAllowedDirs",
-            "NodeClientCore.uploadAllowedDirsLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                true,
+                "NodeClientCore.uploadAllowedDirs",
+                "NodeClientCore.uploadAllowedDirsLong"),
             new StringArrCallback() {
 
               @Override

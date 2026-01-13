@@ -16,6 +16,7 @@ import java.io.File;
 import java.util.List;
 import network.crypta.clients.http.FirstTimeWizardToadlet;
 import network.crypta.config.Config;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -380,47 +381,36 @@ class DatastoreSizeTest {
     node.register(
         KEY_OUTPUT_BANDWIDTH_LIMIT,
         upstreamLimit,
-        0,
-        false,
-        false,
-        "",
-        "",
+        new Option.Meta(0, false, false, "", ""),
         (network.crypta.support.api.IntCallback) null,
         false);
     node.register(
         KEY_INPUT_BANDWIDTH_LIMIT,
         downstreamLimit,
-        0,
-        false,
-        false,
-        "",
-        "",
+        new Option.Meta(0, false, false, "", ""),
         (network.crypta.support.api.IntCallback) null,
         false);
     node.register(
-        KEY_SLASHDOT_CACHE_LIFETIME, slashdotLifetimeMs, 0, false, false, "", "", null, false);
+        KEY_SLASHDOT_CACHE_LIFETIME,
+        slashdotLifetimeMs,
+        new Option.Meta(0, false, false, "", ""),
+        null,
+        false);
 
-    node.register(KEY_STORE_SIZE, 0L, 0, false, false, "", "", null, true);
-    node.register(KEY_CLIENT_CACHE_SIZE, 0L, 0, false, false, "", "", null, true);
-    node.register(KEY_SLASHDOT_CACHE_SIZE, 0L, 0, false, false, "", "", null, true);
+    node.register(KEY_STORE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
+    node.register(KEY_CLIENT_CACHE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
+    node.register(
+        KEY_SLASHDOT_CACHE_SIZE, 0L, new Option.Meta(0, false, false, "", ""), null, true);
 
     node.register(
         KEY_STORE_TYPE,
         VALUE_DEFAULT,
-        0,
-        false,
-        false,
-        "",
-        "",
+        new Option.Meta(0, false, false, "", ""),
         (network.crypta.support.api.StringCallback) null);
     node.register(
         KEY_CLIENT_CACHE_TYPE,
         VALUE_DEFAULT,
-        0,
-        false,
-        false,
-        "",
-        "",
+        new Option.Meta(0, false, false, "", ""),
         (network.crypta.support.api.StringCallback) null);
 
     return config;

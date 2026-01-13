@@ -27,6 +27,7 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
@@ -354,11 +355,7 @@ class PluginManagerTest {
     fproxy.register(
         FPROXY_CSS_OPTION,
         THEME_CRYPTAFORGE,
-        0,
-        true,
-        true,
-        FPROXY_CSS_SHORT_DESC,
-        FPROXY_CSS_LONG_DESC,
+        new Option.Meta(0, true, true, FPROXY_CSS_SHORT_DESC, FPROXY_CSS_LONG_DESC),
         (StringCallback) null);
     fproxy.finishedInitialization();
     when(node.getConfig()).thenReturn(config);
@@ -382,11 +379,7 @@ class PluginManagerTest {
     fproxy.register(
         FPROXY_CSS_OPTION,
         THEME_CRYPTAFORGE,
-        0,
-        true,
-        true,
-        FPROXY_CSS_SHORT_DESC,
-        FPROXY_CSS_LONG_DESC,
+        new Option.Meta(0, true, true, FPROXY_CSS_SHORT_DESC, FPROXY_CSS_LONG_DESC),
         (StringCallback) null);
     fproxy.finishedInitialization();
     when(node.getConfig()).thenReturn(config);
@@ -409,11 +402,7 @@ class PluginManagerTest {
     fproxy.register(
         FPROXY_CSS_OPTION,
         THEME_CRYPTAFORGE,
-        0,
-        true,
-        true,
-        FPROXY_CSS_SHORT_DESC,
-        FPROXY_CSS_LONG_DESC,
+        new Option.Meta(0, true, true, FPROXY_CSS_SHORT_DESC, FPROXY_CSS_LONG_DESC),
         (StringCallback) null);
     fproxy.finishedInitialization();
     when(node.getConfig()).thenReturn(config);

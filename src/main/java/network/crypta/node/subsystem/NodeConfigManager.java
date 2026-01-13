@@ -5,6 +5,7 @@ import java.util.MissingResourceException;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.BaseL10n;
 import network.crypta.l10n.NodeL10n;
@@ -75,11 +76,7 @@ public final class NodeConfigManager {
     nodeConfig.register(
         "l10n",
         Locale.getDefault().getLanguage().toLowerCase(),
-        sortOrder++,
-        false,
-        true,
-        "Node.l10nLanguage",
-        "Node.l10nLanguageLong",
+        new Option.Meta(sortOrder++, false, true, "Node.l10nLanguage", "Node.l10nLanguageLong"),
         new L10nCallback());
 
     try {

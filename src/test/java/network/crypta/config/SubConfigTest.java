@@ -3,7 +3,15 @@ package network.crypta.config;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.emptyArray;
 import static org.hamcrest.Matchers.equalTo;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -60,10 +68,10 @@ class SubConfigTest {
     // Arrange
     String invalidName = "has.dot";
     IntCallback cb = new NullIntCallback();
+    Option.Meta meta = new Option.Meta(0, false, false, "s", "l");
     // Act + Assert
     assertThrows(
-        IllegalArgumentException.class,
-        () -> subConfig.register(invalidName, 1, 0, false, false, "s", "l", cb, false));
+        IllegalArgumentException.class, () -> subConfig.register(invalidName, 1, meta, cb, false));
   }
 
   @Test
@@ -72,11 +80,12 @@ class SubConfigTest {
     String name = "dup";
     IntCallback firstCb = new NullIntCallback();
     IntCallback secondCb = new NullIntCallback();
-    subConfig.register(name, 1, 0, false, false, "s", "l", firstCb, false);
+    subConfig.register(name, 1, new Option.Meta(0, false, false, "s", "l"), firstCb, false);
+    Option.Meta secondMeta = new Option.Meta(1, false, false, "s2", "l2");
     // Act + Assert
     assertThrows(
         IllegalArgumentException.class,
-        () -> subConfig.register(name, 2, 1, false, false, "s2", "l2", secondCb, false));
+        () -> subConfig.register(name, 2, secondMeta, secondCb, false));
   }
 
   @Test
@@ -109,13 +118,22 @@ class SubConfigTest {
   @Test
   void getters_whenDefaults_expectTrimmedValues() {
     // Arrange
-    subConfig.register("i", 42, 1, false, false, "sd", "ld", new NullIntCallback(), false);
-    subConfig.register("l", 100L, 1, false, false, "sd", "ld", new NullLongCallback(), false);
-    subConfig.register("b", true, 1, false, false, "sd", "ld", new NullBooleanCallback());
-    subConfig.register("s", "  value  ", 1, false, false, "sd", "ld", new NullStringCallback());
     subConfig.register(
-        "sh", (short) 7, 1, false, false, "sd", "ld", new NullShortCallback(), false);
-    subConfig.register("arr", new String[] {"x", "", "a b"}, 1, false, false, "sd", "ld", null);
+        "i", 42, new Option.Meta(1, false, false, "sd", "ld"), new NullIntCallback(), false);
+    subConfig.register(
+        "l", 100L, new Option.Meta(1, false, false, "sd", "ld"), new NullLongCallback(), false);
+    subConfig.register(
+        "b", true, new Option.Meta(1, false, false, "sd", "ld"), new NullBooleanCallback());
+    subConfig.register(
+        "s", "  value  ", new Option.Meta(1, false, false, "sd", "ld"), new NullStringCallback());
+    subConfig.register(
+        "sh",
+        (short) 7,
+        new Option.Meta(1, false, false, "sd", "ld"),
+        new NullShortCallback(),
+        false);
+    subConfig.register(
+        "arr", new String[] {"x", "", "a b"}, new Option.Meta(1, false, false, "sd", "ld"), null);
 
     // Act + Assert
     assertEquals(42, subConfig.getInt("i"));
@@ -129,8 +147,10 @@ class SubConfigTest {
   @Test
   void set_whenBooleanAndString_expectApplied() throws Exception {
     // Arrange
-    subConfig.register("bool", false, 1, false, false, "sd", "ld", new NullBooleanCallback());
-    subConfig.register("str", "default", 1, false, false, "sd", "ld", new NullStringCallback());
+    subConfig.register(
+        "bool", false, new Option.Meta(1, false, false, "sd", "ld"), new NullBooleanCallback());
+    subConfig.register(
+        "str", "default", new Option.Meta(1, false, false, "sd", "ld"), new NullStringCallback());
     // Act
     subConfig.set("bool", true);
     subConfig.set("str", "  hi  ");
@@ -144,7 +164,7 @@ class SubConfigTest {
     // Arrange
     IntCallback cb = mock(IntCallback.class);
     when(cb.get()).thenReturn(123);
-    subConfig.register("val", 7, 1, false, false, "sd", "ld", cb, false);
+    subConfig.register("val", 7, new Option.Meta(1, false, false, "sd", "ld"), cb, false);
 
     // Before finish: default is returned
     assertEquals(7, subConfig.getInt("val"));
@@ -160,32 +180,36 @@ class SubConfigTest {
   void forceUpdate_whenUnchanged_stillInvokesCallback() throws Exception {
     // Arrange
     IntCallback cb = mock(IntCallback.class);
-    subConfig.register("x", 5, 1, false, false, "sd", "ld", cb, false);
+    subConfig.register("x", 5, new Option.Meta(1, false, false, "sd", "ld"), cb, false);
 
     // Act
     subConfig.forceUpdate("x");
 
-    // Assert: callback.set called with current value
+    // Assert: callback.set called with the current value
     verify(cb, times(1)).set(5);
   }
 
   @Test
   void setOptions_whenValidValues_expectApplied() {
     // Arrange
-    subConfig.register("i", 0, 1, false, false, "sd", "ld", new NullIntCallback(), false);
-    subConfig.register("l", 1L, 1, false, false, "sd", "ld", new NullLongCallback(), false);
-    subConfig.register("b", false, 1, false, false, "sd", "ld", new NullBooleanCallback());
-    subConfig.register("s", "d", 1, false, false, "sd", "ld", new NullStringCallback());
     subConfig.register(
-        "sh", (short) 1, 1, false, false, "sd", "ld", new NullShortCallback(), false);
+        "i", 0, new Option.Meta(1, false, false, "sd", "ld"), new NullIntCallback(), false);
+    subConfig.register(
+        "l", 1L, new Option.Meta(1, false, false, "sd", "ld"), new NullLongCallback(), false);
+    subConfig.register(
+        "b", false, new Option.Meta(1, false, false, "sd", "ld"), new NullBooleanCallback());
+    subConfig.register(
+        "s", "d", new Option.Meta(1, false, false, "sd", "ld"), new NullStringCallback());
+    subConfig.register(
+        "sh",
+        (short) 1,
+        new Option.Meta(1, false, false, "sd", "ld"),
+        new NullShortCallback(),
+        false);
     subConfig.register(
         "arr",
         new String[] {"abc"},
-        1,
-        false,
-        false,
-        "sd",
-        "ld",
+        new Option.Meta(1, false, false, "sd", "ld"),
         new network.crypta.support.api.StringArrCallback() {
           @Override
           public String[] get() {
@@ -221,7 +245,8 @@ class SubConfigTest {
   @Test
   void setOptions_whenInvalidValue_expectErrorLoggedAndValueUnchanged() {
     // Arrange
-    subConfig.register("i", 10, 1, false, false, "sd", "ld", new NullIntCallback(), false);
+    subConfig.register(
+        "i", 10, new Option.Meta(1, false, false, "sd", "ld"), new NullIntCallback(), false);
     Option<?> opt = subConfig.getOption("i");
     String before = opt.getValueString();
     SimpleFieldSet sfs = new SimpleFieldSet(true);
@@ -243,7 +268,8 @@ class SubConfigTest {
       logger.setLevel(prev);
     }
 
-    // Assert: value unchanged from before and not set to the invalid input; error was printed
+    // Assert: the value unchanged from before and not set to the invalid input; the error was
+    // printed
     assertEquals(before, opt.getValueString());
     assertNotEquals("abc", opt.getValueString());
     String combined =
@@ -259,7 +285,7 @@ class SubConfigTest {
     // Arrange
     IntCallback cb = mock(IntCallback.class);
     doThrow(new NodeNeedRestartException("needs restart")).when(cb).set(123);
-    subConfig.register("j", 0, 1, false, false, "sd", "ld", cb, false);
+    subConfig.register("j", 0, new Option.Meta(1, false, false, "sd", "ld"), cb, false);
     SimpleFieldSet sfs = new SimpleFieldSet(true);
     sfs.putSingle("j", "123");
 
@@ -274,10 +300,14 @@ class SubConfigTest {
   @Test
   void exportFieldSet_whenCurrentSettings_respectsDefaultsAndForceWrite() {
     // Arrange
-    subConfig.register("i", 10, 1, false, false, "sd", "ld", new NullIntCallback(), false);
-    subConfig.register("force", "def", 2, false, true, "sd", "ld", new NullStringCallback());
-    subConfig.register("b", false, 3, false, false, "sd", "ld", new NullBooleanCallback());
-    subConfig.register("l", 100L, 4, true, false, "sd", "ld", new NullLongCallback(), false);
+    subConfig.register(
+        "i", 10, new Option.Meta(1, false, false, "sd", "ld"), new NullIntCallback(), false);
+    subConfig.register(
+        "force", "def", new Option.Meta(2, false, true, "sd", "ld"), new NullStringCallback());
+    subConfig.register(
+        "b", false, new Option.Meta(3, false, false, "sd", "ld"), new NullBooleanCallback());
+    subConfig.register(
+        "l", 100L, new Option.Meta(4, true, false, "sd", "ld"), new NullLongCallback(), false);
     // change two values
     assertDoesNotThrow(() -> subConfig.set("b", true));
     assertDoesNotThrow(() -> subConfig.set("l", "1000"));
@@ -297,7 +327,8 @@ class SubConfigTest {
   @Test
   void exportFieldSet_whenWithDefaultsTrue_includesDefaults() {
     // Arrange
-    subConfig.register("i", 10, 1, false, false, "sd", "ld", new NullIntCallback(), false);
+    subConfig.register(
+        "i", 10, new Option.Meta(1, false, false, "sd", "ld"), new NullIntCallback(), false);
     // Act
     SimpleFieldSet fs = subConfig.exportFieldSet(Config.RequestType.CURRENT_SETTINGS, true);
     // Assert
@@ -307,16 +338,18 @@ class SubConfigTest {
   @Test
   void exportFieldSet_whenMetadataRequested_containsExpectedValues() {
     // Arrange
-    subConfig.register("i", 10, 42, true, false, "short.i", "long.i", new NullIntCallback(), false);
-    subConfig.register("s", "x", 7, false, true, "short.s", "long.s", new NullStringCallback());
+    subConfig.register(
+        "i",
+        10,
+        new Option.Meta(42, true, false, "short.i", "long.i"),
+        new NullIntCallback(),
+        false);
+    subConfig.register(
+        "s", "x", new Option.Meta(7, false, true, "short.s", "long.s"), new NullStringCallback());
     subConfig.register(
         "arr",
         new String[] {"a", "b"},
-        11,
-        false,
-        false,
-        "short.arr",
-        "long.arr",
+        new Option.Meta(11, false, false, "short.arr", "long.arr"),
         new network.crypta.support.api.StringArrCallback() {
           @Override
           public String[] get() {
@@ -364,7 +397,8 @@ class SubConfigTest {
   @Test
   void removeOption_whenPresent_expectRemovedAndFallbacks() {
     // Arrange
-    subConfig.register("toRemove", 1, 0, false, false, "sd", "ld", new NullIntCallback(), false);
+    subConfig.register(
+        "toRemove", 1, new Option.Meta(0, false, false, "sd", "ld"), new NullIntCallback(), false);
     assertNotNull(subConfig.getOption("toRemove"));
     // Act
     Option<?> removed = subConfig.removeOption("toRemove");
@@ -389,7 +423,7 @@ class SubConfigTest {
   @DisplayName("getRawOption lifecycle around PersistentConfig init")
   @Test
   void getRawOption_whenLifecycleTransitions_behavesAsSpecified() {
-    // Arrange: prepare PersistentConfig with initial value for key
+    // Arrange: prepare PersistentConfig with an initial value for the key
     SimpleFieldSet initial = new SimpleFieldSet(true);
     initial.putSingle("pfx.key", "123");
     PersistentConfig pc = new PersistentConfig(initial);
@@ -399,7 +433,8 @@ class SubConfigTest {
     assertEquals("123", sc.getRawOption("key"));
 
     // After registering: PersistentConfig.onRegister consumes the raw value
-    sc.register("key", 0, 0, false, false, "sd", "ld", new NullIntCallback(), false);
+    sc.register(
+        "key", 0, new Option.Meta(0, false, false, "sd", "ld"), new NullIntCallback(), false);
     assertNull(sc.getRawOption("key"));
 
     // After finishedInit: calling getRawOption throws
@@ -414,7 +449,8 @@ class SubConfigTest {
   void getOptions_whenRegisteredMultiple_preservesInsertionOrder(String[] names) {
     // Arrange
     for (String n : names) {
-      subConfig.register(n, 0, 0, false, false, "sd", "ld", new NullIntCallback(), false);
+      subConfig.register(
+          n, 0, new Option.Meta(0, false, false, "sd", "ld"), new NullIntCallback(), false);
     }
     // Act
     String[] actual =

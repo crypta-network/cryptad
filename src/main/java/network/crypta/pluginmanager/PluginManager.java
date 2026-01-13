@@ -37,6 +37,7 @@ import network.crypta.clients.http.Toadlet;
 import network.crypta.clients.http.ToadletRegistration;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.HashType;
 import network.crypta.keys.FreenetURI;
@@ -172,11 +173,7 @@ public class PluginManager {
     pmconfig.register(
         "enabled",
         true,
-        0,
-        true,
-        true,
-        "PluginManager.enabled",
-        "PluginManager.enabledLong",
+        new Option.Meta(0, true, true, "PluginManager.enabled", "PluginManager.enabledLong"),
         new BooleanCallback() {
 
           @Override
@@ -196,11 +193,8 @@ public class PluginManager {
     pmconfig.register(
         "loadplugin",
         null,
-        0,
-        true,
-        false,
-        "PluginManager.loadedOnStartup",
-        "PluginManager.loadedOnStartupLong",
+        new Option.Meta(
+            0, true, false, "PluginManager.loadedOnStartup", "PluginManager.loadedOnStartupLong"),
         new StringArrCallback() {
 
           @Override

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.node.SecurityLevels.PHYSICAL_THREAT_LEVEL;
 import network.crypta.node.subsystem.NodeServicesSubsystem;
@@ -175,11 +176,7 @@ class NodeClientCoreTransferPolicyTest {
         .register(
             eq(DOWNLOAD_ALLOWED_DIRS_KEY),
             any(String[].class),
-            eq(4),
-            eq(true),
-            eq(true),
-            eq(DOWNLOAD_ALLOWED_DIRS_SHORT),
-            eq(DOWNLOAD_ALLOWED_DIRS_LONG),
+            any(Option.Meta.class),
             any(StringArrCallback.class));
     assertEquals(5, nextSortOrder);
   }
@@ -199,11 +196,7 @@ class NodeClientCoreTransferPolicyTest {
         .register(
             eq(DOWNLOAD_ALLOWED_DIRS_KEY),
             any(String[].class),
-            eq(0),
-            eq(true),
-            eq(true),
-            eq(DOWNLOAD_ALLOWED_DIRS_SHORT),
-            eq(DOWNLOAD_ALLOWED_DIRS_LONG),
+            any(Option.Meta.class),
             callbackCaptor.capture());
 
     assertArrayEquals(
@@ -225,11 +218,7 @@ class NodeClientCoreTransferPolicyTest {
         .register(
             eq(DOWNLOAD_ALLOWED_DIRS_KEY),
             any(String[].class),
-            eq(0),
-            eq(true),
-            eq(true),
-            eq(DOWNLOAD_ALLOWED_DIRS_SHORT),
-            eq(DOWNLOAD_ALLOWED_DIRS_LONG),
+            any(Option.Meta.class),
             callbackCaptor.capture());
 
     assertDoesNotThrow(() -> callbackCaptor.getValue().set(new String[] {"all"}));
@@ -250,11 +239,7 @@ class NodeClientCoreTransferPolicyTest {
         .register(
             eq(UPLOAD_ALLOWED_DIRS_KEY),
             any(String[].class),
-            eq(3),
-            eq(true),
-            eq(true),
-            eq(UPLOAD_ALLOWED_DIRS_SHORT),
-            eq(UPLOAD_ALLOWED_DIRS_LONG),
+            any(Option.Meta.class),
             any(StringArrCallback.class));
     assertEquals(4, nextSortOrder);
   }
@@ -274,11 +259,7 @@ class NodeClientCoreTransferPolicyTest {
         .register(
             eq(UPLOAD_ALLOWED_DIRS_KEY),
             any(String[].class),
-            eq(0),
-            eq(true),
-            eq(true),
-            eq(UPLOAD_ALLOWED_DIRS_SHORT),
-            eq(UPLOAD_ALLOWED_DIRS_LONG),
+            any(Option.Meta.class),
             callbackCaptor.capture());
 
     assertArrayEquals(new String[] {allowedDir.getPath()}, callbackCaptor.getValue().get());
@@ -297,11 +278,7 @@ class NodeClientCoreTransferPolicyTest {
         .register(
             eq(UPLOAD_ALLOWED_DIRS_KEY),
             any(String[].class),
-            eq(0),
-            eq(true),
-            eq(true),
-            eq(UPLOAD_ALLOWED_DIRS_SHORT),
-            eq(UPLOAD_ALLOWED_DIRS_LONG),
+            any(Option.Meta.class),
             callbackCaptor.capture());
 
     assertDoesNotThrow(() -> callbackCaptor.getValue().set(new String[] {"all"}));

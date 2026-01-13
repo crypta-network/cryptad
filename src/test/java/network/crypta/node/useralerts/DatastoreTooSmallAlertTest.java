@@ -9,6 +9,7 @@ import static org.mockito.Mockito.lenient;
 import java.nio.file.Path;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.FeedMessage;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
@@ -50,15 +51,21 @@ class DatastoreTooSmallAlertTest {
 
   private void registerSizeOptions(long storeSizeBytes, long clientCacheBytes, long slashdotBytes) {
     // Register the three size options (as sizes)
-    nodeConfig.register("storeSize", storeSizeBytes, 0, false, true, "", "", null, true);
-    nodeConfig.register("clientCacheSize", clientCacheBytes, 0, false, true, "", "", null, true);
-    nodeConfig.register("slashdotCacheSize", slashdotBytes, 0, false, true, "", "", null, true);
+    nodeConfig.register(
+        "storeSize", storeSizeBytes, new Option.Meta(0, false, true, "", ""), null, true);
+    nodeConfig.register(
+        "clientCacheSize", clientCacheBytes, new Option.Meta(0, false, true, "", ""), null, true);
+    nodeConfig.register(
+        "slashdotCacheSize", slashdotBytes, new Option.Meta(0, false, true, "", ""), null, true);
 
     // Also required by DATASTORE_SIZE._setDatastoreSize but not directly used here; harmless to
     // set.
-    nodeConfig.register("inputBandwidthLimit", 0, 0, false, true, "", "", null /* IntCallback */);
-    nodeConfig.register("outputBandwidthLimit", 0, 0, false, true, "", "", null /* IntCallback */);
-    nodeConfig.register("slashdotCacheLifetime", 0L, 0, false, true, "", "", null, false);
+    nodeConfig.register(
+        "inputBandwidthLimit", 0, new Option.Meta(0, false, true, "", ""), null /* IntCallback */);
+    nodeConfig.register(
+        "outputBandwidthLimit", 0, new Option.Meta(0, false, true, "", ""), null /* IntCallback */);
+    nodeConfig.register(
+        "slashdotCacheLifetime", 0L, new Option.Meta(0, false, true, "", ""), null, false);
   }
 
   private void registerDismissed(String initial) {
@@ -69,7 +76,10 @@ class DatastoreTooSmallAlertTest {
       initVal = 0;
     }
     nodeConfig.register(
-        "datastoreTooSmallDismissed", initVal, 0, false, true, "", "", null /* IntCallback */);
+        "datastoreTooSmallDismissed",
+        initVal,
+        new Option.Meta(0, false, true, "", ""),
+        null /* IntCallback */);
   }
 
   private static long expectedCurrentGiB(long store, long client, long slashdot) {

@@ -72,11 +72,7 @@ class NodeConfigManagerTest {
         .register(
             eq("l10n"),
             eq(Locale.getDefault().getLanguage().toLowerCase()),
-            eq(startOrder),
-            eq(false),
-            eq(true),
-            eq("Node.l10nLanguage"),
-            eq("Node.l10nLanguageLong"),
+            any(Option.Meta.class),
             callbackCaptor.capture());
     assertInstanceOf(EnumerableOptionCallback.class, callbackCaptor.getValue());
   }

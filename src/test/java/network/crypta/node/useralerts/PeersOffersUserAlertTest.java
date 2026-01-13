@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
@@ -147,7 +148,8 @@ class PeersOffersUserAlertTest {
     PersistentConfig cfg = new PersistentConfig(null);
     SubConfig nodeCfg = cfg.createSubConfig("node");
     // Register the boolean option with default=false
-    nodeCfg.register("peersOffersDismissed", false, 0, false, true, "short", "long", null);
+    nodeCfg.register(
+        "peersOffersDismissed", false, new Option.Meta(0, false, true, "short", "long"), null);
     // SubConfig registers itself with the owning config in its constructor.
     when(node.getConfig()).thenReturn(cfg);
 

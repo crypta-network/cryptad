@@ -15,6 +15,7 @@ import network.crypta.config.Dimension;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.AsyncMessageFilterCallback;
@@ -402,11 +403,7 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "trafficClass",
         TrafficClass.getDefault().name(),
-        sortOrder++,
-        true,
-        false,
-        "Node.trafficClass",
-        "Node.trafficClassLong",
+        new Option.Meta(sortOrder++, true, false, "Node.trafficClass", "Node.trafficClassLong"),
         new TrafficClassCallback());
     String trafficClassValue = nodeConfig.getString("trafficClass");
     try {
@@ -499,11 +496,7 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "outputBandwidthLimit",
         "15K",
-        sortOrder++,
-        false,
-        true,
-        "Node.outBWLimit",
-        "Node.outBWLimitLong",
+        new Option.Meta(sortOrder++, false, true, "Node.outBWLimit", "Node.outBWLimitLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -553,11 +546,7 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "inputBandwidthLimit",
         "-1",
-        sortOrder++,
-        false,
-        true,
-        "Node.inBWLimit",
-        "Node.inBWLimitLong",
+        new Option.Meta(sortOrder++, false, true, "Node.inBWLimit", "Node.inBWLimitLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -602,11 +591,12 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "amountOfDataToCheckCompressionRatio",
         "8MiB",
-        sortOrder++,
-        true,
-        true,
-        "Node.amountOfDataToCheckCompressionRatio",
-        "Node.amountOfDataToCheckCompressionRatioLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            true,
+            "Node.amountOfDataToCheckCompressionRatio",
+            "Node.amountOfDataToCheckCompressionRatioLong"),
         new LongCallback() {
           @Override
           public Long get() {
@@ -632,11 +622,12 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "minimumCompressionPercentage",
         "10",
-        sortOrder++,
-        true,
-        true,
-        "Node.minimumCompressionPercentage",
-        "Node.minimumCompressionPercentageLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            true,
+            "Node.minimumCompressionPercentage",
+            "Node.minimumCompressionPercentageLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -669,11 +660,12 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "connectionSpeedDetection",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.connectionSpeedDetection",
-        "Node.connectionSpeedDetectionLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            true,
+            "Node.connectionSpeedDetection",
+            "Node.connectionSpeedDetectionLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -694,11 +686,8 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "throttleLocalTraffic",
         false,
-        sortOrder++,
-        true,
-        false,
-        "Node.throttleLocalTraffic",
-        "Node.throttleLocalTrafficLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.throttleLocalTraffic", "Node.throttleLocalTrafficLong"),
         new BooleanCallback() {
 
           @Override
@@ -763,11 +752,7 @@ public final class NodeNetworkSubsystem {
     opennetConfig.register(
         "connectToSeednodes",
         true,
-        0,
-        true,
-        false,
-        "Node.withAnnouncement",
-        "Node.withAnnouncementLong",
+        new Option.Meta(0, true, false, "Node.withAnnouncement", "Node.withAnnouncementLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -789,11 +774,7 @@ public final class NodeNetworkSubsystem {
     opennetConfig.register(
         "enabled",
         false,
-        0,
-        true,
-        true,
-        "Node.opennetEnabled",
-        "Node.opennetEnabledLong",
+        new Option.Meta(0, true, true, "Node.opennetEnabled", "Node.opennetEnabledLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -833,11 +814,7 @@ public final class NodeNetworkSubsystem {
     opennetConfig.register(
         "maxOpennetPeers",
         OpennetManager.MAX_PEERS_FOR_SCALING,
-        1,
-        true,
-        false,
-        "Node.maxOpennetPeers",
-        "Node.maxOpennetPeersLong",
+        new Option.Meta(1, true, false, "Node.maxOpennetPeers", "Node.maxOpennetPeersLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -939,11 +916,8 @@ public final class NodeNetworkSubsystem {
     opennetConfig.register(
         "acceptSeedConnections",
         false,
-        2,
-        true,
-        true,
-        "Node.acceptSeedConnectionsShort",
-        "Node.acceptSeedConnections",
+        new Option.Meta(
+            2, true, true, "Node.acceptSeedConnectionsShort", "Node.acceptSeedConnections"),
         new BooleanCallback() {
 
           @Override
@@ -967,11 +941,12 @@ public final class NodeNetworkSubsystem {
     nodeConfig.register(
         "passOpennetPeersThroughDarknet",
         true,
-        sortOrder++,
-        true,
-        false,
-        "Node.passOpennetPeersThroughDarknet",
-        "Node.passOpennetPeersThroughDarknetLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.passOpennetPeersThroughDarknet",
+            "Node.passOpennetPeersThroughDarknetLong"),
         new BooleanCallback() {
 
           @Override

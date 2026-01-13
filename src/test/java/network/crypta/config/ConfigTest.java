@@ -88,7 +88,11 @@ class ConfigTest {
   void longOption_whenNonNumeric_throwsClassCastException() {
     // Arrange
     SubConfig local = conf.createSubConfig("strings");
-    local.register("greeting", "hello", 0, false, false, "short", "long", new NullStringCallback());
+    local.register(
+        "greeting",
+        "hello",
+        new Option.Meta(0, false, false, "short", "long"),
+        new NullStringCallback());
     // Act + Assert
     assertThrows(ClassCastException.class, () -> Config.longOption(local, "greeting"));
   }
@@ -97,7 +101,12 @@ class ConfigTest {
   void longOption_whenLongOption_returnsSameInstance() {
     // Arrange
     SubConfig local = conf.createSubConfig("numbers2");
-    local.register("answer", 42L, 0, false, false, "short", "long", new NullLongCallback(), false);
+    local.register(
+        "answer",
+        42L,
+        new Option.Meta(0, false, false, "short", "long"),
+        new NullLongCallback(),
+        false);
 
     // Act
     Option<?> expected = local.getOption("answer");
@@ -112,7 +121,12 @@ class ConfigTest {
   void longOption_whenIntOption_valueAccessCausesClassCast() {
     // Arrange
     SubConfig local = conf.createSubConfig("ints");
-    local.register("seven", 7, 0, false, false, "short", "long", new NullIntCallback(), false);
+    local.register(
+        "seven",
+        7,
+        new Option.Meta(0, false, false, "short", "long"),
+        new NullIntCallback(),
+        false);
 
     Option<Long> numeric = Config.longOption(local, "seven");
 

@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.File;
 import network.crypta.clients.http.SimpleToadletServer;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
@@ -213,15 +214,7 @@ class NodeServicesSubsystemTest {
     subsystem.configurePeersOffersFrefFiles(subConfig, 7);
 
     verify(subConfig)
-        .register(
-            eq(PEERS_OFFERS_DISMISSED),
-            eq(false),
-            eq(7),
-            eq(true),
-            eq(true),
-            eq(PEERS_OFFERS_DISMISSED_SHORT),
-            eq(PEERS_OFFERS_DISMISSED_LONG),
-            captor.capture());
+        .register(eq(PEERS_OFFERS_DISMISSED), eq(false), any(Option.Meta.class), captor.capture());
 
     captor.getValue().set(Boolean.TRUE);
 
@@ -240,14 +233,7 @@ class NodeServicesSubsystemTest {
 
       verify(subConfig)
           .register(
-              eq(PEERS_OFFERS_DISMISSED),
-              eq(false),
-              eq(3),
-              eq(true),
-              eq(true),
-              eq(PEERS_OFFERS_DISMISSED_SHORT),
-              eq(PEERS_OFFERS_DISMISSED_LONG),
-              captor.capture());
+              eq(PEERS_OFFERS_DISMISSED), eq(false), any(Option.Meta.class), captor.capture());
 
       captor.getValue().set(Boolean.FALSE);
 

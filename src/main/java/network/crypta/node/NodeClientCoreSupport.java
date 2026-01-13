@@ -14,6 +14,7 @@ import network.crypta.client.async.HealingDecisionSupplier;
 import network.crypta.client.async.SimpleHealingQueue;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.fs.AppDirs;
@@ -289,11 +290,12 @@ public final class NodeClientCoreSupport {
         .register(
             "memoryLimitedJobMemoryLimit",
             defaultMemoryLimitedJobMemoryLimit,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.memoryLimitedJobMemoryLimit",
-            "NodeClientCore.memoryLimitedJobMemoryLimitLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.memoryLimitedJobMemoryLimit",
+                "NodeClientCore.memoryLimitedJobMemoryLimitLong"),
             new LongCallback() {
 
               @Override

@@ -43,11 +43,7 @@ class FilePersistentConfigTest {
     sc.register(
         "key",
         "default-value",
-        10,
-        false,
-        false,
-        SHORT_DESC,
-        LONG_DESC,
+        new Option.Meta(10, false, false, SHORT_DESC, LONG_DESC),
         new network.crypta.support.api.StringCallback() {
           private String v = "default-value";
 
@@ -82,11 +78,7 @@ class FilePersistentConfigTest {
     sc.register(
         "name",
         "default",
-        1,
-        false,
-        false,
-        SHORT_DESC,
-        LONG_DESC,
+        new Option.Meta(1, false, false, SHORT_DESC, LONG_DESC),
         new network.crypta.support.api.StringCallback() {
           private String v = "default";
 
@@ -134,11 +126,7 @@ class FilePersistentConfigTest {
     sc.register(
         "opt",
         "def",
-        1,
-        false,
-        false,
-        SHORT_DESC,
-        LONG_DESC,
+        new Option.Meta(1, false, false, SHORT_DESC, LONG_DESC),
         new network.crypta.support.api.StringCallback() {
           private String v = "def";
 
@@ -192,11 +180,7 @@ class FilePersistentConfigTest {
     sc.register(
         "k",
         "d",
-        0,
-        false,
-        false,
-        "s",
-        "l",
+        new Option.Meta(0, false, false, "s", "l"),
         new network.crypta.support.api.StringCallback() {
           private String v = "d";
 

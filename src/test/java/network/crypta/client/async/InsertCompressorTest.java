@@ -21,6 +21,7 @@ import network.crypta.client.InsertException;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.config.Config;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.HashResult;
 import network.crypta.crypt.HashType;
@@ -385,15 +386,15 @@ class InsertCompressorTest {
     SubConfig node = cfg.get("node");
     // Register options so getLong/getInt return configured values
     node.register(
-        "amountOfDataToCheckCompressionRatio", 32768L, 0, false, false, "", "", null, true);
+        "amountOfDataToCheckCompressionRatio",
+        32768L,
+        new Option.Meta(0, false, false, "", ""),
+        null,
+        true);
     node.register(
         "minimumCompressionPercentage",
         100,
-        0,
-        false,
-        false,
-        "",
-        "",
+        new Option.Meta(0, false, false, "", ""),
         new network.crypta.support.api.IntCallback() {
           @Override
           public Integer get() {

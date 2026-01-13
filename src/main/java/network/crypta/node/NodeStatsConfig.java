@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.SimpleFieldSet;
@@ -129,11 +130,8 @@ public final class NodeStatsConfig {
     statsConfig.register(
         "threadLimit",
         defaultThreadLimit,
-        sortOrder++,
-        true,
-        true,
-        "NodeStat.threadLimit",
-        "NodeStat.threadLimitLong",
+        new Option.Meta(
+            sortOrder++, true, true, "NodeStat.threadLimit", "NodeStat.threadLimitLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -183,11 +181,12 @@ public final class NodeStatsConfig {
     statsConfig.register(
         "ignoreLocalVsRemoteBandwidthLiability",
         false,
-        sortOrder++,
-        true,
-        false,
-        "NodeStat.ignoreLocalVsRemoteBandwidthLiability",
-        "NodeStat.ignoreLocalVsRemoteBandwidthLiabilityLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "NodeStat.ignoreLocalVsRemoteBandwidthLiability",
+            "NodeStat.ignoreLocalVsRemoteBandwidthLiabilityLong"),
         new BooleanCallback() {
 
           @Override
@@ -219,11 +218,8 @@ public final class NodeStatsConfig {
     statsConfig.register(
         "maxPingTime",
         NodeStats.DEFAULT_MAX_PING_TIME,
-        sortOrder++,
-        true,
-        true,
-        "NodeStat.maxPingTime",
-        "NodeStat.maxPingTimeLong",
+        new Option.Meta(
+            sortOrder++, true, true, "NodeStat.maxPingTime", "NodeStat.maxPingTimeLong"),
         new LongCallback() {
 
           @Override
@@ -242,11 +238,8 @@ public final class NodeStatsConfig {
     statsConfig.register(
         "subMaxPingTime",
         NodeStats.DEFAULT_SUB_MAX_PING_TIME,
-        sortOrder++,
-        true,
-        true,
-        "NodeStat.subMaxPingTime",
-        "NodeStat.subMaxPingTimeLong",
+        new Option.Meta(
+            sortOrder++, true, true, "NodeStat.subMaxPingTime", "NodeStat.subMaxPingTimeLong"),
         new LongCallback() {
 
           @Override
