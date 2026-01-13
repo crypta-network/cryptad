@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import network.crypta.clients.http.wizardsteps.BandwidthLimit;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.node.Node;
@@ -48,21 +49,13 @@ class UpgradeConnectionSpeedUserAlertTest {
     nodeConfig.register(
         "inputBandwidthLimit",
         4096, // 4 KiB/s
-        0,
-        false,
-        false,
-        "",
-        "",
+        new Option.Meta(0, false, false, "", ""),
         (network.crypta.support.api.IntCallback) null,
         false);
     nodeConfig.register(
         "outputBandwidthLimit",
         2048, // 2 KiB/s
-        0,
-        false,
-        false,
-        "",
-        "",
+        new Option.Meta(0, false, false, "", ""),
         (network.crypta.support.api.IntCallback) null,
         false);
 

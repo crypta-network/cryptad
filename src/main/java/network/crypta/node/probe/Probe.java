@@ -11,6 +11,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.AsyncMessageFilterCallback;
 import network.crypta.io.comm.ByteCounter;
@@ -237,11 +238,8 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeBandwidth",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeBandwidthShort",
-        "Node.probeBandwidthLong",
+        new Option.Meta(
+            sortOrder++, true, true, "Node.probeBandwidthShort", "Node.probeBandwidthLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -257,11 +255,7 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeBuild",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeBuildShort",
-        "Node.probeBuildLong",
+        new Option.Meta(sortOrder++, true, true, "Node.probeBuildShort", "Node.probeBuildLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -277,11 +271,12 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeIdentifier",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeRespondIdentifierShort",
-        "Node.probeRespondIdentifierLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            true,
+            "Node.probeRespondIdentifierShort",
+            "Node.probeRespondIdentifierLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -297,11 +292,8 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeLinkLengths",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeLinkLengthsShort",
-        "Node.probeLinkLengthsLong",
+        new Option.Meta(
+            sortOrder++, true, true, "Node.probeLinkLengthsShort", "Node.probeLinkLengthsLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -317,11 +309,8 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeLocation",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeLocationShort",
-        "Node.probeLocationLong",
+        new Option.Meta(
+            sortOrder++, true, true, "Node.probeLocationShort", "Node.probeLocationLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -337,11 +326,8 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeStoreSize",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeStoreSizeShort",
-        "Node.probeStoreSizeLong",
+        new Option.Meta(
+            sortOrder++, true, true, "Node.probeStoreSizeShort", "Node.probeStoreSizeLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -357,11 +343,7 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeUptime",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeUptimeShort",
-        "Node.probeUptimeLong",
+        new Option.Meta(sortOrder++, true, true, "Node.probeUptimeShort", "Node.probeUptimeLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -377,11 +359,8 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeRejectStats",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.probeRejectStatsShort",
-        "Node.probeRejectStatsLong",
+        new Option.Meta(
+            sortOrder++, true, true, "Node.probeRejectStatsShort", "Node.probeRejectStatsLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -398,11 +377,12 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         "probeOverallBulkOutputCapacityUsage",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.respondOverallBulkOutputCapacityUsage",
-        "Node.respondOverallBulkOutputCapacityUsageLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            true,
+            "Node.respondOverallBulkOutputCapacityUsage",
+            "Node.respondOverallBulkOutputCapacityUsageLong"),
         new BooleanCallback() {
 
           @Override
@@ -421,11 +401,8 @@ public class Probe implements ByteCounter {
     nodeConfig.register(
         IDENTIFIER_KEY,
         -1,
-        sortOrder,
-        true,
-        true,
-        "Node.probeIdentifierShort",
-        "Node.probeIdentifierLong",
+        new Option.Meta(
+            sortOrder, true, true, "Node.probeIdentifierShort", "Node.probeIdentifierLong"),
         new LongCallback() {
           @Override
           public Long get() {

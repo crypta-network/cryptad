@@ -36,11 +36,7 @@ class IntOptionTest {
             null,
             "duration",
             "5m",
-            0,
-            false,
-            false,
-            "short",
-            "long",
+            new Option.Meta(0, false, false, "short", "long"),
             new NullIntCallback(),
             Dimension.DURATION);
 
@@ -50,11 +46,7 @@ class IntOptionTest {
             null,
             "duration",
             optDurationFromDisplay.toString(optDurationFromDisplay.currentValue),
-            0,
-            false,
-            false,
-            "short",
-            "long",
+            new Option.Meta(0, false, false, "short", "long"),
             new NullIntCallback(),
             Dimension.DURATION);
 
@@ -67,11 +59,7 @@ class IntOptionTest {
             null,
             "duration",
             optDurationFromDisplay.toDisplayString(optDurationFromDisplay.currentValue),
-            0,
-            false,
-            false,
-            "short",
-            "long",
+            new Option.Meta(0, false, false, "short", "long"),
             new NullIntCallback(),
             Dimension.DURATION);
 
@@ -90,11 +78,7 @@ class IntOptionTest {
             subConfig,
             "size",
             defaultValue,
-            1,
-            false,
-            false,
-            "short",
-            "long",
+            new Option.Meta(1, false, false, "short", "long"),
             mockCb,
             Dimension.SIZE);
 
@@ -114,7 +98,12 @@ class IntOptionTest {
     // Arrange
     IntOption option =
         new IntOption(
-            subConfig, "num", 10, 1, false, false, "short", "long", mockCb, Dimension.NOT);
+            subConfig,
+            "num",
+            10,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.NOT);
 
     // Act + Assert
     assertThrows(InvalidConfigValueException.class, () -> option.setValue("not_a_number"));
@@ -128,7 +117,13 @@ class IntOptionTest {
   void setInitialValue_whenInvalid_throwsInvalidConfigValueException_withoutCallback() {
     // Arrange
     IntOption option =
-        new IntOption(subConfig, "num", 7, 1, false, false, "short", "long", mockCb, Dimension.NOT);
+        new IntOption(
+            subConfig,
+            "num",
+            7,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.NOT);
 
     // Act + Assert
     assertThrows(InvalidConfigValueException.class, () -> option.setInitialValue("garbage"));
@@ -141,7 +136,12 @@ class IntOptionTest {
     // Arrange
     IntOption option =
         new IntOption(
-            subConfig, "num", 123, 1, false, false, "short", "long", mockCb, Dimension.NOT);
+            subConfig,
+            "num",
+            123,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.NOT);
     // Callback throws validation error
     org.mockito.Mockito.doThrow(new InvalidConfigValueException("bad")).when(mockCb).set(anyInt());
 
@@ -156,7 +156,12 @@ class IntOptionTest {
     // Arrange
     IntOption option =
         new IntOption(
-            subConfig, "num", 0, 1, false, false, "short", "long", mockCb, Dimension.SIZE);
+            subConfig,
+            "num",
+            0,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.SIZE);
     org.mockito.Mockito.doThrow(new NodeNeedRestartException("restart")).when(mockCb).set(1024);
 
     // Act + Assert
@@ -173,7 +178,12 @@ class IntOptionTest {
     // Arrange
     IntOption option =
         new IntOption(
-            subConfig, "num", 10, 1, false, false, "short", "long", mockCb, Dimension.NOT);
+            subConfig,
+            "num",
+            10,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.NOT);
     when(mockCb.get()).thenReturn(42);
     subConfig.finishedInitialization();
 
@@ -191,7 +201,12 @@ class IntOptionTest {
     // Arrange
     IntOption option =
         new IntOption(
-            subConfig, "num", 77, 1, false, false, "short", "long", mockCb, Dimension.NOT);
+            subConfig,
+            "num",
+            77,
+            new Option.Meta(1, false, false, "short", "long"),
+            mockCb,
+            Dimension.NOT);
 
     // Act
     int value = option.getValue();
@@ -209,11 +224,7 @@ class IntOptionTest {
             subConfig,
             "size",
             1024,
-            1,
-            false,
-            false,
-            "short",
-            "long",
+            new Option.Meta(1, false, false, "short", "long"),
             new NullIntCallback(),
             Dimension.SIZE);
 

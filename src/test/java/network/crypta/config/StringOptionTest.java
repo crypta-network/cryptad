@@ -27,7 +27,11 @@ class StringOptionTest {
 
   private static StringOption newOption(SubConfig subConfig, StringCallback cb) {
     return new StringOption(
-        subConfig, "test.option", DEFAULT_VAL, 42, true, true, SHORT_KEY, LONG_KEY, cb);
+        subConfig,
+        "test.option",
+        DEFAULT_VAL,
+        new Option.Meta(42, true, true, SHORT_KEY, LONG_KEY),
+        cb);
   }
 
   @Test
@@ -87,7 +91,7 @@ class StringOptionTest {
     InvalidConfigValueException ex =
         assertThrows(InvalidConfigValueException.class, () -> opt.setValue(BAD_VALUE));
     assertEquals("bad", ex.getMessage());
-    // current value must remain the default because set() failed before updating
+    // the current value must remain the default because set() failed before updating
     assertEquals("def", opt.getValueString());
     Mockito.verify(cb).set(BAD_VALUE);
   }
@@ -104,7 +108,7 @@ class StringOptionTest {
     NodeNeedRestartException ex =
         assertThrows(NodeNeedRestartException.class, () -> opt.setValue(RESTART_VALUE));
     assertEquals("restart", ex.getMessage());
-    // For restart, currentValue is still updated
+    // For restart, the currentValue is still updated
     assertEquals(RESTART_VALUE, opt.getValueString());
     Mockito.verify(cb).set(RESTART_VALUE);
   }
@@ -128,7 +132,7 @@ class StringOptionTest {
     StringCallback cb = Mockito.mock(StringCallback.class);
     StringOption opt = newOption(sc, cb);
 
-    // simulate value parsed from config file without calling callback
+    // simulate value parsed from the config file without calling callback
     opt.setDefault();
     assertEquals("def", opt.getValue());
     Mockito.verify(cb, Mockito.never()).get();

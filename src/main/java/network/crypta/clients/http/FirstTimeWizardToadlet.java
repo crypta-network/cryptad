@@ -23,6 +23,7 @@ import network.crypta.clients.http.wizardsteps.SecurityPhysical;
 import network.crypta.clients.http.wizardsteps.Step;
 import network.crypta.clients.http.wizardsteps.Welcome;
 import network.crypta.config.Config;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
@@ -197,20 +198,22 @@ public class FirstTimeWizardToadlet extends Toadlet {
     wizardConfiguration.register(
         "loadUPnPPlugin",
         true,
-        0,
-        true,
-        false,
-        "FirstTimeWizardToadlet.loadUPnPPlugin",
-        "FirstTimeWizardToadlet.loadUPnPPluginLong",
+        new Option.Meta(
+            0,
+            true,
+            false,
+            "FirstTimeWizardToadlet.loadUPnPPlugin",
+            "FirstTimeWizardToadlet.loadUPnPPluginLong"),
         createLoadUPnPPluginCallback());
     wizardConfiguration.register(
         "enableAutoUpdater",
         true,
-        1,
-        true,
-        false,
-        "FirstTimeWizardToadlet.enableAutoUpdater",
-        "FirstTimeWizardToadlet.enableAutoUpdaterLong",
+        new Option.Meta(
+            1,
+            true,
+            false,
+            "FirstTimeWizardToadlet.enableAutoUpdater",
+            "FirstTimeWizardToadlet.enableAutoUpdaterLong"),
         createEnableAutoUpdaterCallback());
     loadUPnPPlugin = wizardConfiguration.getBoolean("loadUPnPPlugin");
     enableAutoUpdater = wizardConfiguration.getBoolean("enableAutoUpdater");

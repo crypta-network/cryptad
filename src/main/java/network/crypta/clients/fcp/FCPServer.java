@@ -25,6 +25,7 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.FCPPluginConnection.SendDirection;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.SSL;
 import network.crypta.io.AllowedHosts;
@@ -558,57 +559,39 @@ public class FCPServer implements Runnable, DownloadCache {
     fcpConfig.register(
         "enabled",
         true,
-        sortOrder++,
-        true,
-        false,
-        "FcpServer.isEnabled",
-        "FcpServer.isEnabledLong",
+        new Option.Meta(sortOrder++, true, false, "FcpServer.isEnabled", "FcpServer.isEnabledLong"),
         new FCPEnabledCallback(core));
     fcpConfig.register(
         "ssl",
         false,
-        sortOrder++,
-        true,
-        true,
-        "FcpServer.ssl",
-        "FcpServer.sslLong",
+        new Option.Meta(sortOrder++, true, true, "FcpServer.ssl", "FcpServer.sslLong"),
         new FCPSSLCallback());
     fcpConfig.register(
         "port",
         FCPServer.DEFAULT_FCP_PORT /* anagram of 1984, and 1000 up from old number */,
-        2,
-        true,
-        true,
-        "FcpServer.portNumber",
-        "FcpServer.portNumberLong",
+        new Option.Meta(2, true, true, "FcpServer.portNumber", "FcpServer.portNumberLong"),
         new FCPPortNumberCallback(core),
         false);
     fcpConfig.register(
         "bindTo",
         NetworkInterface.DEFAULT_BIND_TO,
-        sortOrder++,
-        true,
-        true,
-        "FcpServer.bindTo",
-        "FcpServer.bindToLong",
+        new Option.Meta(sortOrder++, true, true, "FcpServer.bindTo", "FcpServer.bindToLong"),
         new FCPBindtoCallback(core));
     fcpConfig.register(
         "allowedHosts",
         NetworkInterface.DEFAULT_BIND_TO,
-        sortOrder++,
-        true,
-        true,
-        "FcpServer.allowedHosts",
-        "FcpServer.allowedHostsLong",
+        new Option.Meta(
+            sortOrder++, true, true, "FcpServer.allowedHosts", "FcpServer.allowedHostsLong"),
         new FCPAllowedHostsCallback(core));
     fcpConfig.register(
         "allowedHostsFullAccess",
         NetworkInterface.DEFAULT_BIND_TO,
-        sortOrder++,
-        true,
-        true,
-        "FcpServer.allowedHostsFullAccess",
-        "FcpServer.allowedHostsFullAccessLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            true,
+            "FcpServer.allowedHostsFullAccess",
+            "FcpServer.allowedHostsFullAccessLong"),
         new FCPAllowedHostsFullAccessCallback(core));
 
     AssumeDDADownloadIsAllowedCallback cb4 = new AssumeDDADownloadIsAllowedCallback();
@@ -618,39 +601,43 @@ public class FCPServer implements Runnable, DownloadCache {
     fcpConfig.register(
         "assumeDownloadDDAIsAllowed",
         false,
-        sortOrder++,
-        true,
-        false,
-        "FcpServer.assumeDownloadDDAIsAllowed",
-        "FcpServer.assumeDownloadDDAIsAllowedLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "FcpServer.assumeDownloadDDAIsAllowed",
+            "FcpServer.assumeDownloadDDAIsAllowedLong"),
         cb4);
     fcpConfig.register(
         "assumeUploadDDAIsAllowed",
         false,
-        sortOrder++,
-        true,
-        false,
-        "FcpServer.assumeUploadDDAIsAllowed",
-        "FcpServer.assumeUploadDDAIsAllowedLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "FcpServer.assumeUploadDDAIsAllowed",
+            "FcpServer.assumeUploadDDAIsAllowedLong"),
         cb5);
     fcpConfig.register(
         "maxMessageQueueLength",
         1024,
-        sortOrder++,
-        true,
-        false,
-        "FcpServer.maxMessageQueueLength",
-        "FcpServer.maxMessageQueueLengthLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "FcpServer.maxMessageQueueLength",
+            "FcpServer.maxMessageQueueLengthLong"),
         cb7,
         false);
     fcpConfig.register(
         "neverDropAMessage",
         false,
-        sortOrder,
-        true,
-        false,
-        "FcpServer.neverDropAMessage",
-        "FcpServer.neverDropAMessageLong",
+        new Option.Meta(
+            sortOrder,
+            true,
+            false,
+            "FcpServer.neverDropAMessage",
+            "FcpServer.neverDropAMessageLong"),
         cb6);
 
     if (SSL.available()) {

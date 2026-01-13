@@ -12,6 +12,7 @@ import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
 import network.crypta.keys.Key;
@@ -441,11 +442,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "minDiskFreeLongTerm",
             "1G",
-            sortOrder++,
-            true,
-            true,
-            "NodeClientCore.minDiskFreeLongTerm",
-            "NodeClientCore.minDiskFreeLongTermLong",
+            new Option.Meta(
+                sortOrder++,
+                true,
+                true,
+                "NodeClientCore.minDiskFreeLongTerm",
+                "NodeClientCore.minDiskFreeLongTermLong"),
             new LongCallback() {
 
               @Override
@@ -473,11 +475,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "minDiskFreeShortTerm",
             "512M",
-            sortOrder + 1,
-            true,
-            true,
-            "NodeClientCore.minDiskFreeShortTerm",
-            "NodeClientCore.minDiskFreeShortTermLong",
+            new Option.Meta(
+                sortOrder + 1,
+                true,
+                true,
+                "NodeClientCore.minDiskFreeShortTerm",
+                "NodeClientCore.minDiskFreeShortTermLong"),
             new LongCallback() {
 
               @Override
@@ -755,11 +758,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "maxBackgroundUSKFetchers",
             64,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.maxUSKFetchers",
-            "NodeClientCore.maxUSKFetchersLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.maxUSKFetchers",
+                "NodeClientCore.maxUSKFetchersLong"),
             new IntCallback() {
 
               @Override
@@ -786,11 +790,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "memoryLimitedJobThreadLimit",
             maxMemoryLimitedJobThreads,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.memoryLimitedJobThreadLimit",
-            "NodeClientCore.memoryLimitedJobThreadLimitLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.memoryLimitedJobThreadLimit",
+                "NodeClientCore.memoryLimitedJobThreadLimitLong"),
             new IntCallback() {
 
               @Override
@@ -816,11 +821,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "alwaysCommit",
             false,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.alwaysCommit",
-            "NodeClientCore.alwaysCommitLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.alwaysCommit",
+                "NodeClientCore.alwaysCommitLong"),
             new BooleanCallback() {
 
               @Override
@@ -841,11 +847,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "maxRAMBucketSize",
             SizeUtil.formatSizeWithoutSpace(maxBucketSize),
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.maxRAMBucketSize",
-            "NodeClientCore.maxRAMBucketSizeLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.maxRAMBucketSize",
+                "NodeClientCore.maxRAMBucketSizeLong"),
             new LongCallback() {
 
               @Override
@@ -869,11 +876,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "RAMBucketPoolSize",
             defaultRamBucketPoolSize + "MiB",
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.ramBucketPoolSize",
-            "NodeClientCore.ramBucketPoolSizeLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.ramBucketPoolSize",
+                "NodeClientCore.ramBucketPoolSizeLong"),
             new LongCallback() {
 
               @Override
@@ -897,11 +905,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "encryptTempBuckets",
             true,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.encryptTempBuckets",
-            "NodeClientCore.encryptTempBucketsLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.encryptTempBuckets",
+                "NodeClientCore.encryptTempBucketsLong"),
             new BooleanCallback() {
 
               @Override
@@ -923,11 +932,12 @@ public class NodeClientCore implements Persistable {
         .register(
             CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS,
             true,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.encryptPersistentTempBuckets",
-            "NodeClientCore.encryptPersistentTempBucketsLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.encryptPersistentTempBuckets",
+                "NodeClientCore.encryptPersistentTempBucketsLong"),
             new BooleanCallback() {
 
               @Override
@@ -963,11 +973,12 @@ public class NodeClientCore implements Persistable {
         .register(
             "lazyStartDatastoreChecker",
             false,
-            sortOrder,
-            true,
-            false,
-            "NodeClientCore.lazyStartDatastoreChecker",
-            "NodeClientCore.lazyStartDatastoreCheckerLong",
+            new Option.Meta(
+                sortOrder,
+                true,
+                false,
+                "NodeClientCore.lazyStartDatastoreChecker",
+                "NodeClientCore.lazyStartDatastoreCheckerLong"),
             new BooleanCallback() {
 
               @Override

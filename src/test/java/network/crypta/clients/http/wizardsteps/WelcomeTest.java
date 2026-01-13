@@ -20,6 +20,7 @@ import network.crypta.config.Config;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.BooleanCallback;
@@ -58,11 +59,7 @@ class WelcomeTest {
         .register(
             OPTION_JAVASCRIPT_ENABLED,
             true,
-            0,
-            false,
-            false,
-            UNUSED,
-            UNUSED,
+            new Option.Meta(0, false, false, UNUSED, UNUSED),
             BooleanCallback.from(() -> true, ignored -> {}));
 
     HTMLNode contentNode = new HTMLNode("div");
@@ -96,11 +93,7 @@ class WelcomeTest {
         .register(
             OPTION_JAVASCRIPT_ENABLED,
             false,
-            0,
-            false,
-            false,
-            UNUSED,
-            UNUSED,
+            new Option.Meta(0, false, false, UNUSED, UNUSED),
             BooleanCallback.from(() -> false, ignored -> {}));
 
     HTMLNode contentNode = new HTMLNode("div");
@@ -127,11 +120,7 @@ class WelcomeTest {
         .register(
             OPTION_JAVASCRIPT_ENABLED,
             false,
-            0,
-            false,
-            false,
-            UNUSED,
-            UNUSED,
+            new Option.Meta(0, false, false, UNUSED, UNUSED),
             BooleanCallback.from(() -> false, ignored -> {}));
 
     HTMLNode contentNode = new HTMLNode("div");
@@ -167,11 +156,7 @@ class WelcomeTest {
         .register(
             OPTION_JAVASCRIPT_ENABLED,
             false,
-            0,
-            false,
-            false,
-            UNUSED,
-            UNUSED,
+            new Option.Meta(0, false, false, UNUSED, UNUSED),
             BooleanCallback.from(() -> false, ignored -> {}));
 
     HTMLNode contentNode = new HTMLNode("div");
@@ -212,11 +197,7 @@ class WelcomeTest {
         .register(
             OPTION_JAVASCRIPT_ENABLED,
             false,
-            0,
-            false,
-            false,
-            UNUSED,
-            UNUSED,
+            new Option.Meta(0, false, false, UNUSED, UNUSED),
             BooleanCallback.from(() -> false, ignored -> {}));
 
     HTMLNode contentNode = new HTMLNode("div");
@@ -321,11 +302,7 @@ class WelcomeTest {
     node.register(
         "l10n",
         initialLanguage,
-        0,
-        false,
-        false,
-        UNUSED,
-        UNUSED,
+        new Option.Meta(0, false, false, UNUSED, UNUSED),
         new EnumerableStringCallback(possibleLanguages, initialLanguage, behavior));
 
     config.createSubConfig(SUBCONFIG_FPROXY);

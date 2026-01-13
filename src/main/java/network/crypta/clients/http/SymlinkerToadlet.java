@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
@@ -63,11 +64,8 @@ public class SymlinkerToadlet extends Toadlet {
     tslconfig.register(
         "symlinks",
         null,
-        9,
-        true,
-        false,
-        "SymlinkerToadlet.symlinks",
-        "SymlinkerToadlet.symlinksLong",
+        new Option.Meta(
+            9, true, false, "SymlinkerToadlet.symlinks", "SymlinkerToadlet.symlinksLong"),
         new StringArrCallback() {
           @Override
           public String[] get() {

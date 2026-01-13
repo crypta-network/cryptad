@@ -21,6 +21,7 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
@@ -195,11 +196,8 @@ public class NodeUpdateManager {
     updaterConfig.register(
         "enabled",
         true,
-        1,
-        false,
-        false,
-        "NodeUpdateManager.enabled",
-        "NodeUpdateManager.enabledLong",
+        new Option.Meta(
+            1, false, false, "NodeUpdateManager.enabled", "NodeUpdateManager.enabledLong"),
         new UpdaterEnabledCallback());
 
     wasEnabledOnStartup = updaterConfig.getBoolean("enabled");
@@ -208,11 +206,12 @@ public class NodeUpdateManager {
     updaterConfig.register(
         "autoupdate",
         false,
-        2,
-        false,
-        true,
-        "NodeUpdateManager.installNewVersions",
-        "NodeUpdateManager.installNewVersionsLong",
+        new Option.Meta(
+            2,
+            false,
+            true,
+            "NodeUpdateManager.installNewVersions",
+            "NodeUpdateManager.installNewVersionsLong"),
         new AutoUpdateAllowedCallback());
     isAutoUpdateAllowed = updaterConfig.getBoolean("autoupdate");
 
@@ -220,11 +219,8 @@ public class NodeUpdateManager {
     updaterConfig.register(
         "URI",
         UPDATE_URI,
-        3,
-        true,
-        true,
-        "NodeUpdateManager.updateURI",
-        "NodeUpdateManager.updateURILong",
+        new Option.Meta(
+            3, true, true, "NodeUpdateManager.updateURI", "NodeUpdateManager.updateURILong"),
         new UpdateURICallback());
 
     try {
@@ -245,11 +241,12 @@ public class NodeUpdateManager {
     updaterConfig.register(
         "revocationURI",
         REVOCATION_URI,
-        4,
-        true,
-        false,
-        "NodeUpdateManager.revocationURI",
-        "NodeUpdateManager.revocationURILong",
+        new Option.Meta(
+            4,
+            true,
+            false,
+            "NodeUpdateManager.revocationURI",
+            "NodeUpdateManager.revocationURILong"),
         new UpdateRevocationURICallback());
 
     try {

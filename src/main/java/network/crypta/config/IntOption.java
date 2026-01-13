@@ -31,11 +31,7 @@ public class IntOption extends Option<Integer> {
    * @param conf owning sub-configuration.
    * @param optionName stable key used to persist and retrieve the option.
    * @param defaultValueString textual default; interpreted using {@code dimension}.
-   * @param sortOrder relative ordering hint for UIs.
-   * @param expert whether the option targets advanced users.
-   * @param forceWrite whether to always write the option, even when equal to the default.
-   * @param shortDesc single-line description suitable for lists.
-   * @param longDesc extended help text; may contain localization tokens.
+   * @param meta option metadata (sort order, expert flag, descriptions).
    * @param cb callback invoked on value change; may be {@code null} when no side effect is needed.
    * @param dimension interpretation of numeric text and preferred display format.
    */
@@ -43,24 +39,10 @@ public class IntOption extends Option<Integer> {
       SubConfig conf,
       String optionName,
       String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       IntCallback cb,
       Dimension dimension) {
-    this(
-        conf,
-        optionName,
-        parseString(defaultValueString, dimension),
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        cb,
-        dimension);
+    this(conf, optionName, parseString(defaultValueString, dimension), meta, cb, dimension);
   }
 
   /**
@@ -69,11 +51,7 @@ public class IntOption extends Option<Integer> {
    * @param conf owning sub-configuration.
    * @param optionName stable key used to persist and retrieve the option.
    * @param defaultValue default value stored as an {@link Integer}.
-   * @param sortOrder relative ordering hint for UIs.
-   * @param expert whether the option targets advanced users.
-   * @param forceWrite whether to always write the option, even when equal to the default.
-   * @param shortDesc single-line description suitable for lists.
-   * @param longDesc extended help text; may contain localization tokens.
+   * @param meta option metadata (sort order, expert flag, descriptions).
    * @param cb callback invoked on value change; may be {@code null} when no side effect is needed.
    * @param dimension interpretation of numeric text and preferred display format.
    */
@@ -81,19 +59,10 @@ public class IntOption extends Option<Integer> {
       SubConfig conf,
       String optionName,
       Integer defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       IntCallback cb,
       Dimension dimension) {
-    super(
-        conf,
-        optionName,
-        cb,
-        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
-        Option.DataType.NUMBER);
+    super(conf, optionName, cb, meta, Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
     this.dimension = dimension;

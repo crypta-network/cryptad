@@ -24,6 +24,7 @@ import javax.net.ServerSocketFactory;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.node.NodeStarter;
 import network.crypta.support.api.BooleanCallback;
@@ -128,45 +129,32 @@ public class SSL {
     sslConfig.register(
         "sslEnable",
         false,
-        configItemOrder++,
-        true,
-        true,
-        "SSL.enable",
-        "SSL.enable",
+        new Option.Meta(configItemOrder++, true, true, "SSL.enable", "SSL.enable"),
         enableCallback());
 
     sslConfig.register(
         "sslKeyStore",
         "datastore/certs",
-        configItemOrder++,
-        true,
-        true,
-        "SSL.keyStore",
-        "SSL.keyStoreLong",
+        new Option.Meta(configItemOrder++, true, true, "SSL.keyStore", "SSL.keyStoreLong"),
         keyStorePathCallback());
 
     sslConfig.register(
         "sslKeyStorePass",
         DEFAULT_SECRET,
-        configItemOrder++,
-        true,
-        true,
-        "SSL.keyStorePass",
-        "SSL.keyStorePass",
+        new Option.Meta(configItemOrder++, true, true, "SSL.keyStorePass", "SSL.keyStorePass"),
         keyStorePassCallback());
 
     sslConfig.register(
         "sslKeyPass",
         DEFAULT_SECRET,
-        configItemOrder++,
-        true,
-        true,
-        "SSL.keyPass",
-        "SSL.keyPass",
+        new Option.Meta(configItemOrder++, true, true, "SSL.keyPass", "SSL.keyPass"),
         keyPassCallback());
 
     sslConfig.register(
-        "sslHSTS", 0, configItemOrder, true, true, "SSL.HSTS", "SSL.HSTSLong", hstsCallback());
+        "sslHSTS",
+        0,
+        new Option.Meta(configItemOrder, true, true, "SSL.HSTS", "SSL.HSTSLong"),
+        hstsCallback());
 
     enable = sslConfig.getBoolean("sslEnable");
     keyStorePath = sslConfig.getString("sslKeyStore");

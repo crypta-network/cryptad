@@ -3,6 +3,7 @@ package network.crypta.node;
 import java.io.File;
 import java.io.IOException;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.Ticker;
@@ -68,11 +69,7 @@ public class ConfigurablePersister extends Persister {
     nodeConfig.register(
         optionName,
         new File(baseDir, defaultFilename).toString(),
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
+        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
         new StringCallback() {
           @Override
           public String get() {

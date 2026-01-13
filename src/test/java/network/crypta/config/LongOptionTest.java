@@ -32,17 +32,8 @@ class LongOptionTest {
 
   private LongOption newOption(
       String name, long defaultValue, boolean isSize, LongCallback callback) {
-    return new LongOption(
-        subConfig,
-        name,
-        defaultValue,
-        /* sortOrder */ 10,
-        /* expert */ false,
-        /* forceWrite */ false,
-        /* shortDesc */ "short.key",
-        /* longDesc */ "long.key",
-        callback,
-        isSize);
+    Option.Meta meta = new Option.Meta(10, false, false, "short.key", "long.key");
+    return new LongOption(subConfig, name, defaultValue, meta, callback, isSize);
   }
 
   @Test
@@ -50,18 +41,8 @@ class LongOptionTest {
   void constructorStringDefault_whenValid_expectDefaultAndCurrentSet() {
     // Arrange
     // "3M" uses IEC upper-case M => 3 * 2^20
-    LongOption opt =
-        new LongOption(
-            subConfig,
-            "alpha",
-            "3M",
-            /* sortOrder */ 10,
-            /* expert */ false,
-            /* forceWrite */ false,
-            /* shortDesc */ "short.key",
-            /* longDesc */ "long.key",
-            cb,
-            /* isSize */ false);
+    Option.Meta meta = new Option.Meta(10, false, false, "short.key", "long.key");
+    LongOption opt = new LongOption(subConfig, "alpha", "3M", meta, cb, /* isSize */ false);
 
     // Act & Assert
     assertEquals(Option.DataType.NUMBER, opt.getDataType());
@@ -79,7 +60,7 @@ class LongOptionTest {
     // Act: parse a human-size value and set as initial without invoking callback
     opt.setInitialValue("2048");
 
-    // Assert: display string uses IEC (KiB) while value string stays raw
+    // Assert: the display string uses IEC (KiB) while the value string stays raw
     assertEquals("2048", opt.getValueString());
     assertEquals("2KiB", opt.getValueDisplayString());
   }
@@ -94,7 +75,7 @@ class LongOptionTest {
     InvalidConfigValueException ex =
         assertThrows(InvalidConfigValueException.class, () -> opt.setInitialValue("not a number"));
 
-    // Assert: message comes from l10n and contains the offending value
+    // Assert: the message comes from l10n and contains the offending value
     String msg = ex.getMessage();
     assertNotNull(msg);
     assertTrue(msg.contains("64-bit integer"), msg);

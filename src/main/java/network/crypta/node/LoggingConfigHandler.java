@@ -22,6 +22,7 @@ import network.crypta.config.Dimension;
 import network.crypta.config.EnumerableOptionCallback;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.OptionFormatException;
 import network.crypta.config.SubConfig;
 import network.crypta.support.ModuloTimeTriggeringPolicy;
@@ -187,11 +188,7 @@ public class LoggingConfigHandler {
     loggingConfig.register(
         "enabled",
         true,
-        1,
-        true,
-        false,
-        "LogConfigHandler.enabled",
-        "LogConfigHandler.enabledLong",
+        new Option.Meta(1, true, false, "LogConfigHandler.enabled", "LogConfigHandler.enabledLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -216,11 +213,7 @@ public class LoggingConfigHandler {
     loggingConfig.register(
         "dirname",
         "logs",
-        2,
-        true,
-        false,
-        "LogConfigHandler.dirName",
-        "LogConfigHandler.dirNameLong",
+        new Option.Meta(2, true, false, "LogConfigHandler.dirName", "LogConfigHandler.dirNameLong"),
         new StringCallback() {
           @Override
           public String get() {
@@ -257,11 +250,12 @@ public class LoggingConfigHandler {
     config.register(
         CONF_LOGS_TOTAL_SIZE_CAP,
         "200M",
-        3,
-        true,
-        true,
-        "LogConfigHandler.logsTotalSizeCap",
-        "LogConfigHandler.logsTotalSizeCapLong",
+        new Option.Meta(
+            3,
+            true,
+            true,
+            "LogConfigHandler.logsTotalSizeCap",
+            "LogConfigHandler.logsTotalSizeCapLong"),
         new LongCallback() {
           @Override
           public Long get() {
@@ -292,11 +286,12 @@ public class LoggingConfigHandler {
     config.register(
         CONF_PRIORITY,
         LVL_WARN,
-        4,
-        false,
-        false,
-        "LogConfigHandler.minLoggingPriority",
-        "LogConfigHandler.minLoggingPriorityLong",
+        new Option.Meta(
+            4,
+            false,
+            false,
+            "LogConfigHandler.minLoggingPriority",
+            "LogConfigHandler.minLoggingPriorityLong"),
         new PriorityCallback());
   }
 
@@ -304,11 +299,12 @@ public class LoggingConfigHandler {
     config.register(
         "priorityDetail",
         "",
-        5,
-        true,
-        false,
-        "LogConfigHandler.detailedPriorityThreshold",
-        "LogConfigHandler.detailedPriorityThresholdLong",
+        new Option.Meta(
+            5,
+            true,
+            false,
+            "LogConfigHandler.detailedPriorityThreshold",
+            "LogConfigHandler.detailedPriorityThresholdLong"),
         new StringCallback() {
           @Override
           public String get() {
@@ -327,11 +323,12 @@ public class LoggingConfigHandler {
     config.register(
         "interval",
         "1HOUR",
-        5,
-        true,
-        false,
-        "LogConfigHandler.rotationInterval",
-        "LogConfigHandler.rotationIntervalLong",
+        new Option.Meta(
+            5,
+            true,
+            false,
+            "LogConfigHandler.rotationInterval",
+            "LogConfigHandler.rotationIntervalLong"),
         new StringCallback() {
           @Override
           public String get() {
@@ -356,11 +353,12 @@ public class LoggingConfigHandler {
     config.register(
         "maxCachedBytes",
         "1M",
-        6,
-        true,
-        false,
-        "LogConfigHandler.maxCachedBytes",
-        "LogConfigHandler.maxCachedBytesLong",
+        new Option.Meta(
+            6,
+            true,
+            false,
+            "LogConfigHandler.maxCachedBytes",
+            "LogConfigHandler.maxCachedBytesLong"),
         new LongCallback() {
           @Override
           public Long get() {
@@ -385,11 +383,12 @@ public class LoggingConfigHandler {
     config.register(
         "maxCachedLines",
         "10k",
-        7,
-        true,
-        false,
-        "LogConfigHandler.maxCachedLines",
-        "LogConfigHandler.maxCachedLinesLong",
+        new Option.Meta(
+            7,
+            true,
+            false,
+            "LogConfigHandler.maxCachedLines",
+            "LogConfigHandler.maxCachedLinesLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -413,11 +412,12 @@ public class LoggingConfigHandler {
     config.register(
         "maxBacklogNotBusy",
         "60000",
-        8,
-        true,
-        false,
-        "LogConfigHandler.maxBacklogNotBusy",
-        "LogConfigHandler.maxBacklogNotBusy",
+        new Option.Meta(
+            8,
+            true,
+            false,
+            "LogConfigHandler.maxBacklogNotBusy",
+            "LogConfigHandler.maxBacklogNotBusy"),
         new LongCallback() {
 
           @Override

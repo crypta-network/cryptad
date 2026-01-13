@@ -89,7 +89,7 @@ public class Config {
   public void finishedInit() {
     SubConfig[] configs;
     synchronized (this) {
-      // FIXME: Consider caching the array if this method is hot; profile before adding state.
+      // Note: Consider caching the array if this method is hot; profile before adding state.
       configs = configsByPrefix.values().toArray(new SubConfig[0]);
     }
     for (SubConfig config : configs) {
@@ -155,7 +155,7 @@ public class Config {
    * @param subConfig the source sub-config
    * @param key the option key
    * @return the numeric option
-   * @throws ClassCastException if the option exists but is not of numeric type
+   * @throws ClassCastException if the option exists but is not of a numeric type
    */
   @SuppressWarnings("unchecked")
   public static Option<Long> longOption(SubConfig subConfig, String key) {

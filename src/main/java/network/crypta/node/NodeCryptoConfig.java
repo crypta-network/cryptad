@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import java.net.UnknownHostException;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
@@ -112,11 +113,12 @@ public class NodeCryptoConfig {
     config.register(
         "listenPort",
         -1 /* means random */,
-        sortOrder++,
-        true,
-        true,
-        isOpennet ? "Node.opennetPort" : "Node.port",
-        isOpennet ? "Node.opennetPortLong" : "Node.portLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            true,
+            isOpennet ? "Node.opennetPort" : "Node.port",
+            isOpennet ? "Node.opennetPortLong" : "Node.portLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -166,11 +168,7 @@ public class NodeCryptoConfig {
     config.register(
         KEY_BIND_TO,
         "0.0.0.0",
-        sortOrder++,
-        true,
-        true,
-        "Node.bindTo",
-        "Node.bindToLong",
+        new Option.Meta(sortOrder++, true, true, "Node.bindTo", "Node.bindToLong"),
         new NodeBindtoCallback());
     return sortOrder;
   }
@@ -189,11 +187,8 @@ public class NodeCryptoConfig {
     config.register(
         "testingDropPacketsEvery",
         0,
-        sortOrder++,
-        true,
-        false,
-        "Node.dropPacketEvery",
-        "Node.dropPacketEveryLong",
+        new Option.Meta(
+            sortOrder++, true, false, "Node.dropPacketEvery", "Node.dropPacketEveryLong"),
         new IntCallback() {
           @Override
           public Integer get() {
@@ -226,11 +221,12 @@ public class NodeCryptoConfig {
     config.register(
         "oneConnectionPerIP",
         isOpennet,
-        sortOrder++,
-        true,
-        false,
-        (isOpennet ? "OpennetManager" : "Node") + ".oneConnectionPerIP",
-        (isOpennet ? "OpennetManager" : "Node") + ".oneConnectionPerIPLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            (isOpennet ? "OpennetManager" : "Node") + ".oneConnectionPerIP",
+            (isOpennet ? "OpennetManager" : "Node") + ".oneConnectionPerIPLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -273,11 +269,12 @@ public class NodeCryptoConfig {
     config.register(
         "alwaysAllowLocalAddresses",
         !isOpennet,
-        sortOrder++,
-        true,
-        false,
-        "Node.alwaysAllowLocalAddresses",
-        "Node.alwaysAllowLocalAddressesLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "Node.alwaysAllowLocalAddresses",
+            "Node.alwaysAllowLocalAddressesLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -304,11 +301,7 @@ public class NodeCryptoConfig {
     config.register(
         "assumeNATed",
         true,
-        sortOrder++,
-        true,
-        true,
-        "Node.assumeNATed",
-        "Node.assumeNATedLong",
+        new Option.Meta(sortOrder++, true, true, "Node.assumeNATed", "Node.assumeNATedLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -333,11 +326,12 @@ public class NodeCryptoConfig {
     config.register(
         "includeLocalAddressesInNoderefs",
         !isOpennet,
-        sortOrder++,
-        true,
-        false,
-        "NodeIPDectector.inclLocalAddress",
-        "NodeIPDectector.inclLocalAddressLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "NodeIPDectector.inclLocalAddress",
+            "NodeIPDectector.inclLocalAddressLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {
@@ -361,11 +355,7 @@ public class NodeCryptoConfig {
     config.register(
         "paddDataPackets",
         true,
-        sortOrder,
-        true,
-        false,
-        "Node.paddDataPackets",
-        "Node.paddDataPacketsLong",
+        new Option.Meta(sortOrder, true, false, "Node.paddDataPackets", "Node.paddDataPacketsLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {

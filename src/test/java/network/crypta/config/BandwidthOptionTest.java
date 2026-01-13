@@ -35,7 +35,11 @@ class BandwidthOptionTest {
 
   private BandwidthOption newOptionWithDefault(int defaultValue) {
     return new BandwidthOption(
-        subConfig, "bandwidth", defaultValue, 10, false, false, "short", "long", callback);
+        subConfig,
+        "bandwidth",
+        defaultValue,
+        new Option.Meta(10, false, false, "short", "long"),
+        callback);
   }
 
   // no helper for String default to avoid Sonar warning about always-constant parameter values
@@ -68,7 +72,7 @@ class BandwidthOptionTest {
       throws Exception {
     BandwidthOption opt = newOptionWithDefault(0);
 
-    // Act: parse without invoking callback
+    // Act: parse without invoking a callback
     opt.setInitialValue(input);
 
     // Assert: current value and string forms
@@ -88,7 +92,7 @@ class BandwidthOptionTest {
     assertEquals(2048, opt.getValue());
     // UI display uses Dimension.SIZE (may compact when evenly divisible)
     assertEquals("2KiB", opt.getValueDisplayString());
-    // Persistence always uses plain number
+    // Persistence always uses a plain number
     assertEquals("2048", opt.getValueString());
   }
 
@@ -98,7 +102,7 @@ class BandwidthOptionTest {
 
     assertThrows(InvalidConfigValueException.class, () -> opt.setValue("bogus/s"));
 
-    // Value unchanged after failed set
+    // Value unchanged after a failed set
     assertEquals(1000, opt.getValue());
     assertEquals("1000", opt.getValueString());
   }
@@ -111,7 +115,7 @@ class BandwidthOptionTest {
 
     assertThrows(NodeNeedRestartException.class, () -> opt.setValue(TWO_KIB_PER_S));
 
-    // Even though a restart is required, Option updates currentValue before rethrowing
+    // Even though a restart is required, Option updates the currentValue before rethrowing
     assertEquals(2048, opt.getValue());
     verify(callback, times(1)).set(2048);
   }
@@ -124,7 +128,7 @@ class BandwidthOptionTest {
 
     assertThrows(InvalidConfigValueException.class, () -> opt.setValue(TWO_KIB_PER_S));
 
-    // Current value should remain the default (unchanged)
+    // The current value should remain the default (unchanged)
     assertEquals(2000, opt.getValue());
     String expectedPersist = network.crypta.support.Fields.intToString(2000, Dimension.NOT);
     assertEquals(expectedPersist, opt.getValueString());
@@ -138,12 +142,8 @@ class BandwidthOptionTest {
             subConfig,
             "bandwidth",
             "2MiB",
-            10,
-            false,
-            false,
-            "short",
-            "long",
-            callback); // 2 * 1<<20 = 2097152 bytes
+            new Option.Meta(10, false, false, "short", "long"),
+            callback); // 2 * 1<<20 = 2,097,152 bytes
 
     // Default (and initial current) value
     assertEquals(2 * 1024 * 1024, opt.getValue());

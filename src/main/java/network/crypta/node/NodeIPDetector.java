@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Set;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
@@ -581,11 +582,12 @@ public class NodeIPDetector {
     nodeConfig.register(
         "ipAddressOverride",
         "",
-        sortOrder++,
-        true,
-        false,
-        "NodeIPDectector.ipOverride",
-        "NodeIPDectector.ipOverrideLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "NodeIPDectector.ipOverride",
+            "NodeIPDectector.ipOverrideLong"),
         new IpOverrideCallback());
 
     initIpAddressOverride(nodeConfig);
@@ -690,11 +692,12 @@ public class NodeIPDetector {
     nodeConfig.register(
         "tempIPAddressHint",
         "",
-        sortOrder++,
-        true,
-        false,
-        "NodeIPDectector.tempAddressHint",
-        "NodeIPDectector.tempAddressHintLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "NodeIPDectector.tempAddressHint",
+            "NodeIPDectector.tempAddressHintLong"),
         new StringCallback() {
 
           @Override
@@ -735,11 +738,12 @@ public class NodeIPDetector {
     nodeConfig.register(
         "allowBindToLocalhost",
         false,
-        sortOrder++,
-        true,
-        false,
-        "NodeIPDetector.allowBindToLocalhost",
-        "NodeIPDetector.allowBindToLocalhostLong",
+        new Option.Meta(
+            sortOrder++,
+            true,
+            false,
+            "NodeIPDetector.allowBindToLocalhost",
+            "NodeIPDetector.allowBindToLocalhostLong"),
         BooleanCallback.from(
             () -> allowBindToLocalhost,
             value -> {

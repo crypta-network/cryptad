@@ -10,6 +10,7 @@ import java.util.Arrays;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SSL;
@@ -141,57 +142,63 @@ public class TextModeClientInterfaceServer implements Runnable {
     tmciConfig.register(
         "enabled",
         false,
-        1,
-        true,
-        true /* only because can't be changed on the fly */,
-        "TextModeClientInterfaceServer.enabled",
-        "TextModeClientInterfaceServer.enabledLong",
+        new Option.Meta(
+            1,
+            true,
+            true /* only because can't be changed on the fly */,
+            "TextModeClientInterfaceServer.enabled",
+            "TextModeClientInterfaceServer.enabledLong"),
         new TMCIEnabledCallback(core));
     tmciConfig.register(
         "ssl",
         false,
-        1,
-        true,
-        true,
-        "TextModeClientInterfaceServer.ssl",
-        "TextModeClientInterfaceServer.sslLong",
+        new Option.Meta(
+            1,
+            true,
+            true,
+            "TextModeClientInterfaceServer.ssl",
+            "TextModeClientInterfaceServer.sslLong"),
         new TMCISSLCallback());
     tmciConfig.register(
         "bindTo",
         NetworkInterface.DEFAULT_BIND_TO,
-        2,
-        true,
-        false,
-        "TextModeClientInterfaceServer.bindTo",
-        "TextModeClientInterfaceServer.bindToLong",
+        new Option.Meta(
+            2,
+            true,
+            false,
+            "TextModeClientInterfaceServer.bindTo",
+            "TextModeClientInterfaceServer.bindToLong"),
         new TMCIBindtoCallback(core));
     tmciConfig.register(
         "allowedHosts",
         NetworkInterface.DEFAULT_BIND_TO,
-        2,
-        true,
-        false,
-        "TextModeClientInterfaceServer.allowedHosts",
-        "TextModeClientInterfaceServer.allowedHostsLong",
+        new Option.Meta(
+            2,
+            true,
+            false,
+            "TextModeClientInterfaceServer.allowedHosts",
+            "TextModeClientInterfaceServer.allowedHostsLong"),
         new TMCIAllowedHostsCallback(core));
     tmciConfig.register(
         "port",
         2323,
-        1,
-        true,
-        false,
-        "TextModeClientInterfaceServer.telnetPortNumber",
-        "TextModeClientInterfaceServer.telnetPortNumberLong",
+        new Option.Meta(
+            1,
+            true,
+            false,
+            "TextModeClientInterfaceServer.telnetPortNumber",
+            "TextModeClientInterfaceServer.telnetPortNumberLong"),
         new TCMIPortNumberCallback(core),
         false);
     tmciConfig.register(
         "directEnabled",
         false,
-        1,
-        true,
-        false,
-        "TextModeClientInterfaceServer.enableInputOutput",
-        "TextModeClientInterfaceServer.enableInputOutputLong",
+        new Option.Meta(
+            1,
+            true,
+            false,
+            "TextModeClientInterfaceServer.enableInputOutput",
+            "TextModeClientInterfaceServer.enableInputOutputLong"),
         new TMCIDirectEnabledCallback(core));
 
     boolean tmciEnabled = tmciConfig.getBoolean("enabled");

@@ -108,35 +108,20 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValue Default value used until changed.
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; {@code NullIntCallback} when {@code null}.
    * @param isSize When {@code true}, treat as a size (bytes) for units handling.
    */
   public void register(
-      String optionName,
-      int defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      IntCallback cb,
-      boolean isSize) {
+      String optionName, int defaultValue, Option.Meta meta, IntCallback cb, boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullIntCallback();
     register(
         new IntOption(
             this,
             optionName,
             defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
+            normalizedMeta,
             cb,
             isSize ? Dimension.SIZE : Dimension.NOT));
   }
@@ -146,37 +131,15 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValue Default value used until changed.
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; {@code NullLongCallback} when {@code null}.
    * @param isSize When {@code true}, treat as a size (bytes) for units handling.
    */
   public void register(
-      String optionName,
-      long defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      LongCallback cb,
-      boolean isSize) {
+      String optionName, long defaultValue, Option.Meta meta, LongCallback cb, boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullLongCallback();
-    register(
-        new LongOption(
-            this,
-            optionName,
-            defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb,
-            isSize));
+    register(new LongOption(this, optionName, defaultValue, normalizedMeta, cb, isSize));
   }
 
   /**
@@ -184,27 +147,10 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @see BandwidthOption
    */
-  public void register(
-      String optionName,
-      int defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      IntCallback cb) {
+  public void register(String optionName, int defaultValue, Option.Meta meta, IntCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullIntCallback();
-    register(
-        new BandwidthOption(
-            this,
-            optionName,
-            defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb));
+    register(new BandwidthOption(this, optionName, defaultValue, normalizedMeta, cb));
   }
 
   /**
@@ -212,39 +158,21 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValueString Default value as string (parsed to {@code int}).
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; {@code NullIntCallback} when {@code null}.
    * @param dimension Logical dimension for unit handling.
    */
   public void register(
       String optionName,
       String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       IntCallback cb,
       Dimension dimension) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) {
       cb = new NullIntCallback();
     }
-    register(
-        new IntOption(
-            this,
-            optionName,
-            defaultValueString,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb,
-            dimension));
+    register(new IntOption(this, optionName, defaultValueString, normalizedMeta, cb, dimension));
   }
 
   /**
@@ -252,37 +180,19 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValueString Default value as string (parsed to {@code long}).
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; {@code NullLongCallback} when {@code null}.
    * @param isSize When {@code true}, treat as a size (bytes) for units handling.
    */
   public void register(
       String optionName,
       String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       LongCallback cb,
       boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullLongCallback();
-    register(
-        new LongOption(
-            this,
-            optionName,
-            defaultValueString,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb,
-            isSize));
+    register(new LongOption(this, optionName, defaultValueString, normalizedMeta, cb, isSize));
   }
 
   /**
@@ -291,26 +201,10 @@ public class SubConfig implements Comparable<SubConfig> {
    * @see BandwidthOption
    */
   public void register(
-      String optionName,
-      String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      IntCallback cb) {
+      String optionName, String defaultValueString, Option.Meta meta, IntCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullIntCallback();
-    register(
-        new BandwidthOption(
-            this,
-            optionName,
-            defaultValueString,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb));
+    register(new BandwidthOption(this, optionName, defaultValueString, normalizedMeta, cb));
   }
 
   /**
@@ -318,34 +212,14 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValue Default value used until changed.
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; {@code NullBooleanCallback} when {@code null}.
    */
   public void register(
-      String optionName,
-      boolean defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      BooleanCallback cb) {
+      String optionName, boolean defaultValue, Option.Meta meta, BooleanCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullBooleanCallback();
-    register(
-        new BooleanOption(
-            this,
-            optionName,
-            defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb));
+    register(new BooleanOption(this, optionName, defaultValue, normalizedMeta, cb));
   }
 
   /**
@@ -353,34 +227,14 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValue Default value used until changed.
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; {@code NullStringCallback} when {@code null}.
    */
   public void register(
-      String optionName,
-      String defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      StringCallback cb) {
+      String optionName, String defaultValue, Option.Meta meta, StringCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullStringCallback();
-    register(
-        new StringOption(
-            this,
-            optionName,
-            defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb));
+    register(new StringOption(this, optionName, defaultValue, normalizedMeta, cb));
   }
 
   /**
@@ -388,37 +242,15 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValue Default value used until changed.
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; {@code NullShortCallback} when {@code null}.
    * @param isSize When {@code true}, treat as a size (bytes) for units handling.
    */
   public void register(
-      String optionName,
-      short defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      ShortCallback cb,
-      boolean isSize) {
+      String optionName, short defaultValue, Option.Meta meta, ShortCallback cb, boolean isSize) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullShortCallback();
-    register(
-        new ShortOption(
-            this,
-            optionName,
-            defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb,
-            isSize));
+    register(new ShortOption(this, optionName, defaultValue, normalizedMeta, cb, isSize));
   }
 
   /**
@@ -426,39 +258,23 @@ public class SubConfig implements Comparable<SubConfig> {
    *
    * @param optionName Name of the option (no prefix).
    * @param defaultValue Default value used until changed.
-   * @param sortOrder Presentation order for UI/export.
-   * @param expert Marks option as expert-only in UIs.
-   * @param forceWrite If {@code true}, the value is always written even when equal to the default.
-   * @param shortDesc Localized short description.
-   * @param longDesc Localized long description.
+   * @param meta Presentation, description, and ordering metadata.
    * @param cb Callback invoked on value changes; may be {@code null}.
    */
   public void register(
-      String optionName,
-      String[] defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      StringArrCallback cb) {
-    register(
-        new StringArrOption(
-            this,
-            optionName,
-            defaultValue,
-            sortOrder,
-            expert,
-            forceWrite,
-            shortDesc,
-            longDesc,
-            cb));
+      String optionName, String[] defaultValue, Option.Meta meta, StringArrCallback cb) {
+    Option.Meta normalizedMeta = normalizeMeta(meta);
+    register(new StringArrOption(this, optionName, defaultValue, normalizedMeta, cb));
+  }
+
+  private static Option.Meta normalizeMeta(Option.Meta meta) {
+    return meta == null ? new Option.Meta(0, false, false, null, null) : meta;
   }
 
   /**
    * Registers an option that cannot be used.
    *
-   * <p>It is not listed, it is not exported, it is not persisted, it doesn’t have a value, you
+   * <p>It is not listed, it is not exported, it is not persisted, it doesn’t have a value. You
    * cannot change the value. It only exists so that Fred doesn’t log an error message if this
    * particular option is used in a config file.
    *
@@ -839,7 +655,7 @@ public class SubConfig implements Comparable<SubConfig> {
    * <p>Returns {@code 0} for identical instances to satisfy the {@link Comparable} contract; for
    * different instances the comparison delegates to {@link String#compareTo(String)} on prefixes.
    *
-   * @param second Other subsection (non-null).
+   * @param second Another subsection (non-null).
    * @return negative, zero, or positive per {@link String#compareTo(String)}.
    */
   @Override
@@ -894,7 +710,7 @@ public class SubConfig implements Comparable<SubConfig> {
 
             @Override
             public void set(Void value) {
-              // Intentionally no-op: ignored option accepts no value updates.
+              // Intentionally no-op: the ignored option accepts no value updates.
             }
           },
           new Option.Meta(-1, false, false, null, null),

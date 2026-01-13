@@ -30,33 +30,16 @@ public class BandwidthOption extends IntOption {
    * @param conf owning sub‑configuration.
    * @param optionName stable key used to persist and retrieve the option.
    * @param defaultValueString textual default; interpreted as a size and converted to bytes.
-   * @param sortOrder relative ordering hint for UIs.
-   * @param expert whether the option targets advanced users.
-   * @param forceWrite whether to always write the option, even when equal to the default.
-   * @param shortDesc single‑line description suitable for lists.
-   * @param longDesc extended help text; may contain localization tokens.
+   * @param meta option metadata (sort order, expert flag, descriptions).
    * @param cb callback invoked on value change; may be {@code null} when no side effect is needed.
    */
   public BandwidthOption(
       SubConfig conf,
       String optionName,
       String defaultValueString,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       IntCallback cb) {
-    this(
-        conf,
-        optionName,
-        Fields.parseInt(defaultValueString),
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        cb);
+    this(conf, optionName, Fields.parseInt(defaultValueString), meta, cb);
   }
 
   /**
@@ -65,34 +48,12 @@ public class BandwidthOption extends IntOption {
    * @param conf owning sub‑configuration.
    * @param optionName stable key used to persist and retrieve the option.
    * @param defaultValue default value in bytes per second.
-   * @param sortOrder relative ordering hint for UIs.
-   * @param expert whether the option targets advanced users.
-   * @param forceWrite whether to always write the option, even when equal to the default.
-   * @param shortDesc single‑line description suitable for lists.
-   * @param longDesc extended help text; may contain localization tokens.
+   * @param meta option metadata (sort order, expert flag, descriptions).
    * @param cb callback invoked on value change; may be {@code null} when no side effect is needed.
    */
   public BandwidthOption(
-      SubConfig conf,
-      String optionName,
-      Integer defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      IntCallback cb) {
-    super(
-        conf,
-        optionName,
-        defaultValue,
-        sortOrder,
-        expert,
-        forceWrite,
-        shortDesc,
-        longDesc,
-        cb,
-        Dimension.SIZE);
+      SubConfig conf, String optionName, Integer defaultValue, Option.Meta meta, IntCallback cb) {
+    super(conf, optionName, defaultValue, meta, cb, Dimension.SIZE);
   }
 
   /**

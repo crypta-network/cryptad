@@ -3,6 +3,7 @@ package network.crypta.node.subsystem;
 import java.io.File;
 import network.crypta.clients.http.SimpleToadletServer;
 import network.crypta.config.InvalidConfigValueException;
+import network.crypta.config.Option;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
@@ -432,11 +433,8 @@ public final class NodeServicesSubsystem {
     nodeConfig.register(
         "peersOffersDismissed",
         false,
-        sortOrder,
-        true,
-        true,
-        "Node.peersOffersDismissed",
-        "Node.peersOffersDismissedLong",
+        new Option.Meta(
+            sortOrder, true, true, "Node.peersOffersDismissed", "Node.peersOffersDismissedLong"),
         new BooleanCallback() {
           @Override
           public Boolean get() {

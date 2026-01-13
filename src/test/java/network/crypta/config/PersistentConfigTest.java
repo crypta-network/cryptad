@@ -154,7 +154,11 @@ class PersistentConfigTest {
         capturePersistentConfigLogs(
             () ->
                 sub.register(
-                    "intOpt", 7, 0, false, false, "short", "long", new NullIntCallback(), false));
+                    "intOpt",
+                    7,
+                    new Option.Meta(0, false, false, "short", "long"),
+                    new NullIntCallback(),
+                    false));
 
     // Assert: error logged and value is default (7)
     boolean sawParseError =
@@ -198,7 +202,7 @@ class PersistentConfigTest {
     // Act + Assert
     assertThrows(
         IllegalStateException.class,
-        () -> sub.register("o", 1, 0, false, false, "sd", "ld", cb, false));
+        () -> sub.register("o", 1, new Option.Meta(0, false, false, "sd", "ld"), cb, false));
   }
 
   @Test
@@ -231,8 +235,10 @@ class PersistentConfigTest {
     sfs.putSingle(KEY_EXP_X, "9"); // will be applied on register
     PersistentConfig cfg = new PersistentConfig(sfs);
     SubConfig sub = cfg.createSubConfig("exp");
-    sub.register("x", 5, 0, false, false, "sd", "ld", new NullIntCallback(), false);
-    sub.register("y", 1, 0, false, false, "sd", "ld", new NullIntCallback(), false);
+    sub.register(
+        "x", 5, new Option.Meta(0, false, false, "sd", "ld"), new NullIntCallback(), false);
+    sub.register(
+        "y", 1, new Option.Meta(0, false, false, "sd", "ld"), new NullIntCallback(), false);
 
     // Act
     SimpleFieldSet noDefaults = cfg.exportFieldSet(false);
@@ -254,7 +260,8 @@ class PersistentConfigTest {
     SubConfig sub = cfg.createSubConfig("p");
 
     // Act
-    sub.register("count", 11, 0, false, false, "sd", "ld", new NullIntCallback(), false);
+    sub.register(
+        "count", 11, new Option.Meta(0, false, false, "sd", "ld"), new NullIntCallback(), false);
 
     // Assert: value remains default and getSimpleFieldSet() is null since no SFS was provided
     assertEquals(11, sub.getInt("count"));
