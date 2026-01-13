@@ -260,18 +260,7 @@ public class SubConfig implements Comparable<SubConfig> {
       String optionName, short defaultValue, Option.Meta meta, ShortCallback cb, boolean isSize) {
     Option.Meta normalizedMeta = normalizeMeta(meta);
     if (cb == null) cb = new NullShortCallback();
-    register(
-        new ShortOption(
-            this,
-            optionName,
-            defaultValue,
-            normalizedMeta.sortOrder(),
-            normalizedMeta.expert(),
-            normalizedMeta.forceWrite(),
-            normalizedMeta.shortDesc(),
-            normalizedMeta.longDesc(),
-            cb,
-            isSize));
+    register(new ShortOption(this, optionName, defaultValue, normalizedMeta, cb, isSize));
   }
 
   /**

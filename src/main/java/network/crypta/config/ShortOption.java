@@ -29,14 +29,10 @@ public class ShortOption extends Option<Short> {
   /**
    * Creates a short-valued configuration option.
    *
-   * @param conf owning configuration section
+   * @param conf the owning configuration section
    * @param optionName unique key within {@code conf}
    * @param defaultValue value used when no explicit value is set
-   * @param sortOrder display order hint for UIs
-   * @param expert whether the option is intended for advanced users
-   * @param forceWrite whether the option should be written even when set to the default
-   * @param shortDesc concise description (single line, localized key or text)
-   * @param longDesc detailed description (may span multiple sentences)
+   * @param meta option metadata (ordering, expert flag, descriptions)
    * @param cb optional callback invoked when the value changes
    * @param isSize whether display formatting should treat values as sizes
    */
@@ -44,19 +40,10 @@ public class ShortOption extends Option<Short> {
       SubConfig conf,
       String optionName,
       short defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       ShortCallback cb,
       boolean isSize) {
-    super(
-        conf,
-        optionName,
-        cb,
-        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
-        Option.DataType.NUMBER);
+    super(conf, optionName, cb, meta, Option.DataType.NUMBER);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
     this.isSize = isSize;

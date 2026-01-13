@@ -27,11 +27,12 @@ class ShortOptionTest {
         sc,
         "test.short",
         defaultValue,
-        42,
-        true,
-        false,
-        "ShortOption.unrecognisedShort", // any key; not used in happy paths
-        "ShortOption.unrecognisedShort",
+        new Option.Meta(
+            42,
+            true,
+            false,
+            "ShortOption.unrecognisedShort", // any key; not used in happy paths
+            "ShortOption.unrecognisedShort"),
         cb,
         isSize);
   }
@@ -74,10 +75,9 @@ class ShortOptionTest {
   void setValue_whenInvalidNumber_expectInvalidConfigValueExceptionWithL10n(
       @Mock ShortCallback cb) {
     // Arrange
-    // Reset global translations to production bundle. Other tests may install
+    // Reset global translations to a production bundle. Other tests may install
     // a test-only bundle via L10nTestUtils.useTestTranslation(), which would
     // make this localized message assertion nondeterministic.
-    //noinspection InstantiationOfUtilityClass
     new NodeL10n();
     Config config = new Config();
     SubConfig sc = config.createSubConfig("core");
@@ -149,7 +149,7 @@ class ShortOptionTest {
     SubConfig sc = config.createSubConfig("core");
     ShortOption opt = newOption(sc, cb, false, (short) 11);
     doAnswer(
-            invocation -> {
+            _ -> {
               // simulate successful apply; underlying state would become 1234
               return null;
             })
