@@ -119,7 +119,7 @@ class BlockTransmitterTest {
     }
   }
 
-  // ByteCounter that records payload sends and exposes high-HTL flag
+  // ByteCounter that records payload sends and exposes the high-HTL flag
   static final class TestCounter implements ByteCounter, HighHtlAware {
     final AtomicInteger payloadBytes = new AtomicInteger();
     volatile boolean highHtl;
@@ -184,7 +184,7 @@ class BlockTransmitterTest {
     counter.highHtl = false;
 
     when(peer.getBootID()).thenReturn(1L);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenAnswer(_ -> new WeakReference<>(peer));
     when(peer.shortToString()).thenReturn("peer#manual");
     when(peer.isConnected()).thenReturn(true);
 
@@ -195,15 +195,9 @@ class BlockTransmitterTest {
     long uid = 100L;
     BlockTransmitter tx =
         new BlockTransmitter(
-            usm,
-            ticker,
-            peer,
-            uid,
-            prb,
-            counter,
+            new BlockTransferContext(usm, ticker, peer, uid, prb, counter, false),
             BlockTransmitter.NEVER_CASCADE,
             completion,
-            false,
             null);
 
     // Force internal state to "all sent" and "completion acknowledged"
@@ -237,7 +231,7 @@ class BlockTransmitterTest {
       assertTrue(tx.maybeAllSent(), "All sent should be detected");
       assertTrue(tx.maybeComplete(), "maybeComplete should return true when ready");
     }
-    // Act: caller must invoke callback outside the lock per contract
+    // Act: the caller must invoke callback outside the lock per contract
     tx.callCallback(true);
 
     // Assert
@@ -258,7 +252,7 @@ class BlockTransmitterTest {
 
     when(peer.getBootID()).thenReturn(1L);
     when(peer.isConnected()).thenReturn(true);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenAnswer(_ -> new WeakReference<>(peer));
     when(peer.shortToString()).thenReturn("peer#sendAborted");
 
     // Accumulate pending items so cancelItemsPending() will attempt to unqueue them on abort
@@ -304,15 +298,9 @@ class BlockTransmitterTest {
     long uid = 7L;
     BlockTransmitter tx =
         new BlockTransmitter(
-            usmSpy,
-            ticker,
-            peer,
-            uid,
-            prb,
-            counter,
-            BlockTransmitter.ALWAYS_CASCADE,
+            new BlockTransferContext(usmSpy, ticker, peer, uid, prb, counter, false),
+            BlockTransmitter.NEVER_CASCADE,
             completion,
-            /*realTime*/ false,
             null);
 
     // Act
@@ -337,10 +325,10 @@ class BlockTransmitterTest {
 
     when(peer.getBootID()).thenReturn(1L);
     when(peer.isConnected()).thenReturn(true);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenAnswer(_ -> new WeakReference<>(peer));
     when(peer.shortToString()).thenReturn("peer#disc");
 
-    // Let the first send succeed, then immediately simulate a disconnect on filters
+    // Let the first sending succeed, then immediately simulate a disconnect on filters
     doAnswer(
             inv -> {
               Message msg = inv.getArgument(0, Message.class);
@@ -357,15 +345,10 @@ class BlockTransmitterTest {
     long uid = 999L;
     BlockTransmitter tx =
         new BlockTransmitter(
-            usm,
-            new ImmediateTicker(executor, true),
-            peer,
-            uid,
-            prb,
-            counter,
+            new BlockTransferContext(
+                usm, new ImmediateTicker(executor, true), peer, uid, prb, counter, false),
             BlockTransmitter.NEVER_CASCADE,
             completion,
-            false,
             null);
 
     // Act
@@ -389,10 +372,10 @@ class BlockTransmitterTest {
 
     when(peer.getBootID()).thenReturn(1L);
     when(peer.isConnected()).thenReturn(true);
-    when(peer.getWeakRef()).thenAnswer(inv -> new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenAnswer(_ -> new WeakReference<>(peer));
     when(peer.shortToString()).thenReturn("peer#timeout");
 
-    // Immediately acknowledge each send, but do NOT send allReceived
+    // Immediately acknowledge each sending, but do NOT send allReceived
     doAnswer(
             inv -> {
               Message msg = inv.getArgument(0, Message.class);
@@ -413,20 +396,14 @@ class BlockTransmitterTest {
     long uid = 2024L;
     BlockTransmitter tx =
         new BlockTransmitter(
-            usm,
-            ticker,
-            peer,
-            uid,
-            prb,
-            counter,
+            new BlockTransferContext(usm, ticker, peer, uid, prb, counter, false),
             BlockTransmitter.NEVER_CASCADE,
             completion,
-            false,
             null);
 
     // Act
     tx.sendAsync();
-    // Ensure a timeout is enqueued even if completion path didn't check yet
+    // Ensure a timeout is enqueued even if the completion path didn't check yet
     tx.scheduleTimeoutAfterBlockSends();
     // The transmitter will send a sendAborted; now simulate the receiver's acknowledging
     // sendAborted so completion can finalize immediately.

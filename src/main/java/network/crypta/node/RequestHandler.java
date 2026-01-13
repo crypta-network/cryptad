@@ -6,6 +6,7 @@ import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTransmitterCompletion;
 import network.crypta.io.xfer.BlockTransmitter.ReceiverAbortHandler;
@@ -374,15 +375,16 @@ public class RequestHandler
       PartiallyReceivedBlock prb = rs.getPRB();
       bt =
           new BlockTransmitter(
-              node.network().usm(),
-              node.network().ticker(),
-              source,
-              uid,
-              prb,
-              this,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  source,
+                  uid,
+                  prb,
+                  this,
+                  realTimeFlag),
               new CHKReceiverAbortHandler(),
               new CHKBlockTransmitterCompletion(),
-              realTimeFlag,
               node.network().stats());
       tag.handlerTransferBegins();
       bt.sendAsync();
@@ -749,12 +751,14 @@ public class RequestHandler
           new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, block.getRawData());
       BlockTransmitter localBt =
           new BlockTransmitter(
-              node.network().usm(),
-              node.network().ticker(),
-              source,
-              uid,
-              prb,
-              this,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  source,
+                  uid,
+                  prb,
+                  this,
+                  realTimeFlag),
               BlockTransmitter.NEVER_CASCADE,
               success -> {
                 if (success) {
@@ -775,7 +779,6 @@ public class RequestHandler
                     .remoteRequest(
                         false, success, true, htl, key.toNormalizedDouble(), realTimeFlag, false);
               },
-              realTimeFlag,
               node.network().stats());
       tag.handlerTransferBegins();
       source.transport().sendAsync(df, null, this);

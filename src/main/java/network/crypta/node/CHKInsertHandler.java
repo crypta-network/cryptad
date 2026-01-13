@@ -15,6 +15,7 @@ import network.crypta.io.xfer.AbortedException;
 import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverCompletion;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverTimeoutHandler;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKVerifyException;
@@ -237,13 +238,14 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
                       .withRealTimeFlag(realTimeFlag));
     br =
         new BlockReceiver(
-            node.network().usm(),
-            source,
-            uid,
-            prb,
-            this,
-            node.network().ticker(),
-            realTimeFlag,
+            new BlockTransferContext(
+                node.network().usm(),
+                node.network().ticker(),
+                source,
+                uid,
+                prb,
+                this,
+                realTimeFlag),
             myTimeoutHandler,
             false);
 
@@ -443,13 +445,14 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       prb = new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
       br =
           new BlockReceiver(
-              node.network().usm(),
-              source,
-              uid,
-              prb,
-              this,
-              node.network().ticker(),
-              realTimeFlag,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  source,
+                  uid,
+                  prb,
+                  this,
+                  realTimeFlag),
               null,
               false);
       prb.abort(RetrievalException.NO_DATAINSERT, "No DataInsert", true);

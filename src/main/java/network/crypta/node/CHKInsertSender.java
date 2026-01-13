@@ -15,6 +15,7 @@ import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
 import network.crypta.io.xfer.AbortedException;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTransmitterCompletion;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
@@ -88,12 +89,14 @@ public final class CHKInsertSender extends BaseSender
       this.thisTag = thisTag;
       bt =
           new BlockTransmitter(
-              node.network().usm(),
-              node.network().ticker(),
-              pn,
-              uid,
-              prb,
-              CHKInsertSender.this,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  pn,
+                  uid,
+                  prb,
+                  CHKInsertSender.this,
+                  realTimeFlag),
               BlockTransmitter.NEVER_CASCADE,
               new BlockTransmitterCompletion() {
 
@@ -116,7 +119,6 @@ public final class CHKInsertSender extends BaseSender
                   }
                 }
               },
-              realTimeFlag,
               node.network().stats());
     }
 

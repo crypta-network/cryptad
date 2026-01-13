@@ -37,8 +37,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>In particular, an attacker might connect, saturate the link with transfers, then disconnect to
  * avoid receiving the data, reconnect later with a new identity (on opennet), and rely on the
- * transfers having been canceled. Downstream bandwidth is comparatively cheap for small attackers,
- * so this can act as a multiplier if not mitigated.
+ * transfers having been canceled. Downstream bandwidth is comparatively inexpensive for small
+ * attackers, so this can act as a multiplier if not mitigated.
  *
  * <p>Keeping receiver cancels does increase code complexity (e.g., around {@code
  * ReceiverAbortHandler}), but improves reliability of transfers when applied carefully with
@@ -117,13 +117,8 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
   /**
    * Creates a receiver for one block transfer.
    *
-   * @param usm message core used to send/receive protocol messages
-   * @param sender remote peer providing the block
-   * @param uid transfer identifier unique to this exchange
-   * @param prb target {@link PartiallyReceivedBlock} that accumulates packets
-   * @param ctr byte counter for accounting and rate tracking
-   * @param ticker time source used by higher layers; may be unused here
-   * @param realTime when true, use realtime timeouts; otherwise use bulk timeouts
+   * @param transferContext shared transfer context (message core, peer, uid, PRB, accounting, and
+   *     timing settings)
    * @param timeoutHandler callback invoked on first and fatal timeouts; may be {@code null}
    * @param completeAfterAckedAllReceived if true, complete only after the sender acknowledges
    *     {@code allReceived}; if false, complete as soon as all data is present locally. Handlers
@@ -131,13 +126,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
    *     reusing a slot before the handler finishes.
    */
   public BlockReceiver(
-      MessageCore usm,
-      PeerContext sender,
-      long uid,
-      PartiallyReceivedBlock prb,
-      ByteCounter ctr,
-      Ticker ticker,
-      boolean realTime,
+      BlockTransferContext transferContext,
       BlockReceiverTimeoutHandler timeoutHandler,
       boolean completeAfterAckedAllReceived) {
     BlockReceiverTimeoutHandler nullTimeoutHandler =
@@ -154,13 +143,13 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
           }
         };
     this.timeoutHandler = timeoutHandler == null ? nullTimeoutHandler : timeoutHandler;
-    this.sender = sender;
-    this.prb = prb;
-    this.uid = uid;
-    this.usm = usm;
-    this.ctr = ctr;
-    this.ticker = ticker;
-    this.realTime = realTime;
+    this.sender = transferContext.peer();
+    this.prb = transferContext.block();
+    this.uid = transferContext.uid();
+    this.usm = transferContext.messageCore();
+    this.ctr = transferContext.byteCounter();
+    this.ticker = transferContext.ticker();
+    this.realTime = transferContext.realTime();
     this.completeAfterAckedAllReceived = completeAfterAckedAllReceived;
     receiptTimeout = this.realTime ? RECEIPT_TIMEOUT_REALTIME : RECEIPT_TIMEOUT_BULK;
     maxRoundTripTime = receiptTimeout;
@@ -196,7 +185,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
   private long startTime;
 
   // If false, do not check for duplicate packets from the sender.
-  // Can be disabled when the PRB is already partially received at start. Dupe checks prevent
+  // Can be disabled when the PRB is already partially received at the start. Dupe checks prevent
   // malicious or broken nodes from trickling forever by resending the same packets.
   static final boolean CHECK_DUPES = true;
 
@@ -360,12 +349,12 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
             complete(RetrievalException.SENDER_DIED, "Sender unresponsive to resend requests");
 
             timeoutHandler.onFirstTimeout();
-            // If upstream caused the problem, then sender will itself timeout
+            // If upstream caused the problem, then the sender will itself timeout
             // and will tell us. So wait for a timeout.
             // It is important for load management that the two sides agree on the number of
             // transfers happening.
             // Therefore, we need to not complete until the other side has acknowledged that the
-            // transfer has been cancelled.
+            // transfer has been canceled.
             MessageFilter mfSendAborted =
                 MessageFilter.create()
                     .setTimeout(ACK_TRANSFER_FAILED_TIMEOUT)
@@ -404,7 +393,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
           try {
             sender.transport().sendSync(m, ctr, realTime);
           } catch (SyncSendWaitedTooLongException _) {
-            // Synchronous send exceeded wait threshold; proceed with completion regardless.
+            // Synchronous send exceeded the wait threshold; proceed with completion regardless.
           }
         }
 
@@ -442,7 +431,8 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
                   @Override
                   public void onTimeout() {
                     LOG.error(
-                        "Other side did not acknowlege transfer failure on {}", BlockReceiver.this);
+                        "Other side did not acknowledge transfer failure on {}",
+                        BlockReceiver.this);
                     timeoutHandler.onFatalTimeout(sender);
                   }
 
@@ -502,7 +492,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
     prb.removeListener(myListener);
     byte[] block = prb.abort(reason, description, false);
     if (block == null) {
-      // Expected behaviour.
+      // Expected behavior.
       // Send the abort whether we have received one or not.
       // If we are cancelling due to failing to turtle, we need to tell the sender
       // this otherwise he will keep sending, wasting a lot of bandwidth on packets
@@ -565,7 +555,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
   PartiallyReceivedBlock.PacketReceivedListener myListener;
 
   /**
-   * Starts the asynchronous receive flow for this transfer.
+   * Starts the asynchronous receiving flow for this transfer.
    *
    * <p>Registers a listener on the {@link PartiallyReceivedBlock}, installs message filters, and
    * begins waiting for packets. The callback is invoked on success with the full block, or on

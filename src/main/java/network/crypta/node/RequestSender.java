@@ -20,6 +20,7 @@ import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
 import network.crypta.io.xfer.BlockReceiver;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverCompletion;
 import network.crypta.io.xfer.BlockReceiver.BlockReceiverTimeoutHandler;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.Key;
@@ -885,13 +886,14 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       final long tStart = System.currentTimeMillis();
       final BlockReceiver br =
           new BlockReceiver(
-              node.network().usm(),
-              next,
-              uid,
-              localPrb,
-              RequestSender.this,
-              node.network().ticker(),
-              realTimeFlag,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  next,
+                  uid,
+                  localPrb,
+                  RequestSender.this,
+                  realTimeFlag),
               myTimeoutHandler,
               true);
       if (failNow) {
@@ -1488,13 +1490,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       fireCHKTransferBegins();
       BlockReceiver br =
           new BlockReceiver(
-              node.network().usm(),
-              pn,
-              uid,
-              prb,
-              this,
-              node.network().ticker(),
-              realTimeFlag,
+              new BlockTransferContext(
+                  node.network().usm(), node.network().ticker(), pn, uid, prb, this, realTimeFlag),
               myTimeoutHandler,
               true);
       if (LOG.isDebugEnabled()) LOG.debug("Receiving data (for offer reply)");

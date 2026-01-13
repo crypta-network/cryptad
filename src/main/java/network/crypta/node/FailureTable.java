@@ -10,6 +10,7 @@ import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.xfer.BlockTransferContext;
 import network.crypta.io.xfer.BlockTransmitter;
 import network.crypta.io.xfer.PartiallyReceivedBlock;
 import network.crypta.keys.CHKBlock;
@@ -30,7 +31,7 @@ import org.slf4j.LoggerFactory;
 // authenticated using an HMAC carried with the offer.
 
 // LOCKING: Always take the FailureTable lock first if you need both. Take the
-// FailureTableEntry lock only for cheap internal operations to avoid deadlocks.
+// FailureTableEntry lock only for inexpensive internal operations to avoid deadlocks.
 
 /**
  * Maintains recent failures and lightweight interest for keys to improve routing and enable
@@ -69,14 +70,14 @@ public class FailureTable {
 
   /**
    * Terminate a request if there was a DNF on the same key less than this time ago. Maximum time
-   * for any FailureTable i.e. for this period after a DNF, we will avoid the node that DNFed.
+   * for any FailureTable i.e., for this period after a DNF, we will avoid the node that DNFed.
    */
   static final long REJECT_TIME = MINUTES.toMillis(3);
 
   static final long REJECT_TIME_BEFORE_BUILD_1498 = MINUTES.toMillis(5);
 
   /**
-   * Maximum time for a RecentlyFailed. I.e. until this period expires, we take a request into
+   * Maximum time for a RecentlyFailed. I.e., until this period expires, we take a request into
    * account when deciding whether we have recently failed to this peer. If we get a DNF, we use
    * this figure. If we get an RF, we use what it tells us, which can be less than this. Most other
    * failures use shorter periods.
@@ -131,7 +132,7 @@ public class FailureTable {
    * @param key the requested key (non-null)
    * @param routedTo the peer that failed for this attempt
    * @param htl the HTL at the time of failure
-   * @param rfTimeout recently-failed window in milliseconds; clamped to {@link
+   * @param rfTimeout recently failed window in milliseconds; clamped to {@link
    *     #RECENTLY_FAILED_TIME}
    * @param ftTimeout refusal window in milliseconds; clamped to {@link #REJECT_TIME}
    */
@@ -179,14 +180,14 @@ public class FailureTable {
    * is not lost. Locking: Never synchronize on {@link PeerNode} before calling this method.
    *
    * @param key the requested key (non-null)
-   * @param routedTo the peer that failed the request, or {@code null}
+   * @param routedTo the peer that failed the request or {@code null}
    * @param htl the HTL at failure
    * @param origHTL the original HTL at request creation (used for offer decisions)
-   * @param rfTimeout recently-failed window in milliseconds; clamped to {@link
+   * @param rfTimeout recently failed window in milliseconds; clamped to {@link
    *     #RECENTLY_FAILED_TIME}
    * @param ftTimeout refusal window in milliseconds; {@code -1} is a no-op; otherwise clamped to
    *     {@link #REJECT_TIME}
-   * @param requestor the peer that originated the request, or {@code null}
+   * @param requestor the peer that originated the request or {@code null}
    */
   public void onFinalFailure(
       Key key,
@@ -434,7 +435,7 @@ public class FailureTable {
     // NB: node.storage().hasKey() executes a datastore fetch
     // If we have the key in the datastore (store or cache), we don't want it.
     // If we have the key in the client cache, we might want it for other nodes,
-    // although hopefully the client layer was tripped when we got it.
+    // although hopefully, the client layer was tripped when we got it.
     if (node.storage().hasKey(key, false, true)) {
       LOG.debug("Already have key");
       return;
@@ -466,14 +467,14 @@ public class FailureTable {
      * Not relevant with CHKs anyway.
      *
      * On the plus side, propagation to nodes that have asked is worthwhile because reduced polling
-     * cost enables more secure messaging systems e.g. outbox polling...
+     * cost enables more secure messaging systems e.g., outbox polling...
      * - Social engineering: If a key is unpopular, you can put a different copy of it on different
-     * nodes. You can then use this to trace the requestor - identify that he is or isn't on the target.
+     * nodes. You can then use this to trace the requestor - to identify that he is or isn't on the target.
      * You can't do this with a regular insert because it will often go several nodes even at htl 0.
      * With subscriptions, you might be able to bypass this - but only if you know no other nodes in the
-     * neighbourhood are subscribed. Easier with SSKs; with CHKs you have only binary information of
+     * neighborhood are subscribed. Easier with SSKs; with CHKs you have only binary information of
      * whether the person got the key (with social engineering). Hard to exploit on darknet; if you're
-     * that close to the suspect there are easier ways to get at them e.g. correlation attacks.
+     * that close to the suspect, there are easier ways to get at them, e.g., correlation attacks.
      *
      * Conclusion: We should accept the request if:
      * - We asked for it from that node. (Note that a node might both have asked us and been asked).
@@ -493,7 +494,7 @@ public class FailureTable {
 
     // Valid offer.
 
-    // Add to offers list
+    // Add to the offers list
 
     synchronized (blockOfferListByKey) {
       if (LOG.isDebugEnabled()) LOG.debug("Valid offer");
@@ -523,7 +524,7 @@ public class FailureTable {
         if (blockOfferListByKey.isEmpty()) return;
         BlockOfferList bl = blockOfferListByKey.peekValue();
         if (bl == null) {
-          // Defensive: map reported non-empty but has no head value; drop head key.
+          // Defensive: the map reported non-empty but has no head value; drop the head key.
           blockOfferListByKey.popKey();
           continue;
         }
@@ -562,7 +563,7 @@ public class FailureTable {
    * @param needPubKey whether to send the publisher key (SSK only)
    * @param uid the per-request UID used on the wire
    * @param source the requesting peer
-   * @param tag unlock handler associated with this send
+   * @param tag unlock the handler associated with this sending
    * @param realTimeFlag whether to mark payload packets as realtime
    * @throws NotConnectedException if the sender is no longer connected
    */
@@ -592,7 +593,7 @@ public class FailureTable {
   }
 
   /**
-   * Implements the send logic on the {@link #offerExecutor} thread.
+   * Implements the sending logic on the {@link #offerExecutor} thread.
    *
    * <p>Performs datastore fetches and emits the appropriate DMT messages. Network sends that may
    * block are delegated to the node executor.
@@ -602,7 +603,7 @@ public class FailureTable {
    * @param needPubKey whether to include the publisher key (SSK only)
    * @param uid the per-request UID used on the wire
    * @param source the requesting peer
-   * @param tag unlock handler associated with this send
+   * @param tag unlock the handler associated with this sending
    * @param realTimeFlag whether to mark payload packets as realtime
    * @throws NotConnectedException if the sender is no longer connected
    */
@@ -682,15 +683,16 @@ public class FailureTable {
           new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE, block.getRawData());
       final BlockTransmitter bt =
           new BlockTransmitter(
-              node.network().usm(),
-              node.network().ticker(),
-              source,
-              uid,
-              prb,
-              senderCounter,
+              new BlockTransferContext(
+                  node.network().usm(),
+                  node.network().ticker(),
+                  source,
+                  uid,
+                  prb,
+                  senderCounter,
+                  realTimeFlag),
               BlockTransmitter.NEVER_CASCADE,
-              success -> tag.unlockHandler(),
-              realTimeFlag,
+              _ -> tag.unlockHandler(),
               node.network().stats());
       node.network()
           .executor()
@@ -798,7 +800,7 @@ public class FailureTable {
       lastOffer = null;
     }
 
-    /** Releases the claim on the last returned offer without deleting it so it may be retried. */
+    /** Releases the claim on the last returned offer without deleting it, so it may be retried. */
     public void keepLastOffer() {
       lastOffer = null;
     }
