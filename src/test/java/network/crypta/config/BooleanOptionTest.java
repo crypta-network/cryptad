@@ -40,7 +40,11 @@ class BooleanOptionTest {
 
   private BooleanOption newOption(boolean defaultValue) {
     return new BooleanOption(
-        subConfig, "flag", defaultValue, 1, false, false, "short", "long", callback);
+        subConfig,
+        "flag",
+        defaultValue,
+        new Option.Meta(1, false, false, "short", "long"),
+        callback);
   }
 
   @ParameterizedTest

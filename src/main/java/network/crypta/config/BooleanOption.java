@@ -23,29 +23,16 @@ public class BooleanOption extends Option<Boolean> {
    * @param conf owning {@link SubConfig}; typically non-null for registered options
    * @param optionName canonical name used in config files and APIs
    * @param defaultValue default and initial value
-   * @param sortOrder relative ordering within the parent {@link SubConfig}
-   * @param expert whether this option targets advanced users
-   * @param forceWrite whether to persist even when equal to the default
-   * @param shortDesc localization key for a brief label
-   * @param longDesc localization key for a detailed description
+   * @param meta descriptive and ordering metadata for the option
    * @param cb callback used to read/apply values
    */
   public BooleanOption(
       SubConfig conf,
       String optionName,
       boolean defaultValue,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
+      Option.Meta meta,
       BooleanCallback cb) {
-    super(
-        conf,
-        optionName,
-        cb,
-        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
-        Option.DataType.BOOLEAN);
+    super(conf, optionName, cb, meta, Option.DataType.BOOLEAN);
     this.defaultValue = defaultValue;
     this.currentValue = defaultValue;
   }
