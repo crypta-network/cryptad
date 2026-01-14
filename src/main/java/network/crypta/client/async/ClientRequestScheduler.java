@@ -39,8 +39,8 @@ import org.slf4j.LoggerFactory;
  *       non-real-time) using {@link SchedulerMode}.
  *   <li>Register {@link SendableGet} or {@link SendableInsert} instances; optionally attach a
  *       key-listener to observe arrivals.
- *   <li>Let {@link RequestStarter} call {@link #grabRequest()} repeatedly; the returned request is
- *       executed by the node.
+ *   <li>Let {@link RequestStarter} call {@link #grabRequest()} repeatedly; the node executes the
+ *       returned request.
  * </ol>
  *
  * <p>Concurrency and lifecycle: registration may happen from database and non-database threads. The
@@ -102,7 +102,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   /** Priority selector that allows soft fuzz (may deprioritize to avoid starvation). */
   public static final String PRIORITY_SOFT = "SOFT";
 
-  /** Priority selector that disables fuzzing and favors strictly higher-priority work. */
+  /** Priority selector that disables fuzzing and favors strict higher-priority work. */
   public static final String PRIORITY_HARD = "HARD";
 
   private String choosenPriorityScheduler;
@@ -135,6 +135,18 @@ public class ClientRequestScheduler implements RequestScheduler {
       this.forInserts = forInserts;
       this.forSSKs = forSSKs;
       this.forRT = forRT;
+    }
+
+    public boolean forInserts() {
+      return forInserts;
+    }
+
+    public boolean forSSKs() {
+      return forSSKs;
+    }
+
+    public boolean forRT() {
+      return forRT;
     }
   }
 
@@ -250,10 +262,10 @@ public class ClientRequestScheduler implements RequestScheduler {
   /**
    * Registers one or more GET requests and, optionally, a key-listener.
    *
-   * <p>When {@code hasListener} is provided, its keys are added to the pending-listener set prior
-   * to registering the requests themselves. When {@code noCheckStore} is {@code false}, each getter
-   * is first queued for a store-check via the provided {@code blocks}; otherwise, getters are
-   * registered immediately if they are not cancelled and not on cooldown.
+   * <p>When {@code hasListener} is provided, its keys are added to the pending-listener set before
+   * registering the requests themselves. When {@code noCheckStore} is {@code false}, each getter is
+   * first queued for a store-check via the provided {@code blocks}; otherwise, getters are
+   * registered immediately if they are not canceled and not on cooldown.
    *
    * @param hasListener optional factory for a {@link KeyListener}; may be {@code null} when the
    *     listener is already registered or no listener is required
@@ -382,9 +394,9 @@ public class ClientRequestScheduler implements RequestScheduler {
 
   /**
    * All the persistent SendableRequest's currently running (either actually in flight, just chosen,
-   * awaiting the callbacks being executed etc). We MUST compare by pointer, as this is accessed on
-   * threads other than the database thread, so we don't know whether they are active (and in fact
-   * that may change under us!). So it can't be a HashSet.
+   * awaiting the callbacks being executed, etc.). We MUST compare by pointer, as this is accessed
+   * on threads other than the database thread, so we don't know whether they are active (and in
+   * fact that may change under us!). So it can't be a HashSet.
    */
   private final IdentityHashSet<SendableRequest> runningPersistentRequests =
       new IdentityHashSet<>();
@@ -424,7 +436,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   }
 
   /**
-   * Returns the next request to execute according to the current selection policy.
+   * Returns the next request to execute, according to the current selection policy.
    *
    * <p>The selector may apply priority fuzzing depending on {@link #setPriorityScheduler(String)};
    * a hard setting disables fuzzing while a soft setting may vary priorities slightly.
@@ -568,7 +580,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   }
 
   /**
-   * Queues a key that was opportunistically offered by a peer.
+   * Queues a key opportunistically offered by a peer.
    *
    * <p>Offered keys are kept in a dedicated list and considered by the selector during request
    * choice. For schedulers not configured for real-time, passing {@code realTime = true} is logged
@@ -633,7 +645,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   /**
    * Marks a running insert as completed and clears its scheduling state.
    *
-   * @param insert the insert request that completed or was cancelled
+   * @param insert the insert request that completed or was canceled
    * @param token selector token associated with the running insert
    */
   @Override
@@ -753,7 +765,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   }
 
   /**
-   * Returns whether the specified key is currently in the local fetching set.
+   * Returns whether the specified key is in the local fetching set currently.
    *
    * @param key the key to test
    * @param getterWaiting unused here; preserved for signature compatibility
@@ -804,7 +816,7 @@ public class ClientRequestScheduler implements RequestScheduler {
   }
 
   /**
-   * Only used in rare special cases e.g. ClientRequestSelector. Consider adding dedicated
+   * Only used in rare special cases e.g., ClientRequestSelector. Consider adding dedicated
    * interfaces in the future to reduce coupling here.
    */
   Node getNode() {

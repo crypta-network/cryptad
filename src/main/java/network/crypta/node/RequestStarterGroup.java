@@ -22,8 +22,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Coordinates request starters and client schedulers for CHK/SSK fetches and inserts.
  *
- * <p>Wires four flows per key type (CHK and SSK): fetch (request) vs insert, and bulk vs real-time.
- * Each flow has its own {@link RequestStarter}, {@link BaseRequestThrottle} and {@link
+ * <p>Wires four flows per key type (CHK and SSK): fetch (request) vs. insert, and bulk vs.
+ * real-time. Each flow has its own {@link RequestStarter}, {@link BaseRequestThrottle} and {@link
  * ClientRequestScheduler}. The group also maintains several {@link ThrottleWindowManager} instances
  * that adapt concurrency based on observed round-trip times (RTT) and overload events.
  *
@@ -130,9 +130,7 @@ public class RequestStarterGroup {
             "CHK Request starter (" + portNumber + ')',
             stats.localChkFetchBytesSentAverage,
             stats.localChkFetchBytesReceivedAverage,
-            false,
-            false,
-            false);
+            new SchedulerMode(false, false, false));
     chkRequestStarterRT =
         new RequestStarter(
             core,
@@ -140,9 +138,7 @@ public class RequestStarterGroup {
             "CHK Request starter (" + portNumber + ')',
             stats.localChkFetchBytesSentAverage,
             stats.localChkFetchBytesReceivedAverage,
-            false,
-            false,
-            true);
+            new SchedulerMode(false, false, true));
     chkFetchSchedulerBulk =
         new ClientRequestScheduler(
             new SchedulerMode(false, false, false),
@@ -185,9 +181,7 @@ public class RequestStarterGroup {
             "CHK Insert starter (" + portNumber + ')',
             stats.localChkInsertBytesSentAverage,
             stats.localChkInsertBytesReceivedAverage,
-            true,
-            false,
-            false);
+            new SchedulerMode(true, false, false));
     chkInsertStarterRT =
         new RequestStarter(
             core,
@@ -195,9 +189,7 @@ public class RequestStarterGroup {
             "CHK Insert starter (" + portNumber + ')',
             stats.localChkInsertBytesSentAverage,
             stats.localChkInsertBytesReceivedAverage,
-            true,
-            false,
-            true);
+            new SchedulerMode(true, false, true));
     chkPutSchedulerBulk =
         new ClientRequestScheduler(
             new SchedulerMode(true, false, false),
@@ -235,9 +227,7 @@ public class RequestStarterGroup {
             "SSK Request starter (" + portNumber + ')',
             stats.localSskFetchBytesSentAverage,
             stats.localSskFetchBytesReceivedAverage,
-            false,
-            true,
-            false);
+            new SchedulerMode(false, true, false));
     sskRequestStarterRT =
         new RequestStarter(
             core,
@@ -245,9 +235,7 @@ public class RequestStarterGroup {
             "SSK Request starter (" + portNumber + ')',
             stats.localSskFetchBytesSentAverage,
             stats.localSskFetchBytesReceivedAverage,
-            false,
-            true,
-            true);
+            new SchedulerMode(false, true, true));
     sskFetchSchedulerBulk =
         new ClientRequestScheduler(
             new SchedulerMode(false, true, false),
@@ -290,9 +278,7 @@ public class RequestStarterGroup {
             "SSK Insert starter (" + portNumber + ')',
             stats.localSskInsertBytesSentAverage,
             stats.localSskFetchBytesReceivedAverage,
-            true,
-            true,
-            false);
+            new SchedulerMode(true, true, false));
     sskInsertStarterRT =
         new RequestStarter(
             core,
@@ -300,9 +286,7 @@ public class RequestStarterGroup {
             "SSK Insert starter (" + portNumber + ')',
             stats.localSskInsertBytesSentAverage,
             stats.localSskFetchBytesReceivedAverage,
-            true,
-            true,
-            true);
+            new SchedulerMode(true, true, true));
     sskPutSchedulerBulk =
         new ClientRequestScheduler(
             new SchedulerMode(true, true, false),
@@ -592,7 +576,7 @@ public class RequestStarterGroup {
     fs.put("ThrottleWindow", throttleWindowBulk.exportFieldSet(false));
     fs.put("ThrottleWindowRT", throttleWindowRT.exportFieldSet(false));
     fs.put("ThrottleWindowCHK", throttleWindowCHK.exportFieldSet(false));
-    // FIXME: This writes CHK window under "ThrottleWindowSSK"; use
+    // Note: This writes the CHK window under "ThrottleWindowSSK"; use
     // throttleWindowSSK.exportFieldSet(false) if SSK is intended. Confirm and correct mapping.
     fs.put("ThrottleWindowSSK", throttleWindowCHK.exportFieldSet(false));
     fs.put("CHKRequestThrottle", chkRequestThrottleBulk.exportFieldSet());
@@ -621,7 +605,7 @@ public class RequestStarterGroup {
    *
    * @param isSSK whether the flow is SSK; CHK otherwise
    * @param isInsert whether the flow is an insert; fetch otherwise
-   * @param realTime whether the flow is real-time vs bulk
+   * @param realTime whether the flow is real-time vs. bulk
    * @return round-trip time in milliseconds
    */
   public double getRTT(boolean isSSK, boolean isInsert, boolean realTime) {
@@ -633,7 +617,7 @@ public class RequestStarterGroup {
    *
    * @param isSSK whether the flow is SSK; CHK otherwise
    * @param isInsert whether the flow is an insert; fetch otherwise
-   * @param realTime whether the flow is real-time vs bulk
+   * @param realTime whether the flow is real-time vs. bulk
    * @return delay in milliseconds
    */
   public double getDelay(boolean isSSK, boolean isInsert, boolean realTime) {
@@ -658,7 +642,7 @@ public class RequestStarterGroup {
    *
    * @param isSSK whether the flow is SSK; CHK otherwise
    * @param isInsert whether the flow is an insert; fetch otherwise
-   * @param realTime whether the flow is real-time vs bulk
+   * @param realTime whether the flow is real-time vs. bulk
    * @return a human-readable line containing type, mode, RTT, delay, and bandwidth
    */
   public String statsPageLine(boolean isSSK, boolean isInsert, boolean realTime) {
@@ -682,7 +666,7 @@ public class RequestStarterGroup {
   /**
    * Builds a diagnostic string with either request/insert or CHK/SSK windows.
    *
-   * @param mode when {@code true}, shows request vs insert; when {@code false}, shows CHK vs SSK
+   * @param mode when {@code true}, shows request vs. insert; when {@code false}, shows CHK vs. SSK
    * @return a human-readable diagnostic string
    */
   public String diagnosticThrottlesLine(boolean mode) {
