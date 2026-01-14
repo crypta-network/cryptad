@@ -22,7 +22,7 @@ class MessageFragmentTest {
     "true,  false,  10, 13", // 2 + 1 + 0 + 10 = 13
     "false, true,   10, 16", // 2 + 2 + 2 + 10 = 16
     "false, false,  10, 14", // 2 + 2 + 0 + 10 = 14
-    "true,  true,    0,  4", // 2 + 1 + 1 + 0  = 4 (empty payload)
+    "true,  true,    0,  4", // 2 + 1 + 1 + 0 = 4 (empty payload)
   })
   @DisplayName("length() computes header + payload size for all flag combinations")
   void length_whenFlagsVary_expectCalculatedSize(
@@ -32,15 +32,9 @@ class MessageFragmentTest {
     MessageWrapper wrapper = mock(MessageWrapper.class);
     MessageFragment fragment =
         new MessageFragment(
-            shortMessage,
-            isFragmented,
-            /* firstFragment= */ true,
-            /* messageID= */ 123,
-            /* fragmentLength= */ dataLen,
-            /* messageLength= */ dataLen,
-            /* fragmentOffset= */ 0,
-            data,
-            wrapper);
+            new MessageFragmentHeader(shortMessage, isFragmented, /* firstFragment= */ true, 123),
+            new MessageFragmentSizes(dataLen, dataLen, 0),
+            new MessageFragmentPayload(data, wrapper));
 
     // Act
     int actual = fragment.length();
@@ -58,15 +52,9 @@ class MessageFragmentTest {
     MessageWrapper wrapper = mock(MessageWrapper.class);
     MessageFragment fragment =
         new MessageFragment(
-            /* shortMessage= */ true,
-            /* isFragmented= */ true,
-            /* firstFragment= */ false,
-            /* messageID= */ 42,
-            /* fragmentLength= */ 999,
-            /* messageLength= */ 12345,
-            /* fragmentOffset= */ 1234,
-            data,
-            wrapper);
+            new MessageFragmentHeader(true, true, /* firstFragment= */ false, 42),
+            new MessageFragmentSizes(999, 12345, 1234),
+            new MessageFragmentPayload(data, wrapper));
 
     // Act
     String s = fragment.toString();
@@ -85,15 +73,9 @@ class MessageFragmentTest {
     MessageWrapper wrapper = mock(MessageWrapper.class);
     MessageFragment fragment =
         new MessageFragment(
-            /* shortMessage= */ false,
-            /* isFragmented= */ false,
-            /* firstFragment= */ true,
-            /* messageID= */ 77,
-            /* fragmentLength= */ 100,
-            /* messageLength= */ 1000,
-            /* fragmentOffset= */ 0,
-            data,
-            wrapper);
+            new MessageFragmentHeader(false, false, /* firstFragment= */ true, 77),
+            new MessageFragmentSizes(100, 1000, 0),
+            new MessageFragmentPayload(data, wrapper));
 
     // Act
     int actual = fragment.length();

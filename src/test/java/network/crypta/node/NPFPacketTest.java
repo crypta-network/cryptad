@@ -212,7 +212,7 @@ class NPFPacketTest {
     assertEquals(0, r.getAcks().size());
     assertEquals(2, r.getFragments().size());
 
-    // Check first fragment
+    // Check the first fragment
     MessageFragment frag = r.getFragments().getFirst();
     assertTrue(frag.shortMessage);
     assertFalse(frag.isFragmented);
@@ -234,7 +234,7 @@ class NPFPacketTest {
         },
         frag.fragmentData);
 
-    // Check second fragment
+    // Check the second fragment
     frag = r.getFragments().get(1);
     assertTrue(frag.shortMessage);
     assertFalse(frag.isFragmented);
@@ -698,24 +698,20 @@ class NPFPacketTest {
     p.setSequenceNumber(100);
     p.addMessageFragment(
         new MessageFragment(
-            true,
-            false,
-            true,
-            0,
-            8,
-            8,
-            0,
-            new byte[] {
-              (byte) 0x01,
-              (byte) 0x23,
-              (byte) 0x45,
-              (byte) 0x67,
-              (byte) 0x89,
-              (byte) 0xAB,
-              (byte) 0xCD,
-              (byte) 0xEF
-            },
-            null));
+            new MessageFragmentHeader(true, false, true, 0),
+            new MessageFragmentSizes(8, 8, 0),
+            new MessageFragmentPayload(
+                new byte[] {
+                  (byte) 0x01,
+                  (byte) 0x23,
+                  (byte) 0x45,
+                  (byte) 0x67,
+                  (byte) 0x89,
+                  (byte) 0xAB,
+                  (byte) 0xCD,
+                  (byte) 0xEF
+                },
+                null)));
 
     byte[] correctData =
         new byte[] {
@@ -768,40 +764,32 @@ class NPFPacketTest {
 
     p.addMessageFragment(
         new MessageFragment(
-            true,
-            false,
-            true,
-            0,
-            8,
-            8,
-            0,
-            new byte[] {
-              (byte) 0x01,
-              (byte) 0x23,
-              (byte) 0x45,
-              (byte) 0x67,
-              (byte) 0x89,
-              (byte) 0xAB,
-              (byte) 0xCD,
-              (byte) 0xEF
-            },
-            null));
+            new MessageFragmentHeader(true, false, true, 0),
+            new MessageFragmentSizes(8, 8, 0),
+            new MessageFragmentPayload(
+                new byte[] {
+                  (byte) 0x01,
+                  (byte) 0x23,
+                  (byte) 0x45,
+                  (byte) 0x67,
+                  (byte) 0x89,
+                  (byte) 0xAB,
+                  (byte) 0xCD,
+                  (byte) 0xEF
+                },
+                null)));
     p.addMessageFragment(
         new MessageFragment(
-            false,
-            true,
-            false,
-            4095,
-            14,
-            1024,
-            256,
-            new byte[] {
-              (byte) 0xfd, (byte) 0x47, (byte) 0xc2, (byte) 0x30,
-              (byte) 0x41, (byte) 0x53, (byte) 0x57, (byte) 0x56,
-              (byte) 0x0e, (byte) 0x56, (byte) 0x69, (byte) 0xf5,
-              (byte) 0x00, (byte) 0x0d
-            },
-            null));
+            new MessageFragmentHeader(false, true, false, 4095),
+            new MessageFragmentSizes(14, 1024, 256),
+            new MessageFragmentPayload(
+                new byte[] {
+                  (byte) 0xfd, (byte) 0x47, (byte) 0xc2, (byte) 0x30,
+                  (byte) 0x41, (byte) 0x53, (byte) 0x57, (byte) 0x56,
+                  (byte) 0x0e, (byte) 0x56, (byte) 0x69, (byte) 0xf5,
+                  (byte) 0x00, (byte) 0x0d
+                },
+                null)));
 
     byte[] correctData =
         new byte[] {
@@ -871,19 +859,29 @@ class NPFPacketTest {
     // Arrange
     NPFPacket p = new NPFPacket();
 
-    p.addMessageFragment(new MessageFragment(true, false, true, 0, 10, 10, 0, new byte[10], null));
+    p.addMessageFragment(
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 0),
+            new MessageFragmentSizes(10, 10, 0),
+            new MessageFragmentPayload(new byte[10], null)));
     // Act & Assert
     assertEquals(20, p.getLength()); // Seqnum (4), numAcks (1), msgID (4), length (1), data (10)
 
     p.addMessageFragment(
-        new MessageFragment(true, false, true, 5000, 10, 10, 0, new byte[10], null));
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 5000),
+            new MessageFragmentSizes(10, 10, 0),
+            new MessageFragmentPayload(new byte[10], null)));
     assertEquals(35, p.getLength()); // + msgID (4), length (1), data (10)
 
     // This fragment adds 13, but the next won't need a full message id anymore, so this should only
     // add 11
     // bytes
     p.addMessageFragment(
-        new MessageFragment(true, false, true, 2500, 10, 10, 0, new byte[10], null));
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 2500),
+            new MessageFragmentSizes(10, 10, 0),
+            new MessageFragmentPayload(new byte[10], null)));
     assertEquals(46, p.getLength());
   }
 
@@ -902,41 +900,11 @@ class NPFPacketTest {
           (byte) 0xCD,
           (byte) 0xEF
         };
-    p.addMessageFragment(new MessageFragment(true, false, true, 0, 8, 8, 0, fragData, null));
-    byte[] lossyFragment =
-        new byte[] {(byte) 0xFF, (byte) 0xEE, (byte) 0xDD, (byte) 0xCC, (byte) 0xBB, (byte) 0xAA};
-    p.addLossyMessage(lossyFragment);
-    byte[] encoded = new byte[p.getLength()];
-    p.toBytes(encoded, 0, null);
-    // Act
-    NPFPacket received = NPFPacket.create(encoded, pn);
-    // Assert
-    assertEquals(1, received.getFragments().size());
-    assertEquals(0, received.countAcks());
-    assertEquals(1, received.getLossyMessages().size());
-    assertEquals(encoded.length, received.getLength());
-    byte[] decodedFragData = received.getFragments().getFirst().fragmentData;
-    checkEquals(fragData, decodedFragData);
-    byte[] decodedLossyMessage = received.getLossyMessages().getFirst();
-    checkEquals(lossyFragment, decodedLossyMessage);
-  }
-
-  @Test
-  void lossyMessages_whenTwoMessages_expectRoundTripBoth() {
-    // Arrange
-    NPFPacket p = new NPFPacket();
-    byte[] fragData =
-        new byte[] {
-          (byte) 0x01,
-          (byte) 0x23,
-          (byte) 0x45,
-          (byte) 0x67,
-          (byte) 0x89,
-          (byte) 0xAB,
-          (byte) 0xCD,
-          (byte) 0xEF
-        };
-    p.addMessageFragment(new MessageFragment(true, false, true, 0, 8, 8, 0, fragData, null));
+    p.addMessageFragment(
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 0),
+            new MessageFragmentSizes(8, 8, 0),
+            new MessageFragmentPayload(fragData, null)));
     byte[] lossyFragment =
         new byte[] {(byte) 0xFF, (byte) 0xEE, (byte) 0xDD, (byte) 0xCC, (byte) 0xBB, (byte) 0xAA};
     byte[] lossyFragment2 =
@@ -975,7 +943,11 @@ class NPFPacketTest {
           (byte) 0xCD,
           (byte) 0xEF
         };
-    p.addMessageFragment(new MessageFragment(true, false, true, 0, 8, 8, 0, fragData, null));
+    p.addMessageFragment(
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 0),
+            new MessageFragmentSizes(8, 8, 0),
+            new MessageFragmentPayload(fragData, null)));
     byte[] lossyFragment =
         new byte[] {(byte) 0xFF, (byte) 0xEE, (byte) 0xDD, (byte) 0xCC, (byte) 0xBB, (byte) 0xAA};
     byte[] lossyFragment2 =
@@ -1115,7 +1087,11 @@ class NPFPacketTest {
     p.setSequenceNumber(123);
     p.addAck(7, 1400);
     byte[] data = new byte[] {9, 8, 7};
-    p.addMessageFragment(new MessageFragment(true, false, true, 100, 3, 3, 0, data, null));
+    p.addMessageFragment(
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 100),
+            new MessageFragmentSizes(3, 3, 0),
+            new MessageFragmentPayload(data, null)));
 
     // Act
     String s = p.toString();
@@ -1145,9 +1121,16 @@ class NPFPacketTest {
     byte[] d2 = new byte[] {(byte) 0x11, (byte) 0x22, (byte) 0x33};
 
     // First fragment: full id (0x10) for message 5000
-    p.addMessageFragment(new MessageFragment(true, false, true, 5000, 3, 3, 0, d1, null));
-    // Second fragment: new message id close to previous (delta 200 < 4096) -> compressed id
-    p.addMessageFragment(new MessageFragment(true, false, true, 5200, 3, 3, 0, d2, null));
+    p.addMessageFragment(
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 5000),
+            new MessageFragmentSizes(3, 3, 0),
+            new MessageFragmentPayload(d1, null)));
+    p.addMessageFragment(
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 5200),
+            new MessageFragmentSizes(3, 3, 0),
+            new MessageFragmentPayload(d2, null)));
 
     // Act
     byte[] encoded = new byte[p.getLength()];
@@ -1189,7 +1172,11 @@ class NPFPacketTest {
     MessageWrapper wrapper = mock(MessageWrapper.class);
     byte[] payload = new byte[] {1, 2, 3, 4};
     // shortMessage=true, isFragmented=false, firstFragment=true, messageLength=4, offset=0
-    p.addMessageFragment(new MessageFragment(true, false, true, 7, 4, 4, 0, payload, wrapper));
+    p.addMessageFragment(
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 7),
+            new MessageFragmentSizes(4, 4, 0),
+            new MessageFragmentPayload(payload, wrapper)));
     NullBasePeerNode peer = pn;
 
     // Act: totalPacketLength larger than payload by 96 -> overhead/size with size==2

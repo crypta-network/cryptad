@@ -193,8 +193,8 @@ public class MessageWrapper {
 
   /**
    * Returns a {@code MessageFragment} with a length of {@code maxLength} or less, or {@code null}
-   * if there is nothing to send. Ranges that have been returned by this function, and not marked as
-   * lost, and data that has been acked is never returned.
+   * if there is nothing to send. Ranges that have been returned by this function and are not marked
+   * as lost, and data that has been acked is never returned.
    *
    * <p>The returned range is inclusive with respect to the source buffer.
    *
@@ -246,15 +246,9 @@ public class MessageWrapper {
 
     boolean isFragmented = !((start == 0) && (dataLength == item.buf.length));
     return new MessageFragment(
-        isShortMessage,
-        isFragmented,
-        start == 0,
-        messageID,
-        dataLength,
-        item.buf.length,
-        start,
-        fragmentData,
-        this);
+        new MessageFragmentHeader(isShortMessage, isFragmented, start == 0, messageID),
+        new MessageFragmentSizes(dataLength, item.buf.length, start),
+        new MessageFragmentPayload(fragmentData, this));
   }
 
   /**
@@ -323,7 +317,7 @@ public class MessageWrapper {
     } else {
       report = everSent.notOverlapping(start, end);
       resent = end - start + 1 - report;
-      // Distribute overhead deterministically between report and resent without allocations
+      // Distribute overhead deterministically between the report and resent without allocations
       if (overhead != 0) {
         if (report > 0 && resent == 0) {
           report += overhead;

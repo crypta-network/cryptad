@@ -92,7 +92,7 @@ class NewPacketFormatKeyContextTest {
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(5, 0);
     // First allocation sets firstSeqNumUsed to 5
     assertEquals(5, ctx.allocateSequenceNumber(pn));
-    // Force wrap back to first to simulate reuse condition
+    // Force wrap back to first to simulate the reuse condition
     ctx.nextSeqNum = ctx.firstSeqNumUsed;
     assertFalse(ctx.canAllocateSeqNum());
   }
@@ -100,28 +100,28 @@ class NewPacketFormatKeyContextTest {
   @Test
   void allocateSequenceNumber_whenAtFirstSeq_triggersRekeyAndReturnsMinusOne() {
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(5, 0);
-    // Establish first used
+    // Establish the first used one
     assertEquals(5, ctx.allocateSequenceNumber(pn));
     // Now next equals first => cannot allocate, rekey
     ctx.nextSeqNum = ctx.firstSeqNumUsed;
     int ret = ctx.allocateSequenceNumber(pn);
     assertEquals(-1, ret);
     verify(pn, times(1)).startRekeying();
-    // nextSeqNum should remain unchanged on failure
+    // the nextSeqNum should remain unchanged on failure
     assertEquals(ctx.firstSeqNumUsed, ctx.nextSeqNum);
   }
 
   @Test
   void allocateSequenceNumber_whenNearWrapWithinThreshold_triggersRekeyAndWrapsToZero() {
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(1, 0);
-    // Simulate many prior allocations so firstSeqNumUsed != -1
+    // Simulate many prior allocations so the firstSeqNumUsed != -1
     assertEquals(1, ctx.allocateSequenceNumber(pn));
     ctx.firstSeqNumUsed = 10; // pretend we began at 10 on this key
     ctx.nextSeqNum = Integer.MAX_VALUE; // 0x7fffffff
 
     int ret = ctx.allocateSequenceNumber(pn);
     assertEquals(Integer.MAX_VALUE, ret);
-    // After increment, it would overflow negative; implementation resets to 0
+    // After an increment, it would overflow negative; implementation resets to 0
     assertEquals(0, ctx.nextSeqNum);
     verify(pn, times(1)).startRekeying();
   }
@@ -252,7 +252,7 @@ class NewPacketFormatKeyContextTest {
     NewPacketFormat npf = new NewPacketFormat(null, 0, 0);
     SessionKey key = dummyKey(ctx);
 
-    // Build a SentPacket with at least one message so lostSentTimes is recorded on loss
+    // Build a SentPacket with at least one message, so lostSentTimes is recorded on loss
     SentPacket sp = getSentPacket(npf, key);
 
     // Add to in-flight and force an old sent time so it qualifies as lost
@@ -262,7 +262,7 @@ class NewPacketFormatKeyContextTest {
     long maxDelay = (long) (250 + NewPacketFormatKeyContext.MAX_ACK_DELAY * 1.1); // 470
     long now = 10_000L;
 
-    // Override sent time to be older than threshold
+    // Override sent time to be older than the threshold
     sp.sentTime = now - maxDelay - 1; // package-private field; same package access
 
     PeerTransport transport = mock(PeerTransport.class);
@@ -292,15 +292,9 @@ class NewPacketFormatKeyContextTest {
     MessageWrapper mw = new MessageWrapper(mi, /*messageID*/ 7);
     MessageFragment frag =
         new MessageFragment(
-            /*shortMessage*/ true,
-            /*isFragmented*/ false,
-            /*firstFragment*/ true,
-            /*messageID*/ 7,
-            /*fragmentLength*/ 4,
-            /*messageLength*/ 4,
-            /*fragmentOffset*/ 0,
-            new byte[] {1, 2, 3, 4},
-            mw);
+            new MessageFragmentHeader(true, false, true, 7),
+            new MessageFragmentSizes(4, 4, 0),
+            new MessageFragmentPayload(new byte[] {1, 2, 3, 4}, mw));
     sp.addFragment(frag);
     return sp;
   }
@@ -342,7 +336,7 @@ class NewPacketFormatKeyContextTest {
     assertTrue(sp1.lostCalled);
     assertTrue(sp2.lostCalled);
     assertEquals(0, ctx.countSentPackets());
-    // Internal map should also be empty
+    // The internal map should also be empty
     assertTrue(sentPacketsOf(ctx).isEmpty());
   }
 
@@ -367,7 +361,7 @@ class NewPacketFormatKeyContextTest {
     }
 
     ObservedSentPacket sp = new ObservedSentPacket(npf, key);
-    // Put directly into internal map so we can exercise sent(sequenceNumber, length)
+    // Put directly into the internal map so we can exercise sent(sequenceNumber, length)
     sentPacketsOf(ctx).put(77, sp);
 
     ctx.sent(77, 321);

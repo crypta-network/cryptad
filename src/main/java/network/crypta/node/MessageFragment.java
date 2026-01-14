@@ -30,35 +30,21 @@ class MessageFragment {
   /**
    * Creates a new immutable fragment description.
    *
-   * @param shortMessage {@code true} when the message uses single-byte size fields
-   * @param isFragmented {@code true} when the message is split across multiple fragments
-   * @param firstFragment {@code true} when this is the first fragment of the message
-   * @param messageID identifier of the logical message this fragment belongs to
-   * @param fragmentLength declared fragment length (may differ from {@code fragmentData.length})
-   * @param messageLength total message length for first fragments; otherwise ignored
-   * @param fragmentOffset byte offset of this fragment within the full message (0-based)
-   * @param fragmentData payload bytes of this fragment; used for size and transmission
-   * @param wrapper originating wrapper when sending; {@code null} when created by a receiver
+   * @param header header flags and message identifier metadata
+   * @param sizes length and offset metadata for the fragment
+   * @param payload payload bytes and originating wrapper reference
    */
   public MessageFragment(
-      boolean shortMessage,
-      boolean isFragmented,
-      boolean firstFragment,
-      int messageID,
-      int fragmentLength,
-      int messageLength,
-      int fragmentOffset,
-      byte[] fragmentData,
-      MessageWrapper wrapper) {
-    this.shortMessage = shortMessage;
-    this.isFragmented = isFragmented;
-    this.firstFragment = firstFragment;
-    this.messageID = messageID;
-    this.fragmentLength = fragmentLength;
-    this.messageLength = messageLength;
-    this.fragmentOffset = fragmentOffset;
-    this.fragmentData = fragmentData;
-    this.wrapper = wrapper;
+      MessageFragmentHeader header, MessageFragmentSizes sizes, MessageFragmentPayload payload) {
+    this.shortMessage = header.shortMessage();
+    this.isFragmented = header.isFragmented();
+    this.firstFragment = header.firstFragment();
+    this.messageID = header.messageID();
+    this.fragmentLength = sizes.fragmentLength();
+    this.messageLength = sizes.messageLength();
+    this.fragmentOffset = sizes.fragmentOffset();
+    this.fragmentData = payload.fragmentData();
+    this.wrapper = payload.wrapper();
   }
 
   /**
@@ -75,7 +61,7 @@ class MessageFragment {
     int messageIdAndFlagsBytes = 2; // 2 bytes for message id and flags
     int fragmentLengthBytes = shortMessage ? 1 : 2; // size of the fragment-length field
 
-    // Size of the additional header field present only when the message is fragmented.
+    // The size of the additional header field present only when the message is fragmented.
     // The field carries either the total message length (first fragment) or the fragment offset.
     int offsetOrMessageLengthBytes = 0;
     if (isFragmented) {

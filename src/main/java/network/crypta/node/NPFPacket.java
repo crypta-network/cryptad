@@ -235,15 +235,9 @@ class NPFPacket {
 
     packet.fragments.add(
         new MessageFragment(
-            shortMessage,
-            isFragmented,
-            firstFragment,
-            messageID,
-            lens.fragmentLength,
-            outMessageLength,
-            outFragmentOffset,
-            fragmentData,
-            null));
+            new MessageFragmentHeader(shortMessage, isFragmented, firstFragment, messageID),
+            new MessageFragmentSizes(lens.fragmentLength, outMessageLength, outFragmentOffset),
+            new MessageFragmentPayload(fragmentData, null)));
 
     return offset;
   }
@@ -303,7 +297,8 @@ class NPFPacket {
       }
 
       // Caller already decoded flags from the header and knows whether this is the first fragment.
-      // Expose both values; the caller uses messageLength for first fragments, and fragmentOffset
+      // Expose both values; the caller uses messageLength for the first fragments, and
+      // fragmentOffset
       // otherwise.
 
       // By contract with caller: first fragment uses messageLength=value, otherwise fragmentOffset
@@ -418,7 +413,8 @@ class NPFPacket {
         int rangeSize = r.end - r.start + 1;
         buf[offset++] = (byte) rangeSize;
       }
-      // Edge case: if the last ack does not fit into previous range, the algorithm above already
+      // Edge case: if the last ack does not fit into the previous range, the algorithm above
+      // already
       // created a separate range for it, so no extra handling is required here.
     }
     return offset;
@@ -504,7 +500,8 @@ class NPFPacket {
     }
 
     if (fragment.isFragmented) {
-      // If firstFragment is true, encode total message length; otherwise encode fragment offset.
+      // If the firstFragment is true, encode total message length; otherwise encode fragment
+      // offset.
       int value;
       if (fragment.firstFragment) {
         value = fragment.messageLength;
@@ -541,10 +538,11 @@ class NPFPacket {
   }
 
   private static void writePadding(byte[] buf, int offset, Random paddingGen) {
-    // Fill remaining space with random padding when capacity remains.
+    // Fill the remaining space with random padding when capacity remains.
     Util.randomBytes(paddingGen, buf, offset, buf.length - offset);
 
-    byte b = (byte) (buf[offset] & 0x9F); // Clear firstFragment/isFragmented bits in padding byte.
+    byte b =
+        (byte) (buf[offset] & 0x9F); // Clear the firstFragment / isFragmented bits in padding byte.
     if (b == 0x1F) b = (byte) 0x9F; // Avoid the lossy message marker (0x1F) in padding.
     buf[offset] = b;
   }
@@ -697,7 +695,7 @@ class NPFPacket {
   }
 
   /**
-   * Return parsed message fragments in send order.
+   * Return parsed message fragments in sending order.
    *
    * @return a mutable list of message fragments
    */
