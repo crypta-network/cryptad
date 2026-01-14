@@ -264,34 +264,34 @@ class NodeClientPersistenceTest {
     FetchContext defaultFetchContext = mock(FetchContext.class);
     InsertContext defaultInsertContext = mock(InsertContext.class);
 
+    ClientContextInitParams params =
+        new ClientContextInitParams(
+            clientLayerPersister,
+            executor,
+            resources,
+            persistentTempBucketFactory,
+            tempBucketFactory,
+            uskManager,
+            randomSource,
+            fastWeakRandom,
+            ticker,
+            memoryLimitedJobRunner,
+            tempFilenameGenerator,
+            persistentFilenameGenerator,
+            tempRafFactory,
+            persistentRafFactory,
+            fileRafTransient,
+            compressor,
+            storeChecker,
+            cryptoSecretTransient,
+            init,
+            defaultFetchContext,
+            defaultInsertContext);
+
     // Act
     NullPointerException ex =
         assertThrows(
-            NullPointerException.class,
-            () ->
-                persistence.createClientContext(
-                    node,
-                    clientLayerPersister,
-                    executor,
-                    resources,
-                    persistentTempBucketFactory,
-                    tempBucketFactory,
-                    uskManager,
-                    randomSource,
-                    fastWeakRandom,
-                    ticker,
-                    memoryLimitedJobRunner,
-                    tempFilenameGenerator,
-                    persistentFilenameGenerator,
-                    tempRafFactory,
-                    persistentRafFactory,
-                    fileRafTransient,
-                    compressor,
-                    storeChecker,
-                    cryptoSecretTransient,
-                    init,
-                    defaultFetchContext,
-                    defaultInsertContext));
+            NullPointerException.class, () -> persistence.createClientContext(node, params));
 
     // Assert
     assertEquals("Persistent disk checker not initialized", ex.getMessage());
@@ -343,10 +343,8 @@ class NodeClientPersistenceTest {
     FetchContext defaultFetchContext = mock(FetchContext.class);
     InsertContext defaultInsertContext = mock(InsertContext.class);
 
-    // Act
-    ClientContext context =
-        persistence.createClientContext(
-            node,
+    ClientContextInitParams params =
+        new ClientContextInitParams(
             clientLayerPersister,
             executor,
             resources,
@@ -368,6 +366,9 @@ class NodeClientPersistenceTest {
             init,
             defaultFetchContext,
             defaultInsertContext);
+
+    // Act
+    ClientContext context = persistence.createClientContext(node, params);
 
     // Assert
     assertAll(
@@ -416,9 +417,8 @@ class NodeClientPersistenceTest {
     persistence.initDiskChecker(
         mock(FilenameGenerator.class), persistentTempDir, 1L, tempBucketFactory, false);
 
-    ClientContext context =
-        persistence.createClientContext(
-            node,
+    ClientContextInitParams params =
+        new ClientContextInitParams(
             mock(ClientLayerPersister.class),
             mock(PriorityAwareExecutor.class),
             new ClientContextResources(
@@ -445,6 +445,7 @@ class NodeClientPersistenceTest {
                 mock(SimpleToadletServer.class)),
             mock(FetchContext.class),
             mock(InsertContext.class));
+    ClientContext context = persistence.createClientContext(node, params);
 
     PersistentRequestRoot root = context.persistentRoot;
     PersistentRequestClient client = root.registerForeverClient("client", null);
