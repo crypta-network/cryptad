@@ -8,6 +8,7 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.comm.OpennetAnnounceRequest;
 import network.crypta.node.OpennetManager.ConnectionType;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.io.NativeThread;
@@ -24,14 +25,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Threading: an instance is designed to be executed once on the node's executor. Incoming
  * AnnouncementReply payloads are validated and relayed on background tasks; before emitting a
- * terminal message (Completed or RouteNotFound) the instance waits for those background tasks to
+ * terminal message (Completed or RouteNotFound), the instance waits for those background tasks to
  * finish to avoid dropping late replies.
  */
 public class AnnounceSender implements PrioRunnable, ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(AnnounceSender.class);
-  private static final String LOG_REJECTING_NODEREF = "Rejecting noderef: {}";
-  private static final String LOG_FAILED_PARSE_REPLY = "Failed to parse reply: {}";
-  private static final String PARSE_FAILED_PREFIX = "parse failed: ";
 
   // Timeouts (milliseconds)
   static final int ACCEPTED_TIMEOUT = 10000;
@@ -56,40 +54,30 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private int forwardedRefs;
 
   /**
-   * Creates a sender used while forwarding an incoming announce from another peer.
+   * Creates a sender used while forwarding an incoming announcement from another peer.
    *
-   * @param target Location key we route toward (unitless, implementation-specific).
-   * @param htl Starting hop-to-live. Decrements as the request is forwarded.
-   * @param uid Announce UID. Used to correlate protocol messages.
-   * @param source Upstream peer that originated the request we are forwarding.
-   * @param om Opennet manager for protocol helpers and crypto.
-   * @param node Local node services and executors.
-   * @param xferUID Transfer UID for the noderef blob sent by {@code source}.
-   * @param noderefLength Unpadded noderef length (bytes).
-   * @param paddedLength Padded noderef length (bytes).
-   * @param cb Optional callback for progress notifications; may be {@code null}.
+   * @param request announce request metadata describing the target, HTL, and transfer sizes
+   * @param source upstream peer that originated the request we are forwarding
+   * @param om opennet manager for protocol helpers and crypto
+   * @param node local node services and executors
+   * @param cb optional callback for progress notifications; may be {@code null}
    */
   public AnnounceSender(
-      double target,
-      short htl,
-      long uid,
+      OpennetAnnounceRequest request,
       PeerNode source,
       OpennetManager om,
       Node node,
-      long xferUID,
-      int noderefLength,
-      int paddedLength,
       AnnouncementCallback cb) {
     this.source = source;
-    this.uid = uid;
+    this.uid = request.uid();
     this.om = om;
     this.node = node;
     this.onlyNode = null;
-    this.htl = htl;
-    this.xferUID = xferUID;
-    this.paddedLength = paddedLength;
-    this.noderefLength = noderefLength;
-    this.target = target;
+    this.htl = request.htl();
+    this.xferUID = request.transferUID();
+    this.paddedLength = request.paddedLength();
+    this.noderefLength = request.noderefLength();
+    this.target = request.target();
     this.cb = cb;
   }
 
@@ -97,8 +85,8 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
    * Creates a sender for an origin announcement initiated by this node.
    *
    * <p>The noderef to broadcast is taken from our crypto state. When {@code onlyNode} is supplied,
-   * the announce is attempted only to that peer; otherwise the routing chooses successive closer
-   * peers.
+   * the announcement is attempted only to that peer; otherwise the routing chooses successive
+   * closer peers.
    *
    * @param target Location key we route toward.
    * @param om Opennet manager for protocol helpers and crypto.
@@ -125,7 +113,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   /**
-   * Executes the announce routing loop.
+   * Executes the announcement routing loop.
    *
    * <p>Always performs cleanup and stats reporting on exit, including notifying the tracker and
    * completing the {@link AnnouncementCallback} when provided. All exceptions are caught and logged
@@ -186,7 +174,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
           last = next;
           break;
       }
-      // else: no forward this iteration, keep previous 'last' and hasForwarded
+      // else: no forward this iteration, keep the previous 'last' and hasForwarded
     }
   }
 
@@ -469,12 +457,12 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private java.util.function.BiFunction<Message, PeerNode, FinalOutcome> handlerFor(
       MessageType spec) {
     if (spec == DMT.FNPOpennetNoderefRejected) return this::handleNoderefRejected;
-    if (spec == DMT.FNPOpennetAnnounceCompleted) return (m, n) -> FinalOutcome.COMPLETED;
+    if (spec == DMT.FNPOpennetAnnounceCompleted) return (_, _) -> FinalOutcome.COMPLETED;
     if (spec == DMT.FNPRouteNotFound) return this::handleRouteNotFound;
     if (spec == DMT.FNPRejectedOverload) return this::handleRejectedOverload;
     if (spec == DMT.FNPOpennetDisabled) return this::handleOpennetDisabled;
     if (spec == DMT.FNPOpennetAnnounceReply) return this::handleAnnounceReply;
-    if (spec == DMT.FNPOpennetAnnounceNodeNotWanted) return (m, n) -> handleNodeNotWanted();
+    if (spec == DMT.FNPOpennetAnnounceNodeNotWanted) return (_, _) -> handleNodeNotWanted();
     return null;
   }
 
@@ -594,7 +582,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private int waitingForTransfers = 0;
 
   // Tracks the number of background reply-transfer tasks in flight. The sender blocks on this
-  // counter before emitting terminal messages so upstream peers do not miss late AnnouncementReply
+  // counter before emitting terminal messages, so upstream peers do not miss late AnnouncementReply
   // relays.
 
   /**
@@ -790,13 +778,13 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     om.sendAnnouncementReply(uid, next, ref, this);
   }
 
-  /** Reports sent bytes to the announce byte counter. */
+  /** Reports sent bytes to the announcement byte counter. */
   @Override
   public void sentBytes(int x) {
     node.network().stats().announceByteCounter.sentBytes(x);
   }
 
-  /** Reports received bytes to the announce byte counter. */
+  /** Reports received bytes to the announcement byte counter. */
   @Override
   public void receivedBytes(int x) {
     node.network().stats().announceByteCounter.receivedBytes(x);
