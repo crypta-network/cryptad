@@ -1444,24 +1444,18 @@ public class DMT {
   /**
    * Creates an {@code FNPOpennetAnnounceRequest} with a padded noderef to be transferred first.
    *
-   * @param uid Original request identifier.
-   * @param transferUID Transfer identifier for the noderef payload.
-   * @param noderefLength Unpadded noderef length in bytes.
-   * @param paddedLength Padded transfer length in bytes.
-   * @param target Target location.
-   * @param htl Hops-to-live.
+   * @param request announce request metadata
    * @return Initialized message.
    */
-  public static Message createFNPOpennetAnnounceRequest(
-      long uid, long transferUID, int noderefLength, int paddedLength, double target, short htl) {
+  public static Message createFNPOpennetAnnounceRequest(OpennetAnnounceRequest request) {
     Message msg = new Message(FNPOpennetAnnounceRequest);
-    msg.set(UID, uid);
-    msg.set(TRANSFER_UID, transferUID);
-    msg.set(NODEREF_LENGTH, noderefLength);
-    msg.set(PADDED_LENGTH, paddedLength);
-    msg.set(HTL, htl);
+    msg.set(UID, request.uid());
+    msg.set(TRANSFER_UID, request.transferUID());
+    msg.set(NODEREF_LENGTH, request.noderefLength());
+    msg.set(PADDED_LENGTH, request.paddedLength());
+    msg.set(HTL, request.htl());
     msg.set(NEAREST_LOCATION, 0.0);
-    msg.set(TARGET_LOCATION, target);
+    msg.set(TARGET_LOCATION, request.target());
     return msg;
   }
 

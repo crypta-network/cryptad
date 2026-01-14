@@ -28,6 +28,7 @@ import network.crypta.io.comm.DisconnectedException;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.comm.OpennetAnnounceRequest;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.xfer.BulkTransmitter;
@@ -93,7 +94,7 @@ public class OpennetManager {
         if ((!neverConnected1) && neverConnected2) {
           return 1;
         }
-        // a-b not opposite sign to b-a possible in a corner case (a=0 b=Integer.MIN_VALUE).
+        // a-b not the opposite sign to b-a possible in a corner case (a=0 b=Integer.MIN_VALUE).
         if (pn1.hashCode > pn2.hashCode) {
           return 1;
         } else if (pn1.hashCode < pn2.hashCode) {
@@ -156,7 +157,7 @@ public class OpennetManager {
    *
    * <p>Each class derives its target count from the overall opennet peer target so the manager can
    * enforce a stable long/short split as the node's capacity changes. The classification informs
-   * drop decisions and offer behavior.
+   * drop decisions and offers behavior.
    */
   public enum LinkLengthClass {
     /**
@@ -248,7 +249,7 @@ public class OpennetManager {
   public static final int RESET_PATH_FOLDING_PROB = 20;
 
   /**
-   * Minimum age a connected peer must reach before it becomes droppable.
+   * The minimum age a connected peer must reach before it becomes droppable.
    *
    * <p>This delay gives newly connected peers time to participate in traffic before they are
    * considered for removal.
@@ -256,7 +257,7 @@ public class OpennetManager {
   public static final long DROP_MIN_AGE = MINUTES.toMillis(5);
 
   /**
-   * Minimum age a disconnected peer must reach before it becomes droppable.
+   * The minimum age a disconnected peer must reach before it becomes droppable.
    *
    * <p>This applies when the peer has not yet connected; after one successful connection, {@link
    * #DROP_DISCONNECT_DELAY} governs disconnect-based drop timing. The value must remain shorter
@@ -283,7 +284,7 @@ public class OpennetManager {
    * Cooldown window for repeated disconnects.
    *
    * <p>If a peer disconnects more than once inside this interval, it may be dropped even if the
-   * usual disconnect grace period would otherwise protect it.
+   * usual disconnect grace period otherwise protects it.
    */
   public static final long DROP_DISCONNECT_DELAY_COOLDOWN = MINUTES.toMillis(60);
 
@@ -307,14 +308,14 @@ public class OpennetManager {
    * Padded size in bytes for opennet noderef transfers.
    *
    * <p>Noderefs smaller than this are padded up to this size for privacy. If a noderef exceeds this
-   * size, the send path rejects it rather than truncating.
+   * size, the sending path rejects it rather than truncating.
    */
   public static final int PADDED_NODEREF_SIZE = 3072;
 
   /**
    * Maximum permitted opennet noderef length in bytes.
    *
-   * <p>This allows for future expansion. At any given time, noderefs are expected to be no larger
+   * <p>This allows for future expansion. At any given time, noderefs are expected to be not larger
    * than {@link #PADDED_NODEREF_SIZE}, and larger values are rejected before transfer.
    */
   public static final int MAX_OPENNET_NODEREF_LENGTH = 32768;
@@ -340,10 +341,10 @@ public class OpennetManager {
   public static final double SCALING_CONSTANT = 3;
 
   /**
-   * Minimum number of peers. As a rough estimate, because the vast majority of requests complete in
-   * 5 hops, 10 peers give just one binary decision per hop. However, the distribution of peers
-   * before the link length fix showed that having 3 short distance peers still worked, since
-   * requests preferentially go through higher capacity nodes with more FOAFs.
+   * Minimum number of peers. As an estimate, because the vast majority of requests that are
+   * completed in 5 hops and 10 peers give just one binary decision per hop. However, the
+   * distribution of peers before the link length fix showed that having 3 short distance peers
+   * still worked, since requests preferentially go through higher capacity nodes with more FOAFs.
    */
   public static final int MIN_PEERS_FOR_SCALING = 4;
 
@@ -406,7 +407,7 @@ public class OpennetManager {
   public static final long MAX_TIME_ON_OLD_OPENNET_PEERS = DAYS.toMillis(31);
 
   // This is only relevant while the connection is in the grace period.
-  // Null means none of the above e.g. not in grace period.
+  // Null means none of the above e.g., not in the grace period.
   /**
    * Categorizes the reason a peer is being connected for grace-period enforcement and counters.
    *
@@ -446,7 +447,7 @@ public class OpennetManager {
    * Create an {@code OpennetManager} and initialize opennet crypto from disk if available.
    *
    * <p>Crypto state is loaded from files named {@code opennet-<port>} (and {@code .bak}) under the
-   * node directory. If neither file can be read, new crypto state is generated. The constructor
+   * node directory. If neither file can be read, a new crypto state is generated. The constructor
    * also initializes per-type counters and LRU containers but does not start network activity; call
    * {@link #start()} once the {@link Node} has completed construction. This keeps construction
    * lightweight and avoids callbacks while the node is still initializing.
@@ -454,7 +455,7 @@ public class OpennetManager {
    * @param node owning {@link Node} instance; must not be {@code null}
    * @param opennetConfig opennet crypto configuration defining ports and keys
    * @param startupTime node startup epoch in milliseconds for crypto seeding
-   * @param enableAnnouncement whether to enable the announcer component on start
+   * @param enableAnnouncement whether to enable the announcer component on the start
    * @throws NodeInitException if crypto initialization fails or files are unreadable
    */
   public OpennetManager(
@@ -531,7 +532,7 @@ public class OpennetManager {
         OutputStreamWriter osr = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
         BufferedWriter bw = new BufferedWriter(osr)) {
       fs.writeTo(bw);
-      bw.flush(); // Ensure data is written before moving file
+      bw.flush(); // Ensure data is written before moving the file
       FileUtil.moveTo(backup, orig);
     } catch (IOException _) {
       // Resources are automatically closed by try-with-resources
@@ -646,7 +647,7 @@ public class OpennetManager {
 
   private void initLRUsFromExisting(OpennetPeerNode[] nodes) {
     for (OpennetPeerNode opn : nodes) {
-      // Drop any peers which don't have a location yet. That means we haven't connected to
+      // Drop any peers that don't have a location yet. That means we haven't connected to
       // them yet, and we need the location to decide which LRU to put them in ...
       // This should only be a problem with old nodes; we will include the location in new
       // path folding noderefs...
@@ -1008,7 +1009,7 @@ public class OpennetManager {
       // Don't check for self. That should be passed through too.
       return false;
     } catch (Throwable t) {
-      // Don't break the code flow in the caller which is normally a request.
+      // Don't break the code flow in the caller, which is normally a request.
       LOG.error("Error parsing opennet node from fieldset: {}", t, t);
       return false;
     }
@@ -1024,7 +1025,7 @@ public class OpennetManager {
    * internal LRUs and counters but does not alter the provided field set.
    *
    * @param fs field set representation of the serialized noderef
-   * @param connectionType reason/category for the add, affecting grace limits
+   * @param connectionType reason/category for the adding, affecting grace limits
    * @param allowExisting whether to return the current instance if already present
    * @return new or existing {@link OpennetPeerNode}, or {@code null} when rejected
    */
@@ -1060,9 +1061,9 @@ public class OpennetManager {
       }
       if (wantPeer(pn, true, false, false, connectionType, distance)) return pn;
       else return null;
-      // Start at bottom. Node must prove itself.
+      // Start at the bottom. Node must prove itself.
     } catch (Throwable t) {
-      // Don't break the code flow in the caller which is normally a request.
+      // Don't break the code flow in the caller, which is normally a request.
       LOG.error("Error adding opennet node from fieldset: {}", t, t);
       return null;
     }
@@ -1088,7 +1089,7 @@ public class OpennetManager {
    *
    * <p>When {@code nodeToAddNow} is {@code null}, this method decides whether to offer our noderef
    * to acquire a peer, attempting both short and long link classes. When non-null, it validates the
-   * peer's location, selects its link class, applies admission heuristics, and performs the add
+   * peer's location, selects its link class, applies admission heuristics, and performs the adding
    * when appropriate. Calls with {@code justChecking} avoid mutating counters or LRUs.
    *
    * <pre>{@code
@@ -1240,7 +1241,7 @@ public class OpennetManager {
     if (type == null && LOG.isDebugEnabled()) LOG.debug("No type set; skip per-type limits");
 
     // We do NOT want to have all our peers in grace periods!
-    // For opennet to work, we need LRU. For LRU to work it needs a choice.
+    // For opennet to work, we need LRU. For LRU to work, it needs a choice.
     // If everything is in a grace period, then we have no choice - we replace the one node that
     // comes out of its grace period as soon as it does.
     // So first calculate an overall limit on the number of peers in grace periods.
@@ -1343,7 +1344,7 @@ public class OpennetManager {
   }
 
   // A TOO OLD peer does not count towards the limit, even if it is not connected.
-  // It can however be dumped if it doesn't connect in a reasonable time, and if
+  // It can, however, be dumped if it doesn't connect in a reasonable time, and if
   // it upgrades, it may not have the usual grace period.
 
   /**
@@ -1488,9 +1489,9 @@ public class OpennetManager {
    * Record a successful request via the given peer and update its LRU position.
    *
    * <p>This increments success counters for all connection types and promotes the peer to the LRU
-   * head when present. If the peer is no longer tracked, it is treated as a reconnect candidate;
+   * head when present. If the peer is no longer tracked, it is treated as a reconnection candidate;
    * failure to re-add triggers a disconnect/remove to keep the table consistent. Calls from network
-   * threads are expected; the method synchronizes on the manager for LRU updates.
+   * threads are expected; the method synchronizes with the manager for LRU updates.
    *
    * @param pn peer that successfully handled a request
    */
@@ -1517,7 +1518,7 @@ public class OpennetManager {
         false,
         false,
         ConnectionType.RECONNECT,
-        distance)) { // Start at top as it just succeeded
+        distance)) { // Start at the top as it just succeeded
       node.network().peers().messenger().disconnectAndRemove(pn, true, false, true);
     }
   }
@@ -1579,7 +1580,7 @@ public class OpennetManager {
    * Remove a peer from the old-opennet tracking LRU.
    *
    * <p>This is used to forget a peer that should no longer be considered for opportunistic
-   * reconnection, for example after a definitive failure or manual removal. The removal is
+   * reconnection, for example, after a definitive failure or manual removal. The removal is
    * idempotent and safe to call even if the peer is not present.
    *
    * @param source old peer entry to remove from tracking
@@ -1589,7 +1590,7 @@ public class OpennetManager {
   }
 
   /**
-   * Compute the target total number of peers including darknet peers.
+   * Compute the target total number of peers, including darknet peers.
    *
    * <p>This uses bandwidth-based scaling when enabled and then caps the result by network
    * heuristics and user-specified limits. The returned value represents the overall target before
@@ -1597,7 +1598,7 @@ public class OpennetManager {
    * connection or disconnection actions by itself. The computation reads current network settings
    * without additional synchronization.
    *
-   * @return target peer count including darknet peers, subject to limits
+   * @return target peer count, including darknet peers, subject to limits
    */
   public int getNumberOfConnectedPeersToAimIncludingDarknet() {
     int max = node.network().maxOpennetPeers();
@@ -1620,7 +1621,7 @@ public class OpennetManager {
    * peers. But a peer with fewer than sqrt(targetPeers) connections does not have enough bandwidth
    * to support a connection to such a fast peer.
    *
-   * <p>Therefore a fast peer needs more peers than given by the square-root scaling.
+   * <p>Therefore, a fast peer needs more peers than given by the square-root scaling.
    *
    * <p>To calculate the missing bandwidth, we have to make an assumption: How many peers are too
    * slow? We assume that 50% of the peers have the lowest possible peer count.
@@ -1694,7 +1695,8 @@ public class OpennetManager {
   @FunctionalInterface
   public interface NoderefAllSentCallback {
     /**
-     * Called asynchronously once all packets have been queued and their send callbacks have fired.
+     * Called asynchronously once all packets have been queued and their sending callbacks have
+     * fired.
      *
      * <p>The callback is best-effort and does not imply delivery by the remote peer; it only
      * reflects local queuing and send completion. Implementations should be fast and avoid blocking
@@ -1719,7 +1721,7 @@ public class OpennetManager {
    * @param noderef full compressed noderef payload to send
    * @param ctr byte counter used for bandwidth accounting
    * @return {@code true} if the bulk transfer was started successfully
-   * @throws NotConnectedException if the peer disconnects during send setup
+   * @throws NotConnectedException if the peer disconnects during sending setup
    */
   @SuppressWarnings("UnusedReturnValue")
   public boolean sendOpennetRef(
@@ -1733,7 +1735,7 @@ public class OpennetManager {
    *
    * <p>The noderef is padded to a fixed size for privacy before transfer. A control message is
    * queued first, then the bulk transfer is sent. When provided, {@code cb} is invoked once all
-   * packets are queued and their send callbacks have fired; it does not indicate remote receipt.
+   * packets are queued and their sending callbacks have fired; it does not indicate remote receipt.
    * Oversized noderefs are logged and rejected before any bulk transfer is queued.
    *
    * @param isReply whether to send a reply ({@code true}) or destination message
@@ -1743,7 +1745,7 @@ public class OpennetManager {
    * @param ctr byte counter used for bandwidth accounting
    * @param cb optional callback invoked when all packets are queued and sent
    * @return {@code true} if the bulk transfer was started successfully
-   * @throws NotConnectedException if the peer disconnects during send setup
+   * @throws NotConnectedException if the peer disconnects during sending setup
    */
   @SuppressWarnings("UnusedReturnValue")
   public boolean sendOpennetRef(
@@ -1807,7 +1809,7 @@ public class OpennetManager {
    * <p>This sends the announcement request control message and returns the bulk transfer UID that
    * must be used when sending the padded payload. The actual payload transfer is completed by
    * {@link #finishSentAnnouncementRequest(PeerNode, byte[], ByteCounter, long)}. The returned UID
-   * is unique for this transfer and should not be reused for other sends.
+   * is unique for this transfer and should not be reused for another sending.
    *
    * @param uid request chain UID for correlating the announcement
    * @param peer destination peer for the announcement request
@@ -1815,16 +1817,17 @@ public class OpennetManager {
    * @param ctr byte counter used for bandwidth accounting
    * @param target target location in {@code [0,1)}
    * @param htl HTL value carried by the announcement request
-   * @return transfer UID used for the subsequent bulk send
+   * @return transfer UID used for the later bulk send
    * @throws NotConnectedException if the peer is not connected
    */
   public long startSendAnnouncementRequest(
       long uid, PeerNode peer, byte[] noderef, ByteCounter ctr, double target, short htl)
       throws NotConnectedException {
     long xferUID = node.bootstrap().random().nextLong();
-    Message msg =
-        DMT.createFNPOpennetAnnounceRequest(
+    OpennetAnnounceRequest request =
+        new OpennetAnnounceRequest(
             uid, xferUID, noderef.length, paddedSize(noderef.length), target, htl);
+    Message msg = DMT.createFNPOpennetAnnounceRequest(request);
     peer.transport().sendAsync(msg, null, ctr);
     return xferUID;
   }
@@ -1892,8 +1895,8 @@ public class OpennetManager {
    * Send a noderef rejection to the given peer.
    *
    * <p>This emits a small control message and ignores disconnect errors because the rejection is a
-   * best-effort notification. Callers do not need to coordinate with transfer state, and failures
-   * do not affect local peer accounting.
+   * best-effort notification. Callers do not need to coordinate with the transfer state, and
+   * failures do not affect local peer accounting.
    *
    * @param uid parent request UID for correlation
    * @param source peer to notify about the rejection
@@ -2090,7 +2093,7 @@ public class OpennetManager {
    * Request the announcer to run again.
    *
    * <p>This is a lightweight signal that re-evaluates announcement conditions; it does not force a
-   * send if thresholds are not met. The call is safe to invoke from UI or admin paths and may
+   * sending if thresholds are not met. The call is safe to invoke from UI or admin paths and may
    * result in no action if the announcer is still waiting.
    */
   @SuppressWarnings("unused")
@@ -2101,7 +2104,7 @@ public class OpennetManager {
   /**
    * Called when a connection completes to re-evaluate opennet capacity.
    *
-   * <p>If the peer is opennet, the manager may need to drop another peer to keep within the
+   * <p>If the peer is an opennet peer, the manager may need to drop another peer to keep within the
    * per-class target. If the peer is darknet, the opennet target may shrink, requiring excess
    * opennet peers to be dropped to maintain the overall limit. This method performs only drop
    * evaluation and does not add new peers. It is safe to call from connection completion handlers.
@@ -2121,7 +2124,7 @@ public class OpennetManager {
    * Return the owning {@link Node} instance.
    *
    * <p>This reference is stable for the lifetime of the manager and provides access to network,
-   * configuration, and execution services. Callers should treat the returned node as shared state
+   * configuration, and execution services. Callers should treat the returned node as a shared state
    * and avoid mutating it without appropriate synchronization. It is provided for integration and
    * monitoring rather than for ownership transfer.
    *
@@ -2161,10 +2164,10 @@ public class OpennetManager {
   /**
    * Return the seed announcement tracker.
    *
-   * <p>This tracker maintains state about recent seed announcements to avoid redundant activity. It
-   * is safe to cache the reference, but its internal state changes over time. The tracker is shared
-   * across announcement flows and is updated by announcer activity. It is non-null for the life of
-   * the manager.
+   * <p>This tracker maintains the state about recent seed announcements to avoid redundant
+   * activity. It is safe to cache the reference, but its internal state changes over time. The
+   * tracker is shared across announcement flows and is updated by announcer activity. It is
+   * non-null for the life of the manager.
    *
    * @return seed announcement tracker instance
    */

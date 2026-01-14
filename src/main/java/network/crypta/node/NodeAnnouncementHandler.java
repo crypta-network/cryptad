@@ -4,6 +4,7 @@ import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
+import network.crypta.io.comm.OpennetAnnounceRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +14,7 @@ import org.slf4j.LoggerFactory;
  * <p>This handler is the first-stage dispatcher for announcement messages arriving from peers. It
  * extracts request fields, validates basic invariants (location range, HTL bounds, and noderef
  * sizing), and applies admission gates based on opennet availability, load-based decisions, per
- * peer limits, and seed-tracker policies. When an announce is accepted, it schedules an {@link
+ * peer limits, and seed-tracker policies. When an announcement is accepted, it schedules an {@link
  * AnnounceSender} on the node executor to perform the multi-hop announcement flow; when rejected,
  * it replies immediately with the appropriate protocol message and records completion or stats as
  * needed. The class holds no mutable state beyond the node reference and relies on collaborators
@@ -26,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Validates incoming announce requests and replies with protocol-level rejections.
  *   <li>Coordinates admission checks with {@link OpennetManager} and {@link NodeStats}.
- *   <li>Schedules {@link AnnounceSender} to perform the actual announce routing.
+ *   <li>Schedules {@link AnnounceSender} to perform the actual announcement routing.
  * </ul>
  *
  * @see AnnounceSender
@@ -76,14 +77,14 @@ final class NodeAnnouncementHandler {
   }
 
   /**
-   * Processes a validated announce request and performs admission gating.
+   * Processes a validated announcement request and performs admission gating.
    *
    * <p>The method extracts all fields, normalizes HTL, applies multiple rejection criteria, and
-   * schedules the announce sender if accepted. It always ensures that peer-local announce state is
-   * completed when a rejection happens after admission begins.
+   * schedules the announcement sender if accepted. It always ensures that peer-local announce state
+   * is completed when a rejection happens after admission begins.
    *
    * @param m announce request message containing all required fields; must be non-null
-   * @param source peer that initiated the announce; must be non-null
+   * @param source peer that initiated the announcement; must be non-null
    */
   private void handleAnnounceRequest(Message m, PeerNode source) {
     long uid = m.getLong(DMT.UID);
@@ -92,8 +93,10 @@ final class NodeAnnouncementHandler {
     long xferUID = m.getLong(DMT.TRANSFER_UID);
     int noderefLength = m.getInt(DMT.NODEREF_LENGTH);
     int paddedLength = m.getInt(DMT.PADDED_LENGTH);
+    OpennetAnnounceRequest request =
+        new OpennetAnnounceRequest(uid, xferUID, noderefLength, paddedLength, target, htl);
 
-    if (rejectIfInvalidAnnounce(source, uid, target, htl, noderefLength, paddedLength)) return;
+    if (rejectIfInvalidAnnounce(source, request)) return;
 
     OpennetManager om = node.network().opennet();
     if (rejectIfAnnouncementsDisabled(om, source, uid)) return;
@@ -106,10 +109,9 @@ final class NodeAnnouncementHandler {
       if (rejectIfPeerLimit(om, source, uid)) return;
       if (rejectIfSeedTrackerLimit(om, source, uid)) return;
       htl = normalizeHtlForSeedClient(source, htl);
+      request = new OpennetAnnounceRequest(uid, xferUID, noderefLength, paddedLength, target, htl);
       AnnouncementCallback cb = buildAnnounceCallback(source, htl);
-      AnnounceSender sender =
-          new AnnounceSender(
-              target, htl, uid, source, om, node, xferUID, noderefLength, paddedLength, cb);
+      AnnounceSender sender = new AnnounceSender(request, source, om, node, cb);
       node.network().executor().execute(sender, "Announcement sender for " + uid);
       success = true;
       if (LOG.isDebugEnabled()) LOG.debug("Accepted announcement from {}", source);
@@ -119,31 +121,27 @@ final class NodeAnnouncementHandler {
   }
 
   /**
-   * Validates the basic announce request invariants before admission checks.
+   * Validates the basic announcement request invariants before admission checks.
    *
    * <p>Requests are rejected when the target location is outside {@code [0.0, 1.0)}, HTL is not
    * positive, or the noderef sizes are inconsistent with configured bounds. Rejections are replied
    * to immediately using the overload rejection message.
    *
    * @param source peer that sent the request and receives the rejection; must be non-null
-   * @param uid unique announce identifier used in replies
-   * @param target requested routing target location; expected in {@code [0.0, 1.0)}
-   * @param htl hop-to-live requested by the peer; must be {@code > 0}
-   * @param noderefLength unpadded noderef length in bytes
-   * @param paddedLength padded noderef length in bytes, bounded by protocol limits
-   * @return {@code true} if the announce is rejected for invalid parameters; {@code false} if valid
+   * @param request announce request metadata to validate
+   * @return {@code true} if the announcement is rejected for invalid parameters; {@code false} if
+   *     valid
    */
-  private boolean rejectIfInvalidAnnounce(
-      PeerNode source, long uid, double target, short htl, int noderefLength, int paddedLength) {
-    if (target >= 0.0
-        && target < 1.0
-        && htl > 0
-        && paddedLength >= 0
-        && paddedLength <= OpennetManager.MAX_OPENNET_NODEREF_LENGTH
-        && noderefLength <= paddedLength) {
+  private boolean rejectIfInvalidAnnounce(PeerNode source, OpennetAnnounceRequest request) {
+    if (request.target() >= 0.0
+        && request.target() < 1.0
+        && request.htl() > 0
+        && request.paddedLength() >= 0
+        && request.paddedLength() <= OpennetManager.MAX_OPENNET_NODEREF_LENGTH
+        && request.noderefLength() <= request.paddedLength()) {
       return false;
     }
-    Message msg = DMT.createFNPRejectedOverload(uid, true);
+    Message msg = DMT.createFNPRejectedOverload(request.uid(), true);
     try {
       source.transport().sendAsync(msg, null, node.network().stats().announceByteCounter);
     } catch (NotConnectedException _) {
@@ -154,16 +152,16 @@ final class NodeAnnouncementHandler {
   }
 
   /**
-   * Rejects the announce when opennet or announcements are disabled.
+   * Rejects the announcement when opennet or announcements are disabled.
    *
    * <p>If opennet is unavailable or the peer cannot accept announcements, the method optionally
    * updates the seed tracker and sends an opennet-disabled response to the peer.
    *
    * @param om opennet manager, or {@code null} if opennet is disabled
-   * @param source peer that sent the announce and will receive the rejection; must be non-null
+   * @param source peer that sent the announcement and will receive the rejection; must be non-null
    * @param uid unique announce identifier used in the rejection message
-   * @return {@code true} if the announce is rejected due to disabled announcements; {@code false}
-   *     otherwise
+   * @return {@code true} if the announcement is rejected due to disabled announcements; {@code
+   *     false} otherwise
    */
   private boolean rejectIfAnnouncementsDisabled(OpennetManager om, PeerNode source, long uid) {
     if (om != null && source.canAcceptAnnouncements()) return false;
@@ -181,17 +179,17 @@ final class NodeAnnouncementHandler {
   }
 
   /**
-   * Rejects the announce based on the global admission decision.
+   * Rejects the announcement based on the global admission decision.
    *
    * <p>Decisions other than {@link NodeStats.AnnouncementDecision#ACCEPT} cause a rejection reply
    * to be sent to the peer and, for seed clients, update the seed tracker. The method throws an
    * {@link IllegalStateException} if an unsupported decision is provided.
    *
    * @param om opennet manager used for seed tracking; may be {@code null}
-   * @param source peer that sent the announce and will receive the rejection; must be non-null
+   * @param source peer that sent the announcement and will receive the rejection; must be non-null
    * @param uid unique announce identifier used in replies
    * @param decision admission decision from {@link NodeStats}
-   * @return {@code true} if the announce is rejected; {@code false} if it is accepted
+   * @return {@code true} if the announcement is rejected; {@code false} if it is accepted
    * @throws IllegalStateException if an unknown decision enum value is supplied
    */
   private boolean rejectBasedOnDecision(
@@ -226,13 +224,13 @@ final class NodeAnnouncementHandler {
   /**
    * Enforces the per-peer announce concurrency limit.
    *
-   * <p>If the peer refuses to accept the announce due to its local limit, the method reports the
-   * end of the announcement in {@link NodeStats} and sends a rejection reply.
+   * <p>If the peer refuses to accept the announcement due to its local limit, the method reports
+   * the end of the announcement in {@link NodeStats} and sends a rejection reply.
    *
    * @param om opennet manager used for seed tracking; may be {@code null}
-   * @param source peer that sent the announce and will receive the rejection; must be non-null
+   * @param source peer that sent the announcement and will receive the rejection; must be non-null
    * @param uid unique announce identifier used in replies
-   * @return {@code true} if the announce is rejected due to peer limit; {@code false} otherwise
+   * @return {@code true} if the announcement is rejected due to peer limit; {@code false} otherwise
    */
   private boolean rejectIfPeerLimit(OpennetManager om, PeerNode source, long uid) {
     if (source.shouldAcceptAnnounce(uid)) return false;
@@ -254,13 +252,13 @@ final class NodeAnnouncementHandler {
    * Applies seed-tracker throttling rules for seed clients.
    *
    * <p>This check only applies to {@link SeedClientPeerNode}. If the seed tracker refuses the
-   * announce, the method records completion in {@link NodeStats} and sends an overload rejection
-   * response.
+   * announcement, the method records completion in {@link NodeStats} and sends an overload
+   * rejection response.
    *
    * @param om opennet manager providing the seed tracker; may be {@code null}
-   * @param source peer that sent the announce; must be non-null
+   * @param source peer that sent the announcement; must be non-null
    * @param uid unique announce identifier used in replies
-   * @return {@code true} if the announce is rejected due to seed tracker limits; {@code false}
+   * @return {@code true} if the announcement is rejected due to seed tracker limits; {@code false}
    *     otherwise
    */
   private boolean rejectIfSeedTrackerLimit(OpennetManager om, PeerNode source, long uid) {
@@ -285,7 +283,7 @@ final class NodeAnnouncementHandler {
    * <p>Seed clients are expected to announce at the node maximum HTL. If they present a lower
    * value, this method logs the discrepancy and returns the node maximum instead.
    *
-   * @param source peer that sent the announce; used to detect seed-client type
+   * @param source peer that sent the announcement; used to detect a seed-client type
    * @param htl requested hop-to-live value
    * @return normalized HTL, potentially raised to {@link Node#maxHTL()}
    */
@@ -307,7 +305,7 @@ final class NodeAnnouncementHandler {
    * failures, and completion outcomes. When debug logging is disabled, this method returns {@code
    * null} to avoid unnecessary allocations.
    *
-   * @param source peer that originated the announce; used for log context
+   * @param source peer that originated the announcement; used for log context
    * @param htl effective hop-to-live value used in the announcement
    * @return a callback for detailed logging, or {@code null} when logging is disabled
    */
