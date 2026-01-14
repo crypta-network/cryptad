@@ -154,16 +154,17 @@ class NodeStatsTest {
 
     NodeStats.RejectReason rr =
         stats.shouldRejectRequest(
-            false, /*canAcceptAnyway*/
-            false, /*isInsert*/
-            false, /*isSSK*/
-            false, /*isLocal*/
-            false, /*isOfferReply*/
-            source,
-            false, /*hasInStore*/
-            false, /*preferInsert*/
-            false, /*realTime*/
-            null /*tag*/);
+            RequestAdmissionContext.of(
+                false, /*canAcceptAnyway*/
+                false, /*isInsert*/
+                false, /*isSSK*/
+                false, /*isLocal*/
+                false, /*isOfferReply*/
+                source,
+                false, /*hasInStore*/
+                false, /*preferInsert*/
+                false, /*realTime*/
+                null /*tag*/));
 
     assertNotNull(rr);
     assertEquals("disconnecting", rr.name());
@@ -183,16 +184,17 @@ class NodeStatsTest {
 
     NodeStats.RejectReason rr =
         stats.shouldRejectRequest(
-            false, /*canAcceptAnyway*/
-            false, /*isInsert*/
-            false, /*isSSK*/
-            false, /*isLocal*/
-            false, /*isOfferReply*/
-            source,
-            false, /*hasInStore*/
-            false, /*preferInsert*/
-            false, /*realTime*/
-            null /*tag*/);
+            RequestAdmissionContext.of(
+                false, /*canAcceptAnyway*/
+                false, /*isInsert*/
+                false, /*isSSK*/
+                false, /*isLocal*/
+                false, /*isOfferReply*/
+                source,
+                false, /*hasInStore*/
+                false, /*preferInsert*/
+                false, /*realTime*/
+                null /*tag*/));
 
     assertNotNull(rr);
     assertTrue(rr.name().startsWith(">MAX_PING_TIME"));
@@ -206,7 +208,7 @@ class NodeStatsTest {
 
     // Set throttled delay to exceed the alert threshold
     stats.blockTime(NodeStats.MAX_BWLIMIT_DELAY_TIME_ALERT_THRESHOLD + 1, false);
-    // Force ping threshold to be trivially exceeded (0ms > 2*negative value)
+    // Force the ping threshold to be trivially exceeded (0ms > 2*negative value)
     statsConfig.set("maxPingTime", "-1");
 
     long t0 = 1L; // use a non-zero timestamp to avoid edge-case equality
@@ -220,7 +222,7 @@ class NodeStatsTest {
 
     // Cross the 10-minute threshold
     long t1 = NodeStats.MAX_BWLIMIT_DELAY_TIME_ALERT_DELAY;
-    stats.maybeUpdatePeerManagerUserAlertStats(t1 + 2000); // ensure timer window elapsed
+    stats.maybeUpdatePeerManagerUserAlertStats(t1 + 2000); // ensure the timer window elapsed
     assertTrue(stats.isBwlimitDelayAlertRelevant());
     assertTrue(stats.isNodeAveragePingAlertRelevant());
   }

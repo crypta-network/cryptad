@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -118,17 +117,7 @@ class NodeInsertRequestHandlerTest {
     stubTransport();
     when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
         .thenReturn(true);
-    when(nodeStats.shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            eq(source),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any()))
+    when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class)))
         .thenReturn(new RejectReason("hard", false));
 
     NodeInsertRequestHandler handler = new NodeInsertRequestHandler(node);
@@ -156,17 +145,7 @@ class NodeInsertRequestHandlerTest {
     stubTransport();
     when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
         .thenReturn(true);
-    when(nodeStats.shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            eq(source),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any()))
+    when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class)))
         .thenReturn(new RejectReason("soft", true));
 
     NodeInsertRequestHandler handler = new NodeInsertRequestHandler(node);
@@ -193,17 +172,7 @@ class NodeInsertRequestHandlerTest {
     stubTransport();
     when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
         .thenReturn(true);
-    when(nodeStats.shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            eq(source),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any()))
+    when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class)))
         .thenReturn(new RejectReason("soft", true));
     doThrow(new NotConnectedException("nope"))
         .when(transport)
@@ -234,18 +203,7 @@ class NodeInsertRequestHandlerTest {
     when(nodeGetPubkey.getKey(any(), eq(false), eq(false), isNull())).thenReturn(null);
     when(tracker.lockUID(eq(uid), eq(true), eq(true), eq(false), eq(false), eq(true), any()))
         .thenReturn(true);
-    when(nodeStats.shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            eq(source),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any()))
-        .thenReturn(null);
+    when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class))).thenReturn(null);
     when(message.getSubMessage(DMT.FNPSubInsertForkControl))
         .thenReturn(DMT.createFNPSubInsertForkControl(false));
     when(message.getSubMessage(DMT.FNPSubInsertPreferInsert))
@@ -299,18 +257,7 @@ class NodeInsertRequestHandlerTest {
     when(nodeGetPubkey.getKey(any(), eq(false), eq(false), isNull())).thenReturn(null);
     when(tracker.lockUID(eq(uid), eq(true), eq(true), eq(false), eq(false), eq(false), any()))
         .thenReturn(true);
-    when(nodeStats.shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            eq(source),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any()))
-        .thenReturn(null);
+    when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class))).thenReturn(null);
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);
 
     NodeInsertRequestHandler handler = new NodeInsertRequestHandler(node);
@@ -342,18 +289,7 @@ class NodeInsertRequestHandlerTest {
     when(routingSubsystem.canWriteDatastoreInsert(anyShort())).thenReturn(true);
     when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
         .thenReturn(true);
-    when(nodeStats.shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            eq(source),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any()))
-        .thenReturn(null);
+    when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class))).thenReturn(null);
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);
 
     NodeInsertRequestHandler handler = new NodeInsertRequestHandler(node);
@@ -383,17 +319,17 @@ class NodeInsertRequestHandlerTest {
     return new ByteCounter() {
       @Override
       public void sentBytes(int x) {
-        // No-op: tests only assert identity for the counter instance.
+        // No-op: tests only assert identity for the counter-instance.
       }
 
       @Override
       public void receivedBytes(int x) {
-        // No-op: tests only assert identity for the counter instance.
+        // No-op: tests only assert identity for the counter-instance.
       }
 
       @Override
       public void sentPayload(int x) {
-        // No-op: tests only assert identity for the counter instance.
+        // No-op: tests only assert identity for the counter-instance.
       }
     };
   }

@@ -135,16 +135,17 @@ final class NodeInsertRequestHandler {
     // SSKs don't fix bwlimitDelayTime so shouldn't be accepted when overloaded.
     RejectReason rejectReason =
         nodeStats.shouldRejectRequest(
-            !isSSK,
-            true,
-            isSSK,
-            false,
-            false,
-            source,
-            false,
-            opts.preferInsert(),
-            realTimeFlag,
-            tag);
+            RequestAdmissionContext.of(
+                !isSSK,
+                true,
+                isSSK,
+                false,
+                false,
+                source,
+                false,
+                opts.preferInsert(),
+                realTimeFlag,
+                tag));
     if (rejectReason != null) {
       LOG.info("Reject insert preemptively (peer={}, reason={})", source.getPeer(), rejectReason);
       Message rejected = DMT.createFNPRejectedOverload(id, true);

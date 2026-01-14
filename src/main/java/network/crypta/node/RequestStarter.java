@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ChosenBlockImpl;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientRequestScheduler.SchedulerMode;
 import network.crypta.keys.Key;
 import network.crypta.node.NodeStats.RejectReason;
 import network.crypta.support.RandomGrabArrayItem;
@@ -83,9 +84,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
    * @param name base name used for diagnostics; mode suffix is appended
    * @param averageOutputBytesPerRequest running average of bytes sent per request
    * @param averageInputBytesPerRequest running average of bytes received per request
-   * @param isInsert whether this starter handles inserts ({@code true}) or fetches ({@code false})
-   * @param isSSK whether this starter handles SSK ({@code true}) or CHK ({@code false})
-   * @param realTime whether this starter runs in real‑time mode
+   * @param mode request mode (insert/SSK/real-time) for this starter
    */
   public RequestStarter(
       NodeClientCore node,
@@ -93,18 +92,16 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
       String name,
       RunningAverage averageOutputBytesPerRequest,
       RunningAverage averageInputBytesPerRequest,
-      boolean isInsert,
-      boolean isSSK,
-      boolean realTime) {
+      SchedulerMode mode) {
     this.core = node;
     this.stats = node.getNode().network().stats();
     this.throttle = throttle;
-    this.name = name + (realTime ? " (realtime)" : " (bulk)");
+    this.name = name + (mode.forRT() ? " (realtime)" : " (bulk)");
     this.averageOutputBytesPerRequest = averageOutputBytesPerRequest;
     this.averageInputBytesPerRequest = averageInputBytesPerRequest;
-    this.isInsert = isInsert;
-    this.isSSK = isSSK;
-    this.realTime = realTime;
+    this.isInsert = mode.forInserts();
+    this.isSSK = mode.forSSKs();
+    this.realTime = mode.forRT();
   }
 
   void setScheduler(RequestScheduler sched) {
@@ -186,7 +183,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           if (LOG.isDebugEnabled()) LOG.debug("One-second wait interrupted", e);
-          return true; // signal interrupt to caller to avoid spin under opennet defer
+          return true; // signal interrupt to caller to avoid spin under opennet deferring
         }
         // If we were notified (or spuriously woke) before the timeout, exit early so wakeUp()
         // remains responsive during opennet bootstrap.
@@ -210,7 +207,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
           Thread.sleep(sleepUntil - now);
           if (LOG.isDebugEnabled()) LOG.debug("Slept {} ms", sleepUntil - now);
         } catch (InterruptedException e) {
-          // Swallow interrupt here so throttling resumes on subsequent iterations.
+          // Swallow interrupts here, so throttling resumes on further iterations.
           // Do not re-set the interrupt flag; callers that need to exit on interrupt
           // should return from higher-level waits (e.g., waitForRequest/waitOneSecond).
           if (LOG.isDebugEnabled()) LOG.debug("Throttle delay interrupted", e);
@@ -221,16 +218,17 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
 
   private RejectReason shouldReject(ChosenBlock req) {
     return stats.shouldRejectRequest(
-        true,
-        isInsert,
-        isSSK,
-        true,
-        false,
-        null,
-        false,
-        Node.PREFER_INSERT_DEFAULT && isInsert,
-        req.realTimeFlag,
-        null);
+        RequestAdmissionContext.of(
+            true,
+            isInsert,
+            isSSK,
+            true,
+            false,
+            null,
+            false,
+            Node.PREFER_INSERT_DEFAULT && isInsert,
+            req.realTimeFlag,
+            null));
   }
 
   private void logIfNotCancelled(ChosenBlock req, boolean started) {
@@ -299,7 +297,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   /**
    * Runs the starter loop until interrupted.
    *
-   * <p>Exits cleanly when the thread is interrupted. Any unexpected exceptions are logged and the
+   * <p>Exits cleanly when the thread is interrupted. Any unexpected exceptions are logged, and the
    * loop continues so isolated failures do not stop the starter.
    */
   @Override

@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientRequestScheduler.SchedulerMode;
 import network.crypta.support.math.RunningAverage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,12 @@ class RequestStarterTest {
     when(node.network().stats()).thenReturn(nodeStats);
     RequestStarter starter =
         new RequestStarter(
-            core, throttle, "starter", avgOut, avgIn, isInsert, /* isSSK= */ false, realTime);
+            core,
+            throttle,
+            "starter",
+            avgOut,
+            avgIn,
+            new SchedulerMode(isInsert, /* forSSKs= */ false, realTime));
     starter.setScheduler(scheduler);
     return starter;
   }

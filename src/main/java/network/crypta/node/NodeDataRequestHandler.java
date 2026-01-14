@@ -203,16 +203,17 @@ final class NodeDataRequestHandler {
             KeyBlock block) {
           RejectReason rejectReason =
               nodeStats.shouldRejectRequest(
-                  !isSSK,
-                  false,
-                  isSSK,
-                  false,
-                  false,
-                  source,
-                  block != null,
-                  false,
-                  realTimeFlag,
-                  tag);
+                  RequestAdmissionContext.of(
+                      !isSSK,
+                      false,
+                      isSSK,
+                      false,
+                      false,
+                      source,
+                      block != null,
+                      false,
+                      realTimeFlag,
+                      tag));
           if (rejectReason == null) return false;
           LOG.info(
               "Reject {} request preemptively (peer={}, reason={})",
