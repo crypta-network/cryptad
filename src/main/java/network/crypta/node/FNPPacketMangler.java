@@ -141,7 +141,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    */
   public static final long MAX_SESSION_KEY_REKEYING_DELAY = MINUTES.toMillis(5);
 
-  /** Amount of plaintext bytes sent before requesting a rekey. */
+  /** Number of plaintext bytes sent before requesting a rekey. */
   public static final int AMOUNT_OF_BYTES_ALLOWED_BEFORE_WE_REKEY = 1024 * 1024 * 1024;
 
   /** Periodic task that rotates the transient key on schedule. */
@@ -278,7 +278,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       return OldOpennetTryResult.TRIED_AND_FAILED;
     }
     // When we get here, wantOldPeers is false. If opennet exists but doesn't want
-    // reconnects now, we didn't try; otherwise (no opennet) we treat as tried-and-failed
+    // reconnections now, we didn't try; otherwise (no opennet) we treat as tried-and-failed
     // for the caller's fallback handling.
     return (opennet != null) ? OldOpennetTryResult.DIDNT_TRY : OldOpennetTryResult.TRIED_AND_FAILED;
   }
@@ -560,12 +560,12 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
   /**
    * Process an anonymous-initiator connection setup packet. For a normal setup (see {@link
-   * #processDecryptedAuth(byte[], PeerNode, Peer, boolean)}), we know the node that is trying to
-   * contact us. But in this case, we don't know the node yet, and we are doing a special-purpose
-   * connection setup. At the moment the only type supported is for a new node connecting to a
-   * seednode in order to announce. In the future, nodes may support other anonymous-initiator
-   * connection types such as when a node (which is certain of its connectivity) issues one-time
-   * invites which allow a new node to connect to it.
+   * #processDecryptedAuth(byte[], PeerNode, Peer, boolean)}), we know the node trying to contact
+   * us. But in this case, we don't know the node yet, and we are doing a special-purpose connection
+   * setup. At the moment the only type supported is for a new node connecting to a seednode to
+   * announce. In the future, nodes may support other anonymous-initiator connection types such as
+   * when a node (which is certain of its connectivity) issues one-time invites which allow a new
+   * node to connect to it.
    *
    * @param payload The decrypted payload of the packet.
    * @param replyTo The address the packet came in from.
@@ -578,14 +578,14 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     final int version = payload[0];
     /*
      * Negotiation type. Common to anonymous-initiator auth and normal setup. 2 = JFK. 3 = JFK,
-     * reuse PacketTracker Other types might indicate other DH variants, or even non-DH-based
-     * algorithms such as password based key setup.
+     * reuse PacketTracker Other types might indicate other DH variants or even non-DH-based
+     * algorithms such as password-based key setup.
      */
     final int negType = payload[1];
     /* Packet phase. */
     final int packetType = payload[2];
     /*
-     * Setup type. This is specific to anonymous-initiator setup, and specifies the purpose of the
+     * Setup type. This is specific to anonymous-initiator setup and specifies the purpose of the
      * connection. At the moment it is SETUP_OPENNET_SEEDNODE to indicate we are connecting to a
      * seednode (which doesn't know us). Invites might require a different setupType.
      */
@@ -621,19 +621,19 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
 
     // We are the RESPONDER.
-    // Therefore, we can only get packets of phase 1 and 3 here.
+    // Therefore, we can only get packets of phases 1 and 3 here.
 
     if (packetType == 0 || packetType == 2) {
       // avoid redundant condition warnings
       this.authHandlingThread.execute(
           () -> {
+            JfkNegotiationParams negotiation = new JfkNegotiationParams(true, setupType, negType);
             if (packetType == 0) {
               // Phase 1
-              processJFKMessage1(payload, 4, null, replyTo, true, setupType, negType);
+              processJFKMessage1(payload, 4, null, replyTo, negotiation);
             } else {
               // Phase 3
-              processJFKMessage3(
-                  payload, 4, new J3Ctx(null, replyTo), false, true, setupType, negType);
+              processJFKMessage3(payload, 4, new J3Ctx(null, replyTo), false, negotiation);
             }
           });
     } else {
@@ -657,7 +657,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     final int version = payload[0];
     /*
      * Negotiation type. 2 = JFK. 3 = JFK, reuse PacketTracker Other types might indicate other DH
-     * variants, or even non-DH-based algorithms such as password based key setup.
+     * variants or even non-DH-based algorithms such as password-based key setup.
      */
     final int negType = payload[1];
     /* Packet phase. */
@@ -695,20 +695,22 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
 
     // We are the INITIATOR.
-    // Therefore, we can only get packets of phase 2 and 4 here.
+    // Therefore, we can only get packets of phases 2 and 4 here.
 
     if (packetType == 1 || packetType == 3) {
       // avoid redundant condition warnings
       authHandlingThread.execute(
           () -> {
+            JfkNegotiationParams negotiation = new JfkNegotiationParams(true, setupType, negType);
             if (packetType == 1) {
               // Phase 2
-              processJFKMessage2(payload, 4, pn, replyTo, true, setupType, negType);
+              processJFKMessage2(payload, 4, pn, replyTo, negotiation);
             } else {
               // Phase 4
               processJFKMessage4(payload, 4, pn, replyTo, false, negType);
             }
           });
+
     } else {
       LOG.error(
           "Invalid phase {} for anonymous-initiator (we are the initiator) from {}",
@@ -788,14 +790,15 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         LOG.error("Unknown packetType {} from {} from {}", packetType, replyTo, pn);
         return;
       }
+      JfkNegotiationParams negotiation = new JfkNegotiationParams(false, -1, negType);
       authHandlingThread.execute(
           () -> {
             switch (packetType) {
-              case 0 -> processJFKMessage1(payload, 3, pn, replyTo, false, -1, negType);
-              case 1 -> processJFKMessage2(payload, 3, pn, replyTo, false, -1, negType);
+              case 0 -> processJFKMessage1(payload, 3, pn, replyTo, negotiation);
+              case 1 -> processJFKMessage2(payload, 3, pn, replyTo, negotiation);
               case 2 ->
                   processJFKMessage3(
-                      payload, 3, new J3Ctx(pn, replyTo), oldOpennetPeer, false, -1, negType);
+                      payload, 3, new J3Ctx(pn, replyTo), oldOpennetPeer, negotiation);
               default -> // packetType == 3 (validated above)
                   processJFKMessage4(payload, 3, pn, replyTo, oldOpennetPeer, negType);
             }
@@ -829,27 +832,22 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   private boolean verifyJFK3Authenticator(
-      long t1,
-      byte[] authenticator,
-      byte[] responderExponential,
-      byte[] initiatorExponential,
-      byte[] nonceResponder,
-      byte[] nonceInitiatorHashed,
-      Peer replyTo) {
+      long t1, byte[] authenticator, ReplayFields replayFields, Peer replyTo) {
     boolean ok =
         HMAC.verifyWithSHA256(
             getTransientKey(),
             assembleJFKAuthenticator(
-                responderExponential,
-                initiatorExponential,
-                nonceResponder,
-                nonceInitiatorHashed,
+                replayFields.responderExponential,
+                replayFields.initiatorExponential,
+                replayFields.nonceResponder,
+                replayFields.nonceInitiatorHashed,
                 replyTo.getAddress().getAddress()),
             authenticator);
     if (ok) return true;
     if (shouldLogErrorInHandshake(t1)) {
       if (LOG.isTraceEnabled()) LOG.debug("Received HMAC: {}", HexUtil.bytesToHex(authenticator));
-      if (LOG.isTraceEnabled()) LOG.trace("Ni'={}", HexUtil.bytesToHex(nonceInitiatorHashed));
+      if (LOG.isTraceEnabled())
+        LOG.trace("Ni'={}", HexUtil.bytesToHex(replayFields.nonceInitiatorHashed));
       LOG.info(
           "The HMAC doesn't match; let's discard the packet (either we rekeyed or we are victim of"
               + " forgery) - JFK3 - {}",
@@ -859,9 +857,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   private boolean tryReplayMessage4(
-      boolean unknownInitiator,
-      int negType,
-      int setupType,
+      JfkNegotiationParams negotiation,
       PeerNode pn,
       Peer replyTo,
       byte[] authenticator,
@@ -884,11 +880,17 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       return false;
     }
     LOG.info("Replayed message4 from cache - {}", pn);
-    if (unknownInitiator) {
+    if (negotiation.unknownInitiator()) {
       sendAnonAuthPacket(
-          negType, 3, setupType, (byte[]) message4, null, replyTo, crypto.getAnonSetupCipher());
+          negotiation.negType(),
+          3,
+          negotiation.setupType(),
+          (byte[]) message4,
+          null,
+          replyTo,
+          crypto.getAnonSetupCipher());
     } else {
-      sendAuthPacket(negType, 3, (byte[]) message4, pn, replyTo);
+      sendAuthPacket(negotiation.negType(), 3, (byte[]) message4, pn, replyTo);
     }
     return true;
   }
@@ -1004,32 +1006,24 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    *
    * Reference: http://www.wisdom.weizmann.ac.il/~reingold/publications/jfk-tissec.pdf
    *   "Just Fast Keying: Key Agreement In A Hostile Internet" — Aiello, Bellovin, Blaze, Canetti,
-   *   Ioannidis, Keromytis, Reingold. ACM TISSEC 7(2), May 2004, pp. 1–30.
+   *   Ioannidis, Keromytis, Reingold. ACM TISSEC 7 (2), May 2004, pp. 1–30.
    *
    * @param payload the decrypted payload buffer
-   * @param offset start offset into {@code payload}
+   * @param offset start offset into payload
    * @param pn the peer node we are talking to; may be {@code null} for anonymous initiator (we are
    *     the responder)
    * @param replyTo the peer to which any reply should be sent
-   * @param unknownInitiator whether the responder does not know the initiator; when {@code true},
-   *     additional fields are present as noted with an asterisk in the format above
-   * @param setupType the type of unknown‑initiator setup
-   * @param negType negotiation type identifier
+   * @param negotiation parameters for the handshake
    */
   private void processJFKMessage1(
-      byte[] payload,
-      int offset,
-      PeerNode pn,
-      Peer replyTo,
-      boolean unknownInitiator,
-      int setupType,
-      int negType) {
+      byte[] payload, int offset, PeerNode pn, Peer replyTo, JfkNegotiationParams negotiation) {
     long t1 = System.currentTimeMillis();
     int modulusLength = getModulusLength();
     // Pre negtype 9 we were sending Ni as opposed to Ni'
     int nonceSizeHashed = HASH_LENGTH;
+    boolean unknownInitiator = negotiation.unknownInitiator();
     if (LOG.isDebugEnabled()) LOG.debug("Got a JFK(1) message, processing it - {}", pn);
-    // Note: The spec mentions sending IDr'; current implementation omits it.
+    // Note: The spec mentions sending IDr'; the current implementation omits it.
     if (payload.length
         < nonceSizeHashed
             + modulusLength
@@ -1066,8 +1060,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     if (throttleRekey(pn, replyTo)) return;
 
     try {
-      sendJFKMessage2(
-          nonceInitiator, hisExponential, pn, replyTo, unknownInitiator, setupType, negType);
+      sendJFKMessage2(nonceInitiator, hisExponential, pn, replyTo, negotiation);
     } catch (NoContextsException _) {
       handleNoContextsException(NoContextsException.CONTEXT.REPLYING);
       return;
@@ -1099,11 +1092,11 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   private void logLoudErrorNoContexts() {
-    // If this is happening regularly post-startup then it's unlikely that reading the disk will
+    // If this is happening regularly post-startup, then it's unlikely that reading the disk will
     // help.
     // Note: Consider localization and a user alert here.
-    // RNG exhaustion shouldn't happen for Windows users at all, and may not happen on Linux
-    // depending on the JVM version, so lets leave it for now.
+    // RNG exhaustion shouldn't happen for Windows users at all and may not happen on Linux
+    // depending on the JVM version, so let's leave it for now.
     LOG.error(
         "Crypta cannot establish connections: CPU overloaded or random number generator is slow");
     LOG.error("If the problem is CPU usage, shut down high-CPU applications.");
@@ -1157,17 +1150,20 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * Ni',g^i
    * We send IDr' only if unknownInitiator is set.
    * @param pn The node to encrypt the message to. Cannot be null, because we are the initiator, and we
-   * know the responder in all cases.
+   *     know the responder in all cases.
    * @param replyTo The peer to send the actual packet to.
+   * @param negotiation handshake negotiation parameters
    */
-  private void sendJFKMessage1(
-      PeerNode pn, Peer replyTo, boolean unknownInitiator, int setupType, int negType)
+  private void sendJFKMessage1(PeerNode pn, Peer replyTo, JfkNegotiationParams negotiation)
       throws NoContextsException {
     if (LOG.isDebugEnabled())
       LOG.debug("Sending a JFK(1) message to {}" + FOR_STR + "{}", replyTo, pn.getPeer());
     final long now = System.currentTimeMillis();
     int modulusLength = getModulusLength();
     // Pre negtype 9 we were sending Ni as opposed to Ni'
+    boolean unknownInitiator = negotiation.unknownInitiator();
+    int setupType = negotiation.setupType();
+    int negType = negotiation.negType();
 
     KeyAgreementSchemeContext ctx = pn.handshake().getKeyAgreementSchemeContext();
     if (!(ctx instanceof ECDHLightContext)
@@ -1224,19 +1220,21 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * the initiator ALWAYS knows the responder.
    * @param pn The node to encrypt the message for. CAN BE NULL if anonymous-initiator.
    * @param replyTo The peer to send the packet to.
+   * @param negotiation handshake negotiation parameters
    */
   private void sendJFKMessage2(
       byte[] nonceInitator,
       byte[] hisExponential,
       PeerNode pn,
       Peer replyTo,
-      boolean unknownInitiator,
-      int setupType,
-      int negType)
+      JfkNegotiationParams negotiation)
       throws NoContextsException {
     if (LOG.isDebugEnabled()) LOG.debug("Sending a JFK(2) message to {}", pn);
     int modulusLength = getModulusLength();
     int nonceSize = NONCE_SIZE;
+    boolean unknownInitiator = negotiation.unknownInitiator();
+    int setupType = negotiation.setupType();
+    int negType = negotiation.negType();
     // g^r
     // Neg type 8 and later use ECDH for generating the keys.
     KeyAgreementSchemeContext ctx = getECDHLightContext();
@@ -1288,7 +1286,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   /*
-   * Assemble what will be the jfk-Authenticator :
+   * Assemble what will be the jfk-Authenticator:
    * computed over the Responder exponentials and the Nonces and
    * used by the responder to verify that the round-trip has been done
    *
@@ -1313,30 +1311,30 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
   /*
    * Initiator Method: Message2
-   * See {@link #sendJFKMessage2(byte[], byte[], PeerNode, Peer, boolean, int, int)} for the packet
+   * See {@link #sendJFKMessage2(byte[], byte[], PeerNode, Peer, JfkNegotiationParams)} for the packet
    * format. This packet is the same for known and unknown initiators.
    *
    * @param payload the buffer containing the decrypted auth packet
    * @param inputOffset the offset in the buffer at which the packet starts
    * @param replyTo the peer to which we need to send the packet
    * @param pn the peer node we are talking to; cannot be {@code null} as we are the initiator
+   * @param negotiation handshake negotiation parameters
    */
   private void processJFKMessage2(
       byte[] payload,
       int inputOffset,
       PeerNode pn,
       Peer replyTo,
-      boolean unknownInitiator,
-      int setupType,
-      int negType) {
+      JfkNegotiationParams negotiation) {
     long t1 = System.currentTimeMillis();
     int modulusLength = getModulusLength();
     // Pre negtype 9 we were sending Ni as opposed to Ni'
     int nonceSize = NONCE_SIZE;
     int nonceSizeHashed = HASH_LENGTH;
+    int negType = negotiation.negType();
 
     if (LOG.isDebugEnabled()) LOG.debug("Got a JFK(2) message, processing it - {}", pn.getPeer());
-    // Note: The spec suggests sending IDr'; current code omits it.
+    // Note: The spec suggests sending IDr'; the current code omits it.
     int expectedLength = nonceSizeHashed + nonceSize + modulusLength + HASH_LENGTH * 2;
     if (payload.length < expectedLength + 3) {
       LOG.error(
@@ -1390,7 +1388,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       return;
     }
 
-    // Verify the ECDSA signature ; We are assuming that it's the curve we expect
+    // Verify the ECDSA signature; We are assuming that it's the curve we expect
     if (!ECDSA.verify(Curves.P256, pn.peerECDSAPubKey, sig, hisExponential)) {
       if (pn.peerECDSAPubKeyHash == null) {
         // Note: legacy DSA support path; keep until removal.
@@ -1415,15 +1413,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     pn.receivedPacket(true, false);
 
     Jfk3Params j3 = new Jfk3Params();
-    j3.negType = negType;
+    j3.negotiation = negotiation;
     j3.nonceInitiator = myNi;
     j3.nonceResponder = nonceResponder;
     j3.hisExponential = hisExponential;
     j3.authenticator = authenticator;
     j3.pn = pn;
     j3.replyTo = replyTo;
-    j3.unknownInitiator = unknownInitiator;
-    j3.setupType = setupType;
     sendJFKMessage3(j3);
 
     long t2 = System.currentTimeMillis();
@@ -1433,7 +1429,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   /*
-   * Initiator Method:Message3
+   * Initiator Method: Message3
    * Process Message3
    * Send the Initiator nonce,Responder nonce and DiffieHellman Exponential of the responder
    * and initiator in the clear.(unVerifiedData)
@@ -1447,13 +1443,14 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * HMAC{Ka}(cyphertext)
    * IV + E{KE}[S{i}[Ni',Nr,g^i,g^r,idR, bootID, znoderefI], bootID, znoderefI*]
    *
-   * * Noderef is sent whether unknownInitiator is true, however if it is, it will
+   * * Noderef is sent whether unknownInitiator is true, however, if it is, it will
    * be a *full* noderef, otherwise it will exclude the pubkey etc.
    *
-   * @param payload The buffer containing the decrypted auth packet.
+   * @param payload is The buffer containing the decrypted auth packet.
    * @param replyTo The peer to which we need to send the packet.
    * @param pn The PeerNode we are talking to. CAN BE NULL in the case of anonymous initiator since we are the
    * responder.
+   * @param negotiation handshake negotiation parameters
    * @return byte Message3
    */
   private void processJFKMessage3(
@@ -1461,12 +1458,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       int inputOffset,
       J3Ctx ctx,
       boolean oldOpennetPeer,
-      boolean unknownInitiator,
-      int setupType,
-      int negType) {
+      JfkNegotiationParams negotiation) {
     final long t1 = System.currentTimeMillis();
     int modulusLength = getModulusLength();
     int nonceSize = NONCE_SIZE;
+    boolean unknownInitiator = negotiation.unknownInitiator();
+    int setupType = negotiation.setupType();
+    int negType = negotiation.negType();
     logGotJfk3Message(ctx.pn);
     PeerNode pnLocal = ctx.pn;
 
@@ -1518,17 +1516,10 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     inputOffset += HASH_LENGTH;
 
     // Validate authenticator and handle potential replay in one step
-    if (!shouldProceedAfterAuthenticator(
-        t1,
-        authenticator,
-        responderExponential,
-        initiatorExponential,
-        nonceResponder,
-        nonceInitiatorHashed,
-        unknownInitiator,
-        negType,
-        setupType,
-        ctx)) return;
+    ReplayFields replayFields =
+        new ReplayFields(
+            responderExponential, initiatorExponential, nonceResponder, nonceInitiatorHashed);
+    if (!shouldProceedAfterAuthenticator(t1, authenticator, replayFields, negotiation, ctx)) return;
 
     byte[] hmac = Arrays.copyOfRange(payload, inputOffset, inputOffset + HASH_LENGTH);
     inputOffset += HASH_LENGTH;
@@ -1556,9 +1547,9 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     byte[] ivNonce =
         computeJFKSharedKey(computedExponential, nonceInitiatorHashed, nonceResponder, "5");
 
-    /* Bytes  1-4:  Initial sequence number for the initiator
-     * Bytes  5-8:  Initial sequence number for the responder
-     * Bytes  9-12: Initial message id for the initiator
+    /* Bytes 1-4: Initial sequence number for the initiator
+     * Bytes 5-8: Initial sequence number for the responder
+     * Bytes 9-12: Initial message id for the initiator
      * Bytes 13-16: Initial message id for the responder
      * Note that we are the responder */
     byte[] sharedData =
@@ -1591,7 +1582,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     c.initialize(ke);
     int ivLength = PCFBMode.lengthIV(c);
     int decypheredPayloadOffset = 0;
-    // We compute the HMAC of ("I"+cyphertext) : the cyphertext includes the IV!
+    // We compute the HMAC of ("I"+cyphertext): the cyphertext includes the IV!
     byte[] decypheredPayload =
         Arrays.copyOf(
             JFK_PREFIX_INITIATOR, JFK_PREFIX_INITIATOR.length + payload.length - inputOffset);
@@ -1697,7 +1688,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
                 theirInitialMsgID);
 
     Jfk4Params params = new Jfk4Params();
-    params.negType = negType;
+    params.negotiation = negotiation;
     params.nonceInitiatorHashed = nonceInitiatorHashed;
     params.nonceResponder = nonceResponder;
     params.initiatorExponential = initiatorExponential;
@@ -1708,8 +1699,6 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     params.hisRef = hisRef;
     params.pn = pnLocal;
     params.replyTo = ctx.replyTo;
-    params.unknownInitiator = unknownInitiator;
-    params.setupType = setupType;
     postHandshakeActions(newTrackerID, trackerID, params, dontWant);
 
     if (LOG.isDebugEnabled()) LOG.debug("Seed client connected with negtype {}", negType);
@@ -1720,30 +1709,14 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   private boolean shouldProceedAfterAuthenticator(
       long t1,
       byte[] authenticator,
-      byte[] responderExponential,
-      byte[] initiatorExponential,
-      byte[] nonceResponder,
-      byte[] nonceInitiatorHashed,
-      boolean unknownInitiator,
-      int negType,
-      int setupType,
+      ReplayFields replayFields,
+      JfkNegotiationParams negotiation,
       J3Ctx ctx) {
     // We want to check the HMAC before any cache lookup
-    if (!verifyJFK3Authenticator(
-        t1,
-        authenticator,
-        responderExponential,
-        initiatorExponential,
-        nonceResponder,
-        nonceInitiatorHashed,
-        ctx.replyTo)) return false;
+    if (!verifyJFK3Authenticator(t1, authenticator, replayFields, ctx.replyTo)) return false;
 
     // Replay handling: if present, we transmit the cached message4 and stop.
-    ReplayFields rf =
-        new ReplayFields(
-            responderExponential, initiatorExponential, nonceResponder, nonceInitiatorHashed);
-    return !tryReplayMessage4(
-        unknownInitiator, negType, setupType, ctx.pn, ctx.replyTo, authenticator, rf);
+    return !tryReplayMessage4(negotiation, ctx.pn, ctx.replyTo, authenticator, replayFields);
   }
 
   private byte[] deriveSharedExponential(
@@ -1831,7 +1804,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     synchronized (authenticatorCache) {
       ByteArrayWrapper hmacBAW = new ByteArrayWrapper(hmac);
       byte[] inserted = Fields.longToBytes(t1);
-      byte[] existing = authenticatorCache.computeIfAbsent(hmacBAW, k -> inserted);
+      byte[] existing = authenticatorCache.computeIfAbsent(hmacBAW, _ -> inserted);
       message4Timestamp = existing;
       replay = existing != inserted; // true when mapping already existed
     }
@@ -2033,7 +2006,9 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     if (ctx == null) return;
     byte[] ourExponential = ctx.getPublicKeyNetworkFormat();
     p.pn.jfkMyRef =
-        p.unknownInitiator ? crypto.myCompressedHeavySetupRef() : crypto.myCompressedSetupRef();
+        p.negotiation.unknownInitiator()
+            ? crypto.myCompressedHeavySetupRef()
+            : crypto.myCompressedSetupRef();
     byte[] data = new byte[8 + 8 + p.pn.jfkMyRef.length];
     int ptr = 0;
     long trackerID;
@@ -2093,7 +2068,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         p.hisExponential,
         nonceInitiatorHashed,
         p.nonceResponder,
-        p.unknownInitiator);
+        p.negotiation.unknownInitiator());
 
     c.initialize(p.pn.jfkKe);
     int ivLength = PCFBMode.lengthIV(c);
@@ -2105,20 +2080,19 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         authenticatorCache.put(new ByteArrayWrapper(p.authenticator), message3);
     }
     final long timeSent = System.currentTimeMillis();
-    if (p.unknownInitiator) {
+    if (p.negotiation.unknownInitiator()) {
       sendAnonAuthPacket(
-          p.negType,
+          p.negotiation.negType(),
           2,
-          p.setupType,
+          p.negotiation.setupType(),
           message3,
           p.pn,
           p.replyTo,
           p.pn.handshake().anonymousInitiatorSetupCipher());
     } else {
-      sendAuthPacket(p.negType, 2, message3, p.pn, p.replyTo);
+      sendAuthPacket(p.negotiation.negType(), 2, message3, p.pn, p.replyTo);
     }
-    scheduleJFK3ResendIfNoReply(
-        p.pn, p.replyTo, p.negType, p.setupType, message3, timeSent, p.unknownInitiator);
+    scheduleJFK3ResendIfNoReply(p.pn, p.replyTo, p.negotiation, message3, timeSent);
     long t2 = System.currentTimeMillis();
     if ((t2 - t1) > MILLISECONDS.toMillis(500))
       LOG.error("Message3 send exceeds 500 ms for {}", p.pn.getPeer());
@@ -2236,18 +2210,26 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         LOG.trace("Storing JFK(4) for {}", HexUtil.bytesToHex(p.authenticator));
     }
 
-    if (p.unknownInitiator) {
+    if (p.negotiation.unknownInitiator()) {
       sendAnonAuthPacket(
-          p.negType, 3, p.setupType, message4, p.pn, p.replyTo, crypto.getAnonSetupCipher());
+          p.negotiation.negType(),
+          3,
+          p.negotiation.setupType(),
+          message4,
+          p.pn,
+          p.replyTo,
+          crypto.getAnonSetupCipher());
     } else {
-      sendAuthPacket(p.negType, 3, message4, p.pn, p.replyTo);
+      sendAuthPacket(p.negotiation.negType(), 3, message4, p.pn, p.replyTo);
     }
     long t2 = System.currentTimeMillis();
     if ((t2 - t1) > 500) LOG.error("Message4 send exceeds 500 ms for {}", p.pn.getPeer());
   }
 
+  private record JfkNegotiationParams(boolean unknownInitiator, int setupType, int negType) {}
+
   private static final class Jfk4Params {
-    int negType;
+    JfkNegotiationParams negotiation;
     byte[] nonceInitiatorHashed;
     byte[] nonceResponder;
     byte[] initiatorExponential;
@@ -2258,8 +2240,6 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     byte[] hisRef;
     PeerNode pn;
     Peer replyTo;
-    boolean unknownInitiator;
-    int setupType;
     long newTrackerID;
     boolean sameAsOldTrackerID;
   }
@@ -2275,15 +2255,13 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   private static final class Jfk3Params {
-    int negType;
+    JfkNegotiationParams negotiation;
     byte[] nonceInitiator;
     byte[] nonceResponder;
     byte[] hisExponential;
     byte[] authenticator;
     PeerNode pn;
     Peer replyTo;
-    boolean unknownInitiator;
-    int setupType;
   }
 
   private static final class Stage1Result {
@@ -2458,11 +2436,9 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   private void scheduleJFK3ResendIfNoReply(
       final PeerNode pn,
       final Peer replyTo,
-      final int negType,
-      final int setupType,
+      final JfkNegotiationParams negotiation,
       final byte[] message3,
-      final long timeSent,
-      final boolean unknownInitiator) {
+      final long timeSent) {
     node.network()
         .ticker()
         .queueTimedJob(
@@ -2473,17 +2449,17 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
                       "Resending JFK(3) to {}" + FOR_STR + "{}",
                       pn,
                       node.network().darknetPortNumber());
-                if (unknownInitiator) {
+                if (negotiation.unknownInitiator()) {
                   sendAnonAuthPacket(
-                      negType,
+                      negotiation.negType(),
                       2,
-                      setupType,
+                      negotiation.setupType(),
                       message3,
                       pn,
                       replyTo,
                       pn.handshake().anonymousInitiatorSetupCipher());
                 } else {
-                  sendAuthPacket(negType, 2, message3, pn, replyTo);
+                  sendAuthPacket(negotiation.negType(), 2, message3, pn, replyTo);
                 }
               }
             },
@@ -2788,7 +2764,10 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       return;
     }
     try {
-      sendJFKMessage1(pn, peer, pn.handshakeUnknownInitiator(), pn.handshakeSetupType(), negType);
+      JfkNegotiationParams negotiation =
+          new JfkNegotiationParams(
+              pn.handshakeUnknownInitiator(), pn.handshakeSetupType(), negType);
+      sendJFKMessage1(pn, peer, negotiation);
     } catch (NoContextsException _) {
       handleNoContextsException(NoContextsException.CONTEXT.SENDING);
       return;
@@ -2912,7 +2891,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   /**
-   * Change the ECDH key on a regular basis but at most once every 30sec.
+   * Change the ECDH key regularly but at most once every 30sec.
    *
    * @return {@link ECDHLightContext} currently selected for use
    * @throws NoContextsException when no pre-generated ECDH contexts are available in the FIFO and a
@@ -2925,7 +2904,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     synchronized (ecdhContextFIFO) {
       result = ecdhContextFIFO.pollFirst();
 
-      // Shall we replace one element of the queue ?
+      // Shall we replace one element of the queue?
       if ((jfkECDHLastGenerationTimestamp + DH_GENERATION_INTERVAL) < now) {
         jfkECDHLastGenerationTimestamp = now;
         fillJfkEcdhFifoOffThread();
@@ -3057,7 +3036,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   /**
    * Change the transient key used by JFK.
    *
-   * <p>It will determine the PFS interval, hence we call it at least once every 30mins.
+   * <p>It will determine the PFS interval, hence we call it at least once every 30 mins.
    *
    * @return True if we reset the transient key and therefore the authenticator cache.
    */
