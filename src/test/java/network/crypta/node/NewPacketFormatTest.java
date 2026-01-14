@@ -33,7 +33,7 @@ class NewPacketFormatTest {
   @BeforeEach
   void setUp() {
     // Because we don't call maybeSendPacket, the packet sent times are not updated,
-    // so lets turn off the keepalives.
+    // so let's turn off the keepalives.
     NewPacketFormat.doKeepalives = false;
   }
 
@@ -66,29 +66,25 @@ class NewPacketFormatTest {
     NPFPacket generated = new NPFPacket();
     generated.addMessageFragment(
         new MessageFragment(
-            true,
-            false,
-            true,
-            0,
-            8,
-            8,
-            0,
-            new byte[] {
-              (byte) 0x01,
-              (byte) 0x23,
-              (byte) 0x45,
-              (byte) 0x67,
-              (byte) 0x89,
-              (byte) 0xAB,
-              (byte) 0xCD,
-              (byte) 0xEF
-            },
-            null));
+            new MessageFragmentHeader(true, false, true, 0),
+            new MessageFragmentSizes(8, 8, 0),
+            new MessageFragmentPayload(
+                new byte[] {
+                  (byte) 0x01,
+                  (byte) 0x23,
+                  (byte) 0x45,
+                  (byte) 0x67,
+                  (byte) 0x89,
+                  (byte) 0xAB,
+                  (byte) 0xCD,
+                  (byte) 0xEF
+                },
+                null)));
 
     // Act
     assertEquals(1, npf.handleDecryptedPacket(generated, s).size());
     boolean keepalivesOrig = NewPacketFormat.doKeepalives;
-    NewPacketFormat.doKeepalives = true; // force send without sleeping
+    NewPacketFormat.doKeepalives = true; // force sending without sleeping
     NPFPacket ackOnly;
     try {
       ackOnly = npf.createPacket(1400, pmq, s, false);
@@ -245,7 +241,8 @@ class NewPacketFormatTest {
         new SessionKey(
             null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
-    // Queue two messages so total queued size exceeds maxPacketSize (512) and triggers immediate
+    // Queue two messages so the total queued size exceeds maxPacketSize (512) and triggers
+    // immediate
     // send.
     senderQueue.queueAndEstimateSize(
         new MessageItem(new byte[400], null, false, null, (short) 0), 1024);
@@ -371,7 +368,7 @@ class NewPacketFormatTest {
     random.nextBytes(message);
     byte[] copyOfMessage = Arrays.copyOf(message, message.length);
 
-    // Queue two messages so total exceeds maxPacketSize (1280) and triggers immediate send.
+    // Queue two messages so the total exceeds maxPacketSize (1280) and triggers immediate send.
     byte[] other = new byte[700];
     random.nextBytes(other);
     senderQueue.queueAndEstimateSize(new MessageItem(message, null, false, null, (short) 0), 4096);
@@ -415,7 +412,7 @@ class NewPacketFormatTest {
     assertNotNull(p, "Expected a packet with one fragment before disconnect");
     assertEquals(1, p.getFragments().size());
 
-    // Now disconnect and ensure the item is returned for requeueing by the caller.
+    // Now disconnect and ensure the caller returns the item for requeueing.
     List<MessageItem> returned = npf.onDisconnect();
     assertEquals(1, returned.size());
     assertEquals(payload.length, returned.getFirst().getLength());
@@ -488,7 +485,10 @@ class NewPacketFormatTest {
     NPFPacket received = new NPFPacket();
     received.setSequenceNumber(123);
     received.addMessageFragment(
-        new MessageFragment(true, false, true, 1, 1, 1, 0, new byte[] {1}, null));
+        new MessageFragment(
+            new MessageFragmentHeader(true, false, true, 1),
+            new MessageFragmentSizes(1, 1, 0),
+            new MessageFragmentPayload(new byte[] {1}, null)));
     List<byte[]> finished = npf.handleDecryptedPacket(received, prev);
     assertEquals(1, finished.size());
 
@@ -565,7 +565,7 @@ class NewPacketFormatTest {
         new NewPacketFormat(receiverNode, receiverStartSeq, senderStartSeq);
 
     PeerMessageQueue senderQueue = new PeerMessageQueue(new DummyRandomSource(1234));
-    // Queue two messages so total exceeds maxPacketSize and triggers immediate send.
+    // Queue two messages so the total exceeds maxPacketSize and triggers immediate send.
     byte[] m1 = new byte[700];
     byte[] m2 = new byte[700];
     random.nextBytes(m1);
@@ -599,7 +599,8 @@ class NewPacketFormatTest {
       @SuppressWarnings("unchecked")
       java.util.HashMap<Integer, NewPacketFormat.SentPacket> map =
           (java.util.HashMap<Integer, NewPacketFormat.SentPacket>) f.get(ctx);
-      long newSent = System.currentTimeMillis() - 5000L; // ample to exceed retransmit threshold
+      long newSent =
+          System.currentTimeMillis() - 5000L; // ample to exceed the retransmitting threshold
       for (NewPacketFormat.SentPacket sp : map.values()) {
         java.lang.reflect.Field sf = NewPacketFormat.SentPacket.class.getDeclaredField("sentTime");
         sf.setAccessible(true);
