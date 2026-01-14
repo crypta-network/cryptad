@@ -2,32 +2,21 @@ package network.crypta.node;
 
 import java.io.File;
 import java.util.Objects;
-import java.util.Random;
-import network.crypta.client.FetchContext;
-import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientContextDefaults;
 import network.crypta.client.async.ClientContextRafFactories;
 import network.crypta.client.async.ClientContextRuntime;
 import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
-import network.crypta.client.async.ClientLayerPersister;
-import network.crypta.client.async.DatastoreChecker;
-import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.PersistentRequestRoot;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
-import network.crypta.crypt.RandomSource;
-import network.crypta.support.MemoryLimitedJobRunner;
-import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.Ticker;
-import network.crypta.support.api.LockableRandomAccessBufferFactory;
-import network.crypta.support.compress.RealCompressor;
 import network.crypta.support.io.DiskSpaceCheckingRandomAccessBufferFactory;
-import network.crypta.support.io.FileRandomAccessBufferFactory;
 import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.MaybeEncryptedRandomAccessBufferFactory;
 import network.crypta.support.io.PersistentTempBucketFactory;
@@ -91,16 +80,18 @@ public final class NodeClientPersistence {
     persister =
         new ConfigurablePersister(
             persistable,
-            nodeConfig,
-            "clientThrottleFile",
-            "client-throttle.dat",
-            sortOrder++,
-            true,
-            false,
-            "NodeClientCore.fileForClientStats",
-            "NodeClientCore.fileForClientStatsLong",
-            node.network().ticker(),
-            node.getRunDir());
+            new ConfigurablePersisterParams(
+                nodeConfig,
+                "clientThrottleFile",
+                "client-throttle.dat",
+                new Option.Meta(
+                    sortOrder++,
+                    true,
+                    false,
+                    "NodeClientCore.fileForClientStats",
+                    "NodeClientCore.fileForClientStatsLong"),
+                node.getRunDir()),
+            node.network().ticker());
     sortOrderAfter = sortOrder;
   }
 
@@ -134,7 +125,7 @@ public final class NodeClientPersistence {
   /**
    * Starts periodic persistence of throttle state.
    *
-   * <p>The persister performs an immediate write and schedules future writes on the configured
+   * <p>The persister performs an immediate writing and schedules future writes on the configured
    * {@link Ticker}. Repeated calls are ignored by the underlying persister, so callers may safely
    * invoke this during startup without tracking whether it has already run.
    */
@@ -263,7 +254,7 @@ public final class NodeClientPersistence {
    *
    * <p>The server is constructed via {@link FCPServer#maybeCreate(Node, NodeClientCore,
    * network.crypta.config.Config, PersistentRequestRoot)} and shares this instance's persistent
-   * request root so durable requests can be managed consistently across reconnects. This method
+   * request root so durable requests can be managed consistently across reconnections. This method
    * performs no side effects beyond the delegation.
    *
    * @param node node instance supplying configuration and shared services.
@@ -278,8 +269,8 @@ public final class NodeClientPersistence {
    * Returns a snapshot of all currently registered persistent requests.
    *
    * <p>The snapshot is provided by the shared {@link PersistentRequestRoot} and may include global
-   * and per-client persistent requests. The returned array is a point-in-time view; subsequent
-   * request registrations or removals are not reflected in the array.
+   * and per-client persistent requests. The returned array is a point-in-time view; later request
+   * registrations or removals are not reflected in the array.
    *
    * @return an array of persistent client requests; never {@code null}.
    */
@@ -297,79 +288,44 @@ public final class NodeClientPersistence {
    * any of the provided collaborators beyond normal constructor usage.
    *
    * @param node node instance supplying boot id and configuration references.
-   * @param clientLayerPersister persistence runner used to serialize durable client jobs.
-   * @param executor priority-aware executor for main client-layer scheduling.
-   * @param resources bundle with archive manager and healing queue.
-   * @param persistentTempBucketFactory factory for persistent temp buckets and file tracking.
-   * @param tempBucketFactory factory for transient temp buckets and in-memory limits.
-   * @param uskManager manager for USK coordination and update tracking.
-   * @param random strong random source for cryptographic and protocol needs.
-   * @param fastWeakRandom fast non-cryptographic random source for jitter.
-   * @param ticker scheduler used for time-based client operations.
-   * @param memoryLimitedJobRunner runner constraining memory-intensive background tasks.
-   * @param tempFilenameGenerator generator for transient temp filenames and ids.
-   * @param persistentFilenameGenerator generator for persistent on-disk temp filenames.
-   * @param tempRafFactory factory for transient random-access buffers.
-   * @param persistentRafFactory factory for persistent random-access buffers, possibly encrypted.
-   * @param fileRafTransient factory for transient file-backed random-access buffers.
-   * @param compressor compressor implementation for client-side data pipelines.
-   * @param storeChecker datastore checker for verification and background checks.
-   * @param cryptoSecretTransient transient master secret for this process lifetime.
-   * @param init initialization bundle providing toadlets and config.
-   * @param defaultFetchContext default fetch context template for persistent requests.
-   * @param defaultInsertContext default insert context template for persistent requests.
+   * @param params bundle of runtime, storage, service, and default context dependencies.
    * @return newly constructed client context with wired factories and persistent root.
    * @throws NullPointerException if the disk checker has not been initialized.
    */
-  public ClientContext createClientContext(
-      Node node,
-      ClientLayerPersister clientLayerPersister,
-      PriorityAwareExecutor executor,
-      ClientContextResources resources,
-      PersistentTempBucketFactory persistentTempBucketFactory,
-      TempBucketFactory tempBucketFactory,
-      USKManager uskManager,
-      RandomSource random,
-      Random fastWeakRandom,
-      Ticker ticker,
-      MemoryLimitedJobRunner memoryLimitedJobRunner,
-      FilenameGenerator tempFilenameGenerator,
-      FilenameGenerator persistentFilenameGenerator,
-      LockableRandomAccessBufferFactory tempRafFactory,
-      MaybeEncryptedRandomAccessBufferFactory persistentRafFactory,
-      FileRandomAccessBufferFactory fileRafTransient,
-      RealCompressor compressor,
-      DatastoreChecker storeChecker,
-      MasterSecret cryptoSecretTransient,
-      NodeClientCoreInit init,
-      FetchContext defaultFetchContext,
-      InsertContext defaultInsertContext) {
+  public ClientContext createClientContext(Node node, ClientContextInitParams params) {
     DiskSpaceCheckingRandomAccessBufferFactory checker = requireDiskChecker();
+    NodeClientCoreInit init = params.init();
     ClientContextRuntime runtime =
         new ClientContextRuntime(
-            clientLayerPersister,
-            executor,
-            memoryLimitedJobRunner,
-            ticker,
-            random,
-            fastWeakRandom,
-            cryptoSecretTransient);
+            params.clientLayerPersister(),
+            params.executor(),
+            params.memoryLimitedJobRunner(),
+            params.ticker(),
+            params.random(),
+            params.fastWeakRandom(),
+            params.cryptoSecretTransient());
     ClientContextStorageFactories storageFactories =
         new ClientContextStorageFactories(
-            persistentTempBucketFactory,
-            tempBucketFactory,
-            persistentTempBucketFactory,
-            tempFilenameGenerator,
-            persistentFilenameGenerator,
-            fileRafTransient,
+            params.persistentTempBucketFactory(),
+            params.tempBucketFactory(),
+            params.persistentTempBucketFactory(),
+            params.tempFilenameGenerator(),
+            params.persistentFilenameGenerator(),
+            params.fileRafTransient(),
             checker);
     ClientContextRafFactories rafFactories =
-        new ClientContextRafFactories(tempRafFactory, persistentRafFactory);
+        new ClientContextRafFactories(params.tempRafFactory(), params.persistentRafFactory());
     ClientContextServices services =
         new ClientContextServices(
-            resources, uskManager, compressor, storeChecker, persistentRoot, init.toadlets());
+            params.resources(),
+            params.uskManager(),
+            params.compressor(),
+            params.storeChecker(),
+            persistentRoot,
+            init.toadlets());
     ClientContextDefaults defaults =
-        new ClientContextDefaults(defaultFetchContext, defaultInsertContext, init.config());
+        new ClientContextDefaults(
+            params.defaultFetchContext(), params.defaultInsertContext(), init.config());
     return new ClientContext(
         node.getBootId(), runtime, storageFactories, rafFactories, services, defaults);
   }

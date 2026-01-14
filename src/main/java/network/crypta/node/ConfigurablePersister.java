@@ -3,7 +3,6 @@ package network.crypta.node;
 import java.io.File;
 import java.io.IOException;
 import network.crypta.config.InvalidConfigValueException;
-import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.Ticker;
@@ -38,51 +37,34 @@ public class ConfigurablePersister extends Persister {
    * scheduling of persistence is delegated to {@link Ticker} via the base class.
    *
    * @param t source that can serialize throttle state
-   * @param nodeConfig configuration section that stores the file path option
-   * @param optionName key used to register the configurable file path
-   * @param defaultFilename default filename joined with {@code baseDir}
-   * @param sortOrder UI/help ordering hint for {@code nodeConfig}
-   * @param expert whether the option is considered advanced/expert
-   * @param forceWrite whether writes are forced even when unchanged (per {@code nodeConfig})
-   * @param shortDesc short, localized description for the option
-   * @param longDesc long, localized description for the option
+   * @param params bundle describing the option metadata and default path
    * @param ps scheduler used by the base persister
-   * @param baseDir directory used to resolve {@code defaultFilename}
    * @throws NodeInitException when the configured file is invalid or cannot be created. The message
    *     derives from localization keys and the exit code is {@link
    *     NodeInitException#EXIT_THROTTLE_FILE_ERROR}.
    */
-  public ConfigurablePersister(
-      Persistable t,
-      SubConfig nodeConfig,
-      String optionName,
-      String defaultFilename,
-      int sortOrder,
-      boolean expert,
-      boolean forceWrite,
-      String shortDesc,
-      String longDesc,
-      Ticker ps,
-      File baseDir)
+  public ConfigurablePersister(Persistable t, ConfigurablePersisterParams params, Ticker ps)
       throws NodeInitException {
     super(t, ps);
-    nodeConfig.register(
-        optionName,
-        new File(baseDir, defaultFilename).toString(),
-        new Option.Meta(sortOrder, expert, forceWrite, shortDesc, longDesc),
-        new StringCallback() {
-          @Override
-          public String get() {
-            return persistTarget.toString();
-          }
+    params
+        .nodeConfig()
+        .register(
+            params.optionName(),
+            new File(params.baseDir(), params.defaultFilename()).toString(),
+            params.optionMeta(),
+            new StringCallback() {
+              @Override
+              public String get() {
+                return persistTarget.toString();
+              }
 
-          @Override
-          public void set(String val) throws InvalidConfigValueException {
-            setThrottles(val);
-          }
-        });
+              @Override
+              public void set(String val) throws InvalidConfigValueException {
+                setThrottles(val);
+              }
+            });
 
-    String throttleFile = nodeConfig.getString(optionName);
+    String throttleFile = params.nodeConfig().getString(params.optionName());
     try {
       setThrottles(throttleFile);
     } catch (InvalidConfigValueException e2) {
@@ -152,7 +134,7 @@ public class ConfigurablePersister extends Persister {
         return;
       }
 
-      // If creation reported false and the file still doesn't exist, treat as create failure.
+      // If creation reported false and the file still doesn't exist, treat as creation failure.
       if (!created) {
         throw new InvalidConfigValueException(
             l10n(L10N_DOES_NOT_EXIST_CANNOT_CREATE) + " : " + errorPath);

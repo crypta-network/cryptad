@@ -43,16 +43,13 @@ class ConfigurablePersisterTest {
     ConfigurablePersister cp =
         new ConfigurablePersister(
             persistable,
-            node,
-            optionName,
-            defaultName,
-            /* sortOrder= */ 0,
-            /* expert= */ false,
-            /* forceWrite= */ false,
-            /* shortDesc= */ "short",
-            /* longDesc= */ "long",
-            ticker,
-            baseDir);
+            new ConfigurablePersisterParams(
+                node,
+                optionName,
+                defaultName,
+                new Option.Meta(0, false, false, "short", "long"),
+                baseDir),
+            ticker);
 
     // Assert
     File expectedTarget = new File(baseDir, defaultName);
@@ -89,16 +86,13 @@ class ConfigurablePersisterTest {
             () ->
                 new ConfigurablePersister(
                     persistable,
-                    node,
-                    optionName,
-                    defaultName,
-                    0,
-                    false,
-                    false,
-                    "short",
-                    "long",
-                    ticker,
-                    baseDir));
+                    new ConfigurablePersisterParams(
+                        node,
+                        optionName,
+                        defaultName,
+                        new Option.Meta(0, false, false, "short", "long"),
+                        baseDir),
+                    ticker));
 
     assertEquals(NodeInitException.EXIT_THROTTLE_FILE_ERROR, ex.exitCode);
     String msg = ex.getMessage();
@@ -120,16 +114,13 @@ class ConfigurablePersisterTest {
     ConfigurablePersister cp =
         new ConfigurablePersister(
             persistable,
-            node,
-            optionName,
-            "throttles.txt",
-            0,
-            false,
-            false,
-            "short",
-            "long",
-            ticker,
-            baseDir);
+            new ConfigurablePersisterParams(
+                node,
+                optionName,
+                "throttles.txt",
+                new Option.Meta(0, false, false, "short", "long"),
+                baseDir),
+            ticker);
 
     File newTarget = new File(baseDir, "new-throttles.txt");
 
@@ -159,16 +150,13 @@ class ConfigurablePersisterTest {
     ConfigurablePersister cp =
         new ConfigurablePersister(
             persistable,
-            node,
-            optionName,
-            "throttles.txt",
-            0,
-            false,
-            false,
-            "short",
-            "long",
-            ticker,
-            baseDir);
+            new ConfigurablePersisterParams(
+                node,
+                optionName,
+                "throttles.txt",
+                new Option.Meta(0, false, false, "short", "long"),
+                baseDir),
+            ticker);
 
     File originalTarget = cp.persistTarget;
 

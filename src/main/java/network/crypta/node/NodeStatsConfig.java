@@ -51,11 +51,6 @@ public final class NodeStatsConfig {
    *
    * @param statsConfig mutable sub-configuration for node stats; must be non-null
    */
-  /**
-   * Creates a configuration binder for node statistics.
-   *
-   * @param statsConfig subconfig containing statistics settings
-   */
   public NodeStatsConfig(SubConfig statsConfig) {
     this.statsConfig = statsConfig;
   }
@@ -67,7 +62,7 @@ public final class NodeStatsConfig {
    * updates {@link NodeStats} with the selected values, and sets up the on-disk persister used for
    * throttle and running-average state. The call is not idempotent; it mutates {@code statsConfig}
    * and calls {@code finishedInitialization()} exactly once. If a throttle file exists, it is
-   * loaded and returned to the caller for use during subsequent stat initialization.
+   * loaded and returned to the caller for use during later stat initialization.
    *
    * <p>Callers typically pass the current sort order for config UI layout and use the returned
    * value to continue registering additional options elsewhere.
@@ -160,7 +155,7 @@ public final class NodeStatsConfig {
    * not consumed by the current implementation.
    */
   private void registerIgnoredOptions() {
-    // Yes it could be in seconds instead of multiples of 0.12, but we don't want people to play
+    // Yes, it could be in seconds instead of multiples of 0.12, but we don't want people to play
     // with it :)
     statsConfig.registerIgnoredOption("aggressiveGC");
     statsConfig.registerIgnoredOption("memoryChecker");
@@ -273,16 +268,14 @@ public final class NodeStatsConfig {
       throws NodeInitException {
     return new ConfigurablePersister(
         stats,
-        statsConfig,
-        "nodeThrottleFile",
-        "node-throttle.dat",
-        sortOrder,
-        true,
-        false,
-        "NodeStat.statsPersister",
-        "NodeStat.statsPersisterLong",
-        node.network().ticker(),
-        node.getRunDir());
+        new ConfigurablePersisterParams(
+            statsConfig,
+            "nodeThrottleFile",
+            "node-throttle.dat",
+            new Option.Meta(
+                sortOrder, true, false, "NodeStat.statsPersister", "NodeStat.statsPersisterLong"),
+            node.getRunDir()),
+        node.network().ticker());
   }
 
   /**
@@ -307,7 +300,7 @@ public final class NodeStatsConfig {
    * configuration is complete. It includes the updated sort order, the configured persister, and
    * the initial throttle field set loaded from disk.
    *
-   * @param sortOrder next sort order index for subsequent configuration entries
+   * @param sortOrder next sort order index for later configuration entries
    * @param persister configured persister for throttle and running-average state
    * @param throttleFS field set loaded from the throttle file, possibly empty
    */
