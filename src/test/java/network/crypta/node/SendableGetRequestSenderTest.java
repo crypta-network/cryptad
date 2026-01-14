@@ -18,6 +18,7 @@ import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,14 +51,14 @@ class SendableGetRequestSenderTest {
       boolean ignoreStore,
       boolean canWriteClientCache,
       boolean realTimeFlag) {
-    // Create a mock that calls the real constructor to set the final fields,
+    // Create a mock that calls the real constructor to set the final fields
     // and lets us verify abstract callback invocations via Mockito.
     return mock(
         ChosenBlock.class,
         org.mockito.Mockito.withSettings()
             .useConstructor(
                 token,
-                null, // node-level key not used for SendableGet
+                null, // a node-level key isn't used for SendableGet
                 clientKey,
                 new ChosenBlock.Options(
                     localOnly, ignoreStore, canWriteClientCache, false, realTimeFlag))
@@ -151,24 +152,18 @@ class SendableGetRequestSenderTest {
     ChosenBlock req = newChosenBlock(token, ckey, false, false, true, true);
     when(req.isCancelled()).thenReturn(false);
 
+    NodeRoutingSubsystem.RequestSenderOptions options =
+        NodeRoutingSubsystem.RequestSenderOptions.of(false, false, false, true, true, true);
     // Capture the listener passed to asyncGet
     doAnswer(
             invocation -> {
-              RequestCompletionListener l = invocation.getArgument(2);
+              RequestCompletionListener l = invocation.getArgument(1);
               // Simulate success
               l.onSucceeded();
               return null;
             })
         .when(transfers)
-        .asyncGet(
-            eq(nodeKey),
-            eq(false),
-            any(RequestCompletionListener.class),
-            eq(true), // canReadClientCache = !ignoreStore(false)
-            eq(true), // canWriteClientCache
-            eq(true), // realTimeFlag
-            eq(false), // localOnly
-            eq(false)); // ignoreStore
+        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options));
 
     // Act
     boolean result = sender.send(core, scheduler, context, req);
@@ -192,22 +187,16 @@ class SendableGetRequestSenderTest {
 
     LowLevelGetException failure = new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND);
 
+    NodeRoutingSubsystem.RequestSenderOptions options =
+        NodeRoutingSubsystem.RequestSenderOptions.of(true, true, false, false, false, false);
     doAnswer(
             invocation -> {
-              RequestCompletionListener l = invocation.getArgument(2);
+              RequestCompletionListener l = invocation.getArgument(1);
               l.onFailed(failure);
               return null;
             })
         .when(transfers)
-        .asyncGet(
-            eq(nodeKey),
-            eq(false),
-            any(RequestCompletionListener.class),
-            eq(false), // canReadClientCache = !ignoreStore(true)
-            eq(false), // canWriteClientCache
-            eq(false), // realTimeFlag
-            eq(true), // localOnly
-            eq(true)); // ignoreStore
+        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options));
 
     // Act
     boolean result = sender.send(core, scheduler, context, req);
@@ -280,17 +269,11 @@ class SendableGetRequestSenderTest {
     ChosenBlock req = newChosenBlock(token, ckey, false, false, false, false);
     when(req.isCancelled()).thenReturn(false);
 
+    NodeRoutingSubsystem.RequestSenderOptions options =
+        NodeRoutingSubsystem.RequestSenderOptions.of(false, false, false, true, false, false);
     doThrow(new RuntimeException("asyncGet blew up"))
         .when(transfers)
-        .asyncGet(
-            eq(nodeKey),
-            eq(false),
-            any(RequestCompletionListener.class),
-            eq(true),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false));
+        .asyncGet(eq(nodeKey), any(RequestCompletionListener.class), eq(options));
 
     // Act
     boolean result = sender.send(core, scheduler, context, req);
