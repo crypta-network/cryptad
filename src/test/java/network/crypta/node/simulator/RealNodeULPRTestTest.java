@@ -46,12 +46,12 @@ class RealNodeULPRTestTest {
 
   @Test
   void main_whenReflected_expectPublicStaticVoidSignature() throws Exception {
-    Method main = RealNodeULPRTest.class.getDeclaredMethod("main", String[].class);
+    Method main = RealNodeULPRTest.class.getDeclaredMethod("main");
 
     int modifiers = main.getModifiers();
     assertTrue(Modifier.isPublic(modifiers));
     assertTrue(Modifier.isStatic(modifiers));
     assertEquals(void.class, main.getReturnType());
-    assertArrayEquals(new Class<?>[] {String[].class}, main.getParameterTypes());
+    assertArrayEquals(new Class<?>[0], main.getParameterTypes());
   }
 }

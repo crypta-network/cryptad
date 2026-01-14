@@ -101,7 +101,7 @@ public class RealNodeULPRTest extends RealNodeTest {
    *
    * <pre>{@code
    * public static void main(String[] args) throws Exception {
-   *   RealNodeULPRTest.main(args);
+   *   RealNodeULPRTest.main();
    * }
    * }</pre>
    *

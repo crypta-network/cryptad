@@ -250,13 +250,14 @@ public class ClientCHKBlock implements ClientKeyBlock {
       throw new CHKDecodeException("Invalid size: " + size);
     }
     return Key.decompress(
-        !dontCompress && key.isCompressed(),
-        dbuf,
-        size,
-        bf,
-        maxLength,
-        key.compressionAlgorithm,
-        false);
+        new DecompressionParams(
+            !dontCompress && key.isCompressed(),
+            dbuf,
+            size,
+            bf,
+            maxLength,
+            key.compressionAlgorithm,
+            false));
   }
 
   private static final Provider hmacProvider;
@@ -366,13 +367,14 @@ public class ClientCHKBlock implements ClientKeyBlock {
         throw new CHKDecodeException("HMAC is wrong, wrong decryption key?");
       }
       return Key.decompress(
-          !dontCompress && key.isCompressed(),
-          plaintext,
-          size,
-          bf,
-          maxLength,
-          key.compressionAlgorithm,
-          false);
+          new DecompressionParams(
+              !dontCompress && key.isCompressed(),
+              plaintext,
+              size,
+              bf,
+              maxLength,
+              key.compressionAlgorithm,
+              false));
     } catch (GeneralSecurityException e) {
       throw new CHKDecodeException("Problem with JCA, should be impossible!", e);
     }
@@ -436,13 +438,14 @@ public class ClientCHKBlock implements ClientKeyBlock {
       throw new CHKDecodeException("Problem with JCA, should be impossible!", e);
     }
     return Key.decompress(
-        !dontCompress && key.isCompressed(),
-        plaintext,
-        size,
-        bf,
-        maxLength,
-        key.compressionAlgorithm,
-        false);
+        new DecompressionParams(
+            !dontCompress && key.isCompressed(),
+            plaintext,
+            size,
+            bf,
+            maxLength,
+            key.compressionAlgorithm,
+            false));
   }
 
   /**
@@ -515,26 +518,16 @@ public class ClientCHKBlock implements ClientKeyBlock {
   static ClientCHKBlock encode(
       BlockEncodeParams params, byte[] cryptoKey, byte cryptoAlgorithm, boolean forceNoJCA)
       throws CHKEncodeException, IOException {
-    Bucket sourceData = params.sourceData();
     boolean asMetadata = params.asMetadata();
-    boolean dontCompress = params.dontCompress();
-    short alreadyCompressedCodec = params.alreadyCompressedCodec();
-    long sourceLength = params.sourceLength();
-    String compressorDescriptor = params.compressorDescriptor();
     byte[] finalData;
     byte[] data;
     short compressionAlgorithm;
     try {
       Compressed comp =
           Key.compress(
-              sourceData,
-              dontCompress,
-              alreadyCompressedCodec,
-              sourceLength,
-              CHKBlock.MAX_LENGTH_BEFORE_COMPRESSION,
-              CHKBlock.DATA_LENGTH,
-              false,
-              compressorDescriptor);
+              params,
+              new CompressionLimits(
+                  CHKBlock.MAX_LENGTH_BEFORE_COMPRESSION, CHKBlock.DATA_LENGTH, false));
       finalData = comp.compressedData;
       compressionAlgorithm = comp.compressionAlgorithm;
     } catch (KeyEncodeException | InvalidCompressionCodecException e2) {

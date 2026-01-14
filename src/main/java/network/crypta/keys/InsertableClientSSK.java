@@ -17,7 +17,6 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.keys.Key.Compressed;
-import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.math.MersenneTwister;
 import org.bouncycastle.crypto.digests.SHA256Digest;
@@ -174,25 +173,15 @@ public class InsertableClientSSK extends ClientSSK {
    */
   public ClientSSKBlock encode(BlockEncodeParams params)
       throws SSKEncodeException, IOException, InvalidCompressionCodecException {
-    Bucket sourceData = params.sourceData();
     boolean asMetadata = params.asMetadata();
-    boolean dontCompress = params.dontCompress();
-    short alreadyCompressedCodec = params.alreadyCompressedCodec();
-    long sourceLength = params.sourceLength();
-    String compressorDescriptor = params.compressorDescriptor();
     byte[] compressedData;
     short compressionAlgo;
     try {
       Compressed comp =
           Key.compress(
-              sourceData,
-              dontCompress,
-              alreadyCompressedCodec,
-              sourceLength,
-              ClientSSKBlock.MAX_DECOMPRESSED_DATA_LENGTH,
-              SSKBlock.DATA_LENGTH,
-              true,
-              compressorDescriptor);
+              params,
+              new CompressionLimits(
+                  ClientSSKBlock.MAX_DECOMPRESSED_DATA_LENGTH, SSKBlock.DATA_LENGTH, true));
       compressedData = comp.compressedData;
       compressionAlgo = comp.compressionAlgorithm;
     } catch (KeyEncodeException e) {
@@ -229,7 +218,7 @@ public class InsertableClientSSK extends ClientSSK {
       throw new IllegalStateException("256/256 Rijndael not supported!", e);
     }
 
-    // Encrypt data. Key = SHA-256(plaintext); IV/feedback state comes from PCFB construction.
+    // Encrypt data. Key = SHA-256 (plaintext); IV/feedback state comes from PCFB construction.
     aes.initialize(origDataHash);
     PCFBMode pcfb = PCFBMode.create(aes, origDataHash);
 

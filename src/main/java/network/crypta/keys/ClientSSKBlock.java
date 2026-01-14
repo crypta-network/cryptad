@@ -17,11 +17,11 @@ import org.slf4j.LoggerFactory;
  * Client-side view of a Signed Subspace Key (SSK) block.
  *
  * <p>This type decrypts and optionally decompresses the payload of an {@link SSKBlock} using the
- * material contained in a {@link ClientSSK}. A successful decode exposes whether the block carries
- * metadata (see {@link #isMetadata()}) and which compression codec was indicated in the encrypted
- * headers (see {@link #getCompressionCodec()}).
+ * material contained in a {@link ClientSSK}. A successful decoding exposes whether the block
+ * carries metadata (see {@link #isMetadata()}) and which compression codec was indicated in the
+ * encrypted headers (see {@link #getCompressionCodec()}).
  *
- * <p>Thread-safety: instances are not thread-safe. Use one instance per decode or externally
+ * <p>Thread-safety: instances are not thread-safe. Use one instance per decoding or externally
  * synchronize access.
  */
 public class ClientSSKBlock implements ClientKeyBlock {
@@ -34,16 +34,16 @@ public class ClientSSKBlock implements ClientKeyBlock {
   /** Underlying encoded SSK block (immutable). */
   private final SSKBlock block;
 
-  /** True when the high-bit metadata flag is set; value becomes known after decoding. */
+  /** True, when the high-bit metadata flag is set; value becomes known after decoding. */
   private boolean isMetadata;
 
-  /** True after a successful decode; guards access to decode-dependent properties. */
+  /** True, after a successful decoding; guards access to decode-dependent properties. */
   private boolean decoded;
 
   /** Client key holding the decryption material and (optionally) the public key. */
   private final ClientSSK key;
 
-  /** Compression code read from headers on last decode; {@code -1} means "none/unknown". */
+  /** Compression code read from headers on last decoding; {@code -1} means "none/unknown". */
   private short compressionAlgorithm = -1;
 
   /**
@@ -114,25 +114,25 @@ public class ClientSSKBlock implements ClientKeyBlock {
       LOG.debug("cryptoAlgorithm={} for {}", key.cryptoAlgorithm, getClientKey().getURI());
       aes = new Rijndael(256, 256);
     } catch (UnsupportedCipherException e) {
-      // Surface cipher support problems as a decode failure rather than a generic error.
+      // Surface cipher supporting problems as a decoding failure rather than a generic error.
       throw new KeyDecodeException(e);
     }
     aes.initialize(key.cryptoKey);
     // Initialize PCFB stream using E(H(docname)) as the initial vector/seed.
     PCFBMode pcfb = PCFBMode.create(aes, key.ehDocname);
     pcfb.blockDecipher(decryptedHeaders, 0, decryptedHeaders.length);
-    // First 32 bytes of decrypted headers form the per-block data key.
+    // The first 32 bytes of decrypted headers form the per-block data key.
     byte[] dataDecryptKey = Arrays.copyOf(decryptedHeaders, DATA_DECRYPT_KEY_LENGTH);
     aes.initialize(dataDecryptKey);
     byte[] dataOutput = block.data.clone();
     // Use the derived data key as the PCFB IV for the data section; it is unique per block.
     pcfb.reset(dataDecryptKey);
     pcfb.blockDecipher(dataOutput, 0, dataOutput.length);
-    // Next two header bytes encode the data length; high bit indicates "metadata".
+    // The next two header bytes encode the data length; the high bit indicates "metadata".
     int dataLength =
         ((decryptedHeaders[DATA_DECRYPT_KEY_LENGTH] & 0xff) << 8)
             + (decryptedHeaders[DATA_DECRYPT_KEY_LENGTH + 1] & 0xff);
-    // Clear metadata flag and remember it for callers once decoding completes.
+    // Clear the metadata flag and remember it for callers once decoding completes.
     if ((dataLength & 32768) != 0) {
       dataLength = dataLength & ~32768;
       isMetadata = true;
@@ -159,20 +159,21 @@ public class ClientSSKBlock implements ClientKeyBlock {
     }
 
     return Key.decompress(
-        compressionAlgorithm >= 0,
-        dataOutput,
-        dataLength,
-        factory,
-        Math.min(MAX_DECOMPRESSED_DATA_LENGTH, maxLength),
-        compressionAlgorithm,
-        true);
+        new DecompressionParams(
+            compressionAlgorithm >= 0,
+            dataOutput,
+            dataLength,
+            factory,
+            Math.min(MAX_DECOMPRESSED_DATA_LENGTH, maxLength),
+            compressionAlgorithm,
+            true));
   }
 
   /**
    * Returns whether the decoded payload is marked as metadata.
    *
    * @return {@code true} if the metadata flag was set in the headers
-   * @throws IllegalStateException if invoked before a successful decode
+   * @throws IllegalStateException if invoked before a successful decoding
    */
   @Override
   public boolean isMetadata() {
@@ -193,7 +194,7 @@ public class ClientSSKBlock implements ClientKeyBlock {
   /**
    * Returns the compression code extracted from the headers during decoding.
    *
-   * @return a non-negative codec identifier when present; a negative value indicates no codec or
+   * @return a non-negative codec identifier when present; a negative value indicates no codec, or
    *     that decoding has not yet been attempted
    */
   public short getCompressionCodec() {
@@ -229,7 +230,7 @@ public class ClientSSKBlock implements ClientKeyBlock {
       // Extract the decoded content as a byte array for in-memory use.
       return BucketTools.toByteArray(a);
     } catch (IOException e) {
-      // Propagate I/O problems as a decode failure consistent with the method contract.
+      // Propagate I/O problems as a decoding failure consistent with the method contract.
       throw new KeyDecodeException(e);
     }
   }
