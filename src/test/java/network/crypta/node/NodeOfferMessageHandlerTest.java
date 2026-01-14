@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
@@ -209,16 +210,18 @@ class NodeOfferMessageHandlerTest {
     when(tracker.lockUID(eq(uid), eq(false), eq(false), eq(true), eq(false), eq(false), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(
-            eq(true),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(true),
-            eq(peer),
-            eq(false),
-            eq(false),
-            eq(false),
-            any(OfferReplyTag.class)))
+            argThat(
+                context ->
+                    context.canAcceptAnyway()
+                        && !context.mode().isInsert()
+                        && !context.mode().isSSK()
+                        && !context.mode().isLocal()
+                        && context.mode().isOfferReply()
+                        && context.source() == peer
+                        && !context.hasInStore()
+                        && !context.preferInsert()
+                        && !context.mode().realTimeFlag()
+                        && context.tag() instanceof OfferReplyTag)))
         .thenReturn(new RejectReason("overload", true));
 
     boolean handled = handler.handle(msg, peer);
@@ -248,16 +251,18 @@ class NodeOfferMessageHandlerTest {
     when(tracker.lockUID(eq(uid), eq(true), eq(false), eq(true), eq(false), eq(true), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(
-            eq(true),
-            eq(false),
-            eq(true),
-            eq(false),
-            eq(true),
-            eq(peer),
-            eq(false),
-            eq(false),
-            eq(true),
-            any(OfferReplyTag.class)))
+            argThat(
+                context ->
+                    context.canAcceptAnyway()
+                        && !context.mode().isInsert()
+                        && context.mode().isSSK()
+                        && !context.mode().isLocal()
+                        && context.mode().isOfferReply()
+                        && context.source() == peer
+                        && !context.hasInStore()
+                        && !context.preferInsert()
+                        && context.mode().realTimeFlag()
+                        && context.tag() instanceof OfferReplyTag)))
         .thenReturn(null);
 
     boolean handled = handler.handle(msg, peer);
@@ -292,16 +297,18 @@ class NodeOfferMessageHandlerTest {
     when(tracker.lockUID(eq(uid), eq(false), eq(false), eq(true), eq(false), eq(false), any()))
         .thenReturn(true);
     when(replacementStats.shouldRejectRequest(
-            eq(true),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(true),
-            eq(peer),
-            eq(false),
-            eq(false),
-            eq(false),
-            any(OfferReplyTag.class)))
+            argThat(
+                context ->
+                    context.canAcceptAnyway()
+                        && !context.mode().isInsert()
+                        && !context.mode().isSSK()
+                        && !context.mode().isLocal()
+                        && context.mode().isOfferReply()
+                        && context.source() == peer
+                        && !context.hasInStore()
+                        && !context.preferInsert()
+                        && !context.mode().realTimeFlag()
+                        && context.tag() instanceof OfferReplyTag)))
         .thenReturn(new RejectReason("rate", false));
 
     boolean handled = handler.handle(msg, peer);
@@ -309,28 +316,19 @@ class NodeOfferMessageHandlerTest {
     assertTrue(handled);
     verify(replacementStats)
         .shouldRejectRequest(
-            eq(true),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(true),
-            eq(peer),
-            eq(false),
-            eq(false),
-            eq(false),
-            any(OfferReplyTag.class));
-    verify(nodeStats, never())
-        .shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any());
+            argThat(
+                context ->
+                    context.canAcceptAnyway()
+                        && !context.mode().isInsert()
+                        && !context.mode().isSSK()
+                        && !context.mode().isLocal()
+                        && context.mode().isOfferReply()
+                        && context.source() == peer
+                        && !context.hasInStore()
+                        && !context.preferInsert()
+                        && !context.mode().realTimeFlag()
+                        && context.tag() instanceof OfferReplyTag));
+    verify(nodeStats, never()).shouldRejectRequest(any(RequestAdmissionContext.class));
   }
 
   @Test

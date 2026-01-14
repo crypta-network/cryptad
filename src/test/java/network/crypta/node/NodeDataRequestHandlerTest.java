@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -194,16 +194,18 @@ class NodeDataRequestHandlerTest {
     when(storage.fetch(eq(key), eq(false), eq(false), eq(false), eq(false), any()))
         .thenReturn(null);
     when(stats.shouldRejectRequest(
-            eq(true),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(source),
-            eq(false),
-            eq(false),
-            eq(false),
-            any(RequestTag.class)))
+            argThat(
+                context ->
+                    context.canAcceptAnyway()
+                        && !context.mode().isInsert()
+                        && !context.mode().isSSK()
+                        && !context.mode().isLocal()
+                        && !context.mode().isOfferReply()
+                        && context.source() == source
+                        && !context.hasInStore()
+                        && !context.preferInsert()
+                        && !context.mode().realTimeFlag()
+                        && context.tag() instanceof RequestTag)))
         .thenReturn(new RejectReason("overload", true));
 
     invokeInnerHandle(handler, message, source, false);
@@ -221,18 +223,7 @@ class NodeDataRequestHandlerTest {
   void innerHandleDataRequest_whenAccepted_expectExecutesRequestHandlerAndReportsLocation()
       throws Exception {
     NodeStats updatedStats = statsWithCounters(chkCounter, sskCounter);
-    when(updatedStats.shouldRejectRequest(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any(PeerNode.class),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            any(UIDTag.class)))
-        .thenReturn(null);
+    when(updatedStats.shouldRejectRequest(any(RequestAdmissionContext.class))).thenReturn(null);
 
     when(network.executor()).thenReturn(executor);
     when(network.darknetPortNumber()).thenReturn(1234);

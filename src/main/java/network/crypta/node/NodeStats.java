@@ -33,8 +33,8 @@ import org.slf4j.LoggerFactory;
  * block transfers, and datastore interactions. Hot-path components report events (bytes sent,
  * request outcomes, backoff delays), while diagnostics and admission control query aggregated
  * snapshots. Typical usage is "report as events occur" and "poll periodically," supporting UI
- * panels, peer exchanges, and policies such as {@link #shouldRejectRequest(boolean, boolean,
- * boolean, boolean, boolean, PeerNode, boolean, boolean, boolean, UIDTag)}.
+ * panels, peer exchanges, and policies such as {@link
+ * #shouldRejectRequest(RequestAdmissionContext)}.
  *
  * <p>Invariants and trade-offs: counters are monotonic within a process, averages are time-decayed
  * views of recent behavior, and several thresholds are intentionally conservative to avoid
@@ -212,17 +212,17 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Peer manager associated with this node for connection and peer-count statistics.
    *
-   * <p>This reference is final and non-null, while the manager itself maintains mutable peer state
-   * that is updated concurrently by networking components.
+   * <p>This reference is final and non-null, while the manager itself maintains a mutable peer
+   * state updated concurrently by networking components.
    */
   public final PeerManager peers;
 
   // static initializer intentionally removed (no-op)
 
-  /** first time bwlimitDelay was over PeerManagerUserAlert threshold */
+  /** the first time bwlimitDelay was over PeerManagerUserAlert threshold */
   private long firstBwlimitDelayTimeThresholdBreak;
 
-  /** first time nodeAveragePing was over PeerManagerUserAlert threshold */
+  /** the first time nodeAveragePing was over PeerManagerUserAlert threshold */
   private long firstNodeAveragePingTimeThresholdBreak;
 
   /** bwlimitDelay PeerManagerUserAlert should happen if true */
@@ -285,14 +285,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Decaying probability that an incoming bulk CHK insert is rejected immediately.
    *
-   * <p>Reflects insert load in bulk mode, distinct from fetch rejection rates.
+   * <p>Reflects the insert load in bulk mode, distinct from fetch rejection rates.
    */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingCHKInsertBulk;
 
   /**
    * Decaying probability that an incoming bulk SSK insert is rejected immediately.
    *
-   * <p>Reflects insert load in bulk mode, distinct from fetch rejection rates.
+   * <p>Reflects the insert load in bulk mode, distinct from fetch rejection rates.
    */
   public final BootstrappingDecayingRunningAverage pInstantRejectIncomingSSKInsertBulk;
 
@@ -406,7 +406,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /** Miss distance observed in realtime mode. */
   public final RunningAverage routingMissDistanceRT;
 
-  /** Fraction of time requests were backed off (0.0–1.0). */
+  /** A fraction of time requests were backed off (0.0–1.0). */
   public final RunningAverage backedOffPercent;
 
   /** Average keyspace location for CHK hits in the main cache. */
@@ -658,7 +658,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
     NodeStatsConfig.Result configResult = statsConfig.configure(this, node, sortOrder);
 
-    // This is a *network* level setting, because it affects the rate at which we initiate local
+    // This is a *network* level setting because it affects the rate at which we initiate local
     // requests, which could be seen by distant nodes.
     registerSecurityListener();
 
@@ -993,12 +993,12 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   private static final long MAX_PEER_QUEUE_BYTES = 4L * 1024 * 1024;
 
   /**
-   * Don't accept requests if it'll take more than 1 minutes to send the current message queue. On
+   * Don't accept requests if it'll take more than 1 minute to send the current message queue. On
    * the assumption that most of the message queue is block transfer data. Note that this only
    * applies to data on the queue before calling shouldRejectRequest(): we do *not* attempt to
    * include any estimate of how much the request will add to it. This is important because if we
-   * did, the AIMD may not have reached sufficient speed to transfer it in 60 seconds yet, because
-   * it hasn't had enough data in transit to need to increase its speed.
+   * did, the AIMD may not have reached enough speed to transfer it in 60 seconds yet, because it
+   * hasn't had enough data in transit to need to increase its speed.
    *
    * <p>Interaction with output bandwidth liability: This must be slightly larger than the output
    * bandwidth liability time limit (combined for both types).
@@ -1008,9 +1008,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    * this will be shown on the queue time. But the queue time is estimated based on using at most
    * half the limit, so the time will be slightly over the overall limit.
    */
-
-  // Consider increasing to 4 minutes when bulk/realtime flag merged.
-
+  // Consider increasing to 4 minutes when the bulk/realtime flag merged.
   private static final long MAX_PEER_QUEUE_TIME = MINUTES.toMillis(2);
 
   private long lastAcceptedRequest = -1;
@@ -1022,8 +1020,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Relatively high minimum overhead. A low overhead estimate becomes a self-fulfilling prophecy,
    * and it takes a long time to shake it off as the averages gradually increase. If we accept no
-   * requests then everything is overhead! Whereas with a high minimum overhead the worst case is
-   * that more stuff succeeds than expected, and we have a few timeouts (because output bandwidth
+   * requests, then everything is overhead! Whereas with a high minimum overhead, the worst case is
+   * that more stuff succeeds than expected. We have a few timeouts (because output bandwidth
    * liability was assuming a lower overhead than actually happens) - but this should be very rare.
    */
   static final double MIN_NON_OVERHEAD = 0.5;
@@ -1043,7 +1041,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
   /**
    * @param soft If true, rejected because of preemptive bandwidth limiting, i.e. "soft", at least
-   *     somewhat predictable, can be retried. If false, hard rejection, should backoff and not
+   *     somewhat predictable, can be retried. If false, hard rejection should backoff and not
    *     retry.
    */
   record RejectReason(String name, boolean soft) {
@@ -1054,68 +1052,39 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     }
   }
 
+  private record TransferLimits(
+      int maxOutputTransfers,
+      int maxTransfersOutUpperLimit,
+      int maxTransfersOutLowerLimit,
+      int maxTransfersOutPeerLimit) {}
+
   private final Object serializeShouldRejectRequest = new Object();
 
   /**
    * Should a request be accepted by this node, based on its local capacity? This includes thread
    * limits and ping times, but more importantly, mechanisms based on predicting worst case
-   * bandwidth usage for all running requests, and fairly sharing that capacity between peers.
+   * bandwidth usage for all running requests and fairly sharing that capacity between peers.
    * Currently, there is no mechanism for fairness between request types, this should be implemented
-   * on the sender side, and is with new load management. New load management has caused various
-   * changes here but that's probably sorted out now, i.e. changes involved in new load management
+   * on the sender side and is with new load management. New load management has caused various
+   * changes here, but that's probably sorted out now, i.e., changes involved in new load management
    * will probably be mainly in PeerNode and RequestSender now.
    *
-   * @param canAcceptAnyway Periodically we ignore the ping time and accept a request anyway. This
-   *     is because the ping time partly depends on whether we have accepted any requests... This
-   *     behavior may warrant reconsideration.
-   * @param isInsert Whether this is an insert.
-   * @param isSSK Whether this is a request/insert for an SSK.
-   * @param isLocal Is this request originated locally? This can affect our estimate of likely
-   *     bandwidth usage. Whether it should be used is unclear, since an attacker can observe
-   *     bandwidth usage. It is configurable.
-   * @param isOfferReply Is this request actually a GetOfferedKey? This is a non-relayed fetch of a
-   *     block which we recently offered via ULPRs.
-   * @param source The node that sent us this request. This should be null on local requests and
-   *     non-null on remote requests, but in some parts of the code that doesn't always hold. It
-   *     *should* hold here, but that needs more checking before we can remove isLocal.
-   * @param hasInStore If this is a request, do we have the block in the datastore already? This
-   *     affects whether we accept it, which gives a significant performance gain. Arguably there is
-   *     a security issue, although timing attacks are pretty easy anyway, and making requests go
-   *     further may give attackers more samples...
-   * @param preferInsert If true, prefer inserts to requests (slightly). There is a flag for this on
-   *     inserts. The idea is that when inserts are misrouted this causes long-term problems because
-   *     the data is stored in the wrong place. New load management should avoid the need for this.
-   * @param realTimeFlag Is this a realtime request (low latency, low capacity) or a bulk request
-   *     (high latency, high capacity)? They are accounted for separately.
+   * @param context request admission inputs
    * @return The reason for rejecting it, or null to accept it.
    */
-  RejectReason shouldRejectRequest(
-      boolean canAcceptAnyway,
-      boolean isInsert,
-      boolean isSSK,
-      boolean isLocal,
-      boolean isOfferReply,
-      PeerNode source,
-      boolean hasInStore,
-      boolean preferInsert,
-      boolean realTimeFlag,
-      UIDTag tag) {
+  RejectReason shouldRejectRequest(RequestAdmissionContext context) {
     // Serialise shouldRejectRequest.
     // It's not always called on the same thread, and things could be problematic if they interfere
     // with each other.
     synchronized (serializeShouldRejectRequest) {
+      boolean isSSK = context.isSSK();
+      boolean realTimeFlag = context.realTimeFlag();
+      PeerNode source = context.source();
+      boolean hasInStore = context.hasInStore();
+
       if (LOG.isDebugEnabled()) dumpByteCostAverages();
 
-      RejectReason early =
-          checkThreadsAndPing(
-              canAcceptAnyway,
-              isInsert,
-              isSSK,
-              isLocal,
-              isOfferReply,
-              realTimeFlag,
-              source,
-              preferInsert);
+      RejectReason early = checkThreadsAndPing(context);
       if (early != null) return early;
 
       long now = System.currentTimeMillis();
@@ -1124,7 +1093,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
       // Pre-emptive rejection based on avoiding timeouts, with fair sharing
       // between peers. We calculate the node's capacity for requests and then
-      // decide whether we will exceed it, or whether a particular peer will
+      // decide whether we will exceed it or whether a particular peer will
       // exceed its slice of it. Peers are guaranteed a proportion of the
       // total ("peer limit"), but can opportunistically use a bit more,
       // provided the total is less than the "lower limit". The overall usage
@@ -1189,10 +1158,16 @@ public class NodeStats implements Persistable, BlockTimeCallback {
                       peerCount,
                       (peerRequestsSnapshot.expectedTransfersOutCHKSR
                           + peerRequestsSnapshot.expectedTransfersOutSSKSR)));
-      /* Per-peer limit based on current state of the connection. */
+      /* Per-peer limit based on the current state of the connection. */
       int maxOutputTransfers =
           this.calculateMaxTransfersOut(
               source, realTimeFlag, nonOverheadFraction, maxTransfersOutUpperLimit);
+      TransferLimits transferLimits =
+          new TransferLimits(
+              maxOutputTransfers,
+              maxTransfersOutUpperLimit,
+              maxTransfersOutLowerLimit,
+              maxTransfersOutPeerLimit);
 
       // Check bandwidth-based limits, with fair sharing.
 
@@ -1202,12 +1177,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
               requestsSnapshot,
               peerRequestsSnapshot,
               false,
-              source,
-              isLocal,
-              isSSK,
-              isInsert,
-              isOfferReply,
-              realTimeFlag);
+              context);
       if (ret != null) {
         return new RejectReason(ret, true);
       }
@@ -1218,12 +1188,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
               requestsSnapshot,
               peerRequestsSnapshot,
               true,
-              source,
-              isLocal,
-              isSSK,
-              isInsert,
-              isOfferReply,
-              realTimeFlag);
+              context);
       if (ret != null) {
         return new RejectReason(ret, true);
       }
@@ -1231,26 +1196,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // Check transfer-based limits, with fair sharing.
 
       ret =
-          checkMaxOutputTransfers(
-              maxOutputTransfers,
-              maxTransfersOutUpperLimit,
-              maxTransfersOutLowerLimit,
-              maxTransfersOutPeerLimit,
-              requestsSnapshot,
-              peerRequestsSnapshot,
-              isLocal,
-              realTimeFlag,
-              isInsert,
-              isSSK,
-              isOfferReply);
+          checkMaxOutputTransfers(transferLimits, requestsSnapshot, peerRequestsSnapshot, context);
       if (ret != null) {
         return new RejectReason(ret, true);
       }
 
       // Message queues - when the link level has far more queued than it can transmit in a
       // reasonable time, don't accept requests.
-      RejectReason qrr =
-          checkPeerQueues(source, isLocal, isInsert, isSSK, isOfferReply, realTimeFlag);
+      RejectReason qrr = checkPeerQueues(source, context);
       if (qrr != null) return qrr;
 
       synchronized (this) {
@@ -1258,28 +1211,23 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         lastAcceptedRequest = now;
       }
 
-      accepted(isLocal, isInsert, isSSK, isOfferReply, realTimeFlag);
+      accepted(context);
 
-      if (tag != null) tag.setAccepted();
+      context.markAccepted();
 
       // Accept
       return null;
     }
   }
 
-  private RejectReason checkThreadsAndPing(
-      boolean canAcceptAnyway,
-      boolean isInsert,
-      boolean isSSK,
-      boolean isLocal,
-      boolean isOfferReply,
-      boolean realTimeFlag,
-      PeerNode source,
-      boolean preferInsert) {
+  private RejectReason checkThreadsAndPing(RequestAdmissionContext context) {
+    PeerNode source = context.source();
+    boolean canAcceptAnyway = context.canAcceptAnyway();
+    boolean preferInsert = context.preferInsert();
     if (source != null && source.isDisconnecting()) return new RejectReason("disconnecting", false);
     int threadCount = getActiveThreadCount();
     if (threadLimit < threadCount) {
-      rejected(">threadLimit", isLocal, isInsert, isSSK, isOfferReply, realTimeFlag);
+      rejected(">threadLimit", context);
       return new RejectReason(">threadLimit (" + threadCount + '/' + threadLimit + ')', false);
     }
     long now = System.currentTimeMillis();
@@ -1290,13 +1238,13 @@ public class NodeStats implements Persistable, BlockTimeCallback {
           if (LOG.isDebugEnabled())
             LOG.debug("Accept request to refresh bwlimitDelayTime (every 10 s)");
         } else {
-          rejected(">MAX_PING_TIME", isLocal, isInsert, isSSK, isOfferReply, realTimeFlag);
+          rejected(">MAX_PING_TIME", context);
           return new RejectReason(">MAX_PING_TIME (" + formatPingTime(pingTime) + ')', false);
         }
       } else if (pingTime > subMaxPingTime) {
         double x = (pingTime - subMaxPingTime) / (maxPingTime - subMaxPingTime);
         if (randomLessThan(x, preferInsert)) {
-          rejected(">SUB_MAX_PING_TIME", isLocal, isInsert, isSSK, isOfferReply, realTimeFlag);
+          rejected(">SUB_MAX_PING_TIME", context);
           return new RejectReason(">SUB_MAX_PING_TIME (" + formatPingTime(pingTime) + ')', false);
         }
       }
@@ -1318,20 +1266,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return limit;
   }
 
-  private RejectReason checkPeerQueues(
-      PeerNode source,
-      boolean isLocal,
-      boolean isInsert,
-      boolean isSSK,
-      boolean isOfferReply,
-      boolean realTimeFlag) {
+  private RejectReason checkPeerQueues(PeerNode source, RequestAdmissionContext context) {
     if (source == null) return null;
     if (source.getMessageQueueLengthBytes() > MAX_PEER_QUEUE_BYTES) {
-      rejected(">MAX_PEER_QUEUE_BYTES", isLocal, isInsert, isSSK, isOfferReply, realTimeFlag);
+      rejected(">MAX_PEER_QUEUE_BYTES", context);
       return new RejectReason("Too many message bytes queued for peer", false);
     }
     if (source.getProbableSendQueueTime() > MAX_PEER_QUEUE_TIME) {
-      rejected(">MAX_PEER_QUEUE_TIME", isLocal, isInsert, isSSK, isOfferReply, realTimeFlag);
+      rejected(">MAX_PEER_QUEUE_TIME", context);
       return new RejectReason("Peer's queue will take too long to transfer", false);
     }
     return null;
@@ -1424,7 +1366,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       }
     }
     if (nonOverheadFraction < MIN_NON_OVERHEAD) {
-      // If there's been an auto-update, we may have used a vast amount of bandwidth for it.
+      // If there been an auto-update, we may have used a vast amount of bandwidth for it.
       // Also, if things have broken, our overhead might be above our bandwidth limit,
       // especially on a slow node.
 
@@ -1466,12 +1408,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    * @param requestsSnapshot The requests running.
    * @param peerRequestsSnapshot The requests running to this one peer.
    * @param input True if this is input bandwidth, false if it is output bandwidth.
-   * @param source The source of the request.
-   * @param isLocal True if the request is local.
-   * @param isSSK True if it is an SSK request.
-   * @param isInsert True if it is an insert.
-   * @param isOfferReply True if it is a GetOfferedKey.
-   * @param realTimeFlag True if this is a real-time request, false if it is a bulk request.
+   * @param context Admission context containing source and mode flags.
    * @return A string explaining why, or null if we can accept the request.
    */
   private String checkBandwidthLiability(
@@ -1479,12 +1416,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       RunningRequestsSnapshot requestsSnapshot,
       RunningRequestsSnapshot peerRequestsSnapshot,
       boolean input,
-      PeerNode source,
-      boolean isLocal,
-      boolean isSSK,
-      boolean isInsert,
-      boolean isOfferReply,
-      boolean realTimeFlag) {
+      RequestAdmissionContext context) {
+    PeerNode source = context.source();
     String name = input ? "Input" : "Output";
     int peerCount =
         node.network().peers().countConnectedPeers()
@@ -1507,9 +1440,9 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // Ignore the upper limit.
     // Because we reassignToSelf() in various tricky timeout conditions, it is possible to exceed
     // it.
-    // Even if we do we still need to allow the guaranteed allocation for each peer.
+    // Even if we do, we still need to allow the guaranteed allocation for each peer.
     // Except when we do that, we have to offer it via ULPRs afterward ...
-    // Yes but the GetOfferedKey's are subject to load management, so no problem.
+    //  Yes, but the GetOfferedKey's are subject to load management, so no problem.
     if (bandwidthLiabilityOutput > bandwidthAvailableOutputUpperLimit) {
       LOG.warn(
           "Usage over upper limit {} (usage={}); allow due to reassignment edge cases",
@@ -1519,7 +1452,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
     if (bandwidthLiabilityOutput > bandwidthAvailableOutputLowerLimit) {
 
-      // Bandwidth is scarce (we are over the lower limit i.e. more than half our capacity is used).
+      // Bandwidth is scarce (we are over the lower limit i.e., more than half our capacity is
+      // used).
       // Share available bandwidth fairly between peers.
 
       if (LOG.isDebugEnabled())
@@ -1535,13 +1469,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
       double peerUsedBytes = getPeerBandwidthLiability(peerRequestsSnapshot, input);
       if (peerUsedBytes > thisAllocation) {
-        rejected(
-            name + " bandwidth liability: fairness between peers",
-            isLocal,
-            isInsert,
-            isSSK,
-            isOfferReply,
-            realTimeFlag);
+        rejected(name + " bandwidth liability: fairness between peers", context);
         return name
             + " bandwidth liability: fairness between peers (peer "
             + source
@@ -1568,17 +1496,16 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   private String checkMaxOutputTransfers(
-      int maxOutputTransfers,
-      int maxTransfersOutUpperLimit,
-      int maxTransfersOutLowerLimit,
-      int maxTransfersOutPeerLimit,
+      TransferLimits transferLimits,
       RunningRequestsSnapshot requestsSnapshot,
       RunningRequestsSnapshot peerRequestsSnapshot,
-      boolean isLocal,
-      boolean realTime,
-      boolean isInsert,
-      boolean isSSK,
-      boolean isOfferReply) {
+      RequestAdmissionContext context) {
+    int maxOutputTransfers = transferLimits.maxOutputTransfers();
+    int maxTransfersOutUpperLimit = transferLimits.maxTransfersOutUpperLimit();
+    int maxTransfersOutLowerLimit = transferLimits.maxTransfersOutLowerLimit();
+    int maxTransfersOutPeerLimit = transferLimits.maxTransfersOutPeerLimit();
+    boolean isLocal = context.isLocal();
+    boolean realTime = context.realTimeFlag();
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Max transfers: congestion control limit {} upper {} lower {} peer {} {}",
@@ -1591,8 +1518,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     int totalOutTransfers = requestsSnapshot.totalOutTransfers();
     if (peerOutTransfers > maxOutputTransfers && !isLocal) {
       // Can't handle that many transfers with current bandwidth.
-      rejected(
-          "TooManyTransfers: Congestion control", false, isInsert, isSSK, isOfferReply, realTime);
+      rejected("TooManyTransfers: Congestion control", context);
       return "TooManyTransfers: Congestion control";
     }
     if (totalOutTransfers <= maxTransfersOutLowerLimit) {
@@ -1605,13 +1531,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       // It is within its guaranteed space, so we accept it.
       return null;
     }
-    rejected(
-        "TooManyTransfers: Fair sharing between peers",
-        isLocal,
-        isInsert,
-        isSSK,
-        isOfferReply,
-        realTime);
+    rejected("TooManyTransfers: Fair sharing between peers", context);
     return "TooManyTransfers: Fair sharing between peers";
   }
 
@@ -1679,13 +1599,12 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return node.bootstrap().random().nextDouble() < x;
   }
 
-  private void rejected(
-      String reason,
-      boolean isLocal,
-      boolean isInsert,
-      boolean isSSK,
-      boolean isOfferReply,
-      boolean isRealTime) {
+  private void rejected(String reason, RequestAdmissionContext context) {
+    boolean isLocal = context.isLocal();
+    boolean isSSK = context.isSSK();
+    boolean isInsert = context.isInsert();
+    boolean isOfferReply = context.isOfferReply();
+    boolean isRealTime = context.realTimeFlag();
     reason += " " + (isRealTime ? " (rt)" : " (bulk)");
     if (LOG.isDebugEnabled())
       LOG.debug("Rejecting (local={}) isSSK={} isInsert={} : {}", isLocal, isSSK, isInsert, reason);
@@ -1693,7 +1612,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     else incrementRejectReason(localPreemptiveRejectReasons, reason);
     if (!isLocal && !isOfferReply) {
       this.pInstantRejectIncomingOverall.report(1.0);
-      getRejectedTracker(isRealTime, isSSK, isInsert).report(1.0);
+      getRejectedTracker(context).report(1.0);
     }
   }
 
@@ -1701,20 +1620,17 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     target.merge(reason, 1, Integer::sum);
   }
 
-  private void accepted(
-      boolean isLocal,
-      boolean isInsert,
-      boolean isSSK,
-      boolean isOfferReply,
-      boolean realTimeFlag) {
-    if (!isLocal && !isOfferReply) {
+  private void accepted(RequestAdmissionContext context) {
+    if (!context.isLocal() && !context.isOfferReply()) {
       pInstantRejectIncomingOverall.report(0.0);
-      getRejectedTracker(realTimeFlag, isSSK, isInsert).report(0.0);
+      getRejectedTracker(context).report(0.0);
     }
   }
 
-  private BootstrappingDecayingRunningAverage getRejectedTracker(
-      boolean isRealTime, boolean isSSK, boolean isInsert) {
+  private BootstrappingDecayingRunningAverage getRejectedTracker(RequestAdmissionContext context) {
+    boolean isRealTime = context.realTimeFlag();
+    boolean isSSK = context.isSSK();
+    boolean isInsert = context.isInsert();
     if (isRealTime) {
       if (isSSK) {
         return isInsert ? pInstantRejectIncomingSSKInsertRT : pInstantRejectIncomingSSKRequestRT;
@@ -1820,7 +1736,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * Returns the decaying average throttling delay across all packet sends.
+   * Returns the decaying average throttling delay across all packet sending.
    *
    * <p>This aggregate includes both realtime and bulk observations and is used by alerting logic
    * that does not distinguish channels. Values are in milliseconds and represent the throttle delay
@@ -2188,7 +2104,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         try {
           overloadSync.wait(5000L);
         } catch (InterruptedException _) {
-          // Preserve interrupt status and return to caller.
+          // Preserve interrupt status and return to the caller.
           Thread.currentThread().interrupt();
           return;
         }
@@ -2225,7 +2141,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       int[] running = exec.runningThreads();
       for (int v : running) runningWorkers += v;
     } catch (Throwable _) {
-      // Keep floor at 0 if introspection is unavailable.
+      // Keep the floor at 0 if introspection is unavailable.
     }
 
     // Idle workers to subtract from process-wide live threads
@@ -2333,7 +2249,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    *
    * @return an array of threads followed by a trailing {@code null} element.
    */
-  @SuppressWarnings("java:S3014") // Intentional ThreadGroup use for cheap, VM‑wide enumeration
+  @SuppressWarnings(
+      "java:S3014") // Intentional ThreadGroup use for inexpensive, VM‑wide enumeration
   public Thread[] getThreads() {
     // Find the root ThreadGroup.
     ThreadGroup group = Thread.currentThread().getThreadGroup();
@@ -2379,7 +2296,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * True when average node ping has exceeded the alert threshold long enough to trigger.
+   * True, when average node ping has exceeded the alert threshold long enough to trigger.
    *
    * @return whether the average-ping alert condition is currently relevant.
    */
@@ -2443,7 +2360,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    * Records received bytes for CHK/SSK requests.
    *
    * <p>This implementation currently ignores the values because only sent overhead is tracked for
-   * requests. The method is retained for symmetry with send counters and to keep call sites
+   * requests. The method is retained for symmetry with sending counters and to keep call sites
    * uniform.
    *
    * @param ssk {@code true} for SSK, {@code false} for CHK.
@@ -2470,7 +2387,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    * Records received bytes for CHK/SSK inserts.
    *
    * <p>This implementation currently ignores the values because only sent overhead is tracked for
-   * inserts. The method is retained for symmetry with send counters and to keep call sites uniform.
+   * inserts. The method is retained for symmetry with sending counters and to keep call sites
+   * uniform.
    *
    * @param ssk {@code true} for SSK, {@code false} for CHK.
    * @param x number of bytes received (ignored).
@@ -2621,8 +2539,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes received for key swapping traffic.
    *
-   * <p>The value is cumulative since process start and is intended for diagnostics and bandwidth
-   * accounting. It does not include request payloads.
+   * <p>The value has been cumulative since process start and is intended for diagnostics and
+   * bandwidth accounting. It does not include request payloads.
    *
    * @return cumulative swap bytes received.
    */
@@ -2634,8 +2552,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for key swapping traffic.
    *
-   * <p>The value is cumulative since process start and is intended for diagnostics and bandwidth
-   * accounting. It does not include request payloads.
+   * <p>The value has been cumulative since process start and is intended for diagnostics and
+   * bandwidth accounting. It does not include request payloads.
    *
    * @return cumulative swap bytes sent.
    */
@@ -2648,8 +2566,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Adds bytes sent for authentication and connection setup.
    *
-   * <p>This counter tracks protocol overhead for link establishment and handshake traffic. It is
-   * cumulative since process start and used in overhead summaries.
+   * <p>This counter tracks protocol overhead for link establishment and handshake traffic. It's
+   * been cumulative since the process started and used in overhead summaries.
    *
    * @param x bytes sent for authentication/setup.
    */
@@ -2709,8 +2627,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Adds bytes sent for update-over-mandatory (UOM) traffic.
    *
-   * <p>This counter tracks protocol overhead for update mechanisms. It is cumulative since process
-   * start and included in overhead summaries.
+   * <p>This counter tracks protocol overhead for update mechanisms. It's been cumulative since the
+   * process started and included in overhead summaries.
    *
    * @param x bytes sent for UOM traffic.
    */
@@ -2762,8 +2680,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for opennet announcements.
    *
-   * <p>This includes overhead and payload recorded by {@link #announceByteCounter}. Values are
-   * cumulative since process start.
+   * <p>This includes overhead and payload recorded by {@link #announceByteCounter}. Values have
+   * been cumulative since the process started.
    *
    * @return total announcement bytes sent.
    */
@@ -2810,7 +2728,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for routing status updates.
    *
-   * <p>The counter is cumulative since process start and is intended for overhead reporting.
+   * <p>The counter has been cumulative since process start and is intended for overhead reporting.
    *
    * @return total routing-status bytes sent.
    */
@@ -2821,7 +2739,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   private long networkColoringSentBytesCounter;
 
   /**
-   * Records bytes received for network-coloring traffic.
+   * Records the bytes received for network-coloring traffic.
    *
    * <p>This implementation currently ignores the value because only sent bytes are tracked for this
    * counter.
@@ -2848,7 +2766,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for network-coloring traffic.
    *
-   * <p>This is a cumulative counter since process start.
+   * <p>This has been a cumulative counter since process start.
    *
    * @return total network-coloring bytes sent.
    */
@@ -3043,7 +2961,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for routed test messages.
    *
-   * <p>The value is cumulative since process start and contributes to overhead reporting.
+   * <p>The value has been cumulative since process start and contributes to overhead reporting.
    *
    * @return total routed-message bytes sent.
    */
@@ -3065,7 +2983,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for disconnect-related traffic.
    *
-   * <p>The counter is cumulative since process start and is intended for overhead diagnostics.
+   * <p>The counter has been cumulative since process start and is intended for overhead
+   * diagnostics.
    *
    * @return total disconnect bytes sent.
    */
@@ -3099,7 +3018,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for initial peer messages.
    *
-   * <p>The counter is cumulative since process start and used for overhead reporting.
+   * <p>The counter has been cumulative since process start and used for overhead reporting.
    *
    * @return total initial-message bytes sent.
    */
@@ -3133,7 +3052,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for IP-change notifications.
    *
-   * <p>The counter is cumulative since process start and contributes to overhead reporting.
+   * <p>The counter has been cumulative since process start and contributes to overhead reporting.
    *
    * @return total changed-IP bytes sent.
    */
@@ -3202,7 +3121,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns total bytes sent for allocation notice traffic.
    *
-   * <p>This counter is cumulative since process start and contributes to overhead reporting.
+   * <p>This counter has been cumulative since process start and contributes to overhead reporting.
    *
    * @return total allocation-notice bytes sent.
    */
@@ -3298,7 +3217,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * Records a successful block receive and updates success-rate averages.
+   * Records a successful block receiving and updates success-rate averages.
    *
    * <p>This method updates the realtime or bulk success average and, when {@code isLocal} is {@code
    * true}, also updates the local-only success metric. It is safe to call frequently from transfer
@@ -3321,7 +3240,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * Records a failed block receive and updates failure and success-rate averages.
+   * Records a failed block receiving and updates failure and success-rate averages.
    *
    * <p>When {@code normalFetch} is {@code true}, timeout information contributes to the timeout
    * failure metric. The per-channel success average is updated with a failure sample, and the
@@ -3364,8 +3283,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns the histogram counts for incoming request locations.
    *
-   * <p>The array length equals the configured number of bins. Counts are cumulative since process
-   * start and are safe to read without external synchronization.
+   * <p>The array length equals the configured number of bins. Counts are cumulative since the
+   * process starts and are safe to read without external synchronization.
    *
    * @return histogram bin counts for incoming requests.
    */
@@ -3388,8 +3307,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns the histogram counts for outgoing local request locations.
    *
-   * <p>The array length equals the configured number of bins. Counts are cumulative since process
-   * start and are safe to read without external synchronization.
+   * <p>The array length equals the configured number of bins. Counts are cumulative since the
+   * process starts and are safe to read without external synchronization.
    *
    * @return histogram bin counts for outgoing local requests.
    */
@@ -3412,8 +3331,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Returns the histogram counts for outgoing request locations.
    *
-   * <p>The array length equals the configured number of bins. Counts are cumulative since process
-   * start and are safe to read without external synchronization.
+   * <p>The array length equals the configured number of bins. Counts are cumulative since the
+   * process starts and are safe to read without external synchronization.
    *
    * @return histogram bin counts for outgoing requests.
    */
@@ -3532,8 +3451,8 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   /**
    * Records execution time for a database job type.
    *
-   * <p>The job type is sanitized to a stable label (class name or wrapper prefix) and the timing is
-   * recorded in a running average. These statistics are used for diagnostics and do not affect
+   * <p>The job type is sanitized to a stable label (class name or wrapper prefix), and the timing
+   * is recorded in a running average. These statistics are used for diagnostics and do not affect
    * admission decisions.
    *
    * @param jobType job type identifier or class name used for grouping.
@@ -3674,10 +3593,10 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   private int totalAnnounceForwards;
 
   /**
-   * Records the number of references forwarded during an opennet announce from the given peer.
+   * Records the number of references forwarded during an opennet announcement from the given peer.
    *
    * @param forwardedRefs number of references forwarded.
-   * @param source peer that originated the announce; used for seed-tracker updates.
+   * @param source peer that originated the announcement; used for seed-tracker updates.
    */
   public void reportAnnounceForwarded(int forwardedRefs, PeerNode source) {
     synchronized (this) {
@@ -3688,7 +3607,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
             "Announcements: {} average {}",
             totalAnnouncements,
             (totalAnnounceForwards * 1.0) / totalAnnouncements);
-      // Could add to stats page
+      // Could add to the stats page
     }
     OpennetManager om = node.network().opennet();
     if (om != null && source instanceof SeedClientPeerNode peerNode)
@@ -3696,12 +3615,12 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * Returns the estimated transfers per announce, rounded up to at least one.
+   * Returns the estimated transfers per announcement, rounded up to at least one.
    *
    * <p>The value is derived from recent announcement statistics and is used when computing
    * liability-style limits for concurrent announcements.
    *
-   * @return estimated transfers per announce, always {@code >= 1}.
+   * @return estimated transfers per announcement, always {@code >= 1}.
    */
   public synchronized int getTransfersPerAnnounce() {
     if (totalAnnouncements == 0) return 1;
@@ -3764,7 +3683,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /**
-   * Reports the throttled delay applied to a sent packet.
+   * Reports the throttled delay applied to an already sent packet.
    *
    * @param interval delay applied in milliseconds.
    * @param realtime {@code true} if on the realtime channel; {@code false} for bulk.
@@ -3891,9 +3810,9 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         @Override
         public void run() {
           // SECURITY/TRIVIAL PERFORMANCE TRADEOFF: I don't think we want to run this lazily.
-          // If we run it lazily, an attacker could trigger it, given that it's triggered rarely
+          // If we run it lazily, an attacker could trigger it, given that it's rarely triggered
           // in normal operation. Long term we probably want to get rid of this from the
-          // production network, and just surveil a few "special" nodes which volunteer to have
+          // production network and just surveil a few "special" nodes which volunteer to have
           // heavier stats inserted regularly.
           try {
             synchronized (noisyRejectStats) { // Only used for accessing the bytes.

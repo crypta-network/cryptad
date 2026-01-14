@@ -39,17 +39,17 @@ import org.slf4j.LoggerFactory;
  */
 final class NodeOfferMessageHandler {
 
-  /** Logger for offer-handling diagnostics; do not use for business logic. */
+  /** Logger for offer-handling diagnostics; do not use it for business logic. */
   private static final Logger LOG = LoggerFactory.getLogger(NodeOfferMessageHandler.class);
 
   /** Debug log template used when an offer UID is already in-flight. */
   private static final String LOG_ALREADY_RUNNING =
       "Lock contention for id {}; reject (already running)";
 
-  /** Owning node used to access routing, network, and statistics subsystems. */
+  /** The owning node used to access routing, network, and statistics subsystems. */
   private final Node node;
 
-  /** Request tracker used to de-duplicate offer reply UIDs. */
+  /** Request tracker used to deduplicate offer reply UIDs. */
   private final RequestTracker tracker;
 
   /** Statistics snapshot used for admission control decisions. */
@@ -120,7 +120,7 @@ final class NodeOfferMessageHandler {
    * Records a received offer-key announcement with the failure table.
    *
    * <p>This method extracts the key and authenticator from the message and notifies the failure
-   * table so it can track which peer offered the key. It does not perform validation, because
+   * table so it can track which peer offered the key. It does not perform validation because
    * offer-key announcements are passive hints rather than requests.
    *
    * @param m message carrying the offered key and authenticator; must be non-null
@@ -166,7 +166,7 @@ final class NodeOfferMessageHandler {
    *
    * <p>Authenticators are verified using the shared HMAC key from the failure table. When the
    * verification fails, this method logs the event and sends an {@code FNPGetOfferedKeyInvalid}
-   * response to the peer, unless the peer disconnects before the send can be queued.
+   * response to the peer, unless the peer disconnects before the sending can be queued.
    *
    * @param source peer that issued the request; must be non-null
    * @param key key referenced by the request; must be non-null
@@ -231,7 +231,7 @@ final class NodeOfferMessageHandler {
    * <p>This method performs admission control using {@link NodeStats}. A rejection results in an
    * overload response (optionally marked soft) and immediate tag unlock. If the request is
    * accepted, it delegates to {@link FailureTable#sendOfferedKey(Key, boolean, boolean, long,
-   * PeerNode, OfferReplyTag, boolean)}. Any runtime errors trigger a tag unlock before the
+   * PeerNode, OfferReplyTag, boolean)}. Any runtime errors trigger a tag unlocked before the
    * exception is rethrown.
    *
    * @param m request message containing flags and parameters; must be non-null
@@ -256,7 +256,8 @@ final class NodeOfferMessageHandler {
       needPubKey = m.getBoolean(DMT.NEED_PUB_KEY);
       RejectReason reject =
           nodeStats.shouldRejectRequest(
-              true, false, isSSK, false, true, source, false, false, realTimeFlag, tag);
+              RequestAdmissionContext.of(
+                  true, false, isSSK, false, true, source, false, false, realTimeFlag, tag));
       if (reject != null) {
         LOG.info("Reject FNPGetOfferedKey (source={}, key={}, reason={})", source, key, reject);
         Message rejected = DMT.createFNPRejectedOverload(uid, true);
@@ -282,9 +283,9 @@ final class NodeOfferMessageHandler {
   /**
    * Sends a message asynchronously and ignores disconnect failures.
    *
-   * <p>This helper centralizes the common pattern of attempting an async send while treating {@link
-   * NotConnectedException} as a non-fatal condition. It logs a concise message at INFO when the
-   * send fails. Callers should not rely on the send to have succeeded.
+   * <p>This helper centralizes the common pattern of attempting an async sending while treating
+   * {@link NotConnectedException} as a non-fatal condition. It logs a concise message at INFO when
+   * the sending fails. Callers should not rely on the sending to have succeeded.
    *
    * @param peer destination peer; must be non-null
    * @param msg message to send; must be non-null and fully populated

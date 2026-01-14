@@ -221,16 +221,17 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
 
   private RejectReason shouldReject(ChosenBlock req) {
     return stats.shouldRejectRequest(
-        true,
-        isInsert,
-        isSSK,
-        true,
-        false,
-        null,
-        false,
-        Node.PREFER_INSERT_DEFAULT && isInsert,
-        req.realTimeFlag,
-        null);
+        RequestAdmissionContext.of(
+            true,
+            isInsert,
+            isSSK,
+            true,
+            false,
+            null,
+            false,
+            Node.PREFER_INSERT_DEFAULT && isInsert,
+            req.realTimeFlag,
+            null));
   }
 
   private void logIfNotCancelled(ChosenBlock req, boolean started) {
