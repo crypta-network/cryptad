@@ -144,7 +144,10 @@ class NodeClientCoreTransfersTest {
             anyLong(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any()))
         .thenReturn(false);
 
-    transfers.asyncGet(key, false, completionListener, true, true, false, false, false);
+    transfers.asyncGet(
+        key,
+        completionListener,
+        NodeRoutingSubsystem.RequestSenderOptions.of(false, false, false, true, true, false));
 
     ArgumentCaptor<LowLevelGetException> captor =
         ArgumentCaptor.forClass(LowLevelGetException.class);
@@ -160,7 +163,10 @@ class NodeClientCoreTransfersTest {
     when(node.routing().makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
         .thenReturn(mock(KeyBlock.class));
 
-    transfers.asyncGet(key, false, completionListener, true, true, false, false, false);
+    transfers.asyncGet(
+        key,
+        completionListener,
+        NodeRoutingSubsystem.RequestSenderOptions.of(false, false, false, true, true, false));
 
     verify(completionListener).onSucceeded();
     verify(completionListener, never()).onFailed(any());
@@ -185,7 +191,10 @@ class NodeClientCoreTransfersTest {
         .when(sender)
         .addListener(any());
 
-    transfers.asyncGet(key, false, completionListener, true, true, true, false, false);
+    transfers.asyncGet(
+        key,
+        completionListener,
+        NodeRoutingSubsystem.RequestSenderOptions.of(false, false, false, true, true, true));
 
     RequestSenderListener senderListener = listenerRef.get();
     assertNotNull(senderListener);

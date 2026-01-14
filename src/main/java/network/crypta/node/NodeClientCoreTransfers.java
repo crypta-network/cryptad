@@ -64,6 +64,14 @@ public final class NodeClientCoreTransfers {
     this.requestStarters = core.getRequestStarters();
   }
 
+  private record AsyncGetContext(
+      Key key,
+      long uid,
+      RequestCompletionListener listener,
+      RequestTag tag,
+      boolean isSSK,
+      long startTime) {}
+
   /**
    * Schedules a non-blocking fetch for the supplied key and arranges completion callbacks.
    *
@@ -75,28 +83,21 @@ public final class NodeClientCoreTransfers {
    * does not wait for completion. Each invocation is independent, even for repeated keys.
    *
    * @param key key to fetch; typically a {@link Key} or {@link NodeSSK}.
-   * @param offersOnly true to fetch only from offered-key sources.
    * @param listener callback notified for success, failure, or local-store hits.
-   * @param canReadClientCache whether the request may read from the client cache.
-   * @param canWriteClientCache whether the request may write into the client cache.
-   * @param realTimeFlag true for latency-optimized routing; false for bulk throughput.
-   * @param localOnly true to consult only local storage and skip routing.
-   * @param ignoreStore true to bypass the datastore and always create a request.
+   * @param options request flags controlling store access, cache usage, offered-key handling, and
+   *     real-time scheduling.
    */
   public void asyncGet(
       final Key key,
-      boolean offersOnly,
       final RequestCompletionListener listener,
-      boolean canReadClientCache,
-      boolean canWriteClientCache,
-      final boolean realTimeFlag,
-      boolean localOnly,
-      boolean ignoreStore) {
+      NodeRoutingSubsystem.RequestSenderOptions options) {
     final long uid = makeUID();
     final boolean isSSK = key instanceof NodeSSK;
     final RequestTag tag =
-        new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, realTimeFlag, uid, node);
-    if (!node.routing().tracker().lockUID(uid, isSSK, false, false, true, realTimeFlag, tag)) {
+        new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, options.realTimeFlag(), uid, node);
+    if (!node.routing()
+        .tracker()
+        .lockUID(uid, isSSK, false, false, true, options.realTimeFlag(), tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       listener.onFailed(
           new LowLevelGetException(
@@ -108,26 +109,14 @@ public final class NodeClientCoreTransfers {
     short htl = node.maxHTL();
     // If another node requested it within the ULPR period at a lower HTL, that may allow
     // us to cache it in the datastore. Find the lowest HTL fetching the key in that period,
-    // and use that for purposes of deciding whether to cache it in the store.
-    if (offersOnly) {
+    // and use that to decide whether to cache it in the store.
+    if (options.offersOnly()) {
       htl = node.routing().failureTable().minOfferedHTL(key, htl);
       if (LOG.isDebugEnabled()) LOG.debug("Using old HTL for GetOfferedKey: {}", htl);
     }
-    final long startTime = System.currentTimeMillis();
-    startAsyncGet(
-        key,
-        offersOnly,
-        uid,
-        listener,
-        tag,
-        canReadClientCache,
-        canWriteClientCache,
-        htl,
-        realTimeFlag,
-        localOnly,
-        ignoreStore,
-        isSSK,
-        startTime);
+    AsyncGetContext context =
+        new AsyncGetContext(key, uid, listener, tag, isSSK, System.currentTimeMillis());
+    startAsyncGet(context, htl, options);
   }
 
   /**
@@ -135,40 +124,21 @@ public final class NodeClientCoreTransfers {
    * will not decode the data because we don't provide a ClientKey. It will not return anything and
    * will run asynchronously. Caller is responsible for unlocking the UID.
    *
-   * @param key The key being fetched.
-   * @param offersOnly If true, only fetch the key from nodes that have offered it, using
-   *     GetOfferedKeys, don't do a normal fetch for it.
-   * @param uid The UID of the request. This should already be locked before calling.
-   * @param requestTag The RequestTag for the request; used for request lifecycle callbacks.
-   * @param listener Will be called by the request sender, if a request is started. However, for
-   *     example, if we fetch it from the store, it will be returned via the tripPendingKeys
-   *     mechanism.
-   * @param canReadClientCache Can this request read the client-cache?
-   * @param canWriteClientCache Can this request write the client-cache?
-   * @param htl The HTL to start the request at. See the caller, this can be modified in the case of
+   * @param context request-specific context (key, UID, listener, and tag) created by the caller.
+   * @param htl The HTL to start the request at. See the caller; this can be modified in the case of
    *     fetching an offered key.
-   * @param realTimeFlag Is this a real-time request? False = this is a bulk request.
-   * @param localOnly If true, only check the datastore, don't create a request if nothing is found.
-   * @param ignoreStore If true, don't check the datastore, create a request immediately.
-   * @param isSSK Whether the request targets an SSK key type.
-   * @param startTime Start time in milliseconds since epoch for metrics.
+   * @param options flags controlling local store access, cache usage, offered-key handling, and
+   *     real-time scheduling.
    */
   @SuppressWarnings("java:S1181")
   private void startAsyncGet(
-      Key key,
-      boolean offersOnly,
-      long uid,
-      RequestCompletionListener listener,
-      Object requestTag,
-      boolean canReadClientCache,
-      boolean canWriteClientCache,
-      short htl,
-      boolean realTimeFlag,
-      boolean localOnly,
-      boolean ignoreStore,
-      boolean isSSK,
-      long startTime) {
-    RequestTag tag = (RequestTag) requestTag;
+      AsyncGetContext context, short htl, NodeRoutingSubsystem.RequestSenderOptions options) {
+    Key key = context.key();
+    RequestCompletionListener listener = context.listener();
+    RequestTag tag = context.tag();
+    boolean isSSK = context.isSSK();
+    long uid = context.uid();
+    boolean realTimeFlag = options.realTimeFlag();
     RequestSenderListener senderListener =
         new RequestSenderListener() {
 
@@ -210,8 +180,7 @@ public final class NodeClientCoreTransfers {
             synchronized (this) {
               rejectedOverloadLocal = this.rejectedOverload;
             }
-            handleAsyncGetFinished(
-                isSSK, listener, startTime, key, realTimeFlag, rs, rejectedOverloadLocal);
+            handleAsyncGetFinished(context, realTimeFlag, rs, rejectedOverloadLocal);
           }
 
           @Override
@@ -224,21 +193,7 @@ public final class NodeClientCoreTransfers {
           }
         };
     try {
-      Object o =
-          node.routing()
-              .makeRequestSender(
-                  key,
-                  htl,
-                  uid,
-                  tag,
-                  null,
-                  NodeRoutingSubsystem.RequestSenderOptions.of(
-                      localOnly,
-                      ignoreStore,
-                      offersOnly,
-                      canReadClientCache,
-                      canWriteClientCache,
-                      realTimeFlag));
+      Object o = node.routing().makeRequestSender(key, htl, uid, tag, null, options);
       if (o instanceof KeyBlock) {
         tag.setServedFromDatastore();
         senderListener.onDataFoundLocally();
@@ -261,13 +216,11 @@ public final class NodeClientCoreTransfers {
   }
 
   private void handleAsyncGetFinished(
-      boolean isSSK,
-      RequestCompletionListener listener,
-      long startTime,
-      Key key,
-      boolean realTimeFlag,
-      RequestSender rs,
-      boolean rejectedOverload) {
+      AsyncGetContext context, boolean realTimeFlag, RequestSender rs, boolean rejectedOverload) {
+    boolean isSSK = context.isSSK();
+    RequestCompletionListener listener = context.listener();
+    long startTime = context.startTime();
+    Key key = context.key();
     int status = rs.getStatus();
     if (status == RequestSender.NOT_FINISHED) {
       LOG.error("Bogus status in onRequestSenderFinished for {}", rs, new Exception("error"));
@@ -769,7 +722,7 @@ public final class NodeClientCoreTransfers {
       maybeReportChkCompleted(is, uid, startTime, realTimeFlag, block);
 
       // Get status explicitly, *after* completed(), so that it will be RECEIVE_FAILED if the
-      // receive failed.
+      // receiver failed.
       int status = is.getStatus();
       reportChkInsertCosts(status, is);
       storeChkLocally(is, block, canWriteClientCache);
@@ -862,7 +815,7 @@ public final class NodeClientCoreTransfers {
     while (!is.completed()) {
       is.waitIfNotCompleted(SECONDS.toMillis(10));
       if (is.anyTransfersFailed() && (!hasReceivedRejectedOverload)) {
-        hasReceivedRejectedOverload = true; // not strictly true but same effect
+        hasReceivedRejectedOverload = true; // not strictly true but the same effect
         requestStarters.rejectedOverload(false, true, realTimeFlag);
       }
     }
@@ -1097,10 +1050,10 @@ public final class NodeClientCoreTransfers {
   }
 
   /**
-   * Queues a low-priority reinsert of a key block.
+   * Queues a low-priority reinserting of a key block.
    *
    * <p>The block is wrapped in a {@link SimpleSendableInsert} and scheduled on the request starters
-   * at the maximum priority class for reinserts. The operation is asynchronous: it enqueues work
+   * at the maximum priority class for reinserting. The operation is asynchronous: it enqueues work
    * and returns immediately without waiting for completion. Use this method to refresh availability
    * for already known data without blocking the caller.
    *

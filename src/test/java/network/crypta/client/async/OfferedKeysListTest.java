@@ -29,6 +29,7 @@ import network.crypta.node.RequestCompletionListener;
 import network.crypta.node.RequestScheduler;
 import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SendableRequestSender;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -129,7 +130,7 @@ class OfferedKeysListTest {
 
   @Test
   void chooseKey_whenAllCandidatesFetching_returnsNullAfterAttempts() {
-    // Always return index 0 to keep picking the same fetching key until loop limit.
+    // Always return index 0 to keep picking the same fetching key until the loop limit.
     RandomSource rnd = new SeqRandomSource(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     OfferedKeysList list = new OfferedKeysList(rnd, PRIO, false, false);
     Key a = keyWithByte((byte) 0x66);
@@ -172,20 +173,15 @@ class OfferedKeysListTest {
     ArgumentCaptor<RequestCompletionListener> captor =
         ArgumentCaptor.forClass(RequestCompletionListener.class);
     doAnswer(
-            invocation -> {
+            _ -> {
               // No-op stub: we drive completion via captured listener after verification.
               return null;
             })
         .when(transfers)
         .asyncGet(
             any(Key.class),
-            any(Boolean.class),
             any(RequestCompletionListener.class),
-            any(Boolean.class),
-            any(Boolean.class),
-            any(Boolean.class),
-            any(Boolean.class),
-            any(Boolean.class));
+            any(NodeRoutingSubsystem.RequestSenderOptions.class));
 
     // Use sender directly with a minimal ChosenBlock carrying the token
     var sender = list.getSender(null);
@@ -195,30 +191,19 @@ class OfferedKeysListTest {
 
     // Verify asyncGet was invoked and capture arguments to assert values without eq(...)
     ArgumentCaptor<Key> keyCaptor = ArgumentCaptor.forClass(Key.class);
-    ArgumentCaptor<Boolean> offersOnlyCap = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<Boolean> canReadCap = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<Boolean> canWriteCap = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<Boolean> rtCap = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<Boolean> localOnlyCap = ArgumentCaptor.forClass(Boolean.class);
-    ArgumentCaptor<Boolean> ignoreStoreCap = ArgumentCaptor.forClass(Boolean.class);
+    ArgumentCaptor<NodeRoutingSubsystem.RequestSenderOptions> optionsCaptor =
+        ArgumentCaptor.forClass(NodeRoutingSubsystem.RequestSenderOptions.class);
     verify(transfers, times(1))
-        .asyncGet(
-            keyCaptor.capture(),
-            offersOnlyCap.capture(),
-            captor.capture(),
-            canReadCap.capture(),
-            canWriteCap.capture(),
-            rtCap.capture(),
-            localOnlyCap.capture(),
-            ignoreStoreCap.capture());
+        .asyncGet(keyCaptor.capture(), captor.capture(), optionsCaptor.capture());
 
     assertSame(k, keyCaptor.getValue());
-    assertTrue(offersOnlyCap.getValue());
-    assertTrue(canReadCap.getValue());
-    assertFalse(canWriteCap.getValue());
-    assertEquals(realTime, rtCap.getValue());
-    assertFalse(localOnlyCap.getValue());
-    assertFalse(ignoreStoreCap.getValue());
+    NodeRoutingSubsystem.RequestSenderOptions options = optionsCaptor.getValue();
+    assertTrue(options.offersOnly());
+    assertTrue(options.canReadClientCache());
+    assertFalse(options.canWriteClientCache());
+    assertEquals(realTime, options.realTimeFlag());
+    assertFalse(options.localOnly());
+    assertFalse(options.ignoreStore());
 
     // Simulate success callback
     RequestCompletionListener listener = captor.getValue();
@@ -293,7 +278,7 @@ class OfferedKeysListTest {
 
   /**
    * Deterministic RandomSource that returns a fixed sequence from nextInt(bound). Values are taken
-   * modulo bound to satisfy API contract.
+   * modulo bound to satisfy the API contract.
    */
   private static final class SeqRandomSource extends DummyRandomSource {
     private final int[] seq;
@@ -346,12 +331,12 @@ class OfferedKeysListTest {
 
     @Override
     public void onFailure(LowLevelGetException e, ClientContext context) {
-      // Intentionally empty: callbacks are tested indirectly via scheduler interactions above.
+      // Intentionally empty: callbacks are tested indirectly via the scheduler interactions above.
     }
 
     @Override
     public void onFetchSuccess(ClientContext context) {
-      // Intentionally empty: fetch success triggers are not invoked by these unit tests.
+      // Intentionally empty: these unit tests do not invoke fetch success triggers.
     }
 
     @Override

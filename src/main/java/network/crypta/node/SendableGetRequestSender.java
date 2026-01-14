@@ -4,6 +4,7 @@ import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
+import network.crypta.node.subsystem.NodeRoutingSubsystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,7 +12,8 @@ import org.slf4j.LoggerFactory;
  * Sends GET requests to the node asynchronously.
  *
  * <p>This implementation submits the request to {@link NodeClientCoreTransfers#asyncGet(Key,
- * boolean, RequestCompletionListener, boolean, boolean, boolean, boolean, boolean)} and returns
+ * RequestCompletionListener,
+ * network.crypta.node.subsystem.NodeRoutingSubsystem.RequestSenderOptions)} and returns
  * immediately. It delivers results via the provided {@link RequestCompletionListener} callbacks
  * which, in turn, notify the originating {@link SendableRequest}.
  *
@@ -44,13 +46,14 @@ public class SendableGetRequestSender implements SendableRequestSender {
   /**
    * Submits an asynchronous GET for the provided block.
    *
-   * <p>Validates the request, then calls {@link NodeClientCoreTransfers#asyncGet(Key, boolean,
-   * RequestCompletionListener, boolean, boolean, boolean, boolean, boolean)}. Completion is
+   * <p>Validates the request, then calls {@link NodeClientCoreTransfers#asyncGet(Key,
+   * RequestCompletionListener,
+   * network.crypta.node.subsystem.NodeRoutingSubsystem.RequestSenderOptions)}. Completion is
    * reported via the supplied listener which delegates to {@code req.onFetchSuccess(context)} or
    * {@code req.onFailure(e, context)}.
    *
    * <p>Return semantics: - Returns {@code false} when no request is submitted (e.g., missing key,
-   * cancelled request) so the scheduler can try another. - Returns {@code true} once a request is
+   * canceled request) so the scheduler can try another. - Returns {@code true} once a request is
    * submitted or when an internal error is converted to a failure callback.
    *
    * <p>Exceptions are handled internally and reported to the request as {@link
@@ -91,14 +94,20 @@ public class SendableGetRequestSender implements SendableRequestSender {
     try {
       /*
        * Resolve the node-level key and submit the asynchronous GET.
-       * Flags control local store usage, client cache writes, realtime priority,
-       * and whether the request is local-only; they are forwarded unchanged.
+       * Options control store usage, client cache writes, and realtime priority.
        */
       final Key k = key.getNodeKey();
+      NodeRoutingSubsystem.RequestSenderOptions options =
+          NodeRoutingSubsystem.RequestSenderOptions.of(
+              req.localRequestOnly,
+              req.ignoreStore,
+              false,
+              !req.ignoreStore,
+              req.canWriteClientCache,
+              req.realTimeFlag);
       core.getTransfers()
           .asyncGet(
               k,
-              false,
               new RequestCompletionListener() {
 
                 @Override
@@ -111,11 +120,7 @@ public class SendableGetRequestSender implements SendableRequestSender {
                   req.onFailure(e, context);
                 }
               },
-              !req.ignoreStore,
-              req.canWriteClientCache,
-              req.realTimeFlag,
-              req.localRequestOnly,
-              req.ignoreStore);
+              options);
     } catch (RuntimeException | Error t) {
       // Convert unexpected throwables into a failure callback to keep the scheduler healthy.
       LOG.error("Unhandled throwable in send: {}", t, t);
