@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKEncodeException;
 import network.crypta.keys.ClientCHK;
@@ -413,7 +414,13 @@ class NodeClientCoreTransfersTest {
     InsertableClientSSK key = InsertableClientSSK.createRandom(rng, SSK_DOC_NAME);
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(SSK_SAMPLE_BYTES);
     return key.encode(
-        bucket, false, true, (short) -1, bucket.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+        new BlockEncodeParams(
+            bucket,
+            false,
+            true,
+            (short) -1,
+            bucket.size(),
+            Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
   }
 
   private static void setField(Object target, String fieldName, Object value) throws Exception {

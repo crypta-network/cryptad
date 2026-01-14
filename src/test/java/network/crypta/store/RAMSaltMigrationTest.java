@@ -21,6 +21,7 @@ import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKDecodeException;
 import network.crypta.keys.CHKEncodeException;
@@ -127,7 +128,7 @@ class RAMSaltMigrationTest {
   }
 
   /**
-   * Probe all inserted keys and see what is actually there, after collisions might have happend
+   * Probe all inserted keys and see what is actually there, after collisions might have happened
    * during insert or resize
    *
    * @param store to check for keys
@@ -162,7 +163,7 @@ class RAMSaltMigrationTest {
    * @param store to check
    * @param dummyValueActuallyStoredList of values expected
    * @param blockActuallyStoredList of blocks expecte
-   * @param expectAll true, if all keys must be in the store, or at least one will be sufficient to
+   * @param expectAll true, if all keys must be in the store, or at least one will be enough to
    *     succeed
    * @throws CHKVerifyException when block verification fails
    * @throws CHKDecodeException when block decoding fails
@@ -401,8 +402,7 @@ class RAMSaltMigrationTest {
 
       // Encode a block
       String test = "test" + i;
-      // Use new format for every other block to ensure they are mixed in the same
-      // store.
+      // Use a new format for every other block to ensure they are mixed in the same store.
       ClientCHKBlock block = encodeBlock(test, (i & 1) == 1);
       if (write) store.put(block.getBlock(), false);
 
@@ -482,7 +482,7 @@ class RAMSaltMigrationTest {
     innerTestSaltedStoreWithClose(persistenceTime, testName);
 
     // Assert
-    // Assertions are performed in innerTestSaltedStoreWithClose.
+    // Assertions are performed in the innerTestSaltedStoreWithClose.
   }
 
   @Test
@@ -811,8 +811,8 @@ class RAMSaltMigrationTest {
             null)) {
       saltStore.start(ticker, true);
 
-      // If we did open the new size we expect all previously matched keys to be present.
-      // If we opend the old size, it causes a resize again, which might create new collisions and
+      // If we did open the new size, we expect all previously matched keys to be present.
+      // If we open the old size, it causes a resize again, which might create new collisions and
       // keys might be lost again.
 
       checkStandardTestBlocks(
@@ -926,12 +926,13 @@ class RAMSaltMigrationTest {
     byte[] data = test.getBytes(StandardCharsets.UTF_8);
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
     return ClientCHKBlock.encode(
-        bucket,
-        false,
-        false,
-        (short) -1,
-        bucket.size(),
-        Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
+        new BlockEncodeParams(
+            bucket,
+            false,
+            false,
+            (short) -1,
+            bucket.size(),
+            Compressor.DEFAULT_COMPRESSORDESCRIPTOR),
         null,
         newFormat ? Key.ALGO_AES_CTR_256_SHA256 : Key.ALGO_AES_PCFB_256_SHA256);
   }

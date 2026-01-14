@@ -17,7 +17,6 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.keys.Key.Compressed;
-import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.InvalidCompressionCodecException;
 import network.crypta.support.math.MersenneTwister;
 import org.bouncycastle.crypto.digests.SHA256Digest;
@@ -136,7 +135,7 @@ public class InsertableClientSSK extends ClientSSK {
   }
 
   /**
-   * Validate the URI type and extras, and return the SSK crypto algorithm byte.
+   * Validate the URI type and extras and return the SSK crypto algorithm byte.
    *
    * <p>Throws {@link MalformedURLException} with a descriptive message when the URI is not an SSK
    * insert URI or when its extras are missing/invalid.
@@ -163,42 +162,26 @@ public class InsertableClientSSK extends ClientSSK {
    * overall hash over headers and encrypted data hash; (6) sign with DSA using deterministic {@code
    * k} derived via HMAC-SHA-256; (7) return the block.
    *
-   * <p>This method reads from {@code sourceData} but does not close it.
+   * <p>This method reads from {@code params.sourceData()} but does not close it.
    *
-   * @param sourceData the data to encode
-   * @param asMetadata whether the block is metadata (sets the high bit of the stored length)
-   * @param dontCompress if {@code true}, skip compression regardless of content
-   * @param alreadyCompressedCodec codec identifier if the input is already compressed; {@code 0}
-   *     when unknown
-   * @param sourceLength byte length of the input; used by compression
-   * @param compressordescriptor optional compressor configuration string
+   * @param params bundle containing compression inputs
    * @return a {@link ClientSSKBlock} containing encrypted data and headers
    * @throws SSKEncodeException on compression or encoding failures
-   * @throws IOException on I/O errors while reading {@code sourceData}
-   * @throws InvalidCompressionCodecException if {@code alreadyCompressedCodec} is invalid or
-   *     unsupported
+   * @throws IOException on I/O errors while reading {@code params.sourceData()}
+   * @throws InvalidCompressionCodecException if {@code params.alreadyCompressedCodec()} is invalid
+   *     or unsupported
    */
-  public ClientSSKBlock encode(
-      Bucket sourceData,
-      boolean asMetadata,
-      boolean dontCompress,
-      short alreadyCompressedCodec,
-      long sourceLength,
-      String compressordescriptor)
+  public ClientSSKBlock encode(BlockEncodeParams params)
       throws SSKEncodeException, IOException, InvalidCompressionCodecException {
+    boolean asMetadata = params.asMetadata();
     byte[] compressedData;
     short compressionAlgo;
     try {
       Compressed comp =
           Key.compress(
-              sourceData,
-              dontCompress,
-              alreadyCompressedCodec,
-              sourceLength,
-              ClientSSKBlock.MAX_DECOMPRESSED_DATA_LENGTH,
-              SSKBlock.DATA_LENGTH,
-              true,
-              compressordescriptor);
+              params,
+              new CompressionLimits(
+                  ClientSSKBlock.MAX_DECOMPRESSED_DATA_LENGTH, SSKBlock.DATA_LENGTH, true));
       compressedData = comp.compressedData;
       compressionAlgo = comp.compressionAlgorithm;
     } catch (KeyEncodeException e) {
@@ -235,7 +218,7 @@ public class InsertableClientSSK extends ClientSSK {
       throw new IllegalStateException("256/256 Rijndael not supported!", e);
     }
 
-    // Encrypt data. Key = SHA-256(plaintext); IV/feedback state comes from PCFB construction.
+    // Encrypt data. Key = SHA-256 (plaintext); IV/feedback state comes from PCFB construction.
     aes.initialize(origDataHash);
     PCFBMode pcfb = PCFBMode.create(aes, origDataHash);
 
@@ -246,7 +229,7 @@ public class InsertableClientSSK extends ClientSSK {
     // Create headers: algo IDs, E(H(docname)), and encrypted metadata.
 
     byte[] headers = new byte[SSKBlock.TOTAL_HEADERS_LENGTH];
-    // First two bytes = hash algorithm ID.
+    // The first two bytes = hash algorithm ID.
     int x = 0;
     headers[x++] = 0;
     headers[x++] = (byte) (KeyBlock.HASH_SHA256);
@@ -272,7 +255,7 @@ public class InsertableClientSSK extends ClientSSK {
     pcfb.blockEncipher(encryptedHeaders, 0, encryptedHeaders.length);
     System.arraycopy(encryptedHeaders, 0, headers, x, encryptedHeaders.length);
     x += encryptedHeaders.length;
-    // Generate implicit overall hash that is signed below.
+    // Generate an implicit overall hash signed below.
     md256.update(headers, 0, x);
     md256.update(encryptedDataHash);
     byte[] overallHash = md256.digest();

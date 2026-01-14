@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  * with the corresponding {@code read*} methods and any on-disk structures that store keys.
  *
  * <p>Thread-safety: Instances are immutable except a lazily computed cache used by {@link
- * #toNormalizedDouble()}. That cache is updated under synchronization and read-only usage is safe
+ * #toNormalizedDouble()}. That cache is updated under synchronization, and read-only usage is safe
  * across threads.
  *
  * @author amphibian
@@ -175,7 +175,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
    * Return a stable hash-derived position in the half-open interval {@code [0.0, 1.0)}.
    *
    * <p>The routing key and type are hashed with SHA‑256 and mapped uniformly to a double. The value
-   * is computed once and cached; subsequent calls return the cached value.
+   * is computed once and cached; later calls return the cached value.
    */
   public synchronized double toNormalizedDouble() {
     if (cachedNormalizedDouble > 0) return cachedNormalizedDouble;
@@ -214,22 +214,24 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
   }
 
   /**
-   * Decompress a block into a {@link Bucket} when {@code isCompressed} is {@code true}; otherwise
-   * return an immutable bucket view over the input bytes.
+   * Decompress a block into a {@link Bucket} when compression is enabled; otherwise return an
+   * immutable bucket view over the input bytes.
    *
    * <p>When compressed, the input is expected to start with a precompressed-length header of 2 or 4
-   * bytes as selected by {@code shortLength}. The method enforces {@code maxLength} and the
-   * codec-specific maximum to protect against resource exhaustion.
+   * bytes as selected by {@link DecompressionParams#shortLength()}. The method enforces {@link
+   * DecompressionParams#maxLength()} and the codec-specific maximum to protect against resource
+   * exhaustion.
+   *
+   * @param params bundle of decompression inputs
    */
-  static Bucket decompress(
-      boolean isCompressed,
-      byte[] input,
-      int inputLength,
-      BucketFactory bf,
-      long maxLength,
-      short compressionAlgorithm,
-      boolean shortLength)
-      throws CHKDecodeException, IOException {
+  static Bucket decompress(DecompressionParams params) throws CHKDecodeException, IOException {
+    boolean isCompressed = params.isCompressed();
+    byte[] input = params.input();
+    int inputLength = params.inputLength();
+    BucketFactory bf = params.bf();
+    long maxLength = params.maxLength();
+    short compressionAlgorithm = params.compressionAlgorithm();
+    boolean shortLength = params.shortLength();
     if (maxLength < 0) throw new IllegalArgumentException("maxlength=" + maxLength);
     if (input.length < inputLength)
       throw new IndexOutOfBoundsException(input.length + "<" + inputLength);
@@ -320,53 +322,31 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
    * Compress {@code sourceData} when allowed and beneficial.
    *
    * <p>If compression is applied, the returned byte array is prefixed with the original
-   * uncompressed length encoded in 2 or 4 bytes depending on {@code shortLength}. If compression is
-   * not applied, the returned bytes contain the original data without a length header.
+   * uncompressed length encoded in 2 or 4 bytes depending on {@link
+   * CompressionLimits#shortLength()}. If compression is not applied, the returned bytes contain the
+   * original data without a length header.
    *
-   * @param sourceData input bucket to read from.
-   * @param dontCompress when {@code true}, skip trying compressors unless {@code
-   *     alreadyCompressedCodec} is provided.
-   * @param alreadyCompressedCodec when non-negative, treat {@code sourceData} as already compressed
-   *     with the given codec and only add the length header.
-   * @param sourceLength logical uncompressed length to record in the header when compression is
-   *     used.
-   * @param maxLengthBeforeCompression upper bound on {@code sourceData.size()} before any
-   *     compression attempt; larger inputs fail fast.
-   * @param maxCompressedLengthLimit hard limit on the size of the byte array returned by this
-   *     method.
-   * @param shortLength if {@code true}, use a 2-byte length header; otherwise use 4 bytes.
-   * @param compressorDescriptor descriptor string used to select candidate compressors.
+   * @param params bundle of source data and compression flags
+   * @param limits size limits and header layout hints
    * @return a {@link Compressed} result containing the bytes to persist and the codec id (negative
    *     when uncompressed).
    * @throws KeyEncodeException if the input is larger than permitted after considering limits.
    * @throws IOException on I/O failure while materializing bucket contents.
-   * @throws InvalidCompressionCodecException if {@code compressorDescriptor} is invalid.
+   * @throws InvalidCompressionCodecException if {@code params.compressorDescriptor()} is invalid.
    */
-  public static Compressed compress(
-      Bucket sourceData,
-      boolean dontCompress,
-      short alreadyCompressedCodec,
-      long sourceLength,
-      long maxLengthBeforeCompression,
-      int maxCompressedLengthLimit,
-      boolean shortLength,
-      String compressorDescriptor)
+  public static Compressed compress(BlockEncodeParams params, CompressionLimits limits)
       throws KeyEncodeException, IOException, InvalidCompressionCodecException {
+    Bucket sourceData = params.sourceData();
+    long maxLengthBeforeCompression = limits.maxLengthBeforeCompression();
+    int maxCompressedLengthLimit = limits.maxCompressedLengthLimit();
+    boolean shortLength = limits.shortLength();
     byte[] finalData = null;
     short compressionAlgorithm = -1;
     int maxCompressedDataLength =
         adjustedMaxCompressedLength(maxCompressedLengthLimit, shortLength);
     if (sourceData.size() > maxLengthBeforeCompression) throw new KeyEncodeException("Too big");
 
-    CompressionPrep prep =
-        prepareCompressionData(
-            sourceData,
-            dontCompress,
-            alreadyCompressedCodec,
-            sourceLength,
-            maxLengthBeforeCompression,
-            maxCompressedDataLength,
-            compressorDescriptor);
+    CompressionPrep prep = prepareCompressionData(params, limits, maxCompressedDataLength);
     if (prep != null) {
       finalData = addLengthHeader(prep.cbuf(), prep.headerSourceLength(), shortLength);
       compressionAlgorithm = prep.algorithm();
@@ -415,14 +395,14 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
   }
 
   private static CompressionPrep prepareCompressionData(
-      Bucket sourceData,
-      boolean dontCompress,
-      short alreadyCompressedCodec,
-      long sourceLength,
-      long maxLengthBeforeCompression,
-      int maxCompressedDataLength,
-      String compressorDescriptor)
+      BlockEncodeParams params, CompressionLimits limits, int maxCompressedDataLength)
       throws IOException, InvalidCompressionCodecException {
+    Bucket sourceData = params.sourceData();
+    boolean dontCompress = params.dontCompress();
+    short alreadyCompressedCodec = params.alreadyCompressedCodec();
+    long sourceLength = params.sourceLength();
+    String compressorDescriptor = params.compressorDescriptor();
+    long maxLengthBeforeCompression = limits.maxLengthBeforeCompression();
     if (dontCompress && alreadyCompressedCodec < 0) {
       return null;
     }
@@ -515,7 +495,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
                 comp.compress(
                     sourceData, new ArrayBucketFactory(), Long.MAX_VALUE, maxCompressedDataLength);
       } catch (IOException _) {
-        // Ignore and try next compressor.
+        // Ignore and try the next compressor.
       }
       if (compressedData != null && compressedData.size() <= maxCompressedDataLength) {
         try {
@@ -549,8 +529,8 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
    * Create a client-level block wrapper that corresponds to the provided key and node-level block.
    * The pair must be type-consistent (CHK with {@link CHKBlock}, SSK with {@link SSKBlock}).
    *
-   * @param key client key of matching type.
-   * @param block node-level block of matching type.
+   * @param key client key of the matching type.
+   * @param block node-level block of the matching type.
    * @return a {@link ClientCHKBlock} or {@link ClientSSKBlock} as appropriate.
    * @throws KeyVerifyException if construction fails (for example, due to a bad public key).
    */
@@ -577,7 +557,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
   public abstract Key archivalCopy();
 
   /**
-   * Return whether the provided algorithm identifier is recognized by this implementation.
+   * Return whether this implementation recognizes the provided algorithm identifier.
    *
    * @param cryptoAlgorithm low 8-bit algorithm identifier as used in {@link #getType()}.
    * @return {@code true} if supported; {@code false} otherwise.

@@ -32,6 +32,7 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.Global;
 import network.crypta.crypt.RandomSource;
 import network.crypta.crypt.SHA256;
+import network.crypta.keys.BlockEncodeParams;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.CHKDecodeException;
 import network.crypta.keys.CHKEncodeException;
@@ -169,7 +170,7 @@ class CachingFreenetStoreTest {
           store.put(block.getBlock(), false);
 
           ClientCHK key = block.getClientKey();
-          // Assert: write-through to underlying store
+          // Assert: write-through to the underlying store
           assertNotNull(
               saltStore.fetch(
                   key.getRoutingKey(),
@@ -235,7 +236,7 @@ class CachingFreenetStoreTest {
         cachingStore.start(null, true);
         List<ClientCHKBlock> chkBlocks = new ArrayList<>();
         List<String> tests = new ArrayList<>();
-        // Act: insert enough blocks to exceed limit and trigger flush
+        // Act: insert enough blocks to exceed the limit and trigger flush
         store.put(block.getBlock(), false);
         chkBlocks.add(block);
         tests.add(test);
@@ -297,7 +298,7 @@ class CachingFreenetStoreTest {
       SSKStore store = new SSKStore(pubkeyCache);
       int sskBlockSize = store.getTotalBlockSize();
 
-      // Create a cache with size limit of 1.5 SSK's.
+      // Create a cache with a size limit of 1.5 SSK's.
       File f = getStorePath("testCollisionsOverMaximumSize");
       try (SaltedHashFreenetStore<SSKBlock> saltStore =
           SaltedHashFreenetStore.construct(
@@ -337,12 +338,14 @@ class CachingFreenetStoreTest {
               new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
           ClientSSKBlock block =
               ik.encode(
-                  bucket,
-                  false,
-                  false,
-                  (short) -1,
-                  bucket.size(),
-                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                  new BlockEncodeParams(
+                      bucket,
+                      false,
+                      false,
+                      (short) -1,
+                      bucket.size(),
+                      Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
+
           SSKBlock sskBlock = (SSKBlock) block.getBlock();
           pubkeyCache.cacheKey(
               sskBlock.getKey().getPubKeyHash(),
@@ -365,12 +368,14 @@ class CachingFreenetStoreTest {
           bucket = new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
           block =
               ik.encode(
-                  bucket,
-                  false,
-                  false,
-                  (short) -1,
-                  bucket.size(),
-                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                  new BlockEncodeParams(
+                      bucket,
+                      false,
+                      false,
+                      (short) -1,
+                      bucket.size(),
+                      Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
+
           sskBlock = (SSKBlock) block.getBlock();
           try {
             store.put(sskBlock, false, false);
@@ -387,7 +392,7 @@ class CachingFreenetStoreTest {
           // Size is still one key.
           assertEquals(sskBlockSize, tracker.getSizeOfCache());
 
-          // Write a second key, should trigger write to disk.
+          // Write a second key, should trigger writing to disk.
           DSAPrivateKey privKey2 = new DSAPrivateKey(g, random);
           DSAPublicKey pubKey2 = new DSAPublicKey(g, privKey2);
           byte[] pkHash2 = SHA256.digest(pubKey2.asBytes());
@@ -396,12 +401,13 @@ class CachingFreenetStoreTest {
                   docName, pkHash2, pubKey2, privKey2, ckey, Key.ALGO_AES_PCFB_256_SHA256);
           block =
               ik2.encode(
-                  bucket,
-                  false,
-                  false,
-                  (short) -1,
-                  bucket.size(),
-                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                  new BlockEncodeParams(
+                      bucket,
+                      false,
+                      false,
+                      (short) -1,
+                      bucket.size(),
+                      Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
           SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
           pubkeyCache.cacheKey(
               sskBlock2.getKey().getPubKeyHash(),
@@ -418,7 +424,7 @@ class CachingFreenetStoreTest {
             fail();
           }
 
-          // Assert: after flush both keys are accessible via cache/backing
+          // Assert: after a flush both keys are accessible via cache/backing
           tracker.waitForZero();
 
           assertEquals(store.fetch(sskBlock.getKey(), false, false, false, false, null), sskBlock);
@@ -479,12 +485,14 @@ class CachingFreenetStoreTest {
               new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
           ClientSSKBlock block =
               ik.encode(
-                  bucket,
-                  false,
-                  false,
-                  (short) -1,
-                  bucket.size(),
-                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                  new BlockEncodeParams(
+                      bucket,
+                      false,
+                      false,
+                      (short) -1,
+                      bucket.size(),
+                      Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
+
           SSKBlock sskBlock = (SSKBlock) block.getBlock();
           pubkeyCache.cacheKey(
               sskBlock.getKey().getPubKeyHash(),
@@ -500,7 +508,7 @@ class CachingFreenetStoreTest {
             fail();
           }
 
-          // Assert: push writes one and empties cache
+          // Assert: push writes one and empties the cache
           assertEquals(tracker.getSizeOfCache(), sskBlockSize);
           assertEquals(cachingStore.pushLeastRecentlyBlock(), sskBlockSize);
           // Assert: nothing left to write
@@ -544,7 +552,7 @@ class CachingFreenetStoreTest {
             true,
             true,
             null)) {
-      // Don't let the write complete until we say so...
+      // Don't let the writing complete until we say so...
       WriteBlockableFreenetStore<SSKBlock> delayStore =
           new WriteBlockableFreenetStore<>(saltStore, true);
       CachingFreenetStoreTracker tracker =
@@ -568,18 +576,19 @@ class CachingFreenetStoreTest {
         // Assert precondition: nothing to write yet
         assertEquals(0, tracker.getSizeOfCache());
         assertEquals(-1, cachingStore.pushLeastRecentlyBlock());
-        // Act: write one key to the cache. It will not be written through to disk.
+        // Act: write one key to the cache. It will not be written through to the disk.
         String test = "test";
         SimpleReadOnlyArrayBucket bucket =
             new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
         ClientSSKBlock block =
             ik.encode(
-                bucket,
-                false,
-                false,
-                (short) -1,
-                bucket.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                new BlockEncodeParams(
+                    bucket,
+                    false,
+                    false,
+                    (short) -1,
+                    bucket.size(),
+                    Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
         SSKBlock sskBlock = (SSKBlock) block.getBlock();
         pubkeyCache.cacheKey(
             sskBlock.getKey().getPubKeyHash(),
@@ -603,7 +612,7 @@ class CachingFreenetStoreTest {
 
           delayStore.waitForSomeBlocked();
 
-          // Write colliding key. Should cause the write above to return 0: After it
+          // Write a colliding key. Should cause the writing above to return 0: After it
           // unlocks, it will see
           // there is a new, different block for that key, and therefore it cannot remove
           // the block, and
@@ -612,12 +621,14 @@ class CachingFreenetStoreTest {
           bucket = new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
           block =
               ik.encode(
-                  bucket,
-                  false,
-                  false,
-                  (short) -1,
-                  bucket.size(),
-                  Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                  new BlockEncodeParams(
+                      bucket,
+                      false,
+                      false,
+                      (short) -1,
+                      bucket.size(),
+                      Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
+
           SSKBlock sskBlock2 = (SSKBlock) block.getBlock();
           try {
             store.put(sskBlock2, false, false);
@@ -634,7 +645,7 @@ class CachingFreenetStoreTest {
           // Size is still one key.
           assertEquals(tracker.getSizeOfCache(), sskBlockSize);
 
-          // Act: now let the write through and assert results
+          // Act: now let the writing through and assert results
           delayStore.setBlocked(false);
 
           assertEquals(0L, future.get().longValue());
@@ -748,7 +759,7 @@ class CachingFreenetStoreTest {
           store.put(block.getBlock(), false);
           tests.add(test);
           chkBlocks.add(block);
-          // Assert during write phase: in cache only
+          // Assert during the write phase: in cache only
           assertNull(
               saltStore.fetch(
                   block.getKey().getRoutingKey(),
@@ -792,7 +803,7 @@ class CachingFreenetStoreTest {
           String test = tests.get(i);
           assertEquals(test, data);
 
-          // Check its really in the underlying store
+          // Check it's really in the underlying store
           assertNotNull(
               saltStore2.fetch(
                   block.getKey().getRoutingKey(),
@@ -840,7 +851,7 @@ class CachingFreenetStoreTest {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
-        // Act: put five blocks and wait for flush
+        // Act: put five blocks and wait for a flush
         List<ClientCHKBlock> chkBlocks = new ArrayList<>();
         List<String> tests = new ArrayList<>();
 
@@ -1046,7 +1057,7 @@ class CachingFreenetStoreTest {
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
         RandomSource random = new DummyRandomSource(12345);
-        // Act: enqueue blocks and wait for tracker to flush
+        // Act: enqueue blocks and wait for the tracker to flush
         List<ClientSSKBlock> sskBlocks = new ArrayList<>();
         List<String> tests = new ArrayList<>();
 
@@ -1108,7 +1119,7 @@ class CachingFreenetStoreTest {
           KeyDecodeException,
           KeyCollisionException {
     // Arrange/Act/Assert: helper covers AAA with useSlotFilter=true.
-    // With slot filters on, it should be cached and not throw if same block.
+    // With slot filters on, it should be cached and not thrown if they're the same block.
     checkOnCollisionsSSK(true);
   }
 
@@ -1166,12 +1177,13 @@ class CachingFreenetStoreTest {
     byte[] data = test.getBytes(StandardCharsets.UTF_8);
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
     return ClientCHKBlock.encode(
-        bucket,
-        false,
-        false,
-        (short) -1,
-        bucket.size(),
-        Compressor.DEFAULT_COMPRESSORDESCRIPTOR,
+        new BlockEncodeParams(
+            bucket,
+            false,
+            false,
+            (short) -1,
+            bucket.size(),
+            Compressor.DEFAULT_COMPRESSORDESCRIPTOR),
         null,
         (byte) 0);
   }
@@ -1231,16 +1243,17 @@ class CachingFreenetStoreTest {
             new SimpleReadOnlyArrayBucket(test.getBytes(StandardCharsets.UTF_8));
         ClientSSKBlock block =
             ik.encode(
-                bucket,
-                false,
-                false,
-                (short) -1,
-                bucket.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                new BlockEncodeParams(
+                    bucket,
+                    false,
+                    false,
+                    (short) -1,
+                    bucket.size(),
+                    Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
         SSKBlock sskBlock = (SSKBlock) block.getBlock();
         store.put(sskBlock, false, false);
 
-        // If the block is the same then there should not be a collision
+        // If the block is the same, then there should not be a collision
         try {
           store.put(sskBlock, false, false);
           assertTrue(true);
@@ -1252,15 +1265,16 @@ class CachingFreenetStoreTest {
             new SimpleReadOnlyArrayBucket(TEST_1.getBytes(StandardCharsets.UTF_8));
         ClientSSKBlock block1 =
             ik.encode(
-                bucket1,
-                false,
-                false,
-                (short) -1,
-                bucket1.size(),
-                Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+                new BlockEncodeParams(
+                    bucket1,
+                    false,
+                    false,
+                    (short) -1,
+                    bucket1.size(),
+                    Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
         SSKBlock sskBlock1 = (SSKBlock) block1.getBlock();
 
-        // if it's different (e.g. different content, same key), there should be a KCE
+        // if it's different (e.g., different content, same key), there should be a KCE
         // thrown
         try {
           store.put(sskBlock1, false, false);
@@ -1332,7 +1346,13 @@ class CachingFreenetStoreTest {
     SimpleReadOnlyArrayBucket bucket = new SimpleReadOnlyArrayBucket(data);
     InsertableClientSSK ik = InsertableClientSSK.createRandom(random, test);
     return ik.encode(
-        bucket, false, false, (short) -1, bucket.size(), Compressor.DEFAULT_COMPRESSORDESCRIPTOR);
+        new BlockEncodeParams(
+            bucket,
+            false,
+            false,
+            (short) -1,
+            bucket.size(),
+            Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
   }
 
   static class WaitableCachingFreenetStoreTracker extends CachingFreenetStoreTracker {
@@ -1357,7 +1377,7 @@ class CachingFreenetStoreTest {
       }
     }
 
-    /* Don't reuse (this), avoid changing locking behavior of parent class */
+    /* Don't reuse (this), avoid changing locking behavior of the parent class */
     private final Object sync = new Object();
   }
 
@@ -1874,7 +1894,7 @@ class CachingFreenetStoreTest {
     // While pushLeastRecentlyBlock() calls delegate.put(a,...), replace the cached block with b
     doAnswer(
             _ -> {
-              // Simulate overwrite happening while write is in progress
+              // Simulate overwriting happening while write is in progress
               TestBlock b = new TestBlock(rk, fkB);
               store.put(b, dataB, headerB, true, false);
               return null;
@@ -1885,7 +1905,7 @@ class CachingFreenetStoreTest {
     // Act
     long result = store.pushLeastRecentlyBlock();
 
-    // Assert: changed during write => return 0 and keep cached entry
+    // Assert: changed during writing => return 0 and keep cached entry
     assertEquals(0, result);
     assertFalse(store.isEmpty());
   }
