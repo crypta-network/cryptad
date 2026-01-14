@@ -17,6 +17,7 @@ import network.crypta.client.async.USKManager;
 import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.FCPServer;
 import network.crypta.clients.fcp.PersistentRequestRoot;
+import network.crypta.config.Option;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.RandomSource;
@@ -91,16 +92,18 @@ public final class NodeClientPersistence {
     persister =
         new ConfigurablePersister(
             persistable,
-            nodeConfig,
-            "clientThrottleFile",
-            "client-throttle.dat",
-            sortOrder++,
-            true,
-            false,
-            "NodeClientCore.fileForClientStats",
-            "NodeClientCore.fileForClientStatsLong",
-            node.network().ticker(),
-            node.getRunDir());
+            new ConfigurablePersisterParams(
+                nodeConfig,
+                "clientThrottleFile",
+                "client-throttle.dat",
+                new Option.Meta(
+                    sortOrder++,
+                    true,
+                    false,
+                    "NodeClientCore.fileForClientStats",
+                    "NodeClientCore.fileForClientStatsLong"),
+                node.getRunDir()),
+            node.network().ticker());
     sortOrderAfter = sortOrder;
   }
 
