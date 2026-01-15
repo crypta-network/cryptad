@@ -183,7 +183,9 @@ final class NodeInsertRequestHandler {
    */
   private boolean rejectAlreadyRunningInsert(
       long id, boolean isSSK, PeerNode source, ByteCounter ctr, InsertTag tag) {
-    if (tracker.lockUID(id, isSSK, true, false, false, tag.realTimeFlag, tag)) return false;
+    if (tracker.lockUID(
+        id, RequestAdmissionMode.of(false, isSSK, true, false, tag.realTimeFlag), tag))
+      return false;
     if (LOG.isDebugEnabled()) LOG.debug(LOG_ALREADY_RUNNING, id);
     Message rejected = DMT.createFNPRejectedLoop(id);
     try {

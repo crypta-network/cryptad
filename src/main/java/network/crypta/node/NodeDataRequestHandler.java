@@ -168,7 +168,8 @@ final class NodeDataRequestHandler {
             Key key,
             short htl,
             RequestTag tag) {
-          if (tracker.lockUID(id, isSSK, false, false, false, tag.realTimeFlag, tag)) {
+          if (tracker.lockUID(
+              id, RequestAdmissionMode.of(false, isSSK, false, false, tag.realTimeFlag), tag)) {
             if (LOG.isDebugEnabled()) LOG.debug("Lock acquired for id {}", id);
             return false;
           }

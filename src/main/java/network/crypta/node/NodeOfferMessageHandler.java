@@ -210,7 +210,8 @@ final class NodeOfferMessageHandler {
    */
   private boolean rejectAlreadyRunning(
       long uid, boolean isSSK, PeerNode source, OfferReplyTag tag) {
-    if (tracker.lockUID(uid, isSSK, false, true, false, tag.realTimeFlag, tag)) {
+    if (tracker.lockUID(
+        uid, RequestAdmissionMode.of(false, isSSK, false, true, tag.realTimeFlag), tag)) {
       if (LOG.isDebugEnabled()) LOG.debug("Lock acquired for id {}", uid);
       return false;
     }

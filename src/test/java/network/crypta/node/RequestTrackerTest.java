@@ -50,7 +50,7 @@ class RequestTrackerTest {
     RequestTag remoteChkBulk =
         new RequestTag(
             false, START.REMOTE, org.mockito.Mockito.mock(PeerNode.class), false, 2L, node);
-    // Remote tags need to be marked accepted explicitly (local are accepted in constructor)
+    // Remote tags need to be marked accepted explicitly (local is accepted in constructor)
     remoteChkBulk.setAccepted();
 
     // Act
@@ -83,19 +83,11 @@ class RequestTrackerTest {
     // Arrange: a tag that was never locked
     RequestTag tag = new RequestTag(false, START.LOCAL, null, true, 200L, node);
 
-    // Act: unlock against empty tracker (canFail = true)
+    // Act: unlock against an empty tracker (canFail = true)
     tracker.unlockUID(
-        200L, /*ssk*/
-        false, /*insert*/
-        false, /*canFail*/
-        true,
-        /*offerReply*/ false, /*local*/
-        true, /*realTime*/
-        true,
-        tag, /*noRecord*/
-        true);
+        200L, RequestAdmissionMode.of(true, false, false, false, true), tag, true, true);
 
-    // Assert: counts remain zero
+    // Assert: the counts remain zero
     assertEquals(0, tracker.getNumCHKRequests());
     assertEquals(0, tracker.getNumTransferringRequestHandlers());
   }
@@ -142,7 +134,7 @@ class RequestTrackerTest {
     verify(ticker, times(1)).queueTimedJob(runCaptor.capture(), delayCaptor.capture());
     assertEquals(RequestTracker.TIMEOUT, delayCaptor.getValue().longValue());
 
-    // Run the checker and expect a reschedule with ~60s
+    // Run the checker and expect a rescheduling with ~60s
     Runnable checker = runCaptor.getValue();
     assertNotNull(checker);
     checker.run();
@@ -171,30 +163,18 @@ class RequestTrackerTest {
 
     RequestTracker.CountedRequests allNonLocal = new RequestTracker.CountedRequests();
     RequestTracker.CountedRequests locals = new RequestTracker.CountedRequests();
+    RequestTransferOptions transferOptions = new RequestTransferOptions(3, false);
 
     // Act: Count remote (local=false) CHK gets
     tracker.countRequests(
-        /*local*/ false,
-        /*ssk*/ false,
-        /*insert*/ false,
-        /*offer*/ false,
-        /*rt*/ false,
-        /*transfersPerInsert*/ 3,
-        /*ignoreLocalVsRemote*/ false,
+        RequestAdmissionMode.of(false, false, false, false, false),
+        transferOptions,
         allNonLocal,
-        /*counterSR*/ null);
+        null);
 
     // Act: Count local (local=true) CHK gets
     tracker.countRequests(
-        /*local*/ true,
-        /*ssk*/ false,
-        /*insert*/ false,
-        /*offer*/ false,
-        /*rt*/ false,
-        /*transfersPerInsert*/ 3,
-        /*ignoreLocalVsRemote*/ false,
-        locals,
-        /*counterSR*/ null);
+        RequestAdmissionMode.of(true, false, false, false, false), transferOptions, locals, null);
 
     // Assert
     assertEquals(1, allNonLocal.total());

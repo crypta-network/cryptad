@@ -5,7 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Snapshot of running request counts and estimated transfer liabilities at a point in time.
+ * Snapshot of a running request counts and estimated transfer liabilities at a point in time.
  *
  * <p>This type aggregates counts for CHK and SSK operations and exposes them as immutable fields,
  * along with derived totals and transfer-weighted estimates. Instances are created from a {@link
@@ -36,12 +36,12 @@ class RunningRequestsSnapshot {
 
   // Look plausible from my node-throttle.dat stats as of 01/11/2010.
   /**
-   * Output bytes required for an inbound transfer. Includes e.g. sending the request in the first
+   * Output bytes required for an inbound transfer. Includes e.g., sending the request in the first
    * place.
    */
   private static final int TRANSFER_IN_OUT_OVERHEAD = 256;
 
-  /** Input bytes required for an outbound transfer. Includes e.g. sending the insert etc. */
+  /** Input bytes required for an outbound transfer. Includes e.g., sending the insert etc. */
   private static final int TRANSFER_OUT_IN_OVERHEAD = 256;
 
   /**
@@ -113,7 +113,7 @@ class RunningRequestsSnapshot {
   final int expectedTransfersInSSKSR;
 
   /**
-   * Total number of source-restarted requests represented by this snapshot.
+   * The total number of source-restarted requests represented by this snapshot.
    *
    * <p>When source-restarted requests are not tracked, the value is zero.
    */
@@ -160,104 +160,56 @@ class RunningRequestsSnapshot {
     CountedRequests countSSK = new CountedRequests();
     CountedRequests countCHKSR = new CountedRequests();
     CountedRequests countSSKSR = new CountedRequests();
+    RequestTransferOptions transferOptions =
+        new RequestTransferOptions(transfersPerInsert, ignoreLocalVsRemote);
     tracker.countRequests(
-        true,
-        false,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, false, false, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
-        true,
-        true,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, true, false, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
-        true,
-        false,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, false, true, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
-        true,
-        true,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, true, true, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
-        false,
-        false,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, false, false, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
-        false,
-        true,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, true, false, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
-        false,
-        false,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, false, true, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
-        false,
-        true,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, true, true, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
-        false,
-        false,
-        false,
-        true,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, false, false, true, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
-        false,
-        true,
-        false,
-        true,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, true, false, true, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     this.expectedTransfersInCHK = countCHK.expectedTransfersIn();
@@ -282,8 +234,8 @@ class RunningRequestsSnapshot {
    * transfers are treated as remote regardless of the supplied {@code ignoreLocalVsRemote}
    * argument, because the peer experiences them as remote usage.
    *
-   * <p>Use this constructor when enforcing per-peer limits or when communicating current load to a
-   * connected peer.
+   * <p>Use this constructor when enforcing per-peer limits or when communicating the current load
+   * to a connected peer.
    *
    * @param tracker Request tracker supplying current counts; must not be {@code null}.
    * @param source Peer whose requests are counted; may be {@code null} for adopted requests.
@@ -314,124 +266,76 @@ class RunningRequestsSnapshot {
       countCHKSR = new CountedRequests();
       countSSKSR = new CountedRequests();
     }
+    RequestTransferOptions transferOptions =
+        new RequestTransferOptions(transfersPerInsert, ignoreLocalVsRemote);
     tracker.countRequests(
         source,
         requestsToNode,
-        true,
-        false,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, false, false, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        true,
-        true,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, true, false, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        true,
-        false,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, false, true, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        true,
-        true,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(true, true, true, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        false,
-        false,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, false, false, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        false,
-        true,
-        false,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, true, false, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        false,
-        false,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, false, true, false, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        false,
-        true,
-        true,
-        false,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, true, true, false, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        false,
-        false,
-        false,
-        true,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, false, false, true, realTimeFlag),
+        transferOptions,
         countCHK,
         countCHKSR);
     tracker.countRequests(
         source,
         requestsToNode,
-        false,
-        true,
-        false,
-        true,
-        realTimeFlag,
-        transfersPerInsert,
-        ignoreLocalVsRemote,
+        RequestAdmissionMode.of(false, true, false, true, realTimeFlag),
+        transferOptions,
         countSSK,
         countSSKSR);
     if (!requestsToNode) {
@@ -490,8 +394,8 @@ class RunningRequestsSnapshot {
    *
    * <p>The message includes CHK/SSK transfer counts, total requests, and whether the snapshot
    * covers real-time or bulk traffic. If any transfer count is negative, the message is logged at
-   * error level to highlight inconsistent accounting; otherwise it is emitted at debug level when
-   * enabled. The method has no side effects beyond logging.
+   * the error level to highlight inconsistent accounting; otherwise it is emitted at debug level
+   * when enabled. The method has no side effects beyond logging.
    */
   void log() {
     log(null);
