@@ -188,7 +188,10 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
     if (onlyNode == null)
       PeerNodeRoutingReporter.reportRoutedTo(
-          node, next, target, source == null, false, source, nodesRoutedTo, htl);
+          node,
+          next,
+          new PeerNodeRoutingReportParams(
+              target, source == null, false, source, nodesRoutedTo, htl));
     nodesRoutedTo.add(next);
 
     long transferUID = sendTo(next);

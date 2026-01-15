@@ -36,7 +36,9 @@ class PeerNodeRoutingReporterTest {
     assertDoesNotThrow(
         () ->
             PeerNodeRoutingReporter.reportRoutedTo(
-                node, peerNode, 0.1, true, true, null, Set.of(), 1));
+                node,
+                peerNode,
+                new PeerNodeRoutingReportParams(0.1, true, true, null, Set.of(), 1)));
   }
 
   @ParameterizedTest
@@ -62,7 +64,9 @@ class PeerNodeRoutingReporterTest {
     when(peerNode.shallWeRouteAccordingToOurPeersLocation(2)).thenReturn(false);
 
     PeerNodeRoutingReporter.reportRoutedTo(
-        node, peerNode, target, isLocal, realTime, null, Set.of(), 2);
+        node,
+        peerNode,
+        new PeerNodeRoutingReportParams(target, isLocal, realTime, null, Set.of(), 2));
 
     verify(overall).report(expectedDistance);
     if (isLocal) {
@@ -103,7 +107,8 @@ class PeerNodeRoutingReporterTest {
     when(peerNode.shallWeRouteAccordingToOurPeersLocation(3)).thenReturn(true);
     when(peerNode.getClosestPeerLocation(eq(target), anySet())).thenReturn(closestLocation);
 
-    PeerNodeRoutingReporter.reportRoutedTo(node, peerNode, target, true, true, null, Set.of(), 3);
+    PeerNodeRoutingReporter.reportRoutedTo(
+        node, peerNode, new PeerNodeRoutingReportParams(target, true, true, null, Set.of(), 3));
 
     verify(overall).report(expectedDistance);
     verify(local).report(expectedDistance);
@@ -135,7 +140,8 @@ class PeerNodeRoutingReporterTest {
     when(peerNode.shallWeRouteAccordingToOurPeersLocation(4)).thenReturn(true);
     when(peerNode.getClosestPeerLocation(eq(target), anySet())).thenReturn(closestLocation);
 
-    PeerNodeRoutingReporter.reportRoutedTo(node, peerNode, target, true, false, null, Set.of(), 4);
+    PeerNodeRoutingReporter.reportRoutedTo(
+        node, peerNode, new PeerNodeRoutingReportParams(target, true, false, null, Set.of(), 4));
 
     verify(overall).report(expectedDistance);
     verify(local).report(expectedDistance);
@@ -161,7 +167,9 @@ class PeerNodeRoutingReporterTest {
         IllegalArgumentException.class,
         () ->
             PeerNodeRoutingReporter.reportRoutedTo(
-                node, peerNode, target, true, true, null, routedTo, 5));
+                node,
+                peerNode,
+                new PeerNodeRoutingReportParams(target, true, true, null, routedTo, 5)));
 
     verifyNoInteractions(overall, local, remote, rt, bulk);
   }
@@ -199,7 +207,8 @@ class PeerNodeRoutingReporterTest {
     routedTo.add(routedToA);
     routedTo.add(routedToB);
 
-    PeerNodeRoutingReporter.reportRoutedTo(node, peerNode, target, false, true, prev, routedTo, 6);
+    PeerNodeRoutingReporter.reportRoutedTo(
+        node, peerNode, new PeerNodeRoutingReportParams(target, false, true, prev, routedTo, 6));
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Set<Double>> captor =
