@@ -49,6 +49,7 @@ qodana*
 multipass-client-certificate
 out/jreleaser
 build-logic/build/
+build-logic/bin/
 tmp*
 # WiX/jpackage debug artifacts (decompiled MSI and relink outputs)
 /Crypta-*.wxs
