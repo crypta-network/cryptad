@@ -1662,30 +1662,28 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     boolean dontWant = handleOldOpennetPromotion(oldOpennetPeer, pnLocal);
     dontWant = computeDontWantForDuplicateIP(dontWant, pnLocal, ctx.replyTo);
 
-    long newTrackerID =
-        pnLocal
-            .handshake()
-            .completedHandshake(
-                bootID,
-                hisRef,
-                hisRef.length,
-                outgoingCipher,
-                outgoingKey,
-                incommingCipher,
-                incommingKey,
-                ctx.replyTo,
-                true,
-                negType,
-                trackerID,
-                false,
-                false,
-                hmacKey,
-                ivCipher,
-                ivNonce,
-                ourInitialSeqNum,
-                theirInitialSeqNum,
-                ourInitialMsgID,
-                theirInitialMsgID);
+    HandshakeCompletionParams handshakeParams = new HandshakeCompletionParams();
+    handshakeParams.thisBootID = bootID;
+    handshakeParams.data = hisRef;
+    handshakeParams.length = hisRef.length;
+    handshakeParams.outgoingCipher = outgoingCipher;
+    handshakeParams.outgoingKey = outgoingKey;
+    handshakeParams.incommingCipher = incommingCipher;
+    handshakeParams.incommingKey = incommingKey;
+    handshakeParams.replyTo = ctx.replyTo;
+    handshakeParams.unverified = true;
+    handshakeParams.negType = negType;
+    handshakeParams.trackerID = trackerID;
+    handshakeParams.isJFK4 = false;
+    handshakeParams.jfk4SameAsOld = false;
+    handshakeParams.hmacKey = hmacKey;
+    handshakeParams.ivCipher = ivCipher;
+    handshakeParams.ivNonce = ivNonce;
+    handshakeParams.ourInitialSeqNum = ourInitialSeqNum;
+    handshakeParams.theirInitialSeqNum = theirInitialSeqNum;
+    handshakeParams.ourInitialMsgID = ourInitialMsgID;
+    handshakeParams.theirInitialMsgID = theirInitialMsgID;
+    long newTrackerID = pnLocal.handshake().completedHandshake(handshakeParams);
 
     Jfk4Params params = new Jfk4Params();
     params.negotiation = negotiation;
@@ -1907,29 +1905,28 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     incommingCipher.initialize(pn.incommingKey);
     ivCipher.initialize(pn.ivKey);
 
-    long newTrackerID =
-        pn.handshake()
-            .completedHandshake(
-                s1.bootID,
-                s1.hisRef,
-                s1.hisRef.length,
-                outgoingCipher,
-                pn.outgoingKey,
-                incommingCipher,
-                pn.incommingKey,
-                replyTo,
-                false,
-                negType,
-                s1.trackerID,
-                true,
-                s1.reusedTracker,
-                pn.hmacKey,
-                ivCipher,
-                pn.ivNonce,
-                pn.ourInitialSeqNum,
-                pn.theirInitialSeqNum,
-                pn.ourInitialMsgID,
-                pn.theirInitialMsgID);
+    HandshakeCompletionParams handshakeParams = new HandshakeCompletionParams();
+    handshakeParams.thisBootID = s1.bootID;
+    handshakeParams.data = s1.hisRef;
+    handshakeParams.length = s1.hisRef.length;
+    handshakeParams.outgoingCipher = outgoingCipher;
+    handshakeParams.outgoingKey = pn.outgoingKey;
+    handshakeParams.incommingCipher = incommingCipher;
+    handshakeParams.incommingKey = pn.incommingKey;
+    handshakeParams.replyTo = replyTo;
+    handshakeParams.unverified = false;
+    handshakeParams.negType = negType;
+    handshakeParams.trackerID = s1.trackerID;
+    handshakeParams.isJFK4 = true;
+    handshakeParams.jfk4SameAsOld = s1.reusedTracker;
+    handshakeParams.hmacKey = pn.hmacKey;
+    handshakeParams.ivCipher = ivCipher;
+    handshakeParams.ivNonce = pn.ivNonce;
+    handshakeParams.ourInitialSeqNum = pn.ourInitialSeqNum;
+    handshakeParams.theirInitialSeqNum = pn.theirInitialSeqNum;
+    handshakeParams.ourInitialMsgID = pn.ourInitialMsgID;
+    handshakeParams.theirInitialMsgID = pn.theirInitialMsgID;
+    long newTrackerID = pn.handshake().completedHandshake(handshakeParams);
     postHandshakeActionsJFK4(newTrackerID, dontWant, pn);
 
     // cleanup
