@@ -103,8 +103,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * Records whether local configuration explicitly set {@link #disableRouting}. This flag lets the
-   * node distinguish local intent from remote requests and preserves local overrides across
-   * subsequent updates. It is read and written under the peer lock only.
+   * node distinguish local intent from remote requests and preserves local overrides across later
+   * updates. It is read and written under the peer lock only.
    */
   protected boolean disableRoutingHasBeenSetLocally;
 
@@ -131,8 +131,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * Session key for inbound packet decryption once a tracker becomes active. This is negotiated
-   * during handshake, rotated during rekeying, and cleared when the tracker is discarded. Treat as
-   * sensitive key material and never log.
+   * during a handshake, rotated during rekeying, and cleared when the tracker is discarded. Treat
+   * as sensitive key material and never log.
    */
   protected byte[] incommingKey;
 
@@ -152,13 +152,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * Cached serialized noderef used during JFK handshake negotiation. The value is only relevant
-   * during connection setup and may be cleared afterward. It is treated as transient state and
-   * should not be assumed to persist across reconnects.
+   * during connection setup and may be cleared afterward. It is treated as a transient state and
+   * should not be assumed to persist across reconnections.
    */
   protected byte[] jfkMyRef;
 
   /**
-   * HMAC key used to authenticate messages on the active session. It is negotiated during
+   * HMAC key used to authenticate messages in the active session. It is negotiated during a
    * handshake, rotated during rekeying, and cleared when the tracker is discarded. This key is
    * sensitive and must not be logged or persisted.
    */
@@ -173,7 +173,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * Nonce material used with {@link #ivKey} for per-packet IV derivation. The value is negotiated
-   * during handshake and must remain paired with the current tracker; it is cleared when the
+   * during a handshake and must remain paired with the current tracker; it is cleared when the
    * tracker is discarded.
    */
   protected byte[] ivNonce;
@@ -214,7 +214,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** My low-level address for SocketManager purposes */
   private Peer detectedPeer = null;
 
-  /** My OutgoingPacketMangler i.e. the object which encrypts packets sent to this node */
+  /** My OutgoingPacketMangler i.e., the object which encrypts packets sent to this node */
   private final OutgoingPacketMangler outgoingMangler;
 
   /** Advertised addresses */
@@ -232,16 +232,16 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** Previous key - has a separate packet number space */
   private SessionKey previousTracker;
 
-  /** When did we last rekey (promote the unverified tracker to new) ? */
+  /** When did we last rekey (promote the unverified tracker to new)? */
   private long timeLastRekeyed;
 
-  /** How much data did we send with the current tracker ? */
+  /** How much data did we send with the current tracker? */
   private long totalBytesExchangedWithCurrentTracker = 0;
 
-  /** Are we rekeying ? */
+  /** Are we rekeying? */
   private boolean isRekeying = false;
 
-  /** Unverified tracker - will be promoted to currentTracker if we receive packets on it */
+  /** Unverified tracker - will be promoted to the currentTracker if we receive packets on it */
   private SessionKey unverifiedTracker;
 
   /** When did we last send a packet? */
@@ -291,25 +291,25 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   private boolean removed;
 
-  /** Number of handshake attempts since last successful connection or ARK fetch */
+  /** Number of handshake attempts since the last successful connection or ARK fetch */
   private int handshakeCount;
 
-  /** After this many failed handshakes, we start the ARK fetcher. */
+  /** After these many failed handshakes, we start the ARK fetcher. */
   private static final int MAX_HANDSHAKE_COUNT = 2;
 
   /**
-   * Node "identity". This is a random 32 byte block of data, which may be derived from the node's
-   * public key. It cannot be changed, and is only used for the outer keyed obfuscation on
-   * connection setup packets in FNPPacketMangler.
+   * Node "identity". This is a random 32-byte block of data, which may be derived from the node's
+   * public key. It cannot be changed and is only used for the outer keyed obfuscation on connection
+   * setup packets in FNPPacketMangler.
    */
   final byte[] identity;
 
   final String identityAsBase64String;
 
-  /** Hash of node identity. Used in setup key. */
+  /** Hash of node identity. Used in setup keys. */
   final byte[] identityHash;
 
-  /** Hash of node identity. Used in setup key. */
+  /** Hash of node identity. Used in setup keys. */
   final byte[] identityHashHash;
 
   /**
@@ -366,7 +366,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** Total bytes sent since startup */
   private long totalOutputSinceStartup;
 
-  /** Peer node public key; changing this means new noderef */
+  /** Peer node public key; changing this means a new noderef */
   final ECPublicKey peerECDSAPubKey;
 
   /** Note: Used by the N2NChat plugin because the getter is protected. */
@@ -399,7 +399,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * Our boot ID. This is set to a random number on startup, and then reset whenever we dump the
-   * in-flight messages and call disconnected() on their clients, i.e. whenever we call
+   * in-flight messages and call disconnected() on their clients, i.e., whenever we call
    * disconnected(true, ...)
    */
   private long myBootID;
@@ -407,7 +407,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** myBootID at the time of the last successful completed handshake. */
   private long myLastSuccessfulBootID;
 
-  /** If true, this means last time we tried, we got a bogus noderef */
+  /** If true, this means the last time we tried, we got a bogus noderef */
   private boolean bogusNoderef;
 
   /** The time at which we last completed a connection setup. */
@@ -437,9 +437,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * When this peer was added to this node. This is used differently by opennet and darknet nodes.
-   * Darknet nodes clear it after connecting but persist it across restarts, and clear it on restart
+   * Darknet nodes clear it after connecting but persist it across restarts and clear it on restart
    * unless the peer has never connected, or if it is more than 30 days ago. Opennet nodes clear it
-   * after the post-connect grace period elapses, and don't persist it across restarts.
+   * after the post-connection grace period elapses and don't persist it across restarts.
    */
   protected long peerAddedTime;
 
@@ -449,7 +449,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** Bytes sent at/before startup */
   private final long bytesOutAtStartup;
 
-  /** Times had routable connection when checked */
+  /** Times had a routable connection when checked */
   private long hadRoutableConnectionCount;
 
   /** Times checked for routable connection */
@@ -491,7 +491,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** The node is being disconnected, but it may take a while. */
   private boolean disconnecting;
 
-  /** When did we last disconnect? Not Disconnected because a discrete event */
+  /** When did we last disconnect? Not Disconnected because of a discrete event */
   long timeLastDisconnect;
 
   /** Previous time of disconnection */
@@ -1375,55 +1375,21 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
      *   <li>Finalizes connection state and timestamps.
      * </ul>
      *
-     * @param thisBootID peer boot identifier used to detect restarts
-     * @param data noderef byte buffer containing the compressed reference
-     * @param length number of bytes to read from {@code data}
-     * @param outgoingCipher cipher initialized for outbound packet encryption
-     * @param outgoingKey key material paired with {@code outgoingCipher}
-     * @param incommingCipher cipher initialized for inbound packet decryption
-     * @param incommingKey key material paired with {@code incommingCipher}
-     * @param replyTo address on which the handshake packet arrived
-     * @param unverified whether the new tracker starts in unverified state
-     * @param negType negotiated link setup type identifier
-     * @param trackerID proposed tracker identifier, or negative to allocate
-     * @param isJFK4 whether the handshake is JFK(4) processing
-     * @param jfk4SameAsOld whether the responder reused the old tracker
-     * @param hmacKey HMAC key for authenticating session messages
-     * @param ivCipher cipher used for IV derivation on the session
-     * @param ivNonce nonce material used for IV derivation
-     * @param ourInitialSeqNum initial outbound packet sequence number
-     * @param theirInitialSeqNum initial inbound packet sequence number
-     * @param ourInitialMsgID initial outbound message identifier
-     * @param theirInitialMsgID initial inbound message identifier
+     * @param params handshake completion inputs, including noderef data, keys, and counters
      * @return the active tracker identifier, or {@code -1} on failure
      */
-    long completedHandshake(
-        long thisBootID,
-        byte[] data,
-        int length,
-        BlockCipher outgoingCipher,
-        byte[] outgoingKey,
-        BlockCipher incommingCipher,
-        byte[] incommingKey,
-        Peer replyTo,
-        boolean unverified,
-        int negType,
-        long trackerID,
-        boolean isJFK4,
-        boolean jfk4SameAsOld,
-        byte[] hmacKey,
-        BlockCipher ivCipher,
-        byte[] ivNonce,
-        int ourInitialSeqNum,
-        int theirInitialSeqNum,
-        int ourInitialMsgID,
-        int theirInitialMsgID) {
+    long completedHandshake(HandshakeCompletionParams params) {
       long now = System.currentTimeMillis();
+      long trackerID = params.trackerID;
       // If trackerID is negative, pick a random positive ID; then keep using trackerID.
-      // Avoid Math.abs(Long.MIN_VALUE) overflow; mask sign bit instead.
+      // Avoid Math.abs(Long.MIN_VALUE) overflow; mask a sign bit instead.
       trackerID = trackerID < 0 ? (random.nextLong() & Long.MAX_VALUE) : trackerID;
       if (LOG.isDebugEnabled())
-        LOG.debug("Tracker ID {} isJFK4={} jfk4SameAsOld={}", trackerID, isJFK4, jfk4SameAsOld);
+        LOG.debug(
+            "Tracker ID {} isJFK4={} jfk4SameAsOld={}",
+            trackerID,
+            params.isJFK4,
+            params.jfk4SameAsOld);
 
       // Update sendHandshakeTime; don't send another handshake for a while.
       // If unverified, "a while" determines the timeout; if not, it's just good practice to avoid a
@@ -1433,7 +1399,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       stopARKFetcher();
       try {
         // First, the new noderef
-        processNewNoderef(data, length);
+        processNewNoderef(params.data, params.length);
       } catch (FSParseException e1) {
         synchronized (PeerNode.this) {
           bogusNoderef = true;
@@ -1445,28 +1411,28 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         return -1;
       }
       RoutabilityDecision rd = decideRoutability();
-      changedIP(replyTo);
+      changedIP(params.replyTo);
       HandshakeParams hp = new HandshakeParams();
-      hp.thisBootID = thisBootID;
+      hp.thisBootID = params.thisBootID;
       hp.rd = rd;
-      hp.outgoingCipher = outgoingCipher;
-      hp.outgoingKey = outgoingKey;
-      hp.incommingCipher = incommingCipher;
-      hp.incommingKey = incommingKey;
-      hp.ivCipher = ivCipher;
-      hp.ivNonce = ivNonce;
-      hp.hmacKey = hmacKey;
-      hp.unverified = unverified;
+      hp.outgoingCipher = params.outgoingCipher;
+      hp.outgoingKey = params.outgoingKey;
+      hp.incommingCipher = params.incommingCipher;
+      hp.incommingKey = params.incommingKey;
+      hp.ivCipher = params.ivCipher;
+      hp.ivNonce = params.ivNonce;
+      hp.hmacKey = params.hmacKey;
+      hp.unverified = params.unverified;
       hp.trackerID = trackerID;
-      hp.ourInitialSeqNum = ourInitialSeqNum;
-      hp.theirInitialSeqNum = theirInitialSeqNum;
-      hp.ourInitialMsgID = ourInitialMsgID;
-      hp.theirInitialMsgID = theirInitialMsgID;
-      hp.negType = negType;
+      hp.ourInitialSeqNum = params.ourInitialSeqNum;
+      hp.theirInitialSeqNum = params.theirInitialSeqNum;
+      hp.ourInitialMsgID = params.ourInitialMsgID;
+      hp.theirInitialMsgID = params.theirInitialMsgID;
+      hp.negType = params.negType;
       hp.now = now;
       HandshakeApplyResult har = applyHandshakeState(hp);
       if (har == null) return -1;
-      finalizeHandshake(har, rd, replyTo, thisBootID, now);
+      finalizeHandshake(har, rd, params.replyTo, params.thisBootID, now);
 
       return trackerID;
     }
@@ -1730,7 +1696,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * Returns whether this is a temporary connection initiated by an anonymous peer.
    *
-   * <p>True when the node connects and provides a noderef we did not already have (e.g., on
+   * <p>True, when the node connects and provides a noderef we did not already have (e.g., on
    * seednodes).
    *
    * @return {@code true} if the peer is an anonymous initiator
@@ -1831,7 +1797,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         toOutputString.append(", ");
       }
       // assert(toOutputString.length() >= 2) -- always true as localHandshakeIPs.length != 0
-      // remove last ", "
+      // remove the last ", "
       toOutputString.deleteCharAt(toOutputString.length() - 1);
       toOutputString.deleteCharAt(toOutputString.length() - 1);
     }
@@ -1961,9 +1927,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * Returns true if requests can be routed through this peer. True if the peer's location is known,
    * presently connected, and routing-compatible. That is, ignoring backoff, the peer's location is
-   * known, build number is compatible, and routing has not been explicitly disabled.
+   * known, the build number is compatible, and routing has not been explicitly disabled.
    *
-   * <p>Note possible deadlocks! PeerManager calls this, we call PeerManager in e.g. verified.
+   * <p>Note possible deadlocks! PeerManager calls this; we call PeerManager in e.g., verified.
    */
   @Override
   public boolean isRoutable() {
@@ -2021,7 +1987,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * Returns the transport abstraction used to communicate with this peer.
    *
    * <p>The transport reflects the currently negotiated protocol and may change when handshakes
-   * renegotiate session parameters. Callers should not cache the result across reconnects.
+   * renegotiate session parameters. Callers should not cache the result across reconnections.
    *
    * @return the current transport for this peer; never {@code null}
    */
@@ -2210,13 +2176,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * Disconnected e.g. due to not receiving a packet for ages.
+   * Disconnected e.g., due to not receiving a packet for ages.
    *
-   * @param dumpMessageQueue If true, clear the messages-to-send queue, and change the bootID so
-   *     even if we reconnect the other side will know that a disconnect happened. If false, don't
+   * @param dumpMessageQueue If true, clear the messages-to-send queue and change the bootID, so
+   *     even if we reconnect, the other side will know that a disconnect happened. If false, don't
    *     clear the messages yet. They will be cleared after an hour if the peer is disconnected at
    *     that point.
-   * @param dumpTrackers If true, dump the SessionKey's (i.e. dump the cryptographic data so we
+   * @param dumpTrackers If true, dump the SessionKey's (i.e., dump the cryptographic data so we
    *     don't understand any packets they send us). <br>
    *     Possible arguments:
    *     <ul>
@@ -2341,7 +2307,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     return st;
   }
 
-  /** Forces an immediate disconnect from this peer, without waiting for graceful teardown. */
+  /** Forces an immediate disconnect from this peer, without waiting for a graceful teardown. */
   @Override
   public void forceDisconnect() {
     LOG.warn("Forcing disconnect on {}", this);
@@ -2419,7 +2385,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * bookkeeping as a side effect when burst mode is active. Callers should avoid invoking it in
    * tight loops; it uses current time and may log debug details.
    *
-   * @return {@code true} if a handshake send should be attempted now
+   * @return {@code true} if a handshake sending should be attempted now
    */
   public boolean shouldSendHandshake() {
     long now = System.currentTimeMillis();
@@ -2498,7 +2464,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     synchronized (this) {
       long delay;
       if (unroutableOlderVersion || unroutableNewerVersion || disableRouting) {
-        // Let them know we're here, but have no hope of routing general data to them.
+        // Let them know we're here but have no hope of routing general data to them.
         delay =
             (long) Node.MIN_TIME_BETWEEN_VERSION_SENDS
                 + (long) random.nextInt(Node.RANDOMIZED_TIME_BETWEEN_VERSION_SENDS);
@@ -2603,7 +2569,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * <p>Burst-only mode limits handshake attempts to short bursts separated by longer pauses. It is
    * typically enabled when the local address appears port‑forwarded or otherwise sensitive to
-   * repeated probes. The decision is derived from current configuration and peer state and may
+   * repeated probes. The decision is derived from the current configuration and peer state and may
    * change over time.
    *
    * @return {@code true} if burst-only handshake scheduling is active
@@ -2659,10 +2625,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * Decrement the HTL (or not), in accordance with our probabilistic HTL rules. Whether to
-   * decrement is determined once for each connection, rather than for every request, because if we
-   * don't we would get a predictable fraction of requests with each HTL - this pattern could give
-   * away a lot of information close to the originator. Although it's debatable whether it's worth
-   * worrying about given all the other information they have if close by ...
+   * decrement is determined once for each connection, rather than for every request. If we don't,
+   * we would get a predictable fraction of requests with each HTL - this pattern could give away a
+   * lot of information close to the originator. Although it's debatable whether it's worth worrying
+   * about given all the other information they have if close by ...
    *
    * @param htl The old HTL.
    * @return The new HTL.
@@ -2710,7 +2676,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * Persists or updates the peers list to reflect changes made by this node.
    *
    * <p>Implementations should write any modified peer state to durable storage or notify the
-   * appropriate manager so that changes survive process restarts and UI state remains consistent.
+   * appropriate manager so that changes survive process restarts and the UI state remains
+   * consistent.
    */
   protected abstract void writePeers();
 
@@ -2862,7 +2829,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         // normal.
         // That includes receiving packets after we have technically disconnected already.
         // A race condition involving forceCancelDisconnecting causing a mistaken log message anyway
-        // is conceivable, but unlikely...
+        // is conceivable but unlikely...
         if ((unverifiedTracker == null) && (currentTracker == null) && !disconnecting)
           LOG.warn("Received packet while disconnected!: {}", this);
         else if (LOG.isDebugEnabled())
@@ -2895,12 +2862,12 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * Clears or adjusts the stored peer-added time after a successful connect.
+   * Clears or adjusts the stored peer-added time after a successful connection.
    *
    * <p>Implementations decide whether to reset or preserve the persisted peer-added timestamp based
    * on peer type and restart behavior. The method is invoked after a successful handshake and
    * should not perform heavyweight work or blocking I/O. It is not expected to be idempotent across
-   * reconnects.
+   * reconnections.
    */
   protected abstract void maybeClearPeerAddedTimeOnConnect();
 
@@ -2936,8 +2903,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * Returns the polling priority used for normal updates.
    *
-   * <p>This value is used by the polling scheduler to assign priority class. It is a small integer
-   * where lower numbers indicate higher priority.
+   * <p>This value is used by the polling scheduler to assign a priority class. It is a small
+   * integer where lower numbers indicate higher priority.
    *
    * @return polling priority for normal updates
    */
@@ -2979,7 +2946,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * Marks the given session key as verified and promotes it to active routing state as needed.
+   * Marks the given session key as verified and promotes it to an active routing state as needed.
    *
    * <p>Called when a packet is successfully decrypted on a given {@link SessionKey}. May promote
    * the {@code unverifiedTracker} when appropriate.
@@ -3217,7 +3184,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       changedAnything = applyNominalPeersChange(oldPeers);
     } else if (forARK || forFullNodeRef) {
       // Connection setup doesn't include a physical.udp.
-      // Differential noderefs only include it on the first one after connect.
+      // Differential noderefs only include it on the first one after connection.
       LOG.error("ARK noderef has no physical.udp for {} : forARK={}", this, forARK);
       if (forFullNodeRef) throw new FSParseException("ARK noderef has no physical.udp");
     }
@@ -3506,7 +3473,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * Returns the time at which we last connected (or reconnected).
    *
-   * <p>The timestamp is recorded when a handshake completes and the peer transitions to connected
+   * <p>The timestamp is recorded when a handshake completes and the peer transitions to a connected
    * state. It may be {@code 0} if the peer has never been connected in this process lifetime.
    *
    * @return epoch time in milliseconds for the last completed connection
@@ -3582,7 +3549,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * Returns whether routing is backed off for either real-time or bulk traffic.
    *
    * <p>This method uses the maximum of the backoff timers and the current ping threshold to detect
-   * general backoff state. It is useful for UI summaries and coarse routing decisions.
+   * the general backoff state. It is useful for UI summaries and coarse routing decisions.
    *
    * @return {@code true} if either traffic class is backed off
    */
@@ -3640,7 +3607,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   // Separate, mandatory backoff mechanism for when nodes are consistently sending unexpected soft
   // rejects.
-  // E.g. when load management predicts GUARANTEED, and yet we are rejected.
+  // E.g., when load management predicts GUARANTEED, and yet we are rejected.
   // This can happen when the peer's view of how many of our requests are running is different to
   // our view.
   // But there has not been a timeout, so we haven't called fatalTimeout() and reconnected.
@@ -3873,7 +3840,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * Handles a successful transfer by resetting transfer backoff if it has expired.
+   * Handles a successful transfer by resetting the transfer backoff if it has expired.
    *
    * @param realTime whether the success applies to real-time or bulk transfer state
    */
@@ -4266,12 +4233,12 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * <p>This method is called by {@link #setPeerNodeStatus(long, boolean)} while holding the peer
    * lock to avoid re-entrant status updates. Callers must supply current timing and backoff values
-   * that were computed outside the lock to minimize contention.
+   * computed outside the lock to minimize contention.
    *
    * @param now current time in milliseconds for comparison checks
    * @param routingBackedOffUntilRT realtime routing backoff deadline in millis
    * @param routingBackedOffUntilBulk bulk routing backoff deadline in millis
-   * @param overPingTime whether current average ping exceeds threshold
+   * @param overPingTime whether the current average ping exceeds the threshold
    * @param noLoadStats whether load stats are missing for routing
    * @return status code representing the peer's computed state
    */
@@ -4507,7 +4474,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
 
   /**
    * Queries the Version class to determine if this peers advertised build-number is either too-old
-   * or to new for the routing of requests.
+   * or too-new for the routing of requests.
    */
   synchronized void updateVersionRoutablity() {
     unroutableOlderVersion = forwardInvalidVersion();
@@ -4540,7 +4507,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * <p>This method tracks connection transitions and triggers {@link #onConnect()} only when the
    * peer transitions from disconnected to connected. It should be called after connection status
-   * updates to ensure accurate state.
+   * updates to ensure an accurate state.
    */
   public void maybeOnConnect() {
     if (wasDisconnected && isConnected()) {
@@ -4682,7 +4649,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     synchronized (this) {
       if (isRoutable()) hadRoutableConnectionCount += 1;
       routableConnectionCheckCount += 1;
-      // prevent the average from moving too slowly by capping the checkcount to 200000,
+      // prevent the average from moving too slowly by capping the checkcount to 200,000,
       // which, at 7 seconds between counts, works out to about 2 weeks.  This also prevents
       // knowing how long we've had a particular peer long term.
       if (routableConnectionCheckCount >= 200000) {
@@ -4900,9 +4867,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * peer nor routed to it.
    *
    * @param dumpMessageQueue If true, immediately dump the message queue, since we are closing the
-   *     connection due to some low level trouble e.g. not acknowledging. We will continue to try to
-   *     send anything already in flight, and it is possible to send more messages after this point,
-   *     for instance the message telling it we are disconnecting, but see above - no requests will
+   *     connection due to some low-level trouble e.g., not acknowledging. We will continue to try
+   *     to send anything already in flight. It is possible to send more messages after this point,
+   *     for instance, the message telling it we are disconnecting, but see above - no requests will
    *     be routed across this connection.
    * @return True if we have already started disconnecting, false otherwise.
    */
@@ -5124,12 +5091,12 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * Sends a node-to-node message immediately or queues it for later delivery.
    *
    * <p>This is a thin wrapper around the internal message-sending logic. Callers can request
-   * inclusion of a sent timestamp and can choose to queue the message when the peer is not
+   * inclusion of an already sent timestamp and can choose to queue the message when the peer is not
    * connected.
    *
    * @param fs field set representing the message payload
    * @param n2nType message type identifier
-   * @param includeSentTime whether to include a sent timestamp field
+   * @param includeSentTime whether to include an already sent timestamp field
    * @param now current time in milliseconds for timestamping
    * @param queueOnNotConnected whether to queue if the peer is not connected
    */
@@ -5211,7 +5178,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private int consecutiveRTOBackoffs;
 
   // Clock generally has 20ms granularity or better, right?
-  // Note: clock granularity depends on platform.
+  // Note: clock granularity depends on the platform.
   private static final int CLOCK_GRANULARITY = 20;
 
   @Override
@@ -5265,7 +5232,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * RFC 2988: Note that a TCP implementation MAY clear SRTT and RTTVAR after backing off the timer
    * multiple times as it is likely that the current SRTT and RTTVAR are bogus in this situation.
-   * Once SRTT and RTTVAR are cleared they should be initialized with the next RTT sample taken per
+   * Once SRTT and RTTVAR are cleared, they should be initialized with the next RTT sample taken per
    * (2.2) rather than using (2.3).
    */
   static final int MAX_CONSECUTIVE_RTO_BACKOFFS = 5;
@@ -5374,7 +5341,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * <p>This is used by the update subsystem to track advertised core versions.
    *
-   * @param mainJarVersion offered main JAR version number
+   * @param mainJarVersion offered the main JAR version number
    */
   public void setMainJarOfferedVersion(int mainJarVersion) {
     offeredMainJarVersion = mainJarVersion;
@@ -5385,7 +5352,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * <p>The value may be {@code 0} if no version has been offered yet.
    *
-   * @return offered main JAR version number
+   * @return offered the main JAR version number
    */
   public int getMainJarOfferedVersion() {
     return offeredMainJarVersion;
@@ -5394,8 +5361,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * Maybe send something. A SINGLE PACKET. Don't send everything at once, for two reasons: 1. It is
    * possible for a node to have a very long backlog. 2. Sometimes sending a packet can take a long
-   * time. 3. In the near future PacketSender will be responsible for output bandwidth throttling.
-   * So it makes sense to send a single packet and round-robin.
+   * time. 3. Soon PacketSender will be responsible for output bandwidth throttling. So it makes
+   * sense to send a single packet and round-robin.
    *
    * @param now current time in milliseconds
    * @param ackOnly when true, only send acknowledgements/housekeeping
@@ -5544,13 +5511,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * completely catatonic. 2) Wait forever for an acknowledgement of the timeout. This may be worth
    * investigating. One problem with this is that the slot would still count towards our overall
    * load management, which is surely a bad thing, although we could make it only count towards this
-   * node. Also, if it doesn't arrive in a reasonable time maybe there has been a severe problem
-   * e.g. out of memory, bug etc.; in that case, waiting forever may not be sensible. 3) Disconnect
-   * the node. This makes perfect sense for opennet. For darknet it's a bit more problematic. 4)
-   * Turn off routing to the node, possibly for a limited period. This would need to include the
-   * effects of disconnection. It might open up some cheapish local DoS's.
+   * node. Also, if it doesn't arrive in a reasonable time, maybe there has been a severe problem
+   * e.g., out of memory, bug, etc.; in that case, waiting forever may not be sensible. 3)
+   * Disconnect the node. This makes perfect sense for opennet. For darknet it's a bit more
+   * problematic. 4) Turn off routing to the node, possibly for a limited period. This would need to
+   * include the effects of disconnection. It might open up some cheapish local DoS's.
    *
-   * <p>For all nodes, at present, we disconnect. For darknet nodes, we log an error, and allow them
+   * <p>For all nodes, at present, we disconnect. For darknet nodes, we log an error and allow them
    * to reconnect.
    */
   public abstract void fatalTimeout();
@@ -5596,8 +5563,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * Requests the packet format to check for lost packets.
    *
-   * <p>If no packet format is active, the method returns immediately. This is used by timers to
-   * trigger retransmission checks.
+   * <p>If no packet format is active, the method returns immediately. Timers use this to trigger
+   * retransmission checks.
    */
   public void checkForLostPackets() {
     PacketFormat pf;
@@ -5626,7 +5593,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * Drops references to a session key when it is considered broken.
    *
    * <p>Only called for new-format connections where per-key packet tracking is not used. Updates
-   * connected state when the current key is dropped.
+   * the connected state when the current key is dropped.
    *
    * @param brokenKey session key to discard
    */
@@ -5640,7 +5607,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       } else if (previousTracker == brokenKey) previousTracker = null;
       else if (unverifiedTracker == brokenKey) unverifiedTracker = null;
     }
-    // Update connected vs not connected status.
+    // Update connected vs. not connected status.
     isConnected();
     setPeerNodeStatus(System.currentTimeMillis());
   }
@@ -5736,7 +5703,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private long lastSentUOM;
 
   // Note: limiting individual dependencies might or might not improve DoS
-  // resilience; current approach relies on natural failure behavior.
+  // resilience; the current approach relies on natural failure behavior.
 
   /**
    * Start sending a UOM jar to this peer.
@@ -5756,7 +5723,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * Marks completion of a UOM jar send.
+   * Marks completion of a UOM jar sending.
    *
    * @param isExt whether the legacy external jar was sent
    */
@@ -5846,7 +5813,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * <p>This is a convenience check used to avoid enqueuing large packets when the queue cannot
    * accept them.
    *
-   * @return {@code true} if a full-size packet would be rejected by the queue
+   * @return {@code true} if the queue would reject a full-size packet
    */
   public boolean fullPacketQueued() {
     PacketFormat pf;
@@ -5881,7 +5848,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @return maximum number of concurrent transfers
    */
   public int calculateMaxTransfersOut(int timeout, double nonOverheadFraction) {
-    // First get usable bandwidth.
+    // First, get usable bandwidth.
     double bandwidth = (internals.bandwidth() + 1.0);
     if (shouldThrottle())
       bandwidth = Math.min(bandwidth, (double) node.network().outputBandwidthLimit() / 2);
@@ -5929,8 +5896,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * After 5 consecutive GUARANTEED soft rejections, we enter mandatory backoff. The reason why we
    * don't immediately enter mandatory backoff is as follows: PROBLEM: Requests could have completed
    * between the time when the request was rejected and now. SOLUTION A: Tracking all possible
-   * requests which completed since the request was sent. CON: This would be rather complex, and I'm
-   * not sure how well it would work when there are many requests in flight; would it even be
+   * requests that are completed since the request was sent. CON: This would be rather complex, and
+   * I'm not sure how well it would work when there are many requests in flight; would it even be
    * possible without stopping sending requests after some arbitrary threshold? We might need a time
    * element, and would probably need parameters... SOLUTION B: Enforcing a hard peer limit on both
    * sides, as opposed to accepting a request if the *current* usage, without the new request, is
@@ -5939,7 +5906,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * <p>Of course, the problem with just using a counter is it may need to be changed frequently ...
    * Note: a better solution may exist; counter-based approach retained for simplicity.
    *
-   * <p>Fortunately, this is pretty rare. It happens when e.g. we send an SSK, then we send a CHK,
+   * <p>Fortunately, this is pretty rare. It happens when e.g., we send an SSK, then we send a CHK,
    * the messages are reordered and the CHK is accepted, and then the SSK is rejected. Both were
    * GUARANTEED because if they are accepted in order, thanks to the mechanism referred to in
    * solution B, they will both be accepted.
@@ -5990,7 +5957,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * Remembers a recently sent JFK nonce for replay protection during handshake processing.
+   * Remembers recently sent JFK nonce for replay protection during handshake processing.
    *
    * <p>Package-private for use by {@link FNPPacketMangler}.
    */
