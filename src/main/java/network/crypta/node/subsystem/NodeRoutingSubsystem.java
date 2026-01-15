@@ -886,19 +886,7 @@ public final class NodeRoutingSubsystem {
     if (LOG.isDebugEnabled())
       LOG.debug("makeInsertSender({},{},{},{},...,{}", key, htl, uid, source, opts.fromStore);
     SSKInsertSender is;
-    is =
-        new SSKInsertSender(
-            block,
-            uid,
-            tag,
-            htl,
-            source,
-            node,
-            opts.fromStore,
-            opts.forkOnCacheable,
-            opts.preferInsert,
-            opts.ignoreLowBackoff,
-            opts.realTimeFlag);
+    is = new SSKInsertSender(block, uid, tag, htl, source, node, opts);
     is.start();
     return is;
   }
