@@ -614,10 +614,8 @@ public final class CHKInsertSender extends BaseSender
   }
 
   private PeerNode findNextPeer() {
-    return node.network()
-        .peers()
-        .routingSelector()
-        .closerPeer(
+    PeerRoutingSelectionParams params =
+        new PeerRoutingSelectionParams(
             forkedRequestTag == null ? source : null,
             nodesRoutedTo,
             target,
@@ -625,12 +623,17 @@ public final class CHKInsertSender extends BaseSender
             node.isAdvancedModeEnabled(),
             -1,
             null,
+            2.0,
             null,
             htl,
-            ignoreLowBackoff ? Node.LOW_BACKOFF : 0,
+            ignoreLowBackoff ? Node.LOW_BACKOFF : 0L,
             source == null,
             realTimeFlag,
+            null,
+            false,
+            System.currentTimeMillis(),
             newLoadManagement);
+    return node.network().peers().routingSelector().closerPeer(params);
   }
 
   private void sendReceiveFailedNotice(PeerNode next) {

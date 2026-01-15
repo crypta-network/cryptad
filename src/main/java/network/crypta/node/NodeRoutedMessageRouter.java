@@ -56,7 +56,7 @@ final class NodeRoutedMessageRouter implements Runnable {
   /** Logger for routed message handling diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(NodeRoutedMessageRouter.class);
 
-  /** Owning node used for network access and configuration. */
+  /** The owning node used for network access and configuration. */
   private final Node node;
 
   /** Per-UID routed contexts used to forward replies and detect duplicates. */
@@ -235,7 +235,7 @@ final class NodeRoutedMessageRouter implements Runnable {
    * the message is forwarded using the routing selection flow and the routed context.
    *
    * @param m routed message to handle; must be non-null
-   * @param source source peer that sent the message, or {@code null} if locally originated
+   * @param source source peer that sent the message or {@code null} if locally originated
    * @param id routed request UID extracted from the message
    * @param htl current hops-to-live value after any source adjustments
    * @param target target location for routing decisions
@@ -286,7 +286,7 @@ final class NodeRoutedMessageRouter implements Runnable {
    * locally originated request, in which case no rejection is sent.
    *
    * @param source peer to notify, or {@code null} for locally originated requests
-   * @param id routed request UID to include in the rejection payload
+   * @param id routed request UID to include it in the rejection payload
    * @param m original routed message, used only for diagnostic logging
    */
   private void sendRoutedReject(PeerNode source, long id, Message m) {
@@ -302,11 +302,10 @@ final class NodeRoutedMessageRouter implements Runnable {
   /**
    * Forwards a routed reply (FNPRoutedPong) back to the recorded origin peer.
    *
-   * <p>The reply is looked up by UID in the routed context map. If no context exists, the method
-   * logs an error and returns {@code false} so callers can observe that the reply was unexpected.
-   * When a context exists but has no source (locally originated), the method returns {@code false}
-   * without sending any message. Forwarding clones and strips sub-messages to avoid metadata
-   * leakage.
+   * <p>UID looks up the reply in the routed context map. If no context exists, the method logs an
+   * error and returns {@code false} so callers can observe that the reply was unexpected. When a
+   * context exists but has no source (locally originated), the method returns {@code false} without
+   * sending any message. Forwarding clones and strips sub-messages to avoid metadata leakage.
    *
    * @param m routed reply message containing UID and payload; must be non-null
    * @return {@code true} if the reply was forwarded; {@code false} otherwise
@@ -333,9 +332,9 @@ final class NodeRoutedMessageRouter implements Runnable {
   /**
    * Forwards a routed message to the next hop or reports a dead-end rejection.
    *
-   * <p>The method prepares the message for forwarding, then repeatedly selects a next hop and
-   * attempts to send. If a candidate is disconnected, selection repeats. When no candidate exists,
-   * a rejection is sent to the source peer if present.
+   * <p>The method prepares the message for forwarding, then repeatedly selects the next hop, and
+   * attempts to send it. If a candidate is disconnected, selection repeats. When no candidate
+   * exists, a rejection is sent to the source peer if present.
    *
    * @param m original routed message; must be non-null
    * @param id routed request UID used for rejections
@@ -392,38 +391,41 @@ final class NodeRoutedMessageRouter implements Runnable {
       LOG.error("Target found but disconnected: {}", next);
       next = null;
     }
-    if (next == null)
-      next =
-          node.network()
-              .peers()
-              .routingSelector()
-              .closerPeer(
-                  pn,
-                  ctx.routedTo,
-                  target,
-                  true,
-                  node.isAdvancedModeEnabled(),
-                  -1,
-                  null,
-                  null,
-                  htl,
-                  0,
-                  pn == null,
-                  false,
-                  false);
+    if (next == null) {
+      PeerRoutingSelectionParams params =
+          new PeerRoutingSelectionParams(
+              pn,
+              ctx.routedTo,
+              target,
+              true,
+              node.isAdvancedModeEnabled(),
+              -1,
+              null,
+              2.0,
+              null,
+              htl,
+              0L,
+              pn == null,
+              false,
+              null,
+              false,
+              System.currentTimeMillis(),
+              false);
+      next = node.network().peers().routingSelector().closerPeer(params);
+    }
     return next;
   }
 
   /**
    * Sends a routed message to the chosen next hop.
    *
-   * <p>The send is asynchronous and may fail immediately if the peer is disconnected. In that case
-   * the caller is expected to retry selection. This method does not mutate state beyond the
-   * attempted send and never throws on connection failure.
+   * <p>The sending is asynchronous and may fail immediately if the peer is disconnected. In that
+   * case the caller is expected to retry selection. This method does not mutate the state beyond
+   * the attempted sending and never throws on connection failure.
    *
    * @param next selected next hop peer; must be non-null
    * @param m message to send; must be non-null and fully populated
-   * @return {@code true} if the send was enqueued; {@code false} if the peer was disconnected
+   * @return {@code true} if the sending was enqueued; {@code false} if the peer was disconnected
    */
   private boolean trySendToNext(PeerNode next, Message m) {
     try {
@@ -438,7 +440,7 @@ final class NodeRoutedMessageRouter implements Runnable {
    * Sends a routed rejection when no eligible next hop exists.
    *
    * <p>This is a best-effort notification to the origin peer. If the origin peer is {@code null}
-   * (locally originated), the method performs no send. Connection failures are logged at error
+   * (locally originated), the method performs no send. Connection failures are logged at the error
    * level because the rejection could not be delivered.
    *
    * @param pn origin peer to notify, or {@code null} for local originators
@@ -467,7 +469,7 @@ final class NodeRoutedMessageRouter implements Runnable {
    *
    * @param m original routed message to forward; must be non-null
    * @param newHTL updated hops-to-live value to store in the forwarded message
-   * @return a cloned message with updated HTL and counter fields
+   * @return a cloned message with updated HTL and counter-fields
    */
   private Message preForward(Message m, short newHTL) {
     m = m.cloneAndDropSubMessages();
@@ -550,7 +552,8 @@ final class NodeRoutedMessageRouter implements Runnable {
       this.identity = identity;
     }
 
-    // Tracks peers the message has been forwarded to; used to avoid loops when choosing next hop.
+    // Tracks peers the message has been forwarded to; used to avoid loops when choosing the next
+    // hop.
     /**
      * Records that a peer was selected as a forwarding target for this UID.
      *

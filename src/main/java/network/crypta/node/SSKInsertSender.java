@@ -16,6 +16,7 @@ import network.crypta.io.comm.SlowAsyncMessageFilterCallback;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
 import network.crypta.keys.SSKVerifyException;
+import network.crypta.node.subsystem.NodeRoutingSubsystem.SskInsertOptions;
 import network.crypta.support.ShortBuffer;
 import network.crypta.support.io.NativeThread;
 import org.slf4j.Logger;
@@ -29,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>SSKs can collide: a different payload may already exist at the same key, requiring
  *       collision handling and potential block replacement.
- *   <li>The payload is small (approximately 1 KiB), so headers and data are sent eagerly and the
+ *   <li>The payload is small (approximately 1 KiB), so headers and data are sent eagerly, and the
  *       final reply does not require a long transfer window.
  *   <li>Verification depends on the publisher’s public key; the peer may request the public key and
  *       confirm it separately from the payload.
@@ -59,7 +60,7 @@ public class SSKInsertSender extends BaseSender
   final byte[] pubKeyHash;
 
   /**
-   * Raw payload bytes. Initially the local payload; may be replaced if a collision is discovered
+   * Raw payload bytes. Initially, the local payload; may be replaced if a collision is discovered
    * and the remote block is accepted instead.
    */
   byte[] data;
@@ -116,13 +117,9 @@ public class SSKInsertSender extends BaseSender
       short htl,
       PeerNode source,
       Node node,
-      boolean fromStore,
-      boolean forkOnCacheable,
-      boolean preferInsert,
-      boolean ignoreLowBackoff,
-      boolean realTimeFlag) {
-    super(block.getKey(), realTimeFlag, source, node, htl, uid);
-    this.fromStore = fromStore;
+      SskInsertOptions opts) {
+    super(block.getKey(), opts.realTimeFlag, source, node, htl, uid);
+    this.fromStore = opts.fromStore;
     this.origUID = uid;
     this.origTag = tag;
     myKey = block.getKey();
@@ -134,9 +131,9 @@ public class SSKInsertSender extends BaseSender
     byte[] pubKeyAsBytes = pubKey.asBytes();
     pubKeyHash = SHA256.digest(pubKeyAsBytes);
     this.block = block;
-    this.forkOnCacheable = forkOnCacheable;
-    this.preferInsert = preferInsert;
-    this.ignoreLowBackoff = ignoreLowBackoff;
+    this.forkOnCacheable = opts.forkOnCacheable;
+    this.preferInsert = opts.preferInsert;
+    this.ignoreLowBackoff = opts.ignoreLowBackoff;
   }
 
   /**
@@ -179,7 +176,7 @@ public class SSKInsertSender extends BaseSender
     }
   }
 
-  // Routing entry point. Chooses next peer and handles optional forking when the local node
+  // Routing entry point. Chooses the next peer and handles optional forking when the local node
   // is allowed to cache inserts at the current HTL.
 
   /** Performs one routing step: adjust HTL, optionally fork, pick a peer, and continue. */
@@ -240,10 +237,8 @@ public class SSKInsertSender extends BaseSender
   }
 
   private PeerNode findNextPeer() {
-    return node.network()
-        .peers()
-        .routingSelector()
-        .closerPeer(
+    PeerRoutingSelectionParams params =
+        new PeerRoutingSelectionParams(
             forkedRequestTag == null ? source : null,
             nodesRoutedTo,
             target,
@@ -251,12 +246,17 @@ public class SSKInsertSender extends BaseSender
             node.isAdvancedModeEnabled(),
             -1,
             null,
+            2.0,
             null,
             htl,
-            ignoreLowBackoff ? Node.LOW_BACKOFF : 0,
+            ignoreLowBackoff ? Node.LOW_BACKOFF : 0L,
             source == null,
             realTimeFlag,
+            null,
+            false,
+            System.currentTimeMillis(),
             newLoadManagement);
+    return node.network().peers().routingSelector().closerPeer(params);
   }
 
   private void handleNoNextPeer() {
@@ -371,7 +371,7 @@ public class SSKInsertSender extends BaseSender
    */
   @Override
   protected void handleAcceptedRejectedTimeout(final PeerNode next, final UIDTag tag) {
-    // Log as WARN rather than ERROR because the send may still be queued (async path).
+    // Log as WARN rather than ERROR because the sending may still be queued (async path).
     LOG.warn("Timeout awaiting Accepted/Rejected {} to {}", this, next);
     // Use the right UID here, in case we fork.
     final long uid = tag.uid;
@@ -510,7 +510,7 @@ public class SSKInsertSender extends BaseSender
    *     false} to keep waiting for a non-local outcome.
    */
   private boolean handleRejectedOverload(Message msg, PeerNode next, InsertTag thisTag) {
-    // Probably non-fatal, if so, we have time left, can try next one
+    // Probably non-fatal, if so, we have time left, can try the next one
     if (msg.getBoolean(DMT.IS_LOCAL)) {
       next.localRejectedOverload("ForwardRejectedOverload4", realTimeFlag);
       if (LOG.isDebugEnabled()) LOG.debug("Local RejectedOverload, moving on to next peer");
@@ -550,8 +550,8 @@ public class SSKInsertSender extends BaseSender
   /**
    * Handles an SSK collision signaled by {@code FNPSSKDataFoundHeaders}.
    *
-   * @return {@link DO#WAIT} when remote headers and data were accepted and we are waiting for the
-   *     final outcome; {@link DO#NEXT_PEER} if the peer disconnected or timed out; otherwise {@link
+   * @return {@link DO#WAIT} when remote headers and data were accepted, and we are waiting for the
+   *     outcome; {@link DO#NEXT_PEER} if the peer disconnected or timed out; otherwise {@link
    *     DO#FINISHED} on unrecoverable error.
    */
   private DO handleSSKDataFoundHeaders(Message msg, PeerNode next, InsertTag thisTag) {
@@ -729,8 +729,8 @@ public class SSKInsertSender extends BaseSender
   /**
    * Waits up to {@code millis} for the sender to transition out of {@link #NOT_FINISHED}.
    *
-   * <p>Uses the sender's intrinsic monitor and mirrors the notify pattern within this class to
-   * avoid external synchronization on the parameter object.
+   * <p>Uses the sender's intrinsic monitor and mirrors the notification pattern within this class
+   * to avoid external synchronization on the parameter object.
    */
   @SuppressWarnings(
       "java:S2142") // Intentionally ignore interrupts to avoid busy-spin of polling loops
@@ -772,7 +772,7 @@ public class SSKInsertSender extends BaseSender
   }
 
   /**
-   * Returns whether this sender has forwarded the request to any peer yet.
+   * Returns whether this sender hasn't forwarded the request to any peer yet.
    *
    * <p>Useful to distinguish {@link #ROUTE_NOT_FOUND} from {@link #ROUTE_REALLY_NOT_FOUND}.
    */
@@ -782,7 +782,7 @@ public class SSKInsertSender extends BaseSender
   }
 
   /**
-   * Returns and clears a sticky flag indicating that a collision occurred since the last call.
+   * Returns and clears a sticky flag indicating that a collision has occurred since the last call.
    * Thread‑safe.
    */
   public synchronized boolean hasRecentlyCollided() {
@@ -864,7 +864,7 @@ public class SSKInsertSender extends BaseSender
     }
   }
 
-  /** Records {@code x} payload bytes sent (separate from header/counter accounting). */
+  /** Records {@code x} payload bytes sent (separate from header- / counter-accounting). */
   @Override
   public void sentPayload(int x) {
     node.sentPayload(x);

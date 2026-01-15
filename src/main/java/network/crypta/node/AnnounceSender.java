@@ -231,19 +231,24 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
           .peers()
           .routingSelector()
           .closerPeer(
-              source,
-              routed,
-              target,
-              true,
-              node.isAdvancedModeEnabled(),
-              -1,
-              null,
-              null,
-              htl,
-              0,
-              source == null,
-              false,
-              false);
+              new PeerRoutingSelectionParams(
+                  source,
+                  routed,
+                  target,
+                  true,
+                  node.isAdvancedModeEnabled(),
+                  -1,
+                  null,
+                  2.0,
+                  null,
+                  htl,
+                  0L,
+                  source == null,
+                  false,
+                  null,
+                  false,
+                  System.currentTimeMillis(),
+                  false));
     }
     if (routed.contains(onlyNode)) {
       rnf(onlyNode);

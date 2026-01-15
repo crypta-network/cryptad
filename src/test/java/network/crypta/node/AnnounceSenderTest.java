@@ -2,11 +2,8 @@ package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeast;
@@ -67,7 +64,7 @@ class AnnounceSenderTest {
     when(network.usm()).thenReturn(usm);
     when(network.stats()).thenReturn(stats);
     when(network.executor()).thenReturn(executor);
-    // Run runnables inline for determinism when used.
+    // Run runnable inline for determinism when used.
     Mockito.doAnswer(
             inv -> {
               Runnable r = inv.getArgument(0);
@@ -187,21 +184,7 @@ class AnnounceSenderTest {
     when(network.isOpennetEnabled()).thenReturn(true);
     when(node.maxHTL()).thenReturn((short) 3);
     when(node.routing().decrementHTL(isNull(), anyShort())).thenReturn((short) 1);
-    when(routingSelector.closerPeer(
-            isNull(),
-            anySet(),
-            anyDouble(),
-            anyBoolean(),
-            anyBoolean(),
-            anyInt(),
-            isNull(),
-            isNull(),
-            anyShort(),
-            anyLong(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean()))
-        .thenReturn(null);
+    when(routingSelector.closerPeer(any(PeerRoutingSelectionParams.class))).thenReturn(null);
 
     AnnounceSender sender = new AnnounceSender(0.25, om, node, cb, null);
 
@@ -232,20 +215,7 @@ class AnnounceSenderTest {
 
     PeerNode p1 = Mockito.mock(PeerNode.class);
     PeerNode p2 = Mockito.mock(PeerNode.class);
-    when(routingSelector.closerPeer(
-            isNull(),
-            anySet(),
-            anyDouble(),
-            anyBoolean(),
-            anyBoolean(),
-            anyInt(),
-            isNull(),
-            isNull(),
-            anyShort(),
-            anyLong(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean()))
+    when(routingSelector.closerPeer(any(PeerRoutingSelectionParams.class)))
         .thenReturn(p1, p2, null);
 
     // Decrement HTL returns a sequence to keep iterations going
@@ -260,7 +230,7 @@ class AnnounceSenderTest {
         // Second attempt on p2: fail to start transfer
         .thenThrow(new NotConnectedException("send fail"));
 
-    // Accepted wait: first call returns null (timeout/try another), no further waits because p2
+    // Accepted wait: the first call returns null (timeout/try another), no further waits because p2
     // send fails
     when(usm.waitFor(any(MessageFilter.class), any())).thenReturn(null);
 
@@ -269,7 +239,8 @@ class AnnounceSenderTest {
     // Act
     sender.run();
 
-    // Assert: verify decrementHTL was called with p2 as the 'from' on the iteration after send
+    // Assert: to verify decrementHTL was called with p2 as the 'from' on the iteration after
+    // sending
     // failure
     ArgumentCaptor<PeerNode> fromCaptor = ArgumentCaptor.forClass(PeerNode.class);
     verify(node.routing(), atLeast(3)).decrementHTL(fromCaptor.capture(), anyShort());

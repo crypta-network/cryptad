@@ -15,6 +15,7 @@ import network.crypta.io.comm.MessageCore;
 import network.crypta.io.comm.MessageFilter;
 import network.crypta.keys.NodeSSK;
 import network.crypta.keys.SSKBlock;
+import network.crypta.node.subsystem.NodeRoutingSubsystem.SskInsertOptions;
 import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -70,18 +71,14 @@ class SSKInsertSenderTest {
       boolean forkOnCacheable, boolean preferInsert, boolean ignoreLowBackoff, boolean realTime) {
     prepareCommonStubs();
     // uid=42, htl=10, fromStore=false, canWriteClientCache=false
-    return new SSKInsertSender(
-        block,
-        42L,
-        insertTag,
-        (short) 10,
-        source,
-        node,
-        false,
-        forkOnCacheable,
-        preferInsert,
-        ignoreLowBackoff,
-        realTime);
+    SskInsertOptions options =
+        SskInsertOptions.of()
+            .withFromStore(false)
+            .withForkOnCacheable(forkOnCacheable)
+            .withPreferInsert(preferInsert)
+            .withIgnoreLowBackoff(ignoreLowBackoff)
+            .withRealTimeFlag(realTime);
+    return new SSKInsertSender(block, 42L, insertTag, (short) 10, source, node, options);
   }
 
   @ParameterizedTest
@@ -151,7 +148,7 @@ class SSKInsertSenderTest {
     Message prefer = req.getSubMessage(DMT.FNPSubInsertPreferInsert);
     assertTrue(prefer != null && prefer.getBoolean(DMT.PREFER_INSERT));
 
-    // Ignore-low-backoff present and true
+    // Ignore-low backoff present and true
     Message ignore = req.getSubMessage(DMT.FNPSubInsertIgnoreLowBackoff);
     assertTrue(ignore != null && ignore.getBoolean(DMT.IGNORE_LOW_BACKOFF));
 
@@ -285,19 +282,15 @@ class SSKInsertSenderTest {
         .thenReturn(finalReply);
 
     // Construct the sender with uid=42 and realtime=false (bulk)
+    SskInsertOptions options =
+        SskInsertOptions.of()
+            .withFromStore(false)
+            .withForkOnCacheable(true)
+            .withPreferInsert(false)
+            .withIgnoreLowBackoff(false)
+            .withRealTimeFlag(false);
     SSKInsertSender sender =
-        new SSKInsertSender(
-            block,
-            42L,
-            tag,
-            (short) 10,
-            source,
-            node,
-            /* fromStore */ false,
-            /* forkOnCacheable */ true,
-            /* preferInsert */ false,
-            /* ignoreLowBackoff */ false,
-            /* realtime */ false);
+        new SSKInsertSender(block, 42L, tag, (short) 10, source, node, options);
 
     // Act: drive a single routing attempt directly
     sender.innerRouteRequests(next, tag);
@@ -319,7 +312,7 @@ class SSKInsertSenderTest {
     Mockito.verify(next).resetMandatoryBackoff(false);
     Mockito.verify(olt).clearDontSendUnlessGuaranteed();
 
-    // Final outcome should be success
+    // The final outcome should be success
     assertEquals("SUCCESS", sender.getStatusString());
   }
 
