@@ -244,12 +244,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       PeerNodeRoutingReporter.reportRoutedTo(
           node,
           next,
-          key.toNormalizedDouble(),
-          source == null,
-          realTimeFlag,
-          source,
-          nodesRoutedTo,
-          htl);
+          new PeerNodeRoutingReportParams(
+              key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl));
       node.network().peers().incrementSelectionSamples(next);
     } catch (NotConnectedException _) {
       LOG.debug("Not connected");
@@ -631,12 +627,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       PeerNodeRoutingReporter.reportRoutedTo(
           node,
           state.next,
-          key.toNormalizedDouble(),
-          source == null,
-          realTimeFlag,
-          source,
-          nodesRoutedTo,
-          htl);
+          new PeerNodeRoutingReportParams(
+              key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl));
       node.network().peers().incrementSelectionSamples(state.next);
       return true;
     } catch (NotConnectedException _) {

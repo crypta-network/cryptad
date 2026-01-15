@@ -62,32 +62,22 @@ final class PeerNodeRoutingReporter {
    *
    * @param node the local node providing location and stats; must be non-null
    * @param peerNode the candidate peer whose location is evaluated; must be non-null
-   * @param target the target keyspace location, in the range {@code [0.0, 1.0]}
-   * @param isLocal whether this decision is classified as local routing
-   * @param realTime whether this decision is classified as realtime routing
-   * @param prev the previous hop peer, or {@code null} when no prior hop exists
-   * @param routedTo peers already tried for this route; never {@code null}
-   * @param htl hop-to-live value used to decide peer-published routing behavior
+   * @param routingParams routing context including target, policy flags, and peer history
    * @throws IllegalArgumentException if any required location is outside {@code [0.0, 1.0]}
    */
   static void reportRoutedTo(
-      Node node,
-      PeerNode peerNode,
-      double target,
-      boolean isLocal,
-      boolean realTime,
-      PeerNode prev,
-      Set<PeerNode> routedTo,
-      int htl) {
-    double distance = Location.distance(target, peerNode.getLocation());
+      Node node, PeerNode peerNode, PeerNodeRoutingReportParams routingParams) {
+    double distance = Location.distance(routingParams.target(), peerNode.getLocation());
 
     var stats = node.network().stats();
     if (stats == null) return;
 
-    Set<Double> excludeLocations = buildExcludeLocations(node, prev, routedTo);
+    Set<Double> excludeLocations =
+        buildExcludeLocations(node, routingParams.prev(), routingParams.routedTo());
     double adjustedDistance =
-        adjustDistanceForPublishedPeers(peerNode, target, htl, excludeLocations, distance);
-    reportToStats(stats, adjustedDistance, isLocal, realTime);
+        adjustDistanceForPublishedPeers(
+            peerNode, routingParams.target(), routingParams.htl(), excludeLocations, distance);
+    reportToStats(stats, adjustedDistance, routingParams.isLocal(), routingParams.realTime());
   }
 
   /**
@@ -118,7 +108,7 @@ final class PeerNodeRoutingReporter {
    * @param peerNode the peer providing published locations for consideration
    * @param target the target keyspace location, in the range {@code [0.0, 1.0]}
    * @param htl hop-to-live value that gates peer-published routing behavior
-   * @param excludeLocations locations that must be ignored when searching published peers
+   * @param excludeLocations locations that must be ignored when searching for published peers
    * @param distance the current best distance before considering published locations
    * @return the adjusted distance, possibly unchanged if no closer location is found
    * @throws IllegalArgumentException if a published location is invalid for {@link
