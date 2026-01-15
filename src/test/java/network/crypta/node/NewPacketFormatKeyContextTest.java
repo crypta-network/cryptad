@@ -33,7 +33,7 @@ class NewPacketFormatKeyContextTest {
   @Mock private PacketThrottle throttle;
 
   private static SessionKey dummyKey(NewPacketFormatKeyContext ctx) {
-    return new SessionKey(null, null, null, null, null, null, null, null, ctx, /*trackerId*/ 0L);
+    return new SessionKey(null, null, ctx, /*trackerId*/ 0L);
   }
 
   private static TreeMap<Integer, Long> acksOf(NewPacketFormatKeyContext ctx) throws Exception {

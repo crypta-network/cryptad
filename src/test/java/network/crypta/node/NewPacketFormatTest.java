@@ -42,9 +42,7 @@ class NewPacketFormatTest {
     // Arrange
     NewPacketFormat npf = new NewPacketFormat(null, 0, 0);
     PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(1234));
-    SessionKey s =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey s = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
     // Act
     NPFPacket p = npf.createPacket(1400, pmq, s, false);
@@ -59,9 +57,7 @@ class NewPacketFormatTest {
     BasePeerNode pn = new NullBasePeerNode();
     NewPacketFormat npf = new NewPacketFormat(pn, 0, 0);
     PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(1234));
-    SessionKey s =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey s = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
     NPFPacket generated = new NPFPacket();
     generated.addMessageFragment(
@@ -108,13 +104,9 @@ class NewPacketFormatTest {
     NullBasePeerNode receiverNode = new NullBasePeerNode();
     NewPacketFormat receiver = new NewPacketFormat(receiverNode, 0, 0);
     PeerMessageQueue receiverQueue = new PeerMessageQueue(new DummyRandomSource(1234));
-    SessionKey senderKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey senderKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
     senderNode.currentKey = senderKey;
-    SessionKey receiverKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey receiverKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
     senderQueue.queueAndEstimateSize(
         new MessageItem(new byte[1024], null, false, null, (short) 0), 1024);
@@ -162,12 +154,8 @@ class NewPacketFormatTest {
     PeerMessageQueue senderQueue = new PeerMessageQueue(new DummyRandomSource(1234));
     NullBasePeerNode receiverNode = new NullBasePeerNode();
     NewPacketFormat receiver = new NewPacketFormat(receiverNode, 0, 0);
-    SessionKey senderKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
-    SessionKey receiverKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey senderKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey receiverKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
     senderQueue.queueAndEstimateSize(
         new MessageItem(new byte[1024], null, false, null, (short) 0), 1024);
@@ -199,12 +187,8 @@ class NewPacketFormatTest {
     PeerMessageQueue senderQueue = new PeerMessageQueue(new DummyRandomSource(1234));
     NullBasePeerNode receiverNode = new NullBasePeerNode();
     NewPacketFormat receiver = new NewPacketFormat(receiverNode, 0, 0);
-    SessionKey senderKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
-    SessionKey receiverKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey senderKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey receiverKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
     senderQueue.queueAndEstimateSize(
         new MessageItem(new byte[1024], null, false, null, (short) 0), 1024);
@@ -234,12 +218,8 @@ class NewPacketFormatTest {
     PeerMessageQueue senderQueue = new PeerMessageQueue(new DummyRandomSource(1234));
     NullBasePeerNode receiverNode = new NullBasePeerNode();
     NewPacketFormat receiver = new NewPacketFormat(receiverNode, 0, 0);
-    SessionKey senderKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
-    SessionKey receiverKey =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey senderKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey receiverKey = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
     // Queue two messages so the total queued size exceeds maxPacketSize (512) and triggers
     // immediate
@@ -287,7 +267,12 @@ class NewPacketFormatTest {
         });
 
     SessionKey sessionKey =
-        new SessionKey(null, null, null, incommingCipher, null, ivCipher, ivNonce, null, null, -1);
+        new SessionKey(
+            null,
+            new SessionKeyCryptoMaterial(
+                null, null, incommingCipher, null, ivCipher, ivNonce, null),
+            null,
+            -1);
 
     // Act
     byte[] encrypted = NewPacketFormat.encryptSequenceNumber(0, sessionKey);
@@ -332,26 +317,28 @@ class NewPacketFormatTest {
     SessionKey senderSessionKey =
         new SessionKey(
             null,
-            outgoingCipher,
-            outgoingKey,
-            incomingCipher,
-            incomingKey,
-            ivCipher,
-            ivNonce,
-            hmacKey,
+            new SessionKeyCryptoMaterial(
+                outgoingCipher,
+                outgoingKey,
+                incomingCipher,
+                incomingKey,
+                ivCipher,
+                ivNonce,
+                hmacKey),
             senderContext,
             0);
 
     SessionKey receiverSessionKey =
         new SessionKey(
             null,
-            incomingCipher,
-            incomingKey,
-            outgoingCipher,
-            outgoingKey,
-            ivCipher,
-            ivNonce,
-            hmacKey,
+            new SessionKeyCryptoMaterial(
+                incomingCipher,
+                incomingKey,
+                outgoingCipher,
+                outgoingKey,
+                ivCipher,
+                ivNonce,
+                hmacKey),
             receiverContext,
             0);
 
@@ -404,9 +391,7 @@ class NewPacketFormatTest {
     // Queue a single small message and build a packet fragment to move it into startedByPrio.
     byte[] payload = new byte[1024];
     q.queueAndEstimateSize(new MessageItem(payload, null, false, null, (short) 0), 1024);
-    SessionKey key =
-        new SessionKey(
-            null, null, null, null, null, null, null, null, new NewPacketFormatKeyContext(0, 0), 1);
+    SessionKey key = new SessionKey(null, null, new NewPacketFormatKeyContext(0, 0), 1);
 
     NPFPacket p = npf.createPacket(512, q, key, /*ackOnly*/ false);
     assertNotNull(p, "Expected a packet with one fragment before disconnect");
@@ -442,7 +427,7 @@ class NewPacketFormatTest {
     NullBasePeerNode pn = new NullBasePeerNode();
     NewPacketFormat npf = new NewPacketFormat(pn, 0, 0);
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(0, 0);
-    SessionKey key = new SessionKey(null, null, null, null, null, null, null, null, ctx, 1);
+    SessionKey key = new SessionKey(null, null, ctx, 1);
     pn.currentKey = key; // So timeSendAcks() can see the same ctx
 
     NPFPacket empty = new NPFPacket();
@@ -477,7 +462,12 @@ class NewPacketFormatTest {
     iv.initialize(ivKey);
 
     NewPacketFormatKeyContext prevCtx = new NewPacketFormatKeyContext(10, 20);
-    SessionKey prev = new SessionKey(null, out, keyA, in, keyB, iv, ivNonce, hmac, prevCtx, 99);
+    SessionKey prev =
+        new SessionKey(
+            null,
+            new SessionKeyCryptoMaterial(out, keyA, in, keyB, iv, ivNonce, hmac),
+            prevCtx,
+            99);
     pn.previousKey = prev;
 
     // Ack something on the previous key by simulating a decrypted packet with one fragment.
@@ -536,25 +526,27 @@ class NewPacketFormatTest {
     SessionKey senderSessionKey =
         new SessionKey(
             null,
-            outgoingCipher,
-            outgoingKey,
-            incomingCipher,
-            incomingKey,
-            ivCipher,
-            ivNonce,
-            hmacKey,
+            new SessionKeyCryptoMaterial(
+                outgoingCipher,
+                outgoingKey,
+                incomingCipher,
+                incomingKey,
+                ivCipher,
+                ivNonce,
+                hmacKey),
             senderCtx,
             0);
     SessionKey receiverSessionKey =
         new SessionKey(
             null,
-            incomingCipher,
-            incomingKey,
-            outgoingCipher,
-            outgoingKey,
-            ivCipher,
-            ivNonce,
-            hmacKey,
+            new SessionKeyCryptoMaterial(
+                incomingCipher,
+                incomingKey,
+                outgoingCipher,
+                outgoingKey,
+                ivCipher,
+                ivNonce,
+                hmacKey),
             receiverCtx,
             0);
     senderNode.currentKey = senderSessionKey;
@@ -640,7 +632,7 @@ class NewPacketFormatTest {
 
     NewPacketFormat npf = new NewPacketFormat(mockPeer, 0, 0);
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(0, 0);
-    SessionKey key = new SessionKey(null, null, null, null, null, null, null, null, ctx, 1);
+    SessionKey key = new SessionKey(null, null, ctx, 1);
 
     // Simulate one in-flight packet so countSentPackets() == 1 and equals the window size.
     NewPacketFormat.SentPacket sp = new NewPacketFormat.SentPacket(npf, key);
