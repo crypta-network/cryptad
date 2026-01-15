@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
@@ -35,13 +36,8 @@ class SessionKeyTest {
     SessionKey key =
         new SessionKey(
             parent,
-            outgoing,
-            outgoingKey,
-            incoming,
-            incomingKey,
-            iv,
-            ivNonce,
-            hmacKey,
+            new SessionKeyCryptoMaterial(
+                outgoing, outgoingKey, incoming, incomingKey, iv, ivNonce, hmacKey),
             ctx,
             trackerId);
 
@@ -63,17 +59,7 @@ class SessionKeyTest {
     // Arrange
     NewPacketFormatKeyContext ctx = mock(NewPacketFormatKeyContext.class);
     SessionKey key =
-        new SessionKey(
-            /*parent*/ null,
-            /*outgoingCipher*/ null,
-            /*outgoingKey*/ null,
-            /*incommingCipher*/ null,
-            /*incommingKey*/ null,
-            /*ivCipher*/ null,
-            /*ivNonce*/ null,
-            /*hmacKey*/ null,
-            /*context*/ ctx,
-            /*trackerID*/ 7L);
+        new SessionKey(/*parent*/ null, /*cryptoMaterial*/ null, /*context*/ ctx, /*trackerID*/ 7L);
 
     // Act
     key.disconnected();
@@ -91,17 +77,7 @@ class SessionKeyTest {
 
     // Act
     SessionKey key =
-        new SessionKey(
-            /*parent*/ null,
-            /*outgoingCipher*/ null,
-            /*outgoingKey*/ null,
-            /*incommingCipher*/ null,
-            /*incommingKey*/ null,
-            /*ivCipher*/ null,
-            /*ivNonce*/ null,
-            /*hmacKey*/ null,
-            /*context*/ null,
-            trackerId);
+        new SessionKey(/*parent*/ null, /*cryptoMaterial*/ null, /*context*/ null, trackerId);
 
     // Assert
     assertNull(key.pn, "Parent should be null");
@@ -126,7 +102,11 @@ class SessionKeyTest {
 
     SessionKey key =
         new SessionKey(
-            null, null, outgoingKey, null, incomingKey, null, ivNonce, hmacKey, null, 0L);
+            null,
+            new SessionKeyCryptoMaterial(
+                null, outgoingKey, null, incomingKey, null, ivNonce, hmacKey),
+            null,
+            0L);
 
     // Act
     outgoingKey[0] = 99;
@@ -135,6 +115,10 @@ class SessionKeyTest {
     hmacKey[3] = 66;
 
     // Assert
+    assertNotNull(key.outgoingKey, "Outgoing key reference should not be null");
+    assertNotNull(key.incommingKey, "Incoming key reference should not be null");
+    assertNotNull(key.ivNonce, "IV nonce reference should not be null");
+    assertNotNull(key.hmacKey, "HMAC key reference should not be null");
     assertEquals(99, key.outgoingKey[0], "Outgoing key reference should not be copied");
     assertEquals(88, key.incommingKey[1], "Incoming key reference should not be copied");
     assertEquals(77, key.ivNonce[0], "IV nonce reference should not be copied");

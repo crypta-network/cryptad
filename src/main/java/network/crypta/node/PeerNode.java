@@ -1631,13 +1631,14 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     private SessionKey buildSessionKey(HandshakeParams p) {
       return new SessionKey(
           selfPeerNode(),
-          p.outgoingCipher,
-          p.outgoingKey,
-          p.incommingCipher,
-          p.incommingKey,
-          p.ivCipher,
-          p.ivNonce,
-          p.hmacKey,
+          new SessionKeyCryptoMaterial(
+              p.outgoingCipher,
+              p.outgoingKey,
+              p.incommingCipher,
+              p.incommingKey,
+              p.ivCipher,
+              p.ivNonce,
+              p.hmacKey),
           new NewPacketFormatKeyContext(p.ourInitialSeqNum, p.theirInitialSeqNum),
           p.trackerID);
     }
