@@ -59,23 +59,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertNull(selected);
@@ -90,23 +91,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertNull(selected);
@@ -122,23 +124,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(secondClosest, selected);
@@ -147,7 +150,7 @@ class PeerRoutingSelectorTest {
   @Test
   void closerPeer_whenIgnoreSelfFalseAndOnlyPeersBeyondSelf_expectNull() {
     // Arrange
-    when(node.network().location()).thenReturn(0.0); // self distance to target=0.25 is 0.25
+    when(node.network().location()).thenReturn(0.0); // self-distance to target=0.25 is 0.25
 
     PeerNode closerBeyondSelf = routablePeerAt(0.60); // diff=0.35 (> 0.25)
     PeerNode fartherBeyondSelf = routablePeerAt(0.80); // diff=0.45 (> 0.25)
@@ -157,23 +160,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            false,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                false,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertNull(selected);
@@ -182,7 +186,7 @@ class PeerRoutingSelectorTest {
   @Test
   void closerPeer_whenIgnoreSelfTrueAndOnlyPeersBeyondSelf_expectSelectsSecond() {
     // Arrange
-    when(node.network().location()).thenReturn(0.0); // self distance to target=0.25 is 0.25
+    when(node.network().location()).thenReturn(0.0); // self-distance to target=0.25 is 0.25
 
     PeerNode closerBeyondSelf = routablePeerAt(0.60); // diff=0.35
     PeerNode fartherBeyondSelf = routablePeerAt(0.80); // diff=0.45
@@ -192,23 +196,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(fartherBeyondSelf, selected);
@@ -232,23 +237,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            true,
-            null,
-            false,
-            NOW,
-            true);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                true,
+                null,
+                false,
+                NOW,
+                true));
 
     // Assert
     assertEquals(selectedExpected, selected);
@@ -273,23 +279,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            true,
-            null,
-            false,
-            NOW,
-            true);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                true,
+                null,
+                false,
+                NOW,
+                true));
 
     // Assert
     assertEquals(selectedExpected, selected);
@@ -318,23 +325,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(selectedExpected, selected);
@@ -362,23 +370,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            minVersion,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                minVersion,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(selectedExpected, selected);
@@ -403,23 +412,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            origin,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            maxDistance,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                origin,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                maxDistance,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(direct, selected);
@@ -448,23 +458,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(secondBackedOff, selected);
@@ -489,23 +500,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            addUnpickedLocsTo,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                addUnpickedLocsTo,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(selectedExpected, selected);
@@ -539,23 +551,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            key,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            recentlyFailed,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                key,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                recentlyFailed,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(selectedExpected, selected);
@@ -591,23 +604,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            2.0,
-            key,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            recentlyFailed,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                false,
+                -1,
+                null,
+                2.0,
+                key,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                recentlyFailed,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertNull(selected);
@@ -629,23 +643,24 @@ class PeerRoutingSelectorTest {
     // Act
     PeerNode selected =
         selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            true,
-            -1,
-            null,
-            2.0,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            null,
-            false,
-            NOW,
-            false);
+            new PeerRoutingSelectionParams(
+                null,
+                identityPeerSet(),
+                TARGET,
+                true,
+                true,
+                -1,
+                null,
+                2.0,
+                null,
+                OUTGOING_HTL,
+                0L,
+                true,
+                false,
+                null,
+                false,
+                NOW,
+                false));
 
     // Assert
     assertEquals(selectedExpected, selected);
@@ -661,13 +676,43 @@ class PeerRoutingSelectorTest {
     // Arrange
     when(roster.connectedPeers()).thenReturn(new PeerNode[0]);
 
+    PeerRoutingSelectionParams params =
+        new PeerRoutingSelectionParams(
+            null,
+            null,
+            TARGET,
+            true,
+            false,
+            -1,
+            null,
+            2.0,
+            null,
+            OUTGOING_HTL,
+            0L,
+            true,
+            false,
+            null,
+            false,
+            NOW,
+            false);
+
     // Act + Assert
-    assertThrows(
-        NullPointerException.class,
-        () ->
-            selector.closerPeer(
+    assertThrows(NullPointerException.class, () -> selector.closerPeer(params));
+  }
+
+  @Test
+  void closerPeer_whenUsingConvenienceOverload_expectSameSelectionRulesApply() {
+    // Arrange
+    PeerNode closest = routablePeerAt(0.24);
+    PeerNode selectedExpected = routablePeerAt(0.30);
+    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, selectedExpected});
+
+    // Act
+    PeerNode selected =
+        selector.closerPeer(
+            new PeerRoutingSelectionParams(
                 null,
-                null,
+                identityPeerSet(),
                 TARGET,
                 true,
                 false,
@@ -683,31 +728,6 @@ class PeerRoutingSelectorTest {
                 false,
                 NOW,
                 false));
-  }
-
-  @Test
-  void closerPeer_whenUsingConvenienceOverload_expectSameSelectionRulesApply() {
-    // Arrange
-    PeerNode closest = routablePeerAt(0.24);
-    PeerNode selectedExpected = routablePeerAt(0.30);
-    when(roster.connectedPeers()).thenReturn(new PeerNode[] {closest, selectedExpected});
-
-    // Act
-    PeerNode selected =
-        selector.closerPeer(
-            null,
-            identityPeerSet(),
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            null,
-            OUTGOING_HTL,
-            0L,
-            true,
-            false,
-            false);
 
     // Assert
     assertEquals(selectedExpected, selected);

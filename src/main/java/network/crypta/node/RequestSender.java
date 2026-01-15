@@ -324,28 +324,26 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     long now = System.currentTimeMillis();
 
     // Route it
-    next =
-        node.network()
-            .peers()
-            .routingSelector()
-            .closerPeer(
-                source,
-                nodesRoutedTo,
-                target,
-                true,
-                node.isAdvancedModeEnabled(),
-                -1,
-                null,
-                2.0,
-                key,
-                htl,
-                0,
-                source == null,
-                realTimeFlag,
-                r,
-                false,
-                now,
-                newLoadManagement);
+    PeerRoutingSelectionParams params =
+        new PeerRoutingSelectionParams(
+            source,
+            nodesRoutedTo,
+            target,
+            true,
+            node.isAdvancedModeEnabled(),
+            -1,
+            null,
+            2.0,
+            key,
+            htl,
+            0L,
+            source == null,
+            realTimeFlag,
+            r,
+            false,
+            now,
+            newLoadManagement);
+    next = node.network().peers().routingSelector().closerPeer(params);
 
     if (handleRecentlyFailedDecision(r, now)) return;
 
@@ -1676,8 +1674,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   /**
    * Forwards a {@code RejectedOverload} signal to the request originator once per request.
    *
-   * <p>Only the first call forwards; subsequent calls are ignored. Wakes up any waiter blocked in
-   * {@link #waitUntilStatusChange(short)} via {@link #notifyAll()}.
+   * <p>Only the first call forwards; later calls are ignored. Wakes up any waiter blocked in {@link
+   * #waitUntilStatusChange(short)} via {@link #notifyAll()}.
    */
   protected void forwardRejectedOverload() {
     synchronized (this) {
@@ -1729,7 +1727,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    * @param mask Bit mask describing states to ignore (i.e., those already observed by the caller).
    *     See {@link #WAIT_REJECTED_OVERLOAD}, {@link #WAIT_TRANSFERRING_DATA}, and {@link
    *     #WAIT_FINISHED}. Passing {@link #WAIT_ALL} is invalid.
-   * @return A mask that includes any newly observed states; may be passed to a subsequent call.
+   * @return A mask that includes any newly observed states; may be passed to a later call.
    * @throws IllegalArgumentException if {@code mask == WAIT_ALL}.
    */
   public synchronized short waitUntilStatusChange(short mask) {

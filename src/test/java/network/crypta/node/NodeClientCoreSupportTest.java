@@ -7,11 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anySet;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -304,29 +299,12 @@ class NodeClientCoreSupportTest {
 
     doAnswer(
             invocation -> {
-              RecentlyFailedReturn recent = invocation.getArgument(13);
-              recent.fail(wakeup);
+              PeerRoutingSelectionParams params = invocation.getArgument(0);
+              params.recentlyFailed().fail(wakeup);
               return null;
             })
         .when(routingSelector)
-        .closerPeer(
-            isNull(),
-            anySet(),
-            eq(0.25),
-            eq(true),
-            eq(false),
-            eq(-1),
-            isNull(),
-            eq(2.0),
-            same(key),
-            eq(decremented),
-            eq(0L),
-            eq(true),
-            eq(realTime),
-            any(RecentlyFailedReturn.class),
-            eq(false),
-            anyLong(),
-            eq(true));
+        .closerPeer(any(PeerRoutingSelectionParams.class));
 
     long result = NodeClientCoreSupport.checkRecentlyFailed(node, key, realTime);
 
@@ -352,25 +330,7 @@ class NodeClientCoreSupportTest {
     when(key.toNormalizedDouble()).thenReturn(0.7);
     when(node.network().enableNewLoadManagement(realTime)).thenReturn(false);
 
-    when(routingSelector.closerPeer(
-            isNull(),
-            anySet(),
-            eq(0.7),
-            eq(true),
-            eq(false),
-            eq(-1),
-            isNull(),
-            eq(2.0),
-            same(key),
-            eq(decremented),
-            eq(0L),
-            eq(true),
-            eq(realTime),
-            any(RecentlyFailedReturn.class),
-            eq(false),
-            anyLong(),
-            eq(false)))
-        .thenReturn(null);
+    when(routingSelector.closerPeer(any(PeerRoutingSelectionParams.class))).thenReturn(null);
 
     long result = NodeClientCoreSupport.checkRecentlyFailed(node, key, realTime);
 

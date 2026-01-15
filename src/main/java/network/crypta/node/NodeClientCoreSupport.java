@@ -272,8 +272,8 @@ public final class NodeClientCoreSupport {
    * <p>This registers the {@code memoryLimitedJobMemoryLimit} configuration key using the provided
    * default and sort order. The associated {@link LongCallback} enforces {@link
    * FECCodec#MIN_MEMORY_ALLOCATION} and updates the shared runner capacity when the value changes.
-   * Callers should use the returned sort order when registering subsequent settings to preserve
-   * stable UI ordering.
+   * Callers should use the returned sort order when registering later settings to preserve stable
+   * UI ordering.
    *
    * @param init initialization helper providing access to node configuration.
    * @param sortOrder current sort order index used for config registration.
@@ -342,8 +342,8 @@ public final class NodeClientCoreSupport {
    *
    * <p>This variant accepts raw payload and header buffers and forwards them to the {@link
    * ClientCHKBlock} constructor along with the supplied key. Verification happens during
-   * construction, and invalid inputs result in a checked exception. Use this helper when the
-   * encoded block has already been split into data and header components by upstream logic.
+   * construction, and invalid inputs result in a checked exception. Use this helper when upstream
+   * logic has already split the encoded block into data and header components.
    *
    * @param data raw data bytes of the CHK payload.
    * @param header raw header bytes associated with the CHK payload.
@@ -437,15 +437,13 @@ public final class NodeClientCoreSupport {
    * @param node node providing routing selector and HTL configuration.
    * @param key routing key used to select the closest peers.
    * @param realTime whether to apply real-time scheduling constraints.
-   * @return recently-failed value reported by the routing selector.
+   * @return recently failed value reported by the routing selector.
    */
   public static long checkRecentlyFailed(Node node, Key key, boolean realTime) {
     RecentlyFailedReturn result = new RecentlyFailedReturn();
     short origHtl = node.routing().decrementHTL(null, node.maxHTL());
-    node.network()
-        .peers()
-        .routingSelector()
-        .closerPeer(
+    PeerRoutingSelectionParams params =
+        new PeerRoutingSelectionParams(
             null,
             new HashSet<>(),
             key.toNormalizedDouble(),
@@ -456,13 +454,14 @@ public final class NodeClientCoreSupport {
             2.0,
             key,
             origHtl,
-            0,
+            0L,
             true,
             realTime,
             result,
             false,
             System.currentTimeMillis(),
             node.network().enableNewLoadManagement(realTime));
+    node.network().peers().routingSelector().closerPeer(params);
     return result.recentlyFailed();
   }
 
@@ -485,10 +484,9 @@ public final class NodeClientCoreSupport {
   /**
    * Registers the core FProxy alerts, including the persistence-broken warning.
    *
-   * <p>This registers the provided startup alert and then adds the persistence-broken alert that is
-   * derived from the core's state. It centralizes the alert wiring sequence so the calling code can
-   * remain focused on higher-level initialization flow. It does not remove or replace existing
-   * alerts.
+   * <p>This registers the provided startup alert and then adds the persistence-broken alert derived
+   * from the core's state. It centralizes the alert wiring sequence so the calling code can remain
+   * focused on the higher-level initialization flow. It does not remove or replace existing alerts.
    *
    * @param alerts alert manager that receives the registrations.
    * @param core core used to build the persistence-broken alert.
@@ -521,8 +519,8 @@ public final class NodeClientCoreSupport {
    *
    * <p>This helper prefixes the provided key with {@code "NodeClientCore."} and looks it up using
    * {@link NodeL10n#getBase()}. It is intended for simple string lookups without parameter
-   * substitution; callers that need substitutions should obtain the base bundle directly. It does
-   * not perform caching; each call performs a bundle lookup.
+   * substitution; callers that need substitutions should get the base bundle directly. It does not
+   * perform caching; each call performs a bundle lookup.
    *
    * @param key key suffix appended to the {@code NodeClientCore.} prefix.
    * @return localized string for the composed NodeClientCore key.

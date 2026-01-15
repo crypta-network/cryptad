@@ -145,11 +145,11 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   /** Set of peers this sender has attempted to route to during the current operation. */
   protected HashSet<PeerNode> nodesRoutedTo = new HashSet<>();
 
-  /** Timestamp of the most recent send attempt used for timeout accounting (milliseconds). */
+  /** Timestamp of the most recent sending attempt used for timeout accounting (milliseconds). */
   private long timeSentRequest;
 
   /**
-   * Milliseconds elapsed since the most recent send attempt recorded by this sender.
+   * Milliseconds have elapsed since the most recent sending attempt recorded by this sender.
    *
    * @return elapsed time in milliseconds
    */
@@ -174,8 +174,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   private HashMap<PeerNode, Integer> softRejectCount;
 
   /**
-   * When set, the next reroute must not decrement {@link #htl}. The flag is reset by the caller
-   * after it observes the reroute condition.
+   * When set, the next rerouting must not decrement {@link #htl}. The caller resets the flag after
+   * it observes the rerouting condition.
    */
   protected boolean dontDecrementHTLThisTime;
 
@@ -196,7 +196,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
    *
    * <p>This method routes to {@code next} (or a better alternative chosen by NLM), waits for an
    * early response (Accepted/reject), and either calls {@link #onAccepted(PeerNode)} or requests a
-   * reroute by invoking {@link #routeRequests()}.
+   * rerouting by invoking {@link #routeRequests()}.
    *
    * @param next initial peer to try
    * @param origTag routing tag used to correlate messages (may be updated in child flows)
@@ -225,7 +225,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     Message req = createDataRequest();
 
     // Record the earliest time we attempted to send. The sent() callback may arrive after an
-    // acknowledgement under heavy load, so this is the most conservative upper bound used by
+    // acknowledgement under a heavy load, so this is the most conservative upper bound used by
     // timeout/RecentlyFailed logic.
     synchronized (this) {
       timeSentRequest = System.currentTimeMillis();
@@ -234,10 +234,10 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     origTag.addRoutedTo(next, false);
 
     try {
-      // First contact to a peer is more likely to time out. Prefer sendSync over sendAsync:
-      // - sendSync measures ACCEPTED_TIMEOUT from the actual send time and avoids inflating
+      // First contact with a peer is more likely to time out. Prefer sendSync over sendAsync:
+      // - sendSync measures ACCEPTED_TIMEOUT from the actual sending time and avoids inflating
       //   unclaimed FIFO queues; it may, however, consume part of the request time budget while
-      //   waiting in the peer’s send queue.
+      //   waiting in the peer’s sending queue.
       // - sendAsync would increase ACCEPTED_TIMEOUT risk and leave many hanging requests, further
       //   overloading peers. Hence, we do NOT use sendAsync here.
       next.transport().sendSync(req, this, realTimeFlag);
@@ -270,7 +270,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
     while (true) {
       DO action = waitForAccepted(null, next, origTag);
-      // Here FINISHED means accepted, WAIT means try again (soft reject).
+      // Here FINISHED means accepted; WAIT means try again (soft reject).
       if (action != DO.WAIT) {
         if (action == DO.NEXT_PEER) {
           routeRequests();
@@ -292,11 +292,11 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   }
 
   /**
-   * Limit the number of nodes that we route to that reject the request due to looping, while
-   * waiting for a peer. This ensures that if there is a slow node, we don't route to all the other
-   * nodes and DNF, rather than waiting, and possibly timing out, for the slow node. Note that this
-   * does not cause us to stop routing, only to stop adding more nodes to wait for while waiting.
-   * This is particularly an issue if we have a fast network connected to a slow network.
+   * Limit the number of nodes that we route to that reject the request due to looping while waiting
+   * for a peer. This ensures that if there is a slow node, we don't route to all the other nodes
+   * and DNF, rather than waiting, and possibly timing out, for the slow node. Note that this does
+   * not cause us to stop routing, only to stop adding more nodes to wait for while waiting. This is
+   * particularly an issue if we have a fast network connected to a slow network.
    */
   private static final int MAX_REJECTED_LOOPS = 3;
 
@@ -307,12 +307,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
    *
    * <p>Starts with the provided {@code next} peer but may select a different one while waiting for
    * capacity. This method either calls {@link #onAccepted(PeerNode)} once accepted or requests a
-   * reroute via {@link #routeRequests()}.
+   * rerouting via {@link #routeRequests()}.
    *
-   * <p>IMPORTANT: When this method triggers a reroute and {@link #dontDecrementHTLThisTime} is set,
-   * the caller must not decrement HTL on the next attempt. This flag is used when the proposed peer
-   * becomes unsuitable before we actually route to it; RecentlyFailed handling remains in the outer
-   * selection loop.
+   * <p>IMPORTANT: When this method triggers a rerouting and {@link #dontDecrementHTLThisTime} is
+   * set, the caller must not decrement HTL on the next attempt. This flag is used when the proposed
+   * peer becomes unsuitable before we actually route to it; RecentlyFailed handling remains in the
+   * outer selection loop.
    */
   protected void innerRouteRequestsNew(PeerNode next, UIDTag origTag) {
     NlmState state = new NlmState();
@@ -327,7 +327,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
       NextStep step = preWaitPhase(state, origTag);
       if (step == NextStep.REROUTED_OR_FINISHED) return;
-      if (step != NextStep.PROCEED) continue; // one allowed continue
+      if (step != NextStep.PROCEED) continue; // one allowed continuing
 
       SendOutcome outcome = sendAndAwait(state, origTag);
       if (outcome == SendOutcome.ACCEPTED) {
@@ -338,14 +338,14 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         LOG.debug("Got Accepted");
         gotMessages = 0;
         lastMessage = null;
-        // We may have widened the waiting window earlier; reset for subsequent iterations.
+        // We may have widened the waiting window earlier; reset for later iterations.
         addedExtraNode = false;
         state.next.acceptedAny(realTimeFlag);
         onAccepted(state.next);
         return;
       }
       if (outcome == SendOutcome.HARD_REROUTE) return;
-      // SOFT_RETRY: fall through for next tick
+      // SOFT_RETRY: fall through for the next tick
     }
   }
 
@@ -415,7 +415,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     }
   }
 
-  // Ensure a candidate peer is present; if not, request a reroute without consuming HTL.
+  // Ensure a candidate peer is present; if not, request a rerouting without consuming HTL.
   private boolean ensureNextPeerPresent(NlmState state) {
     if (state.next != null) return true;
     dontDecrementHTLThisTime = true;
@@ -458,7 +458,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     REROUTED_OR_FINISHED
   }
 
-  // Prepare waiter state and optionally widen the window by adding another candidate while waiting.
+  // Prepare a waiter state and optionally widen the window by adding another candidate while
+  // waiting.
   private NextStep prepareAndMaybeWait(NlmState state, UIDTag origTag) {
     // Reset per-iteration latch so a prior CONTINUE_LOOP does not spin forever.
     state.shouldContinueLoop = false;
@@ -508,7 +509,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     if (!state.waiter.addWaitingFor(state.next)) {
       dontDecrementHTLThisTime = true;
       routeRequests();
-      // We attempted to queue a waiter but the peer cannot accept us (unroutable/mandatory backoff
+      // We attempted to queue a waiter, but the peer cannot accept us (unroutable/mandatory backoff
       // or queueing failed). This must short-circuit the NLM loop so the caller can pick another
       // peer instead of falling through to an empty-waiter timeout path.
       state.rerouted = true;
@@ -540,7 +541,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     tryAddAnother(state, canWaitFor);
   }
 
-  // Opportunistically add another candidate to the waiter to reduce latency under load.
+  // Opportunistically, add another candidate to the waiter to reduce latency under load.
   private void tryAddAnother(NlmState state, int canWaitFor) {
     if (!state.canRerouteWhileWaiting) return;
     if (state.waiter.waitingForCount() > canWaitFor) return;
@@ -618,7 +619,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         state.next);
   }
 
-  // Send synchronously to the chosen peer. On failure, request a reroute.
+  // Sending synchronously to the chosen peer. On failure, request a rerouting.
   private boolean sendToPeer(NlmState state, UIDTag origTag, Message req) {
     if (origTag.hasSourceReallyRestarted()) {
       origTag.removeRoutingTo(state.next);
@@ -658,7 +659,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       case WAIT:
         // Soft local overload: break out to re-enter the NLM block and try again.
         state.retriedForLoadManagement = true;
-        state.expectedAcceptState = null; // force prepare/wait on next outer tick
+        state.expectedAcceptState = null; // force prepare/wait on the next outer tick
         state.shouldContinueLoop = true;
         return false;
       case NEXT_PEER:
@@ -671,10 +672,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   }
 
   private PeerNode closerPeer(Set<PeerNode> exclude, long now) {
-    return node.network()
-        .peers()
-        .routingSelector()
-        .closerPeer(
+    PeerRoutingSelectionParams params =
+        new PeerRoutingSelectionParams(
             sourceForRouting(),
             exclude,
             target,
@@ -692,6 +691,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             false,
             now,
             newLoadManagement);
+    return node.network().peers().routingSelector().closerPeer(params);
   }
 
   /**
@@ -769,7 +769,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
   private int rejectedLoops;
 
-  /** Here FINISHED means accepted, WAIT means try again (soft reject). */
+  /** Here FINISHED means accepted; WAIT means try again (soft reject). */
   private DO waitForAccepted(
       RequestLikelyAcceptedState expectedAcceptState, PeerNode next, UIDTag origTag) {
     MessageFilter mf = makeAcceptedRejectedFilter(next, getAcceptedTimeout(), origTag);
@@ -917,8 +917,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   /**
    * Called when waiting for capacity across candidate peers times out.
    *
-   * @param load average proportion of fatal timeouts reported by the peers we waited for; used by
-   *     callers to tune RecentlyFailed persistence
+   * @param load the average proportion of fatal timeouts reported by the peers we waited for; used
+   *     by callers to tune RecentlyFailed persistence
    */
   protected abstract void timedOutWhileWaiting(double load);
 

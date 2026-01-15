@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
@@ -245,21 +246,7 @@ class NodeRoutedMessageRouterTest {
         new NodeRoutedMessageRouter.RoutedContext(original, source, IDENTITY);
     ctx.lastHtl = 2;
     routedContexts(router).put(UID, ctx);
-    when(routingSelector.closerPeer(
-            source,
-            ctx.routedTo,
-            TARGET,
-            true,
-            false,
-            -1,
-            null,
-            null,
-            (short) 1,
-            0L,
-            false,
-            false,
-            false))
-        .thenReturn(null);
+    when(routingSelector.closerPeer(any(PeerRoutingSelectionParams.class))).thenReturn(null);
     Message reject = DMT.createFNPRoutedRejected(UID, (short) 5);
 
     boolean handled = router.handle(reject, null);
