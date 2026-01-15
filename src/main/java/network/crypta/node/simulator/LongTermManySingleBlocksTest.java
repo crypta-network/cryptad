@@ -266,14 +266,14 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
    * <p>This entry point expects a stable identifier that becomes part of the output filenames. On a
    * fresh run it creates a dedicated working directory, starts a local test node, inserts {@link
    * #INSERTED_BLOCKS} single-block CHKs, and writes a row capturing timing and URI data. On later
-   * runs with the same identifier it reads the existing status file and, when the current run's
+   * runs with the same identifier, it reads the existing status file and, when the current run's
    * date is close to a target offset, performs a single fetch attempt for each previously inserted
    * URI with retries disabled.
    *
    * <p>This method exits the JVM with a status code that is also recorded in logs. It is designed
    * for execution as a standalone process rather than as a library call.
    *
-   * @param args command-line arguments; first element is a unique identifier used in filenames
+   * @param args command-line arguments; the first element is a unique identifier used in filenames
    */
   public static void main(String[] args) {
     if (args.length < 1 || args.length > 2) {
@@ -318,7 +318,10 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       FetchContext fctx = configureFetchContext(client);
       RequestClient requestContext = new RequestClientBuilder().build();
       FetchTotals totals = new FetchTotals(MAX_N + 1);
-      processExistingStatusFile(statusFile, csvLine, client, fctx, requestContext, totals);
+      FetchRequestContext fetchRequestContext =
+          new FetchRequestContext(client, fctx, requestContext);
+      FetchRunContext runContext = new FetchRunContext(csvLine, fetchRequestContext);
+      processExistingStatusFile(statusFile, runContext, totals);
       logTotals(totals);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -342,7 +345,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     ensureSeednodesReadable(seednodes);
 
     File innerDir = new File(dir, Integer.toString(DARKNET_PORT1));
-    // We only need best-effort directory creation; subsequent operations will fail clearly if it
+    // We only need best-effort directory creation; later operations will fail clearly if it
     // doesn't exist.
     //noinspection ResultOfMethodCallIgnored
     innerDir.mkdir();
@@ -443,31 +446,20 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
   }
 
   private static void processExistingStatusFile(
-      File statusFile,
-      List<String> csvLine,
-      HighLevelSimpleClient client,
-      FetchContext fctx,
-      RequestClient requestContext,
-      FetchTotals totals)
+      File statusFile, FetchRunContext runContext, FetchTotals totals)
       throws IOException, ParseException {
     GregorianCalendar[] targets = computeTargets();
     try (FileInputStream fis = new FileInputStream(statusFile);
         BufferedReader br = new BufferedReader(new InputStreamReader(fis, ENCODING))) {
       String line;
       while ((line = br.readLine()) != null) {
-        processExistingStatusLine(line, csvLine, client, fctx, requestContext, targets, totals);
+        processExistingStatusLine(line, runContext, targets, totals);
       }
     }
   }
 
   private static void processExistingStatusLine(
-      String line,
-      List<String> csvLine,
-      HighLevelSimpleClient client,
-      FetchContext fctx,
-      RequestClient requestContext,
-      GregorianCalendar[] targets,
-      FetchTotals totals)
+      String line, FetchRunContext runContext, GregorianCalendar[] targets, FetchTotals totals)
       throws ParseException {
     String[] split = line.split("!");
     if (split.length < 4) {
@@ -502,8 +494,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     }
 
     int tokenAfterInserts = token + INSERTED_BLOCKS * 2;
-    maybeFetchTargets(
-        split[1], calendar, inserted.insertedUris, csvLine, client, fctx, requestContext, targets);
+    maybeFetchTargets(split[1], calendar, inserted.insertedUris, runContext, targets);
     processDeltaSection(split, tokenAfterInserts, calendar, date, totals);
   }
 
@@ -524,10 +515,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       String versionToken,
       GregorianCalendar calendar,
       FreenetURI[] insertedURIs,
-      List<String> csvLine,
-      HighLevelSimpleClient client,
-      FetchContext fctx,
-      RequestClient requestContext,
+      FetchRunContext runContext,
       GregorianCalendar[] targets) {
     for (int i = 0; i < targets.length; i++) {
       if (!isNearTargetDate(targets[i], calendar)) {
@@ -535,8 +523,8 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       }
       LOGGER.info("Found row for target date {} days ago.", (1 << i) - 1);
       LOGGER.info("Version: {}", versionToken);
-      csvLine.add(Integer.toString(i));
-      fetchInsertedBlocks(i, insertedURIs, csvLine, client, fctx, requestContext);
+      runContext.csvLine().add(Integer.toString(i));
+      fetchInsertedBlocks(i, insertedURIs, runContext);
     }
   }
 
@@ -545,12 +533,9 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
   }
 
   private static void fetchInsertedBlocks(
-      int deltaIndex,
-      FreenetURI[] insertedURIs,
-      List<String> csvLine,
-      HighLevelSimpleClient client,
-      FetchContext fctx,
-      RequestClient requestContext) {
+      int deltaIndex, FreenetURI[] insertedURIs, FetchRunContext runContext) {
+    List<String> csvLine = runContext.csvLine();
+    FetchRequestContext fetchRequestContext = runContext.fetchRequestContext();
     int pulled = 0;
     int inserted = 0;
     for (int j = 0; j < INSERTED_BLOCKS; j++) {
@@ -561,7 +546,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       }
 
       inserted++;
-      FetchResult result = fetchOneBlock(uri, j, client, fctx, requestContext);
+      FetchResult result = fetchOneBlock(uri, j, fetchRequestContext);
       csvLine.add(result.csvToken());
       if (result.succeeded()) {
         pulled++;
@@ -573,15 +558,11 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
   }
 
   private static FetchResult fetchOneBlock(
-      FreenetURI uri,
-      int blockIndex,
-      HighLevelSimpleClient client,
-      FetchContext fctx,
-      RequestClient requestContext) {
+      FreenetURI uri, int blockIndex, FetchRequestContext fetchRequestContext) {
     long start = System.currentTimeMillis();
     try {
-      FetchWaiter fw = new FetchWaiter(requestContext);
-      client.fetch(uri, fw, fctx);
+      FetchWaiter fw = new FetchWaiter(fetchRequestContext.requestClient());
+      fetchRequestContext.client().fetch(uri, fw, fetchRequestContext.fetchContext());
       fw.waitForCompletion();
       long fetchTime = System.currentTimeMillis() - start;
       LOGGER.info("PULL-TIME FOR BLOCK {}: {}", blockIndex, fetchTime);
