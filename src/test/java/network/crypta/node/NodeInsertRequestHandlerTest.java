@@ -82,7 +82,8 @@ class NodeInsertRequestHandlerTest {
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);
     stubNodeBasics();
     stubTransport();
-    when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, true, false, false)), any()))
         .thenReturn(false);
 
     NodeInsertRequestHandler handler = new NodeInsertRequestHandler(node);
@@ -100,7 +101,9 @@ class NodeInsertRequestHandlerTest {
     ArgumentCaptor<InsertTag> tagCaptor = ArgumentCaptor.forClass(InsertTag.class);
     verify(tracker)
         .lockUID(
-            eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), tagCaptor.capture());
+            eq(uid),
+            eq(RequestAdmissionMode.of(false, false, true, false, false)),
+            tagCaptor.capture());
     InsertTag tag = tagCaptor.getValue();
     assertFalse(tag.isSSK());
     assertFalse(tag.realTimeFlag);
@@ -115,7 +118,8 @@ class NodeInsertRequestHandlerTest {
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);
     stubNodeBasics();
     stubTransport();
-    when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, true, false, false)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class)))
         .thenReturn(new RejectReason("hard", false));
@@ -143,7 +147,8 @@ class NodeInsertRequestHandlerTest {
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);
     stubNodeBasics();
     stubTransport();
-    when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, true, false, false)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class)))
         .thenReturn(new RejectReason("soft", true));
@@ -170,7 +175,8 @@ class NodeInsertRequestHandlerTest {
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);
     stubNodeBasics();
     stubTransport();
-    when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, true, false, false)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class)))
         .thenReturn(new RejectReason("soft", true));
@@ -201,7 +207,8 @@ class NodeInsertRequestHandlerTest {
     when(routingSubsystem.canWriteDatastoreInsert(anyShort())).thenReturn(true);
     when(sskKey.getPubKeyHash()).thenReturn(new byte[] {1, 2, 3});
     when(nodeGetPubkey.getKey(any(), eq(false), eq(false), isNull())).thenReturn(null);
-    when(tracker.lockUID(eq(uid), eq(true), eq(true), eq(false), eq(false), eq(true), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, true, true, false, true)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class))).thenReturn(null);
     when(message.getSubMessage(DMT.FNPSubInsertForkControl))
@@ -255,7 +262,8 @@ class NodeInsertRequestHandlerTest {
     when(routingSubsystem.canWriteDatastoreInsert(anyShort())).thenReturn(true);
     when(sskKey.getPubKeyHash()).thenReturn(new byte[] {9, 9, 9});
     when(nodeGetPubkey.getKey(any(), eq(false), eq(false), isNull())).thenReturn(null);
-    when(tracker.lockUID(eq(uid), eq(true), eq(true), eq(false), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, true, true, false, false)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class))).thenReturn(null);
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);
@@ -287,7 +295,8 @@ class NodeInsertRequestHandlerTest {
     stubNodeBasics();
     stubExecutor();
     when(routingSubsystem.canWriteDatastoreInsert(anyShort())).thenReturn(true);
-    when(tracker.lockUID(eq(uid), eq(false), eq(true), eq(false), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, true, false, false)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(any(RequestAdmissionContext.class))).thenReturn(null);
     when(message.getSubMessage(DMT.FNPRealTimeFlag)).thenReturn(null);

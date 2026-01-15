@@ -118,14 +118,7 @@ public class RequestTracker {
    *     same tag), {@code false} when the UID is owned by a different tag.
    */
   public boolean lockUID(UIDTag tag) {
-    return lockUID(
-        tag.uid,
-        tag.isSSK(),
-        tag.isInsert(),
-        tag.isOfferReply(),
-        tag.wasLocal(),
-        tag.realTimeFlag,
-        tag);
+    return lockUID(tag.uid, RequestAdmissionMode.fromTag(tag), tag);
   }
 
   /**
@@ -139,43 +132,34 @@ public class RequestTracker {
    * accessed while holding the overall map lock.
    *
    * @param uid Unique request identifier.
-   * @param ssk {@code true} for SSK, {@code false} for CHK.
-   * @param insert {@code true} for inserts, {@code false} for requests (gets).
-   * @param offerReply {@code true} to operate on offer replies (takes precedence over {@code
-   *     insert}).
-   * @param local {@code true} if the request originated locally.
-   * @param realTimeFlag {@code true} for real-time mode, {@code false} for bulk mode.
+   * @param mode Admission mode describing key type, operation, and scheduling flags.
    * @param tag The tag instance to record for this UID.
    * @return {@code true} if recorded (or already present for the same tag), {@code false} if a
    *     different tag already owns the UID.
    */
-  public boolean lockUID(
-      long uid,
-      boolean ssk,
-      boolean insert,
-      boolean offerReply,
-      boolean local,
-      boolean realTimeFlag,
-      UIDTag tag) {
+  public boolean lockUID(long uid, RequestAdmissionMode mode, UIDTag tag) {
     // If these are switched around, we must remember to remove from both.
-    if (offerReply) {
+    if (mode.isOfferReply()) {
       // local irrelevant for OfferReplyTag's.
-      HashMap<Long, OfferReplyTag> map = getOfferTracker(ssk, realTimeFlag);
+      HashMap<Long, OfferReplyTag> map = getOfferTracker(mode.isSSK(), mode.realTimeFlag());
       synchronized (map) {
         return doLock(map, null, (OfferReplyTag) tag, uid, false);
       }
-    } else if (insert) {
-      HashMap<Long, InsertTag> overallMap = getInsertTracker(ssk, false, realTimeFlag);
-      HashMap<Long, InsertTag> localMap = local ? getInsertTracker(ssk, true, realTimeFlag) : null;
+    } else if (mode.isInsert()) {
+      HashMap<Long, InsertTag> overallMap =
+          getInsertTracker(mode.isSSK(), false, mode.realTimeFlag());
+      HashMap<Long, InsertTag> localMap =
+          mode.isLocal() ? getInsertTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
-        return doLock(overallMap, localMap, (InsertTag) tag, uid, local);
+        return doLock(overallMap, localMap, (InsertTag) tag, uid, mode.isLocal());
       }
     } else {
-      HashMap<Long, RequestTag> overallMap = getRequestTracker(ssk, false, realTimeFlag);
+      HashMap<Long, RequestTag> overallMap =
+          getRequestTracker(mode.isSSK(), false, mode.realTimeFlag());
       HashMap<Long, RequestTag> localMap =
-          local ? getRequestTracker(ssk, true, realTimeFlag) : null;
+          mode.isLocal() ? getRequestTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
-        return doLock(overallMap, localMap, (RequestTag) tag, uid, local);
+        return doLock(overallMap, localMap, (RequestTag) tag, uid, mode.isLocal());
       }
     }
   }
@@ -241,16 +225,7 @@ public class RequestTracker {
    * @param noRecord When {@code true}, do not record completion for peer cleanup.
    */
   void unlockUID(UIDTag tag, boolean canFail, boolean noRecord) {
-    unlockUID(
-        tag.uid,
-        tag.isSSK(),
-        tag.isInsert(),
-        canFail,
-        tag.isOfferReply(),
-        tag.wasLocal(),
-        tag.realTimeFlag,
-        tag,
-        noRecord);
+    unlockUID(tag.uid, RequestAdmissionMode.fromTag(tag), tag, canFail, noRecord);
   }
 
   /**
@@ -261,59 +236,49 @@ public class RequestTracker {
    * debug message is emitted instead of an error.
    *
    * @param uid Unique request identifier.
-   * @param ssk {@code true} for SSK, {@code false} for CHK.
-   * @param insert {@code true} for inserts, {@code false} for requests (gets).
-   * @param canFail When {@code true}, tolerate missing or mismatched entries.
-   * @param offerReply {@code true} to operate on offer replies (takes precedence over {@code
-   *     insert}).
-   * @param local {@code true} if the request originated locally.
-   * @param realTimeFlag {@code true} for real-time mode, {@code false} for bulk mode.
+   * @param mode Admission mode describing key type, operation, and scheduling flags.
    * @param tag The tag instance to remove for this UID.
+   * @param canFail When {@code true}, tolerate missing or mismatched entries.
    * @param noRecord When {@code true}, do not record completion for peer cleanup.
    */
   protected void unlockUID(
-      long uid,
-      boolean ssk,
-      boolean insert,
-      boolean canFail,
-      boolean offerReply,
-      boolean local,
-      boolean realTimeFlag,
-      UIDTag tag,
-      boolean noRecord) {
+      long uid, RequestAdmissionMode mode, UIDTag tag, boolean canFail, boolean noRecord) {
     if (!noRecord) completed(uid);
 
-    if (offerReply) {
-      HashMap<Long, OfferReplyTag> map = getOfferTracker(ssk, realTimeFlag);
+    if (mode.isOfferReply()) {
+      HashMap<Long, OfferReplyTag> map = getOfferTracker(mode.isSSK(), mode.realTimeFlag());
       synchronized (map) {
         doUnlock(map, null, (OfferReplyTag) tag, uid, false, canFail);
       }
-    } else if (insert) {
-      HashMap<Long, InsertTag> overallMap = getInsertTracker(ssk, false, realTimeFlag);
-      HashMap<Long, InsertTag> localMap = local ? getInsertTracker(ssk, true, realTimeFlag) : null;
+    } else if (mode.isInsert()) {
+      HashMap<Long, InsertTag> overallMap =
+          getInsertTracker(mode.isSSK(), false, mode.realTimeFlag());
+      HashMap<Long, InsertTag> localMap =
+          mode.isLocal() ? getInsertTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
-        doUnlock(overallMap, localMap, (InsertTag) tag, uid, local, canFail);
+        doUnlock(overallMap, localMap, (InsertTag) tag, uid, mode.isLocal(), canFail);
       }
     } else {
-      HashMap<Long, RequestTag> overallMap = getRequestTracker(ssk, false, realTimeFlag);
+      HashMap<Long, RequestTag> overallMap =
+          getRequestTracker(mode.isSSK(), false, mode.realTimeFlag());
       HashMap<Long, RequestTag> localMap =
-          local ? getRequestTracker(ssk, true, realTimeFlag) : null;
+          mode.isLocal() ? getRequestTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
-        doUnlock(overallMap, localMap, (RequestTag) tag, uid, local, canFail);
+        doUnlock(overallMap, localMap, (RequestTag) tag, uid, mode.isLocal(), canFail);
       }
     }
   }
 
   /**
-   * Do the actual unlock.
+   * Do the actual unlocking.
    *
    * @param <T> The type of the tag.
    * @param overallMap The overall map for this group of requests. LOCKING: We use the overallMap as
-   *     lock for both.
-   * @param localMap The local map if any. We check on overallMap and then remove from both.
+   *     a lock for both.
+   * @param localMap The local map, if any. We check on the overallMap and then remove from both.
    * @param tag The tag to remove.
    * @param uid The UID of the tag.
-   * @param local Whether it is local. If it is local we use both maps. If it is not we expect the
+   * @param local Whether it is local. If it is local, we use both maps. If it is not, we expect the
    *     latter to be null.
    * @param canFail If true, tolerate missing entries and log at debug level instead of error.
    */
@@ -402,32 +367,27 @@ public class RequestTracker {
   /**
    * Count all running requests that match the given filters and accumulate transfer estimates.
    *
-   * @param local If true, include only locally originated requests; otherwise include all.
-   * @param ssk If true, count SSK; if false, count CHK.
-   * @param insert If true, count inserts; otherwise count gets (requests).
-   * @param offer If true, count offer replies (takes precedence over {@code insert}).
-   * @param realTimeFlag If true, count real-time requests; otherwise count bulk.
-   * @param transfersPerInsert Average outgoing transfers to assume per insert.
-   * @param ignoreLocalVsRemote If true, treat local requests as remote for transfer estimation.
+   * @param mode Request admission mode selecting which requests to count.
+   * @param transferOptions Options affecting transfer estimation while counting.
    * @param counter Accumulator for totals and transfer estimates.
    * @param counterSourceRestarted Optional accumulator for requests counted as source-restarted.
    */
   public void countRequests(
-      boolean local,
-      boolean ssk,
-      boolean insert,
-      boolean offer,
-      boolean realTimeFlag,
-      int transfersPerInsert,
-      boolean ignoreLocalVsRemote,
+      RequestAdmissionMode mode,
+      RequestTransferOptions transferOptions,
       CountedRequests counter,
       CountedRequests counterSourceRestarted) {
-    HashMap<Long, ? extends UIDTag> map = getTracker(local, ssk, insert, offer, realTimeFlag);
+    HashMap<Long, ? extends UIDTag> map = getTracker(mode);
+    RequestAdmissionMode nonLocal = nonLocalMode(mode);
     // Map is locked by the non-local version, although we're counting from the local version.
-    synchronized (local ? getTracker(false, ssk, insert, offer, realTimeFlag) : map) {
+    synchronized (mode.isLocal() ? getTracker(nonLocal) : map) {
       CountTotals totals =
           accumulateCounts(
-              map, local, ignoreLocalVsRemote, transfersPerInsert, counterSourceRestarted != null);
+              map,
+              mode.isLocal(),
+              transferOptions.ignoreLocalVsRemote(),
+              transferOptions.transfersPerInsert(),
+              counterSourceRestarted != null);
       counter.total += totals.count;
       counter.expectedTransfersIn += totals.in;
       counter.expectedTransfersOut += totals.out;
@@ -485,64 +445,49 @@ public class RequestTracker {
    * @param source Peer from which requests were accepted or to which they were routed.
    * @param requestsToNode If true, count requests sent to {@code source} and currently running;
    *     otherwise count requests originating from {@code source}.
-   * @param local If true, include only locally originated requests; otherwise include all.
-   * @param ssk If true, count SSK; if false, count CHK.
-   * @param insert If true, count inserts; otherwise count gets (requests).
-   * @param offer If true, count offer replies (takes precedence over {@code insert}).
-   * @param realTimeFlag If true, count real-time; otherwise count bulk.
-   * @param transfersPerInsert Average outgoing transfers to assume per insert.
-   * @param ignoreLocalVsRemote If true, treat local requests as remote for transfer estimation.
+   * @param mode Request admission mode selecting which requests to count.
+   * @param transferOptions Options affecting transfer estimation while counting.
    * @param counter Accumulator for totals and transfer estimates.
    * @param counterSR Optional accumulator for requests counted as source-restarted.
    */
   public void countRequests(
       PeerNode source,
       boolean requestsToNode,
-      boolean local,
-      boolean ssk,
-      boolean insert,
-      boolean offer,
-      boolean realTimeFlag,
-      int transfersPerInsert,
-      boolean ignoreLocalVsRemote,
+      RequestAdmissionMode mode,
+      RequestTransferOptions transferOptions,
       CountedRequests counter,
       CountedRequests counterSR) {
-    HashMap<Long, ? extends UIDTag> map = getTracker(local, ssk, insert, offer, realTimeFlag);
+    HashMap<Long, ? extends UIDTag> map = getTracker(mode);
+    RequestAdmissionMode nonLocal = nonLocalMode(mode);
     // Map is locked by the non-local version, although we're counting from the local version.
-    synchronized (local ? getTracker(false, ssk, insert, offer, realTimeFlag) : map) {
+    synchronized (mode.isLocal() ? getTracker(nonLocal) : map) {
       if (!requestsToNode) {
-        countRequestsFromSource(
-            map, local, source, ignoreLocalVsRemote, transfersPerInsert, counter, counterSR);
+        countRequestsFromSource(map, mode, source, transferOptions, counter, counterSR);
       } else {
-        countRequestsToNode(
-            map,
-            local,
-            source,
-            ignoreLocalVsRemote,
-            transfersPerInsert,
-            counter,
-            ssk,
-            insert,
-            offer);
+        countRequestsToNode(map, mode, source, transferOptions, counter);
       }
     }
   }
 
   private void countRequestsFromSource(
       Map<Long, ? extends UIDTag> map,
-      boolean local,
+      RequestAdmissionMode mode,
       PeerNode source,
-      boolean ignoreLocalVsRemote,
-      int transfersPerInsert,
+      RequestTransferOptions transferOptions,
       CountedRequests counter,
       CountedRequests counterSR) {
-    // If a request is adopted by us as a result of a timeout, it can be in the
+    // If we adopt a request as a result of a timeout, it can be in the
     // remote map despite having source == null. However, if a request is in the
-    // local map it will always have source == null.
-    if (source != null && local) return;
+    // local map, it will always have source == null.
+    if (source != null && mode.isLocal()) return;
     CountTotals totals =
         accumulateCountsFromSource(
-            map, local, source, ignoreLocalVsRemote, transfersPerInsert, counterSR != null);
+            map,
+            mode.isLocal(),
+            source,
+            transferOptions.ignoreLocalVsRemote(),
+            transferOptions.transfersPerInsert(),
+            counterSR != null);
     if (LOG.isDebugEnabled())
       LOG.debug("Count totals count={} in={} out={}", totals.count, totals.in, totals.out);
     counter.total += totals.count;
@@ -557,25 +502,26 @@ public class RequestTracker {
 
   private void countRequestsToNode(
       Map<Long, ? extends UIDTag> map,
-      boolean local,
+      RequestAdmissionMode mode,
       PeerNode source,
-      boolean ignoreLocalVsRemote,
-      int transfersPerInsert,
-      CountedRequests counter,
-      boolean ssk,
-      boolean insert,
-      boolean offer) {
+      RequestTransferOptions transferOptions,
+      CountedRequests counter) {
     // hasSourceRestarted is irrelevant for requests *to* a node.
     // Consider improving efficiency if measurements indicate a bottleneck.
     CountTotals totals =
-        accumulateCountsToNode(map, local, source, ignoreLocalVsRemote, transfersPerInsert);
+        accumulateCountsToNode(
+            map,
+            mode.isLocal(),
+            source,
+            transferOptions.ignoreLocalVsRemote(),
+            transferOptions.transfersPerInsert());
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Count to node scope={} keyType={} opType={} offer={} count={} of={} peer={}",
-          local ? "local" : "remote",
-          ssk ? "ssk" : "chk",
-          insert ? "insert" : "request",
-          offer ? "offer" : "",
+          mode.isLocal() ? "local" : "remote",
+          mode.isSSK() ? "ssk" : "chk",
+          mode.isInsert() ? "insert" : "request",
+          mode.isOfferReply() ? "offer" : "",
           totals.count,
           map.size(),
           source);
@@ -654,13 +600,8 @@ public class RequestTracker {
    *
    * @param requestsToNode If true, count requests sent to the node; otherwise count those
    *     originating from peers.
-   * @param local If true, include only locally originated requests; otherwise include all.
-   * @param ssk If true, count SSK; if false, count CHK.
-   * @param insert If true, count inserts; otherwise count gets (requests).
-   * @param offer If true, count offer replies (takes precedence over {@code insert}).
-   * @param realTimeFlag If true, count real-time; otherwise count bulk.
-   * @param transfersPerInsert Average outgoing transfers to assume per insert.
-   * @param ignoreLocalVsRemote If true, treat local requests as remote for transfer estimation.
+   * @param mode Request admission mode selecting which requests to count.
+   * @param transferOptions Options affecting transfer estimation while counting.
    * @param counterMap Destination map from {@link PeerNode} (may be {@code null}) to counters.
    *     {@code null} is used for local requests, adopted requests after source restart, and
    *     requests whose originator is not currently in the routing table.
@@ -668,29 +609,33 @@ public class RequestTracker {
   @SuppressWarnings("unused")
   public void countAllRequestsByIncomingPeer(
       boolean requestsToNode,
-      boolean local,
-      boolean ssk,
-      boolean insert,
-      boolean offer,
-      boolean realTimeFlag,
-      int transfersPerInsert,
-      boolean ignoreLocalVsRemote,
+      RequestAdmissionMode mode,
+      RequestTransferOptions transferOptions,
       Map<PeerNode, CountedRequests> counterMap) {
-    HashMap<Long, ? extends UIDTag> map = getTracker(local, ssk, insert, offer, realTimeFlag);
+    HashMap<Long, ? extends UIDTag> map = getTracker(mode);
+    RequestAdmissionMode nonLocal = nonLocalMode(mode);
     // Map is locked by the non-local version, although we're counting from the local version.
-    synchronized (local ? getTracker(false, ssk, insert, offer, realTimeFlag) : map) {
+    synchronized (mode.isLocal() ? getTracker(nonLocal) : map) {
       if (!requestsToNode) {
-        // If a request is adopted by us as a result of a timeout, it can be in the
+        // If we adopt a request as a result of a timeout, it can be in the
         // remote map despite having source == null. However, if a request is in the
-        // local map it will always have source == null.
+        // local map, it will always have source == null.
         for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
           UIDTag tag = entry.getValue();
           // The overall running* map can include local. But the local map can't include non-local.
-          if ((!local) && tag.wasLocal) continue;
+          if ((!mode.isLocal()) && tag.wasLocal) continue;
           PeerNode source = tag.getSource(); // Can be null in various cases
           CountedRequests counter = counterMap.computeIfAbsent(source, k -> new CountedRequests());
-          int out = tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, true);
-          int in = tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, true);
+          int out =
+              tag.expectedTransfersOut(
+                  transferOptions.ignoreLocalVsRemote(),
+                  transferOptions.transfersPerInsert(),
+                  true);
+          int in =
+              tag.expectedTransfersIn(
+                  transferOptions.ignoreLocalVsRemote(),
+                  transferOptions.transfersPerInsert(),
+                  true);
           counter.total++;
           counter.expectedTransfersIn += in;
           counter.expectedTransfersOut += out;
@@ -764,11 +709,17 @@ public class RequestTracker {
     tag.reassignToSelf();
   }
 
-  private HashMap<Long, ? extends UIDTag> getTracker(
-      boolean local, boolean ssk, boolean insert, boolean offer, boolean realTimeFlag) {
-    if (offer) return getOfferTracker(ssk, realTimeFlag);
-    else if (insert) return getInsertTracker(ssk, local, realTimeFlag);
-    else return getRequestTracker(ssk, local, realTimeFlag);
+  private RequestAdmissionMode nonLocalMode(RequestAdmissionMode mode) {
+    if (!mode.isLocal()) return mode;
+    return RequestAdmissionMode.of(
+        false, mode.isSSK(), mode.isInsert(), mode.isOfferReply(), mode.realTimeFlag());
+  }
+
+  private HashMap<Long, ? extends UIDTag> getTracker(RequestAdmissionMode mode) {
+    if (mode.isOfferReply()) return getOfferTracker(mode.isSSK(), mode.realTimeFlag());
+    else if (mode.isInsert())
+      return getInsertTracker(mode.isSSK(), mode.isLocal(), mode.realTimeFlag());
+    else return getRequestTracker(mode.isSSK(), mode.isLocal(), mode.realTimeFlag());
   }
 
   private HashMap<Long, RequestTag> getRequestTracker(
@@ -1032,7 +983,7 @@ public class RequestTracker {
   /**
    * Count all SSK requests currently running (local and remote, real-time and bulk).
    *
-   * @return Number of running SSK gets.
+   * @return Amount of running SSK gets.
    */
   public int getNumSSKRequests() {
     int total = 0;
@@ -1346,7 +1297,7 @@ public class RequestTracker {
 
   private final ArrayList<Long> completedBuffer = new ArrayList<>();
 
-  // Every this many slots, we tell all the PeerMessageQueue's to remove the old Items for the ID's
+  // Every this many slots, we tell all the PeerMessageQueue to remove the old Items for the ID's
   // in question.
   // This prevents memory DoS amongst other things.
   static final int COMPLETED_THRESHOLD = 128;

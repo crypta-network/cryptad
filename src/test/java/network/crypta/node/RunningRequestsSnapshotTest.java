@@ -3,7 +3,6 @@ package network.crypta.node;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -203,22 +202,18 @@ class RunningRequestsSnapshotTest {
   private static void stubCountRequestsWithoutPeer(RequestTracker tracker) {
     doAnswer(
             invocation -> {
-              boolean sskFlag = invocation.getArgument(1);
-              CountedRequests counter = invocation.getArgument(7);
-              CountedRequests counterSr = invocation.getArgument(8);
+              RequestAdmissionMode mode = invocation.getArgument(0);
+              boolean sskFlag = mode.isSSK();
+              CountedRequests counter = invocation.getArgument(2);
+              CountedRequests counterSr = invocation.getArgument(3);
               setCounter(counter, sskFlag ? SSK_MAIN : CHK_MAIN);
               setCounter(counterSr, sskFlag ? SSK_SR : CHK_SR);
               return null;
             })
         .when(tracker)
         .countRequests(
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyInt(),
-            anyBoolean(),
+            any(RequestAdmissionMode.class),
+            any(RequestTransferOptions.class),
             any(CountedRequests.class),
             any(CountedRequests.class));
   }
@@ -226,9 +221,10 @@ class RunningRequestsSnapshotTest {
   private static void stubCountRequestsWithPeer(RequestTracker tracker) {
     doAnswer(
             invocation -> {
-              boolean sskFlag = invocation.getArgument(3);
-              CountedRequests counter = invocation.getArgument(9);
-              CountedRequests counterSr = invocation.getArgument(10);
+              RequestAdmissionMode mode = invocation.getArgument(2);
+              boolean sskFlag = mode.isSSK();
+              CountedRequests counter = invocation.getArgument(4);
+              CountedRequests counterSr = invocation.getArgument(5);
               setCounter(counter, sskFlag ? SSK_MAIN : CHK_MAIN);
               if (counterSr != null) {
                 setCounter(counterSr, sskFlag ? SSK_SR : CHK_SR);
@@ -239,13 +235,8 @@ class RunningRequestsSnapshotTest {
         .countRequests(
             any(PeerNode.class),
             anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyBoolean(),
-            anyInt(),
-            anyBoolean(),
+            any(RequestAdmissionMode.class),
+            any(RequestTransferOptions.class),
             any(CountedRequests.class),
             nullable(CountedRequests.class));
   }

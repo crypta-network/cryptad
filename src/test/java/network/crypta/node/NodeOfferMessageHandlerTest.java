@@ -156,9 +156,7 @@ class NodeOfferMessageHandlerTest {
     assertEquals(DMT.FNPGetOfferedKeyInvalid, sent.getSpec());
     assertEquals(uid, sent.getLong(DMT.UID));
     assertEquals(DMT.GET_OFFERED_KEY_REJECTED_BAD_AUTHENTICATOR, sent.getShort(DMT.REASON));
-    verify(tracker, never())
-        .lockUID(
-            anyLong(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any());
+    verify(tracker, never()).lockUID(anyLong(), any(RequestAdmissionMode.class), any());
     verify(failureTable, never())
         .sendOfferedKey(
             any(Key.class), anyBoolean(), anyBoolean(), anyLong(), any(), any(), anyBoolean());
@@ -177,7 +175,8 @@ class NodeOfferMessageHandlerTest {
     doReturn(null)
         .when(transport)
         .sendAsync(any(Message.class), isNull(), same(failureTable.senderCounter));
-    when(tracker.lockUID(eq(uid), eq(false), eq(false), eq(true), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, false, true, false)), any()))
         .thenReturn(false);
 
     boolean handled = handler.handle(msg, peer);
@@ -207,7 +206,8 @@ class NodeOfferMessageHandlerTest {
     doReturn(null)
         .when(transport)
         .sendAsync(any(Message.class), isNull(), same(failureTable.senderCounter));
-    when(tracker.lockUID(eq(uid), eq(false), eq(false), eq(true), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, false, true, false)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(
             argThat(
@@ -248,7 +248,8 @@ class NodeOfferMessageHandlerTest {
     Message msg = offeredKeyMessage(key, authenticator, uid, true, true);
 
     when(peer.transport()).thenReturn(transport);
-    when(tracker.lockUID(eq(uid), eq(true), eq(false), eq(true), eq(false), eq(true), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, true, false, true, true)), any()))
         .thenReturn(true);
     when(nodeStats.shouldRejectRequest(
             argThat(
@@ -294,7 +295,8 @@ class NodeOfferMessageHandlerTest {
     doReturn(null)
         .when(transport)
         .sendAsync(any(Message.class), isNull(), same(failureTable.senderCounter));
-    when(tracker.lockUID(eq(uid), eq(false), eq(false), eq(true), eq(false), eq(false), any()))
+    when(tracker.lockUID(
+            eq(uid), eq(RequestAdmissionMode.of(false, false, false, true, false)), any()))
         .thenReturn(true);
     when(replacementStats.shouldRejectRequest(
             argThat(

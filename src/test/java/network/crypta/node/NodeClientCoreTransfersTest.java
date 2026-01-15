@@ -97,15 +97,7 @@ class NodeClientCoreTransfersTest {
     when(node.maxHTL()).thenReturn((short) 5);
     lenient().when(random.nextLong()).thenReturn(123L);
     lenient()
-        .when(
-            tracker.lockUID(
-                anyLong(),
-                anyBoolean(),
-                anyBoolean(),
-                anyBoolean(),
-                anyBoolean(),
-                anyBoolean(),
-                any()))
+        .when(tracker.lockUID(anyLong(), any(RequestAdmissionMode.class), any()))
         .thenReturn(true);
 
     stats = mock(NodeStats.class);
@@ -140,9 +132,7 @@ class NodeClientCoreTransfersTest {
   @Test
   void asyncGet_whenUidLockFails_expectListenerFailedInternalError() {
     Key key = mock(Key.class);
-    when(tracker.lockUID(
-            anyLong(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any()))
-        .thenReturn(false);
+    when(tracker.lockUID(anyLong(), any(RequestAdmissionMode.class), any())).thenReturn(false);
 
     transfers.asyncGet(
         key,
@@ -321,9 +311,7 @@ class NodeClientCoreTransfersTest {
   void realPutChk_whenUidLockFails_expectInternalError() throws Exception {
     ClientCHKBlock clientBlock = encodeSampleChkBlock("chk-fail");
     CHKBlock block = clientBlock.getBlock();
-    when(tracker.lockUID(
-            anyLong(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any()))
-        .thenReturn(false);
+    when(tracker.lockUID(anyLong(), any(RequestAdmissionMode.class), any())).thenReturn(false);
 
     LowLevelPutException ex =
         assertThrows(

@@ -97,7 +97,8 @@ public final class NodeClientCoreTransfers {
         new RequestTag(isSSK, RequestTag.START.ASYNC_GET, null, options.realTimeFlag(), uid, node);
     if (!node.routing()
         .tracker()
-        .lockUID(uid, isSSK, false, false, true, options.realTimeFlag(), tag)) {
+        .lockUID(
+            uid, RequestAdmissionMode.of(true, isSSK, false, false, options.realTimeFlag()), tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       listener.onFailed(
           new LowLevelGetException(
@@ -404,7 +405,9 @@ public final class NodeClientCoreTransfers {
     long startTime = System.currentTimeMillis();
     long uid = makeUID();
     RequestTag tag = new RequestTag(false, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.routing().tracker().lockUID(uid, false, false, false, true, realTimeFlag, tag)) {
+    if (!node.routing()
+        .tracker()
+        .lockUID(uid, RequestAdmissionMode.of(true, false, false, false, realTimeFlag), tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
     }
@@ -545,7 +548,9 @@ public final class NodeClientCoreTransfers {
     long startTime = System.currentTimeMillis();
     long uid = makeUID();
     RequestTag tag = new RequestTag(true, RequestTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.routing().tracker().lockUID(uid, true, false, false, true, realTimeFlag, tag)) {
+    if (!node.routing()
+        .tracker()
+        .lockUID(uid, RequestAdmissionMode.of(true, true, false, false, realTimeFlag), tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
     }
@@ -705,7 +710,9 @@ public final class NodeClientCoreTransfers {
     CHKInsertSender is;
     long uid = makeUID();
     InsertTag tag = new InsertTag(false, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.routing().tracker().lockUID(uid, false, true, false, true, realTimeFlag, tag)) {
+    if (!node.routing()
+        .tracker()
+        .lockUID(uid, RequestAdmissionMode.of(true, false, true, false, realTimeFlag), tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }
@@ -868,7 +875,9 @@ public final class NodeClientCoreTransfers {
     SSKInsertSender is;
     long uid = makeUID();
     InsertTag tag = new InsertTag(true, InsertTag.START.LOCAL, null, realTimeFlag, uid, node);
-    if (!node.routing().tracker().lockUID(uid, true, true, false, true, realTimeFlag, tag)) {
+    if (!node.routing()
+        .tracker()
+        .lockUID(uid, RequestAdmissionMode.of(true, true, true, false, realTimeFlag), tag)) {
       LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }

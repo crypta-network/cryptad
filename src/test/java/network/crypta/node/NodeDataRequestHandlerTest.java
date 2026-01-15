@@ -148,11 +148,7 @@ class NodeDataRequestHandlerTest {
     when(routing.failureTable()).thenReturn(failureTable);
     when(tracker.lockUID(
             eq(REQUEST_ID),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
+            eq(RequestAdmissionMode.of(false, false, false, false, false)),
             any(RequestTag.class)))
         .thenReturn(false);
 
@@ -184,11 +180,7 @@ class NodeDataRequestHandlerTest {
     when(node.storage()).thenReturn(storage);
     when(tracker.lockUID(
             eq(REQUEST_ID),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
+            eq(RequestAdmissionMode.of(false, false, false, false, false)),
             any(RequestTag.class)))
         .thenReturn(true);
     when(storage.fetch(eq(key), eq(false), eq(false), eq(false), eq(false), any()))
@@ -244,11 +236,7 @@ class NodeDataRequestHandlerTest {
     when(node.storage()).thenReturn(storage);
     when(tracker.lockUID(
             eq(REQUEST_ID),
-            eq(true),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
+            eq(RequestAdmissionMode.of(false, true, false, false, false)),
             any(RequestTag.class)))
         .thenReturn(true);
     when(storage.fetch(eq(key), eq(false), eq(false), eq(false), eq(false), any()))
