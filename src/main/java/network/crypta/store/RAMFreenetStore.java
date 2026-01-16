@@ -13,9 +13,25 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * LRU in memory store.
+ * In-memory LRU store for {@link StorableBlock} instances keyed by routing key.
  *
- * <p>For debugging / simulation only
+ * <p>This implementation is intended for debugging or simulation scenarios where a full persistent
+ * store is unnecessary. Entries are kept in an {@link LRUMap} capped by {@code maxKeys}; the store
+ * evicts least-recently used entries on insertion and tracks hits, misses, and writes for
+ * lightweight reporting. Retrieval delegates block construction to the configured {@link
+ * StoreCallback}, which also decides whether full keys are stored.
+ *
+ * <p>Most accessors and mutating operations are synchronized on the store instance. Operations that
+ * bypass synchronization, such as {@link #clear()} and {@link #migrateTo(StoreCallback, boolean)},
+ * should not be interleaved with concurrent reads or writes without external coordination.
+ *
+ * <ul>
+ *   <li>Provides an LRU-backed, in-memory key/value store.
+ *   <li>Records basic access statistics for the current session.
+ *   <li>Supports optional migration into another {@link StoreCallback}.
+ * </ul>
+ *
+ * @param <T> concrete {@link StorableBlock} type constructed by the callback
  */
 public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
   private static final Logger LOG = LoggerFactory.getLogger(RAMFreenetStore.class);
@@ -37,6 +53,21 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
   private long misses;
   private long writes;
 
+  /**
+   * Create an in-memory store with a fixed maximum number of keys.
+   *
+   * <p>The store registers itself with the supplied {@link StoreCallback} and uses the callback for
+   * block construction, collision handling, and optional full-key retention. The maximum size is
+   * enforced by evicting least-recently used entries as new blocks are inserted.
+   *
+   * <p>This constructor does not allocate storage beyond the internal map; entries are only created
+   * when {@link #put(StorableBlock, byte[], byte[], boolean, boolean)} is called.
+   *
+   * @param callback callback that constructs blocks and receives the store reference; must not be
+   *     {@code null}
+   * @param maxKeys maximum number of routing keys to retain before evicting; values are treated as
+   *     a simple count and should be positive
+   */
   public RAMFreenetStore(StoreCallback<T> callback, int maxKeys) {
     this.callback = callback;
     this.blocksByRoutingKey = LRUMap.createSafeMap(ByteArrayWrapper.FAST_COMPARATOR);
@@ -212,10 +243,35 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
     return blocksByRoutingKey.get(key) != null;
   }
 
+  /**
+   * Remove all entries from the in-memory map immediately.
+   *
+   * <p>This clears routing-key mappings without adjusting hit/miss counters. Callers should ensure
+   * no concurrent readers or writers are active, because this method is not synchronized and does
+   * not coordinate with ongoing {@link #fetch(byte[], byte[], boolean, boolean, boolean, boolean,
+   * BlockMetadata)} or {@link #put(StorableBlock, byte[], byte[], boolean, boolean)} operations.
+   */
   public void clear() {
     blocksByRoutingKey.clear();
   }
 
+  /**
+   * Copy every stored block into another store callback.
+   *
+   * <p>Each entry is reconstructed using the current callback and then written into the target
+   * store. Collisions in the target store are ignored, and any block that fails verification is
+   * skipped. The operation iterates over the current key enumeration and does not update this
+   * store's counters or ordering.
+   *
+   * <p>Callers should treat this as a snapshot-like transfer: changes to this store during the
+   * migration can lead to missed or duplicated entries, so coordinate externally if consistency
+   * matters.
+   *
+   * @param target destination callback whose underlying store receives the reconstructed blocks
+   * @param canReadClientCache whether reconstructed blocks may read from the client cache during
+   *     construction
+   * @throws IOException if the target store rejects the writing with an I/O failure
+   */
   public void migrateTo(StoreCallback<T> target, boolean canReadClientCache) throws IOException {
     Enumeration<ByteArrayWrapper> keys = blocksByRoutingKey.keys();
     while (keys.hasMoreElements()) {

@@ -79,7 +79,7 @@ public class CHKStore extends StoreCallback<CHKBlock> {
   public CHKBlock fetch(
       NodeCHK chk, boolean dontPromote, boolean ignoreOldBlocks, BlockMetadata meta)
       throws IOException {
-    // FIXME: Optimize the API to pass the crypto algorithm explicitly instead of requiring a
+    // NOTE: Optimize the API to pass the crypto algorithm explicitly instead of requiring a
     // materialized full key here; avoids allocating the .keys representation on read paths.
     return store.fetch(
         chk.getRoutingKey(), chk.getFullKey(), dontPromote, false, false, ignoreOldBlocks, meta);
