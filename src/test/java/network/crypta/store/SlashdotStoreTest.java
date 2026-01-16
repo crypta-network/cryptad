@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -197,13 +196,8 @@ class SlashdotStoreTest {
     when(cb.dataLength()).thenReturn(3);
     when(cb.fullKeyLength()).thenReturn(4);
     when(cb.construct(
-            any(byte[].class),
-            any(byte[].class),
-            any(byte[].class),
-            any(byte[].class),
-            anyBoolean(),
-            anyBoolean(),
-            any(),
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
             any()))
         .thenThrow(new KeyVerifyException("bad"));
 
@@ -379,16 +373,11 @@ class SlashdotStoreTest {
 
     @Override
     public TestBlock construct(
-        byte[] data,
-        byte[] headers,
-        byte[] routingKey,
-        byte[] fullKey,
-        boolean canReadClientCache,
-        boolean canReadSlashdotCache,
-        BlockMetadata meta,
+        BlockPayload payload,
+        ConstructOptions options,
         network.crypta.crypt.DSAPublicKey knownPubKey) {
       // For tests, just return a block echoing the keys we were asked for
-      return new TestBlock(routingKey, fullKey);
+      return new TestBlock(payload.routingKey(), payload.fullKey());
     }
 
     @Override

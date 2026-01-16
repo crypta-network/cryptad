@@ -47,14 +47,8 @@ public class SSKStore extends StoreCallback<SSKBlock> {
    *   <li>{@code fullKey.length == } {@link NodeSSK#FULL_KEY_LENGTH}
    * </ul>
    *
-   * @param data raw SSK payload bytes.
-   * @param headers raw SSK header bytes.
-   * @param routingKey optional routing key (unused here).
-   * @param fullKey full serialized SSK key (type + E(H(docname)) + pubkey hash).
-   * @param canReadClientCache whether client cache reads are allowed when resolving the public key.
-   * @param canReadSlashdotCache forwarded to {@link GetPubkey#getKey(byte[], boolean, boolean,
-   *     BlockMetadata)} as its {@code forULPR} hint.
-   * @param meta metadata collected during the fetch; forwarded to the public-key lookup.
+   * @param payload payload bytes, headers, and key material for the block.
+   * @param options cache flags and metadata used for public-key lookup.
    * @param knownPublicKey optional known public key to attach to the {@link NodeSSK}.
    * @return a verified {@link SSKBlock} instance.
    * @throws SSKVerifyException if any input is missing or invalid, if the public key cannot be
@@ -62,23 +56,19 @@ public class SSKStore extends StoreCallback<SSKBlock> {
    */
   @Override
   public SSKBlock construct(
-      byte[] data,
-      byte[] headers,
-      byte[] routingKey,
-      byte[] fullKey,
-      boolean canReadClientCache,
-      boolean canReadSlashdotCache,
-      BlockMetadata meta,
-      DSAPublicKey knownPublicKey)
+      BlockPayload payload, ConstructOptions options, DSAPublicKey knownPublicKey)
       throws SSKVerifyException {
-    if (data == null || headers == null) throw new SSKVerifyException("Need data and headers");
-    if (fullKey == null) throw new SSKVerifyException("Need full key to reconstruct an SSK");
+    if (payload.data() == null || payload.headers() == null)
+      throw new SSKVerifyException("Need data and headers");
+    if (payload.fullKey() == null)
+      throw new SSKVerifyException("Need full key to reconstruct an SSK");
     NodeSSK key;
-    key = NodeSSK.construct(fullKey);
+    key = NodeSSK.construct(payload.fullKey());
     if (knownPublicKey != null) key.setPubKey(knownPublicKey);
-    else if (!key.grabPubkey(pubkeyCache, canReadClientCache, canReadSlashdotCache, meta))
+    else if (!key.grabPubkey(
+        pubkeyCache, options.canReadClientCache(), options.canReadSlashdotCache(), options.meta()))
       throw new SSKVerifyException("No pubkey found");
-    return new SSKBlock(data, headers, key, false);
+    return new SSKBlock(payload.data(), payload.headers(), key, false);
   }
 
   /**

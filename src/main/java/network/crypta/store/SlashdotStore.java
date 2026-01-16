@@ -135,6 +135,7 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
    * @throws IOException on I/O errors while reading the bucket
    */
   @Override
+  @SuppressWarnings("java:S107") // delegator to FetchOptions overload
   public T fetch(
       byte[] routingKey,
       byte[] fullKey,
@@ -144,6 +145,15 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
       boolean ignoreOldBlocks,
       BlockMetadata meta)
       throws IOException {
+    return fetch(
+        routingKey,
+        fullKey,
+        new FetchOptions(
+            dontPromote, canReadClientCache, canReadSlashdotCache, ignoreOldBlocks, meta));
+  }
+
+  @Override
+  public T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options) throws IOException {
     ByteArrayWrapper key = new ByteArrayWrapper(routingKey);
     DiskBlock block;
     long timeAccessed;
@@ -167,10 +177,13 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
     try {
       T ret =
           callback.construct(
-              data, header, routingKey, fk, canReadClientCache, canReadSlashdotCache, null, null);
+              new StoreCallback.BlockPayload(data, header, routingKey, fk),
+              new StoreCallback.ConstructOptions(
+                  options.canReadClientCache(), options.canReadSlashdotCache(), null),
+              null);
       synchronized (this) {
         hits++;
-        if (!dontPromote) {
+        if (!options.dontPromote()) {
           block.lastAccessed = System.currentTimeMillis();
           blocksByRoutingKey.push(key, block);
         }
@@ -190,7 +203,7 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
 
   @Override
   public long getBloomFalsePositive() {
-    // No Bloom filter is used by this cache; indicate unsupported value.
+    // This cache uses no Bloom filter; indicate unsupported value.
     return -1;
   }
 
@@ -234,7 +247,7 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
    *
    * <p>The method persists {@code fullKey + header + data} into a temporary bucket and inserts the
    * new {@code DiskBlock} at the head of the LRU. If an entry already exists, the previous bucket
-   * is released during the subsequent purge step.
+   * is released during the later purge step.
    *
    * @param block block providing routing and full keys for indexing
    * @param data payload bytes (length must match {@link StoreCallback#dataLength()})

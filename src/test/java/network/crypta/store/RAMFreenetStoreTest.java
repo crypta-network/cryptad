@@ -85,7 +85,10 @@ class RAMFreenetStoreTest {
     when(cb.collisionPossible()).thenReturn(true);
 
     StorableBlock toReturn = mock(StorableBlock.class);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(toReturn);
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 16)) {
@@ -105,25 +108,14 @@ class RAMFreenetStoreTest {
       assertEquals(0, store.misses());
 
       // Verify construct received the raw arrays we stored
-      ArgumentCaptor<byte[]> dataCap = ArgumentCaptor.forClass(byte[].class);
-      ArgumentCaptor<byte[]> headerCap = ArgumentCaptor.forClass(byte[].class);
-      ArgumentCaptor<byte[]> rkCap = ArgumentCaptor.forClass(byte[].class);
-      ArgumentCaptor<byte[]> fkCap = ArgumentCaptor.forClass(byte[].class);
-      verify(cb)
-          .construct(
-              dataCap.capture(),
-              headerCap.capture(),
-              rkCap.capture(),
-              fkCap.capture(),
-              anyBoolean(),
-              anyBoolean(),
-              any(),
-              any());
-      assertArrayEquals(data, dataCap.getValue());
-      assertArrayEquals(header, headerCap.getValue());
-      assertArrayEquals(bytes(1, 2), rkCap.getValue());
+      ArgumentCaptor<StoreCallback.BlockPayload> payloadCap =
+          ArgumentCaptor.forClass(StoreCallback.BlockPayload.class);
+      verify(cb).construct(payloadCap.capture(), any(StoreCallback.ConstructOptions.class), any());
+      assertArrayEquals(data, payloadCap.getValue().data());
+      assertArrayEquals(header, payloadCap.getValue().headers());
+      assertArrayEquals(bytes(1, 2), payloadCap.getValue().routingKey());
       // Full key is only stored when callback.storeFullKeys() is true (false in this test)
-      assertNull(fkCap.getValue());
+      assertNull(payloadCap.getValue().fullKey());
     }
   }
 
@@ -144,7 +136,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -165,7 +160,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -186,7 +184,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenThrow(new KeyVerifyException("bad"));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -207,7 +208,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -236,7 +240,10 @@ class RAMFreenetStoreTest {
     when(cb.collisionPossible()).thenReturn(true);
 
     StorableBlock ret = mock(StorableBlock.class);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(ret);
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -250,22 +257,13 @@ class RAMFreenetStoreTest {
           KeyCollisionException.class,
           () -> store.put(b2, bytes(9, 9), bytes(8, 8), /* overwrite= */ false, false));
 
-      // Original bytes should still be returned by fetch
-      ArgumentCaptor<byte[]> dataCap = ArgumentCaptor.forClass(byte[].class);
-      ArgumentCaptor<byte[]> headerCap = ArgumentCaptor.forClass(byte[].class);
+      // Fetch should still return original bytes
+      ArgumentCaptor<StoreCallback.BlockPayload> payloadCap =
+          ArgumentCaptor.forClass(StoreCallback.BlockPayload.class);
       store.fetch(rk, fk, false, false, false, false, null);
-      verify(cb)
-          .construct(
-              dataCap.capture(),
-              headerCap.capture(),
-              any(),
-              any(),
-              anyBoolean(),
-              anyBoolean(),
-              any(),
-              any());
-      assertArrayEquals(bytes(1, 1), dataCap.getValue());
-      assertArrayEquals(bytes(2, 2), headerCap.getValue());
+      verify(cb).construct(payloadCap.capture(), any(StoreCallback.ConstructOptions.class), any());
+      assertArrayEquals(bytes(1, 1), payloadCap.getValue().data());
+      assertArrayEquals(bytes(2, 2), payloadCap.getValue().headers());
     }
   }
 
@@ -274,7 +272,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -299,7 +300,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(true);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -319,7 +323,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(false);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 8)) {
@@ -327,7 +334,7 @@ class RAMFreenetStoreTest {
       byte[] fk = bytes(8, 8);
       store.put(mockBlock(rk, fk), bytes(1, 1, 1), bytes(2, 2), false, /* old= */ true);
 
-      // Second put with different content and not old must not replace the stored bytes
+      // Second, put with different content and not old must not replace the stored bytes
       store.put(mockBlock(rk, fk), bytes(5, 5), bytes(6), false, /* old= */ false);
 
       BlockMetadata meta = new BlockMetadata();
@@ -341,7 +348,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 3)) {
@@ -353,7 +363,7 @@ class RAMFreenetStoreTest {
       store.setMaxKeys(2, /* shrinkNow= */ false);
       assertEquals(2, store.getMaxKeys());
 
-      // After shrinking, K1 should be evicted, K2 and K3 remain
+      // After shrinking, K1 should be evicted; K2 and K3 remain
       assertFalse(store.probablyInStore(bytes(1)));
       assertTrue(store.probablyInStore(bytes(2)));
       assertTrue(store.probablyInStore(bytes(3)));
@@ -367,7 +377,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 2)) {
@@ -402,7 +415,10 @@ class RAMFreenetStoreTest {
     StoreCallback<StorableBlock> cb = baseCallback();
     when(cb.storeFullKeys()).thenReturn(false);
     when(cb.collisionPossible()).thenReturn(true);
-    when(cb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(cb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(mock(StorableBlock.class));
 
     try (RAMFreenetStore<StorableBlock> store = new RAMFreenetStore<>(cb, 10)) {
@@ -458,7 +474,10 @@ class RAMFreenetStoreTest {
     when(sourceCb.storeFullKeys()).thenReturn(false);
     when(sourceCb.collisionPossible()).thenReturn(true);
     StorableBlock ret = mock(StorableBlock.class);
-    when(sourceCb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(sourceCb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenReturn(ret);
 
     try (RAMFreenetStore<StorableBlock> source = new RAMFreenetStore<>(sourceCb, 10)) {
@@ -513,7 +532,10 @@ class RAMFreenetStoreTest {
     when(sourceCb.collisionPossible()).thenReturn(true);
 
     // First construct throws, second succeeds
-    when(sourceCb.construct(any(), any(), any(), any(), anyBoolean(), anyBoolean(), any(), any()))
+    when(sourceCb.construct(
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
+            any()))
         .thenThrow(new KeyVerifyException("oops"))
         .thenReturn(mock(StorableBlock.class));
 

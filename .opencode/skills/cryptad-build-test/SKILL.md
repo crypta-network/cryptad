@@ -30,6 +30,8 @@ Use this skill when you need to:
 
 ## Testing
 Always give enough running time (more than 15 minutes) for Gradle to complete tests.
+When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 900,000 ms).
+
 - Run all tests:
   - `./gradlew test`
 - Run one test class:
@@ -60,7 +62,7 @@ Always give enough running time (more than 15 minutes) for Gradle to complete te
 ## Test helpers (test sources only)
 - Package: `network.crypta.testsupport`
 - Utility: `FileTestUtils` provides deterministic fill helpers for `OutputStream` / `Bucket` / `RandomAccessBuffer`.
-- Do **not** call these helpers from production (`src/main`) code. If production code needs fill helpers, use the non-test utilities (for example `FileUtil.fill(OutputStream, long)`).
+- Do **not** call these helpers from production (`src/main`) code. If production code needs to fill helpers, use the non-test utilities (for example `FileUtil.fill(OutputStream, long)`).
 
 ## Tip: GitHub API rate limits during builds
 If builds hit GitHub API rate limits, set `GITHUB_TOKEN` in the environment.

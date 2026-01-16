@@ -82,7 +82,9 @@ class PubkeyStoreTest {
             PubkeyVerifyException.class,
             () ->
                 sut.construct(
-                    null, null, null, null, false, false, /*meta*/ null, /*knownPubKey*/ null));
+                    new StoreCallback.BlockPayload(null, null, null, null),
+                    new StoreCallback.ConstructOptions(false, false, /*meta*/ null),
+                    /*knownPubKey*/ null));
     assertEquals("Need data to construct pubkey", ex.getMessage());
   }
 
@@ -97,7 +99,9 @@ class PubkeyStoreTest {
         PubkeyVerifyException.class,
         () ->
             sut.construct(
-                invalid, null, null, null, false, false, /*meta*/ null, /*knownPubKey*/ null));
+                new StoreCallback.BlockPayload(invalid, null, null, null),
+                new StoreCallback.ConstructOptions(false, false, /*meta*/ null),
+                /*knownPubKey*/ null));
   }
 
   @Test
@@ -109,7 +113,10 @@ class PubkeyStoreTest {
 
     // Act
     DSAPublicKey parsed =
-        sut.construct(bytes, null, null, null, false, false, /*meta*/ null, /*knownPubKey*/ null);
+        sut.construct(
+            new StoreCallback.BlockPayload(bytes, null, null, null),
+            new StoreCallback.ConstructOptions(false, false, /*meta*/ null),
+            /*knownPubKey*/ null);
 
     // Assert
     assertEquals(original, parsed);

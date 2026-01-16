@@ -69,14 +69,7 @@ class NullFreenetStoreTest {
 
     @Override
     public StorableBlock construct(
-        byte[] data,
-        byte[] headers,
-        byte[] routingKey,
-        byte[] fullKey,
-        boolean canReadClientCache,
-        boolean canReadSlashdotCache,
-        BlockMetadata meta,
-        DSAPublicKey knownPubKey) {
+        BlockPayload payload, ConstructOptions options, DSAPublicKey knownPubKey) {
       return null;
     }
 

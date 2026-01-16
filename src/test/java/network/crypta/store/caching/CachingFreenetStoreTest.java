@@ -1,5 +1,6 @@
 package network.crypta.store.caching;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -50,6 +51,7 @@ import network.crypta.keys.SSKEncodeException;
 import network.crypta.keys.SSKVerifyException;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.store.CHKStore;
+import network.crypta.store.FetchOptions;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.GetPubkey;
 import network.crypta.store.KeyCollisionException;
@@ -1477,13 +1479,8 @@ class CachingFreenetStoreTest {
     org.mockito.Mockito.doReturn(constructed)
         .when(callback)
         .construct(
-            any(byte[].class),
-            any(byte[].class),
-            any(byte[].class),
-            any(byte[].class),
-            anyBoolean(),
-            anyBoolean(),
-            org.mockito.ArgumentMatchers.isNull(),
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
             any());
 
     CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
@@ -1498,20 +1495,20 @@ class CachingFreenetStoreTest {
     // Assert
     assertEquals(constructed, fetched);
     // Ensure construct() saw the routingKey we requested and the cached fullKey
-    ArgumentCaptor<byte[]> rkCap = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> fkCap = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<StoreCallback.BlockPayload> payloadCap =
+        ArgumentCaptor.forClass(StoreCallback.BlockPayload.class);
+    ArgumentCaptor<StoreCallback.ConstructOptions> optionsCap =
+        ArgumentCaptor.forClass(StoreCallback.ConstructOptions.class);
     verify(callback, times(1))
         .construct(
-            eq(data),
-            eq(header),
-            rkCap.capture(),
-            fkCap.capture(),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull(),
-            org.mockito.ArgumentMatchers.isNull());
-    org.junit.jupiter.api.Assertions.assertArrayEquals(rk, rkCap.getValue());
-    org.junit.jupiter.api.Assertions.assertArrayEquals(fk, fkCap.getValue());
+            payloadCap.capture(), optionsCap.capture(), org.mockito.ArgumentMatchers.isNull());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(rk, payloadCap.getValue().routingKey());
+    org.junit.jupiter.api.Assertions.assertArrayEquals(fk, payloadCap.getValue().fullKey());
+    assertArrayEquals(data, payloadCap.getValue().data());
+    assertArrayEquals(header, payloadCap.getValue().headers());
+    assertFalse(optionsCap.getValue().canReadClientCache());
+    assertFalse(optionsCap.getValue().canReadSlashdotCache());
+    assertNull(optionsCap.getValue().meta());
     verify(back, never())
         .fetch(any(), any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any());
   }
@@ -1538,23 +1535,14 @@ class CachingFreenetStoreTest {
     when(callback.collisionPossible()).thenReturn(false);
     when(tracker.add(org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
     when(callback.construct(
-            eq(data),
-            eq(header),
-            any(),
-            any(),
-            anyBoolean(),
-            anyBoolean(),
-            org.mockito.ArgumentMatchers.isNull(),
+            any(StoreCallback.BlockPayload.class),
+            any(StoreCallback.ConstructOptions.class),
             any()))
         .thenThrow(new network.crypta.keys.KeyVerifyException("boom"));
     when(back.fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull()))
+            eq(new FetchOptions(false, false, false, false, null))))
         .thenReturn(delegateResult);
 
     CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
@@ -1569,11 +1557,7 @@ class CachingFreenetStoreTest {
         .fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull());
+            eq(new FetchOptions(false, false, false, false, null)));
   }
 
   @Test
@@ -1591,11 +1575,7 @@ class CachingFreenetStoreTest {
     when(back.fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull()))
+            eq(new FetchOptions(false, false, false, false, null))))
         .thenReturn(delegateResult);
     when(callback.getTotalBlockSize()).thenReturn(0);
     when(callback.collisionPossible()).thenReturn(false);
@@ -1607,11 +1587,7 @@ class CachingFreenetStoreTest {
         .fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull());
+            eq(new FetchOptions(false, false, false, false, null)));
   }
 
   @Test

@@ -72,7 +72,7 @@ class SaltedHashFreenetStoreTest {
             /*resizeOnStart*/ true,
             /*masterKey*/ new byte[32])) {
 
-      // First call with longStart=false should return true (cannot complete quickly).
+      // The first call with longStart=false should return true (cannot complete quickly).
       boolean deferred = store.start(ticker, /*longStart*/ false);
       assertTrue(deferred, "start() should defer when longStart=false and files need padding");
 
@@ -82,7 +82,7 @@ class SaltedHashFreenetStoreTest {
       assertEquals(0L, meta.length(), "metadata length should be 0 before long start");
       assertEquals(0L, hd.length(), "hd length should be 0 before long start");
 
-      // Now start with longStart=true; this pads/resizes and schedules cleaner through the ticker.
+      // Now start with longStart=true; these pads/resizes and schedules cleaner through the ticker.
       boolean nowStarted = store.start(ticker, /*longStart*/ true);
       assertFalse(nowStarted, "start(longStart=true) should complete and return false");
 
@@ -160,7 +160,7 @@ class SaltedHashFreenetStoreTest {
 
       store.put(block, data, hdr, /*overwrite*/ false, /*isOldBlock*/ false);
 
-      // Quick presence signal should be true after put when slot filter is enabled.
+      // Quick presence signal should be true after put when the slot filter is enabled.
       assertTrue(store.probablyInStore(rk));
 
       TestBlock fetched =
@@ -191,7 +191,7 @@ class SaltedHashFreenetStoreTest {
             cb,
             rnd,
             /*maxKeys*/ 8,
-            /*useSlotFilter*/ false, // disable to simplify read path
+            /*useSlotFilter*/ false, // disable to simplify the read path
             SemiOrderedShutdownHook.get(),
             /*preallocate*/ false,
             /*resizeOnStart*/ true,
@@ -266,7 +266,7 @@ class SaltedHashFreenetStoreTest {
       b.start(ticker, true);
       c.start(ticker, true);
 
-      // First association is valid.
+      // The first association is valid.
       b.setAltStore(a);
       // Now A -> B should fail because B already has an alt store.
       assertThrows(IllegalArgumentException.class, () -> a.setAltStore(b));
@@ -353,7 +353,7 @@ class SaltedHashFreenetStoreTest {
       assertArrayEquals(d2, got2.data);
       assertArrayEquals(h2, got2.header);
 
-      // Stats: A has one write; B has one write.
+      // Stats: A has one writing; B has one writing.
       assertEquals(1L, a.writes(), "primary writes");
       assertEquals(1L, b.writes(), "alt writes");
       assertEquals(1L, a.keyCount(), "primary keys");
@@ -520,16 +520,12 @@ class SaltedHashFreenetStoreTest {
 
     @Override
     public TestBlock construct(
-        byte[] data,
-        byte[] headers,
-        byte[] routingKey,
-        byte[] fullKey,
-        boolean canReadClientCache,
-        boolean canReadSlashdotCache,
-        BlockMetadata meta,
+        BlockPayload payload,
+        ConstructOptions options,
         network.crypta.crypt.DSAPublicKey knownPubKey) {
       // Just wrap provided values; verification is performed earlier by the store.
-      return new TestBlock(routingKey, fullKey, data, headers);
+      return new TestBlock(
+          payload.routingKey(), payload.fullKey(), payload.data(), payload.headers());
     }
 
     @Override
