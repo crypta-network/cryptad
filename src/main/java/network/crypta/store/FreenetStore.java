@@ -31,8 +31,8 @@ public interface FreenetStore<T extends StorableBlock> extends Closeable {
    * @param routingKey non-null routing key used to locate the entry.
    * @param fullKey optional full key; may be {@code null} for block types that do not require it.
    * @param dontPromote when {@code true}, do not promote the entry in any recency structure.
-   * @param canReadClientCache whether lookups may consult the client cache (e.g., to obtain SSK
-   *     public keys).
+   * @param canReadClientCache whether lookups may consult the client cache (e.g., to get SSK public
+   *     keys).
    * @param canReadSlashdotCache whether lookups may consult the Slashdot cache when resolving
    *     prerequisites such as public keys.
    * @param ignoreOldBlocks when {@code true}, suppress returning blocks flagged as old.
@@ -50,6 +50,32 @@ public interface FreenetStore<T extends StorableBlock> extends Closeable {
       boolean ignoreOldBlocks,
       BlockMetadata meta)
       throws IOException;
+
+  /**
+   * Retrieve a block by the routing key with a parameter object.
+   *
+   * <p>The default implementation delegates to {@link #fetch(byte[], byte[], boolean, boolean,
+   * boolean, boolean, BlockMetadata)} using values from {@code options}.
+   *
+   * @param routingKey non-null routing key used to locate the entry.
+   * @param fullKey optional full key; may be {@code null} for block types that do not require it.
+   * @param options grouped fetch options; must not be {@code null}.
+   * @return the block instance, or {@code null} if not found.
+   * @throws IOException on I/O errors encountered during the operation.
+   */
+  default T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options) throws IOException {
+    if (options == null) {
+      throw new IllegalArgumentException("options must not be null");
+    }
+    return fetch(
+        routingKey,
+        fullKey,
+        options.dontPromote(),
+        options.canReadClientCache(),
+        options.canReadSlashdotCache(),
+        options.ignoreOldBlocks(),
+        options.meta());
+  }
 
   /**
    * Store a block.
@@ -76,10 +102,10 @@ public interface FreenetStore<T extends StorableBlock> extends Closeable {
    *
    * <p>Adjust the maximum number of keys the store retains. Implementations may perform expensive
    * maintenance when shrinking; if {@code shrinkNow} is {@code false}, the implementation may defer
-   * compaction/eviction while still honoring the new limit for subsequent operations.
+   * compaction/eviction while still honoring the new limit for later operations.
    *
    * @param maxStoreKeys new maximum number of keys the store may hold.
-   * @param shrinkNow when {@code true}, perform any required shrinking immediately if feasible.
+   * @param shrinkNow when {@code true}, perform any required shrinking immediately if possible.
    * @throws IOException on configuration persistence or resize failures.
    */
   void setMaxKeys(long maxStoreKeys, boolean shrinkNow) throws IOException;
@@ -106,7 +132,7 @@ public interface FreenetStore<T extends StorableBlock> extends Closeable {
   long misses();
 
   /**
-   * Return the number of write attempts accepted by this store.
+   * Return the number of writing attempts accepted by this store.
    *
    * @return count of {@link #put} operations.
    */
@@ -163,7 +189,7 @@ public interface FreenetStore<T extends StorableBlock> extends Closeable {
    * {@code longStart} is {@code true}, the caller permits longer initialization (e.g., rebuilding
    * auxiliary structures).
    *
-   * @param ticker progress/heartbeat helper; may be ignored by implementations.
+   * @param ticker implementations; may ignore progress/heartbeat helper.
    * @param longStart whether long-running initialization is permitted.
    * @return {@code true} if initialization completed; {@code false} otherwise.
    * @throws IOException on initialization failure.

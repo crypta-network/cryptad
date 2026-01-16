@@ -121,6 +121,11 @@ public abstract class ProxyFreenetStore<T extends StorableBlock> implements Free
         meta);
   }
 
+  @Override
+  public T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options) throws IOException {
+    return backDatastore.fetch(routingKey, fullKey, options);
+  }
+
   /** {@inheritDoc} Delegates to the underlying store. */
   @Override
   public void put(T block, byte[] data, byte[] header, boolean overwrite, boolean oldBlock)

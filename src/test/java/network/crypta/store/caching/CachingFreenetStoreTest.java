@@ -51,6 +51,7 @@ import network.crypta.keys.SSKEncodeException;
 import network.crypta.keys.SSKVerifyException;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.store.CHKStore;
+import network.crypta.store.FetchOptions;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.GetPubkey;
 import network.crypta.store.KeyCollisionException;
@@ -1541,11 +1542,7 @@ class CachingFreenetStoreTest {
     when(back.fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull()))
+            eq(new FetchOptions(false, false, false, false, null))))
         .thenReturn(delegateResult);
 
     CachingFreenetStore<TestBlock> store = new CachingFreenetStore<>(callback, back, tracker);
@@ -1560,11 +1557,7 @@ class CachingFreenetStoreTest {
         .fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull());
+            eq(new FetchOptions(false, false, false, false, null)));
   }
 
   @Test
@@ -1582,11 +1575,7 @@ class CachingFreenetStoreTest {
     when(back.fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull()))
+            eq(new FetchOptions(false, false, false, false, null))))
         .thenReturn(delegateResult);
     when(callback.getTotalBlockSize()).thenReturn(0);
     when(callback.collisionPossible()).thenReturn(false);
@@ -1598,11 +1587,7 @@ class CachingFreenetStoreTest {
         .fetch(
             eq(rk),
             org.mockito.ArgumentMatchers.isNull(),
-            eq(false),
-            eq(false),
-            eq(false),
-            eq(false),
-            org.mockito.ArgumentMatchers.isNull());
+            eq(new FetchOptions(false, false, false, false, null)));
   }
 
   @Test

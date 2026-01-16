@@ -11,7 +11,7 @@ import network.crypta.support.Ticker;
  * <p>This store accepts all operations but does not persist or retrieve any data. Reads always
  * return {@code null} or {@code false}, counters report {@code 0}, and mutating operations are
  * effective no-ops. This is useful in configurations where a store is required by the surrounding
- * API but storage must be disabled, such as tests, dry runs, or memory-constrained environments.
+ * API, but storage must be disabled, such as tests, dry runs, or memory-constrained environments.
  *
  * <p>Threading: this class keeps no internal state and performs no I/O; calls may be made from any
  * thread without additional synchronization.
@@ -24,7 +24,7 @@ public class NullFreenetStore<T extends StorableBlock> implements FreenetStore<T
    * Constructs a null store and registers it with the provided callback.
    *
    * <p>The callback is informed about this store via {@code callback.setStore(this)} so callers can
-   * obtain a reference to the effective store instance.
+   * get a reference to the effective store instance.
    *
    * @param callback initialization callback that receives the store reference; must not be null
    */
@@ -49,6 +49,7 @@ public class NullFreenetStore<T extends StorableBlock> implements FreenetStore<T
    * @throws IOException never thrown by this implementation
    */
   @Override
+  @SuppressWarnings("java:S107") // delegator to FetchOptions overload
   public T fetch(
       byte[] routingKey,
       byte[] fullKey,
@@ -58,6 +59,15 @@ public class NullFreenetStore<T extends StorableBlock> implements FreenetStore<T
       boolean ignoreOldBlocks,
       BlockMetadata meta)
       throws IOException {
+    return fetch(
+        routingKey,
+        fullKey,
+        new FetchOptions(
+            dontPromote, canReadClientCache, canReadSlashdotCache, ignoreOldBlocks, meta));
+  }
+
+  @Override
+  public T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options) throws IOException {
     // No block is available; leave {@code meta} unchanged.
     return null;
   }
@@ -207,7 +217,7 @@ public class NullFreenetStore<T extends StorableBlock> implements FreenetStore<T
     return this;
   }
 
-  /** Closes the store; no resources are held so this is a no-op. */
+  /** Closes the store; no resources are held, so this is a no-op. */
   @Override
   public void close() {
     // No-op

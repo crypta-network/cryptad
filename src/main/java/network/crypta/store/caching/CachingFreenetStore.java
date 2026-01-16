@@ -7,6 +7,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.store.BlockMetadata;
+import network.crypta.store.FetchOptions;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.store.ProxyFreenetStore;
@@ -115,6 +116,7 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
    * @throws IOException if the underlying store throws while reading
    */
   @Override
+  @SuppressWarnings("java:S107") // delegator to FetchOptions overload
   public T fetch(
       byte[] routingKey,
       byte[] fullKey,
@@ -124,6 +126,15 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
       boolean ignoreOldBlocks,
       BlockMetadata meta)
       throws IOException {
+    return fetch(
+        routingKey,
+        fullKey,
+        new FetchOptions(
+            dontPromote, canReadClientCache, canReadSlashdotCache, ignoreOldBlocks, meta));
+  }
+
+  @Override
+  public T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options) throws IOException {
     ByteArrayWrapper key = new ByteArrayWrapper(routingKey);
 
     Block<T> block;
@@ -140,21 +151,15 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
         return this.callback.construct(
             new StoreCallback.BlockPayload(
                 block.data, block.header, routingKey, block.storable.getFullKey()),
-            new StoreCallback.ConstructOptions(canReadClientCache, canReadSlashdotCache, meta),
+            new StoreCallback.ConstructOptions(
+                options.canReadClientCache(), options.canReadSlashdotCache(), options.meta()),
             null);
       } catch (KeyVerifyException e) {
         LOG.error("Error in fetching for CachingFreenetStore: {}", e, e);
       }
     }
 
-    return backDatastore.fetch(
-        routingKey,
-        fullKey,
-        dontPromote,
-        canReadClientCache,
-        canReadSlashdotCache,
-        ignoreOldBlocks,
-        meta);
+    return backDatastore.fetch(routingKey, fullKey, options);
   }
 
   /**

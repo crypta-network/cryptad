@@ -76,6 +76,7 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
   }
 
   @Override
+  @SuppressWarnings("java:S107") // delegator to FetchOptions overload
   public synchronized T fetch(
       byte[] routingKey,
       byte[] fullKey,
@@ -85,13 +86,23 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
       boolean ignoreOldBlocks,
       BlockMetadata meta)
       throws IOException {
+    return fetch(
+        routingKey,
+        fullKey,
+        new FetchOptions(
+            dontPromote, canReadClientCache, canReadSlashdotCache, ignoreOldBlocks, meta));
+  }
+
+  @Override
+  public synchronized T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options)
+      throws IOException {
     ByteArrayWrapper key = new ByteArrayWrapper(routingKey);
     Block block = blocksByRoutingKey.get(key);
     if (block == null) {
       misses++;
       return null;
     }
-    if (ignoreOldBlocks && block.oldBlock) {
+    if (options.ignoreOldBlocks() && block.oldBlock) {
       LOG.info("Ignoring old block");
       return null;
     }
@@ -99,11 +110,12 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
       T ret =
           callback.construct(
               new StoreCallback.BlockPayload(block.data, block.header, routingKey, block.fullKey),
-              new StoreCallback.ConstructOptions(canReadClientCache, canReadSlashdotCache, meta),
+              new StoreCallback.ConstructOptions(
+                  options.canReadClientCache(), options.canReadSlashdotCache(), options.meta()),
               null);
       hits++;
-      if (!dontPromote) blocksByRoutingKey.push(key, block);
-      if (meta != null && block.oldBlock) meta.setOldBlock();
+      if (!options.dontPromote()) blocksByRoutingKey.push(key, block);
+      if (options.meta() != null && block.oldBlock) options.meta().setOldBlock();
       return ret;
     } catch (KeyVerifyException _) {
       blocksByRoutingKey.removeKey(key);

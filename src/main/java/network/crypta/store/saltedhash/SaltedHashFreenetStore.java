@@ -42,6 +42,7 @@ import network.crypta.node.useralerts.AbstractUserAlert;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.node.useralerts.UserAlertManager;
 import network.crypta.store.BlockMetadata;
+import network.crypta.store.FetchOptions;
 import network.crypta.store.FreenetStore;
 import network.crypta.store.KeyCollisionException;
 import network.crypta.store.StorableBlock;
@@ -54,6 +55,7 @@ import network.crypta.support.WrapperKeepalive;
 import network.crypta.support.io.Fallocate;
 import network.crypta.support.io.FileUtil;
 import network.crypta.support.io.NativeThread;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.tanukisoftware.wrapper.WrapperManager;
@@ -68,12 +70,13 @@ import org.tanukisoftware.wrapper.WrapperManager;
  * no match and to avoid scanning slots known to be free.
  *
  * <p>All payload bytes are encrypted with a key derived from the routing key and salt; without the
- * routing key the content is unrecoverable. For debugging only, {@code OPTION_SAVE_PLAINKEY} can be
- * enabled to persist the plain routing key alongside the entry; this must never be enabled in a
+ * routing key, the content is unrecoverable. For debugging only, {@code OPTION_SAVE_PLAINKEY} can
+ * be enabled to persist the plain routing key alongside the entry; this must never be enabled in a
  * client cache.
  *
  * <p>The store optionally overflows writes to a secondary “alt” store when the primary is full. The
- * cleaner thread periodically completes resizes and rebuilds the slot filter after format changes.
+ * cleaner thread periodically completes, resizes, and rebuilds the slot filter after format
+ * changes.
  *
  * @author sdiz
  */
@@ -154,7 +157,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     noCleanerSleep = value;
   }
 
-  /** true if close() hase been called */
+  /** true if close() has been called */
   private final AtomicBoolean closeCalled = new AtomicBoolean(false);
 
   /**
@@ -182,11 +185,24 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   }
 
   /**
+   * Factory for constructing a salted-hash store from grouped parameters.
+   *
+   * @param params parameter object describing the store instance to create
+   * @return the created store
+   * @throws IOException on I/O errors creating or opening the store
+   */
+  public static <T extends StorableBlock> SaltedHashFreenetStore<T> construct(
+      SaltedHashStoreParams<T> params) throws IOException {
+    Objects.requireNonNull(params, "params");
+    return new SaltedHashFreenetStore<>(params);
+  }
+
+  /**
    * Factory for constructing a salted-hash store.
    *
    * @param baseDir directory where the store files live; created if missing
-   * @param name logical name; also used as filename prefix
-   * @param callback callback used to obtain header/data lengths and to (de-)serialize blocks
+   * @param name logical name; also used as a filename prefix
+   * @param callback callback used to get header/data lengths and to (de-)serialize blocks
    * @param random randomness source for encryption and placement tie-breakers
    * @param maxKeys number of slots in the store (capacity)
    * @param useSlotFilter whether to enable the on-disk slot filter index
@@ -197,6 +213,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * @return the created store
    * @throws IOException on I/O errors creating or opening the store
    */
+  @SuppressWarnings("java:S107") // legacy delegator to params object
   public static <T extends StorableBlock> SaltedHashFreenetStore<T> construct(
       File baseDir,
       String name,
@@ -209,37 +226,25 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       boolean resizeOnStart,
       byte[] masterKey)
       throws IOException {
-    return new SaltedHashFreenetStore<>(
-        baseDir,
-        name,
-        callback,
-        random,
-        maxKeys,
-        useSlotFilter,
-        shutdownHook,
-        preallocate,
-        resizeOnStart,
-        masterKey);
+    return construct(
+        SaltedHashStoreParams.of(
+            baseDir,
+            name,
+            callback,
+            random,
+            maxKeys,
+            useSlotFilter,
+            shutdownHook,
+            preallocate,
+            resizeOnStart,
+            masterKey));
   }
 
-  private SaltedHashFreenetStore(
-      File baseDir,
-      String name,
-      StoreCallback<T> callback,
-      Random random,
-      long maxKeys,
-      boolean enableSlotFilters,
-      SemiOrderedShutdownHook shutdownHook,
-      boolean preallocate,
-      boolean resizeOnStart,
-      byte[] masterKey)
-      throws IOException {
-    // Initialize; callers should use LOG.isDebugEnabled() instead of cached flags.
+  private SaltedHashFreenetStore(SaltedHashStoreParams<T> params) throws IOException {
+    this.baseDir = params.baseDir();
+    this.name = params.name();
 
-    this.baseDir = baseDir;
-    this.name = name;
-
-    this.callback = callback;
+    this.callback = params.callback();
     collisionPossible = callback.collisionPossible();
     headerBlockLength = callback.headerLength();
     callback.fullKeyLength(); // ensure callback is initialized; length not needed here
@@ -249,9 +254,9 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         ((headerBlockLength + dataBlockLength + 512 - 1) & -512)
             - (headerBlockLength + dataBlockLength);
 
-    this.random = random;
-    storeSize = maxKeys;
-    this.preallocate = preallocate;
+    this.random = params.random();
+    storeSize = params.maxKeys();
+    this.preallocate = params.preallocate();
 
     lockManager = new LockManager();
 
@@ -260,7 +265,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     validateStoreSizeLimit();
 
     configFile = new File(this.baseDir, name + ".config");
-    boolean newStore = loadConfigAndMaybeResize(masterKey, maxKeys);
+    boolean newStore = loadConfigAndMaybeResize(params.masterKey(), params.maxKeys());
 
     // Open/lock the backing files.
     newStore |= openStoreFiles(baseDir, name);
@@ -270,7 +275,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     initializeBloom(bloomFile);
 
     // Initialize or drop the on-disk slot filter structure.
-    slotFilterDisabled = !enableSlotFilters;
+    slotFilterDisabled = !params.useSlotFilter();
     slotFilter = initializeSlotFilter((int) Math.max(storeSize, prevStoreSize), newStore);
 
     if ((flags & FLAG_DIRTY) != 0) LOG.warn("Datastore({}) is dirty.", name);
@@ -279,13 +284,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     writeConfigFile();
 
     callback.setStore(this);
-    registerShutdown(shutdownHook);
+    registerShutdown(params.shutdownHook());
 
     cleanerThread = new Cleaner();
     cleanerStatusUserAlert = new CleanerStatusUserAlert(cleanerThread);
 
     // Finish all resizing before continue if requested.
-    maybeCompleteResizeOnStart(resizeOnStart);
+    maybeCompleteResizeOnStart(params.resizeOnStart());
 
     // Decide whether to rebuild the slot filter now.
     maybeScheduleSlotFilterRebuild(newStore);
@@ -302,7 +307,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
   /** Ensures {@code baseDir} exists and is a directory. */
   private void createBaseDirIfMissing() throws IOException {
-    // Create the directory tree if missing; throw if creation fails or path is not a directory.
+    // Create the directory tree if missing; throw if creation fails or the path is not a directory.
     if (baseDir == null) {
       throw new IOException("Base directory is null");
     }
@@ -466,14 +471,15 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   /**
    * Fetches a block by its routing key.
    *
-   * <p>The lookup uses the salted-hash slots and the slot filter to minimize disk I/O. On a hit the
-   * entry is decrypted and verified. This implementation does not promote entries, so {@code
+   * <p>The lookup uses the salted-hash slots and the slot filter to minimize disk I/O. On a hit,
+   * the entry is decrypted and verified. This implementation does not promote entries, so {@code
    * dontPromote} is accepted for interface compatibility and ignored.
    *
    * @param routingKey plain routing key used to derive encryption and placement
    * @param fullKey full key material provided by the caller
    * @param dontPromote ignored by this implementation
-   * @param canReadClientCache whether the caller may read from client cache (passed to callback)
+   * @param canReadClientCache whether the caller may read from the client cache (passed to
+   *     callback)
    * @param canReadSlashdotCache whether the caller may read from the slashdot cache (callback)
    * @param ignoreOldBlocks when {@code true}, entries marked as old are treated as misses
    * @param meta optional metadata sink that is populated on success
@@ -481,6 +487,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * @throws IOException on I/O errors
    */
   @Override
+  @SuppressWarnings("java:S107") // delegator to FetchOptions overload
   public T fetch(
       byte[] routingKey,
       byte[] fullKey,
@@ -490,6 +497,16 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       boolean ignoreOldBlocks,
       BlockMetadata meta)
       throws IOException {
+    return fetch(
+        routingKey,
+        fullKey,
+        new FetchOptions(
+            dontPromote, canReadClientCache, canReadSlashdotCache, ignoreOldBlocks, meta));
+  }
+
+  @Override
+  public T fetch(byte[] routingKey, byte[] fullKey, FetchOptions options) throws IOException {
+    Objects.requireNonNull(options, "options");
     if (LOG.isDebugEnabled())
       LOG.debug("Fetch {} for {}", HexUtil.bytesToHex(routingKey), callback);
 
@@ -503,14 +520,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         return null;
       }
       try {
-        return fetchLocked(
-            digestedKey,
-            routingKey,
-            fullKey,
-            canReadClientCache,
-            canReadSlashdotCache,
-            ignoreOldBlocks,
-            meta);
+        return fetchLocked(digestedKey, routingKey, fullKey, options);
       } finally {
         unlockDigestedKey(digestedKey, true, lockMap);
       }
@@ -534,14 +544,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
-  private T fetchLocked(
-      byte[] digestedKey,
-      byte[] routingKey,
-      byte[] fullKey,
-      boolean canReadClientCache,
-      boolean canReadSlashdotCache,
-      boolean ignoreOldBlocks,
-      BlockMetadata meta)
+  private T fetchLocked(byte[] digestedKey, byte[] routingKey, byte[] fullKey, FetchOptions options)
       throws IOException {
     Entry entry = probeEntry(digestedKey, routingKey, true);
     if (entry == null) {
@@ -550,17 +553,22 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
 
     if ((entry.flag & Entry.ENTRY_NEW_BLOCK) == 0) {
-      if (ignoreOldBlocks) {
+      if (options.ignoreOldBlocks()) {
         LOG.info("Ignoring old block");
         return null;
       }
-      if (meta != null) meta.setOldBlock();
+      if (options.meta() != null) options.meta().setOldBlock();
     }
 
     try {
       T block =
           entry.getStorableBlock(
-              routingKey, fullKey, canReadClientCache, canReadSlashdotCache, meta, null);
+              routingKey,
+              fullKey,
+              options.canReadClientCache(),
+              options.canReadSlashdotCache(),
+              options.meta(),
+              null);
       if (block == null) {
         misses.incrementAndGet();
         return null;
@@ -626,7 +634,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * Inserts or updates a block in the store.
    *
    * <p>If an entry with the same key exists, the behavior depends on {@code overwrite}. When the
-   * store is full, the write may be directed to the alternate store (if configured). The {@code
+   * store is full, the writing may be directed to the alternate store (if configured). The {@code
    * isOldBlock} flag controls how the “new block” bit is set in metadata.
    *
    * @param block storable block being persisted
@@ -693,16 +701,9 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         Entry oldEntry = probeEntry(digestedKey, routingKey, false);
         if (oldEntry != null && !oldEntry.isFree()) {
           return handleExistingEntryWhenPresent(
-              oldEntry,
-              digestedKey,
-              routingKey,
-              fullKey,
-              overwrite,
-              isOldBlock,
-              wrongStore,
-              header,
-              data,
-              block);
+              new ExistingEntryParams<>(oldEntry, block, overwrite, isOldBlock, wrongStore),
+              new KeyContext(digestedKey, routingKey, fullKey),
+              new EntryData(header, data));
         }
 
         Entry entry = new Entry(routingKey, header, data, !isOldBlock, wrongStore);
@@ -719,7 +720,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
         Integer indexToOverwrite =
             chooseOverwriteIndex(wrongStore, scan.wrongStoreCount(), scan.firstWrongStoreIndex());
-        if (indexToOverwrite == null) return false; // Force overwrite to happen in right store.
+        if (indexToOverwrite == null)
+          return false; // Force overwriting to happen in the right store.
 
         overwriteAtIndex(offset, indexToOverwrite, entry, digestedKey);
         return true;
@@ -732,48 +734,53 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   }
 
   private boolean handleExistingEntryWhenPresent(
-      Entry oldEntry,
-      byte[] digestedKey,
-      byte[] routingKey,
-      byte[] fullKey,
-      boolean overwrite,
-      boolean isOldBlock,
-      boolean wrongStore,
-      byte[] header,
-      byte[] data,
-      T block)
+      ExistingEntryParams<T> params, KeyContext keyContext, EntryData entryData)
       throws IOException, KeyCollisionException {
-    long oldOffset = oldEntry.curOffset;
+    long oldOffset = params.oldEntry().curOffset;
     try {
       if (!collisionPossible) {
-        // When collisions are impossible, confirming the existing entry is sufficient for callers
+        // When collisions are impossible, confirming the existing entry is enough for callers
         // (including alt-store writes) to consider the operation successful. Update metadata if
         // needed, but always report success to avoid duplicate writes in the primary store.
-        updateNewBlockFlagIfNeeded(oldEntry, digestedKey, routingKey, oldOffset, isOldBlock);
+        updateNewBlockFlagIfNeeded(
+            params.oldEntry(),
+            keyContext.digestedKey(),
+            keyContext.routingKey(),
+            oldOffset,
+            params.isOldBlock());
         return true;
       }
-      oldEntry.setHD(readHD(oldOffset)); // read from disk
+      params.oldEntry().setHD(readHD(oldOffset)); // read from disk
       T oldBlock =
-          oldEntry.getStorableBlock(
-              routingKey,
-              fullKey,
-              false,
-              false,
-              null,
-              (block instanceof SSKBlock sskb) ? sskb.getPubKey() : null);
-      if (block.equals(oldBlock)) {
-        return handleAlreadyStored(oldEntry, isOldBlock, digestedKey, oldOffset);
-      } else if (!overwrite) {
+          params
+              .oldEntry()
+              .getStorableBlock(
+                  keyContext.routingKey(),
+                  keyContext.fullKey(),
+                  false,
+                  false,
+                  null,
+                  (params.block() instanceof SSKBlock sskb) ? sskb.getPubKey() : null);
+      if (params.block().equals(oldBlock)) {
+        return handleAlreadyStored(
+            params.oldEntry(), params.isOldBlock(), keyContext.digestedKey(), oldOffset);
+      } else if (!params.overwrite()) {
         throw new KeyCollisionException();
       }
     } catch (KeyVerifyException _) {
       // ignore
     }
 
-    // Overwrite old offset with same key
-    Entry entry = new Entry(routingKey, header, data, !isOldBlock, wrongStore);
-    writeEntry(entry, digestedKey, oldOffset);
-    if (oldEntry.generation != generation) keyCount.incrementAndGet();
+    // Overwrite the old offset with the same key
+    Entry entry =
+        new Entry(
+            keyContext.routingKey(),
+            entryData.header(),
+            entryData.data(),
+            !params.isOldBlock(),
+            params.wrongStore());
+    writeEntry(entry, keyContext.digestedKey(), oldOffset);
+    if (params.oldEntry().generation != generation) keyCount.incrementAndGet();
     return true;
   }
 
@@ -858,16 +865,16 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private Integer chooseOverwriteIndex(
       boolean wrongStore, int wrongStoreCount, int firstWrongStoreIndex) {
     if (wrongStore) {
-      // Distribute overwrites evenly between the right store and the wrong store.
+      // Distribute overwriting evenly between the right store and the wrong store.
       if (random.nextInt(OPTION_MAX_PROBE + wrongStoreCount) < wrongStoreCount) {
-        // Allow the overwrite to happen in the wrong store.
+        // Allow the overwriting to happen in the wrong store.
         return firstWrongStoreIndex;
       } else {
-        // Force the overwrite to happen in the right store.
+        // Force the overwriting to happen in the right store.
         return null;
       }
     } else {
-      // By default, overwrite offset[0] when not writing to wrong store.
+      // By default, overwrite offset[0] when not writing to the wrong store.
       return 0;
     }
   }
@@ -934,13 +941,13 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     /** Flag for occupied space */
     private static final long ENTRY_FLAG_OCCUPIED = 0x00000001L;
 
-    /** Flag for plain key available */
+    /** Flag for a plain key available */
     private static final long ENTRY_FLAG_PLAINKEY = 0x00000002L;
 
     /** Flag for block added after we stopped caching local (and high htl) requests */
     private static final long ENTRY_NEW_BLOCK = 0x00000004L;
 
-    /** Flag set if the block was stored in the wrong datastore i.e. store instead of cache */
+    /** Flag set if the block was stored in the wrong datastore i.e., store instead of cache */
     private static final long ENTRY_WRONG_STORE = 0x00000008L;
 
     /** Control block length */
@@ -1004,7 +1011,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
 
     /**
-     * Creates a new entry from plain routing key and serialized payload.
+     * Creates a new entry from the plain routing key and serialized payload.
      *
      * @param plainRoutingKey plain routing key (un-digested)
      * @param header serialized header bytes (copied)
@@ -1058,7 +1065,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private ByteBuffer toHDBuffer() {
       if (header == null || data == null) return null;
 
-      assert isEncrypted; // should have encrypted to get dataEncryptIV in control buffer
+      assert isEncrypted; // should have encrypted to get dataEncryptIV in the control buffer
       assert header.length == headerBlockLength;
       assert data.length == dataBlockLength;
 
@@ -1211,7 +1218,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   }
 
   /**
-   * Reads an entry's metadata (and optionally payload) from disk at a given slot.
+   * Reads an entry's metadata (and optionally payload) from the disk at a given slot.
    *
    * <p>Callers must acquire the necessary slot locks before invoking. When {@code routingKey} is
    * non-{@code null}, a free slot or a digested-key mismatch returns {@code null}. When {@code
@@ -1351,6 +1358,71 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
   private record CacheState(int cache, boolean valid, boolean likelyMatch) {}
 
+  private record KeyContext(byte[] digestedKey, byte[] routingKey, byte[] fullKey) {
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) return true;
+      if (!(other
+          instanceof
+          KeyContext(byte[] otherDigestedKey, byte[] otherRoutingKey, byte[] otherFullKey)))
+        return false;
+      return Arrays.equals(digestedKey, otherDigestedKey)
+          && Arrays.equals(routingKey, otherRoutingKey)
+          && Arrays.equals(fullKey, otherFullKey);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(digestedKey);
+      result = 31 * result + Arrays.hashCode(routingKey);
+      result = 31 * result + Arrays.hashCode(fullKey);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "KeyContext[digestedKey="
+          + Arrays.toString(digestedKey)
+          + ", routingKey="
+          + Arrays.toString(routingKey)
+          + ", fullKey="
+          + Arrays.toString(fullKey)
+          + "]";
+    }
+  }
+
+  private record EntryData(byte[] header, byte[] data) {
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) return true;
+      if (!(other instanceof EntryData(byte[] otherHeader, byte[] otherData))) return false;
+      return Arrays.equals(header, otherHeader) && Arrays.equals(data, otherData);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(header);
+      result = 31 * result + Arrays.hashCode(data);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "EntryData[header="
+          + Arrays.toString(header)
+          + ", data="
+          + Arrays.toString(data)
+          + "]";
+    }
+  }
+
+  private record ExistingEntryParams<T extends StorableBlock>(
+      SaltedHashFreenetStore<T>.Entry oldEntry,
+      T block,
+      boolean overwrite,
+      boolean isOldBlock,
+      boolean wrongStore) {}
+
   /**
    * Reads the header+data region for a slot.
    *
@@ -1378,7 +1450,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * Returns a slot's flags, consulting the slot filter when available.
    *
    * <p>When the slot filter marks a slot as “checked”, its bits are translated to entry flags
-   * without reading from disk. Otherwise, the entry metadata is read. Note that {@code
+   * without reading from the disk. Otherwise, the entry metadata is read. Note that {@code
    * ENTRY_FLAG_PLAINKEY} is not represented in the slot filter and is only visible when reading
    * metadata.
    *
@@ -1497,7 +1569,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         try (WrapperKeepalive wrapperKeepalive = new WrapperKeepalive()) {
           wrapperKeepalive.start();
           if (oldMetaLen < newMetaLen) {
-            // freenet-mobile-changed: Passing file descriptor to avoid using reflection
+            // freenet-mobile-changed: Passing a file descriptor to avoid using reflection
             Fallocate.forChannel(metaFC, metaRAF.getFD(), newMetaLen)
                 .fromOffset(oldMetaLen)
                 .execute();
@@ -1612,7 +1684,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
       if (((flags & FLAG_DIRTY) != 0)
           &&
-          // Note: When slot-filter persistence is enabled we conservatively request a rebuild.
+          // Note: When slot-filter persistence is enabled, we conservatively request a rebuild.
           ResizablePersistentIntBuffer.getPersistenceTime() != -1) flags |= FLAG_REBUILD_BLOOM;
 
       readOptionalTrailingCounters(raf);
@@ -1721,7 +1793,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     // return false to abort
     boolean batch(long entriesLeft);
 
-    // call this on abort (e.g. node shutdown)
+    // call this on abort (e.g., node shutdown)
     void abort();
 
     void finish();
@@ -1884,12 +1956,12 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
           }
         }
 
-        // remove from store, prepare for relocation
+        // remove from the store, prepare for relocation
         if (oldGeneration == generation) {
           // should be impossible
           LOG.atError()
-              .addArgument(() -> HexUtil.bytesToHex(entry.getDigestedRoutingKey()))
-              .addArgument(() -> entry.curOffset)
+              .addArgument(HexUtil.bytesToHex(entry.getDigestedRoutingKey()))
+              .addArgument(entry.curOffset)
               .log("new generation object with wrong storeSize. DigestedRoutingKey={}, Offset={}");
         }
         try {
@@ -1913,7 +1985,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
           writeConfigFile();
         }
 
-        // shrink data file to current size
+        // shrink data file to the current size
         if (storeSize < previousStoreSize) {
           setStoreFileSize(Math.max(storeSize, entriesLeft));
         }
@@ -1984,7 +2056,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
           entry.storeSize = storeSize;
           long[] offsets = entry.getOffset();
 
-          // Check for occupied entry with same key
+          // Check for occupied entry with the same key
           for (long offset : offsets) {
             try {
               if (!isFree(offset)
@@ -2542,7 +2614,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * @param usePrevStoreSize whether to include offsets computed against {@code prevStoreSize} to
    *     cover in‑progress resizes
    * @return a map of {@code offset → Condition} for each acquired lock; empty when acquisition did
-   *     not obtain all required locks
+   *     not get all required locks
    */
   private Map<Long, Condition> lockDigestedKey(byte[] digestedKey, boolean usePrevStoreSize) {
     // use a set to prevent duplicated offsets,
@@ -2589,7 +2661,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
-  /** Runnable that closes the store during application shutdown. */
+  /** Runnable that closes the store during an application shutdown. */
   public class ShutdownDB implements Runnable {
     @Override
     public void run() {
@@ -2658,7 +2730,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       // h + 141 i^2 + 13 i
       offsets[i] = ((keyValue + 141 * (i * i) + 13 * i) & Long.MAX_VALUE) % storeSize;
       // Make sure the slots are all unique.
-      // Important for very small stores e.g. in unit tests.
+      // Important for very small stores e.g., in unit tests.
       while (true) {
         boolean clear = true;
         for (int j = 0; j < i; j++) {
@@ -2704,7 +2776,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     return writes.get();
   }
 
-  /** Current number of keys known in the store (best effort during resizes). */
+  /** Current number of keys known in the store (the best effort during resizes). */
   @Override
   public long keyCount() {
     return keyCount.get();
