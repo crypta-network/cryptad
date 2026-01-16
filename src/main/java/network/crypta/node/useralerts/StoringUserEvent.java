@@ -29,7 +29,7 @@ import network.crypta.support.HTMLNode;
  * <ul>
  *   <li>Aggregates HTML for all stored events in the order reported by the map.
  *   <li>Builds a minimal {@code FeedMessage} from the plain-text representation.
- *   <li>Removes all events on dismiss, invoking per-event cleanup hooks.
+ *   <li>Removes all events on dismissing, invoking per-event cleanup hooks.
  * </ul>
  *
  * @param <T> the concrete subtype, enabling type-safe storage of homogeneous events
@@ -53,7 +53,7 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
    * Convenience constructor for subclasses that supply only the storage map and configure the
    * remaining metadata elsewhere.
    *
-   * <p>The supplied map is not defensively copied. This instance will synchronize on it when
+   * <p>The supplied map is not defensively copied. This instance will synchronize with it when
    * iterating or removing elements. Passing a non-null, consistently used map is required for
    * correct behavior.
    *
@@ -66,46 +66,13 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
   }
 
   /**
-   * Full constructor used by subclasses to populate user-visible metadata and supply the event
-   * collection.
+   * Constructor that accepts a consolidated event description and the backing map.
    *
-   * <p>All arguments are consumed as-is and are not validated beyond normal Java nullability
-   * contracts. The {@code events} map is kept by reference and is used as the synchronization
-   * monitor when aggregating HTML, checking validity, and dismissing entries.
-   *
-   * @param eventType the high-level event type used by the alert system for categorization
-   * @param userCanDismiss whether the UI should expose a dismiss control for the user
-   * @param title short title shown to users; kept verbatim and may be null when not applicable
-   * @param text plain-text body; used in feed messages; may be null when HTML is provided
-   * @param shortText concise summary variant; shown in compact contexts; may be null
-   * @param htmlText structured HTML body for richer rendering; may be null when text is sufficient
-   * @param priorityClass small integer describing display priority; higher values surface earlier
-   * @param valid initial validity flag; invalid events are typically hidden from presentation
-   * @param dismissButtonText label for the dismiss control; null selects a default provided by UI
-   * @param shouldUnregisterOnDismiss when true, unregisters the source upon dismissal where
-   *     supported
+   * @param details bundled event presentation and dismissal metadata
    * @param events storage of active events; must be non-null; synchronized on by this instance
    */
-  protected StoringUserEvent(
-      Type eventType,
-      boolean userCanDismiss,
-      String title,
-      String text,
-      String shortText,
-      HTMLNode htmlText,
-      short priorityClass,
-      boolean valid,
-      String dismissButtonText,
-      boolean shouldUnregisterOnDismiss,
-      Map<String, T> events) {
-    super(
-        eventType,
-        userCanDismiss,
-        title,
-        Body.of(text, shortText, htmlText),
-        priorityClass,
-        valid,
-        new DismissOptions(dismissButtonText, shouldUnregisterOnDismiss));
+  protected StoringUserEvent(UserEventDetails details, Map<String, T> events) {
+    super(details);
     this.events = events;
   }
 
@@ -200,8 +167,8 @@ public abstract class StoringUserEvent<T extends StoringUserEvent<T>> extends Ab
   /**
    * Cleanup hook invoked when this individual event is being dismissed.
    *
-   * <p>Subclasses should release resources, unregister any listeners, or update related state so
-   * the event can be safely discarded. Implementations should be idempotent and must not throw
+   * <p>Subclasses should release resources, unregister any listeners, or update the related state
+   * so the event can be safely discarded. Implementations should be idempotent and must not throw
    * unchecked exceptions; failures should be handled internally where possible.
    */
   public abstract void onEventDismiss();
