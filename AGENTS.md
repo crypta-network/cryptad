@@ -3,7 +3,7 @@
 ## Project Overview
 Crypta is a peer-to-peer network providing a distributed, encrypted, and decentralized datastore. It is a fork of Hyphanet (formerly Freenet), building upon its technology for censorship-resistant communication and publishing. This repository contains the reference node implementation (the "Crypta reference daemon") written primarily in Java with some Kotlin components.
 
-## OpenCode Skills: load on demand
+## Skills: load on demand
 
 **Rule:** When a task matches any domain below, **MUST load the relevant skill(s)** before making decisions or code changes.
 
@@ -11,16 +11,16 @@ Load only what you need. It’s normal to load multiple skills for one task.
 
 ### Skill catalog
 
-- **cryptad-appenv** — Use AppEnv as the single source of truth for OS/arch/sandbox/service detection; refactor legacy checks safely.
-- **cryptad-architecture** — Navigate Cryptad’s module/package architecture, key subsystems, design patterns, security model, and versioning scheme.
-- **cryptad-build-test** — Build, test, and run Cryptad safely using the Gradle wrapper (Java 25+, JUnit 6).
-- **cryptad-build-tooling** — Maintain formatting and code-quality tooling: Spotless, Gradle dependency verification (verification-metadata), SonarLint, JaCoCo coverage, and SonarCloud uploads.
-- **cryptad-core-updater** — Understand and modify the package-based CoreUpdater update system: /core-update/ endpoints, descriptor format, UI wiring, and platform behaviors.
-- **cryptad-crypto-aead** — Work safely on AEAD streams and persistent formats (AES-GCM migration + legacy OCB compatibility notes).
-- **cryptad-git-workflow** — Follow repository etiquette: branch naming, GitFlow merges, conventional commits, PR rules, and strict git identity policy.
-- **cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
-- **cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
-- **cryptad-style-docs** — Apply Cryptad Kotlin/Java style, file layout rules, and long-lived documentation/commenting practices.
+- **$cryptad-appenv** — Use AppEnv as the single source of truth for OS/arch/sandbox/service detection; refactor legacy checks safely.
+- **$cryptad-architecture** — Navigate Cryptad’s module/package architecture, key subsystems, design patterns, security model, and versioning scheme.
+- **$cryptad-build-test** — Build, test, and run Cryptad safely using the Gradle wrapper (Java 25+, JUnit 6).
+- **$cryptad-build-tooling** — Maintain formatting and code-quality tooling: Spotless, Gradle dependency verification (verification-metadata), SonarLint, JaCoCo coverage, and SonarCloud uploads.
+- **$cryptad-core-updater** — Understand and modify the package-based CoreUpdater update system: /core-update/ endpoints, descriptor format, UI wiring, and platform behaviors.
+- **$cryptad-crypto-aead** — Work safely on AEAD streams and persistent formats (AES-GCM migration + legacy OCB compatibility notes).
+- **$cryptad-git-workflow** — Follow repository etiquette: branch naming, GitFlow merges, conventional commits, PR rules, and strict git identity policy.
+- **$cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
+- **$cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
+- **$cryptad-style-docs** — Apply Cryptad Kotlin/Java style, file layout rules, and long-lived documentation/commenting practices.
 
 ### Skill-first workflow
 
@@ -28,7 +28,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 2. Load the matching skill(s) via `skill(...)`.
 3. Inspect code and run targeted searches (don’t guess).
 4. Make the smallest safe change.
-5. Run the relevant Gradle checks (see `cryptad-build-test` / `cryptad-build-tooling`).
+5. Run the relevant Gradle checks (see `$cryptad-build-test` / `$cryptad-build-tooling`).
 6. Update docs/tests when needed.
 
 ## Always-on rules (keep these in mind)
@@ -38,24 +38,24 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **OpenCode LSP:** Treat LSP/typechecker diagnostics as blockers for touched files.
   - If the OpenCode `lsp` tool is enabled, prefer it for definition/reference/hover instead of guessing
 - **Compatibility:** Avoid breaking persistent formats, on-disk layouts, and wire protocols without an explicit migration plan.
-  - For AEAD stream / format changes, load `cryptad-crypto-aead` first.
-- **Environment detection:** Treat `AppEnv` as the single source of truth. Load `cryptad-appenv` before touching OS/arch/sandbox/service detection code.
-- **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `cryptad-core-updater`.
-- **Packaging/Installers:** For dist builds, installers, or Flatpak, load `cryptad-packaging`.
+  - For AEAD stream / format changes, load `$cryptad-crypto-aead` first.
+- **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.
+- **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `$cryptad-core-updater`.
+- **Packaging/Installers:** For dist builds, installers, or Flatpak, load `$cryptad-packaging`.
 
 ## Quick commands (high-level)
 
 Prefer the Gradle wrapper and follow the project’s build/test/tooling guidance in the skills:
 
 - `./gradlew build`
-- `./gradlew test`
+- `./gradlew test` (Always give enough running time (more than 15 minutes) for Gradle to complete tests.)
 - `./gradlew spotlessApply`
 
-(See `cryptad-build-test` and `cryptad-build-tooling` for the full matrix and platform-specific notes.)
+(See `$cryptad-build-test` and `$cryptad-build-tooling` for the full matrix and platform-specific notes.)
 
 ## Architecture pointer
 
-For the full module/package map, request routing patterns, update system architecture, security model, and versioning scheme, load `cryptad-architecture`.
+For the full module/package map, request routing patterns, update system architecture, security model, and versioning scheme, load `$cryptad-architecture`.
 
 ## Maintenance rule
 
