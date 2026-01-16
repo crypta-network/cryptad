@@ -343,20 +343,26 @@ public class OfficialPlugins {
 
     private OfficialPluginDescription createOfficialPluginDescription() {
       return new OfficialPluginDescription(
-          name,
-          group,
-          essential,
-          minimumVersion,
-          recommendedVersion,
-          alwaysFetchLatestVersion,
-          usesXml,
-          uri,
-          deprecated,
-          experimental,
-          advanced,
-          unsupported);
+          new OfficialPluginDefinition(name, group, uri),
+          new OfficialPluginVersionPolicy(
+              minimumVersion, recommendedVersion, alwaysFetchLatestVersion),
+          new OfficialPluginFlags(
+              essential, usesXml, deprecated, experimental, advanced, unsupported));
     }
   }
+
+  public record OfficialPluginDefinition(String name, String group, FreenetURI uri) {}
+
+  public record OfficialPluginVersionPolicy(
+      long minimumVersion, long recommendedVersion, boolean alwaysFetchLatestVersion) {}
+
+  public record OfficialPluginFlags(
+      boolean essential,
+      boolean usesXml,
+      boolean deprecated,
+      boolean experimental,
+      boolean advanced,
+      boolean unsupported) {}
 
   /**
    * Descriptor for an official plugin known to the node.
@@ -414,8 +420,8 @@ public class OfficialPlugins {
     /**
      * Minimum accepted plugin-reported version.
      *
-     * <p>If the plugin is older than this value, loading is rejected. A negative value may be used
-     * by the catalog to indicate that no explicit minimum was configured.
+     * <p>If the plugin is older than this value, loading is rejected. The catalog may use a
+     * negative value to indicate that no explicit minimum was configured.
      */
     public final long minimumVersion;
 
@@ -423,7 +429,7 @@ public class OfficialPlugins {
      * Recommended plugin-reported version.
      *
      * <p>If the currently available plugin is older than this value, the node may download a newer
-     * version in the background. Applying the updated JAR typically happens on restart, or by
+     * version in the background. Applying the updated JAR typically happens on restart or by
      * offering the user an explicit reload action. This behavior is conceptually similar to a
      * USK-based update, but the specific update trigger depends on the plugin's distribution path.
      */
@@ -438,9 +444,9 @@ public class OfficialPlugins {
      * included in the main update USK monitored by {@link PluginJarUpdater}.
      *
      * <p>For plugins distributed via the main update USK, setting this is usually unnecessary
-     * because {@link PluginJarUpdater} will observe and apply updates. For plugins that are not
-     * tracked by the main update USK, re-fetching at startup can be the only automatic opportunity
-     * to observe a newly-inserted USK edition.
+     * because {@link PluginJarUpdater} will observe and apply updates. For plugins, which are not
+     * tracked by the main update, USK re-fetching at startup can be the only automatic opportunity
+     * to observe a newly inserted USK edition.
      */
     public final boolean alwaysFetchLatestVersion;
 
@@ -508,43 +514,35 @@ public class OfficialPlugins {
     public final boolean unsupported;
 
     OfficialPluginDescription(
-        String name,
-        String group,
-        boolean essential,
-        long minVer,
-        long recVer,
-        boolean alwaysFetchLatestVersion,
-        boolean usesXML,
-        FreenetURI uri,
-        boolean deprecated,
-        boolean experimental,
-        boolean advanced,
-        boolean unsupported) {
+        OfficialPluginDefinition definition,
+        OfficialPluginVersionPolicy versionPolicy,
+        OfficialPluginFlags flags) {
 
-      this.name = name;
-      this.group = group;
-      this.essential = essential;
-      this.minimumVersion = minVer;
-      this.recommendedVersion = recVer;
-      this.alwaysFetchLatestVersion = alwaysFetchLatestVersion;
-      this.usesXML = usesXML;
-      this.deprecated = deprecated;
-      this.experimental = experimental;
-      this.advanced = advanced;
-      this.unsupported = unsupported;
+      this.name = definition.name();
+      this.group = definition.group();
+      this.essential = flags.essential();
+      this.minimumVersion = versionPolicy.minimumVersion();
+      this.recommendedVersion = versionPolicy.recommendedVersion();
+      this.alwaysFetchLatestVersion = versionPolicy.alwaysFetchLatestVersion();
+      this.usesXML = flags.usesXml();
+      this.deprecated = flags.deprecated();
+      this.experimental = flags.experimental();
+      this.advanced = flags.advanced();
+      this.unsupported = flags.unsupported();
 
-      if (alwaysFetchLatestVersion && uri != null) {
-        assert (uri.isUSK()) : "Non-USK URIs do not support updates!";
+      FreenetURI resolvedUri = definition.uri();
+      if (this.alwaysFetchLatestVersion && resolvedUri != null) {
+        assert (resolvedUri.isUSK()) : "Non-USK URIs do not support updates!";
 
         // Force fetching the latest edition by setting a negative USK edition.
-        long edition = uri.getSuggestedEdition();
+        long edition = resolvedUri.getSuggestedEdition();
         if (edition >= 0) {
           edition = Math.min(-1, -edition);
         }
-        uri = uri.setSuggestedEdition(edition);
+        resolvedUri = resolvedUri.setSuggestedEdition(edition);
       }
 
-      this.uri = uri;
+      this.uri = resolvedUri;
     }
 
     /**

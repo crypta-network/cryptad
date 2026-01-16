@@ -14,7 +14,10 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Stream;
 import network.crypta.keys.FreenetURI;
+import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDefinition;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
+import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginFlags;
+import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginVersionPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -133,18 +136,9 @@ class OfficialPluginsTest {
     // Act
     OfficialPluginDescription description =
         new OfficialPluginDescription(
-            "SomePlugin",
-            "someGroup",
-            false,
-            -1,
-            -1,
-            alwaysFetchLatestVersion,
-            false,
-            uri,
-            false,
-            false,
-            false,
-            false);
+            new OfficialPluginDefinition("SomePlugin", "someGroup", uri),
+            new OfficialPluginVersionPolicy(-1, -1, alwaysFetchLatestVersion),
+            new OfficialPluginFlags(false, false, false, false, false, false));
 
     // Assert
     assertEquals(expectedSuggestedEdition, description.uri.getSuggestedEdition());

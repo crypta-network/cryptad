@@ -17,7 +17,10 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.updater.NodeUpdateManager;
+import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDefinition;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
+import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginFlags;
+import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginVersionPolicy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -79,7 +82,9 @@ class PluginDownLoaderOfficialFreenetTest {
     FreenetURI explicitUri = org.mockito.Mockito.mock(FreenetURI.class);
     OfficialPluginDescription desc =
         new OfficialPluginDescription(
-            source, GROUP, false, -1, 123, false, false, explicitUri, false, false, false, false);
+            new OfficialPluginDefinition(source, GROUP, explicitUri),
+            new OfficialPluginVersionPolicy(-1, 123, false),
+            new OfficialPluginFlags(false, false, false, false, false, false));
     when(pluginManager.getOfficialPlugin(source)).thenReturn(desc);
 
     PluginDownLoaderOfficialFreenet downloader =
@@ -111,18 +116,9 @@ class PluginDownLoaderOfficialFreenetTest {
     String source = "UPnP";
     OfficialPluginDescription desc =
         new OfficialPluginDescription(
-            source,
-            GROUP,
-            false,
-            -1,
-            recommendedVersion,
-            false,
-            false,
-            /* uri= */ null,
-            false,
-            false,
-            false,
-            false);
+            new OfficialPluginDefinition(source, GROUP, null),
+            new OfficialPluginVersionPolicy(-1, recommendedVersion, false),
+            new OfficialPluginFlags(false, false, false, false, false, false));
     when(pluginManager.getOfficialPlugin(source)).thenReturn(desc);
 
     FreenetURI updateUsk = org.mockito.Mockito.mock(FreenetURI.class);
@@ -183,7 +179,9 @@ class PluginDownLoaderOfficialFreenetTest {
     FreenetURI uri = org.mockito.Mockito.mock(FreenetURI.class);
     OfficialPluginDescription desc =
         new OfficialPluginDescription(
-            source, GROUP, false, -1, -1, false, false, uri, false, false, false, false);
+            new OfficialPluginDefinition(source, GROUP, uri),
+            new OfficialPluginVersionPolicy(-1, -1, false),
+            new OfficialPluginFlags(false, false, false, false, false, false));
     when(pluginManager.getOfficialPlugin(source)).thenReturn(desc);
 
     PluginDownLoaderOfficialFreenet downloader =
