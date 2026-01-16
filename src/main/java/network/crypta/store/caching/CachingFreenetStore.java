@@ -138,13 +138,9 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
     if (block != null) {
       try {
         return this.callback.construct(
-            block.data,
-            block.header,
-            routingKey,
-            block.storable.getFullKey(),
-            canReadClientCache,
-            canReadSlashdotCache,
-            meta,
+            new StoreCallback.BlockPayload(
+                block.data, block.header, routingKey, block.storable.getFullKey()),
+            new StoreCallback.ConstructOptions(canReadClientCache, canReadSlashdotCache, meta),
             null);
       } catch (KeyVerifyException e) {
         LOG.error("Error in fetching for CachingFreenetStore: {}", e, e);
@@ -252,7 +248,7 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
   }
 
   /*
-   * Decide whether to cache, write through, or skip the backing-store write. The result depends on
+   * Decide whether to cache, write through, or skip the backing-store writing. The result depends on
    * whether we are shutting down, whether collisions are possible, current LRU state, and the
    * overwrite flag.
    */
@@ -280,11 +276,11 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
   }
 
   /**
-   * Flushes the least-recently-used cached entry to the backing store.
+   * Flushes the least-recently used cached entry to the backing store.
    *
    * <p>This method peeks the LRU entry, writes it to {@code backDatastore}, and then attempts to
    * remove the exact same version from the cache. If the entry changed concurrently (e.g., an
-   * overwrite occurred while writing), the removal is skipped to avoid dropping updated data.
+   * overwriting occurred while writing), the removal is skipped to avoid dropping updated data.
    *
    * @return {@code sizeBlock} (bytes) when a block is written and removed; {@code 0} when a block
    *     was written but not removed due to a concurrent change; {@code -1} when the cache is empty
@@ -347,8 +343,8 @@ public class CachingFreenetStore<T extends StorableBlock> extends ProxyFreenetSt
   /**
    * Closes this store and then the underlying store.
    *
-   * <p>Idempotent: only the first invocation performs work. Sets the shutdown guard so subsequent
-   * puts are rejected for caching.
+   * <p>Idempotent: only the first invocation performs work. Sets the shutdown guard so later puts
+   * are rejected for caching.
    */
   @Override
   public void close() {

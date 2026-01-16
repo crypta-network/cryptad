@@ -74,7 +74,7 @@ class SSKStoreTest {
     x += NodeSSK.E_H_DOCNAME_SIZE;
     final int ENCRYPTED_HEADERS_LENGTH = 36;
     for (int i = 0; i < ENCRYPTED_HEADERS_LENGTH; i++) headers[x++] = (byte) (0xA0 + i);
-    // Leave signature area zeroed for signing
+    // Leave the signature area zeroed for signing
     return headers;
   }
 
@@ -133,13 +133,12 @@ class SSKStoreTest {
             SSKVerifyException.class,
             () ->
                 sut.construct(
-                    /*data*/ null,
-                    new byte[SSKBlock.TOTAL_HEADERS_LENGTH],
-                    /*routingKey*/ null,
-                    new byte[NodeSSK.FULL_KEY_LENGTH],
-                    false,
-                    false,
-                    /*meta*/ null,
+                    new StoreCallback.BlockPayload(
+                        /*data*/ null,
+                        new byte[SSKBlock.TOTAL_HEADERS_LENGTH],
+                        /*routingKey*/ null,
+                        new byte[NodeSSK.FULL_KEY_LENGTH]),
+                    new StoreCallback.ConstructOptions(false, false, /*meta*/ null),
                     /*knownPub*/ null));
     assertEquals("Need data and headers", ex1.getMessage());
 
@@ -148,13 +147,12 @@ class SSKStoreTest {
             SSKVerifyException.class,
             () ->
                 sut.construct(
-                    new byte[SSKBlock.DATA_LENGTH],
-                    /*headers*/ null,
-                    /*routingKey*/ null,
-                    new byte[NodeSSK.FULL_KEY_LENGTH],
-                    false,
-                    false,
-                    /*meta*/ null,
+                    new StoreCallback.BlockPayload(
+                        new byte[SSKBlock.DATA_LENGTH],
+                        /*headers*/ null,
+                        /*routingKey*/ null,
+                        new byte[NodeSSK.FULL_KEY_LENGTH]),
+                    new StoreCallback.ConstructOptions(false, false, /*meta*/ null),
                     /*knownPub*/ null));
     assertEquals("Need data and headers", ex2.getMessage());
   }
@@ -171,13 +169,12 @@ class SSKStoreTest {
             SSKVerifyException.class,
             () ->
                 sut.construct(
-                    new byte[SSKBlock.DATA_LENGTH],
-                    new byte[SSKBlock.TOTAL_HEADERS_LENGTH],
-                    /*routingKey*/ null,
-                    /*fullKey*/ null,
-                    false,
-                    false,
-                    /*meta*/ null,
+                    new StoreCallback.BlockPayload(
+                        new byte[SSKBlock.DATA_LENGTH],
+                        new byte[SSKBlock.TOTAL_HEADERS_LENGTH],
+                        /*routingKey*/ null,
+                        /*fullKey*/ null),
+                    new StoreCallback.ConstructOptions(false, false, /*meta*/ null),
                     /*knownPub*/ null));
     assertEquals("Need full key to reconstruct an SSK", ex.getMessage());
   }
@@ -201,13 +198,9 @@ class SSKStoreTest {
     // Act
     SSKBlock block =
         sut.construct(
-            data,
-            headers,
-            /*routingKey*/ null,
-            fullKey,
-            /*canReadClientCache*/ false,
-            /*canReadSlashdotCache*/ false,
-            /*meta*/ null,
+            new StoreCallback.BlockPayload(data, headers, /*routingKey*/ null, fullKey),
+            new StoreCallback.ConstructOptions(
+                /*canReadClientCache*/ false, /*canReadSlashdotCache*/ false, /*meta*/ null),
             /*knownPublicKey*/ pub);
 
     // Assert
@@ -234,7 +227,7 @@ class SSKStoreTest {
     NodeSSK noPub = newNodeSSKWithoutPub(pkHash, ehDocname);
     byte[] fullKey = noPub.getFullKey();
 
-    // SSKBlock verification still needs valid signature and the real pubkey; however pubkeyCache
+    // SSKBlock verification still needs a valid signature and the real pubkey; however, pubkeyCache
     // returns null to trigger the error path inside SSKStore.construct
     byte[] data = newData();
     byte[] headers = signedHeaders(ehDocname, data, priv);
@@ -251,13 +244,11 @@ class SSKStoreTest {
             SSKVerifyException.class,
             () ->
                 sut.construct(
-                    data,
-                    headers,
-                    /*routingKey*/ null,
-                    fullKey,
-                    /*canReadClientCache*/ true,
-                    /*canReadSlashdotCache (forULPR)*/ false,
-                    /*meta*/ null,
+                    new StoreCallback.BlockPayload(data, headers, /*routingKey*/ null, fullKey),
+                    new StoreCallback.ConstructOptions(
+                        /*canReadClientCache*/ true,
+                        /*canReadSlashdotCache (forULPR)*/ false,
+                        /*meta*/ null),
                     /*knownPublicKey*/ null));
     assertEquals("No pubkey found", ex.getMessage());
     verify(pubkeyCache, times(1))
@@ -290,13 +281,9 @@ class SSKStoreTest {
     // Act
     SSKBlock block =
         sut.construct(
-            data,
-            headers,
-            /*routingKey*/ null,
-            fullKey,
-            /*canReadClientCache*/ false,
-            /*canReadSlashdotCache (forULPR)*/ true,
-            meta,
+            new StoreCallback.BlockPayload(data, headers, /*routingKey*/ null, fullKey),
+            new StoreCallback.ConstructOptions(
+                /*canReadClientCache*/ false, /*canReadSlashdotCache (forULPR)*/ true, meta),
             /*knownPublicKey*/ null);
 
     // Assert

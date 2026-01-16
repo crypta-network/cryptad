@@ -1083,13 +1083,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
       T block =
           callback.construct(
-              data,
-              header,
-              routingKey,
-              fullKey,
-              canReadClientCache,
-              canReadSlashdotCache,
-              meta,
+              new StoreCallback.BlockPayload(data, header, routingKey, fullKey),
+              new StoreCallback.ConstructOptions(canReadClientCache, canReadSlashdotCache, meta),
               knownKey);
       byte[] blockRoutingKey = block.getRoutingKey();
 

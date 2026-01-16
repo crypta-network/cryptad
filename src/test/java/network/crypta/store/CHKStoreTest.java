@@ -106,13 +106,9 @@ class CHKStoreTest {
             CHKVerifyException.class,
             () ->
                 sut.construct(
-                    null,
-                    newHeadersSha256(),
-                    null,
-                    validFullKey((byte) Key.ALGO_AES_PCFB_256_SHA256),
-                    false,
-                    false,
-                    new BlockMetadata(),
+                    new StoreCallback.BlockPayload(
+                        null, newHeadersSha256(), null, validFullKey(Key.ALGO_AES_PCFB_256_SHA256)),
+                    new StoreCallback.ConstructOptions(false, false, new BlockMetadata()),
                     null));
     assertEquals("Need either data and headers", ex.getMessage());
   }
@@ -124,13 +120,12 @@ class CHKStoreTest {
             CHKVerifyException.class,
             () ->
                 sut.construct(
-                    new byte[CHKBlock.DATA_LENGTH],
-                    null,
-                    null,
-                    validFullKey((byte) Key.ALGO_AES_PCFB_256_SHA256),
-                    false,
-                    false,
-                    new BlockMetadata(),
+                    new StoreCallback.BlockPayload(
+                        new byte[CHKBlock.DATA_LENGTH],
+                        null,
+                        null,
+                        validFullKey(Key.ALGO_AES_PCFB_256_SHA256)),
+                    new StoreCallback.ConstructOptions(false, false, new BlockMetadata()),
                     null));
     assertEquals("Need either data and headers", ex.getMessage());
   }
@@ -143,7 +138,10 @@ class CHKStoreTest {
     byte[] fullKey = validFullKey(algo);
 
     CHKBlock block =
-        sut.construct(data, headers, null, fullKey, false, false, new BlockMetadata(), null);
+        sut.construct(
+            new StoreCallback.BlockPayload(data, headers, null, fullKey),
+            new StoreCallback.ConstructOptions(false, false, new BlockMetadata()),
+            null);
 
     assertNotNull(block);
     // CHKBlock holds the same backing arrays; verify identity to ensure no copies were made.
@@ -186,7 +184,7 @@ class CHKStoreTest {
     assertNotNull(out);
     assertEquals(NodeCHK.KEY_LENGTH, out.length);
     assertArrayEquals(slice(bogusFullKey, 0, NodeCHK.KEY_LENGTH), out);
-    // Not the same reference because NodeCHK returns a copy in this recovery path
+    // Different reference because NodeCHK returns a copy in this recovery path
     Assertions.assertNotSame(bogusFullKey, out);
   }
 
@@ -282,7 +280,7 @@ class CHKStoreTest {
     byte[] fk = new byte[NodeCHK.FULL_KEY_LENGTH];
     fk[0] = NodeCHK.BASE_TYPE; // base type = CHK
     fk[1] = algo; // algorithm
-    // remaining 32 bytes are the routing key; left as zeros for simplicity
+    // the remaining 32 bytes are the routing key; left as zeros for simplicity
     return fk;
   }
 

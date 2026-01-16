@@ -33,31 +33,19 @@ public class PubkeyStore extends StoreCallback<DSAPublicKey> {
    * contains the padded serialization as produced by {@link DSAPublicKey#asPaddedBytes()} but the
    * factory tolerates trailing zeros.
    *
-   * @param data serialized key bytes (padded or unpadded). Must not be {@code null}.
-   * @param headers ignored.
-   * @param routingKey ignored.
-   * @param fullKey ignored.
-   * @param canReadClientCache ignored.
-   * @param canReadSlashdotCache ignored.
-   * @param meta metadata collected during fetch; ignored here.
+   * @param payload payload bytes and key material for the block.
+   * @param options cache flags and metadata; ignored here.
    * @param ignored preconstructed value (from callers that already resolved a key); ignored here.
    * @return a new {@link DSAPublicKey} instance parsed from {@code data}.
    * @throws KeyVerifyException if the byte sequence cannot be parsed as a public key.
    */
   @Override
   public DSAPublicKey construct(
-      byte[] data,
-      byte[] headers,
-      byte[] routingKey,
-      byte[] fullKey,
-      boolean canReadClientCache,
-      boolean canReadSlashdotCache,
-      BlockMetadata meta,
-      DSAPublicKey ignored)
+      BlockPayload payload, ConstructOptions options, DSAPublicKey ignored)
       throws KeyVerifyException {
-    if (data == null) throw new PubkeyVerifyException("Need data to construct pubkey");
+    if (payload.data() == null) throw new PubkeyVerifyException("Need data to construct pubkey");
     try {
-      return DSAPublicKey.create(data);
+      return DSAPublicKey.create(payload.data());
     } catch (CryptFormatException e) {
       throw new PubkeyVerifyException(e);
     }

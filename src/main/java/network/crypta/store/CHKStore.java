@@ -28,7 +28,7 @@ public class CHKStore extends StoreCallback<CHKBlock> {
    * Report whether distinct blocks can share a key.
    *
    * <p>Because a CHK key is derived from an SHA‑256 hash of the content, two different blocks
-   * having the same key is treated as impossible.
+   * having the same key are treated as impossible.
    *
    * @return {@code false} — collisions are not expected for CHK.
    */
@@ -45,33 +45,20 @@ public class CHKStore extends StoreCallback<CHKBlock> {
    * block is instantiated via {@link CHKBlock#construct(byte[], byte[], byte)}. The {@code
    * DSAPublicKey} parameter is unused for CHK and may be {@code null}.
    *
-   * @param data payload bytes of length {@link CHKBlock#DATA_LENGTH}.
-   * @param headers header bytes of length {@link CHKBlock#TOTAL_HEADERS_LENGTH}.
-   * @param routingKey ignored for CHK; may be {@code null}.
-   * @param fullKey CHK full key whose low 8 bits of type encode the crypto algorithm; must follow
-   *     {@link NodeCHK#getFullKey()} format.
-   * @param canReadClientCache ignored for CHK.
-   * @param canReadSlashdotCache ignored for CHK.
-   * @param meta optional metadata filled during fetch; not used here.
+   * @param payload payload bytes, headers, and key material for the block.
+   * @param options cache flags and metadata; ignored for CHK.
    * @param ignored unused for CHK.
    * @return a verified {@link CHKBlock} instance.
    * @throws KeyVerifyException if {@code data} or {@code headers} is {@code null}, or if header
    *     validation within {@link CHKBlock} fails.
    */
   @Override
-  public CHKBlock construct(
-      byte[] data,
-      byte[] headers,
-      byte[] routingKey,
-      byte[] fullKey,
-      boolean canReadClientCache,
-      boolean canReadSlashdotCache,
-      BlockMetadata meta,
-      DSAPublicKey ignored)
+  public CHKBlock construct(BlockPayload payload, ConstructOptions options, DSAPublicKey ignored)
       throws KeyVerifyException {
-    if (data == null || headers == null)
+    if (payload.data() == null || payload.headers() == null)
       throw new CHKVerifyException("Need either data and headers");
-    return CHKBlock.construct(data, headers, NodeCHK.cryptoAlgorithmFromFullKey(fullKey));
+    return CHKBlock.construct(
+        payload.data(), payload.headers(), NodeCHK.cryptoAlgorithmFromFullKey(payload.fullKey()));
   }
 
   /**

@@ -1,6 +1,13 @@
 package network.crypta.store.saltedhash;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
@@ -10,7 +17,6 @@ import java.util.Arrays;
 import java.util.Random;
 import network.crypta.crypt.SHA256;
 import network.crypta.node.SemiOrderedShutdownHook;
-import network.crypta.store.BlockMetadata;
 import network.crypta.store.StorableBlock;
 import network.crypta.store.StoreCallback;
 import org.junit.jupiter.api.Test;
@@ -158,7 +164,7 @@ class CipherManagerTest {
     byte[] c1 = data.clone();
     cm1.makeCipher(iv1, key).blockEncipher(c1, 0, c1.length);
 
-    // Different IV with same salt
+    // Different IV with the same salt
     byte[] iv2 = seq(16, 0x02);
     byte[] c2 = data.clone();
     cm1.makeCipher(iv2, key).blockEncipher(c2, 0, c2.length);
@@ -323,15 +329,10 @@ class CipherManagerTest {
 
     @Override
     public StubBlock construct(
-        byte[] data,
-        byte[] headers,
-        byte[] routingKey,
-        byte[] fullKey,
-        boolean canReadClientCache,
-        boolean canReadSlashdotCache,
-        BlockMetadata meta,
+        BlockPayload payload,
+        ConstructOptions options,
         network.crypta.crypt.DSAPublicKey knownPubKey) {
-      return new StubBlock(routingKey, fullKey);
+      return new StubBlock(payload.routingKey(), payload.fullKey());
     }
 
     @Override
