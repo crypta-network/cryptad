@@ -16,7 +16,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import network.crypta.clients.fcp.BookmarkFeed;
 import network.crypta.clients.fcp.FCPMessage;
-import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.HTMLNode;
@@ -29,13 +28,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100") // descriptive test method names
 class BookmarkFeedUserAlertTest {
 
+  private static NodeToNodeAlertContext alertContext(
+      DarknetPeerNode peer, int fileNumber, long composed, long sent, long received) {
+    return new NodeToNodeAlertContext(peer, fileNumber, composed, sent, received);
+  }
+
   @Test
   void title_text_html_whenDescriptionPresent_expectLocalizedAndStructured()
       throws MalformedURLException {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
 
     String name = "My Site";
     String description = "Line1\nLine2";
@@ -43,7 +47,7 @@ class BookmarkFeedUserAlertTest {
     FreenetURI uri = new FreenetURI("KSK@mysite");
     BookmarkFeedUserAlert alert =
         new BookmarkFeedUserAlert(
-            peer, name, description, hasAnActivelink, 42, uri, 1111L, 2222L, 3333L);
+            alertContext(peer, 42, 1111L, 2222L, 3333L), name, description, hasAnActivelink, uri);
 
     // Act
     String title = alert.getTitle();
@@ -108,12 +112,12 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Bob");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
 
     String name = "Site";
     FreenetURI uri = new FreenetURI("KSK@file.txt");
     BookmarkFeedUserAlert alert =
-        new BookmarkFeedUserAlert(peer, name, null, false, 7, uri, 1L, -1L, -1L);
+        new BookmarkFeedUserAlert(alertContext(peer, 7, 1L, -1L, -1L), name, null, false, uri);
 
     // Act
     String text = alert.getText();
@@ -123,7 +127,7 @@ class BookmarkFeedUserAlertTest {
     assertEquals("Name: " + name + "\n" + "URI: " + uri + "\n", text);
     assertEquals("div", html.getName());
     var children = html.getChildren();
-    // Only the two anchors should be present when description is null
+    // Only the two anchors should be present when the description is null
     assertEquals(2, children.size());
     assertEquals("a", children.get(0).getName());
     assertEquals("a", children.get(1).getName());
@@ -134,10 +138,10 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Carol");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@x.txt");
     BookmarkFeedUserAlert alert =
-        new BookmarkFeedUserAlert(peer, "X", "", false, 3, uri, -1L, -1L, -1L);
+        new BookmarkFeedUserAlert(alertContext(peer, 3, -1L, -1L, -1L), "X", "", false, uri);
 
     // Act
     HTMLNode html = alert.getHTMLText();
@@ -153,11 +157,12 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Dave");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@offer.txt");
     int fileNumber = 99;
     BookmarkFeedUserAlert alert =
-        new BookmarkFeedUserAlert(peer, "Title", "desc", true, fileNumber, uri, 10L, 20L, 30L);
+        new BookmarkFeedUserAlert(
+            alertContext(peer, fileNumber, 10L, 20L, 30L), "Title", "desc", true, uri);
 
     // Act
     alert.onDismiss();
@@ -172,10 +177,10 @@ class BookmarkFeedUserAlertTest {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Eve");
     // The weak reference resolves to null
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(null));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(null));
     FreenetURI uri = new FreenetURI("KSK@abc.txt");
     BookmarkFeedUserAlert alert =
-        new BookmarkFeedUserAlert(peer, "S", null, false, 5, uri, -1L, -1L, -1L);
+        new BookmarkFeedUserAlert(alertContext(peer, 5, -1L, -1L, -1L), "S", null, false, uri);
 
     // Act
     alert.onDismiss();
@@ -189,10 +194,10 @@ class BookmarkFeedUserAlertTest {
     // Arrange: first call returns initial name (constructor), second call returns updated name
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice", "Mallory");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@z.txt");
     BookmarkFeedUserAlert alert =
-        new BookmarkFeedUserAlert(peer, "S", null, false, 1, uri, -1L, -1L, -1L);
+        new BookmarkFeedUserAlert(alertContext(peer, 1, -1L, -1L, -1L), "S", null, false, uri);
 
     // Sanity: initial title uses first name
     assertEquals("Alice recommends you a freesite", alert.getTitle());
@@ -210,14 +215,14 @@ class BookmarkFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Frank");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@data.bin");
     String description = "hello"; // 5 bytes in UTF-8
     String name = "Title";
     boolean hasAnActivelink = false;
     BookmarkFeedUserAlert alert =
         new BookmarkFeedUserAlert(
-            peer, name, description, hasAnActivelink, 11, uri, 123L, -1L, 789L);
+            alertContext(peer, 11, 123L, -1L, 789L), name, description, hasAnActivelink, uri);
 
     long updatedTime = alert.getUpdatedTime();
     String expectedTitle = alert.getTitle();
@@ -248,7 +253,8 @@ class BookmarkFeedUserAlertTest {
     assertNull(fs.get("TimeSent"));
     assertEquals(Long.toString(789L), fs.get("TimeReceived"));
 
-    // DataLength is sum of bucket sizes; at least check it's >= text length + description length
+    // DataLength is the sum of bucket sizes; at least check it's >= text length + description
+    // length
     int textLen = alert.getText().getBytes(StandardCharsets.UTF_8).length;
     int dataLen = Integer.parseInt(fs.get("DataLength"));
     assertEquals(textLen + descriptionLen, dataLen);

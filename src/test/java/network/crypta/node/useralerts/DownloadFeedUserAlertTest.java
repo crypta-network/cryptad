@@ -16,7 +16,6 @@ import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.URIFeedMessage;
-import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.DarknetPeerNode;
 import network.crypta.support.HTMLNode;
@@ -29,18 +28,23 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100") // descriptive test method names
 class DownloadFeedUserAlertTest {
 
+  private static NodeToNodeAlertContext alertContext(
+      DarknetPeerNode peer, int fileNumber, long composed, long sent, long received) {
+    return new NodeToNodeAlertContext(peer, fileNumber, composed, sent, received);
+  }
+
   @Test
   void title_text_html_whenDescriptionPresent_expectLocalizedAndStructured()
       throws MalformedURLException {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
 
     FreenetURI uri = new FreenetURI("KSK@readme.txt");
     String description = "Line1\nLine2";
     DownloadFeedUserAlert alert =
-        new DownloadFeedUserAlert(peer, description, 42, uri, 1111L, 2222L, 3333L);
+        new DownloadFeedUserAlert(alertContext(peer, 42, 1111L, 2222L, 3333L), description, uri);
 
     // Act
     String title = alert.getTitle();
@@ -89,10 +93,11 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Bob");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
 
     FreenetURI uri = new FreenetURI("KSK@file.txt");
-    DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, null, 7, uri, 1L, -1L, -1L);
+    DownloadFeedUserAlert alert =
+        new DownloadFeedUserAlert(alertContext(peer, 7, 1L, -1L, -1L), null, uri);
 
     // Act
     String text = alert.getText();
@@ -102,7 +107,7 @@ class DownloadFeedUserAlertTest {
     assertEquals("URI: " + uri + "\n", text);
     assertEquals("div", html.getName());
     var children = html.getChildren();
-    // Only anchor should be present when description is null
+    // Only anchor should be present when the description is null
     assertEquals(1, children.size());
     assertEquals("a", children.getFirst().getName());
   }
@@ -112,14 +117,15 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Carol");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@x.txt");
-    DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, "", 3, uri, -1L, -1L, -1L);
+    DownloadFeedUserAlert alert =
+        new DownloadFeedUserAlert(alertContext(peer, 3, -1L, -1L, -1L), "", uri);
 
     // Act
     HTMLNode html = alert.getHTMLText();
 
-    // Assert: only the anchor element present
+    // Assert: only the anchor element presents
     assertEquals(1, html.getChildren().size());
     assertEquals("a", html.getChildren().getFirst().getName());
   }
@@ -129,11 +135,11 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Dave");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@offer.txt");
     int fileNumber = 99;
     DownloadFeedUserAlert alert =
-        new DownloadFeedUserAlert(peer, "desc", fileNumber, uri, 10L, 20L, 30L);
+        new DownloadFeedUserAlert(alertContext(peer, fileNumber, 10L, 20L, 30L), "desc", uri);
 
     // Act
     alert.onDismiss();
@@ -148,9 +154,10 @@ class DownloadFeedUserAlertTest {
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Eve");
     // The weak reference resolves to null
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(null));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(null));
     FreenetURI uri = new FreenetURI("KSK@abc.txt");
-    DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, null, 5, uri, -1L, -1L, -1L);
+    DownloadFeedUserAlert alert =
+        new DownloadFeedUserAlert(alertContext(peer, 5, -1L, -1L, -1L), null, uri);
 
     // Act
     alert.onDismiss();
@@ -164,9 +171,10 @@ class DownloadFeedUserAlertTest {
     // Arrange: first call returns initial name (constructor), second call returns updated name
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Alice", "Mallory");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@z.txt");
-    DownloadFeedUserAlert alert = new DownloadFeedUserAlert(peer, null, 1, uri, -1L, -1L, -1L);
+    DownloadFeedUserAlert alert =
+        new DownloadFeedUserAlert(alertContext(peer, 1, -1L, -1L, -1L), null, uri);
 
     // Sanity: initial title uses first name
     assertEquals("Alice recommends you a file", alert.getTitle());
@@ -184,11 +192,11 @@ class DownloadFeedUserAlertTest {
     // Arrange
     DarknetPeerNode peer = mock(DarknetPeerNode.class);
     when(peer.getName()).thenReturn("Frank");
-    when(peer.getWeakRef()).thenReturn(new WeakReference<PeerContext>(peer));
+    when(peer.getWeakRef()).thenReturn(new WeakReference<>(peer));
     FreenetURI uri = new FreenetURI("KSK@data.bin");
     String description = "hello"; // 5 bytes in UTF-8
     DownloadFeedUserAlert alert =
-        new DownloadFeedUserAlert(peer, description, 11, uri, 123L, -1L, 789L);
+        new DownloadFeedUserAlert(alertContext(peer, 11, 123L, -1L, 789L), description, uri);
 
     long updatedTime = alert.getUpdatedTime();
     String expectedTitle = alert.getTitle();
@@ -217,7 +225,8 @@ class DownloadFeedUserAlertTest {
     assertNull(fs.get("TimeSent"));
     assertEquals(Long.toString(789L), fs.get("TimeReceived"));
 
-    // DataLength is sum of bucket sizes; at least check it's >= text length + description length
+    // DataLength is the sum of bucket sizes; at least check it's >= text length + description
+    // length
     int textLen = alert.getText().getBytes(StandardCharsets.UTF_8).length;
     int dataLen = Integer.parseInt(fs.get("DataLength"));
     assertEquals(textLen + descriptionLen, dataLen);

@@ -56,44 +56,31 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
   /**
    * Creates a new alert for a Node-to-Node text message with an explicit message identifier.
    *
-   * <p>All timestamps are expressed as milliseconds since the Unix epoch. The {@code fileNumber}
-   * refers to a peer-specific extra data file used for persistence and cleanup on dismissal. The
-   * supplied {@code sourcePeerNode} is stored as a {@link WeakReference} to avoid retaining peers
-   * beyond their lifetime.
+   * <p>All timestamps have been expressed as milliseconds since the Unix epoch. The {@code
+   * fileNumber} refers to a peer-specific extra data file used for persistence and cleanup on
+   * dismissal. The supplied {@code sourcePeerNode} is stored as a {@link WeakReference} to avoid
+   * retaining peers beyond their lifetime.
    *
    * <pre>{@code
    * // Example: construct an alert from an inbound message
-   * var alert = new N2NTMUserAlert(peer, text, fileNo, tComposed, tSent, tReceived, msgId);
+   * var context = new NodeToNodeAlertContext(peer, fileNo, tComposed, tSent, tReceived);
+   * var alert = new N2NTMUserAlert(context, text, msgId);
    * }</pre>
    *
-   * @param sourcePeerNode non-null darknet peer that originated the message; used for display and
-   *     dismissal logic when still reachable
+   * @param alertContext bundled peer, file number, and timing metadata for this alert
    * @param message full message text; may contain newlines that will be preserved in HTML output
-   * @param fileNumber identifier of the extra peer data file to delete on dismissal; non-negative
-   *     values are expected by the caller
-   * @param composedTime time the sender composed the message, in epoch milliseconds; may predate
-   *     network transmission
-   * @param sentTime time the sender sent the message, in epoch milliseconds; used for display only
-   * @param receivedTime local receipt time in epoch milliseconds; also used as {@link
-   *     #getUpdatedTime()} for alert freshness
    * @param msgid opaque message identifier supplied by the sender or transport; negative values
    *     indicate no identifier was provided
    */
-  public N2NTMUserAlert(
-      DarknetPeerNode sourcePeerNode,
-      String message,
-      int fileNumber,
-      long composedTime,
-      long sentTime,
-      long receivedTime,
-      long msgid) {
+  public N2NTMUserAlert(NodeToNodeAlertContext alertContext, String message, long msgid) {
     super(
         true, null, null, UserAlert.MINOR, true, new AbstractUserAlert.DismissOptions(null, true));
+    DarknetPeerNode sourcePeerNode = alertContext.sourcePeerNode();
     this.messageText = message;
-    this.fileNumber = fileNumber;
-    this.composedTime = composedTime;
-    this.sentTime = sentTime;
-    this.receivedTime = receivedTime;
+    this.fileNumber = alertContext.fileNumber();
+    this.composedTime = alertContext.composedTime();
+    this.sentTime = alertContext.sentTime();
+    this.receivedTime = alertContext.receivedTime();
     this.peerRef = sourcePeerNode.getWeakRef();
     this.sourceNodeName = sourcePeerNode.getName();
     this.sourcePeer = sourcePeerNode.getPeer().toString();
@@ -106,25 +93,11 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
    * <p>This constructor is equivalent to the full constructor with {@code msgid} set to {@code -1}.
    * All other parameters have the same meaning and units.
    *
-   * @param sourcePeerNode non-null darknet peer that originated the message; used for display and
-   *     dismissal logic when still reachable
+   * @param alertContext bundled peer, file number, and timing metadata for this alert
    * @param message full message text; may contain newlines that will be preserved in HTML output
-   * @param fileNumber identifier of the extra peer data file to delete on dismissal; non-negative
-   *     values are expected by the caller
-   * @param composedTime time the sender composed the message, in epoch milliseconds; may predate
-   *     network transmission
-   * @param sentTime time the sender sent the message, in epoch milliseconds; used for display only
-   * @param receivedTime local receipt time in epoch milliseconds; also used as {@link
-   *     #getUpdatedTime()} for alert freshness
    */
-  public N2NTMUserAlert(
-      DarknetPeerNode sourcePeerNode,
-      String message,
-      int fileNumber,
-      long composedTime,
-      long sentTime,
-      long receivedTime) {
-    this(sourcePeerNode, message, fileNumber, composedTime, sentTime, receivedTime, -1);
+  public N2NTMUserAlert(NodeToNodeAlertContext alertContext, String message) {
+    this(alertContext, message, -1);
   }
 
   /**
@@ -215,7 +188,7 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
   }
 
   /**
-   * Returns the localized label to use on the dismiss button for this alert.
+   * Returns the localized label to use on the Dismiss button for this alert.
    *
    * @return a short action string such as "delete"; never {@code null}
    */
@@ -232,14 +205,12 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
     return NodeL10n.getBase().getString(L10N_PREFIX + key, patterns, values);
   }
 
-  // No 3-arg l10n helper: the only usage is the fixed pattern in getShortText()
-
   /**
    * Handles alert dismissal by removing the associated extra peer data file when the source peer is
    * still available.
    *
-   * <p>If the peer has already been collected or disconnected, the operation becomes a no-op. No
-   * exceptions are thrown by this method.
+   * <p>If the peer has already been collected or disconnected, the operation becomes a no-op. This
+   * method throws no exceptions.
    */
   @Override
   public void onDismiss() {
@@ -335,7 +306,7 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
   }
 
   /**
-   * Indicates whether the alert remains valid for display, and refreshes cached peer display data
+   * Indicates whether the alert remains valid for display and refreshes cached peer display data
    * when possible.
    *
    * <p>This implementation always returns {@code true}. When the peer reference is still alive, the
