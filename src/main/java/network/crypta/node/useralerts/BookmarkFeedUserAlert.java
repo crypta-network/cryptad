@@ -33,8 +33,8 @@ import network.crypta.support.HTMLNode;
  *
  * <pre>{@code
  * // Example: build and render the alert
- * var alert = new BookmarkFeedUserAlert(peer, name, desc,
- *     true, fileNo, uri, composed, sent, received);
+ * var context = new NodeToNodeAlertContext(peer, fileNo, composed, sent, received);
+ * var alert = new BookmarkFeedUserAlert(context, name, desc, true, uri);
  * HTMLNode view = alert.getHTMLText();
  * BookmarkFeed fcp = alert.getFCPMessage();
  * }</pre>
@@ -65,45 +65,34 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
    * strong ownership; the alert may still render correctly even if the peer object is later
    * collected. Times are expressed as epoch milliseconds as provided by the caller.
    *
-   * @param sourcePeerNode the originating {@link DarknetPeerNode}; held weakly to avoid leaks; may
-   *     be {@code null} by the time the alert is rendered.
+   * @param alertContext bundled peer, file number, and timing metadata for this alert; the peer is
+   *     held weakly to avoid leaks and may be {@code null} by the time the alert is rendered
    * @param name the human-readable bookmark name to display; should be concise and safe for UI
-   *     titles; must not be {@code null}.
+   *     titles; must not be {@code null}
    * @param description optional longer description text; may be {@code null} or empty; newline
-   *     characters are preserved and rendered as line breaks.
+   *     characters are preserved and rendered as line breaks
    * @param hasAnActivelink whether an explicit “add bookmark” action should be presented in the
-   *     HTML rendering; influences the presence of the actionable link parameter.
-   * @param fileNumber per-peer temporary file number to remove when the alert is dismissed; used
-   *     only by {@link #onDismiss()} for cleanup.
+   *     HTML rendering; influences the presence of the actionable link parameter
    * @param uri the {@link FreenetURI} of the bookmark target; must be a valid, fully-formed URI
-   *     string understood by clients.
-   * @param composed timestamp when the message was composed on the sender, in epoch milliseconds;
-   *     informational only.
-   * @param sent timestamp when the message was transmitted by the sender, in epoch milliseconds;
-   *     informational only.
-   * @param received timestamp when the message was received locally, in epoch milliseconds; used by
-   *     display logic to order or age alerts.
+   *     string understood by clients
    */
   public BookmarkFeedUserAlert(
-      DarknetPeerNode sourcePeerNode,
+      NodeToNodeAlertContext alertContext,
       String name,
       String description,
       boolean hasAnActivelink,
-      int fileNumber,
-      FreenetURI uri,
-      long composed,
-      long sent,
-      long received) {
+      FreenetURI uri) {
     super(
         true, null, null, UserAlert.MINOR, true, new AbstractUserAlert.DismissOptions(null, true));
+    DarknetPeerNode sourcePeerNode = alertContext.sourcePeerNode();
     this.name = name;
     this.description = description;
     this.uri = uri;
-    this.fileNumber = fileNumber;
+    this.fileNumber = alertContext.fileNumber();
     this.hasAnActivelink = hasAnActivelink;
-    this.composed = composed;
-    this.sent = sent;
-    this.received = received;
+    this.composed = alertContext.composedTime();
+    this.sent = alertContext.sentTime();
+    this.received = alertContext.receivedTime();
     this.peerRef = sourcePeerNode.getWeakRef();
     this.sourceNodeName = sourcePeerNode.getName();
   }
@@ -129,8 +118,8 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
    * peer’s display name, the bookmark URI, and the optional description when provided. Newlines in
    * the description are preserved to keep author-intended formatting. This output is
    * audience-focused and primarily intended for display; consumers that need structured data should
-   * prefer {@link #getFCPMessage()} instead of parsing this text. The method does not alter object
-   * state and can be called multiple times without side effects.
+   * prefer {@link #getFCPMessage()} instead of parsing this text. The method does not alter the
+   * object state and can be called multiple times without side effects.
    *
    * @return a human-readable, plain-text body with stable keys and values; never {@code null},
    *     though the description section may be omitted when empty.
@@ -205,7 +194,7 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
    * item that removes the alert from view and is kept short to fit compact controls. The label is
    * resolved via the alert’s localization keys to match the rest of the UI.
    *
-   * @return a localized, single-word or short-phrase label for the dismiss button; never {@code
+   * @return a localized, single-word or short-phrase label for the Dismiss button; never {@code
    *     null}.
    */
   @Override
@@ -223,9 +212,9 @@ public class BookmarkFeedUserAlert extends AbstractUserAlert implements NodeToNo
   }
 
   /**
-   * Performs cleanup when the alert is dismissed by the user. If the originating peer is still
-   * available, the method requests removal of the associated temporary peer data file identified by
-   * {@code fileNumber}. If the peer is gone, the method silently does nothing.
+   * Performs cleanup when the user dismisses the alert. If the originating peer is still available,
+   * the method requests removal of the associated temporary peer data file identified by {@code
+   * fileNumber}. If the peer is gone, the method silently does nothing.
    */
   @Override
   public void onDismiss() {

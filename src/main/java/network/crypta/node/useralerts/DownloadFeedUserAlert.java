@@ -57,36 +57,22 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
    * {@code fileNumber} identifies peer-scoped temporary metadata that can be deleted on dismissal.
    * Time fields are forwarded as-is to clients; this class does not interpret their units.
    *
-   * @param sourcePeerNode the originating darknet peer; referenced weakly and queried for a name;
-   *     must not be {@code null} when constructing the alert
+   * @param alertContext bundled peer, file number, and timing metadata for this alert
    * @param description optional human-readable description; may be {@code null} or empty;
    *     multi-line values are split on {@code \n} when rendered as HTML
-   * @param fileNumber peer-local identifier for auxiliary data associated with this alert; used
-   *     during {@link #onDismiss()} to request cleanup
    * @param uri the target content address to present to the user; must not be {@code null}; the
    *     instance is not modified
-   * @param composed timestamp provided by the sender for when the entry was composed; opaque to
-   *     this class and preserved verbatim
-   * @param sent timestamp provided by the sender for when the entry was sent; opaque to this class
-   *     and preserved verbatim
-   * @param received timestamp for when the local node received the entry; opaque and preserved
-   *     verbatim
    */
   public DownloadFeedUserAlert(
-      DarknetPeerNode sourcePeerNode,
-      String description,
-      int fileNumber,
-      FreenetURI uri,
-      long composed,
-      long sent,
-      long received) {
+      NodeToNodeAlertContext alertContext, String description, FreenetURI uri) {
     super(true, null, null, UserAlert.MINOR, true, new DismissOptions(null, true));
+    DarknetPeerNode sourcePeerNode = alertContext.sourcePeerNode();
     this.description = description;
     this.uri = uri;
-    this.fileNumber = fileNumber;
-    this.composed = composed;
-    this.sent = sent;
-    this.received = received;
+    this.fileNumber = alertContext.fileNumber();
+    this.composed = alertContext.composedTime();
+    this.sent = alertContext.sentTime();
+    this.received = alertContext.receivedTime();
     this.peerRef = sourcePeerNode.getWeakRef();
     this.sourceNodeName = sourcePeerNode.getName();
   }

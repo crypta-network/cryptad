@@ -43,6 +43,7 @@ import network.crypta.node.useralerts.AbstractNodeToNodeFileOfferUserAlert;
 import network.crypta.node.useralerts.BookmarkFeedUserAlert;
 import network.crypta.node.useralerts.DownloadFeedUserAlert;
 import network.crypta.node.useralerts.N2NTMUserAlert;
+import network.crypta.node.useralerts.NodeToNodeAlertContext;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.Base64;
 import network.crypta.support.HTMLNode;
@@ -68,7 +69,10 @@ import org.slf4j.LoggerFactory;
  * flows. Methods that modify persisted peer metadata notify {@link PeerManager} so the on-disk
  * peers list remains consistent.
  */
-@SuppressWarnings("java:S2160") // hashCode() is inherited; equals() restricts to subclass type
+@SuppressWarnings({
+  "java:S2160",
+  "java:S1206"
+}) // hashCode() is inherited; equals() restricts to subclass type
 public class DarknetPeerNode extends PeerNode {
   private static final Logger LOG = LoggerFactory.getLogger(DarknetPeerNode.class);
 
@@ -96,7 +100,7 @@ public class DarknetPeerNode extends PeerNode {
   // Sonar: de-duplicate repeated HTML literals
   private static final String HTML_TAG_INPUT = "input";
   private static final String HTML_ATTR_VALUE = "value";
-  // Sonar: de-duplicate repeated SimpleFieldSet keys
+  // Sonar: deduplicate repeated SimpleFieldSet keys
   private static final String FS_KEY_COMPOSED_TIME = "composedTime";
   private static final String FS_KEY_DESCRIPTION = "Description";
   private static final String ERR_BAD_BASE64_N2NTM =
@@ -217,7 +221,7 @@ public class DarknetPeerNode extends PeerNode {
     }
 
     /**
-     * Resolves a visibility by its stable serialized code.
+     * Resolves visibility by its stable serialized code.
      *
      * @param code stable on-the-wire code.
      * @return the matching visibility, or {@code null} if unknown.
@@ -538,7 +542,7 @@ public class DarknetPeerNode extends PeerNode {
    * Sets burst-only mode.
    *
    * <p>When enabled, handshakes are attempted in occasional bursts. Enabling burst-only clears
-   * listen-only. Disabling resets any long handshake delay accrued under burst-only.
+   * listen-only. Disabling resets any long handshake delay grew under burst-only.
    *
    * @param setting {@code true} to enable, {@code false} to disable.
    */
@@ -678,7 +682,7 @@ public class DarknetPeerNode extends PeerNode {
   }
 
   /**
-   * Re-reads a single extra peer data file from disk and re-applies its effect.
+   * Re-reads a single extra peer data file from the disk and re-applies its effect.
    *
    * @param fileNumber file identifier within the peer's extra-data directory.
    * @return {@code true} on success; {@code false} if the file was missing or invalid.
@@ -1185,7 +1189,7 @@ public class DarknetPeerNode extends PeerNode {
   // Note: Consider refactoring so file transfers can be initiated outside of fproxy.
   // Note: Future enhancement: allow interaction with plugins on other nodes.
   // Note: Types exist already; wider support is currently not implemented.
-  // See also e.g. fcp/SendTextMessage.
+  // See also e.g., fcp/SendTextMessage.
   /**
    * Represents a single file offer exchanged over node-to-node messaging.
    *
@@ -1231,7 +1235,7 @@ public class DarknetPeerNode extends PeerNode {
      *
      * @param fs serialized offer fields.
      * @param amIOffering whether this side originated the offer.
-     * @throws FSParseException if required fields are missing or invalid.
+     * @throws FSParseException if required, fields are missing or invalid.
      */
     public FileOffer(SimpleFieldSet fs, boolean amIOffering) throws FSParseException {
       uid = fs.getLong("uid");
@@ -1262,7 +1266,7 @@ public class DarknetPeerNode extends PeerNode {
       fs.put("size", size);
     }
 
-    /** Accepts the offer and starts receiving the file to the downloads directory. */
+    /** Accepts the offer and starts receiving the file to the downloads' directory. */
     @SuppressWarnings("java:S1181")
     public void accept() {
       acceptedOrRejected = true;
@@ -1563,7 +1567,7 @@ public class DarknetPeerNode extends PeerNode {
 
         @Override
         public String dismissButtonText() {
-          return null; // Cannot hide, but can reject
+          return null; // Cannot hide but can reject
         }
 
         @Override
@@ -1577,7 +1581,7 @@ public class DarknetPeerNode extends PeerNode {
 
           // Accept/reject form
 
-          // Hopefully we will have a container when this function is called!
+          // Hopefully, we will have a container when this function is called!
           HTMLNode form =
               node.services()
                   .clientCore()
@@ -1791,7 +1795,7 @@ public class DarknetPeerNode extends PeerNode {
    */
   public int sendTextFeed(String message) {
     long now = System.currentTimeMillis();
-    // Avoid Math.abs on nextLong(): Long.MIN_VALUE overflows; use original value.
+    // Avoid Math.abs on nextLong(): Long.MIN_VALUE overflows; use the original value.
     long msgid = random.nextLong();
     // split large messages
     int requiredN2nCount = 1 + ((message.length() - 1) / 1024);
@@ -1884,6 +1888,7 @@ public class DarknetPeerNode extends PeerNode {
    * @return updated peer status code after the message is queued.
    * @throws IOException if the file cannot be read.
    */
+  @SuppressWarnings("UnusedReturnValue")
   public int sendFileOffer(File file, String message) throws IOException {
     String fnam = file.getName();
     String mime = DefaultMIMETypes.guessMIMEType(fnam, false);
@@ -1899,6 +1904,7 @@ public class DarknetPeerNode extends PeerNode {
    * @return updated peer status code after the message is queued.
    * @throws IOException if the upload buffer cannot be read.
    */
+  @SuppressWarnings("UnusedReturnValue")
   public int sendFileOffer(HTTPUploadedFile file, String message) throws IOException {
     String fnam = file.getFilename();
     String mime = file.getContentType();
@@ -1941,7 +1947,7 @@ public class DarknetPeerNode extends PeerNode {
   private String mergeExistingN2NTMAlerts(
       long msgid, long composedTime, String currentText, List<UserAlert> merged) {
     String newText = currentText;
-    // NOTE: Merge is linear time over existing alerts; keep alert list bounded upstream.
+    // NOTE: Merge is linear time over existing alerts; keep an alert list bounded upstream.
     synchronized (node.services().clientCore().getAlerts()) {
       for (UserAlert userAlert : node.services().clientCore().getAlerts().getAlerts()) {
         if (!(userAlert instanceof N2NTMUserAlert alert) || msgid != alert.getMsgid()) {
@@ -2012,9 +2018,9 @@ public class DarknetPeerNode extends PeerNode {
       long receivedTime,
       long msgid,
       List<UserAlert> merged) {
-    N2NTMUserAlert userAlert =
-        new N2NTMUserAlert(
-            this, newText, newFileNumber, composedTime, sentTime, receivedTime, msgid);
+    NodeToNodeAlertContext alertContext =
+        new NodeToNodeAlertContext(this, newFileNumber, composedTime, sentTime, receivedTime);
+    N2NTMUserAlert userAlert = new N2NTMUserAlert(alertContext, newText, msgid);
     node.services().clientCore().getAlerts().register(userAlert);
     for (UserAlert alert : merged) {
       node.services().clientCore().getAlerts().dismissAlert(alert.hashCode());
@@ -2141,17 +2147,10 @@ public class DarknetPeerNode extends PeerNode {
       LOG.error(ERR_BAD_BASE64_N2NTM, e);
       return;
     }
+    NodeToNodeAlertContext alertContext =
+        new NodeToNodeAlertContext(this, fileNumber, composedTime, sentTime, receivedTime);
     BookmarkFeedUserAlert userAlert =
-        new BookmarkFeedUserAlert(
-            this,
-            name,
-            description,
-            hasAnActiveLink,
-            fileNumber,
-            uri,
-            composedTime,
-            sentTime,
-            receivedTime);
+        new BookmarkFeedUserAlert(alertContext, name, description, hasAnActiveLink, uri);
     node.services().clientCore().getAlerts().register(userAlert);
   }
 
@@ -2172,9 +2171,9 @@ public class DarknetPeerNode extends PeerNode {
       LOG.error(ERR_BAD_BASE64_N2NTM, e);
       return;
     }
-    DownloadFeedUserAlert userAlert =
-        new DownloadFeedUserAlert(
-            this, description, fileNumber, uri, composedTime, sentTime, receivedTime);
+    NodeToNodeAlertContext alertContext =
+        new NodeToNodeAlertContext(this, fileNumber, composedTime, sentTime, receivedTime);
+    DownloadFeedUserAlert userAlert = new DownloadFeedUserAlert(alertContext, description, uri);
     node.services().clientCore().getAlerts().register(userAlert);
   }
 
@@ -2238,7 +2237,7 @@ public class DarknetPeerNode extends PeerNode {
 
   /**
    * Darknet nodes *do* export the peer added time. However, it gets cleared on connecting: It is
-   * only kept for never-connected peers so we can see that we haven't had a connection in a long
+   * only kept for never-connected peers, so we can see that we haven't had a connection in a long
    * time and offer to get rid of them.
    */
   @Override
@@ -2283,7 +2282,7 @@ public class DarknetPeerNode extends PeerNode {
   }
 
   /**
-   * Returns whether to route according to the peer's location for a given HTL.
+   * Returns whether to route, according to the peer's location for a given HTL.
    *
    * @param htl hop-to-live value.
    * @return {@code true} unless globally disabled or trust is {@link FRIEND_TRUST#LOW}.
