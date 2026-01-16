@@ -136,27 +136,21 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    */
   public abstract String artifactName();
 
-  NodeUpdater(
-      NodeUpdateManager manager,
-      FreenetURI updateUri,
-      int current,
-      int min,
-      int max,
-      String blobFilenamePrefix) {
+  NodeUpdater(NodeUpdaterParams params) {
     // Debug gating derives from LOG.isDebugEnabled() where needed
-    this.manager = manager;
+    this.manager = params.manager();
     this.node = manager.getNode();
-    this.uri = updateUri.setSuggestedEdition(((long) Version.currentBuildNumber()) + 1);
+    this.uri = params.updateUri().setSuggestedEdition(((long) Version.currentBuildNumber()) + 1);
     this.ticker = node.network().ticker();
     this.core = node.services().clientCore();
-    this.currentVersion = current;
+    this.currentVersion = params.current();
     this.availableVersion = -1;
     this.isRunning = true;
     this.cg = null;
     this.isFetching = false;
-    this.blobFilenamePrefix = blobFilenamePrefix;
-    this.maxDeployVersion = max;
-    this.minDeployVersion = min;
+    this.blobFilenamePrefix = params.blobFilenamePrefix();
+    this.maxDeployVersion = params.max();
+    this.minDeployVersion = params.min();
 
     FetchContext tempContext = core.makeClient((short) 0, true, false).getFetchContext();
     tempContext.setAllowSplitfiles(true);
@@ -231,7 +225,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   /**
    * Hook invoked just before a new fetch is scheduled and started.
    *
-   * <p>Implementations can use this callback to update UI, reset flags, or perform lightweight
+   * <p>Implementations can use this callback to update the UI, reset flags, or perform lightweight
    * bookkeeping. The method must be fast and non‑blocking; heavy work should run after fetch
    * completion.
    */
@@ -242,7 +236,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    *
    * <p>The method skips when already fetching the same edition or when the edition is not newer. It
    * may cancel a stale fetch, prepare a new {@link ClientGetter}, and start it through the client
-   * context. Repeated calls are safe; a new request starts only when state warrants.
+   * context. Repeated calls are safe; a new request starts only when the state warrants.
    */
   public void maybeUpdate() {
     ClientGetter toStart = null;
@@ -549,8 +543,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   /**
    * Wraps an {@link InputStream} and limits the total number of bytes that can be read. Once the
-   * limit is reached, subsequent reads return {@code -1} (EOF). This protects callers against zip
-   * bombs and other excessive input sizes when reading untrusted data.
+   * limit is reached, later reads return {@code -1} (EOF). This protects callers against zip bombs
+   * and other excessive input sizes when reading untrusted data.
    */
   private static final class BoundedInputStream extends java.io.FilterInputStream {
     private long remaining;
@@ -660,7 +654,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * Interprets a single manifest line parsed by {@link #parseManifest()} or {@link
    * #parseManifest(FetchResult)}.
    *
-   * <p>The base implementation is a no‑op. Subclasses override to capture values relevant to their
+   * <p>The base implementation is no‑op. Subclasses override to capture values relevant to their
    * compatibility or deployment logic. The {@code line} does not include a trailing newline.
    *
    * @param line a single raw manifest line to interpret; never {@code null}
@@ -737,7 +731,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   /**
-   * Called when the fetch URI has changed. No major locks are held by the caller.
+   * Called when the fetch URI has changed. The caller holds no major locks.
    *
    * @param newUri the new update key; its doc name is preserved when the argument omits one
    */
@@ -788,7 +782,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @return an edition number used for progress reporting; never less than the current version
    */
   public int fetchingVersion() {
-    // We will not deploy currentVersion...
+    // We will not deploy the currentVersion...
     if (fetchingVersion <= currentVersion) return availableVersion;
     else return fetchingVersion;
   }
@@ -862,7 +856,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
               realAvailableVersion);
           callFinishedFound = availableVersion = realAvailableVersion;
         } else if (availableVersion < requiredExt) {
-          // Including if it hasn't been found at all
+          // Including if it hasn't been found at all,
           // Just try it ...
           callFinishedFound = availableVersion = requiredExt;
           LOG.info(

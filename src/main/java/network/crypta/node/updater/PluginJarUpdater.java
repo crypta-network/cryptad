@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import network.crypta.client.FetchResult;
 import network.crypta.clients.http.PproxyToadlet;
-import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
 import network.crypta.node.Version;
@@ -87,7 +86,7 @@ public class PluginJarUpdater extends NodeUpdater {
     }
     LOG.info("Deploying new version of {} : unloading old version...", pluginName);
     // Write the new version of the plugin before shutting down, so if there is a deadlock in
-    // terminate, we will still get the new version after a restart.
+    // terminating, we will still get the new version after a restart.
     try {
       writeJar();
     } catch (IOException e) {
@@ -107,16 +106,8 @@ public class PluginJarUpdater extends NodeUpdater {
   }
 
   PluginJarUpdater(
-      NodeUpdateManager manager,
-      FreenetURI updateUri,
-      int current,
-      int min,
-      int max,
-      String blobFilenamePrefix,
-      String pluginName,
-      PluginManager pm,
-      boolean autoDeployOnRestart) {
-    super(manager, updateUri, current, min, max, blobFilenamePrefix);
+      NodeUpdaterParams params, String pluginName, PluginManager pm, boolean autoDeployOnRestart) {
+    super(params);
     this.pluginName = pluginName;
     this.pluginManager = pm;
     if (LOG.isDebugEnabled()) {
@@ -162,7 +153,7 @@ public class PluginJarUpdater extends NodeUpdater {
     if (result != null && result.size() > 0) {
       parseManifest(result);
     } else {
-      // Fallback to the finalized blob if result is unexpectedly empty.
+      // Fallback to the finalized blob if the result is unexpectedly empty.
       parseManifest();
     }
     if (requiredNodeVersion != -1) {
@@ -247,7 +238,7 @@ public class PluginJarUpdater extends NodeUpdater {
       deleteTempBlobQuietly();
       return;
     }
-    // Create an useralert to ask the user to deploy the new version.
+    // Create a useralert to ask the user to deploy the new version.
     UserAlert toRegister;
     synchronized (this) {
       readyToDeploy = true;
@@ -337,10 +328,10 @@ public class PluginJarUpdater extends NodeUpdater {
    * Write the fetched plugin artifact to the destination JAR file.
    *
    * <p>The method performs a best-effort deletion of any existing file, then copies the content of
-   * {@code result} to {@code fNew}. The write is serialized using an internal monitor and followed
-   * by {@code FileDescriptor#sync()} to reduce the chance of partial updates after a crash or power
-   * loss. The method does not alter plugin state; callers typically invoke it immediately before
-   * unloading and restarting the plugin.
+   * {@code result} to {@code fNew}. The writing is serialized using an internal monitor and
+   * followed by {@code FileDescriptor#sync()} to reduce the chance of partial updates after a crash
+   * or power loss. The method does not alter the plugin state; callers typically invoke it
+   * immediately before unloading and restarting the plugin.
    *
    * @param result the successful fetch result supplying the new plugin bytes; must not be {@code
    *     null} and should remain valid for the duration of the copy operation
@@ -394,8 +385,8 @@ public class PluginJarUpdater extends NodeUpdater {
    *
    * <p>When the plugin was already running, deployment is deferred by one additional successful
    * revocation check to minimize churn in busy systems. Otherwise, it is scheduled for the very
-   * next successful check. This call only sets intent; the actual write and restart occur later in
-   * {@link #onNoRevocation()} when the gate condition is met.
+   * next successful check. This call only sets intent; the actual writing and restart occur later
+   * in {@link #onNoRevocation()} when the gate condition is met.
    *
    * @param wasRunning {@code true} when the plugin was running at arm time, in which case the
    *     update deploys after the next but one revocation check; {@code false} schedules deployment

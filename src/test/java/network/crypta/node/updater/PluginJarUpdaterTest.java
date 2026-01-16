@@ -112,16 +112,16 @@ class PluginJarUpdaterTest {
     doNothing().when(alerts).register(any(UserAlert.class));
     doNothing().when(alerts).unregister(any(UserAlert.class));
 
+    NodeUpdaterParams params =
+        new NodeUpdaterParams(
+            manager,
+            dummyUSK(),
+            /* current= */ 1,
+            /* min= */ 1,
+            /* max= */ 999999,
+            /* blobFilenamePrefix= */ "plugin-");
     return new PluginJarUpdater(
-        manager,
-        dummyUSK(),
-        /* current= */ 1,
-        /* min= */ 1,
-        /* max= */ 999999,
-        /* blobFilenamePrefix= */ "plugin-",
-        pluginName,
-        pluginManager,
-        /* autoDeployOnRestart= */ false);
+        params, pluginName, pluginManager, /* autoDeployOnRestart= */ false);
   }
 
   private static FetchContext makeFetchContext() {
@@ -148,16 +148,16 @@ class PluginJarUpdaterTest {
     byte[] jar = makeJarWithManifest(Integer.toString(tooHigh));
     FetchResult result = fetchResultFromBytes(jar);
 
-    // Simulate temp file created by fetcher
+    // Simulate the temp file created by fetcher
     File temp = Files.createTempFile(tmp, "plugin-", ".fblob.tmp").toFile();
     Files.write(temp.toPath(), new byte[] {1, 2, 3});
-    // Match NodeUpdater's protected field for delete path in PluginJarUpdater
+    // Match NodeUpdater's protected field for the delete path in PluginJarUpdater
     updater.tempBlobFile = temp;
 
     // Use a fetchedVersion newer than current so onSuccess proceeds
     updater.onSuccess(result, temp, /* fetchedVersion= */ Version.currentBuildNumber() + 1);
 
-    // Not ready to deploy as requirement is too high
+    // Not ready to deploy as the requirement is too high
     boolean shouldRestart = updater.onNoRevocation();
     assertFalse(shouldRestart, "Should not request restart when not ready");
 
@@ -178,7 +178,7 @@ class PluginJarUpdaterTest {
     byte[] jar = makeJarWithManifest(Integer.toString(requiredOk));
     FetchResult result = fetchResultFromBytes(jar);
 
-    // Simulate temp file created by fetcher
+    // Simulate the temp file created by fetcher
     File temp = Files.createTempFile(tmp, "plugin-", ".fblob.tmp").toFile();
     Files.write(temp.toPath(), new byte[] {9});
     updater.tempBlobFile = temp;
@@ -193,7 +193,7 @@ class PluginJarUpdaterTest {
     File dest = tmp.resolve(pluginName + ".jar").toFile();
     when(pluginManager.getPluginFilename(pluginName)).thenReturn(dest);
 
-    // Run success path
+    // Run a success path
     int fetched = Version.currentBuildNumber() + 1;
     updater.onSuccess(result, temp, fetched);
 
@@ -233,7 +233,7 @@ class PluginJarUpdaterTest {
     Files.write(temp.toPath(), new byte[] {7});
     updater.tempBlobFile = temp;
 
-    // Loaded plugin with older version
+    // Loaded plugin with the older version
     PluginInfoWrapper loaded = org.mockito.Mockito.mock(PluginInfoWrapper.class);
     when(loaded.getPluginLongVersion()).thenReturn(0L);
     when(pluginManager.findPluginByIdentifier(pluginName)).thenReturn(loaded);

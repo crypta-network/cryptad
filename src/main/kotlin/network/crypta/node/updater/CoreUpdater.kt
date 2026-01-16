@@ -29,28 +29,17 @@ import org.slf4j.LoggerFactory
  * - Fetch the latest “core info” descriptor (JSON) and parse it.
  * - Detect the current OS/arch and available package managers.
  * - Choose a suitable artifact (e.g., amd64.deb → Flatpak/Snap preferred when present).
- * - On request (or when auto‑update is allowed), fetch the artifact’s CHK to the updates directory.
+ * - On request (or when auto‑update is allowed), fetch the artifact’s CHK to the updates'
+ *   directory.
  * - Render small UI controls on the Alerts page: Download/Install/Open in Store.
  *
  * Thread‑safety: public getters and UI state rely on `@Volatile` fields; long‑running work runs
  * through the client fetcher and event callbacks.
  *
- * @param manager owning [NodeUpdateManager] orchestrating update lifecycles.
- * @param uri USK used to fetch manifest editions.
- * @param current current edition at construction time.
- * @param min minimum edition bound for subscriptions.
- * @param max maximum edition bound for subscriptions.
- * @param blobFilenamePrefix prefix applied to manifest blobs written by the base class.
+ * @param params shared updater parameters (manager, URI, edition bounds, blob prefix).
  */
-class CoreUpdater(
-  manager: NodeUpdateManager,
-  uri: FreenetURI,
-  current: Int,
-  min: Int,
-  max: Int,
-  blobFilenamePrefix: String,
-) : NodeUpdater(manager, uri, current, min, max, blobFilenamePrefix) {
-  private val LOG = LoggerFactory.getLogger(CoreUpdater::class.java)
+class CoreUpdater(params: NodeUpdaterParams) : NodeUpdater(params) {
+  private val log = LoggerFactory.getLogger(CoreUpdater::class.java)
 
   /** Internal constants used for logging and filesystem defaults. */
   private companion object {
@@ -64,7 +53,7 @@ class CoreUpdater(
   /** Shared environment detector reused across lifecycle callbacks. */
   private val appEnv = AppEnv()
 
-  /** Latest descriptor fetched from the update USK, if available. */
+  /** The latest descriptor fetched from the update USK, if available. */
   @Volatile private var latestInfo: CoreInfo? = null
 
   /** Currently selected package key in the form `<arch>.<ext>` or null when undecided. */
@@ -85,13 +74,16 @@ class CoreUpdater(
 
   /** Emit a minor-level log message scoped to this updater. */
   private fun logInfo(message: String) {
-    LOG.info("$LOG_TAG $message")
+    log.info("$LOG_TAG $message")
   }
 
   /** Emit an error-level log message, optionally including a throwable. */
   private fun logError(message: String, throwable: Throwable? = null) {
-    if (throwable != null) LOG.error("$LOG_TAG $message", throwable)
-    else LOG.error("$LOG_TAG $message")
+    if (throwable != null) {
+      log.error("$LOG_TAG $message", throwable)
+    } else {
+      log.error("$LOG_TAG $message")
+    }
   }
 
   /**
@@ -109,14 +101,14 @@ class CoreUpdater(
   /**
    * Updates internal selection state when the manifest download completes.
    *
-   * @param result fetch result containing the manifest payload.
+   * @param result the fetch result containing the manifest payload.
    * @param build last known build number from the subscription (unused).
    */
   override fun maybeParseManifest(result: FetchResult, build: Int) {
     // Parse JSON (treat fetched blob as UTF-8 text)
     val info = parseInfo(result)
     latestInfo = info
-    // Detect environment and select an artifact to propose
+    // Detect the environment and select an artifact to propose
     val e = appEnv.detectEnvironment()
     env = e
     selectArtifact(info, e)
@@ -143,7 +135,7 @@ class CoreUpdater(
 
   /** No-op because all manifest information is retained in-memory. */
   override fun processSuccess(fetched: Int, result: FetchResult, blobFile: File?) {
-    // Nothing to persist from info JSON beyond in-memory state.
+    // Nothing to persist from info JSON beyond the in-memory state.
   }
 
   /** Short changelog CHK referenced by the descriptor, if available. */
@@ -220,7 +212,10 @@ class CoreUpdater(
     val preferred = mutableListOf<String>()
     val fallback = listOf("rpm", "deb", "flatpak", "snap")
     when (runCatching { appEnv.isFlatpak() }.getOrNull()) {
-      true -> preferred += "flatpak"
+      true -> {
+        preferred += "flatpak"
+      }
+
       else -> {
         if ("rpm" in managers) preferred += "rpm"
         if ("dpkg" in managers) preferred += "deb"
@@ -374,7 +369,7 @@ class CoreUpdater(
       links.addChild("a", "href", ExternalLinkToadlet.escape(info.releasePageUrl), "Release Notes")
       links.addChild("#", "  ")
     }
-    // Wire "Open in Store" as a POST form for Linux Flatpak/Snap; otherwise keep external link
+    // Wire "Open in Store" as a POST form for Linux Flatpak/Snap; otherwise keep an external link
     val storeUrl = spec?.storeUrl
     val ext = chosenKey?.substringAfterLast('.')?.lowercase()
     val isLinux =
@@ -415,16 +410,20 @@ class CoreUpdater(
       val segs = path.split('/')
       val last = segs.lastOrNull { it.isNotEmpty() } ?: return null
       when (kind.lowercase()) {
-        "snap" -> last // snapcraft.io/<name>
-        "flatpak" -> last // flathub.org/apps/<appId> (we also handle /apps/details/<appId>)
+        "snap" -> last
+
+        // snapcraft.io/<name>
+        "flatpak" -> last
+
+        // flathub.org/apps/<appId> (we also handle /apps/details/<appId>)
         else -> null
       }
     } catch (_: Throwable) {
       null
     }
 
-  /** Provides the node form password required by POST submissions. */
-  private fun formPassword(): String = manager.getNode().services().clientCore().getFormPassword()
+  /** Provides the node form the password required by POST submissions. */
+  private fun formPassword(): String = manager.getNode().services().clientCore().formPassword
 
   /** Creates a basic POST form addressed to [CORE_UPDATE_PATH]. */
   private fun newPostForm(): HTMLNode =
@@ -435,7 +434,7 @@ class CoreUpdater(
     addChild("input", arrayOf("type", "name", "value"), arrayOf("hidden", name, value))
   }
 
-  /** Adds a submit button input to the receiver with optional metadata. */
+  /** Adds a Submit button input to the receiver with optional metadata. */
   private fun HTMLNode.submitButton(
     value: String,
     name: String? = null,
@@ -474,8 +473,11 @@ class CoreUpdater(
   /** Calculates the label for download buttons, including optional size hints. */
   private fun defaultDownloadLabel(): String {
     val bytes = selectedSpec?.size
-    return if (bytes != null && bytes > 0) "Download (${SizeUtil.formatSize(bytes, true)})"
-    else "Download"
+    return if (bytes != null && bytes > 0) {
+      "Download (${SizeUtil.formatSize(bytes, true)})"
+    } else {
+      "Download"
+    }
   }
 
   /** Generates a progress paragraph summarizing current download status. */
@@ -486,14 +488,14 @@ class CoreUpdater(
       val text =
         when {
           f.isSuccess() -> "Download Completed"
-          pct >= 0 && blocks != null -> "Downloading: ${pct}% (${blocks.first}/${blocks.second})"
-          pct >= 0 -> "Downloading: ${pct}%"
+          pct >= 0 && blocks != null -> "Downloading: $pct% (${blocks.first}/${blocks.second})"
+          pct >= 0 -> "Downloading: $pct%"
           else -> "Downloading…"
         }
       addChild("#", text)
     }
 
-  /** Creates the Install button form, disabling it until the payload is available. */
+  /** Creates the Installation button form, disabling it until the payload is available. */
   private fun buildInstallForm(ready: Boolean, path: String?): HTMLNode =
     newPostForm().apply {
       hiddenInput("action", "install")
@@ -532,7 +534,7 @@ class CoreUpdater(
     /** Latest human-readable error message, if any. */
     @Volatile private var errorMsg: String? = null
 
-    /** Tracks whether the last failure was fatal according to the client API. */
+    /** Tracks whether the last failure was fatal, according to the client API. */
     @Volatile private var fatal: Boolean = false
 
     /** Begins the asynchronous fetch and registers this fetcher as an event listener. */
@@ -552,7 +554,7 @@ class CoreUpdater(
         )
       ctx.eventProducer.addEventListener(this)
       try {
-        manager.getNode().services().clientCore().getClientContext().start(getter)
+        manager.getNode().services().clientCore().clientContext.start(getter)
         this@CoreUpdater.logInfo(
           "download started (listener attached): target=${outFile.absolutePath}"
         )
@@ -588,7 +590,7 @@ class CoreUpdater(
     fun blockProgressOrNull(): Pair<Int, Int>? =
       if (lastNeed > 0 && lastDone >= 0) Pair(lastDone, lastNeed) else null
 
-    /** True only when the transfer completed successfully. */
+    /** True, only when the transfer completed successfully. */
     fun isSuccess(): Boolean = complete && !failed && successFile != null
 
     /** True when the transfer finished with an error. */
@@ -597,7 +599,7 @@ class CoreUpdater(
     /** Short error message when failed, if any. */
     fun errorMessage(): String? = errorMsg
 
-    /** True if the last failure was fatal according to FetchException.isFatal(). */
+    /** True if the last failure was fatal, according to FetchException.isFatal(). */
     fun isFatalFailure(): Boolean = failed && fatal
 
     /** Whether this fetcher corresponds to the supplied CHK string. */
@@ -659,7 +661,7 @@ class CoreUpdater(
             lastPct = pctNow
             lastDone = done
             lastNeed = need
-            this@CoreUpdater.logInfo("progress: ${pctNow}% ($done/$need, total=${ce.totalBlocks})")
+            this@CoreUpdater.logInfo("progress: $pctNow% ($done/$need, total=${ce.totalBlocks})")
           }
         }
       } catch (_: Throwable) {
@@ -691,7 +693,7 @@ internal object CoreJson {
   /** Parses raw JSON text into a [CoreInfo] structure. */
   fun parse(json: String): CoreInfo {
     // Very small, permissive parser: only handles strings, numbers, booleans, null, and nested
-    // objects with string keys. Arrays are not used by the schema.
+    // objects with string keys. The schema does not use arrays.
     val map = JsonMini.parseObject(json)
     val version = map["version"] as? String
     val release = map["release_page_url"] as? String
@@ -775,24 +777,41 @@ internal object JsonMini {
   private fun parseValue(p: P): Any? {
     skipWs(p)
     return when (val ch = peek(p)) {
-      '"' -> parseString(p)
-      '{' -> parseObjectInPlace(p)
-      '[' -> parseArrayInPlace(p)
+      '"' -> {
+        parseString(p)
+      }
+
+      '{' -> {
+        parseObjectInPlace(p)
+      }
+
+      '[' -> {
+        parseArrayInPlace(p)
+      }
+
       't' -> {
         expectWord(p, "true")
         true
       }
+
       'f' -> {
         expectWord(p, "false")
         false
       }
+
       'n' -> {
         expectWord(p, "null")
         null
       }
+
       '-',
-      in '0'..'9' -> parseNumber(p)
-      else -> error("Unexpected char '$ch' at ${p.i}")
+      in '0'..'9' -> {
+        parseNumber(p)
+      }
+
+      else -> {
+        error("Unexpected char '$ch' at ${p.i}")
+      }
     }
   }
 
@@ -816,29 +835,62 @@ internal object JsonMini {
     val sb = StringBuilder()
     while (true) {
       when (val ch = next(p)) {
-        '"' -> return sb.toString()
+        '"' -> {
+          return sb.toString()
+        }
+
         '\\' -> {
           val e = next(p)
           sb.append(
             when (e) {
-              '"' -> '"'
-              '\\' -> '\\'
-              '/' -> '/'
-              'b' -> '\b'
-              'f' -> '\u000C'
-              'n' -> '\n'
-              'r' -> '\r'
-              't' -> '\t'
+              '"' -> {
+                '"'
+              }
+
+              '\\' -> {
+                '\\'
+              }
+
+              '/' -> {
+                '/'
+              }
+
+              'b' -> {
+                '\b'
+              }
+
+              'f' -> {
+                '\u000C'
+              }
+
+              'n' -> {
+                '\n'
+              }
+
+              'r' -> {
+                '\r'
+              }
+
+              't' -> {
+                '\t'
+              }
+
               'u' -> {
                 val hex = p.s.substring(p.i, p.i + 4)
                 p.i += 4
                 hex.toInt(16).toChar()
               }
-              else -> error("Bad escape \\$e at ${p.i}")
+
+              else -> {
+                error("Bad escape \\$e at ${p.i}")
+              }
             }
           )
         }
-        else -> sb.append(ch)
+
+        else -> {
+          sb.append(ch)
+        }
       }
     }
   }

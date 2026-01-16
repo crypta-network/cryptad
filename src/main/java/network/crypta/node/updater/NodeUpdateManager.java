@@ -54,7 +54,7 @@ import org.slf4j.LoggerFactory;
  * Supervises auto‑update components for the node: core application updates and plugin updates.
  *
  * <p>This manager wires the package‑based core updater ({@link CoreUpdater}) and maintains
- * compatibility glue for historical Update‑Over‑Mandatory (UoM) behavior. Today, core updates are
+ * compatibility glue for historical Update‑Over‑Mandatory (UoM) behavior. Today core updates are
  * delivered as OS/arch‑specific packages (deb/rpm/dmg/exe/flatpak/snap). Serving or fetching the
  * main JAR via UoM is intentionally disabled; only revocation handling and announcements remain.
  * Plugin updates continue to use the existing JAR flow and are orchestrated by {@link
@@ -66,7 +66,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Build and hold configuration options under the {@code node.updater} subconfig.
  *   <li>Start/stop the {@link CoreUpdater} and per‑plugin updaters when enabled/disabled.
  *   <li>Track and react to revocation state via {@link RevocationChecker}, surfacing alerts.
- *   <li>Render core update status into the Alerts panel and broadcast UoM announcements.
+ *   <li>Render the core update status into the Alerts panel and broadcast UoM announcements.
  * </ul>
  *
  * <p>Threading and state: methods that mutate shared state are generally synchronized on the
@@ -142,8 +142,8 @@ public class NodeUpdateManager {
 
   /**
    * Currently deploying an update? Set when we start to deploy an update. Which means it should not
-   * be un-set, except in the case of a severe error causing a valid update to fail. However, it is
-   * un-set in this case, so that we can try again with another build.
+   * be unsetted, except in the case of a severe error causing a valid update to fail. However, it
+   * is unset in this case, so that we can try again with another build.
    */
   // Unused flag removed; deployment happens only via CoreUpdater
 
@@ -183,7 +183,7 @@ public class NodeUpdateManager {
    *
    * @param node the owning node; must remain valid for the lifetime of this manager (non‑null)
    * @param config global configuration; a {@code node.updater} subconfig is created and populated
-   * @throws InvalidConfigValueException if provided URIs are malformed or violate required shapes
+   * @throws InvalidConfigValueException if provided, URIs are malformed or violate required shapes
    */
   public NodeUpdateManager(Node node, Config config) throws InvalidConfigValueException {
     this.node = node;
@@ -202,7 +202,7 @@ public class NodeUpdateManager {
 
     wasEnabledOnStartup = updaterConfig.getBoolean("enabled");
 
-    // is the auto-update allowed ?
+    // is the auto-update allowed?
     updaterConfig.register(
         "autoupdate",
         false,
@@ -517,7 +517,7 @@ public class NodeUpdateManager {
 
   /**
    * Sends a UoM announcement to a newly connected peer when there is information worth broadcasting
-   * and the peer is sufficiently up‑to‑date to understand it.
+   * and the peer is up enough‑to‑date to understand it.
    *
    * @param peer the connected peer to which an announcement may be sent; ignored when announcements
    *     are not yet armed or local revocation state is inconsistent
@@ -567,7 +567,7 @@ public class NodeUpdateManager {
     // Note: wrapper gating removed in favor of CoreUpdater
     Map<String, PluginJarUpdater> oldPluginUpdaters = null;
     CoreUpdater stoppedCoreUpdater = null;
-    // We need to run the revocation checker even if auto-update is
+    // We need to run the revocation checker even if the auto-update is
     // disabled.
     // Two reasons:
     // 1. For the benefit of other nodes, and because even if auto-update is
@@ -591,7 +591,7 @@ public class NodeUpdateManager {
         // Start CoreUpdater and plugin updaters
         startCoreUpdater();
         pluginUpdaters = new HashMap<>();
-        // Suppress obsolete Update-ASAP form in alert; CoreUpdater renders its own buttons
+        // Suppress obsolete an Update-ASAP form in alert; CoreUpdater renders its own buttons
         armed = true;
       }
     }
@@ -650,17 +650,16 @@ public class NodeUpdateManager {
       minVer = Math.max(minVer, info.getPluginLongVersion());
     }
     FreenetURI uri = updateURI.setDocName(name).setSuggestedEdition(minVer);
-    PluginJarUpdater updater =
-        new PluginJarUpdater(
+    NodeUpdaterParams params =
+        new NodeUpdaterParams(
             this,
             uri,
             (int) minVer,
             -1,
             (plugin.essential ? (int) minVer : Integer.MAX_VALUE),
-            name + "-",
-            name,
-            node.services().pluginManager(),
-            false);
+            name + "-");
+    PluginJarUpdater updater =
+        new PluginJarUpdater(params, name, node.services().pluginManager(), false);
     synchronized (this) {
       if (pluginUpdaters == null) {
         if (LOG.isDebugEnabled()) {
@@ -765,7 +764,7 @@ public class NodeUpdateManager {
   /**
    * Add links to the changelog for the given version to the given node.
    *
-   * <p>Preference order: - Use CHK links provided by {@link CoreUpdater} when available (short +
+   * <p>Preference order: - Use CHK links provided by {@link CoreUpdater} when available (short and
    * full changelog). - Otherwise, fall back to the legacy SSK links derived from the update USK.
    *
    * <p>This avoids showing duplicate links (old SSK + new CHK) at the same time.
@@ -821,11 +820,11 @@ public class NodeUpdateManager {
   /**
    * Sets the update USK used for core and plugin update metadata.
    *
-   * <p>The provided {@link FreenetURI} must be a USK without meta strings. The suggested edition is
+   * <p>The provided {@link FreenetURI} must be a USK without meta-strings. The suggested edition is
    * normalized to the current build. Changing the URI restarts plugin updaters and notifies the
    * core updater.
    *
-   * @param uri the new USK; must be a valid USK without meta strings (non‑null)
+   * @param uri the new USK; must be a valid USK without meta-strings (non‑null)
    */
   public synchronized void setURI(FreenetURI uri) {
     // Note: plugins
@@ -929,8 +928,8 @@ public class NodeUpdateManager {
    * considered unsafe and related actions are disabled until the condition is cleared.
    *
    * <p>This method records the message, sets internal flags, raises a user alert, and issues a
-   * local broadcast so connected peers can react. It is safe to call repeatedly; subsequent calls
-   * will maintain the blown state.
+   * local broadcast so connected peers can react. It is safe to call repeatedly; later calls will
+   * maintain the blown state.
    *
    * @param msg a brief reason or diagnostic to include in user alerts and logs (may be empty)
    * @param disabledNotBlown {@code true} when the updater is disabled for local reasons only (not a
@@ -960,7 +959,7 @@ public class NodeUpdateManager {
     if (revocationAlert == null) {
       revocationAlert = new RevocationKeyFoundUserAlert(msg, disabledNotBlown);
       node.services().clientCore().getAlerts().register(revocationAlert);
-      // we don't need to advertize updates : we are not going to do them
+      // we don't need to advertise updates: we are not going to do them
       killUpdateAlerts();
     }
     getUpdateOverMandatory().killAlert();
@@ -1285,7 +1284,7 @@ public class NodeUpdateManager {
    * @return always {@code 0} in package‑based updater mode
    */
   public synchronized long timeRemainingOnCheck() {
-    // Legacy UOM final check not used; no pending timer
+    // Legacy UOM final check isn't used; no pending timer
     return 0L;
   }
 
@@ -1346,7 +1345,7 @@ public class NodeUpdateManager {
   }
 
   /**
-   * Returns whether UoM should be suppressed for this node (e.g. seednode or early startup).
+   * Returns whether UoM should be suppressed for this node (e.g., seednode or early startup).
    *
    * @return {@code true} when UoM must not be used due to node role or state
    */
@@ -1407,7 +1406,7 @@ public class NodeUpdateManager {
    * @return always {@code null}; serving the core JAR via UoM is disabled
    */
   public synchronized File getCurrentVersionBlobFile() {
-    // Serving main.jar over UOM is disabled in package-based updater.
+    // Serving the main.jar over UOM is disabled in package-based updater.
     return null;
   }
 
@@ -1454,14 +1453,15 @@ public class NodeUpdateManager {
   /** Create and wire the package‑based {@link CoreUpdater} if not already present. */
   public synchronized void startCoreUpdater() {
     if (coreUpdater != null) return;
-    coreUpdater =
-        new CoreUpdater(
+    NodeUpdaterParams params =
+        new NodeUpdaterParams(
             this,
             getCoreInfoURI(),
             Version.currentBuildNumber(),
             -1,
             Integer.MAX_VALUE,
             "core-info-");
+    coreUpdater = new CoreUpdater(params);
   }
 
   /**
