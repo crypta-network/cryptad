@@ -34,6 +34,30 @@ package network.crypta.node.useralerts;
  */
 public abstract class AbstractUserEvent extends AbstractUserAlert implements UserEvent {
 
+  /**
+   * Bundles presentation, severity, and dismissal metadata for user events.
+   *
+   * <p>This record consolidates parameters commonly supplied when constructing events, including
+   * the {@link UserEvent.Type}, display content, priority, validity, and dismissal options.
+   *
+   * @param eventType categorical type used for grouping and suppression decisions
+   * @param userCanDismiss whether a user interface should show a Dismiss control
+   * @param title localized event title; may be {@code null}
+   * @param body bundle containing full text, short text, and optional HTML fragment; may be {@code
+   *     null}
+   * @param priorityClass severity class such as {@link UserAlert#CRITICAL_ERROR}
+   * @param valid initial visibility flag
+   * @param dismissOptions label and unregister policy for dismissal
+   */
+  public record UserEventDetails(
+      Type eventType,
+      boolean userCanDismiss,
+      String title,
+      Body body,
+      short priorityClass,
+      boolean valid,
+      DismissOptions dismissOptions) {}
+
   private Type eventType;
 
   /**
@@ -79,6 +103,25 @@ public abstract class AbstractUserEvent extends AbstractUserAlert implements Use
       DismissOptions dismissOptions) {
     super(userCanDismiss, title, body, priorityClass, valid, dismissOptions);
     this.eventType = eventType;
+  }
+
+  /**
+   * Creates an event using a consolidated parameter bundle.
+   *
+   * <p>This constructor mirrors the explicit argument constructor but accepts a {@link
+   * UserEventDetails} so callers can share common parameter groupings across event types.
+   *
+   * @param details bundled event presentation and dismissal metadata
+   */
+  protected AbstractUserEvent(UserEventDetails details) {
+    this(
+        details.eventType(),
+        details.userCanDismiss(),
+        details.title(),
+        details.body(),
+        details.priorityClass(),
+        details.valid(),
+        details.dismissOptions());
   }
 
   /**

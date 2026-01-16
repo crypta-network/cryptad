@@ -29,6 +29,7 @@ Use this skill when you need to:
 - The build prints the SHA-256 of `build/libs/cryptad.jar`.
 
 ## Testing
+Always give enough running time (more than 15 minutes) for Gradle to complete tests.
 - Run all tests:
   - `./gradlew test`
 - Run one test class:

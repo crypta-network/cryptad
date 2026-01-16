@@ -4840,16 +4840,14 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
       public GetCompletedEvent(String identifier, FreenetURI uri, long size) {
         super(
-            Type.GET_COMPLETED,
-            true,
-            null,
-            null,
-            null,
-            null,
-            UserAlert.MINOR,
-            true,
-            NodeL10n.getBase().getString(USER_ALERT_HIDE),
-            true,
+            new UserEventDetails(
+                Type.GET_COMPLETED,
+                true,
+                null,
+                Body.of(null, null, null),
+                UserAlert.MINOR,
+                true,
+                new DismissOptions(NodeL10n.getBase().getString(USER_ALERT_HIDE), true)),
             completedGets);
         this.identifier = identifier;
         this.uri = uri;
@@ -4916,16 +4914,14 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
       public PutCompletedEvent(String identifier, FreenetURI uri, long size) {
         super(
-            Type.PUT_COMPLETED,
-            true,
-            null,
-            null,
-            null,
-            null,
-            UserAlert.MINOR,
-            true,
-            NodeL10n.getBase().getString(USER_ALERT_HIDE),
-            true,
+            new UserEventDetails(
+                Type.PUT_COMPLETED,
+                true,
+                null,
+                Body.of(null, null, null),
+                UserAlert.MINOR,
+                true,
+                new DismissOptions(NodeL10n.getBase().getString(USER_ALERT_HIDE), true)),
             completedPuts);
         this.identifier = identifier;
         this.uri = uri;
@@ -4992,16 +4988,14 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
       public PutDirCompletedEvent(String identifier, FreenetURI uri, long size, int files) {
         super(
-            Type.PUT_DIR_COMPLETED,
-            true,
-            null,
-            null,
-            null,
-            null,
-            UserAlert.MINOR,
-            true,
-            NodeL10n.getBase().getString(USER_ALERT_HIDE),
-            true,
+            new UserEventDetails(
+                Type.PUT_DIR_COMPLETED,
+                true,
+                null,
+                Body.of(null, null, null),
+                UserAlert.MINOR,
+                true,
+                new DismissOptions(NodeL10n.getBase().getString(USER_ALERT_HIDE), true)),
             completedPutDirs);
         this.identifier = identifier;
         this.uri = uri;
