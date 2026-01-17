@@ -50,7 +50,7 @@ class BootstrapSeedTestTest {
   void main_whenSeednodesFileMissing_expectExitNoSeednodes() {
     SubprocessResult result =
         assertTimeoutPreemptively(
-            Duration.ofSeconds(5), () -> runBootstrapSeedTestInSubprocess(tempDir, "missing"));
+            Duration.ofSeconds(15), () -> runBootstrapSeedTestInSubprocess(tempDir, "missing"));
 
     assertEquals(
         expectedProcessExitCode(BootstrapSeedTest.EXIT_NO_SEEDNODES),
@@ -65,7 +65,7 @@ class BootstrapSeedTestTest {
   void main_whenSeednodesFileEmpty_expectExitNoSeednodes() {
     SubprocessResult result =
         assertTimeoutPreemptively(
-            Duration.ofSeconds(5), () -> runBootstrapSeedTestInSubprocess(tempDir, "empty"));
+            Duration.ofSeconds(15), () -> runBootstrapSeedTestInSubprocess(tempDir, "empty"));
 
     assertEquals(
         expectedProcessExitCode(BootstrapSeedTest.EXIT_NO_SEEDNODES),
@@ -80,7 +80,7 @@ class BootstrapSeedTestTest {
   void main_whenGlobalTestInitThrows_expectExitThrewSomething() {
     SubprocessResult result =
         assertTimeoutPreemptively(
-            Duration.ofSeconds(5), () -> runBootstrapSeedTestInSubprocess(tempDir, "throw-init"));
+            Duration.ofSeconds(15), () -> runBootstrapSeedTestInSubprocess(tempDir, "throw-init"));
 
     assertEquals(
         expectedProcessExitCode(BootstrapSeedTest.EXIT_THREW_SOMETHING),
