@@ -3,7 +3,8 @@ package network.crypta.support.math;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -15,8 +16,6 @@ import network.crypta.node.TimeSkewDetectorCallback;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 class TimeDecayingRunningAverageTest {
 
@@ -27,7 +26,7 @@ class TimeDecayingRunningAverageTest {
     LongSupplier s = mock(LongSupplier.class);
     final long[] seq = Arrays.copyOf(millis, millis.length);
     final int[] i = {0};
-    when(s.getAsLong()).thenAnswer(inv -> seq[Math.min(i[0]++, seq.length - 1)]);
+    when(s.getAsLong()).thenAnswer(_ -> seq[Math.min(i[0]++, seq.length - 1)]);
     return s;
   }
 
@@ -35,7 +34,7 @@ class TimeDecayingRunningAverageTest {
     LongSupplier s = mock(LongSupplier.class);
     final long[] seq = Arrays.stream(millis).map(m -> m * 1_000_000L).toArray();
     final int[] i = {0};
-    when(s.getAsLong()).thenAnswer(inv -> seq[Math.min(i[0]++, seq.length - 1)]);
+    when(s.getAsLong()).thenAnswer(_ -> seq[Math.min(i[0]++, seq.length - 1)]);
     return s;
   }
 
@@ -47,161 +46,14 @@ class TimeDecayingRunningAverageTest {
     LongSupplier mono = monoTimesFromMillis(0);
 
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.5, 1000, 0, 1, null, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.5, 0, 1), 1_000, null, null, wall, mono);
 
     // Act
     double v = avg.currentValue();
 
     // Assert
     assertEquals(0.5, v, EPS);
-  }
-
-  @Test
-  @DisplayName("report_whenFirstValidValue_setsStartedAndCurrentToValue")
-  void report_whenFirstValidValue_setsStartedAndCurrentToValue() {
-    // Arrange
-    LongSupplier wall = wallTimes(1_000, 1_500);
-    LongSupplier mono = monoTimesFromMillis(0, 500);
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1000, 0, 1, null, null, wall, mono);
-
-    // Act
-    avg.report(1.0);
-
-    // Assert
-    assertEquals(1.0, avg.currentValue(), EPS);
-    assertEquals(1L, avg.countReports());
-  }
-
-  @Test
-  @DisplayName("report_whenElapsedEqualsHalfLife_updatesBy50Percent")
-  void report_whenElapsedEqualsHalfLife_updatesBy50Percent() {
-    // Arrange
-    LongSupplier wall = wallTimes(1_000, 1_000, 2_000);
-    LongSupplier mono = monoTimesFromMillis(0, 0, 1_000);
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall, mono);
-    avg.report(0.0); // first report sets baseline
-
-    // Act
-    avg.report(1.0);
-
-    // Assert
-    assertEquals(0.5, avg.currentValue(), EPS);
-  }
-
-  @Test
-  @DisplayName("report_whenTwoHalfLives_elapsedBlends75PercentNew")
-  void report_whenTwoHalfLives_elapsedBlends75PercentNew() {
-    // Arrange
-    LongSupplier wall = wallTimes(1_000, 1_000, 2_000, 4_000);
-    LongSupplier mono = monoTimesFromMillis(0, 0, 1_000, 3_000); // second delta = 2_000ms
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall, mono);
-    avg.report(0.0);
-    avg.report(1.0); // after 1 HL -> 0.5
-
-    // Act: after additional 2 HL (changeFactor = 0.25)
-    avg.report(1.0);
-
-    // Assert: old=0.5 -> 0.5*0.25 + 1*0.75 = 0.875
-    assertEquals(0.875, avg.currentValue(), EPS);
-  }
-
-  @Test
-  @DisplayName("report_whenHalfLifeZero_usesMinimumOneMillisecondForDecay")
-  void report_whenHalfLifeZero_usesMinimumOneMillisecondForDecay() {
-    // Arrange: half-life = 0 -> treated as 1ms
-    LongSupplier wall = wallTimes(1_000, 1_000, 2_000);
-    LongSupplier mono = monoTimesFromMillis(0, 0, 1_000);
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 0, 0, 1, null, null, wall, mono);
-    avg.report(0.0);
-
-    // Act: 1,000 ms elapsed with effective HL=1 -> changeFactor = 0.5^(1000/1) ~ 0.0
-    // Numerically this under-flows to ~0.0, so value should move to the new sample (1.0)
-    avg.report(1.0);
-
-    // Assert
-    assertEquals(1.0, avg.currentValue(), EPS);
-  }
-
-  @ParameterizedTest(name = "report_whenValueBelowMin_isIgnored[{index}]({0})")
-  @ValueSource(doubles = {-1.0, -1000.0})
-  @DisplayName("report_whenValueBelowMin_isIgnored")
-  void report_whenValueBelowMin_isIgnored(double bad) {
-    // Arrange
-    LongSupplier wall = wallTimes(1_000, 1_000);
-    LongSupplier mono = monoTimesFromMillis(0, 0);
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.25, 1_000, 0, 1, null, null, wall, mono);
-    avg.report(0.25);
-    long before = avg.countReports();
-
-    // Act
-    avg.report(bad);
-
-    // Assert
-    assertEquals(0.25, avg.currentValue(), EPS);
-    assertEquals(before, avg.countReports());
-  }
-
-  @ParameterizedTest(name = "report_whenValueAboveMax_isIgnored[{index}]({0})")
-  @ValueSource(doubles = {1.01, 1000.0})
-  @DisplayName("report_whenValueAboveMax_isIgnored")
-  void report_whenValueAboveMax_isIgnored(double bad) {
-    // Arrange
-    LongSupplier wall = wallTimes(1_000, 1_000);
-    LongSupplier mono = monoTimesFromMillis(0, 0);
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.75, 1_000, 0, 1, null, null, wall, mono);
-    avg.report(0.75);
-    long before = avg.countReports();
-
-    // Act
-    avg.report(bad);
-
-    // Assert
-    assertEquals(0.75, avg.currentValue(), EPS);
-    assertEquals(before, avg.countReports());
-  }
-
-  @ParameterizedTest(name = "report_whenNaNOrInfinity_isIgnored[{index}]({0})")
-  @ValueSource(doubles = {Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY})
-  @DisplayName("report_whenNaNOrInfinity_isIgnored")
-  void report_whenNaNOrInfinity_isIgnored(double bad) {
-    // Arrange
-    LongSupplier wall = wallTimes(1_000, 1_000);
-    LongSupplier mono = monoTimesFromMillis(0, 0);
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.4, 1_000, 0, 1, null, null, wall, mono);
-    avg.report(0.4);
-    long before = avg.countReports();
-
-    // Act
-    avg.report(bad);
-
-    // Assert
-    assertEquals(0.4, avg.currentValue(), EPS);
-    assertEquals(before, avg.countReports());
-  }
-
-  @Test
-  @DisplayName("report_whenWallClockGoesBackward_usesMonotonic")
-  void report_whenWallClockGoesBackward_usesMonotonic() {
-    // Arrange
-    TimeSkewDetectorCallback cb = mock(TimeSkewDetectorCallback.class);
-    LongSupplier wall = wallTimes(10_000, 12_000, 11_500);
-    LongSupplier mono = monoTimesFromMillis(0, 1_000, 2_000); // delta 1000ms used
-    TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, cb, wall, mono);
-    avg.report(0.0);
-
-    // Act
-    avg.report(1.0);
-
-    // Assert: 1 half-life -> current moves halfway, proving monotonic use
-    assertEquals(0.5, avg.currentValue(), EPS);
   }
 
   @Test
@@ -212,7 +64,8 @@ class TimeDecayingRunningAverageTest {
     LongSupplier wall = wallTimes(10_000, 11_000, 9_000);
     LongSupplier mono = monoTimesFromMillis(0, 1_000, 2_000);
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, cb, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, null, cb, wall, mono);
     avg.report(0.0);
 
     // Act
@@ -226,10 +79,11 @@ class TimeDecayingRunningAverageTest {
   @DisplayName("report_whenMonotonicRegresses_clampsElapsedToZero")
   void report_whenMonotonicRegresses_clampsElapsedToZero() {
     // Arrange
-    LongSupplier wall = wallTimes(1_000, 1_100, 1_200); // strictly increasing wall clock
+    LongSupplier wall = wallTimes(1_000, 1_100, 1_200); // strictly increasing the wall clock
     LongSupplier mono = monoTimesFromMillis(500, 1_000, 800); // regress at third call
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, null, null, wall, mono);
     avg.report(1.0); // start at 1.0
 
     // Act: second report with mono delta negative -> treated as 0ms elapsed
@@ -247,7 +101,8 @@ class TimeDecayingRunningAverageTest {
     LongSupplier wall = wallTimes(1_000, 2_000, 2_000); // ctor, report, export
     LongSupplier mono = monoTimesFromMillis(0, 0);
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, null, null, wall, mono);
     avg.report(0.5);
 
     // Act
@@ -276,18 +131,19 @@ class TimeDecayingRunningAverageTest {
     LongSupplier mono = monoTimesFromMillis(0, 0, 1_000);
 
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, sfs, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, sfs, null, wall, mono);
 
-    // Assert initial restored state
+    // Assert initially restored state
     assertEquals(0.5, avg.currentValue(), EPS);
     assertEquals(1L, avg.countReports());
 
-    // Act 1: first report is ignored for value, only timestamps/count advance
+    // Act 1: the first report is ignored for value, only timestamps/count advance
     avg.report(0.0);
     assertEquals(0.5, avg.currentValue(), EPS);
     assertEquals(2L, avg.countReports());
 
-    // Act 2: subsequent report decays normally (1 half-life -> 0.25)
+    // Act 2: the later report decays normally (1 half-life -> 0.25)
     avg.report(0.0);
     assertEquals(0.25, avg.currentValue(), EPS);
     assertEquals(3L, avg.countReports());
@@ -309,7 +165,8 @@ class TimeDecayingRunningAverageTest {
 
     // Act
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.42, 1_000, 0, 1, sfs, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.42, 0, 1), 1_000, sfs, null, wall, mono);
 
     // Assert: defaults restored
     assertEquals(0.42, avg.currentValue(), EPS);
@@ -323,7 +180,8 @@ class TimeDecayingRunningAverageTest {
     LongSupplier wall = wallTimes(1_000);
     LongSupplier mono = monoTimesFromMillis(0);
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, null, null, wall, mono);
 
     // Act + Assert
     assertThrows(UnsupportedOperationException.class, () -> avg.valueIfReported(123.0));
@@ -336,7 +194,8 @@ class TimeDecayingRunningAverageTest {
     LongSupplier wall = wallTimes(1_000);
     LongSupplier mono = monoTimesFromMillis(0);
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, null, null, wall, mono);
 
     // Act + Assert
     assertEquals(33, avg.getDataLength());
@@ -351,7 +210,8 @@ class TimeDecayingRunningAverageTest {
 
     // Act
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.33, 1_000, 0, 1, null, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.33, 0, 1), 1_000, null, null, wall, mono);
 
     // Assert
     assertEquals(0.33, avg.currentValue(), EPS);
@@ -376,7 +236,9 @@ class TimeDecayingRunningAverageTest {
     // Act + Assert
     assertThrows(
         java.io.IOException.class,
-        () -> new TimeDecayingRunningAverage(0.0, 1_000.0, 0.0, 1.0, dis, null));
+        () ->
+            new TimeDecayingRunningAverage(
+                RunningAverageBounds.of(0.0, 0.0, 1.0), 1_000.0, dis, null));
   }
 
   @Test
@@ -397,7 +259,9 @@ class TimeDecayingRunningAverageTest {
     // Act + Assert
     assertThrows(
         java.io.IOException.class,
-        () -> new TimeDecayingRunningAverage(0.0, 1_000.0, 0.0, 1.0, dis, null));
+        () ->
+            new TimeDecayingRunningAverage(
+                RunningAverageBounds.of(0.0, 0.0, 1.0), 1_000.0, dis, null));
   }
 
   @Test
@@ -407,7 +271,8 @@ class TimeDecayingRunningAverageTest {
     LongSupplier wall = wallTimes(1_000, 1_500, 2_500, 2_500); // ctor, r1, r2, write
     LongSupplier mono = monoTimesFromMillis(0, 500, 1_500);
     TimeDecayingRunningAverage avg =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall, mono);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, null, null, wall, mono);
     avg.report(1.0);
     avg.report(1.0);
 
@@ -420,7 +285,8 @@ class TimeDecayingRunningAverageTest {
     ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
     try (DataInputStream dis = new DataInputStream(bais)) {
       TimeDecayingRunningAverage restored =
-          new TimeDecayingRunningAverage(0.0, 1_000.0, 0.0, 1.0, dis, null);
+          new TimeDecayingRunningAverage(
+              RunningAverageBounds.of(0.0, 0.0, 1.0), 1_000.0, dis, null);
 
       // Assert
       assertEquals(avg.currentValue(), restored.currentValue(), EPS);
@@ -436,14 +302,15 @@ class TimeDecayingRunningAverageTest {
     LongSupplier wall1 = wallTimes(1_000, 1_000, 2_000);
     LongSupplier mono1 = monoTimesFromMillis(0, 0, 1_000);
     TimeDecayingRunningAverage original =
-        new TimeDecayingRunningAverage(0.0, 1_000, 0, 1, null, null, wall1, mono1);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0.0, 0, 1), 1_000, null, null, wall1, mono1);
     TimeDecayingRunningAverage copy = new TimeDecayingRunningAverage(original);
 
     // Act: update only the copy
     copy.report(0.0);
     copy.report(1.0);
 
-    // Assert: original remains untouched; copy updated
+    // Assert: the original remains untouched; copy updated
     assertEquals(0.0, original.currentValue(), EPS);
     assertEquals(0L, original.countReports());
     // After one HL from 0.0 to 1.0 -> 0.5

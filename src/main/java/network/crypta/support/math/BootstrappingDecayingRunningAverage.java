@@ -48,10 +48,25 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
    */
   public BootstrappingDecayingRunningAverage(
       double defaultValue, double min, double max, int maxReports, SimpleFieldSet fs) {
-    this.min = min;
-    this.max = max;
+    this(RunningAverageBounds.of(defaultValue, min, max), maxReports, fs);
+  }
+
+  /**
+   * Creates a new running average.
+   *
+   * @param bounds default value and accepted range for observations
+   * @param maxReports number of valid reports before decay stabilizes at {@code 1/maxReports}
+   * @param fs optional {@link SimpleFieldSet} to initialize from; when provided, {@code fs}
+   *     overrides {@code defaultValue} and {@code reports} if the stored values are valid. Expected
+   *     keys are: {@code CurrentValue} (double) and {@code Reports} (long).
+   * @throws IllegalArgumentException if {@code maxReports <= 0}
+   */
+  public BootstrappingDecayingRunningAverage(
+      RunningAverageBounds bounds, int maxReports, SimpleFieldSet fs) {
+    this.min = bounds.min();
+    this.max = bounds.max();
     reports = 0;
-    currentValue = defaultValue;
+    currentValue = bounds.defaultValue();
     this.maxReports = maxReports;
     if (maxReports <= 0) {
       throw new IllegalArgumentException("maxReports must be > 0");
@@ -156,8 +171,8 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
   /**
    * Updates {@code maxReports} for future observations.
    *
-   * <p>Only affects subsequent calls to {@link #report(double)}; it does not retroactively
-   * recompute the average.
+   * <p>Only affects later calls to {@link #report(double)}; it does not retroactively recompute the
+   * average.
    */
   public synchronized void changeMaxReports(int maxReports) {
     this.maxReports = maxReports;
