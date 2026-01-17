@@ -20,6 +20,7 @@ import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.math.BootstrappingDecayingRunningAverage;
 import network.crypta.support.math.DecayingKeyspaceAverage;
 import network.crypta.support.math.RunningAverage;
+import network.crypta.support.math.RunningAverageBounds;
 import network.crypta.support.math.TimeDecayingRunningAverage;
 import network.crypta.support.math.TrivialRunningAverage;
 import org.jetbrains.annotations.NotNull;
@@ -613,12 +614,18 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   public NodeStats(Node node, int sortOrder, NodeStatsConfig statsConfig) throws NodeInitException {
     this.node = node;
     this.peers = node.network().peers();
-    this.routingMissDistanceLocal = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
-    this.routingMissDistanceRemote = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
-    this.routingMissDistanceOverall = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
-    this.routingMissDistanceBulk = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
-    this.routingMissDistanceRT = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
-    this.backedOffPercent = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
+    this.routingMissDistanceLocal =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
+    this.routingMissDistanceRemote =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
+    this.routingMissDistanceOverall =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
+    this.routingMissDistanceBulk =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
+    this.routingMissDistanceRT =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
+    this.backedOffPercent =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
     preemptiveRejectReasons = new ConcurrentHashMap<>();
     localPreemptiveRejectReasons = new ConcurrentHashMap<>();
     pInstantRejectIncomingOverall =
@@ -668,228 +675,176 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // Guesstimates. Hopefully well over the reality.
     localChkFetchBytesSentAverage =
         new TimeDecayingRunningAverage(
-            500,
+            RunningAverageBounds.of(500, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "LocalChkFetchBytesSentAverage"),
             node);
     localSskFetchBytesSentAverage =
         new TimeDecayingRunningAverage(
-            500,
+            RunningAverageBounds.of(500, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "LocalSskFetchBytesSentAverage"),
             node);
     localChkInsertBytesSentAverage =
         new TimeDecayingRunningAverage(
-            32768,
+            RunningAverageBounds.of(32768, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "LocalChkInsertBytesSentAverage"),
             node);
     localSskInsertBytesSentAverage =
         new TimeDecayingRunningAverage(
-            2048,
+            RunningAverageBounds.of(2048, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "LocalSskInsertBytesSentAverage"),
             node);
     localChkFetchBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            32768d + 2048d /*path folding*/,
+            RunningAverageBounds.of(32768d + 2048d /*path folding*/, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "LocalChkFetchBytesReceivedAverage"),
             node);
     localSskFetchBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            2048,
+            RunningAverageBounds.of(2048, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "LocalSskFetchBytesReceivedAverage"),
             node);
     localChkInsertBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            1024,
+            RunningAverageBounds.of(1024, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, L_CHK_INSERT_BYTES_RECEIVED_AVG),
             node);
     localSskInsertBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            500,
+            RunningAverageBounds.of(500, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, L_CHK_INSERT_BYTES_RECEIVED_AVG),
             node);
 
     remoteChkFetchBytesSentAverage =
         new TimeDecayingRunningAverage(
-            32768d + 1024d + 500d + 2048d /*path folding*/,
+            RunningAverageBounds.of(
+                32768d + 1024d + 500d + 2048d /*path folding*/, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteChkFetchBytesSentAverage"),
             node);
     remoteSskFetchBytesSentAverage =
         new TimeDecayingRunningAverage(
-            1024d + 1024d + 500d,
+            RunningAverageBounds.of(1024d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteSskFetchBytesSentAverage"),
             node);
     remoteChkInsertBytesSentAverage =
         new TimeDecayingRunningAverage(
-            32768d + 32768d + 1024d,
+            RunningAverageBounds.of(32768d + 32768d + 1024d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteChkInsertBytesSentAverage"),
             node);
     remoteSskInsertBytesSentAverage =
         new TimeDecayingRunningAverage(
-            1024d + 1024d + 500d,
+            RunningAverageBounds.of(1024d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteSskInsertBytesSentAverage"),
             node);
     remoteChkFetchBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            32768d + 1024d + 500d + 2048d /*path folding*/,
+            RunningAverageBounds.of(
+                32768d + 1024d + 500d + 2048d /*path folding*/, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteChkFetchBytesReceivedAverage"),
             node);
     remoteSskFetchBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            2048d + 500d,
+            RunningAverageBounds.of(2048d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteSskFetchBytesReceivedAverage"),
             node);
     remoteChkInsertBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            32768d + 1024d + 500d,
+            RunningAverageBounds.of(32768d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteChkInsertBytesReceivedAverage"),
             node);
     remoteSskInsertBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            1024d + 1024d + 500d,
+            RunningAverageBounds.of(1024d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "RemoteSskInsertBytesReceivedAverage"),
             node);
 
     successfulChkFetchBytesSentAverage =
         new TimeDecayingRunningAverage(
-            32768d + 1024d + 500d + 2048d /*path folding*/,
+            RunningAverageBounds.of(
+                32768d + 1024d + 500d + 2048d /*path folding*/, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulChkFetchBytesSentAverage"),
             node);
     successfulSskFetchBytesSentAverage =
         new TimeDecayingRunningAverage(
-            1024d + 1024d + 500d,
+            RunningAverageBounds.of(1024d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulSskFetchBytesSentAverage"),
             node);
     successfulChkInsertBytesSentAverage =
         new TimeDecayingRunningAverage(
-            32768d + 32768d + 1024d,
+            RunningAverageBounds.of(32768d + 32768d + 1024d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulChkInsertBytesSentAverage"),
             node);
     successfulSskInsertBytesSentAverage =
         new TimeDecayingRunningAverage(
-            1024d + 1024d + 500d,
+            RunningAverageBounds.of(1024d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulSskInsertBytesSentAverage"),
             node);
     successfulChkOfferReplyBytesSentAverage =
         new TimeDecayingRunningAverage(
-            32768d + 500d,
+            RunningAverageBounds.of(32768d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "successfulChkOfferReplyBytesSentAverage"),
             node);
     successfulSskOfferReplyBytesSentAverage =
         new TimeDecayingRunningAverage(
-            3072,
+            RunningAverageBounds.of(3072, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "successfulSskOfferReplyBytesSentAverage"),
             node);
     successfulChkFetchBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            32768d + 1024d + 500d + 2048d /*path folding*/,
+            RunningAverageBounds.of(
+                32768d + 1024d + 500d + 2048d /*path folding*/, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulChkFetchBytesReceivedAverage"),
             node);
     successfulSskFetchBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            2048d + 500d,
+            RunningAverageBounds.of(2048d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulSskFetchBytesReceivedAverage"),
             node);
     successfulChkInsertBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            32768d + 1024d + 500d,
+            RunningAverageBounds.of(32768d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulChkInsertBytesReceivedAverage"),
             node);
     successfulSskInsertBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            1024d + 1024d + 500d,
+            RunningAverageBounds.of(1024d + 1024d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "SuccessfulSskInsertBytesReceivedAverage"),
             node);
     successfulChkOfferReplyBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            32768d + 500d,
+            RunningAverageBounds.of(32768d + 500d, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "successfulChkOfferReplyBytesReceivedAverage"),
             node);
     successfulSskOfferReplyBytesReceivedAverage =
         new TimeDecayingRunningAverage(
-            3072,
+            RunningAverageBounds.of(3072, 0.0, 200.0 * 1024),
             180000,
-            0.0,
-            200.0 * 1024,
             subset(throttleFS, "successfulSskOfferReplyBytesReceivedAverage"),
             node);
 

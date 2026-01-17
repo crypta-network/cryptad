@@ -12,48 +12,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Exponentially time‑decaying running average.
+ * Exponentially time‑decaying running average for bounded observations.
  *
- * <p>This implementation applies exponential smoothing where each new observation is weighted by
- * the time elapsed since the previous accepted observation. Given a half‑life {@code H}
- * (milliseconds) and a monotonic elapsed interval {@code dt} (milliseconds), the decay factor is:
+ * <p>This class applies exponential smoothing where each accepted observation is weighted by the
+ * monotonic time elapsed since the previous accepted report. Callers typically construct an
+ * instance once, then invoke {@link #report(double)} as samples arrive from timers or network
+ * activity, and read {@link #currentValue()} or {@link #countReports()} for monitoring. The
+ * half‑life is expressed in milliseconds and controls how quickly older values fade. A half‑life of
+ * {@code H} means a report {@code H} milliseconds later contributes half of the new value.
  *
- * <pre>
- *   decay = 0.5 ^ (dt / H)
- *   current = (current * decay) + (1 - decay) * reportedValue
- * </pre>
- *
- * <p>Consequences:
- *
- * <ul>
- *   <li>If {@code dt == H} then the new value contributes 50% to the updated average.
- *   <li>Short intervals yield a decay close to 1 (small influence of the new value), while long
- *       intervals yield a decay close to 0 (the new value dominates).
- *   <li>Elapsed time is computed from a monotonic time source to make the average resilient to
- *       wall‑clock adjustments. Wall‑clock time is only used for human‑readable timestamps and
- *       persistence metadata.
- * </ul>
- *
- * <p>Inputs outside the configured range {@code [min, max]} and non‑finite values are ignored (they
- * do not change the current value and do not advance time), but they are counted as invalid events
- * in logs. The first valid report sets the current value directly and marks the series as started.
- *
- * <p>Thread‑safety: All public methods are thread‑safe. The class uses internal synchronization to
- * ensure a consistent view of state and to compute decays atomically.
- *
- * <p>Copying: Use the copy constructor or {@link RunningAverage#copyOf(RunningAverage)}. The
- * snapshot produced by the copy constructor is independent of future updates to the original.
- *
- * <p>Persistence: The instance can be serialized in two ways:
+ * <p>Inputs outside the configured bounds and non‑finite values are ignored and do not advance
+ * time, which keeps spikes and corrupted samples from contaminating the estimate. The first valid
+ * report initializes the series and establishes the baseline timestamps. Instances are mutable but
+ * thread-safe through internal synchronization, so a single average can be shared by multiple
+ * reporting threads without additional locking. The class supports snapshot-style copying and two
+ * persistence forms, providing a compact binary format as well as a human‑readable field set.
  *
  * <ul>
- *   <li>Binary stream via {@link #writeDataTo(DataOutputStream)} and the corresponding constructor
- *       that reads from {@link DataInputStream}.
- *   <li>Human‑readable map via {@link #exportFieldSet(boolean)}. When restored with a non‑null
- *       {@link SimpleFieldSet} and {@code Started=true}, the first subsequent report only
- *       initializes timestamps and does not alter {@code currentValue}. This avoids a warm‑up spike
- *       from an arbitrarily long pause while persisted.
+ *   <li>Uses monotonic time for decay to avoid wall‑clock regressions.
+ *   <li>Ignores invalid inputs while logging diagnostics for visibility.
+ *   <li>Offers binary and {@link SimpleFieldSet} persistence mechanisms.
  * </ul>
+ *
+ * @see RunningAverage
+ * @see RunningAverageBounds
  */
 public final class TimeDecayingRunningAverage implements RunningAverage {
   private static final Logger LOG = LoggerFactory.getLogger(TimeDecayingRunningAverage.class);
@@ -71,20 +53,99 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
 
   // Copying is via the copy constructor.
 
+  /**
+   * Current averaged value, updated only by accepted reports.
+   *
+   * <p>This value is bounded by {@code minReport} and {@code maxReport} and is read under
+   * synchronization by {@link #currentValue()}.
+   */
   double curValue;
+
+  /**
+   * Half‑life in milliseconds that controls how quickly old samples decay.
+   *
+   * <p>The value is treated as immutable after construction; a zero value is interpreted as one
+   * millisecond when computing decay to avoid division by zero.
+   */
   final double halfLife;
+
+  /**
+   * Wall‑clock timestamp (milliseconds since epoch) of the last accepted report.
+   *
+   * <p>The value advances only when a report is accepted and is used for uptime and drift checks.
+   */
   long lastReportTime;
+
+  /**
+   * Wall‑clock timestamp (milliseconds since epoch) when the series started.
+   *
+   * <p>This value is used to compute uptime and remains stable across reports unless restored.
+   */
   long createdTime;
+
+  /**
+   * Monotonic nanosecond timestamp of the last accepted report.
+   *
+   * <p>This value is used to compute elapsed time for decay and is never exposed directly.
+   */
   long lastMonotonicNanos;
+
+  /**
+   * Total number of accepted reports.
+   *
+   * <p>Rejected reports do not increase this counter; it is persisted in snapshots.
+   */
   long totalReports;
+
+  /**
+   * Whether the series has received its first accepted report.
+   *
+   * <p>While {@code false}, {@link #report(double)} initializes the current value and baselines.
+   */
   boolean started;
+
+  /**
+   * Default value returned before the first accepted report.
+   *
+   * <p>This value is restored when persisted data is invalid or out of range.
+   */
   double defaultValue;
+
+  /**
+   * Inclusive lower bound for accepted reports.
+   *
+   * <p>Samples below this value are rejected and logged as invalid.
+   */
   double minReport;
+
+  /**
+   * Inclusive upper bound for accepted reports.
+   *
+   * <p>Samples above this value are rejected and logged as invalid.
+   */
   double maxReport;
 
   private final transient TimeSkewDetectorCallback timeSkewCallback;
   private transient LongSupplier wallClockTimeSourceMillis;
   private transient LongSupplier monotonicTimeSourceNanos;
+
+  /**
+   * Creates a reusable bounds object for instances of this average.
+   *
+   * <p>This helper exists to keep call sites concise when many averages share the same default
+   * value and bounds. It does not validate values or enforce ordering; the consuming constructors
+   * interpret {@code min} and {@code max} as inclusive limits and treat out‑of‑range reports as
+   * invalid. Prefer passing the returned {@link RunningAverageBounds} to constructors to reduce
+   * parameter count and to make configuration reuse explicit.
+   *
+   * @param defaultValue initial value returned before the first valid report is accepted
+   * @param min inclusive lower bound for accepted observations, expressed in caller units
+   * @param max inclusive upper bound for accepted observations, expressed in caller units
+   * @return immutable bounds record capturing the supplied default and range
+   */
+  public static RunningAverageBounds bounds(double defaultValue, double min, double max) {
+    return RunningAverageBounds.of(defaultValue, min, max);
+  }
 
   @Override
   public String toString() {
@@ -116,32 +177,33 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   }
 
   /**
-   * Creates a new average starting at {@code defaultValue} and decaying with the given half‑life.
+   * Creates a new running average using system time sources and the supplied bounds.
    *
-   * @param defaultValue initial value returned by {@link #currentValue()} until the first valid
-   *     {@link #report(double)} is accepted
-   * @param halfLife half‑life in milliseconds; when {@code 0}, a minimum of {@code 1 ms} is used to
-   *     avoid division by zero
-   * @param min minimum accepted observation (inclusive); lower values are ignored
-   * @param max maximum accepted observation (inclusive); higher values are ignored
-   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
+   * <p>The instance starts with {@code bounds.defaultValue()} and marks itself as not started until
+   * the first valid report arrives. Half‑life is expressed in milliseconds and governs decay
+   * between accepted reports; when {@code halfLife} is {@code 0}, the implementation uses {@code 1}
+   * to avoid division by zero while retaining the "very fast decay" semantic. The provided callback
+   * is only invoked when wall‑clock time moves backward; monotonic time still drives the decay
+   * calculation.
+   *
+   * @param bounds default value and accepted range for observations, reused across instances
+   * @param halfLife half‑life in milliseconds; {@code 0} maps to a 1 ms minimum to avoid division
+   *     by zero
+   * @param callback optional callback notified when wall‑clock time regresses; may be {@code null}
    */
   public TimeDecayingRunningAverage(
-      double defaultValue,
-      long halfLife,
-      double min,
-      double max,
-      TimeSkewDetectorCallback callback) {
-    curValue = defaultValue;
-    this.defaultValue = defaultValue;
+      RunningAverageBounds bounds, long halfLife, TimeSkewDetectorCallback callback) {
+
+    curValue = bounds.defaultValue();
+    this.defaultValue = bounds.defaultValue();
     started = false;
     this.halfLife = halfLife;
     this.wallClockTimeSourceMillis = System::currentTimeMillis;
     this.monotonicTimeSourceNanos = System::nanoTime;
     createdTime = lastReportTime = wallClockTimeSourceMillis.getAsLong();
     lastMonotonicNanos = monotonicTimeSourceNanos.getAsLong();
-    this.minReport = min;
-    this.maxReport = max;
+    this.minReport = bounds.min();
+    this.maxReport = bounds.max();
     totalReports = 0;
 
     if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
@@ -149,38 +211,37 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   }
 
   /**
-   * Creates a new average, optionally restoring state from a {@link SimpleFieldSet} snapshot.
+   * Creates a new running average, optionally restoring state from a {@link SimpleFieldSet}.
    *
-   * <p>When {@code fs} is non‑null and contains {@code Started=true}, the fields {@code
-   * CurrentValue}, {@code TotalReports} and {@code Uptime} are validated and used. The first
-   * subsequent {@link #report(double)} updates internal timestamps without changing the current
-   * value, preventing a large jump after a long persisted pause.
+   * <p>This constructor is used when persistence data is available in the human‑readable field set.
+   * When {@code fs} contains {@code Started=true}, the stored {@code CurrentValue}, {@code
+   * TotalReports}, and {@code Uptime} fields are validated against the supplied bounds and
+   * restored. The first subsequent {@link #report(double)} call only advances timestamps without
+   * changing the current value to avoid a large jump after a long pause. If the stored value is
+   * invalid or out of range, the instance resets to the default value and zero reports.
    *
-   * @param defaultValue initial value before the first valid report
-   * @param halfLife half‑life in milliseconds
-   * @param min minimum accepted observation (inclusive)
-   * @param max maximum accepted observation (inclusive)
-   * @param fs optional snapshot to restore from; may be {@code null}
-   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
+   * @param bounds default value and accepted range for observations, shared with other instances
+   * @param halfLife half‑life in milliseconds used to compute decay between reports
+   * @param fs optional snapshot providing stored values; {@code null} starts a fresh instance
+   * @param callback optional callback notified on wall‑clock regressions; may be {@code null}
    */
   public TimeDecayingRunningAverage(
-      double defaultValue,
+      RunningAverageBounds bounds,
       long halfLife,
-      double min,
-      double max,
       SimpleFieldSet fs,
       TimeSkewDetectorCallback callback) {
-    curValue = defaultValue;
-    this.defaultValue = defaultValue;
+
+    curValue = bounds.defaultValue();
+    this.defaultValue = bounds.defaultValue();
     started = false;
     this.halfLife = halfLife;
     this.wallClockTimeSourceMillis = System::currentTimeMillis;
     this.monotonicTimeSourceNanos = System::nanoTime;
     createdTime = wallClockTimeSourceMillis.getAsLong();
-    this.lastReportTime = -1; // long warm-up may skew results, so lets wait for the first report
+    this.lastReportTime = -1; // a long warm-up may skew results, so let's wait for the first report
     this.lastMonotonicNanos = monotonicTimeSourceNanos.getAsLong();
-    this.minReport = min;
-    this.maxReport = max;
+    this.minReport = bounds.min();
+    this.maxReport = bounds.max();
     totalReports = 0;
 
     if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
@@ -189,7 +250,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       if (started) {
         curValue = fs.getDouble(FS_KEY_CURRENT_VALUE, curValue);
         if (curValue > maxReport || curValue < minReport || Double.isNaN(curValue)) {
-          curValue = defaultValue;
+          curValue = this.defaultValue;
           totalReports = 0;
           createdTime = wallClockTimeSourceMillis.getAsLong();
         } else {
@@ -203,41 +264,40 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   }
 
   /**
-   * Test‑friendly constructor with injectable time sources.
+   * Creates a new running average using caller‑supplied time sources for testing.
    *
-   * <p>This overload behaves like the {@link #TimeDecayingRunningAverage(double, long, double,
-   * double, SimpleFieldSet, TimeSkewDetectorCallback)} constructor but uses the given time
-   * suppliers instead of the system clocks.
+   * <p>This overload mirrors the field‑set constructor but allows deterministic wall‑clock and
+   * monotonic time suppliers. It is intended for tests that need reproducible decay behavior or
+   * simulations of clock regressions. The supplied time sources are used for all later reports, and
+   * the instance follows the same validation rules for stored state as the standard field‑set
+   * constructor. When {@code fs} is {@code null}, the instance behaves like a fresh average.
    *
-   * @param defaultValue initial value before the first valid report
-   * @param halfLife half‑life in milliseconds
-   * @param min minimum accepted observation (inclusive)
-   * @param max maximum accepted observation (inclusive)
-   * @param fs optional snapshot to restore from; may be {@code null}
-   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
+   * @param bounds default value and accepted range for observations, shared with other instances
+   * @param halfLife half‑life in milliseconds used to compute decay between reports
+   * @param fs optional snapshot providing stored values; {@code null} creates a fresh instance
+   * @param callback optional callback notified on wall‑clock regressions; may be {@code null}
    * @param wallClockTimeSourceMillis wall‑clock time supplier returning milliseconds since epoch
-   * @param monotonicTimeSourceNanos monotonic time supplier returning nanoseconds
+   * @param monotonicTimeSourceNanos monotonic time supplier returning nanoseconds for elapsed time
    */
   public TimeDecayingRunningAverage(
-      double defaultValue,
+      RunningAverageBounds bounds,
       long halfLife,
-      double min,
-      double max,
       SimpleFieldSet fs,
       TimeSkewDetectorCallback callback,
       LongSupplier wallClockTimeSourceMillis,
       LongSupplier monotonicTimeSourceNanos) {
-    curValue = defaultValue;
-    this.defaultValue = defaultValue;
+
+    curValue = bounds.defaultValue();
+    this.defaultValue = bounds.defaultValue();
     started = false;
     this.halfLife = halfLife;
     this.wallClockTimeSourceMillis = wallClockTimeSourceMillis;
     this.monotonicTimeSourceNanos = monotonicTimeSourceNanos;
     createdTime = this.wallClockTimeSourceMillis.getAsLong();
-    this.lastReportTime = -1; // wait for first report
+    this.lastReportTime = -1; // wait for the first report
     this.lastMonotonicNanos = this.monotonicTimeSourceNanos.getAsLong();
-    this.minReport = min;
-    this.maxReport = max;
+    this.minReport = bounds.min();
+    this.maxReport = bounds.max();
     totalReports = 0;
 
     if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
@@ -246,7 +306,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       if (started) {
         curValue = fs.getDouble(FS_KEY_CURRENT_VALUE, curValue);
         if (curValue > maxReport || curValue < minReport || Double.isNaN(curValue)) {
-          curValue = defaultValue;
+          curValue = this.defaultValue;
           totalReports = 0;
           createdTime = this.wallClockTimeSourceMillis.getAsLong();
         } else {
@@ -262,6 +322,12 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   /**
    * Restores an instance from a compact binary stream.
    *
+   * <p>The binary record is intentionally small and ordered so that {@link #writeDataTo} can emit
+   * it in a single synchronized block. The caller must provide the same bounds used when
+   * serializing; the constructor validates the stored {@code currentValue} against these bounds and
+   * rejects the record if it is invalid. Monotonic timestamps are reinitialized on the load, so the
+   * next report decays relative to the new baseline instead of an old persisted nanosecond value.
+   *
    * <p>The stream format is:
    *
    * <ol>
@@ -273,22 +339,15 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
    *   <li>long {@code priorExperienceTimeMillis} (uptime)
    * </ol>
    *
-   * <p>Monotonic timestamps are reinitialized on load; the first subsequent report will compute
-   * decay using the new monotonic baseline.
-   *
-   * @param defaultValue default value used if the serialized value is invalid or out of range
-   * @param halfLife half‑life in milliseconds
-   * @param min minimum accepted observation (inclusive)
-   * @param max maximum accepted observation (inclusive)
-   * @param dis input stream positioned at the beginning of the record
-   * @param callback optional callback used to signal negative wall‑clock drift; may be {@code null}
-   * @throws IOException if the stream is malformed or contains out‑of‑range/non‑finite values
+   * @param bounds default value and accepted range for observations, matching the serialized data
+   * @param halfLife half‑life in milliseconds used for later decay calculations
+   * @param dis input stream positioned at the beginning of the record to read
+   * @param callback optional callback notified on wall‑clock regressions; may be {@code null}
+   * @throws IOException if the magic/version mismatches or values are non‑finite or out of range
    */
   public TimeDecayingRunningAverage(
-      double defaultValue,
+      RunningAverageBounds bounds,
       double halfLife,
-      double min,
-      double max,
       DataInputStream dis,
       TimeSkewDetectorCallback callback)
       throws IOException {
@@ -299,16 +358,16 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     curValue = dis.readDouble();
     if (Double.isInfinite(curValue) || Double.isNaN(curValue))
       throw new IOException("Invalid weightedTotal: " + curValue);
-    if ((curValue < min) || (curValue > max))
+    if ((curValue < bounds.min()) || (curValue > bounds.max()))
       throw new IOException("Out of range: curValue = " + curValue);
     started = dis.readBoolean();
     // Read fields in the same order they are written: totalReports first, then uptime
     totalReports = dis.readLong();
     long priorExperienceTime = dis.readLong();
     this.halfLife = halfLife;
-    this.minReport = min;
-    this.maxReport = max;
-    this.defaultValue = defaultValue;
+    this.minReport = bounds.min();
+    this.maxReport = bounds.max();
+    this.defaultValue = bounds.defaultValue();
 
     this.wallClockTimeSourceMillis = System::currentTimeMillis;
     this.monotonicTimeSourceNanos = System::nanoTime;
@@ -319,11 +378,15 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   }
 
   /**
-   * Copy constructor creating an independent snapshot of {@code a}.
+   * Creates an independent snapshot copy of another running average.
    *
-   * <p>The copy will not observe future updates to {@code a} and preserves the same time sources.
+   * <p>The copy preserves the current value, report counts, time sources, and timing baselines as
+   * observed at construction time. Subsequent updates to either instance do not affect the other,
+   * making this constructor suitable for "what‑if" experiments or for capturing a stable view while
+   * continuing to report on the original. The source instance must be non‑null; this constructor
+   * takes a synchronized snapshot internally to ensure consistency across mutable fields.
    *
-   * @param a instance to copy; must not be {@code null}
+   * @param a instance to copy; must not be {@code null} and should be fully initialized
    */
   public TimeDecayingRunningAverage(TimeDecayingRunningAverage a) {
     Snapshot s = a.snapshot();
@@ -376,20 +439,31 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     return s;
   }
 
-  /** Returns the current estimate of the average. */
+  /**
+   * Returns the current estimate of the running average.
+   *
+   * <p>The returned value reflects the most recent accepted report and the decay applied across
+   * elapsed monotonic time. It does not trigger any additional decay calculation; decay is applied
+   * only when reports are accepted. The value is read under synchronization to provide a consistent
+   * view when concurrent reporters are updating the state.
+   *
+   * @return the current averaged value, bounded by the configured minimum and maximum
+   */
   @Override
   public synchronized double currentValue() {
     return curValue;
   }
 
   /**
-   * Reports a single observation.
+   * Reports a single observation to update the running average.
    *
-   * <p>Values outside {@code [min, max]} or non‑finite values are ignored. The first valid report
-   * sets the current value and establishes the time baseline; subsequent reports are combined using
-   * the exponential decay formula based on monotonic elapsed time.
+   * <p>The sample is validated against the configured bounds and must be finite. Invalid values are
+   * ignored and do not advance time. The first valid report initializes the series and establishes
+   * the timestamp baseline; later reports apply exponential decay based on monotonic elapsed time.
+   * This method is thread-safe and synchronizes on the instance to update the related state
+   * atomically.
    *
-   * @param d the observation to incorporate
+   * @param d observation to incorporate; must be finite and within the configured inclusive bounds
    */
   @Override
   public void report(double d) {
@@ -454,7 +528,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       if (timeSkewCallback != null) timeSkewCallback.setTimeSkewDetectedUserAlert();
       // Do not return; continue to compute decay based on monotonic time.
       // Disable sensitivity hack.
-      // Excessive sensitivity at start isn't necessarily a good thing.
+      // Excessive sensitivity at the start isn't necessarily a good thing.
       // In particular, it makes the average inconsistent - 20 reports of 0 at 1s intervals have
       // a *different* effect to 10 reports of 0 at 2s intervals!
       // Also, it increases the impact of startup spikes, which then take a long time to recover
@@ -470,7 +544,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       double d, long monoDeltaMillis, long uptime, double thisHalfLife, double changeFactor) {
     double oldCurValue = curValue;
     curValue =
-        curValue * changeFactor /* close to 1.0 if short interval, close to 0.0 if long interval */
+        curValue
+                * changeFactor /* close to 1.0 if a short interval, close to 0.0 if a long interval */
             + (1.0 - changeFactor) * d;
     // Keep bounds check to guard against sporadic invalid values.
     if (curValue < minReport || curValue > maxReport) {
@@ -497,12 +572,33 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
           changeFactor);
   }
 
-  /** Convenience overload forwarding to {@link #report(double)}. */
+  /**
+   * Reports a single observation supplied as a long integer.
+   *
+   * <p>This convenience overload converts the value to {@code double} and delegates to {@link
+   * #report(double)}, preserving the same bounds checks, decay behavior, and logging. It is
+   * primarily intended for callers that naturally measure integer values (for example, counts or
+   * sizes) but want the same averaging semantics.
+   *
+   * @param d observation to incorporate, converted to {@code double} before validation
+   */
   @Override
   public void report(long d) {
     report((double) d);
   }
 
+  /**
+   * Indicates that predictive values are unsupported for this average.
+   *
+   * <p>Unlike simple averages, a meaningful prediction requires knowledge of the time until the
+   * next report, which is a required input to the decay computation. Callers that need "what‑if"
+   * results should instead copy the instance using the copy constructor and experiment with {@link
+   * #report(double)} on the copy to simulate elapsed time and sample sequences.
+   *
+   * @param r hypothetical value that would be reported; ignored by this implementation
+   * @return nothing; this method always throws an exception
+   * @throws UnsupportedOperationException always, because the prediction is not well-defined
+   */
   @Override
   public double valueIfReported(double r) {
     // Intentionally unsupported: a correct prediction depends on the unknown time until the next
@@ -511,7 +607,17 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     throw new UnsupportedOperationException();
   }
 
-  /** Writes the compact binary representation described in the constructor Javadoc. */
+  /**
+   * Writes the compact binary representation described in the binary constructor documentation.
+   *
+   * <p>The output is written under synchronization to ensure the snapshot of the mutable state is
+   * consistent. The caller is responsible for providing a stream positioned at the desired writing
+   * location. The method writes values in a fixed order that matches the binary constructor, so the
+   * output can be consumed later to restore an equivalent instance.
+   *
+   * @param out destination stream to receive the binary record; must be non-null and writable
+   * @throws IOException if the underlying stream rejects writes or becomes unavailable
+   */
   public void writeDataTo(DataOutputStream out) throws IOException {
     long now = wallClockTimeSourceMillis.getAsLong();
     synchronized (this) {
@@ -525,29 +631,61 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   }
 
   /**
-   * Returns the length, in bytes, of the binary representation produced by {@link #writeDataTo}.
+   * Returns the number of bytes written by {@link #writeDataTo}.
+   *
+   * <p>This value reflects the current binary format, which includes a magic value, a version
+   * number, the current value, a started flag, the report count, and the uptime. It is constant for
+   * the current format and does not depend on the instance state, but the method remains an
+   * instance member for API symmetry with other persistence helpers.
+   *
+   * <p>int MAGIC + int version + double curValue + boolean started + long totalReports + long
+   * uptime
+   *
+   * @return byte length of the current binary record format
    */
   public int getDataLength() {
-    // int MAGIC + int version + double curValue + boolean started + long totalReports + long uptime
     return 4 + 4 + 8 + 1 + 8 + 8;
   }
 
+  /**
+   * Returns the number of accepted reports so far.
+   *
+   * <p>This counter increments only when a report is accepted (finite and within bounds). Rejected
+   * samples do not increase the count. The value is synchronized to provide a consistent view when
+   * concurrent reporters are updating the state.
+   *
+   * @return number of accepted reports since construction or restoration
+   */
   @Override
   public synchronized long countReports() {
     return totalReports;
   }
 
-  /** Returns the wall‑clock timestamp (milliseconds since epoch) of the last accepted report. */
+  /**
+   * Returns the wall‑clock timestamp of the last accepted report.
+   *
+   * <p>The value has been expressed in milliseconds since the epoch and reflects the last report
+   * that passed validation. If no valid report has been accepted, the value is the most recent
+   * baseline set during construction or restoration. The value is synchronized to avoid races with
+   * reporters.
+   *
+   * @return wall‑clock time of the most recent accepted report, in milliseconds since epoch
+   */
   public synchronized long lastReportTime() {
     return lastReportTime;
   }
 
   /**
-   * Exports a human‑readable snapshot to a {@link SimpleFieldSet}.
+   * Exports a human‑readable snapshot of the current state.
    *
-   * @param shortLived whether the returned field set is intended for short‑lived usage
-   * @return a field set containing {@code Type}, {@code CurrentValue}, {@code Started}, {@code
-   *     TotalReports} and {@code Uptime}
+   * <p>The returned {@link SimpleFieldSet} contains the type identifier and the persisted fields
+   * needed by the field‑set constructor: {@code CurrentValue}, {@code Started}, {@code
+   * TotalReports}, and {@code Uptime}. The snapshot is captured under synchronization to ensure
+   * consistency across mutable fields. Callers typically persist the result and later pass it back
+   * into the constructor to resume reporting without a warm‑up spike after downtime.
+   *
+   * @param shortLived whether the field set is intended for short‑lived usage or caching
+   * @return field set snapshot containing the current value, report counts, and uptime metadata
    */
   public synchronized SimpleFieldSet exportFieldSet(boolean shortLived) {
     SimpleFieldSet fs = new SimpleFieldSet(shortLived);
@@ -559,6 +697,18 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     return fs;
   }
 
+  /**
+   * Restores transient fields after Java serialization.
+   *
+   * <p>Java deserialization does not restore transient time suppliers or the time skew callback, so
+   * this method ensures that wall‑clock and monotonic time sources fall back to system defaults.
+   * The callback intentionally remains {@code null} after deserialization to avoid unexpected side
+   * effects when the object is restored.
+   *
+   * @param in input stream used by Java serialization to restore fields
+   * @throws IOException if the underlying stream cannot be read
+   * @throws ClassNotFoundException if the serialized class cannot be resolved
+   */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();

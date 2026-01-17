@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import java.util.concurrent.TimeUnit;
 import network.crypta.support.math.RunningAverage;
+import network.crypta.support.math.RunningAverageBounds;
 import network.crypta.support.math.SimpleRunningAverage;
 import network.crypta.support.math.TimeDecayingRunningAverage;
 
@@ -90,7 +91,7 @@ final class PeerNodeRoutingStats {
    */
   private final TimeDecayingRunningAverage pRejected;
 
-  /** Time of last backoff sample (milliseconds since epoch). */
+  /** Time of the last backoff sample (milliseconds since epoch). */
   private long lastSampleTime = Long.MAX_VALUE;
 
   /**
@@ -106,9 +107,12 @@ final class PeerNodeRoutingStats {
    *     must be non-null and remain valid while this tracker is in use
    */
   PeerNodeRoutingStats(Node node) {
-    this.backedOffPercent = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
-    this.backedOffPercentRT = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
-    this.backedOffPercentBulk = new TimeDecayingRunningAverage(0.0, 180000, 0.0, 1.0, node);
+    this.backedOffPercent =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
+    this.backedOffPercentRT =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
+    this.backedOffPercentBulk =
+        new TimeDecayingRunningAverage(RunningAverageBounds.of(0.0, 0.0, 1.0), 180000, node);
 
     this.swapRequestsInterval =
         new SimpleRunningAverage(50, Node.MIN_INTERVAL_BETWEEN_INCOMING_SWAP_REQUESTS);
@@ -117,9 +121,12 @@ final class PeerNodeRoutingStats {
 
     this.pingAverage =
         new TimeDecayingRunningAverage(
-            1, TimeUnit.SECONDS.toMillis(30), 0, NodePinger.CRAZY_MAX_PING_TIME, node);
+            RunningAverageBounds.of(1, 0, NodePinger.CRAZY_MAX_PING_TIME),
+            TimeUnit.SECONDS.toMillis(30),
+            node);
     this.pRejected =
-        new TimeDecayingRunningAverage(0, TimeUnit.MINUTES.toMillis(4), 0.0, 1.0, node);
+        new TimeDecayingRunningAverage(
+            RunningAverageBounds.of(0, 0.0, 1.0), TimeUnit.MINUTES.toMillis(4), node);
   }
 
   /**
@@ -311,7 +318,7 @@ final class PeerNodeRoutingStats {
    * indicates no backoff during the window, while {@code 1.0} indicates full backoff throughout.
    * The computed value is reported to the provided running average.
    *
-   * @param now current time in milliseconds since epoch that ends the sampling window
+   * @param now current time in milliseconds since the epoch that ends the sampling window
    * @param backedOffUntil timestamp in milliseconds since epoch indicating backoff end time
    * @param avg running average to receive the computed backoff fraction
    * @return the backoff fraction in {@code [0, 1]} for the sampled interval
