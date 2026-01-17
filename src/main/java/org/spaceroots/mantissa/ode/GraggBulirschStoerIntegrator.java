@@ -1,5 +1,9 @@
 package org.spaceroots.mantissa.ode;
 
+import java.util.Arrays;
+import java.util.Objects;
+import org.jetbrains.annotations.NotNull;
+
 /**
  * Gragg–Bulirsch–Stoer integrator for non-stiff Ordinary Differential Equations with dense output
  * support.
@@ -74,9 +78,9 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    *
    * <p>Choose this constructor when each state component requires its own absolute and relative
    * tolerance. Vector tolerances must match the dimension returned by the supplied equations. All
-   * other defaults mirror the scalar constructor: stability checks enabled, conservative step-size
-   * control, and dense output if any listener requires it. The integrator copies no user buffers,
-   * so callers retain ownership of the tolerance arrays.
+   * other defaults mirror the scalar constructor: stability checks are enabled, conservative
+   * step-size control, and dense output if any listener requires it. The integrator copies no user
+   * buffers, so callers retain ownership of the tolerance arrays.
    *
    * @param minStep minimal step size in integration variable; must be strictly positive
    * @param maxStep maximal step size allowed; must be strictly positive
@@ -101,7 +105,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * Configure stability checks performed during early extrapolation iterations.
    *
    * <p>For each candidate step the integrator compares the first derivative with later midpoint
-   * derivatives to detect rapidly growing modes. If the check fails, the step is rejected and the
+   * derivatives to detect rapidly growing modes. If the check fails, the step is rejected, and the
    * trial step size is reduced by the supplied factor. Checks are limited to the first few
    * extrapolation iterations to avoid excessive cost. Passing negative or zero limits restores the
    * defaults ({@code maxIter=2}, {@code maxChecks=1}, {@code stabilityReduction=0.5}). This setting
@@ -137,7 +141,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * hNew = h * stepControl2 / Math.pow(err / stepControl1, 1.0 / (2 * k + 1))
    * }</pre>
    *
-   * <p>where {@code err} is the normalized error estimate and {@code k} is the extrapolation column
+   * <p>Where {@code err} is the normalized error estimate and {@code k} is the extrapolation column
    * (starting at zero). The result is further clamped by
    *
    * <pre>{@code
@@ -298,7 +302,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     }
 
     // initialize the order selection cost array
-    // (number of function calls for each column of the extrapolation table)
+    // (number of function-calls for each column of the extrapolation table)
     costPerStep[0] = sequence[0] + 1;
     for (int k = 1; k < size; ++k) {
       costPerStep[k] = costPerStep[k - 1] + sequence[k];
@@ -353,11 +357,11 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    *
    * <p>Each entry combines absolute and relative tolerances with the larger magnitude among the two
    * provided state vectors, mirroring the scaling used by Hairer and Wanner. When vector tolerances
-   * are configured the corresponding element-wise values are used; otherwise scalar tolerances are
+   * are configured, the corresponding element-wise values are used; otherwise scalar tolerances are
    * applied uniformly.
    *
-   * @param y1 first state vector sampled for magnitude; must match the problem dimension
-   * @param y2 second state vector sampled for magnitude; must match the problem dimension
+   * @param y1 the first state vector sampled for magnitude; must match the problem dimension
+   * @param y2 the second state vector sampled for magnitude; must match the problem dimension
    * @param scale output buffer receiving per-component scales; length must match {@code y1}
    */
   private void rescale(double[] y1, double[] y2, double[] scale) {
@@ -382,33 +386,24 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * last substep is symmetrically corrected to keep the scheme centered. Intermediate derivatives
    * and states are written into the provided buffers to avoid allocations.
    *
-   * @param equations differential equations being integrated; must match the configured dimension
-   * @param t0 start time for the global step
-   * @param y0 state vector at {@code t0}; not modified by this method
-   * @param step global step length attempted for this iteration
-   * @param k extrapolation column index (0-based) selecting the number of substeps
-   * @param scale per-component scaling factors for error and stability checks
-   * @param f scratch array holding derivatives per substep; {@code f[0]} must already contain the
-   *     derivative at {@code t0}
-   * @param yMiddle buffer receiving the state at mid-step when needed for dense output
-   * @param yEnd buffer receiving the state at the end of the trial step
-   * @param yTmp scratch buffer for intermediate midpoint updates
+   * @param context bundle carrying the equations, step configuration, and scratch buffers used by
+   *     the modified midpoint sequence
    * @return {@code true} when the full sequence completed; {@code false} if stability checks failed
    *     and the caller should reduce the step
    * @throws DerivativeException if the user-provided derivative function throws during evaluation
    */
-  private boolean tryStep(
-      FirstOrderDifferentialEquations equations,
-      double t0,
-      double[] y0,
-      double step,
-      int k,
-      double[] scale,
-      double[][] f,
-      double[] yMiddle,
-      double[] yEnd,
-      double[] yTmp)
-      throws DerivativeException {
+  private boolean tryStep(ModifiedMidpointContext context) throws DerivativeException {
+
+    FirstOrderDifferentialEquations equations = context.equations;
+    double t0 = context.t0;
+    double[] y0 = context.y0;
+    double step = context.step;
+    int k = context.k;
+    double[] scale = context.scale;
+    double[][] f = context.f;
+    double[] yMiddle = context.yMiddle;
+    double[] yEnd = context.yEnd;
+    double[] yTmp = context.yTmp;
 
     int n = sequence[k];
     double subStep = step / n;
@@ -537,36 +532,30 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     handler.reset();
     costPerTimeUnit[0] = 0;
 
-    runIntegrationLoop(equations, t, y, forward, scale, interpolator, workingState, status);
+    IntegrationContext integrationContext =
+        new IntegrationContext(equations, t, y, forward, scale, interpolator, workingState, status);
+    runIntegrationLoop(integrationContext);
   }
 
-  private void runIntegrationLoop(
-      FirstOrderDifferentialEquations equations,
-      double targetTime,
-      double[] y,
-      boolean forward,
-      double[] scale,
-      AbstractStepInterpolator interpolator,
-      WorkingState workingState,
-      StepStatus status)
+  private void runIntegrationLoop(IntegrationContext context)
       throws DerivativeException, IntegratorException {
 
-    while (!status.lastStep) {
-      performSingleStep(
-          equations, targetTime, y, forward, scale, interpolator, workingState, status);
+    while (!context.status.lastStep) {
+      performSingleStep(context);
     }
   }
 
-  private void performSingleStep(
-      FirstOrderDifferentialEquations equations,
-      double targetTime,
-      double[] y,
-      boolean forward,
-      double[] scale,
-      AbstractStepInterpolator interpolator,
-      WorkingState w,
-      StepStatus status)
+  private void performSingleStep(IntegrationContext context)
       throws DerivativeException, IntegratorException {
+
+    FirstOrderDifferentialEquations equations = context.equations;
+    double targetTime = context.targetTime;
+    double[] y = context.y;
+    boolean forward = context.forward;
+    double[] scale = context.scale;
+    AbstractStepInterpolator interpolator = context.interpolator;
+    WorkingState w = context.workingState;
+    StepStatus status = context.status;
 
     status.reject = false;
     status.loopExit = false;
@@ -593,6 +582,158 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
     status.firstTime = false;
     updateRejectionStatus(status, status.reject);
+  }
+
+  private record IntegrationContext(
+      FirstOrderDifferentialEquations equations,
+      double targetTime,
+      double[] y,
+      boolean forward,
+      double[] scale,
+      AbstractStepInterpolator interpolator,
+      WorkingState workingState,
+      StepStatus status) {
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (!(other
+          instanceof
+          IntegrationContext(
+              FirstOrderDifferentialEquations otherEquations,
+              double otherTargetTime,
+              double[] otherY,
+              boolean otherForward,
+              double[] otherScale,
+              AbstractStepInterpolator otherInterpolator,
+              WorkingState otherWorkingState,
+              StepStatus otherStatus))) {
+        return false;
+      }
+      return otherForward == forward
+          && Double.doubleToLongBits(otherTargetTime) == Double.doubleToLongBits(targetTime)
+          && Objects.equals(otherEquations, equations)
+          && Arrays.equals(otherY, y)
+          && Arrays.equals(otherScale, scale)
+          && Objects.equals(otherInterpolator, interpolator)
+          && Objects.equals(otherWorkingState, workingState)
+          && Objects.equals(otherStatus, status);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(equations, targetTime, forward, interpolator, workingState, status);
+      result = 31 * result + Arrays.hashCode(y);
+      result = 31 * result + Arrays.hashCode(scale);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "IntegrationContext["
+          + "equations="
+          + equations
+          + ", targetTime="
+          + targetTime
+          + ", y="
+          + Arrays.toString(y)
+          + ", forward="
+          + forward
+          + ", scale="
+          + Arrays.toString(scale)
+          + ", interpolator="
+          + interpolator
+          + ", workingState="
+          + workingState
+          + ", status="
+          + status
+          + "]";
+    }
+  }
+
+  private record ModifiedMidpointContext(
+      FirstOrderDifferentialEquations equations,
+      double t0,
+      double[] y0,
+      double step,
+      int k,
+      double[] scale,
+      double[][] f,
+      double[] yMiddle,
+      double[] yEnd,
+      double[] yTmp) {
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (!(other
+          instanceof
+          ModifiedMidpointContext(
+              FirstOrderDifferentialEquations otherEquations,
+              double otherT0,
+              double[] otherY0,
+              double otherStep,
+              int otherK,
+              double[] otherScale,
+              double[][] otherF,
+              double[] otherYMiddle,
+              double[] otherYEnd,
+              double[] otherYTmp))) {
+        return false;
+      }
+      return otherK == k
+          && Double.doubleToLongBits(otherT0) == Double.doubleToLongBits(t0)
+          && Double.doubleToLongBits(otherStep) == Double.doubleToLongBits(step)
+          && Objects.equals(otherEquations, equations)
+          && Arrays.equals(otherY0, y0)
+          && Arrays.equals(otherScale, scale)
+          && Arrays.deepEquals(otherF, f)
+          && Arrays.equals(otherYMiddle, yMiddle)
+          && Arrays.equals(otherYEnd, yEnd)
+          && Arrays.equals(otherYTmp, yTmp);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Objects.hash(equations, t0, step, k);
+      result = 31 * result + Arrays.hashCode(y0);
+      result = 31 * result + Arrays.hashCode(scale);
+      result = 31 * result + Arrays.deepHashCode(f);
+      result = 31 * result + Arrays.hashCode(yMiddle);
+      result = 31 * result + Arrays.hashCode(yEnd);
+      result = 31 * result + Arrays.hashCode(yTmp);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "ModifiedMidpointContext["
+          + "equations="
+          + equations
+          + ", t0="
+          + t0
+          + ", y0="
+          + Arrays.toString(y0)
+          + ", step="
+          + step
+          + ", k="
+          + k
+          + ", scale="
+          + Arrays.toString(scale)
+          + ", f="
+          + Arrays.deepToString(f)
+          + ", yMiddle="
+          + Arrays.toString(yMiddle)
+          + ", yEnd="
+          + Arrays.toString(yEnd)
+          + ", yTmp="
+          + Arrays.toString(yTmp)
+          + "]";
+    }
   }
 
   /**
@@ -663,15 +804,16 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     if (status.firstTime) {
       status.hNew =
           initializeStep(
-              equations,
-              forward,
-              2 * status.targetIter + 1,
-              scale,
-              stepStart,
-              y,
-              w.yDot0,
-              w.yTmp,
-              w.yTmpDot);
+              new StepInitializationContext(
+                  equations,
+                  forward,
+                  2 * status.targetIter + 1,
+                  scale,
+                  stepStart,
+                  y,
+                  w.yDot0,
+                  w.yTmp,
+                  w.yTmpDot));
       if (!forward) {
         status.hNew = -status.hNew;
       }
@@ -726,16 +868,17 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
       throws DerivativeException, IntegratorException {
 
     if (tryStep(
-        equations,
-        stepStart,
-        y,
-        stepSize,
-        k,
-        scale,
-        w.fk[k],
-        (k == 0) ? w.yMidDots[0] : w.diagonal[k - 1],
-        (k == 0) ? w.y1 : w.y1Diag[k - 1],
-        w.yTmp)) {
+        new ModifiedMidpointContext(
+            equations,
+            stepStart,
+            y,
+            stepSize,
+            k,
+            scale,
+            w.fk[k],
+            (k == 0) ? w.yMidDots[0] : w.diagonal[k - 1],
+            (k == 0) ? w.y1 : w.y1Diag[k - 1],
+            w.yTmp))) {
       return true;
     }
 

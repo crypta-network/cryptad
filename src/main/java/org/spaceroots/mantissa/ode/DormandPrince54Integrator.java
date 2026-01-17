@@ -71,11 +71,7 @@ public class DormandPrince54Integrator extends RungeKuttaFehlbergIntegrator {
   public DormandPrince54Integrator(
       double minStep, double maxStep, double scalAbsoluteTolerance, double scalRelativeTolerance) {
     super(
-        true,
-        C,
-        A,
-        B,
-        new DormandPrince54StepInterpolator(),
+        new RungeKuttaFehlbergMethod(true, C, A, B, new DormandPrince54StepInterpolator()),
         minStep,
         maxStep,
         scalAbsoluteTolerance,
@@ -104,11 +100,7 @@ public class DormandPrince54Integrator extends RungeKuttaFehlbergIntegrator {
       double[] vecAbsoluteTolerance,
       double[] vecRelativeTolerance) {
     super(
-        true,
-        C,
-        A,
-        B,
-        new DormandPrince54StepInterpolator(),
+        new RungeKuttaFehlbergMethod(true, C, A, B, new DormandPrince54StepInterpolator()),
         minStep,
         maxStep,
         vecAbsoluteTolerance,
@@ -145,11 +137,11 @@ public class DormandPrince54Integrator extends RungeKuttaFehlbergIntegrator {
    * Computes the normalized root-mean-square local error estimate for a tentative step.
    *
    * <p>The implementation combines the Dormand–Prince error coefficients with the stage derivatives
-   * to form the embedded fourth-order estimate, scales each component by the greater magnitude of
-   * the start and end state, and divides by either scalar or per-component tolerances. The returned
+   * to form the embedded fourth-order estimate, scales each component by the greater scale of the
+   * start and end state, and divides by either scalar or per-component tolerances. The returned
    * value is compared against {@code 1.0}; values above one trigger a rejected step and step-size
    * reduction, while values below one permit acceptance. The calculation is deterministic and
-   * agnostic to integration direction.
+   * agnostic to the integration direction.
    *
    * @param yDotK derivatives for all Runge–Kutta stages; index {@code [k][j]} stores stage {@code
    *     k} for component {@code j}.

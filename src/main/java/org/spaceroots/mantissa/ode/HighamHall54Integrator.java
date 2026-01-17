@@ -58,9 +58,9 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
    * ceiling, but the final step may be shorter to land exactly on the target time. All parameters
    * must be strictly positive to allow both forward and backward integration.
    *
-   * @param minStep smallest step the controller will attempt before potentially failing, in the
+   * @param minStep the smallest step the controller will attempt before potentially failing, in the
    *     integration time units; must be greater than zero.
-   * @param maxStep largest step the controller may take; must exceed {@code minStep} and be
+   * @param maxStep the largest step the controller may take; must exceed {@code minStep} and be
    *     positive even when integrating backward in time.
    * @param scalAbsoluteTolerance uniform absolute error tolerance applied to every state component;
    *     must be non-negative but typically small compared to expected state magnitudes.
@@ -71,11 +71,7 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
   public HighamHall54Integrator(
       double minStep, double maxStep, double scalAbsoluteTolerance, double scalRelativeTolerance) {
     super(
-        false,
-        c,
-        a,
-        b,
-        new HighamHall54StepInterpolator(),
+        new RungeKuttaFehlbergMethod(false, c, a, b, new HighamHall54StepInterpolator()),
         minStep,
         maxStep,
         scalAbsoluteTolerance,
@@ -90,10 +86,10 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
    * scalar constructor: they constrain the adaptive controller but do not guarantee fixed step
    * lengths. A final step may still be shortened to land exactly at the integration endpoint.
    *
-   * @param minStep smallest admissible step in time units; must be positive for both forward and
-   *     backward integration scenarios.
+   * @param minStep the smallest admissible step in time units; must be positive for both forward
+   *     and backward integration scenarios.
    * @param maxStep largest admissible step; must be positive and not smaller than {@code minStep}.
-   * @param vecAbsoluteTolerance element-wise absolute tolerances; each entry must be non-negative
+   * @param vecAbsoluteTolerance element-wise absolute tolerances; each entry must be non-negative,
    *     and the array length must equal the equations dimension.
    * @param vecRelativeTolerance element-wise relative tolerances; each entry must be non-negative
    *     and combined with the absolute tolerances for scaling.
@@ -105,11 +101,7 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
       double[] vecAbsoluteTolerance,
       double[] vecRelativeTolerance) {
     super(
-        false,
-        c,
-        a,
-        b,
-        new HighamHall54StepInterpolator(),
+        new RungeKuttaFehlbergMethod(false, c, a, b, new HighamHall54StepInterpolator()),
         minStep,
         maxStep,
         vecAbsoluteTolerance,
@@ -156,7 +148,7 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
    * @param y1 estimate of the state at the end of the step before error correction; must align with
    *     {@code y0} in length and ordering.
    * @param h current step size in integration time units; may be positive or negative depending on
-   *     integration direction.
+   *     the integration direction.
    * @return dimensionless error ratio; values above one suggest rejecting or shrinking the step
    */
   protected double estimateError(double[][] yDotK, double[] y0, double[] y1, double h) {

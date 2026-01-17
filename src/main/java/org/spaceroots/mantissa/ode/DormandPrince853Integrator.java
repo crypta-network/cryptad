@@ -9,8 +9,8 @@ package org.spaceroots.mantissa.ode;
  * the normalized local error below one. It automatically estimates an initial step, enforces
  * user-provided minimum and maximum magnitudes, and reuses the final derivative of each accepted
  * step (the <i>first same as last</i> property) to save one evaluation on the next step. Continuous
- * output is available through a step interpolator so callers can sample intermediate states without
- * retriggering derivative evaluations.
+ * output is available through a step interpolator, so callers can sample intermediate states
+ * without retriggering derivative evaluations.
  *
  * <p>Use this class when problems are non-stiff, require tight error control, or benefit from
  * higher-order dense output. Instances are mutable and not thread-safe; confine one integrator to a
@@ -213,19 +213,15 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
    *     runs; values smaller than this may be used only for the final partial step.
    * @param maxStep positive upper bound for the absolute step size used during adaptation; must not
    *     be smaller than {@code minStep} and is honored for both forward and backward directions.
-   * @param scalAbsoluteTolerance uniform absolute error threshold applied to each component when
+   * @param scalAbsoluteTolerance a uniform absolute error threshold applied to each component when
    *     normalizing local error estimates; must be non-negative.
-   * @param scalRelativeTolerance uniform relative error threshold scaled by the largest magnitude
-   *     of the start and end state values for each component; must be non-negative.
+   * @param scalRelativeTolerance a uniform relative error threshold scaled by the largest scale of
+   *     the start and end state values for each component; must be non-negative.
    */
   public DormandPrince853Integrator(
       double minStep, double maxStep, double scalAbsoluteTolerance, double scalRelativeTolerance) {
     super(
-        true,
-        C,
-        A,
-        B,
-        new DormandPrince853StepInterpolator(),
+        new RungeKuttaFehlbergMethod(true, C, A, B, new DormandPrince853StepInterpolator()),
         minStep,
         maxStep,
         scalAbsoluteTolerance,
@@ -249,8 +245,7 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
    * @param vecAbsoluteTolerance absolute error thresholds per state component used to scale local
    *     truncation error estimates; array length must match the problem dimension.
    * @param vecRelativeTolerance relative error thresholds per state component multiplied by the
-   *     larger magnitude of the start and end values; array length must match the problem
-   *     dimension.
+   *     larger scale of the start and end values; array length must match the problem dimension.
    */
   public DormandPrince853Integrator(
       double minStep,
@@ -258,11 +253,7 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
       double[] vecAbsoluteTolerance,
       double[] vecRelativeTolerance) {
     super(
-        true,
-        C,
-        A,
-        B,
-        new DormandPrince853StepInterpolator(),
+        new RungeKuttaFehlbergMethod(true, C, A, B, new DormandPrince853StepInterpolator()),
         minStep,
         maxStep,
         vecAbsoluteTolerance,
@@ -299,7 +290,7 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
    *
    * <p>The method combines two embedded error estimators (orders five and three) to produce a
    * single scalar error ratio. Each state component is scaled by either scalar or vector
-   * tolerances, using the larger magnitude of the start and end values to normalize derivatives. A
+   * tolerances, using the larger scale of the start and end values to normalize derivatives. A
    * return value above one signals that the step should be rejected and retried with a smaller
    * size; values at or below one allow the step to be accepted and possibly grown for the next
    * attempt. The computation does not modify the provided arrays.
@@ -310,8 +301,8 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
    *     dimension and is used for scaling tolerances.
    * @param y1 state estimate at the end of the candidate step produced by the high-order formula;
    *     length matches {@code y0} and is used for scaling tolerances.
-   * @param h signed size of the trial step currently under evaluation; absolute value is used when
-   *     computing the returned ratio.
+   * @param h the signed size of the trial step currently under evaluation; absolute value is used
+   *     when computing the returned ratio.
    * @return normalized error ratio; values greater than one trigger step rejection and reduction,
    *     while values at or below one allow acceptance.
    */
