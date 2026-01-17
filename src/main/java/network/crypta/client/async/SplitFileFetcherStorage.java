@@ -23,7 +23,6 @@ import network.crypta.crypt.RandomSource;
 import network.crypta.keys.CHKBlock;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
-import network.crypta.node.KeysFetchingLocally;
 import network.crypta.node.SendableRequestItem;
 import network.crypta.node.SendableRequestItemKey;
 import network.crypta.support.MemoryLimitedJobRunner;
@@ -38,7 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Maintains persistent and in-memory state for a splitfile fetch.
+ * Maintains a persistent and in-memory state for a splitfile fetch.
  *
  * <p>This storage binds a {@link SplitFileFetcher} to a single {@link LockableRandomAccessBuffer},
  * keeping hot metadata in memory while persisting block data, key lists, and progress so the fetch
@@ -49,8 +48,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The layout aims to minimize seeks and maximize robustness while tolerating recovery work after
  * checksum failures. Callbacks into the fetcher run off-thread via job runners, and locking is
- * shallow and taken last relative to segment locks. The storage itself is transient and recreated
- * on startup; persisted sections carry enough state to rehydrate progress.
+ * shallow and taken last relatively to segment locks. The storage itself is transient and recreated
+ * on startup; persisted sections carry enough states to rehydrate progress.
  *
  * <p>On-disk sections include:
  *
@@ -59,7 +58,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Segment key lists with per-segment checksums.
  *   <li>Segment status records with retry and block flags.
  *   <li>Main and per-segment Bloom filters for key lookup.
- *   <li>Original metadata/details and basic settings with a checksummed footer.
+ *   <li>Original metadata/details and basic settings with a check-summed footer.
  * </ul>
  *
  * @see SplitFileFetcher
@@ -68,7 +67,7 @@ import org.slf4j.LoggerFactory;
  * @author toad
  */
 public class SplitFileFetcherStorage {
-  private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherStorage.class);
+  static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherStorage.class);
 
   final SplitFileFetcherStorageCallback fetcher;
 
@@ -79,9 +78,9 @@ public class SplitFileFetcherStorage {
   private final long rafLength;
 
   /**
-   * If true we will complete the download by truncating the file. The file was passed in at
+   * If true, we will complete the download by truncating the file. The file was passed in at
    * construction, and we are not responsible for freeing it. Once all segments have decoded and
-   * encoded we call onSuccess(), and we don't free the data. Also, if this is true, cross-check
+   * encoded, we call onSuccess(), and we don't free the data. Also, if this is true, cross-check
    * blocks will be kept on disk *AFTER* all the main data and check blocks for the whole file.
    */
   final boolean completeViaTruncation;
@@ -105,8 +104,8 @@ public class SplitFileFetcherStorage {
    * Forward error correction (FEC) codec configured for this splitfile.
    *
    * <p>The codec is selected from the metadata's {@code SplitfileAlgorithm} and is used when
-   * reconstructing missing blocks during segment decode. It remains constant for the lifetime of a
-   * {@code SplitFileFetcherStorage} instance and is read-mostly; callers must treat it as
+   * reconstructing missing blocks during segment decoding. It remains constant for the lifetime of
+   * a {@code SplitFileFetcherStorage} instance and is read-mostly; callers must treat it as
    * immutable. Implementations may allocate native buffers or other resources inside the codec, so
    * it should be reused rather than recreated for every operation.
    */
@@ -117,7 +116,7 @@ public class SplitFileFetcherStorage {
   final MemoryLimitedJobRunner memoryLimitedJobRunner;
 
   /**
-   * Final length of the downloaded data. *BEFORE* decompression, filtering, etc. I.e. this is the
+   * Final length of the downloaded data. *BEFORE* decompression, filtering, etc. I.e., this is the
    * length of the data on disk, which will be written by the StreamGenerator.
    */
   final long finalLength;
@@ -136,11 +135,11 @@ public class SplitFileFetcherStorage {
   final List<COMPRESSOR_TYPE> decompressors;
 
   /**
-   * False = Transient: We are using the RAF as scratch space, we only need to write the blocks, and
+   * False = Transient: We are using the RAF as scratch space, we only need to write the blocks and
    * the keys (if we don't keep them in memory). True = Persistent: It must be possible to resume
-   * after a node restart. Ideally we'd like to be able to recover the download in its entirety
-   * without needing any additional information, but at a minimum we want to be able to continue it
-   * while passing in the usual external arguments (FetchContext, parent, etc.).
+   * after a node restarting. Ideally, we'd like to be able to recover the download in its entirety
+   * without needing any additional information. However, at a minimum we want to be able to
+   * continue it while passing in the usual external arguments (FetchContext, parent, etc.).
    */
   final boolean persistent;
 
@@ -149,14 +148,12 @@ public class SplitFileFetcherStorage {
   private boolean cancelled;
   private boolean succeeded;
 
-  /** Errors. For now, this is not persisted. */
-  private FailureCodeTracker errors;
+  /** Errors. For now, this has not persisted. */
+  FailureCodeTracker errors;
 
   final int maxRetries;
 
-  /**
-   * Every cooldownTries attempts, a key will enter cooldown, and won't be re-tried for a period.
-   */
+  /** Every cooldownTries attempts, a key will enter cooldown and won't be re-tried for a period. */
   final int cooldownTries;
 
   /** Cooldown lasts this long for each key. */
@@ -172,11 +169,11 @@ public class SplitFileFetcherStorage {
 
   final RandomSource random;
 
-  // Metadata for the file i.e. stuff we need to be able to efficiently read/write it.
+  // Metadata for the file i.e., stuff we need to be able to efficiently read/write it.
   /** Offset to start of the key lists in bytes */
   final long offsetKeyList;
 
-  /** Offset to start of the segment status's in bytes */
+  /** Offset to start of the segment status in bytes */
   final long offsetSegmentStatus;
 
   /** Offset to start of the general progress section */
@@ -195,7 +192,7 @@ public class SplitFileFetcherStorage {
    * Offset to start of the original details in bytes. "Original details" includes the URI to this
    * download (if available), the original URI for the whole download (if available), whether this
    * is the final fetch (it might be a metadata or container fetch), and data from the ultimate
-   * client, e.g. the Identifier, whether it is on the Global queue, the client name if it isn't
+   * client, e.g., the Identifier, whether it is on the Global queue, the client name if it isn't,
    * etc.
    */
   final long offsetOriginalDetails;
@@ -209,8 +206,8 @@ public class SplitFileFetcherStorage {
   /** Checksum implementation */
   final ChecksumChecker checksumChecker;
 
-  private boolean hasCheckedDatastore;
-  private boolean dirtyGeneralProgress;
+  boolean hasCheckedDatastore;
+  boolean dirtyGeneralProgress;
   static final long HAS_CHECKED_DATASTORE_FLAG = 1;
 
   /** Fixed value posted at the end of the file (if plaintext!) */
@@ -223,7 +220,7 @@ public class SplitFileFetcherStorage {
    * List of segments we need to tryStartDecode() on because their metadata was corrupted on
    * startup.
    */
-  private List<SplitFileFetcherSegmentStorage> segmentsToTryDecode;
+  List<SplitFileFetcherSegmentStorage> segmentsToTryDecode;
 
   /**
    * Create a new storage instance backed by a fresh on-disk layout.
@@ -239,7 +236,7 @@ public class SplitFileFetcherStorage {
    * scheduling. Once all segments finish and postconditions are met, the fetcher calls {@link
    * #streamGenerator()} to materialize the final byte stream.
    *
-   * @param p immutable parameters including metadata, factories, and execution helpers; must be
+   * @param p immutable parameters, including metadata, factories, and execution helpers, must be
    *     non-null.
    * @throws FetchException when policy validation fails before any network activity begins.
    * @throws MetadataParseException when metadata cannot describe a supported splitfile layout.
@@ -287,8 +284,8 @@ public class SplitFileFetcherStorage {
     int checkBlocksPerSegment = p.metadata.getCheckBlocksPerSegment();
 
     // Accumulate sizes and counts over segments.
-    AccumulatedSizes acc =
-        accumulateSizes(
+    SplitFileFetcherStorageLayout.AccumulatedSizes acc =
+        SplitFileFetcherStorageLayout.accumulateSizes(
             segmentKeys,
             crossCheckBlocks,
             splitfileSingleCryptoKey != null,
@@ -301,15 +298,15 @@ public class SplitFileFetcherStorage {
     long storedCrossCheckBlocksLength;
     if (completeViaTruncation) {
       storedCrossCheckBlocksLength = (long) totalCrossCheckBlocks * CHKBlock.DATA_LENGTH;
-      storedBlocksLength = (long) acc.splitfileDataBlocks * CHKBlock.DATA_LENGTH;
+      storedBlocksLength = (long) acc.splitfileDataBlocks() * CHKBlock.DATA_LENGTH;
     } else {
       storedCrossCheckBlocksLength = 0;
       storedBlocksLength =
-          ((long) acc.splitfileDataBlocks + totalCrossCheckBlocks) * CHKBlock.DATA_LENGTH;
+          ((long) acc.splitfileDataBlocks() + totalCrossCheckBlocks) * CHKBlock.DATA_LENGTH;
     }
 
     int segmentCount = p.metadata.getSegmentCount();
-    validateSegmentCount(segmentCount);
+    SplitFileFetcherStorageLayout.validateSegmentCount(segmentCount);
 
     CompatibilityMode minCompatMode =
         resolveAndReportCompatibility(
@@ -319,7 +316,7 @@ public class SplitFileFetcherStorage {
             p.origFetchContext,
             blocksPerSegment,
             checkBlocksPerSegment,
-            acc.splitfileCheckBlocks);
+            acc.splitfileCheckBlocks());
 
     if (LOG.isDebugEnabled()) {
       LOG.debug(
@@ -329,15 +326,15 @@ public class SplitFileFetcherStorage {
           blocksPerSegment,
           checkBlocksPerSegment,
           segmentCount,
-          acc.splitfileDataBlocks,
-          acc.splitfileCheckBlocks);
+          acc.splitfileDataBlocks(),
+          acc.splitfileCheckBlocks());
     }
     segments = new SplitFileFetcherSegmentStorage[segmentCount];
     randomSegmentIterator = new RandomArrayIterator<>(segments);
 
     long checkLength =
-        (acc.splitfileDataBlocks - (long) segmentCount * crossCheckBlocks) * CHKBlock.DATA_LENGTH;
-    validateCheckLength(checkLength, finalLength);
+        (acc.splitfileDataBlocks() - (long) segmentCount * crossCheckBlocks) * CHKBlock.DATA_LENGTH;
+    SplitFileFetcherStorageLayout.validateCheckLength(checkLength, finalLength);
 
     byte[] localSalt = new byte[32];
     random.nextBytes(localSalt);
@@ -348,21 +345,21 @@ public class SplitFileFetcherStorage {
             this,
             false,
             localSalt,
-            acc.splitfileDataBlocks + totalCrossCheckBlocks + acc.splitfileCheckBlocks,
+            acc.splitfileDataBlocks() + totalCrossCheckBlocks + acc.splitfileCheckBlocks(),
             blocksPerSegment + checkBlocksPerSegment,
             segmentCount);
 
     finalMinCompatMode = minCompatMode;
 
     this.offsetKeyList = storedBlocksLength + storedCrossCheckBlocksLength;
-    this.offsetSegmentStatus = offsetKeyList + acc.storedKeysLength;
+    this.offsetSegmentStatus = offsetKeyList + acc.storedKeysLength();
 
     byte[] generalProgress =
         SplitFileFetcherStoragePersistence.encodeGeneralProgress(
             checksumChecker, hasCheckedDatastore, errors);
 
     if (persistent) {
-      offsetGeneralProgress = offsetSegmentStatus + acc.storedSegmentStatusLength;
+      offsetGeneralProgress = offsetSegmentStatus + acc.storedSegmentStatusLength();
       this.offsetMainBloomFilter = offsetGeneralProgress + generalProgress.length;
       this.offsetSegmentBloomFilters =
           offsetMainBloomFilter + keyListener.paddedMainBloomFilterSize();
@@ -375,7 +372,10 @@ public class SplitFileFetcherStorage {
               offsetSegmentBloomFilters = offsetOriginalMetadata = offsetSegmentStatus;
     }
 
-    SegmentsBuildContext segCtx = new SegmentsBuildContext();
+    SplitFileFetcherSegmentsBuilder.SegmentsBuildContext segCtx =
+        new SplitFileFetcherSegmentsBuilder.SegmentsBuildContext();
+    segCtx.parent = this;
+    segCtx.segments = segments;
     segCtx.metadata = p.metadata;
     segCtx.segmentKeys = segmentKeys;
     segCtx.crossCheckBlocks = crossCheckBlocks;
@@ -387,7 +387,13 @@ public class SplitFileFetcherStorage {
     segCtx.acc = acc;
     segCtx.storedBlocksLength = storedBlocksLength;
     segCtx.storedCrossCheckBlocksLength = storedCrossCheckBlocksLength;
-    this.crossSegments = initSegmentsAndKeys(segCtx);
+    segCtx.completeViaTruncation = completeViaTruncation;
+    segCtx.persistent = persistent;
+    segCtx.hasSplitfileSingleCryptoKey = splitfileSingleCryptoKey != null;
+    segCtx.checksumLength = checksumLength;
+    SplitFileFetcherSegmentsInit segmentsInit =
+        SplitFileFetcherSegmentsBuilder.initSegmentsAndKeys(segCtx);
+    this.crossSegments = segmentsInit.crossSegments;
 
     // Prepare metadata buffers and compute final layout lengths/offsets (assign finals here).
     long totalLength;
@@ -411,8 +417,8 @@ public class SplitFileFetcherStorage {
       // Now offsets are final, we can encode the basic settings which embed them.
       encodedBasicSettings =
           encodeBasicSettings(
-              acc.splitfileDataBlocks,
-              acc.splitfileCheckBlocks,
+              acc.splitfileDataBlocks(),
+              acc.splitfileCheckBlocks(),
               crossCheckBlocks * segments.length);
       totalLength =
           offsetBasicSettings + encodedBasicSettings.length + 4 + checksumLength + 4 + 4 + 2 + 8;
@@ -427,7 +433,8 @@ public class SplitFileFetcherStorage {
     raf =
         SplitFileFetcherStorageRafFactory.createRafOrThrow(
             p.storageFile, totalLength, p.rafFactory, p.diskSpaceCheckingRAFFactory, random, LOG);
-    writeToRAF(segmentKeys, prepared, encodedBasicSettings, totalLength, generalProgress);
+    SplitFileFetcherStoragePersistenceWriter.writeToRaf(
+        this, segmentKeys, prepared, encodedBasicSettings, generalProgress, totalLength);
     if (LOG.isDebugEnabled()) LOG.debug("Fetching {} on {} for {}", p.thisKey, this, fetcher);
     initAsyncHelpers();
   }
@@ -437,11 +444,11 @@ public class SplitFileFetcherStorage {
    *
    * <p>This constructor validates footer magic, checksums, and version, locates each logical
    * section, and rebuilds segment state and Bloom filters. It also reattaches asynchronous helpers
-   * and prepares any pending decode attempts when segment metadata indicates partial progress.
+   * and prepares any pending decoding attempts when segment metadata indicates partial progress.
    * Successful completion means the instance is ready for {@link #start(boolean)} with resume
    * semantics and will reflect on-disk progress accurately.
    *
-   * @param p resume parameters including existing buffer and runtime helpers; must be non-null.
+   * @param p resume parameters, including existing buffer and runtime helpers, must be non-null.
    * @throws IOException when the underlying buffer cannot be read or locked.
    * @throws StorageFormatException when checksums, version, or offsets are invalid.
    * @throws FetchException when resumed state violates fetch policy or limits.
@@ -465,23 +472,9 @@ public class SplitFileFetcherStorage {
     this.completeViaTruncation = p.completeViaTruncation;
 
     this.rafLength = p.raf.size();
-    ensureMinLength(rafLength);
-    validateMagic(rafLength);
-    byte[] versionBuf = readVersionBytes(rafLength);
-    int version = parseInt(versionBuf);
-    if (version != VERSION) throw new StorageFormatException("Wrong version " + version);
-    byte[] checksumTypeBuf = readChecksumTypeBytes(rafLength);
-    validateChecksumType(checksumTypeBuf);
-    byte[] flagsBuf = readFlagsBytes(rafLength);
-    validateFlags(flagsBuf);
-
-    BasicSettingsInfo basicInfo =
-        readBasicSettingsLocation(rafLength, flagsBuf, checksumTypeBuf, versionBuf);
-    byte[] basicSettingsBuffer = readChecksummed(basicInfo.offset, basicInfo.length);
-
     ParsedBasicSettings parsed =
-        SplitFileFetcherStorageSettingsCodec.parseBasicSettings(
-            basicSettingsBuffer, basicInfo.offset, p.completeViaTruncation, rafLength);
+        SplitFileFetcherStorageResumeReader.readParsedSettings(
+            raf, checksumChecker, checksumLength, rafLength, p.completeViaTruncation);
 
     // Assign parsed values to final fields
     this.splitfileType = parsed.getSplitfileType();
@@ -505,322 +498,37 @@ public class SplitFileFetcherStorage {
     // Allocate and assign segments array before constructing individual segments.
     this.segments = new SplitFileFetcherSegmentStorage[parsed.getSegmentCount()];
     this.randomSegmentIterator = new RandomArrayIterator<>(segments);
-    SegmentsInit segmentsInit =
-        initSegmentsFromStream(
-            parsed.getTotalDataBlocks(),
-            parsed.getTotalCheckBlocks(),
-            parsed.getTotalCrossCheckBlocks(),
-            parsed.getSettingsStream(),
-            p.completeViaTruncation,
-            p.keysFetching,
-            this.segments);
+    SplitFileFetcherSegmentsInit segmentsInit =
+        SplitFileFetcherSegmentsBuilder.initSegmentsFromStream(
+            new SplitFileFetcherSegmentsLoadParams(
+                this,
+                parsed.getTotalDataBlocks(),
+                parsed.getTotalCheckBlocks(),
+                parsed.getTotalCrossCheckBlocks(),
+                parsed.getSettingsStream(),
+                p.completeViaTruncation,
+                p.keysFetching,
+                this.segments,
+                checksumLength,
+                splitfileSingleCryptoKey != null,
+                offsetKeyList,
+                offsetSegmentStatus,
+                rafLength));
     this.crossSegments = segmentsInit.crossSegments;
     this.keyListener =
         new SplitFileFetcherKeyListener(
             this, fetcher, segmentsInit.remainingStream, false, p.newSalt);
 
-    postInitReadSegmentState();
-    readGeneralProgress();
+    SplitFileFetcherStorageRecovery recovery = new SplitFileFetcherStorageRecovery(this);
+    recovery.postInitReadSegmentState();
+    recovery.readGeneralProgress();
     initAsyncHelpers();
-  }
-
-  // ---------- Small helpers to reduce cognitive complexity in constructor ----------
-
-  private void ensureMinLength(long length) throws StorageFormatException {
-    if (length < 8) throw new StorageFormatException("Too short");
-  }
-
-  private void validateMagic(long length) throws IOException, StorageFormatException {
-    byte[] buf = new byte[8];
-    raf.pread(length - 8, buf, 0, 8);
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(buf));
-    if (dis.readLong() != END_MAGIC) throw new StorageFormatException("Wrong magic bytes");
-  }
-
-  private static int parseInt(byte[] buf) throws IOException {
-    return new DataInputStream(new ByteArrayInputStream(buf)).readInt();
-  }
-
-  private byte[] readVersionBytes(long length) throws IOException {
-    byte[] versionBuf = new byte[4];
-    raf.pread(length - 12, versionBuf, 0, 4);
-    return versionBuf;
-  }
-
-  private byte[] readChecksumTypeBytes(long length) throws IOException {
-    byte[] checksumTypeBuf = new byte[2];
-    raf.pread(length - 14, checksumTypeBuf, 0, 2);
-    return checksumTypeBuf;
-  }
-
-  private void validateChecksumType(byte[] checksumTypeBuf)
-      throws IOException, StorageFormatException {
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(checksumTypeBuf));
-    int checksumType = dis.readShort();
-    if (checksumType != ChecksumChecker.CHECKSUM_CRC)
-      throw new StorageFormatException("Unknown checksum type " + checksumType);
-  }
-
-  private byte[] readFlagsBytes(long length) throws IOException {
-    byte[] flagsBuf = new byte[4];
-    raf.pread(length - 18, flagsBuf, 0, 4);
-    return flagsBuf;
-  }
-
-  private void validateFlags(byte[] flagsBuf) throws IOException, StorageFormatException {
-    DataInputStream dis = new DataInputStream(new ByteArrayInputStream(flagsBuf));
-    int flags = dis.readInt();
-    if (flags != 0) throw new StorageFormatException("Unknown flags: " + flags);
-  }
-
-  private BasicSettingsInfo readBasicSettingsLocation(
-      long length, byte[] flagsBuf, byte[] checksumTypeBuf, byte[] versionBuf)
-      throws IOException, StorageFormatException {
-    byte[] buf = new byte[14];
-    raf.pread(length - (22 + checksumLength), buf, 0, 4);
-    byte[] checksum = new byte[checksumLength];
-    raf.pread(length - (18 + checksumLength), checksum, 0, checksumLength);
-    System.arraycopy(flagsBuf, 0, buf, 4, 4);
-    System.arraycopy(checksumTypeBuf, 0, buf, 8, 2);
-    System.arraycopy(versionBuf, 0, buf, 10, 4);
-    if (!checksumChecker.checkChecksum(buf, 0, 14, checksum))
-      throw new StorageFormatException("Checksum failed on basic settings length and version");
-    int basicSettingsLength = parseInt(buf);
-    if (basicSettingsLength < 0
-        || basicSettingsLength + 12 + 4 + checksumLength > raf.size()
-        || basicSettingsLength > 1024 * 1024)
-      throw new StorageFormatException("Bad basic settings length");
-    long basicSettingsOffset = length - (18 + 4 + checksumLength * 2L + basicSettingsLength);
-    return new BasicSettingsInfo(basicSettingsOffset, basicSettingsLength);
-  }
-
-  private byte[] readChecksummed(long offset, int length)
-      throws StorageFormatException, IOException {
-    byte[] basicSettingsBuffer = new byte[length];
-    try {
-      preadChecksummed(offset, basicSettingsBuffer, 0, length);
-    } catch (ChecksumFailedException _) {
-      throw new StorageFormatException("Basic settings checksum invalid");
-    }
-    return basicSettingsBuffer;
-  }
-
-  private SegmentsInit initSegmentsFromStream(
-      int totalDataBlocks,
-      int totalCheckBlocks,
-      int totalCrossCheckBlocks,
-      DataInputStream dis,
-      boolean completeViaTruncation,
-      KeysFetchingLocally keysFetching,
-      SplitFileFetcherSegmentStorage[] segments)
-      throws StorageFormatException, IOException {
-    // segments array is provided and already assigned to this.segments
-    long dataOffset = 0;
-    long crossCheckBlocksOffset =
-        completeViaTruncation ? (long) totalDataBlocks * CHKBlock.DATA_LENGTH : 0;
-    long segmentKeysOffset = offsetKeyList;
-    long segmentStatusOffset = offsetSegmentStatus;
-    int countDataBlocks = 0;
-    int countCheckBlocks = 0;
-    int countCrossCheckBlocks = 0;
-    for (int i = 0; i < segments.length; i++) {
-      SplitFileFetcherSegmentStorage.LoadParams lp =
-          new SplitFileFetcherSegmentStorage.LoadParams();
-      lp.parent = this;
-      lp.dis = dis;
-      lp.segNo = i;
-      lp.writeRetries = maxRetries != -1;
-      lp.segmentDataOffset = dataOffset;
-      lp.segmentCrossCheckDataOffset = completeViaTruncation ? crossCheckBlocksOffset : -1;
-      lp.segmentKeysOffset = segmentKeysOffset;
-      lp.segmentStatusOffset = segmentStatusOffset;
-      lp.keysFetching = keysFetching;
-      segments[i] = new SplitFileFetcherSegmentStorage(lp);
-      int dataBlocks = segments[i].dataBlocks;
-      countDataBlocks += dataBlocks;
-      int checkBlocks = segments[i].checkBlocks;
-      countCheckBlocks += checkBlocks;
-      int crossCheckBlocks = segments[i].crossSegmentCheckBlocks;
-      countCrossCheckBlocks += crossCheckBlocks;
-      dataOffset += (long) dataBlocks * CHKBlock.DATA_LENGTH;
-      if (completeViaTruncation)
-        crossCheckBlocksOffset += (long) crossCheckBlocks * CHKBlock.DATA_LENGTH;
-      else dataOffset += (long) crossCheckBlocks * CHKBlock.DATA_LENGTH;
-      segmentKeysOffset +=
-          SplitFileFetcherSegmentStorage.storedKeysLength(
-              dataBlocks + crossCheckBlocks,
-              checkBlocks,
-              splitfileSingleCryptoKey != null,
-              checksumLength);
-      segmentStatusOffset +=
-          SplitFileFetcherSegmentStorage.paddedStoredSegmentStatusLength(
-              dataBlocks, checkBlocks, crossCheckBlocks, maxRetries != -1, checksumLength, true);
-      validateSegmentOffsets(dataOffset, segments[i]);
-      debugSegmentOffsets(i, segments[i]);
-    }
-    validateTotals(
-        countDataBlocks,
-        totalDataBlocks,
-        countCheckBlocks,
-        totalCheckBlocks,
-        countCrossCheckBlocks,
-        totalCrossCheckBlocks);
-
-    int crossSegmentsCount = dis.readInt();
-    SplitFileFetcherCrossSegmentStorage[] crossSegmentsLocal =
-        (crossSegmentsCount == 0)
-            ? null
-            : new SplitFileFetcherCrossSegmentStorage[crossSegmentsCount];
-    for (int i = 0; i < crossSegmentsCount; i++) {
-      // crossSegmentsLocal is non-null when crossSegmentsCount > 0
-      crossSegmentsLocal[i] = new SplitFileFetcherCrossSegmentStorage(this, i, dis);
-    }
-    return new SegmentsInit(segments, crossSegmentsLocal, dis);
-  }
-
-  private static void validateTotals(
-      int countDataBlocks,
-      int totalDataBlocks,
-      int countCheckBlocks,
-      int totalCheckBlocks,
-      int countCrossCheckBlocks,
-      int totalCrossCheckBlocks)
-      throws StorageFormatException {
-    if (countDataBlocks != totalDataBlocks)
-      throw new StorageFormatException(
-          "Total data blocks " + countDataBlocks + " but expected " + totalDataBlocks);
-    if (countCheckBlocks != totalCheckBlocks)
-      throw new StorageFormatException(
-          "Total check blocks " + countCheckBlocks + " but expected " + totalCheckBlocks);
-    if (countCrossCheckBlocks != totalCrossCheckBlocks)
-      throw new StorageFormatException(
-          "Total cross-check blocks "
-              + countCrossCheckBlocks
-              + " but expected "
-              + totalCrossCheckBlocks);
-  }
-
-  private void debugSegmentOffsets(int index, SplitFileFetcherSegmentStorage segment) {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "Segment {}: data blocks offset {} cross-check blocks offset {} for segment {} of {}",
-          index,
-          segment.segmentBlockDataOffset,
-          segment.segmentCrossCheckBlockDataOffset,
-          index,
-          this);
-    }
-  }
-
-  private void validateSegmentOffsets(long dataOffset, SplitFileFetcherSegmentStorage segment)
-      throws StorageFormatException {
-    if (dataOffset > rafLength)
-      throw new StorageFormatException(
-          "Data offset past end of file " + dataOffset + " of " + rafLength);
-    if (segment.segmentCrossCheckBlockDataOffset > rafLength)
-      throw new StorageFormatException(
-          "Cross-check blocks offset past end of file "
-              + segment.segmentCrossCheckBlockDataOffset
-              + " of "
-              + rafLength);
-  }
-
-  private void postInitReadSegmentState()
-      throws FetchException, IOException, StorageFormatException {
-    for (SplitFileFetcherSegmentStorage segment : segments) {
-      boolean needsDecode = determineIfSegmentNeedsDecode(segment);
-      if (needsDecode) queueSegmentForDecode(segment);
-    }
-    readAllSegmentKeys();
-    checkCrossSegmentsIfAny();
-  }
-
-  private boolean determineIfSegmentNeedsDecode(SplitFileFetcherSegmentStorage segment)
-      throws FetchException, IOException, StorageFormatException {
-    boolean needsDecode = false;
-    try {
-      segment.readMetadata();
-      if (segment.hasFailed()) {
-        raf.close();
-        raf.free(); // Failed, so free it.
-        throw new FetchException(FetchExceptionMode.SPLITFILE_ERROR, errors);
-      }
-    } catch (ChecksumFailedException _) {
-      LOG.error("Progress for segment {} on {} corrupted.", segment.segNo, this);
-      needsDecode = true;
-    }
-    if (segment.needsDecode()) needsDecode = true;
-    return needsDecode;
-  }
-
-  private void queueSegmentForDecode(SplitFileFetcherSegmentStorage segment) {
-    if (segmentsToTryDecode == null) segmentsToTryDecode = new ArrayList<>();
-    segmentsToTryDecode.add(segment);
-  }
-
-  private void readAllSegmentKeys() throws StorageFormatException, IOException {
-    for (SplitFileFetcherSegmentStorage segment : segments) {
-      try {
-        segment.readSegmentKeys();
-      } catch (ChecksumFailedException _) {
-        throw new StorageFormatException("Keys corrupted");
-      }
-    }
-  }
-
-  private void checkCrossSegmentsIfAny() {
-    if (this.crossSegments == null) return;
-    for (SplitFileFetcherCrossSegmentStorage crossSegment : this.crossSegments)
-      // Must be after reading the metadata for the plain segments.
-      crossSegment.checkBlocks();
-  }
-
-  private static class BasicSettingsInfo {
-    final long offset;
-    final int length;
-
-    BasicSettingsInfo(long offset, int length) {
-      this.offset = offset;
-      this.length = length;
-    }
-  }
-
-  private static class SegmentsInit {
-    final SplitFileFetcherSegmentStorage[] segments;
-    final SplitFileFetcherCrossSegmentStorage[] crossSegments;
-    final DataInputStream remainingStream;
-
-    SegmentsInit(
-        SplitFileFetcherSegmentStorage[] segments,
-        SplitFileFetcherCrossSegmentStorage[] crossSegments,
-        DataInputStream remainingStream) {
-      this.segments = segments;
-      this.crossSegments = crossSegments;
-      this.remainingStream = remainingStream;
-    }
-  }
-
-  private void readGeneralProgress() throws IOException {
-    try {
-      byte[] buf = preadChecksummedWithLength(offsetGeneralProgress);
-      ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-      DataInputStream dis = new DataInputStream(bais);
-      long flags = dis.readLong();
-      if ((flags & HAS_CHECKED_DATASTORE_FLAG) != 0) hasCheckedDatastore = true;
-      errors = new FailureCodeTracker(false, dis);
-      dis.close();
-    } catch (ChecksumFailedException | StorageFormatException e) {
-      LOG.error("Failed to read general progress: {}", String.valueOf(e));
-      // Reset general progress
-      this.hasCheckedDatastore = false;
-      this.errors = new FailureCodeTracker(false);
-    }
   }
 
   /**
    * Start the storage layer and enqueue any required recovery work.
    *
-   * <p>This method reattaches cross-segment helpers, schedules any deferred decode attempts, and
+   * <p>This method reattaches cross-segment helpers, schedules any deferred decoding attempts, and
    * optionally notifies the fetcher of resume statistics. When key Bloom filters are missing, it
    * triggers asynchronous regeneration and returns {@code false} so the caller does not schedule
    * requests prematurely. It performs no network I/O but may queue background work that later
@@ -832,9 +540,10 @@ public class SplitFileFetcherStorage {
    */
   public boolean start(boolean resume) {
     if (resume) onResumeInit();
-    restartCrossSegments();
-    scheduleTryDecodeForBrokenSegments();
-    if (keyListener.needsKeys()) return regenerateKeysAsync();
+    SplitFileFetcherStorageRecovery recovery = new SplitFileFetcherStorageRecovery(this);
+    recovery.restartCrossSegments();
+    recovery.scheduleTryDecodeForBrokenSegments();
+    if (keyListener.needsKeys()) return recovery.regenerateKeysAsync();
     return true;
   }
 
@@ -855,80 +564,6 @@ public class SplitFileFetcherStorage {
     fetcher.onResume(succeededBlocks, failedBlocks, clientMetadata, decompressedLength);
   }
 
-  private void restartCrossSegments() {
-    if (crossSegments == null) return;
-    for (SplitFileFetcherCrossSegmentStorage segment : crossSegments) {
-      segment.restart();
-    }
-  }
-
-  private void scheduleTryDecodeForBrokenSegments() {
-    if (segmentsToTryDecode == null) return;
-    List<SplitFileFetcherSegmentStorage> brokenSegments;
-    synchronized (SplitFileFetcherStorage.this) {
-      brokenSegments = segmentsToTryDecode;
-      segmentsToTryDecode = null;
-    }
-    if (brokenSegments == null) return;
-    for (SplitFileFetcherSegmentStorage segment : brokenSegments) {
-      segment.tryStartDecode();
-    }
-  }
-
-  private boolean regenerateKeysAsync() {
-    try {
-      this.jobRunner.queue(
-          _ -> {
-            regenerateKeysJob();
-            return false;
-          },
-          REGENERATE_KEYS_PRIORITY);
-    } catch (PersistenceDisabledException _) {
-      // Ignore.
-    }
-    return false;
-  }
-
-  private void regenerateKeysJob() {
-    // Regenerating filters for this storage
-    LOG.error("Regenerating filters for {}", SplitFileFetcherStorage.this);
-    KeySalter salt = fetcher.getSalter();
-    if (!addAllKeysFromSegments(salt)) return;
-    keyListener.addedAllKeys();
-    writeBloomFiltersSafely();
-    fetcher.restartedAfterDataCorruption();
-    LOG.warn("Finished regenerating filters for {}", SplitFileFetcherStorage.this);
-  }
-
-  private boolean addAllKeysFromSegments(KeySalter salt) {
-    for (int i = 0; i < segments.length; i++) {
-      SplitFileFetcherSegmentStorage segment = segments[i];
-      try {
-        SplitFileSegmentKeys keys = segment.readSegmentKeys();
-        for (int j = 0; j < keys.totalKeys(); j++) {
-          keyListener.addKey(keys.getKey(j, null, false).getNodeKey(false), i, salt);
-        }
-      } catch (IOException | ChecksumFailedException e) {
-        if (e instanceof IOException io) {
-          failOnDiskError(io);
-        } else {
-          failOnDiskError((ChecksumFailedException) e);
-        }
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private void writeBloomFiltersSafely() {
-    try {
-      keyListener.initialWriteSegmentBloomFilters(offsetSegmentBloomFilters);
-      keyListener.innerWriteMainBloomFilter(offsetMainBloomFilter);
-    } catch (IOException e) {
-      if (persistent) failOnDiskError(e);
-    }
-  }
-
   OutputStream checksumOutputStream(OutputStream os) {
     return checksumChecker.checksumWriter(os);
   }
@@ -939,107 +574,11 @@ public class SplitFileFetcherStorage {
         this, totalDataBlocks, totalCheckBlocks, totalCrossCheckBlocks);
   }
 
-  /** Container for accumulated sizing information computed from segment keys and configuration. */
-  private static final class AccumulatedSizes {
-    final int splitfileDataBlocks;
-    final int splitfileCheckBlocks;
-    final long storedKeysLength;
-    final long storedSegmentStatusLength;
-
-    AccumulatedSizes(
-        int splitfileDataBlocks,
-        int splitfileCheckBlocks,
-        long storedKeysLength,
-        long storedSegmentStatusLength) {
-      this.splitfileDataBlocks = splitfileDataBlocks;
-      this.splitfileCheckBlocks = splitfileCheckBlocks;
-      this.storedKeysLength = storedKeysLength;
-      this.storedSegmentStatusLength = storedSegmentStatusLength;
-    }
-  }
-
-  /** Context needed to build segments and keys while computing offsets. */
-  private static final class SegmentsBuildContext {
-    Metadata metadata;
-    SplitFileSegmentKeys[] segmentKeys;
-    int crossCheckBlocks;
-    int blocksPerSegment;
-    int checkBlocksPerSegment;
-    FetchContext origFetchContext;
-    KeySalter salt;
-    KeysFetchingLocally keysFetching;
-    AccumulatedSizes acc;
-    long storedBlocksLength;
-    long storedCrossCheckBlocksLength;
-  }
-
-  private static AccumulatedSizes accumulateSizes(
-      SplitFileSegmentKeys[] segmentKeys,
-      int crossCheckBlocks,
-      boolean hasSplitfileSingleCryptoKey,
-      int checksumLength,
-      int maxRetries,
-      boolean persistent) {
-    int splitfileDataBlocks = 0;
-    int splitfileCheckBlocks = 0;
-    long storedKeysLength = 0;
-    long storedSegmentStatusLength = 0;
-    for (SplitFileSegmentKeys keys : segmentKeys) {
-      int dataBlocks = keys.getDataBlocks();
-      int checkBlocks = keys.getCheckBlocks();
-      splitfileDataBlocks += dataBlocks;
-      splitfileCheckBlocks += checkBlocks;
-      storedKeysLength +=
-          SplitFileFetcherSegmentStorage.storedKeysLength(
-              dataBlocks, checkBlocks, hasSplitfileSingleCryptoKey, checksumLength);
-      storedSegmentStatusLength +=
-          SplitFileFetcherSegmentStorage.paddedStoredSegmentStatusLength(
-              dataBlocks - crossCheckBlocks,
-              checkBlocks,
-              crossCheckBlocks,
-              maxRetries != -1,
-              checksumLength,
-              persistent);
-    }
-    // Subtract cross-check blocks from data blocks to get the actual data blocks.
-    splitfileDataBlocks -= segmentKeys.length * crossCheckBlocks;
-    return new AccumulatedSizes(
-        splitfileDataBlocks, splitfileCheckBlocks, storedKeysLength, storedSegmentStatusLength);
-  }
-
-  private void writeToRAF(
-      SplitFileSegmentKeys[] segmentKeys,
-      SplitFileFetcherStoragePersistence.PreparedMetadata prepared,
-      byte[] encodedBasicSettings,
-      long totalLength,
-      byte[] generalProgress)
-      throws IOException {
-    try (var _ = autoLockOpen()) {
-      for (int i = 0; i < segments.length; i++) {
-        SplitFileFetcherSegmentStorage segment = segments[i];
-        segment.writeKeysWithChecksum(segmentKeys[i]);
-      }
-      if (persistent) {
-        for (SplitFileFetcherSegmentStorage segment : segments) segment.writeMetadata();
-        raf.pwrite(offsetGeneralProgress, generalProgress, 0, generalProgress.length);
-        keyListener.innerWriteMainBloomFilter(offsetMainBloomFilter);
-        keyListener.initialWriteSegmentBloomFilters(offsetSegmentBloomFilters);
-        SplitFileFetcherStoragePersistence.writePersistentMetadata(
-            raf,
-            offsetOriginalMetadata,
-            prepared,
-            encodedBasicSettings,
-            checksumChecker,
-            totalLength);
-      }
-    }
-  }
-
-  private AutoCloseableRafLock autoLockOpen() throws IOException {
+  AutoCloseableRafLock autoLockOpen() throws IOException {
     return new AutoCloseableRafLock(raf.lockOpen());
   }
 
-  private static final class AutoCloseableRafLock implements AutoCloseable {
+  static final class AutoCloseableRafLock implements AutoCloseable {
     private final RAFLock lock;
 
     AutoCloseableRafLock(RAFLock lock) {
@@ -1049,20 +588,6 @@ public class SplitFileFetcherStorage {
     @Override
     public void close() {
       lock.unlock();
-    }
-  }
-
-  private static void validateCheckLength(long checkLength, long finalLength)
-      throws FetchException {
-    if (checkLength > finalLength && checkLength - finalLength > CHKBlock.DATA_LENGTH)
-      throw new FetchException(
-          FetchExceptionMode.INVALID_METADATA,
-          "Splitfile is " + checkLength + " bytes long but length is " + finalLength + " bytes");
-  }
-
-  private static void validateSegmentCount(int segmentCount) {
-    if (segmentCount <= 0) {
-      throw new AssertionError("A splitfile has to have at least one segment");
     }
   }
 
@@ -1133,79 +658,6 @@ public class SplitFileFetcherStorage {
               + checkBlocksPerSegment
               + " check");
     }
-  }
-
-  private SplitFileFetcherCrossSegmentStorage[] initSegmentsAndKeys(SegmentsBuildContext ctx)
-      throws FetchException {
-    long dataOffset = 0;
-    long crossCheckBlocksOffset = ctx.storedBlocksLength; // Only used if completeViaTruncation
-    long segmentKeysOffset = offsetKeyList;
-    long segmentStatusOffset = offsetSegmentStatus;
-
-    for (int i = 0; i < segments.length; i++) {
-      SplitFileSegmentKeys keys = ctx.segmentKeys[i];
-      final int dataBlocks = keys.getDataBlocks() - ctx.crossCheckBlocks;
-      final int checkBlocks = keys.getCheckBlocks();
-      validateBlocksPerSegmentLimit(ctx.origFetchContext, dataBlocks, checkBlocks);
-      SplitFileFetcherSegmentStorage.InitParams p = new SplitFileFetcherSegmentStorage.InitParams();
-      p.parent = this;
-      p.segNumber = i;
-      p.dataBlocks = dataBlocks;
-      p.checkBlocks = checkBlocks;
-      p.crossCheckBlocks = ctx.crossCheckBlocks;
-      p.segmentDataOffset = dataOffset;
-      p.segmentCrossCheckDataOffset = completeViaTruncation ? crossCheckBlocksOffset : -1;
-      p.segmentKeysOffset = segmentKeysOffset;
-      p.segmentStatusOffset = segmentStatusOffset;
-      p.writeRetries = maxRetries != -1;
-      p.keys = keys;
-      p.keysFetching = ctx.keysFetching;
-      segments[i] = new SplitFileFetcherSegmentStorage(p);
-      dataOffset += (long) dataBlocks * CHKBlock.DATA_LENGTH;
-      if (!completeViaTruncation) {
-        dataOffset += (long) ctx.crossCheckBlocks * CHKBlock.DATA_LENGTH;
-      } else {
-        crossCheckBlocksOffset += (long) ctx.crossCheckBlocks * CHKBlock.DATA_LENGTH;
-      }
-      segmentKeysOffset +=
-          SplitFileFetcherSegmentStorage.storedKeysLength(
-              dataBlocks + ctx.crossCheckBlocks,
-              checkBlocks,
-              splitfileSingleCryptoKey != null,
-              checksumLength);
-      segmentStatusOffset +=
-          SplitFileFetcherSegmentStorage.paddedStoredSegmentStatusLength(
-              dataBlocks,
-              checkBlocks,
-              ctx.crossCheckBlocks,
-              maxRetries != -1,
-              checksumLength,
-              persistent);
-      for (int j = 0; j < (dataBlocks + ctx.crossCheckBlocks + checkBlocks); j++) {
-        keyListener.addKey(keys.getKey(j, null, false).getNodeKey(false), i, ctx.salt);
-      }
-      debugSegmentOffsets(i, segments[i]);
-    }
-    assert (dataOffset == ctx.storedBlocksLength);
-    assert !completeViaTruncation
-        || (crossCheckBlocksOffset == ctx.storedCrossCheckBlocksLength + ctx.storedBlocksLength);
-    assert (segmentKeysOffset
-        == ctx.storedBlocksLength + ctx.storedCrossCheckBlocksLength + ctx.acc.storedKeysLength);
-    assert (segmentStatusOffset
-        == ctx.storedBlocksLength
-            + ctx.storedCrossCheckBlocksLength
-            + ctx.acc.storedKeysLength
-            + ctx.acc.storedSegmentStatusLength);
-
-    // Lie about the required number of blocks. See original inline comment for rationale.
-    int totalCrossCheckBlocks = ctx.segmentKeys.length * ctx.crossCheckBlocks;
-    fetcher.setSplitfileBlocks(
-        ctx.acc.splitfileDataBlocks + totalCrossCheckBlocks, ctx.acc.splitfileCheckBlocks);
-
-    keyListener.finishedSetup();
-
-    return SplitFileFetcherCrossSegmentAllocator.createCrossSegments(
-        this, ctx.metadata, ctx.crossCheckBlocks, ctx.blocksPerSegment, segments, fecCodec);
   }
 
   /**
@@ -1290,7 +742,7 @@ public class SplitFileFetcherStorage {
    *     demand; it is not thread-safe.
    */
   public StreamGenerator streamGenerator() {
-    // Truncation optimization can be added in future if safe.
+    // Truncation optimization can be added in the future if safe.
     return new StreamGenerator() {
 
       @Override
@@ -1319,7 +771,7 @@ public class SplitFileFetcherStorage {
   }
 
   // Matches NativeThread.PriorityLevel.LOW_PRIORITY.value + 1.
-  private static final int REGENERATE_KEYS_PRIORITY = 4;
+  static final int REGENERATE_KEYS_PRIORITY = 4;
   static final long LAZY_WRITE_METADATA_DELAY = 5L * 60 * 1000;
 
   private PersistentJob writeMetadataJob;
@@ -1367,18 +819,18 @@ public class SplitFileFetcherStorage {
   private Runnable wrapLazyWriteMetadata;
 
   /**
-   * Schedule a best-effort metadata write.
+   * Schedule a best-effort metadata writing.
    *
    * <p>When running in persistent mode, metadata changes are checkpointed asynchronously to reduce
    * contention and I/O overhead. Calls may coalesce when invoked in quick succession, so it is safe
    * to call this after each state change without creating extra disk churn. In non-persistent mode
-   * this method is a no-op. The write occurs off-thread and does not guarantee immediate
+   * this method is a no-op. The writing occurs off-thread and does not guarantee immediate
    * durability; callers that need a synchronous flush should use higher-level shutdown paths.
    */
   public void lazyWriteMetadata() {
     if (!persistent) return;
     if (LAZY_WRITE_METADATA_DELAY > 0 && !isFinishing()) {
-      // The Runnable must be the same object for de-duplication.
+      // The Runnable must be the same object for deduplication.
       ticker.queueTimedJob(
           wrapLazyWriteMetadata,
           "Write metadata for splitfile",
@@ -1416,7 +868,7 @@ public class SplitFileFetcherStorage {
     jobRunner.queueNormalOrDrop(
         _ -> {
           // ATOMICITY/DURABILITY: This will run after the checkpoint after completion.
-          // So after restart, even if the checkpoint failed, we will be in a valid state.
+          // So after restarting, even if the checkpoint failed, we will be in a valid state.
           // This is why this is queue() not queueInternal().
           close();
           return true;
@@ -1425,8 +877,8 @@ public class SplitFileFetcherStorage {
 
   private void finishedEncoding() {
     FinishState state = computeFinishEncodingState();
-    if (state.alreadyFinished) return;
-    if (state.lateCompletion) {
+    if (state.alreadyFinished()) return;
+    if (state.lateCompletion()) {
       if (allFinished() && !allSucceeded()) {
         fail(new FetchException(FetchExceptionMode.SPLITFILE_ERROR, errors));
       } else {
@@ -1435,21 +887,12 @@ public class SplitFileFetcherStorage {
         return;
       }
     }
-    if (state.waitingForFetcher) return;
+    if (state.waitingForFetcher()) return;
     closeOffThread();
   }
 
-  private static final class FinishState {
-    final boolean alreadyFinished;
-    final boolean lateCompletion;
-    final boolean waitingForFetcher;
-
-    FinishState(boolean alreadyFinished, boolean lateCompletion, boolean waitingForFetcher) {
-      this.alreadyFinished = alreadyFinished;
-      this.lateCompletion = lateCompletion;
-      this.waitingForFetcher = waitingForFetcher;
-    }
-  }
+  private record FinishState(
+      boolean alreadyFinished, boolean lateCompletion, boolean waitingForFetcher) {}
 
   private FinishState computeFinishEncodingState() {
     boolean alreadyFinished = false;
@@ -1485,8 +928,8 @@ public class SplitFileFetcherStorage {
 
   /**
    * Called when a segment has finished encoding. It is possible that it has simply restarted; it is
-   * not guaranteed to have encoded all blocks etc. But we still need the callback in case e.g. we
-   * are in the process of failing, and can't proceed until all the encode jobs have finished.
+   * not guaranteed to have encoded all blocks etc. But we still need the callback in case e.g., we
+   * are in the process of failing, and can't proceed until all the encoding jobs have finished.
    */
   void finishedEncoding(SplitFileFetcherSegmentStorage segment) {
     if (LOG.isDebugEnabled())
@@ -1545,8 +988,8 @@ public class SplitFileFetcherStorage {
    *
    * <p>This helper converts the condition into a consolidated {@link FetchException} and routes it
    * through {@link #fail(FetchException)} so shutdown happens consistently. It does not mutate the
-   * segment itself; segment state is expected to already reflect the terminal failure condition.
-   * Callers typically invoke this after a retry budget check fails.
+   * segment itself; the segment state is expected to already reflect the terminal failure
+   * condition. Callers typically invoke this after a retry budget check fails.
    *
    * @param segment segment that can no longer make progress, used only for logging.
    */
@@ -1601,7 +1044,7 @@ public class SplitFileFetcherStorage {
    * Count the number of not-yet-fetched keys across all segments.
    *
    * <p>The value includes keys that are currently cooling down or temporarily skipped. It is
-   * computed from in-memory segment state and does not perform disk I/O. Use this for progress
+   * computed from the in-memory segment state and does not perform disk I/O. Use this for progress
    * estimation rather than exact completion criteria; failed blocks and delayed retries can cause
    * the count to oscillate.
    *
@@ -1652,11 +1095,11 @@ public class SplitFileFetcherStorage {
    * Lightweight handle identifying a concrete block within a specific segment.
    *
    * <p>Instances are stable identifiers used by schedulers and callbacks to correlate request
-   * outcomes with storage state. The handle is immutable and embeds the owning storage, the segment
-   * index, and the block index so it can be used as a map key or queue token without additional
-   * lookups. It is not a cryptographic key; instead it is a positional reference that can be
-   * resolved to a {@link ClientKey} through {@link SplitFileFetcherStorage#getKey}. Equality and
-   * hash semantics incorporate the storage instance to avoid accidental collisions across
+   * outcomes with the storage state. The handle is immutable and embeds the owning storage, the
+   * segment index, and the block index, so it can be used as a map key or queue token without
+   * additional lookups. It is not a cryptographic key; instead it is a positional reference that
+   * can be resolved to a {@link ClientKey} through {@link SplitFileFetcherStorage#getKey}. Equality
+   * and hash semantics incorporate the storage instance to avoid accidental collisions across
    * concurrent fetches.
    */
   public static final class SplitFileFetcherStorageKey
@@ -1669,8 +1112,8 @@ public class SplitFileFetcherStorage {
      * values obtained from segment state or scheduling helpers. The resulting instance is immutable
      * and can be safely cached or used as a map key for the lifetime of the storage.
      *
-     * @param n zero-based block index within the segment, must be in range.
-     * @param segNo zero-based segment index for the owning storage, must be valid.
+     * @param n a zero-based block index within the segment must be in range.
+     * @param segNo a zero-based segment index for the owning storage must be valid.
      * @param storage owning storage instance used for lookups and equality; must be non-null.
      */
     public SplitFileFetcherStorageKey(int n, int segNo, SplitFileFetcherStorage storage) {
@@ -1773,7 +1216,7 @@ public class SplitFileFetcherStorage {
    *
    * <p>The selection uses a time‑varying seed to distribute requests and avoids segments currently
    * decoding or ineligible due to cooldown/retry constraints. The method synchronizes on the
-   * segment iterator to keep selection state consistent and may scan multiple segments before
+   * segment iterator to keep the selection state consistent and may scan multiple segments before
    * finding a candidate. Returns {@code null} when no key is presently sendable.
    *
    * @return a randomly selected {@link SplitFileFetcherStorageKey} or {@code null} when none is
@@ -1801,7 +1244,7 @@ public class SplitFileFetcherStorage {
     return null;
   }
 
-  /** Cancel the download, stop all FEC decodes, and call close() off-thread when done. */
+  /** Cancel the download, stop all FEC decoding, and call close() off-thread when done. */
   void cancel() {
     synchronized (this) {
       cancelled = true;
@@ -1815,10 +1258,11 @@ public class SplitFileFetcherStorage {
   /**
    * Callback invoked after checking the local datastore for a candidate key.
    *
-   * <p>When a check produces a definitive result the storage updates segment state and may schedule
-   * additional work. The method runs off-thread to avoid blocking request selection. It increments
-   * the appropriate failure counters and notifies each segment that datastore probing has completed
-   * so retries can proceed. If all segments are already finished, the callback is a no-op.
+   * <p>When a check produces a definitive result, the storage updates segment state and may
+   * schedule additional work. The method runs off-thread to avoid blocking request selection. It
+   * increments the appropriate failure counters and notifies each segment that datastore probing
+   * has completed so retries can proceed. If all segments are already finished, the callback is a
+   * no-op.
    */
   public void finishedCheckingDatastoreOnLocalRequest() {
     // At this point, all the blocks will have been processed.
@@ -1841,7 +1285,7 @@ public class SplitFileFetcherStorage {
   /**
    * Record a non-fatal failure for a specific block request.
    *
-   * <p>The error is accumulated in the failure tracker and the key is made retryable according to
+   * <p>The error is accumulated in the failure tracker, and the key is made retryable according to
    * the configured policy. Persistent sessions schedule a metadata checkpoint. Callers should only
    * invoke this for failures that may be retried; terminal failures should go through {@link
    * #fail(FetchException)} or {@link #failOnSegment(SplitFileFetcherSegmentStorage)}.
@@ -1867,7 +1311,7 @@ public class SplitFileFetcherStorage {
    *
    * <p>The lookup reads segment key data, so it may perform disk I/O and acquire the RAF lock. On
    * I/O failure the storage reports a disk error and returns {@code null}. The call does not change
-   * segment state. Callers should treat the returned {@link ClientKey} as read-only.
+   * the segment state. Callers should treat the returned {@link ClientKey} as read-only.
    *
    * @param key handle identifying a block, usually from {@link #chooseRandomKey()}.
    * @return client key for the block, or {@code null} on I/O failure.
@@ -1899,9 +1343,9 @@ public class SplitFileFetcherStorage {
    * Notify the fetcher that a block has permanently failed.
    *
    * <p>The notification is posted asynchronously to keep request-selection threads responsive. It
-   * does not modify storage state directly; callers should ensure segment bookkeeping has already
-   * transitioned the block into a terminal state before invoking this callback. Multiple calls may
-   * be coalesced by the fetcher.
+   * does not modify the storage state directly; callers should ensure segment bookkeeping has
+   * already transitioned the block into a terminal state before invoking this callback. The fetcher
+   * may coalesce multiple calls.
    */
   public void failedBlock() {
     jobRunner.queueNormalOrDrop(
@@ -1976,10 +1420,10 @@ public class SplitFileFetcherStorage {
   /**
    * Clear global cooldown when all segments have exited their individual cooldown windows.
    *
-   * <p>This is safe to call frequently; it performs cheap checks and posts to the fetcher when the
-   * global flag changes. The method synchronizes on the cooldown lock and will reset the global
-   * wakeup time only when every segment reports a cleared cooldown. It does not schedule requests
-   * directly; that remains the fetcher's responsibility.
+   * <p>This is safe to call frequently; it performs inexpensive checks and posts to the fetcher
+   * when the global flag changes. The method synchronizes on the cooldown lock and will reset the
+   * global wakeup time only when every segment reports a cleared cooldown. It does not schedule
+   * requests directly; that remains the fetcher's responsibility.
    */
   public void maybeClearCooldown() {
     synchronized (cooldownLock) {
