@@ -663,15 +663,16 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     if (status.firstTime) {
       status.hNew =
           initializeStep(
-              equations,
-              forward,
-              2 * status.targetIter + 1,
-              scale,
-              stepStart,
-              y,
-              w.yDot0,
-              w.yTmp,
-              w.yTmpDot);
+              new StepInitializationContext(
+                  equations,
+                  forward,
+                  2 * status.targetIter + 1,
+                  scale,
+                  stepStart,
+                  y,
+                  w.yDot0,
+                  w.yTmp,
+                  w.yTmpDot));
       if (!forward) {
         status.hNew = -status.hNew;
       }

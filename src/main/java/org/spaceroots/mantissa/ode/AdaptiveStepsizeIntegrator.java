@@ -4,7 +4,7 @@ package org.spaceroots.mantissa.ode;
  * Base class for integrators that adapt their step size while solving ordinary differential
  * equations.
  *
- * <p>The class centralizes step bounds, tolerance bookkeeping and initialization so concrete
+ * <p>The class centralizes step bounds, tolerance bookkeeping, and initialization so concrete
  * algorithms can focus on method-specific interpolation and local error estimation. For each state
  * component {@code i}, the error threshold is {@code absTol_i + relTol_i * max(|y_m|, |y_{m+1}|)};
  * scalar tolerances are broadcast when vector forms are not provided. A tentative step is accepted
@@ -68,16 +68,16 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
   /**
    * Build an integrator with per-component tolerances and step size bounds.
    *
-   * <p>Vector tolerances let callers adapt admissible error to the magnitude of each state
-   * coordinate. Arrays are used as provided; callers must ensure their length matches the problem
-   * dimension. The default step handler performs no action until replaced.
+   * <p>Vector tolerances let callers adapt admissible error to the scale of each state coordinate.
+   * Arrays are used as provided; callers must ensure their length matches the problem dimension.
+   * The default step handler performs no action until replaced.
    *
    * @param minStep minimal allowed step magnitude; positive even when integrating backward.
    * @param maxStep maximal allowed step magnitude; positive and not smaller than {@code minStep}.
-   * @param vecAbsoluteTolerance absolute error tolerance for each component; must align with state
-   *     dimension and contain non-negative entries.
-   * @param vecRelativeTolerance relative error tolerance for each component; must align with state
-   *     dimension and contain non-negative entries.
+   * @param vecAbsoluteTolerance absolute error tolerance for each component; must align with the
+   *     state dimension and contain non-negative entries.
+   * @param vecRelativeTolerance relative error tolerance for each component; must align with the
+   *     state dimension and contain non-negative entries.
    */
   protected AdaptiveStepsizeIntegrator(
       double minStep,
@@ -106,13 +106,12 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
    * Set an explicit initial step size to be reused by the next integration run.
    *
    * <p>A positive value inside {@code [minStep, maxStep]} is honored directly by {@link
-   * #initializeStep(FirstOrderDifferentialEquations, boolean, int, double[], double, double[],
-   * double[], double[], double[])}. Negative or out-of-range values instruct the integrator to
-   * estimate an initial step from the derivatives instead. The stored value is not persisted across
-   * calls to {@link #resetInternalState()}.
+   * #initializeStep(StepInitializationContext)}. Negative or out-of-range values instruct the
+   * integrator to estimate an initial step from the derivatives instead. The stored value is not
+   * persisted across calls to {@link #resetInternalState()}.
    *
-   * @param initialStepSize desired starting step; must be positive and within configured bounds, or
-   *     it is ignored in favor of automatic estimation.
+   * @param initialStepSize the desired starting step must be positive and within configured bounds,
+   *     or it is ignored in favor of automatic estimation.
    */
   @SuppressWarnings("unused")
   public void setInitialStepSize(double initialStepSize) {
@@ -176,52 +175,27 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
    * step is derived from the ratio of scaled state and derivative norms, refined with a trial Euler
    * step, and finally clamped to the configured minimum and maximum step sizes.
    *
-   * @param equations system of first-order differential equations providing derivative evaluation;
-   *     must not be {@code null}.
-   * @param forward {@code true} to integrate toward increasing time, {@code false} to integrate
-   *     backward.
-   * @param order order of the integration method that will consume the step; influences the scaling
-   *     of the heuristic.
-   * @param scale per-component scaling factors applied to the state vector; must match {@code y0}
-   *     length and contain only non-zero values.
-   * @param t0 starting independent variable value associated with {@code y0}.
-   * @param y0 state vector at {@code t0}; not modified by this method.
-   * @param yDot0 first derivative of {@code y0}; computed by {@code equations} and reused in place.
-   * @param y1 workspace receiving a trial state after an Euler prediction; length must match {@code
-   *     y0}.
-   * @param yDot1 workspace receiving the derivative at the trial state; length must match {@code
-   *     y0}.
+   * @param context bundled initialization parameters for the step size heuristic.
    * @return signed initial step size bounded by configured limits and oriented according to {@code
-   *     forward}.
-   * @throws DerivativeException if {@code equations} fails while evaluating derivatives at the
-   *     trial point.
+   *     context.forward()}.
+   * @throws DerivativeException if derivative evaluation fails while probing the trial point.
    */
-  public double initializeStep(
-      FirstOrderDifferentialEquations equations,
-      boolean forward,
-      int order,
-      double[] scale,
-      double t0,
-      double[] y0,
-      double[] yDot0,
-      double[] y1,
-      double[] yDot1)
-      throws DerivativeException {
+  public double initializeStep(StepInitializationContext context) throws DerivativeException {
 
     if (initialStep > 0) {
-      // use the user provided value
-      return forward ? initialStep : -initialStep;
+      // use the user-provided value
+      return context.forward() ? initialStep : -initialStep;
     }
 
-    // very rough first guess : h = 0.01 * ||y/scale|| / ||y'/scale||
+    // very rough first guess: h = 0.01 * ||y/scale|| / ||y'/scale||
     // this guess will be used to perform an Euler step
     double ratio;
     double yOnScale2 = 0;
     double yDotOnScale2 = 0;
-    for (int j = 0; j < y0.length; ++j) {
-      ratio = y0[j] / scale[j];
+    for (int j = 0; j < context.y0().length; ++j) {
+      ratio = context.y0()[j] / context.scale()[j];
       yOnScale2 += ratio * ratio;
-      ratio = yDot0[j] / scale[j];
+      ratio = context.yDot0()[j] / context.scale()[j];
       yDotOnScale2 += ratio * ratio;
     }
 
@@ -229,20 +203,20 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
         ((yOnScale2 < 1.0e-10) || (yDotOnScale2 < 1.0e-10))
             ? 1.0e-6
             : (0.01 * Math.sqrt(yOnScale2 / yDotOnScale2));
-    if (!forward) {
+    if (!context.forward()) {
       h = -h;
     }
 
     // perform an Euler step using the preceding rough guess
-    for (int j = 0; j < y0.length; ++j) {
-      y1[j] = y0[j] + h * yDot0[j];
+    for (int j = 0; j < context.y0().length; ++j) {
+      context.y1()[j] = context.y0()[j] + h * context.yDot0()[j];
     }
-    equations.computeDerivatives(t0 + h, y1, yDot1);
+    context.equations().computeDerivatives(context.t0() + h, context.y1(), context.yDot1());
 
     // estimate the second derivative of the solution
     double yDDotOnScale = 0;
-    for (int j = 0; j < y0.length; ++j) {
-      ratio = (yDot1[j] - yDot0[j]) / scale[j];
+    for (int j = 0; j < context.y0().length; ++j) {
+      ratio = (context.yDot1()[j] - context.yDot0()[j]) / context.scale()[j];
       yDDotOnScale += ratio * ratio;
     }
     yDDotOnScale = Math.sqrt(yDDotOnScale) / h;
@@ -253,16 +227,16 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
     double h1 =
         (maxInv2 < 1.0e-15)
             ? Math.max(1.0e-6, 0.001 * Math.abs(h))
-            : Math.pow(0.01 / maxInv2, 1.0 / order);
+            : Math.pow(0.01 / maxInv2, 1.0 / context.order());
     h = Math.min(100.0 * Math.abs(h), h1);
-    h = Math.max(h, 1.0e-12 * Math.abs(t0)); // avoids cancellation when computing t1 - t0
+    h = Math.max(h, 1.0e-12 * Math.abs(context.t0()));
     if (h < getMinStep()) {
       h = getMinStep();
     }
     if (h > getMaxStep()) {
       h = getMaxStep();
     }
-    if (!forward) {
+    if (!context.forward()) {
       h = -h;
     }
 
@@ -387,8 +361,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
   /**
    * Optional user-supplied initial step size; a negative value signals that automatic estimation
    * should be used instead. The value is mutable between runs and is consumed by {@link
-   * #initializeStep(FirstOrderDifferentialEquations, boolean, int, double[], double, double[],
-   * double[], double[], double[])}.
+   * #initializeStep(StepInitializationContext)}.
    */
   private double initialStep;
 
@@ -401,7 +374,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
 
   /**
    * Relative error tolerance applied uniformly when vector tolerances are not provided. It scales
-   * the acceptable error proportionally to the magnitude of each state component during adaptive
+   * the acceptable error proportionally to the scale of each state component during adaptive
    * control.
    */
   protected double scalRelativeTolerance;
@@ -429,7 +402,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
 
   /**
    * Aggregates registered switching functions and coordinates event detection. It controls sampling
-   * frequency, root finding and state changes triggered by events encountered during the adaptive
+   * frequency, root finding, and state changes triggered by events encountered during the adaptive
    * integration process.
    */
   protected SwitchingFunctionsHandler switchesHandler;
