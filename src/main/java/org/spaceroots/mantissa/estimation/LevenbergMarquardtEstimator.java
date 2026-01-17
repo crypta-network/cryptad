@@ -3,6 +3,7 @@ package org.spaceroots.mantissa.estimation;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Levenberg-Marquardt implementation for weighted nonlinear least-squares problems.
@@ -14,7 +15,7 @@ import java.util.Arrays;
  * reduced further. The implementation supports over-determined systems by discarding the least
  * influential columns (measured by Jacobian norms), while keeping the QR decomposition rank aware.
  *
- * <p>The solver is stateful and not thread-safe: create a fresh instance per concurrent solve. A
+ * <p>The solver is stateful and not thread-safe: create a fresh instance per concurrent solution. A
  * typical call sequence is:
  *
  * <ul>
@@ -106,7 +107,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
    *
    * <p>The algorithm counts every call used to compute residuals and their weighted norm. When the
    * counter reaches this limit, {@link #estimate(EstimationProblem)} aborts with an {@link
-   * EstimationException}. Increase the value when working with large systems or loose tolerances,
+   * EstimationException}. Increase the value when working with large systems or loose tolerances
    * and decrease it to force faster failure on divergent models.
    *
    * @param maxCostEval maximal number of cost evaluations permitted before aborting the solving
@@ -163,7 +164,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
   }
 
   /**
-   * Get the number of cost evaluations performed in the current solve.
+   * Get the number of cost evaluations performed in the current solution.
    *
    * <p>The counter resets to zero each time {@link #estimate(EstimationProblem)} starts and
    * increases every time weighted residuals are recomputed. It is useful for diagnostics and to
@@ -176,7 +177,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
   }
 
   /**
-   * Get the number of Jacobian evaluations performed in the current solve.
+   * Get the number of Jacobian evaluations performed in the current solution.
    *
    * <p>The counter resets to zero when {@link #estimate(EstimationProblem)} begins and increments
    * each time the Jacobian matrix is rebuilt. Expensive models can use this to monitor derivative
@@ -192,6 +193,125 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     private double delta;
     private double xNorm;
     private boolean firstIteration = true;
+  }
+
+  private record LmWorkArrays(double[] work1, double[] work2, double[] work3) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (!(obj
+          instanceof LmWorkArrays(double[] otherWork1, double[] otherWork2, double[] otherWork3))) {
+        return false;
+      }
+      return Arrays.equals(work1, otherWork1)
+          && Arrays.equals(work2, otherWork2)
+          && Arrays.equals(work3, otherWork3);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(work1);
+      result = 31 * result + Arrays.hashCode(work2);
+      result = 31 * result + Arrays.hashCode(work3);
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "LmWorkArrays[work1="
+          + Arrays.toString(work1)
+          + ", work2="
+          + Arrays.toString(work2)
+          + ", work3="
+          + Arrays.toString(work3)
+          + "]";
+    }
+  }
+
+  private record IterationWorkspace(double[] diag, double[] oldX, LmWorkArrays workArrays) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (!(obj
+          instanceof
+          IterationWorkspace(
+              double[] otherDiag,
+              double[] otherOldX,
+              LmWorkArrays otherWorkArrays))) {
+        return false;
+      }
+      return Arrays.equals(diag, otherDiag)
+          && Arrays.equals(oldX, otherOldX)
+          && workArrays.equals(otherWorkArrays);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(diag);
+      result = 31 * result + Arrays.hashCode(oldX);
+      result = 31 * result + workArrays.hashCode();
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "IterationWorkspace[diag="
+          + Arrays.toString(diag)
+          + ", oldX="
+          + Arrays.toString(oldX)
+          + ", workArrays="
+          + workArrays
+          + "]";
+    }
+  }
+
+  private record LmParameterContext(
+      double[] qy, double delta, double[] diag, LmWorkArrays workArrays) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (!(obj
+          instanceof
+          LmParameterContext(
+              double[] otherQy,
+              double otherDelta,
+              double[] otherDiag,
+              LmWorkArrays otherWorkArrays))) {
+        return false;
+      }
+      return Double.compare(delta, otherDelta) == 0
+          && Arrays.equals(qy, otherQy)
+          && Arrays.equals(diag, otherDiag)
+          && workArrays.equals(otherWorkArrays);
+    }
+
+    @Override
+    public int hashCode() {
+      int result = Arrays.hashCode(qy);
+      result = 31 * result + Double.hashCode(delta);
+      result = 31 * result + Arrays.hashCode(diag);
+      result = 31 * result + workArrays.hashCode();
+      return result;
+    }
+
+    @Override
+    public @NotNull String toString() {
+      return "LmParameterContext[qy="
+          + Arrays.toString(qy)
+          + ", delta="
+          + delta
+          + ", diag="
+          + Arrays.toString(diag)
+          + ", workArrays="
+          + workArrays
+          + "]";
+    }
   }
 
   /** Update the jacobian matrix. */
@@ -298,9 +418,9 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     double[] diag = new double[cols];
     double[] oldX = new double[cols];
     double[] oldRes = new double[rows];
-    double[] work1 = new double[cols];
-    double[] work2 = new double[cols];
-    double[] work3 = new double[cols];
+    LmWorkArrays workArrays =
+        new LmWorkArrays(new double[cols], new double[cols], new double[cols]);
+    IterationWorkspace workspace = new IterationWorkspace(diag, oldX, workArrays);
 
     // evaluate the function at the starting point and calculate its norm
     updateResidualsAndCost();
@@ -312,18 +432,15 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     state.delta = delta;
     state.xNorm = xNorm;
 
-    runOuterIterations(diag, oldX, oldRes, work1, work2, work3, state);
+    runOuterIterations(workspace, oldRes, state);
   }
 
   private void runOuterIterations(
-      double[] diag,
-      double[] oldX,
-      double[] oldRes,
-      double[] work1,
-      double[] work2,
-      double[] work3,
-      IterationState state)
+      IterationWorkspace workspace, double[] oldRes, IterationState state)
       throws EstimationException {
+    double[] diag = workspace.diag;
+    double[] oldX = workspace.oldX;
+    LmWorkArrays workArrays = workspace.workArrays;
     while (costEvaluations < maxCostEval) {
       prepareJacobian();
       if (state.firstIteration) {
@@ -336,8 +453,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
       }
 
       rescaleDiagonal(diag);
-      InnerLoopResult result =
-          performInnerLoop(diag, oldX, oldRes, work1, work2, work3, state, maxCosine);
+      InnerLoopResult result = performInnerLoop(diag, oldX, oldRes, workArrays, state, maxCosine);
       oldRes = result.oldResiduals;
       if (result.converged) {
         return;
@@ -407,12 +523,11 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
       double[] diag,
       double[] oldX,
       double[] oldRes,
-      double[] work1,
-      double[] work2,
-      double[] work3,
+      LmWorkArrays workArrays,
       IterationState state,
       double maxCosine)
       throws EstimationException {
+    double[] work1 = workArrays.work1;
     double ratio = 0;
     double[] localOldRes = oldRes;
     while (ratio < 1.0e-4) {
@@ -422,7 +537,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
       residuals = localOldRes;
       localOldRes = tmpVec;
 
-      determineLMParameter(localOldRes, state.delta, diag, work1, work2, work3);
+      determineLMParameter(new LmParameterContext(localOldRes, state.delta, diag, workArrays));
 
       double lmNorm = computeLmNorm(diag, oldX);
       adjustDeltaOnFirstIteration(state, lmNorm);
@@ -637,32 +752,30 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
    *
    * <p>Luc Maisonobe did the Java translation.
    *
-   * @param qy array containing qTy
-   * @param delta upper bound on the euclidean norm of diagR * lmDir
-   * @param diag diagonal matrix
-   * @param work1 work array
-   * @param work2 work array
-   * @param work3 work array
+   * @param context aggregated qTy, delta, diagonal matrix, and work arrays
    */
-  private void determineLMParameter(
-      double[] qy, double delta, double[] diag, double[] work1, double[] work2, double[] work3) {
+  private void determineLMParameter(LmParameterContext context) {
+    double[] qy = context.qy;
+    double delta = context.delta;
+    double[] diag = context.diag;
+    LmWorkArrays workArrays = context.workArrays;
 
     computeGaussNewtonDirection(qy);
-    double dxNorm = computeDxNorm(diag, work1);
+    double dxNorm = computeDxNorm(diag, workArrays.work1);
     double fp = dxNorm - delta;
     if (fp <= 0.1 * delta) {
       lmPar = 0;
       return;
     }
 
-    ParameterBounds bounds = computeParameterBounds(fp, delta, diag, work1, qy, dxNorm);
+    ParameterBounds bounds = computeParameterBounds(fp, delta, diag, workArrays.work1, qy, dxNorm);
 
     lmPar = Math.clamp(lmPar, bounds.parl, bounds.paru);
     if (lmPar == 0) {
       lmPar = bounds.gNorm / dxNorm;
     }
 
-    refineLmParameter(qy, delta, diag, work1, work2, work3, bounds, fp);
+    refineLmParameter(context, bounds, fp);
   }
 
   private void computeGaussNewtonDirection(double[] qy) {
@@ -733,15 +846,15 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     return bounds;
   }
 
-  private void refineLmParameter(
-      double[] qy,
-      double delta,
-      double[] diag,
-      double[] work1,
-      double[] work2,
-      double[] work3,
-      ParameterBounds bounds,
-      double fp) {
+  private void refineLmParameter(LmParameterContext context, ParameterBounds bounds, double fp) {
+    double[] qy = context.qy;
+    double delta = context.delta;
+    double[] diag = context.diag;
+    LmWorkArrays workArrays = context.workArrays;
+    double[] work1 = workArrays.work1;
+    double[] work2 = workArrays.work2;
+    double[] work3 = workArrays.work3;
+
     double localDxNorm;
     double localFp = fp;
     for (int countdown = 10; countdown >= 0; --countdown) {
@@ -959,7 +1072,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
   /**
    * Decompose a matrix A as A.P = Q.R using Householder transforms.
    *
-   * <p>As suggested in the P. Lascaux and R. Theodor book <i>Analyse num&eacute;rique matricielle
+   * <p>As suggested in the P. Lascaux and R. Theodor book <i>Analyze num&eacute;rique matricielle
    * appliqu&eacute;e &agrave; l'art de l'ing&eacute;nieur</i> (Masson, 1986), instead of
    * representing the Householder transforms with u<sub>k</sub> unit vectors such that:
    *
@@ -973,7 +1086,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
    * H<sub>k</sub> = I - beta<sub>k</sub>v<sub>k</sub>.v<sub>k</sub><sup>t</sup>
    * </pre>
    *
-   * where v<sub>k</sub> = a<sub>k</sub> - alpha<sub>k</sub> e<sub>k</sub>. The beta<sub>k</sub>
+   * Where v<sub>k</sub> = a<sub>k</sub> - alpha<sub>k</sub> e<sub>k</sub>. The beta<sub>k</sub>
    * coefficients are provided upon exit as recomputing them from the v<sub>k</sub> vectors would be
    * costly.
    *
@@ -1139,7 +1252,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
   /** Number of cost evaluations. */
   private int costEvaluations;
 
-  /** Number of jacobian evaluations. */
+  /** Number of Jacobian evaluations. */
   private int jacobianEvaluations;
 
   /** Desired relative error in the sum of squares. */
