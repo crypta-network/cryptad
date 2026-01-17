@@ -44,6 +44,7 @@ qodana*
 /.claude
 /.gemini
 /.playwright-mcp
+/.opencode/plans
 .kotlin
 .jreleaser
 multipass-client-certificate
