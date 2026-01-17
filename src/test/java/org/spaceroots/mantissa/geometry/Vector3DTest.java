@@ -60,7 +60,11 @@ class Vector3DTest {
 
   @Test
   void linearConstructor_twoVectors_combinesCorrectly() {
-    Vector3D result = new Vector3D(2, Vector3D.plusI, -3, Vector3D.minusJ);
+    Vector3D result =
+        new Vector3D(
+            LinearCombination.of(
+                LinearCombination.term(2, Vector3D.plusI),
+                LinearCombination.term(-3, Vector3D.minusJ)));
 
     assertEquals(2.0, result.getX(), EPS);
     assertEquals(3.0, result.getY(), EPS);
@@ -69,7 +73,12 @@ class Vector3DTest {
 
   @Test
   void linearConstructor_threeVectors_combinesCorrectly() {
-    Vector3D result = new Vector3D(1, Vector3D.plusI, 2, Vector3D.plusJ, 3, Vector3D.plusK);
+    Vector3D result =
+        new Vector3D(
+            LinearCombination.of(
+                LinearCombination.term(1, Vector3D.plusI),
+                LinearCombination.term(2, Vector3D.plusJ),
+                LinearCombination.term(3, Vector3D.plusK)));
 
     assertEquals(1.0, result.getX(), EPS);
     assertEquals(2.0, result.getY(), EPS);
@@ -79,7 +88,12 @@ class Vector3DTest {
   @Test
   void linearConstructor_fourVectors_combinesCorrectly() {
     Vector3D result =
-        new Vector3D(1, Vector3D.plusI, 1, Vector3D.plusJ, 1, Vector3D.plusK, -2, Vector3D.minusK);
+        new Vector3D(
+            LinearCombination.of(
+                LinearCombination.term(1, Vector3D.plusI),
+                LinearCombination.term(1, Vector3D.plusJ),
+                LinearCombination.term(1, Vector3D.plusK),
+                LinearCombination.term(-2, Vector3D.minusK)));
 
     assertEquals(1.0, result.getX(), EPS);
     assertEquals(1.0, result.getY(), EPS);

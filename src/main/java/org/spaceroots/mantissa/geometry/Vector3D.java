@@ -49,7 +49,7 @@ public class Vector3D implements Serializable {
    * Unit vector pointing along the negative X axis (coordinates: -1, 0, 0).
    *
    * <p>Useful as a ready-made left-directed axis when constructing orthogonal frames or applying
-   * reflections. The vector length is exactly one and the instance is immutable.
+   * reflections. The vector length is exactly one, and the instance is immutable.
    */
   public static final Vector3D minusI = new Vector3D(-1, 0, 0);
 
@@ -156,70 +156,27 @@ public class Vector3D implements Serializable {
   }
 
   /**
-   * Builds a vector as a linear combination of two input vectors.
+   * Builds a vector from a linear combination parameter object.
    *
-   * <p>The constructed vector equals {@code a1 * u1 + a2 * u2}. This is a convenience for
-   * expressing affine transforms or barycentric coordinates without mutating intermediate data.
+   * <p>The supplied {@link LinearCombination} provides matched scaling factors and vectors. Each
+   * term contributes {@code factor * vector} to the resulting coordinates.
    *
-   * @param a1 scale factor applied to {@code u1}; finite double recommended
-   * @param u1 first base vector; treated as immutable input and not copied defensively
-   * @param a2 scale factor applied to {@code u2}; finite double recommended
-   * @param u2 second base vector; treated as immutable input and not copied defensively
+   * @param combination linear combination terms defining the result
    */
-  public Vector3D(double a1, Vector3D u1, double a2, Vector3D u2) {
-    this.x = a1 * u1.x + a2 * u2.x;
-    this.y = a1 * u1.y + a2 * u2.y;
-    this.z = a1 * u1.z + a2 * u2.z;
-  }
-
-  /**
-   * Builds a vector as a linear combination of three input vectors.
-   *
-   * <p>The resulting coordinates follow {@code a1 * u1 + a2 * u2 + a3 * u3} and are computed
-   * directly from the supplied factors. Inputs are assumed valid and are not normalized
-   * automatically.
-   *
-   * @param a1 scale factor applied to {@code u1}; finite double recommended
-   * @param u1 first base vector contributing to the linear combination
-   * @param a2 scale factor applied to {@code u2}; finite double recommended
-   * @param u2 second base vector contributing to the linear combination
-   * @param a3 scale factor applied to {@code u3}; finite double recommended
-   * @param u3 third base vector contributing to the linear combination
-   */
-  public Vector3D(double a1, Vector3D u1, double a2, Vector3D u2, double a3, Vector3D u3) {
-    this.x = a1 * u1.x + a2 * u2.x + a3 * u3.x;
-    this.y = a1 * u1.y + a2 * u2.y + a3 * u3.y;
-    this.z = a1 * u1.z + a2 * u2.z + a3 * u3.z;
-  }
-
-  /**
-   * Builds a vector as a linear combination of four input vectors.
-   *
-   * <p>The coordinates are computed as {@code a1 * u1 + a2 * u2 + a3 * u3 + a4 * u4}. No
-   * normalization or overflow guarding is performed; callers should ensure the provided
-   * coefficients match their numeric expectations.
-   *
-   * @param a1 scale factor applied to {@code u1}; finite double recommended
-   * @param u1 first base vector contributing to the linear combination
-   * @param a2 scale factor applied to {@code u2}; finite double recommended
-   * @param u2 second base vector contributing to the linear combination
-   * @param a3 scale factor applied to {@code u3}; finite double recommended
-   * @param u3 third base vector contributing to the linear combination
-   * @param a4 scale factor applied to {@code u4}; finite double recommended
-   * @param u4 fourth base vector contributing to the linear combination
-   */
-  public Vector3D(
-      double a1,
-      Vector3D u1,
-      double a2,
-      Vector3D u2,
-      double a3,
-      Vector3D u3,
-      double a4,
-      Vector3D u4) {
-    this.x = a1 * u1.x + a2 * u2.x + a3 * u3.x + a4 * u4.x;
-    this.y = a1 * u1.y + a2 * u2.y + a3 * u3.y + a4 * u4.y;
-    this.z = a1 * u1.z + a2 * u2.z + a3 * u3.z + a4 * u4.z;
+  public Vector3D(LinearCombination combination) {
+    double sumX = 0;
+    double sumY = 0;
+    double sumZ = 0;
+    for (int i = 0; i < combination.size(); i++) {
+      double factor = combination.factorAt(i);
+      Vector3D vector = combination.vectorAt(i);
+      sumX += factor * vector.x;
+      sumY += factor * vector.y;
+      sumZ += factor * vector.z;
+    }
+    this.x = sumX;
+    this.y = sumY;
+    this.z = sumZ;
   }
 
   /**
@@ -278,8 +235,8 @@ public class Vector3D implements Serializable {
    * Returns the azimuth angle of the vector around the Z axis.
    *
    * <p>The azimuth {@code alpha} is produced via {@link Math#atan2(double, double)} and lies in the
-   * range -{@code Math.PI} to +{@code Math.PI}. When both X and Y are zero, the result is platform
-   * dependent but follows {@code atan2(0, 0)} semantics.
+   * range -{@code Math.PI} to +{@code Math.PI}. When both X and Y are zero, the result is
+   * platform-dependent but follows {@code atan2(0, 0)} semantics.
    *
    * @return azimuth in radians measured from +X toward +Y; range [-{@code PI}, {@code PI}]
    * @see #Vector3D(double, double)
@@ -360,7 +317,7 @@ public class Vector3D implements Serializable {
   /**
    * Returns a normalized version of this vector.
    *
-   * <p>The result has a norm of 1 while preserving direction. If the norm is zero, an {@link
+   * <p>The result has a norm of 1 while preserving the direction. If the norm is zero, an {@link
    * ArithmeticException} is thrown to signal the undefined operation. Because a new instance is
    * created, the original vector remains unchanged and safe to reuse.
    *
@@ -380,7 +337,7 @@ public class Vector3D implements Serializable {
    *
    * <p>Because infinitely many orthogonal vectors exist, the implementation selects one
    * deterministically based on the largest coordinate magnitude to maintain numerical stability.
-   * The returned vector always has unit length and is suitable for building local coordinate
+   * The returned vector always has a unit length and is suitable for building local coordinate
    * frames.
    *
    * <pre>{@code
@@ -418,8 +375,8 @@ public class Vector3D implements Serializable {
    * calculation for nearly aligned vectors to maintain numeric accuracy. Inputs must both have
    * non-zero norms; otherwise an {@link ArithmeticException} is raised.
    *
-   * @param v1 first vector; must be non-null and have non-zero norm
-   * @param v2 second vector; must be non-null and have non-zero norm
+   * @param v1 first vector; must be non-null and have a non-zero norm
+   * @param v2 second vector; must be non-null and have a non-zero norm
    * @return angle in radians between {@code v1} and {@code v2}; range [0, {@code PI}]
    * @throws ArithmeticException if either vector has a zero norm and the angle is undefined
    */
@@ -485,9 +442,9 @@ public class Vector3D implements Serializable {
   }
 
   /**
-   * Computes the cross product of two vectors.
+   * Computes the cross-product of two vectors.
    *
-   * <p>The cross product yields a vector perpendicular to both inputs following the right-hand
+   * <p>The cross-product yields a vector perpendicular to both inputs following the right-hand
    * rule. Its magnitude equals the area of the parallelogram spanned by the operands.
    *
    * @param v1 first operand; expected non-null and expressed in the same units as {@code v2}
