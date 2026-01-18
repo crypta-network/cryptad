@@ -56,6 +56,9 @@ public final class USKAttempt implements USKCheckerCallback {
   /** Whether this attempt has ever entered finite cooldown. */
   private boolean everInCooldown;
 
+  /** Whether cancellation has already been reported to callbacks. */
+  private boolean cancelNotified;
+
   /** Callback target for attempt lifecycle events. */
   private final USKAttemptCallbacks callbacks;
 
@@ -136,6 +139,8 @@ public final class USKAttempt implements USKCheckerCallback {
   public void onCancelled(ClientContext context) {
     synchronized (this) {
       checker = null;
+      if (cancelNotified) return;
+      cancelNotified = true;
     }
     callbacks.onCancelled(this, context);
   }
@@ -151,7 +156,9 @@ public final class USKAttempt implements USKCheckerCallback {
     synchronized (this) {
       c = checker;
     }
-    if (c != null) c.cancel(context);
+    if (c != null) {
+      c.cancel(context);
+    }
     onCancelled(context);
   }
 

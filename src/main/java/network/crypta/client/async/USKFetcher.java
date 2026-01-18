@@ -714,6 +714,7 @@ public class USKFetcher
     uskManager.subscribe(origUSK, this, false, parent.getClient());
     boolean startedDBRs = dbrHintFetches.maybeStart(context);
     long lookedUp = uskManager.lookupLatestSlot(origUSK);
+    if (shouldAbortSchedule()) return;
     USKSchedulingCoordinator.SchedulePlan plan = buildSchedulePlan(lookedUp, startedDBRs, context);
     if (plan == null) return;
     synchronized (this) {

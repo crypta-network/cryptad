@@ -71,7 +71,9 @@ final class USKCompletionHandler {
    * @return {@code true} if a bucket is currently stored; {@code false} otherwise.
    */
   boolean hasLastRequestData() {
-    return lastRequestData != null;
+    synchronized (this) {
+      return lastRequestData != null;
+    }
   }
 
   /**
@@ -83,7 +85,9 @@ final class USKCompletionHandler {
    * @return the last compression codec recorded for a decoded block.
    */
   short lastCompressionCodec() {
-    return lastCompressionCodec;
+    synchronized (this) {
+      return lastCompressionCodec;
+    }
   }
 
   /**
@@ -96,7 +100,9 @@ final class USKCompletionHandler {
    * @return {@code true} if the last applied block was metadata; {@code false} otherwise.
    */
   boolean lastWasMetadata() {
-    return lastWasMetadata;
+    synchronized (this) {
+      return lastWasMetadata;
+    }
   }
 
   /**
@@ -107,10 +113,12 @@ final class USKCompletionHandler {
    * later calls to {@link #applyDecodedData(boolean, ClientSSKBlock, Bucket)}.
    */
   void clearLastRequestData() {
-    if (lastRequestData != null) {
-      lastRequestData.free();
+    synchronized (this) {
+      if (lastRequestData != null) {
+        lastRequestData.free();
+      }
+      lastRequestData = null;
     }
-    lastRequestData = null;
   }
 
   /**
@@ -199,20 +207,22 @@ final class USKCompletionHandler {
   /**
    * Releases retained data as a byte array and clears the stored bucket.
    *
-   * <p>If no data is retained, this returns an empty array. The caller owns the returned byte
-   * array. The retained bucket is always freed, even if conversion fails, ensuring the handler does
-   * not retain buffers longer than needed.
+   * <p>If no data is retained, this returns {@code null} to preserve the "no payload" signal used
+   * by downstream callbacks. The caller owns the returned byte array. The retained bucket is always
+   * freed, even if conversion fails, ensuring the handler does not retain buffers longer than
+   * needed.
    *
-   * @return the retained data bytes, or an empty array when no data is stored.
+   * @return the retained data bytes, or {@code null} when no data is stored
    */
+  @SuppressWarnings("java:S1168")
   byte[] releaseLastDataBytes() {
     synchronized (this) {
-      if (lastRequestData == null) return new byte[0];
+      if (lastRequestData == null) return null;
       try {
         return BucketTools.toByteArray(lastRequestData);
       } catch (IOException e) {
         LOG.error("Unable to turn lastRequestData into byte[]: caught I/O exception: {}", e, e);
-        return new byte[0];
+        return null;
       } finally {
         lastRequestData.free();
         lastRequestData = null;

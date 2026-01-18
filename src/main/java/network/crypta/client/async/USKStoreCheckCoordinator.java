@@ -306,14 +306,18 @@ final class USKStoreCheckCoordinator {
           .getSskFetchScheduler(realTimeFlag)
           .register(null, new SendableGet[] {runningStoreChecker}, false, null, false);
     } catch (Exception t) {
+      USKStoreCheckerGetter storeChecker;
       synchronized (this) {
+        storeChecker = runningStoreChecker;
         runningStoreChecker = null;
       }
       LOG.error("Unable to start: {}", t, t);
-      try {
-        runningStoreChecker.unregister(context, runningStoreChecker.getPriorityClass());
-      } catch (Exception _) {
-        // Ignore, hopefully it's already unregistered
+      if (storeChecker != null) {
+        try {
+          storeChecker.unregister(context, storeChecker.getPriorityClass());
+        } catch (Exception _) {
+          // Ignore, hopefully it's already unregistered
+        }
       }
     }
     if (LOG.isDebugEnabled()) LOG.debug("Registered {} for {}", runningStoreChecker, callbacks);

@@ -154,14 +154,18 @@ final class USKAttemptManager {
             firstLoop);
     USKKeyWatchSet.Lookup[] toPoll = list.poll;
     USKKeyWatchSet.Lookup[] toFetch = list.fetch;
-    for (USKKeyWatchSet.Lookup lookup : toPoll) {
-      if (LOG.isTraceEnabled()) LOG.trace("Polling {} for {}", lookup, attemptContext.origUSK());
-      attemptsToStart.add(add(lookup, true));
-    }
-    for (USKKeyWatchSet.Lookup lookup : toFetch) {
-      if (LOG.isDebugEnabled())
-        LOG.debug("Adding checker for edition {} for {}", lookup, attemptContext.origUSK());
-      attemptsToStart.add(add(lookup, false));
+    synchronized (this) {
+      for (USKKeyWatchSet.Lookup lookup : toPoll) {
+        if (LOG.isTraceEnabled()) LOG.trace("Polling {} for {}", lookup, attemptContext.origUSK());
+        USKAttempt attempt = add(lookup, true);
+        if (attempt != null) attemptsToStart.add(attempt);
+      }
+      for (USKKeyWatchSet.Lookup lookup : toFetch) {
+        if (LOG.isDebugEnabled())
+          LOG.debug("Adding checker for edition {} for {}", lookup, attemptContext.origUSK());
+        USKAttempt attempt = add(lookup, false);
+        if (attempt != null) attemptsToStart.add(attempt);
+      }
     }
   }
 
