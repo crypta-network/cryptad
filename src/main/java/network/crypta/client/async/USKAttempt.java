@@ -10,7 +10,20 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Each attempt owns a {@link USKChecker} that performs the actual request and reports completion
  * through {@link USKCheckerCallback}. The attempt records whether it has succeeded, failed (DNF),
- * or been canceled, and it exposes scheduling hooks used by the owning fetcher.
+ * or been canceled, and it exposes scheduling hooks used by the owning fetcher. The attempt also
+ * tracks whether it has ever entered finite cooldown so that polling rounds can determine when a
+ * round is finished for now.
+ *
+ * <p>The class is mutable and relies on synchronization for checker state updates. Callers usually
+ * treat each attempt as part of a larger scheduling loop, invoking {@link #schedule(ClientContext)}
+ * and reacting to callbacks from the checker. Instances are short-lived and are replaced as polling
+ * rounds advance.
+ *
+ * <ul>
+ *   <li>Owns a checker for a specific USK edition probe.
+ *   <li>Tracks success, DNF, cancellation, and cooldown state.
+ *   <li>Provides scheduling and priority hooks for the polling pipeline.
+ * </ul>
  */
 public final class USKAttempt implements USKCheckerCallback {
   /** Logger for attempt scheduling diagnostics. */
@@ -34,7 +47,7 @@ public final class USKAttempt implements USKCheckerCallback {
   /** Whether this attempt has been explicitly canceled. */
   boolean cancelled;
 
-  /** Lookup descriptor associated with this attempt. */
+  /** The lookup descriptor associated with this attempt. */
   final USKKeyWatchSet.Lookup lookup;
 
   /** Whether this attempt is a long-lived polling attempt. */
@@ -43,12 +56,22 @@ public final class USKAttempt implements USKCheckerCallback {
   /** Whether this attempt has ever entered finite cooldown. */
   private boolean everInCooldown;
 
+  /** Callback target for attempt lifecycle events. */
   private final USKAttemptCallbacks callbacks;
+
+  /** Base USK used for logging and manager lookups. */
   private final USK origUSK;
+
+  /** Parent requester that supplies priority and scheduling policy. */
   private final ClientRequester parent;
 
   /**
    * Creates a new attempt for the provided lookup descriptor.
+   *
+   * <p>The constructor wires the checker used to probe the target edition and initializes the
+   * attempt state for scheduling. When {@code forever} is {@code true}, the checker is created for
+   * a long-lived polling attempt; otherwise it represents a one-off probe that will retire after
+   * completion.
    *
    * @param attemptContext shared configuration for attempt construction
    * @param lookup descriptor containing edition and key information
@@ -168,7 +191,7 @@ public final class USKAttempt implements USKCheckerCallback {
             // Boost the priority initially, so that finding the first edition takes precedence
             // over ongoing polling after we're fairly sure we're not going to find anything.
             // The ongoing polling keeps the ULPRs up to date so that we will get told quickly,
-            // but if we are overloaded we won't be able to keep up regardless.
+            // but if we are overloaded, we won't be able to keep up regardless.
             return callbacks.getProgressPollPriority();
           } else {
             return callbacks.getNormalPollPriority();

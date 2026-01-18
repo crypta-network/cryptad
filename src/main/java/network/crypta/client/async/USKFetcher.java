@@ -17,29 +17,27 @@ import org.slf4j.LoggerFactory;
 /**
  * Coordinates discovery, polling, and optional data retrieval for a {@link USK} namespace.
  *
- * <p>This fetcher drives the full lifecycle of a USK discovery round: it consults the local
- * datastore, schedules targeted edition probes, and reacts to Date-Based Request (DBR) hints to
- * narrow in on the latest available slot. Callers typically construct one instance per USK and then
- * invoke {@link #schedule(ClientContext)} to begin work; the instance may either complete a single
- * round or continue in background polling mode depending on configuration. The class cooperates
- * with {@link USKManager} for slot tracking and with scheduler infrastructure for network activity
- * without performing blocking I/O directly.
+ * <p>This fetcher drives a USK discovery round by consulting the datastore, scheduling edition
+ * probes, and applying Date-Based Request (DBR) hints to narrow toward the latest available slot.
+ * Callers typically construct one instance per USK, register callbacks or subscribers, and invoke
+ * {@link #schedule(ClientContext)} to begin work. The instance may complete a single round or
+ * continue background polling; it cooperates with {@link USKManager} and scheduler infrastructure
+ * so network I/O stays in scheduler-managed tasks rather than in this class.
  *
- * <p>The internal state model revolves around a polling round with a mutable set of in-flight
- * attempts and store checks. The fetcher tracks the highest attempted edition, respects a minimum
- * failure threshold before concluding a round, and optionally retains the most recently decoded
- * payload. Priority decisions are derived from subscribers and callbacks and can change over time.
+ * <p>The internal state model centers on mutable polling state: in-flight attempts, a watch window,
+ * the last attempted edition, and optional retained payload data. The fetcher respects a minimum
+ * failure threshold before declaring a round finished and may reschedule with backoff when
+ * configured. These invariants let callers treat each round as a bounded probe of the USK space.
  *
- * <p>State management is mutable and guarded with synchronized sections around shared fields so
- * callbacks, scheduler threads, and hint fetchers can interact safely. Cancellation and completion
- * are terminal for the instance: once either occurs, later schedule requests become no-ops. The
- * fetcher itself is not persistent; higher-level components such as {@code USKFetcherTag} recreate
- * instances across restarts.
+ * <p>Concurrency is handled with synchronized sections guarding shared fields such as completion
+ * flags and watch lists. Cancellation or completion is terminal and makes later schedule requests
+ * no-ops, and the fetcher is not persistent across restarts.
  *
  * <ul>
  *   <li>Collects subscriber hints and updates polling priorities for interactive workloads.
  *   <li>Coordinates attempt lifecycle, including store checks, DBR hints, and probe rounds.
  *   <li>Reports progress and completion results to registered callbacks.
+ *   <li>Supports background polling with backoff when configured by options.
  * </ul>
  *
  * @see USKManager
@@ -111,14 +109,25 @@ public class USKFetcher
    * <p>Callbacks are invoked when a polling round reaches a terminal outcome or when a single-shot
    * fetch completes. They receive {@code onFoundEdition(...)} at most once per lifecycle unless
    * background polling is enabled, in which case the callback may not be notified for long periods.
-   * This method also affects dynamic scheduling, because callback priority hints are folded into
-   * the polling priority calculation and can bias progress checks for interactive users.
+   * This method also affects dynamic scheduling because callback priority hints are folded into the
+   * polling priority calculation and can bias progress checks for interactive users.
    *
    * <p>The call is thread-safe and idempotent with respect to completed instances. Adding callbacks
-   * after completion has no effect and returns {@code false} without side effects.
+   * after completion has no effect and returns {@code false} without side effects. Callback
+   * instances are expected to remain valid for the life of the fetcher and may be called from
+   * scheduler threads rather than the caller's thread. The method does not trigger scheduling on
+   * its own, but it does update priorities immediately after the callback is stored.
+   *
+   * <p>Preconditions are minimal: the callback must be non-null and should tolerate invocation on
+   * internal threads. Postconditions are limited to registration and priority refresh; the caller
+   * should not expect immediate network activity as a result of this call.
    *
    * @param cb callback instance to register; must be non-null and long-lived
    * @return {@code true} when accepted; {@code false} if already completed
+   *     <pre>{@code
+   * // Example: register a callback before scheduling
+   * fetcher.addCallback(callback);
+   * }</pre>
    */
   @SuppressWarnings("UnusedReturnValue")
   public boolean addCallback(USKFetcherCallback cb) {
@@ -230,7 +239,7 @@ public class USKFetcher
     }
     if (checkStoreOnly && LOG.isDebugEnabled()) LOG.debug("Just checking store on {}", this);
     // origUSK is a hint. We *do* want to check the edition given.
-    // Whereas latestSlot we've definitely fetched, we don't want to re-check.
+    // Whereas the latestSlot we've definitely fetched, we don't want to re-check.
     watchingKeys =
         new USKKeyWatchSet(
             origUSK,
@@ -266,15 +275,18 @@ public class USKFetcher
         new USKSchedulingCoordinator(attempts, storeChecks, dbrHintFetches, checkStoreOnly);
     pollingRound =
         new USKPollingRound(
-            attempts,
-            storeChecks,
-            dbrHintFetches,
-            subscriberRegistry,
-            uskManager,
-            origUSK,
-            realTimeFlag,
+            new USKPollingRoundContext(
+                attempts,
+                storeChecks,
+                dbrHintFetches,
+                subscriberRegistry,
+                uskManager,
+                origUSK,
+                realTimeFlag),
             ORIG_SLEEP_TIME,
-            true);
+            true,
+            ORIG_SLEEP_TIME,
+            MAX_SLEEP_TIME);
   }
 
   /**
@@ -284,6 +296,10 @@ public class USKFetcher
    * scheduling step. It also checks whether the current polling round can be considered finished
    * for now and notifies progress callbacks. The method is safe to call from scheduler threads and
    * performs no blocking work beyond scheduling follow-up tasks.
+   *
+   * <p>Calling this method multiple times is safe; repeated invocations simply re-evaluate the
+   * scheduling state and may become no-ops if the poll round has already advanced. No exceptions
+   * are thrown, and the only side effects are scheduling decisions and progress checks.
    *
    * @param context client context used to schedule follow-up work; must be non-null
    */
@@ -332,6 +348,12 @@ public class USKFetcher
    * whether a polling round should be concluded. A DNF is treated as non-fatal and is used only to
    * drive scheduling decisions; it does not terminate the fetcher unless other completion criteria
    * are met. This method is safe to call from worker threads used by individual attempts.
+   *
+   * <p>DNFs may occur during datastore checks or network probes; the handler treats both sources
+   * the same and only examines attempt state, never the payload. The method does not throw and
+   * performs no blocking I/O, so callers can invoke it directly from scheduling callbacks. If the
+   * last running attempt reports DNF, the method may trigger completion for the current polling
+   * round.
    *
    * @param att attempt that reported DNF; must be non-null and associated with this fetcher
    * @param context client context used for follow-up scheduling; must be non-null
@@ -393,8 +415,7 @@ public class USKFetcher
   private void rescheduleBackgroundPoll(ClientContext context) {
     schedulingCoordinator.resetStarted();
     long delay =
-        pollingRound.rescheduleBackgroundPoll(
-            context, schedulingCoordinator.valueAtSchedule(), ORIG_SLEEP_TIME, MAX_SLEEP_TIME);
+        pollingRound.rescheduleBackgroundPoll(context, schedulingCoordinator.valueAtSchedule());
     schedule(delay, context);
     pollingRound.checkFinishedForNow(context, cancelled, completed);
   }
@@ -425,6 +446,12 @@ public class USKFetcher
    * update flag. The method expects that the provided attempt originated from this fetcher; it does
    * not perform deep validation beyond scheduling and tracking updates.
    *
+   * <p>The outcome mirrors the full handler: scheduling decisions, decode choices, and manager
+   * updates are derived from the attempt's edition and the current slot state. The call is safe
+   * from worker threads and does not block beyond enqueuing follow-up work. Passing {@code null}
+   * for the attempt is permitted for synthetic success notifications that still carry a block
+   * payload.
+   *
    * @param att attempt that completed successfully; may be null for synthetic successes
    * @param dontUpdate whether to suppress updating the USK manager with this edition
    * @param block block returned by the attempt, or {@code null} for metadata-only successes
@@ -443,6 +470,12 @@ public class USKFetcher
    * data, and updates the USK manager unless suppressed. It may also register new attempts to
    * continue probing near the current latest edition. When {@code dontUpdate} is {@code true}, the
    * manager is left untouched but local bookkeeping and decode decisions still apply.
+   *
+   * <p>The method is idempotent with respect to repeated success notifications for the same
+   * edition; it only advances the latest slot when the reported edition exceeds the current known
+   * value. Callers should pass the same {@link ClientContext} used by related scheduling operations
+   * so that follow-up tasks are enqueued on consistent queues. If the fetcher is already completed
+   * or canceled, the success is ignored and no additional scheduling occurs.
    *
    * @param att attempt that completed successfully; may be null for synthetic successes
    * @param curLatest edition number discovered by the attempt; non-negative values are expected
@@ -478,7 +511,6 @@ public class USKFetcher
    * @param decode whether decoding should be attempted for this block
    * @param block block to decode; may be null when decoding is not applicable
    * @param context client context used for bucket allocation; must not be null
-   * @return a decoded bucket, or {@code null} when decoding was skipped or failed
    */
   private void applyDecodedData(boolean decode, ClientSSKBlock block, ClientContext context) {
     completionCoordinator.applyDecodedData(decode, block, context);
@@ -550,7 +582,7 @@ public class USKFetcher
    * Handles cancellation of an attempt and completes cancellation if needed.
    *
    * <p>The method removes the attempt from active tracking. If this was the last running attempt
-   * and the fetcher has already been marked as cancelled, completion callbacks are fired. The call
+   * and the fetcher has already been marked as canceled, completion callbacks are fired. The call
    * is safe from worker threads and performs no blocking I/O.
    *
    * @param att attempt that was canceled; must be non-null and associated with this fetcher
@@ -600,7 +632,7 @@ public class USKFetcher
    * <p>Returns {@code true} once the fetcher has been canceled or completed. After that point it no
    * longer schedules work, though background pollers may be re-armed by {@link
    * #schedule(ClientContext)} if applicable. This method is safe to call from any thread and
-   * provides a snapshot of state that may change immediately after return.
+   * provides a snapshot of the state that may change immediately after return.
    *
    * @return {@code true} if canceled or completed; otherwise {@code false}
    */
@@ -634,7 +666,9 @@ public class USKFetcher
    *
    * <p>Delays are expressed in milliseconds and are interpreted relative to the caller's clock.
    * This method does not validate whether the fetcher is currently registered; it simply forwards
-   * to the scheduler.
+   * to the scheduler. Delayed scheduling preserves the same priority configuration that would be
+   * applied to an immediate call. The caller should avoid scheduling multiple delayed calls for the
+   * same instance unless intentional, as each call queues an independent timed job.
    *
    * @param delay delay in milliseconds before scheduling; non-positive schedules immediately
    * @param context client context used to reach the scheduler and timing facilities; must be
@@ -660,7 +694,13 @@ public class USKFetcher
    *
    * <p>Callers should supply the same {@link ClientContext} used by related requests so scheduling
    * occurs on the expected queues. The method is idempotent with respect to registration state, but
-   * it does not coalesce concurrent calls.
+   * it does not coalesce concurrent calls. If the request is configured for store-only checks, this
+   * method may resolve the round immediately after store checks are complete.
+   *
+   * <pre>{@code
+   * // Example: schedule immediately after construction
+   * fetcher.schedule(context);
+   * }</pre>
    *
    * @param context client context that provides schedulers, timing, and factories required to run
    *     the discovery loop; must be non-null
@@ -714,7 +754,7 @@ public class USKFetcher
    * <p>The plan determines whether attempts should be registered immediately, whether the fetcher
    * should exit early, and whether store-only checking can be considered complete.
    *
-   * @param lookedUp latest slot looked up in the manager
+   * @param lookedUp the latest slot looked up in the manager
    * @param startedDBRs whether DBR hint fetches were started for this round
    * @param context client context used for scheduling decisions; must not be null
    * @return a schedule plan describing next steps for the caller
@@ -733,9 +773,8 @@ public class USKFetcher
    *
    * <p>After cancellation the fetcher stops scheduling any further datastore checks, DBR hint
    * fetches, or edition probes, and it unsubscribes from the {@link USKManager}. In-flight attempts
-   * are canceled when possible and subsequent calls that would otherwise schedule work become
-   * no-ops. This method is idempotent; calling it more than once has no additional effect beyond
-   * logging.
+   * are canceled when possible, and later calls that would otherwise schedule work become no-ops.
+   * This method is idempotent; calling it more than once has no additional effect beyond logging.
    *
    * <p>Cancellation does not delete any previously obtained data. If background polling was
    * configured, it is disabled for the lifetime of this instance. A new {@code USKFetcher} must be
@@ -743,7 +782,8 @@ public class USKFetcher
    *
    * <p>Cancellation is synchronous with respect to internal bookkeeping but does not wait for
    * external network operations to finish; those are aborted or left to complete asynchronously by
-   * the underlying schedulers.
+   * the underlying schedulers. Any retained payload data is cleared, so later callbacks do not
+   * reuse stale buffers.
    *
    * @param context client runtime context used to unregister listeners and cancel outstanding work;
    *     must be non-null
@@ -774,15 +814,19 @@ public class USKFetcher
   /**
    * Adds a subscriber and its current edition hint.
    *
-   * <p>Subscribers are not directly notified by this class; instead they influence whether and how
+   * <p>This class does not directly notify subscribers; instead, they influence whether and how
    * aggressively the fetcher continues to probe for newer editions. Hints help bias the search and
    * are folded into the key-watching window used for datastore checks and network probes. The call
-   * is thread-safe and does not trigger immediate network I/O.
+   * is thread-safe and does not trigger immediate network I/O. Repeated registrations of the same
+   * callback update its hint and priority contributions without creating duplicate entries.
+   *
+   * <p>The method only mutates subscription state; it does not schedule new attempts directly. Any
+   * new scheduling decisions will happen when priorities are recomputed or when the next scheduling
+   * pass runs.
    *
    * @param cb subscriber whose interest influences polling priority and continuation; must be
    *     non-null
-   * @param hint subscriber's best-known edition number; values less than or equal to the last
-   *     looked-up slot are ignored; larger values expand the search window
+   * @param hint subscriber's best-known edition number; larger values expand the watch window
    */
   public void addSubscriber(USKCallback cb, long hint) {
     USKFetcherCallback[] fetcherCallbacks = snapshotCallbacks();
@@ -906,8 +950,8 @@ public class USKFetcher
    * <p>Not supported for this class: priority is determined by internal state and the current
    * progress polling class reported by {@link #getPriorityClass()}. This method is not expected to
    * be called by production code and will throw an exception if invoked; callers should consult
-   * {@link #refreshAndGetProgressPollPriority()} instead to refresh priorities and obtain the
-   * current value.
+   * {@link #refreshAndGetProgressPollPriority()} instead to refresh priorities and get the current
+   * value.
    *
    * @return never returns normally
    * @throws UnsupportedOperationException always, because this operation is unsupported here
@@ -933,8 +977,8 @@ public class USKFetcher
   public void onFoundEdition(USKFoundEdition foundEdition) {
     if (foundEdition.newKnownGood() && !foundEdition.newSlotToo())
       return; // Only interested in slots
-    // Because this is frequently run off-thread, it is actually possible that the looked up edition
-    // is not the same as the edition we are being notified of.
+    // Because this is frequently run off-thread, it is actually possible that the looked-up edition
+    // is different from the edition we are being notified of.
     USKSuccessPlanner.FoundPlan plan =
         prepareFoundPlan(foundEdition.edition(), foundEdition.data(), foundEdition.context());
     if (plan == null) return;
@@ -983,7 +1027,7 @@ public class USKFetcher
   }
 
   /**
-   * Applies decoded data from a found edition into retained state.
+   * Applies decoded data from a found edition into a retained state.
    *
    * <p>When {@code decode} is {@code true}, the method updates compression metadata and retains the
    * decoded data bucket if configured to keep the last data.
@@ -1106,9 +1150,10 @@ public class USKFetcher
    *
    * <p>The count reflects the internal watch list and is used by schedulers to estimate work
    * breadth. It does not necessarily equal the number of outstanding network requests and may
-   * include keys derived from subscriber hints that are not currently scheduled.
+   * include keys derived from subscriber hints that are not currently scheduled. The value is a
+   * snapshot that may change immediately after return as subscriptions evolve.
    *
-   * @return estimated count of watched keys
+   * @return current estimate of watched keys for scheduling heuristics and diagnostics
    */
   @Override
   public synchronized long countKeys() {
@@ -1327,7 +1372,7 @@ public class USKFetcher
    *
    * <p>Hints greater than the current last-known slot are remembered and may expand the search
    * window. Duplicate or stale hints are ignored. This method does not trigger immediate network
-   * activity; it only updates the internal watch list used for subsequent scheduling rounds.
+   * activity; it only updates the internal watch list used for later scheduling rounds.
    *
    * @param suggestedEdition edition number to add as a hint; must be greater than the last
    *     looked-up slot to have any effect

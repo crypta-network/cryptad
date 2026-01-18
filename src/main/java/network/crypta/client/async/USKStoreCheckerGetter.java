@@ -23,9 +23,9 @@ import network.crypta.node.SendableRequestItem;
  * boolean)} delegates to {@link
  * USKStoreCheckCoordinator#preRegisterStoreChecker(USKStoreCheckerGetter,
  * USKStoreCheckCoordinator.USKStoreChecker, ClientContext, boolean)} and then permanently marks the
- * request as done so that subsequent scheduling treats it as canceled. This keeps the store-check
- * wiring separate from {@code USKFetcher}'s polling logic, reducing coupling and making the probe
- * behavior explicit.
+ * request as done so that later scheduling treats it as canceled. This keeps the store-check wiring
+ * separate from {@code USKFetcher}'s polling logic, reducing coupling and making the probe behavior
+ * explicit.
  *
  * <p>This class does not perform its own synchronization; it assumes the threading model used by
  * the request scheduler and the owning {@link USKStoreCheckCoordinator}.
@@ -46,11 +46,11 @@ final class USKStoreCheckerGetter extends SendableGet {
   /** Callbacks for fetcher-level state needed by the store check. */
   private final transient USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks;
 
-  /** Candidate-key provider used to enumerate likely USK edition datastore keys. */
+  /** Candidate-key provider used to list likely USK edition datastore keys. */
   private final transient USKStoreCheckCoordinator.USKStoreChecker checker;
 
-  /** Parent requester that owns this probe. */
-  private final ClientRequester parent;
+  /** Request the owner supplied at construction and passed to the superclass. */
+  private final ClientRequester owner;
 
   /**
    * Tracks whether {@link #preRegister(ClientContext, boolean)} has run and this request is
@@ -67,18 +67,18 @@ final class USKStoreCheckerGetter extends SendableGet {
    *
    * @param coordinator store-check coordinator for lifecycle events.
    * @param callbacks fetcher-level callbacks used for context and state.
-   * @param parent request owner used for scheduling and real-time flag.
+   * @param owner request the owner used for scheduling and real-time flag.
    * @param checker candidate-key provider used for datastore probing decisions.
    */
   USKStoreCheckerGetter(
       USKStoreCheckCoordinator coordinator,
       USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks,
-      ClientRequester parent,
+      ClientRequester owner,
       USKStoreCheckCoordinator.USKStoreChecker checker) {
-    super(parent, parent.realTimeFlag());
+    super(owner, owner.realTimeFlag());
     this.coordinator = coordinator;
     this.callbacks = callbacks;
-    this.parent = parent;
+    this.owner = owner;
     this.checker = checker;
   }
 
@@ -87,8 +87,8 @@ final class USKStoreCheckerGetter extends SendableGet {
    *
    * <p>This implementation reuses the context configured on the owning {@link USKFetcher} and
    * returns the exact instance stored on the fetcher (no defensive copy). Sharing the context keeps
-   * datastore behavior and fetch-policy settings consistent between the probe and any subsequent
-   * USK polling actions.
+   * datastore behavior and fetch-policy settings consistent between the probe and any later USK
+   * polling actions.
    *
    * @return the fetch context to use for store checks, shared with the owning fetcher.
    */
@@ -188,11 +188,11 @@ final class USKStoreCheckerGetter extends SendableGet {
   }
 
   /**
-   * Selects a key to send based on local-fetching state.
+   * Selects a key to send based on the local-fetching state.
    *
    * <p>This getter never selects a network-sendable key. It exists only to drive local store
    * checking via {@link #listKeys()}, and the input parameters are unused. Returning {@code null}
-   * prevents any attempt to schedule a network send for this helper request. As a result, the
+   * prevents any attempt to schedule a network sending for this helper request. As a result, the
    * scheduler sees no sendable work from this getter.
    *
    * @param keys keys currently being fetched locally; ignored by this implementation.
@@ -240,14 +240,14 @@ final class USKStoreCheckerGetter extends SendableGet {
    *
    * <p>Although this getter does not perform network I/O, it still participates in the same
    * scheduling and accounting paths as other requests. Selecting the client based on the real-time
-   * flag of the owning {@code parent} keeps the probe aligned with the rest of the USK polling
-   * workflow and ensures it is attributed to the correct request queue.
+   * flag of the owning requester keeps the probe aligned with the rest of the USK polling workflow
+   * and ensures it is attributed to the correct request queue.
    *
-   * @return the request client matching the parent's real-time scheduling mode.
+   * @return the request client matching the owner's real-time scheduling mode.
    */
   @Override
   public RequestClient getClient() {
-    return parent.realTimeFlag() ? USKManager.rcRT : USKManager.rcBulk;
+    return owner.realTimeFlag() ? USKManager.rcRT : USKManager.rcBulk;
   }
 
   /**
@@ -255,14 +255,14 @@ final class USKStoreCheckerGetter extends SendableGet {
    *
    * <p>The request machinery uses this link to attribute accounting and cancellation. This getter
    * is a helper object and does not represent an independent client request, so it returns the
-   * parent requester supplied at construction time. Callers should treat the returned requester as
+   * owner requester supplied at construction time. Callers should treat the returned requester as
    * the authoritative owner of this probe and its scheduling.
    *
-   * @return the parent requester that owns this store-check probe.
+   * @return the owner requester that owns this store-check probe.
    */
   @Override
   public ClientRequester getClientRequest() {
-    return parent;
+    return owner;
   }
 
   /**
@@ -300,7 +300,7 @@ final class USKStoreCheckerGetter extends SendableGet {
    * <p>USK datastore lookups are performed using SSK-derived keys, so this getter always reports
    * {@code true} to match the underlying key type expectations of the request machinery. This
    * classification can influence request routing, accounting, and key-handling behavior. It has no
-   * side effects and does not vary per instance.
+   * side effects and does not vary, per instance.
    *
    * @return {@code true}, as this getter operates on SSK-derived keys.
    */
