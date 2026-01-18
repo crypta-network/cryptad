@@ -5,9 +5,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import network.crypta.client.FetchContext;
-import network.crypta.keys.USK;
-import network.crypta.support.api.Bucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,16 +22,11 @@ final class USKAttemptManager {
   /** Literal used in attempt descriptions to keep log formatting consistent. */
   private static final String FOR_LITERAL = " for ";
 
-  private final USKAttemptCallbacks callbacks;
-  private final USK origUSK;
+  private final USKAttemptContext attemptContext;
   private final USKManager uskManager;
-  private final FetchContext ctx;
-  private final FetchContext ctxNoStore;
-  private final ClientRequester parent;
-  private final USKFetcher.USKWatchingKeys watchingKeys;
+  private final USKKeyWatchSet watchingKeys;
   private final boolean checkStoreOnly;
   private final boolean keepLastData;
-  private final boolean realTimeFlag;
 
   /** Attempts staged for immediate scheduling on the next registration cycle. */
   private final ArrayList<USKAttempt> attemptsToStart = new ArrayList<>();
@@ -46,26 +38,16 @@ final class USKAttemptManager {
   private final TreeMap<Long, USKAttempt> pollingAttempts = new TreeMap<>();
 
   USKAttemptManager(
-      USKAttemptCallbacks callbacks,
-      USK origUSK,
+      USKAttemptContext attemptContext,
       USKManager uskManager,
-      FetchContext ctx,
-      FetchContext ctxNoStore,
-      ClientRequester parent,
-      USKFetcher.USKWatchingKeys watchingKeys,
+      USKKeyWatchSet watchingKeys,
       boolean checkStoreOnly,
-      boolean keepLastData,
-      boolean realTimeFlag) {
-    this.callbacks = callbacks;
-    this.origUSK = origUSK;
+      boolean keepLastData) {
+    this.attemptContext = attemptContext;
     this.uskManager = uskManager;
-    this.ctx = ctx;
-    this.ctxNoStore = ctxNoStore;
-    this.parent = parent;
     this.watchingKeys = watchingKeys;
     this.checkStoreOnly = checkStoreOnly;
     this.keepLastData = keepLastData;
-    this.realTimeFlag = realTimeFlag;
   }
 
   List<USKAttempt> cancelBefore(long curLatest) {
@@ -102,56 +84,60 @@ final class USKAttemptManager {
   }
 
   void addNewAttempts(long curLatest, ClientContext context, boolean firstLoop) {
-    USKFetcher.USKWatchingKeys.ToFetch list =
+    USKKeyWatchSet.ToFetch list =
         watchingKeys.getEditionsToFetch(
             curLatest,
             context.random,
             getRunningFetchEditions(),
-            shouldAddRandomEditions(context, firstLoop));
-    USKFetcher.Lookup[] toPoll = list.poll;
-    USKFetcher.Lookup[] toFetch = list.fetch;
-    for (USKFetcher.Lookup lookup : toPoll) {
-      if (LOG.isTraceEnabled()) LOG.trace("Polling {} for {}", lookup, origUSK);
+            shouldAddRandomEditions(context, firstLoop),
+            firstLoop);
+    USKKeyWatchSet.Lookup[] toPoll = list.poll;
+    USKKeyWatchSet.Lookup[] toFetch = list.fetch;
+    for (USKKeyWatchSet.Lookup lookup : toPoll) {
+      if (LOG.isTraceEnabled()) LOG.trace("Polling {} for {}", lookup, attemptContext.origUSK());
       attemptsToStart.add(add(lookup, true));
     }
-    for (USKFetcher.Lookup lookup : toFetch) {
-      if (LOG.isDebugEnabled()) LOG.debug("Adding checker for edition {} for {}", lookup, origUSK);
+    for (USKKeyWatchSet.Lookup lookup : toFetch) {
+      if (LOG.isDebugEnabled())
+        LOG.debug("Adding checker for edition {} for {}", lookup, attemptContext.origUSK());
       attemptsToStart.add(add(lookup, false));
     }
   }
 
   boolean shouldAddRandomEditions(ClientContext context, boolean firstLoop) {
-    return callbacks.shouldAddRandomEditions(context.random, firstLoop);
+    return attemptContext.callbacks().shouldAddRandomEditions(context.random, firstLoop);
   }
 
-  private synchronized USKAttempt add(USKFetcher.Lookup lookup, boolean forever) {
+  private synchronized USKAttempt add(USKKeyWatchSet.Lookup lookup, boolean forever) {
     long edition = lookup.val;
     if (lookup.val < 0)
       throw new IllegalArgumentException(
-          "Can't check <0" + FOR_LITERAL + lookup.val + " on " + origUSK);
+          "Can't check <0" + FOR_LITERAL + lookup.val + " on " + attemptContext.origUSK());
     if (checkStoreOnly) return null;
-    if (LOG.isDebugEnabled()) LOG.debug("Adding USKAttempt for {} for {}", edition, origUSK);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Adding USKAttempt for {} for {}", edition, attemptContext.origUSK());
     if (isDuplicateAttempt(forever, edition)) return null;
-    USKAttempt attempt =
-        new USKAttempt(callbacks, origUSK, ctx, ctxNoStore, parent, lookup, forever, realTimeFlag);
+    USKAttempt attempt = new USKAttempt(attemptContext, lookup, forever);
     if (forever) pollingAttempts.put(edition, attempt);
     else {
       runningAttempts.put(edition, attempt);
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Added {} for {}", attempt, origUSK);
+    if (LOG.isDebugEnabled()) LOG.debug("Added {} for {}", attempt, attemptContext.origUSK());
     return attempt;
   }
 
   private synchronized boolean isDuplicateAttempt(boolean forever, long edition) {
     if (forever) {
       if (pollingAttempts.containsKey(edition)) {
-        if (LOG.isDebugEnabled()) LOG.debug("Already polling edition: {} for {}", edition, origUSK);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Already polling edition: {} for {}", edition, attemptContext.origUSK());
         return true;
       }
     } else {
       if (runningAttempts.containsKey(edition)) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Returning because already running for {}", origUSK.getURI());
+          LOG.debug("Returning because already running for {}", attemptContext.origUSK().getURI());
+
         return true;
       }
     }
@@ -162,8 +148,8 @@ final class USKAttemptManager {
     return !runningAttempts.isEmpty();
   }
 
-  synchronized boolean hasPollingAttempts() {
-    return !pollingAttempts.isEmpty();
+  synchronized boolean hasNoPollingAttempts() {
+    return pollingAttempts.isEmpty();
   }
 
   synchronized USKAttempt[] snapshotPollingAttempts() {
@@ -200,10 +186,12 @@ final class USKAttemptManager {
     pollingAttempts.remove(edition);
   }
 
+  @SuppressWarnings("unused")
   synchronized int runningAttemptCount() {
     return runningAttempts.size();
   }
 
+  @SuppressWarnings("unused")
   synchronized int pollingAttemptCount() {
     return pollingAttempts.size();
   }
@@ -221,8 +209,8 @@ final class USKAttemptManager {
     return sb.toString();
   }
 
-  synchronized List<USKFetcher.Lookup> getRunningFetchEditions() {
-    List<USKFetcher.Lookup> ret = new ArrayList<>();
+  synchronized List<USKKeyWatchSet.Lookup> getRunningFetchEditions() {
+    List<USKKeyWatchSet.Lookup> ret = new ArrayList<>();
     for (USKAttempt attempt : runningAttempts.values()) {
       if (!ret.contains(attempt.lookup)) ret.add(attempt.lookup);
     }
@@ -232,7 +220,7 @@ final class USKAttemptManager {
     return ret;
   }
 
-  void registerAttempts(ClientContext context, Bucket lastRequestData, long suggestedEdition) {
+  void registerAttempts(USKAttemptRegistrationParams params) {
     USKAttempt[] attempts;
     int runningCount;
     int pollingCount;
@@ -243,32 +231,22 @@ final class USKAttemptManager {
       pollingCount = pollingAttempts.size();
     }
 
-    if (attempts.length > 0) parent.toNetwork(context);
+    if (attempts.length > 0) attemptContext.parent().toNetwork(params.context());
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Registering {} USKChecker's for {} running={} polling={}",
           attempts.length,
-          origUSK,
+          attemptContext.origUSK(),
           runningCount,
           pollingCount);
     for (USKAttempt attempt : attempts) {
-      long lastEd = uskManager.lookupLatestSlot(origUSK);
-      if (keepLastData && lastRequestData == null && lastEd == suggestedEdition) lastEd--;
-      if (attempt == null) continue;
-      if (attempt.number > lastEd) attempt.schedule(context);
-      else {
-        removeRunningAttempt(attempt.number);
-      }
-    }
-  }
+      long lastEd = uskManager.lookupLatestSlot(attemptContext.origUSK());
 
-  void processAttemptsAfterStoreCheck(
-      USKAttempt[] attempts, ClientContext context, Bucket lastRequestData, long suggestedEdition) {
-    for (USKAttempt attempt : attempts) {
-      long lastEd = uskManager.lookupLatestSlot(origUSK);
-      if (keepLastData && lastRequestData == null && lastEd == suggestedEdition) lastEd--;
+      if (keepLastData && !params.hasLastRequestData() && lastEd == params.suggestedEdition())
+        lastEd--;
+
       if (attempt == null) continue;
-      if (attempt.number > lastEd) attempt.schedule(context);
+      if (attempt.number > lastEd) attempt.schedule(params.context());
       else {
         removeRunningAttempt(attempt.number);
         removePollingAttempt(attempt.number);
@@ -276,13 +254,31 @@ final class USKAttemptManager {
     }
   }
 
+  void processAttemptsAfterStoreCheck(USKAttemptRegistrationParams params, USKAttempt[] attempts) {
+    for (USKAttempt attempt : attempts) {
+      long lastEd = uskManager.lookupLatestSlot(attemptContext.origUSK());
+      if (keepLastData && !params.hasLastRequestData() && lastEd == params.suggestedEdition())
+        lastEd--;
+      if (attempt == null) continue;
+      if (attempt.number > lastEd) attempt.schedule(params.context());
+      else {
+        removeRunningAttempt(attempt.number);
+        removePollingAttempt(attempt.number);
+      }
+    }
+  }
+
+  @SuppressWarnings("unused")
   void noteAttemptSuccess(USKAttempt attempt) {
     if (attempt == null) return;
     removeRunningAttempt(attempt.number);
   }
 
+  @SuppressWarnings("unused")
   void noteAttemptCancelled(USKAttempt attempt) {
     if (attempt == null) return;
+    if (LOG.isDebugEnabled())
+      LOG.debug("Attempt {} cancelled for {}", attempt.number, attemptContext.origUSK());
     removeRunningAttempt(attempt.number);
   }
 
@@ -293,4 +289,7 @@ final class USKAttemptManager {
     }
     for (USKAttempt attempt : pollers) attempt.reloadPollParameters();
   }
+
+  record USKAttemptRegistrationParams(
+      ClientContext context, boolean hasLastRequestData, long suggestedEdition) {}
 }

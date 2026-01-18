@@ -13,37 +13,44 @@ import network.crypta.node.SendableRequestItem;
  * A {@link SendableGet} that performs a local-only datastore presence probe for candidate USK
  * editions.
  *
- * <p>This getter is created by {@link USKFetcher} when it wants to cheaply answer the question
- * "does the datastore already contain any likely next editions?" before attempting any network
- * fetch. It exposes a set of candidate {@link Key}s via {@link #listKeys()} and relies on the
- * surrounding request machinery to perform local checks only; it does not select a single key to
- * send, and it does not initiate network traffic itself.
+ * <p>This getter is created by {@link USKStoreCheckCoordinator} when it wants to cheaply answer the
+ * question "does the datastore already contain any likely next editions?" before attempting any
+ * network fetch. It exposes a set of candidate {@link Key}s via {@link #listKeys()} and relies on
+ * the surrounding request machinery to perform local checks only; it does not select a single key
+ * to send, and it does not initiate network traffic itself.
  *
  * <p>Lifecycle-wise, the instance is intended to be single-shot: {@link #preRegister(ClientContext,
- * boolean)} delegates to {@link USKFetcher#preRegisterStoreChecker(USKStoreCheckerGetter,
- * USKFetcher.USKStoreChecker, ClientContext, boolean)} and then permanently marks the request as
- * done so that subsequent scheduling treats it as canceled. This keeps the store-check wiring
- * separate from {@code USKFetcher}'s polling logic, reducing coupling and making the probe behavior
- * explicit.
+ * boolean)} delegates to {@link
+ * USKStoreCheckCoordinator#preRegisterStoreChecker(USKStoreCheckerGetter,
+ * USKStoreCheckCoordinator.USKStoreChecker, ClientContext, boolean)} and then permanently marks the
+ * request as done so that subsequent scheduling treats it as canceled. This keeps the store-check
+ * wiring separate from {@code USKFetcher}'s polling logic, reducing coupling and making the probe
+ * behavior explicit.
  *
  * <p>This class does not perform its own synchronization; it assumes the threading model used by
- * the request scheduler and the owning {@link USKFetcher}.
+ * the request scheduler and the owning {@link USKStoreCheckCoordinator}.
  *
  * <ul>
  *   <li>Supplies candidate keys to probe via {@link #listKeys()}.
- *   <li>Delegates registration and accounting to the owning {@link USKFetcher}.
+ *   <li>Delegates registration and accounting to the owning coordinator.
  *   <li>Cancels itself after registration to remain single-shot.
  * </ul>
  *
- * @see USKFetcher
- * @see USKFetcher.USKStoreChecker
+ * @see USKStoreCheckCoordinator
+ * @see USKStoreCheckCoordinator.USKStoreChecker
  */
 final class USKStoreCheckerGetter extends SendableGet {
-  /** Owning fetcher that provides context, policy, and accounting for this probe. */
-  private final transient USKFetcher fetcher;
+  /** Coordinator for store-check lifecycle and callbacks. */
+  private final transient USKStoreCheckCoordinator coordinator;
+
+  /** Callbacks for fetcher-level state needed by the store check. */
+  private final transient USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks;
 
   /** Candidate-key provider used to enumerate likely USK edition datastore keys. */
-  private final transient USKFetcher.USKStoreChecker checker;
+  private final transient USKStoreCheckCoordinator.USKStoreChecker checker;
+
+  /** Parent requester that owns this probe. */
+  private final ClientRequester parent;
 
   /**
    * Tracks whether {@link #preRegister(ClientContext, boolean)} has run and this request is
@@ -54,18 +61,24 @@ final class USKStoreCheckerGetter extends SendableGet {
   /**
    * Creates a new local-only store-check getter for a single USK polling pass.
    *
-   * <p>The instance delegates most behavior to {@code fetcher} and {@code checker} and is designed
-   * to be short-lived: once {@link #preRegister(ClientContext, boolean)} completes, the getter
-   * marks itself done so that the scheduler stops considering it for further work.
+   * <p>The instance delegates most behavior to {@code coordinator} and {@code checker} and is
+   * designed to be short-lived: once {@link #preRegister(ClientContext, boolean)} completes, the
+   * getter marks itself done so that the scheduler stops considering it for further work.
    *
-   * @param fetcher owning {@link USKFetcher} that supplies context and policy.
+   * @param coordinator store-check coordinator for lifecycle events.
+   * @param callbacks fetcher-level callbacks used for context and state.
    * @param parent request owner used for scheduling and real-time flag.
    * @param checker candidate-key provider used for datastore probing decisions.
    */
   USKStoreCheckerGetter(
-      USKFetcher fetcher, ClientRequester parent, USKFetcher.USKStoreChecker checker) {
+      USKStoreCheckCoordinator coordinator,
+      USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks,
+      ClientRequester parent,
+      USKStoreCheckCoordinator.USKStoreChecker checker) {
     super(parent, parent.realTimeFlag());
-    this.fetcher = fetcher;
+    this.coordinator = coordinator;
+    this.callbacks = callbacks;
+    this.parent = parent;
     this.checker = checker;
   }
 
@@ -81,7 +94,7 @@ final class USKStoreCheckerGetter extends SendableGet {
    */
   @Override
   public FetchContext getContext() {
-    return fetcher.ctx;
+    return callbacks.fetcherContext();
   }
 
   /**
@@ -120,10 +133,11 @@ final class USKStoreCheckerGetter extends SendableGet {
   /**
    * Lists the candidate datastore keys to probe for likely USK editions.
    *
-   * <p>The returned set is determined by {@link USKFetcher.USKStoreChecker} and represents the
-   * editions that the owning {@link USKFetcher} considers plausible next steps. The scheduler uses
-   * this list for local store checking only; this getter never turns these keys into network
-   * requests directly. This method returns the array provided by the checker without copying it.
+   * <p>The returned set is determined by {@link USKStoreCheckCoordinator.USKStoreChecker} and
+   * represents the editions that the owning {@link USKFetcher} considers plausible next steps. The
+   * scheduler uses this list for local store checking only; this getter never turns these keys into
+   * network requests directly. This method returns the array provided by the checker without
+   * copying it.
    *
    * @return an array of candidate {@link Key} instances to probe; may be empty.
    */
@@ -136,8 +150,8 @@ final class USKStoreCheckerGetter extends SendableGet {
    * Handles a failure for this getter.
    *
    * <p>Failures are treated as non-fatal for the local store-check probe. The higher-level {@link
-   * USKFetcher} logic decides how to proceed (for example, whether to attempt a network fetch), so
-   * this callback intentionally performs no action.
+   * USKStoreCheckCoordinator} logic decides how to proceed (for example, whether to attempt a
+   * network fetch), so this callback intentionally performs no action.
    *
    * <p>The parameters are accepted to satisfy the {@link SendableGet} contract but are otherwise
    * ignored.
@@ -154,10 +168,11 @@ final class USKStoreCheckerGetter extends SendableGet {
   /**
    * Registers this getter with the scheduler, delegating the actual work to the owning fetcher.
    *
-   * <p>This method forwards to {@link USKFetcher#preRegisterStoreChecker(USKStoreCheckerGetter,
-   * USKFetcher.USKStoreChecker, ClientContext, boolean)} and then marks the request as done in a
-   * {@code finally} block so that {@link #isCancelled()} returns {@code true} afterward. It is
-   * intended to run once per instance as part of a single store-check pass.
+   * <p>This method forwards to {@link
+   * USKStoreCheckCoordinator#preRegisterStoreChecker(USKStoreCheckerGetter,
+   * USKStoreCheckCoordinator.USKStoreChecker, ClientContext, boolean)} and then marks the request
+   * as done in a {@code finally} block so that {@link #isCancelled()} returns {@code true}
+   * afterward. It is intended to run once per instance as part of a single store-check pass.
    *
    * @param context client context used during registration; must not be null.
    * @param toNetwork whether the scheduler is attempting a network registration; forwarded as-is.
@@ -166,7 +181,7 @@ final class USKStoreCheckerGetter extends SendableGet {
   @Override
   public boolean preRegister(ClientContext context, boolean toNetwork) {
     try {
-      return fetcher.preRegisterStoreChecker(this, checker, context, toNetwork);
+      return coordinator.preRegisterStoreChecker(this, checker, context, toNetwork);
     } finally {
       done = true;
     }
@@ -201,7 +216,7 @@ final class USKStoreCheckerGetter extends SendableGet {
    */
   @Override
   public long countAllKeys(ClientContext context) {
-    return fetcher.countKeys();
+    return callbacks.fetcher().countKeys();
   }
 
   /**
@@ -241,7 +256,7 @@ final class USKStoreCheckerGetter extends SendableGet {
    * <p>The request machinery uses this link to attribute accounting and cancellation. This getter
    * is a helper object and does not represent an independent client request, so it returns the
    * parent requester supplied at construction time. Callers should treat the returned requester as
-   * the authoritative owner of this probe.
+   * the authoritative owner of this probe and its scheduling.
    *
    * @return the parent requester that owns this store-check probe.
    */
@@ -261,7 +276,7 @@ final class USKStoreCheckerGetter extends SendableGet {
    */
   @Override
   public short getPriorityClass() {
-    return fetcher.getPriorityClass();
+    return callbacks.fetcher().getPriorityClass();
   }
 
   /**
@@ -276,7 +291,7 @@ final class USKStoreCheckerGetter extends SendableGet {
    */
   @Override
   public boolean isCancelled() {
-    return done || fetcher.isCancelled();
+    return done || callbacks.isCancelled();
   }
 
   /**
@@ -323,6 +338,6 @@ final class USKStoreCheckerGetter extends SendableGet {
    */
   @Override
   protected ClientGetState getClientGetState() {
-    return fetcher;
+    return callbacks.fetcher();
   }
 }

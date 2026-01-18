@@ -186,7 +186,7 @@ class BootstrapSeedTestTest {
    * runtime (Security Manager is disabled).
    */
   public static final class BootstrapSeedTestRunner {
-    public static void main(String[] args) throws Exception {
+    static void main(String[] args) throws Exception {
       if (args.length != 1) {
         throw new IllegalArgumentException("Expected args: <mode>");
       }

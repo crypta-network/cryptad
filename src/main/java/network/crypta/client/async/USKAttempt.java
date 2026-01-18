@@ -1,6 +1,5 @@
 package network.crypta.client.async;
 
-import network.crypta.client.FetchContext;
 import network.crypta.keys.ClientSSKBlock;
 import network.crypta.keys.USK;
 import org.slf4j.Logger;
@@ -13,7 +12,7 @@ import org.slf4j.LoggerFactory;
  * through {@link USKCheckerCallback}. The attempt records whether it has succeeded, failed (DNF),
  * or been canceled, and it exposes scheduling hooks used by the owning fetcher.
  */
-final class USKAttempt implements USKCheckerCallback {
+public final class USKAttempt implements USKCheckerCallback {
   /** Logger for attempt scheduling diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(USKAttempt.class);
 
@@ -36,7 +35,7 @@ final class USKAttempt implements USKCheckerCallback {
   boolean cancelled;
 
   /** Lookup descriptor associated with this attempt. */
-  final USKFetcher.Lookup lookup;
+  final USKKeyWatchSet.Lookup lookup;
 
   /** Whether this attempt is a long-lived polling attempt. */
   final boolean forever;
@@ -46,51 +45,32 @@ final class USKAttempt implements USKCheckerCallback {
 
   private final USKAttemptCallbacks callbacks;
   private final USK origUSK;
-  private final FetchContext ctx;
-  private final FetchContext ctxNoStore;
   private final ClientRequester parent;
-  private final boolean realTimeFlag;
 
   /**
    * Creates a new attempt for the provided lookup descriptor.
    *
-   * @param callbacks owning callback handler for lifecycle events
-   * @param origUSK base USK used for logging
-   * @param ctx base fetch context for scheduling
-   * @param ctxNoStore no-store fetch context for probes that bypass the store
-   * @param parent parent requester providing scheduling policy
+   * @param attemptContext shared configuration for attempt construction
    * @param lookup descriptor containing edition and key information
    * @param forever {@code true} to create a polling attempt; {@code false} for a one-off probe
-   * @param realTimeFlag whether to use real-time scheduling for the checker
    */
-  USKAttempt(
-      USKAttemptCallbacks callbacks,
-      USK origUSK,
-      FetchContext ctx,
-      FetchContext ctxNoStore,
-      ClientRequester parent,
-      USKFetcher.Lookup lookup,
-      boolean forever,
-      boolean realTimeFlag) {
-    this.callbacks = callbacks;
-    this.origUSK = origUSK;
-    this.ctx = ctx;
-    this.ctxNoStore = ctxNoStore;
-    this.parent = parent;
+  USKAttempt(USKAttemptContext attemptContext, USKKeyWatchSet.Lookup lookup, boolean forever) {
+    this.callbacks = attemptContext.callbacks();
+    this.origUSK = attemptContext.origUSK();
+    this.parent = attemptContext.parent();
     this.lookup = lookup;
     this.number = lookup.val;
     this.succeeded = false;
     this.dnf = false;
     this.forever = forever;
-    this.realTimeFlag = realTimeFlag;
     this.checker =
         new USKChecker(
             this,
             lookup.key,
-            forever ? -1 : ctx.maxUSKRetries,
-            lookup.ignoreStore ? ctxNoStore : ctx,
-            parent,
-            realTimeFlag);
+            forever ? -1 : attemptContext.ctx().maxUSKRetries,
+            lookup.ignoreStore ? attemptContext.ctxNoStore() : attemptContext.ctx(),
+            attemptContext.parent(),
+            attemptContext.realTimeFlag());
   }
 
   @Override
