@@ -31,8 +31,8 @@ final class USKCompletionCoordinator {
 
   void applyDecodedData(boolean decode, ClientSSKBlock block, ClientContext context) {
     if (!decode) return;
-    Bucket decoded = completionHandler.decodeBlockIfNeeded(decode, block, context, parent);
-    completionHandler.applyDecodedData(decode, block, decoded);
+    Bucket decoded = completionHandler.decodeBlockIfNeeded(true, block, context, parent);
+    completionHandler.applyDecodedData(true, block, decoded);
   }
 
   void applyFoundDecodedData(
@@ -40,20 +40,23 @@ final class USKCompletionCoordinator {
     completionHandler.applyFoundDecodedData(decode, metadata, codec, data, context);
   }
 
+  @SuppressWarnings("unused")
   byte[] releaseLastDataBytes() {
     return completionHandler.releaseLastDataBytes();
   }
 
+  @SuppressWarnings("unused")
   short lastCompressionCodec() {
     return completionHandler.lastCompressionCodec();
   }
 
+  @SuppressWarnings("unused")
   boolean lastWasMetadata() {
     return completionHandler.lastWasMetadata();
   }
 
-  Bucket lastRequestData() {
-    return completionHandler.lastRequestData();
+  boolean hasLastRequestData() {
+    return completionHandler.hasLastRequestData();
   }
 
   void clearLastRequestData() {
@@ -81,7 +84,7 @@ final class USKCompletionCoordinator {
                   ed, origUSK.copy(ed), context, metadata, codec, data, false, false));
       } catch (Exception e) {
         LOG.error(
-            "An exception occured while dealing with a callback:{}\n{}", c, e.getMessage(), e);
+            "An exception occurred while dealing with a callback:{}\n{}", c, e.getMessage(), e);
       }
     }
   }

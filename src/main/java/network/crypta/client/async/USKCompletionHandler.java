@@ -27,8 +27,8 @@ final class USKCompletionHandler {
     this.keepLastData = keepLastData;
   }
 
-  Bucket lastRequestData() {
-    return lastRequestData;
+  boolean hasLastRequestData() {
+    return lastRequestData != null;
   }
 
   short lastCompressionCodec() {
