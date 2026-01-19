@@ -37,11 +37,14 @@ class USKStoreCheckerGetterTest {
   void getContext_whenFetcherHasContext_returnsFetcherContext() {
     // Arrange
     FetchContext expectedContext = mock(FetchContext.class);
-    USKFetcher fetcher = mockFetcherWithContext(expectedContext);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, expectedContext);
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     FetchContext actualContext = getter.getContext();
@@ -95,13 +98,17 @@ class USKStoreCheckerGetterTest {
   @DisplayName("listKeys_whenCheckerReturnsArray_returnsSameArray")
   void listKeys_whenCheckerReturnsArray_returnsSameArray() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks =
+        mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
     Key[] expectedKeys = new Key[] {mock(Key.class), mock(Key.class)};
     when(checker.getKeys()).thenReturn(expectedKeys);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     Key[] actualKeys = getter.listKeys();
@@ -117,11 +124,15 @@ class USKStoreCheckerGetterTest {
     // Arrange
     USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
     when(fetcher.countKeys()).thenReturn(123L);
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(fetcher, null);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
     ClientContext context = mock(ClientContext.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     long count = getter.countAllKeys(context);
@@ -174,11 +185,14 @@ class USKStoreCheckerGetterTest {
   @DisplayName("getClientRequest_whenCalled_returnsParent")
   void getClientRequest_whenCalled_returnsParent() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     ClientRequester clientRequest = getter.getClientRequest();
@@ -192,10 +206,14 @@ class USKStoreCheckerGetterTest {
   void getClientGetState_whenCalled_returnsFetcher() {
     // Arrange
     USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(fetcher, null);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     ClientGetState state = getter.getClientGetState();
@@ -210,10 +228,14 @@ class USKStoreCheckerGetterTest {
     // Arrange
     USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
     when(fetcher.getPriorityClass()).thenReturn((short) 7);
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(fetcher, null);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     short priority = getter.getPriorityClass();
@@ -227,12 +249,15 @@ class USKStoreCheckerGetterTest {
   @DisplayName("getClient_whenParentIsRealTime_returnsRcRt")
   void getClient_whenParentIsRealTime_returnsRcRt() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
     ClientRequester parent = mock(ClientRequester.class);
     when(parent.realTimeFlag()).thenReturn(true);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     RequestClient client = getter.getClient();
@@ -245,12 +270,15 @@ class USKStoreCheckerGetterTest {
   @DisplayName("getClient_whenParentIsBulk_returnsRcBulk")
   void getClient_whenParentIsBulk_returnsRcBulk() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
     ClientRequester parent = mock(ClientRequester.class);
     when(parent.realTimeFlag()).thenReturn(false);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     RequestClient client = getter.getClient();
@@ -263,38 +291,44 @@ class USKStoreCheckerGetterTest {
   @DisplayName("isCancelled_whenNotDoneAndFetcherNotCancelled_returnsFalse")
   void isCancelled_whenNotDoneAndFetcherNotCancelled_returnsFalse() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
-    when(fetcher.isCancelled()).thenReturn(false);
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
+    when(callbacks.isCancelled()).thenReturn(false);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     boolean cancelled = getter.isCancelled();
 
     // Assert
     assertFalse(cancelled);
-    verify(fetcher).isCancelled();
+    verify(callbacks).isCancelled();
   }
 
   @Test
   @DisplayName("isCancelled_whenFetcherCancelled_returnsTrue")
   void isCancelled_whenFetcherCancelled_returnsTrue() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
-    when(fetcher.isCancelled()).thenReturn(true);
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
+    when(callbacks.isCancelled()).thenReturn(true);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     boolean cancelled = getter.isCancelled();
 
     // Assert
     assertTrue(cancelled);
-    verify(fetcher).isCancelled();
+    verify(callbacks).isCancelled();
   }
 
   @ParameterizedTest(name = "toNetwork={0}, delegateReturn={1}")
@@ -302,13 +336,16 @@ class USKStoreCheckerGetterTest {
   @DisplayName("preRegister_whenCalled_delegatesAndMarksDone")
   void preRegister_whenCalled_delegatesAndMarksDone(boolean toNetwork, boolean delegateReturn) {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
     ClientContext context = mock(ClientContext.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
-    when(fetcher.preRegisterStoreChecker(any(), same(checker), same(context), eq(toNetwork)))
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
+    when(coordinator.preRegisterStoreChecker(any(), same(checker), same(context), eq(toNetwork)))
         .thenReturn(delegateReturn);
 
     // Act
@@ -317,7 +354,7 @@ class USKStoreCheckerGetterTest {
     // Assert
     assertEquals(delegateReturn, actualReturn);
     assertTrue(getter.isCancelled(), "preRegister must mark the SendableGet as done in all cases");
-    verify(fetcher)
+    verify(coordinator)
         .preRegisterStoreChecker(same(getter), same(checker), same(context), eq(toNetwork));
   }
 
@@ -325,13 +362,16 @@ class USKStoreCheckerGetterTest {
   @DisplayName("preRegister_whenFetcherThrows_propagatesAndMarksDone")
   void preRegister_whenFetcherThrows_propagatesAndMarksDone() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
     ClientContext context = mock(ClientContext.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
-    when(fetcher.preRegisterStoreChecker(any(), same(checker), same(context), eq(true)))
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
+    when(coordinator.preRegisterStoreChecker(any(), same(checker), same(context), eq(true)))
         .thenThrow(new IllegalStateException("boom"));
 
     // Act
@@ -347,38 +387,59 @@ class USKStoreCheckerGetterTest {
   @DisplayName("onFailure_whenCalled_doesNotThrowAndDoesNotMarkDone")
   void onFailure_whenCalled_doesNotThrowAndDoesNotMarkDone() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
-    when(fetcher.isCancelled()).thenReturn(false);
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
+    when(callbacks.isCancelled()).thenReturn(false);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
-    USKStoreCheckerGetter getter = new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckerGetter getter =
+        new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
 
     // Act
     getter.onFailure(mock(LowLevelGetException.class), null, null);
 
     // Assert
     assertFalse(getter.isCancelled(), "onFailure is expected to be a no-op for store checking");
-    verify(fetcher).isCancelled();
+    verify(callbacks).isCancelled();
   }
 
   @Test
   @DisplayName("constructor_whenParentIsNull_throwsNullPointerException")
   void constructor_whenParentIsNull_throwsNullPointerException() {
     // Arrange
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
 
     // Act + Assert
     assertThrows(
-        NullPointerException.class, () -> new USKStoreCheckerGetter(fetcher, null, checker));
+        NullPointerException.class,
+        () -> new USKStoreCheckerGetter(coordinator, callbacks, null, checker));
+  }
+
+  private static USKStoreCheckCoordinator.USKStoreCheckCallbacks newCallbacks(
+      USKFetcher fetcher, FetchContext context) {
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks =
+        mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class);
+    if (fetcher != null) {
+      when(callbacks.fetcher()).thenReturn(fetcher);
+    }
+    if (context != null) {
+      when(callbacks.fetcherContext()).thenReturn(context);
+    }
+    return callbacks;
   }
 
   private static USKStoreCheckerGetter newGetter() {
-    USKFetcher fetcher = mockFetcherWithContext(mock(FetchContext.class));
+    USKStoreCheckCoordinator coordinator = mock(USKStoreCheckCoordinator.class);
+    USKStoreCheckCoordinator.USKStoreCheckCallbacks callbacks = newCallbacks(null, null);
     ClientRequester parent = mock(ClientRequester.class);
-    USKFetcher.USKStoreChecker checker = mock(USKFetcher.USKStoreChecker.class);
-    return new USKStoreCheckerGetter(fetcher, parent, checker);
+    USKStoreCheckCoordinator.USKStoreChecker checker =
+        mock(USKStoreCheckCoordinator.USKStoreChecker.class);
+    return new USKStoreCheckerGetter(coordinator, callbacks, parent, checker);
   }
 
   @SuppressWarnings("java:S3011")
