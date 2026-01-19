@@ -270,7 +270,7 @@ final class USKPollingRound {
    *
    * @param value {@code true} to mark the round as being in its first loop, otherwise {@code false}
    */
-  @SuppressWarnings("unused")
+  @SuppressWarnings({"unused", "SameParameterValue"})
   void setFirstLoop(boolean value) {
     firstLoop = value;
   }
