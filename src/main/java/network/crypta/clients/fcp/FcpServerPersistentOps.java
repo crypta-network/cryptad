@@ -30,17 +30,67 @@ import network.crypta.support.io.NoFreeBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Coordinates persistent-request operations for the FCP server and exposes cache lookups.
+ *
+ * <p>This helper encapsulates the logic for managing reboot and forever queues, global request
+ * removal/modification, and the download cache read path. It is constructed once per {@link
+ * FCPServer} and holds references to the persistent request root and the global queue clients. The
+ * class is intentionally package-private, so the server façade can delegate to it while keeping
+ * persistence-specific details localized.
+ *
+ * <p>The instance uses the {@link ClientContext} job runner for operations that must be serialized
+ * against persistent state. Methods that call into {@link PersistentRequestClient} may block until
+ * a queued job completes, so callers should avoid invoking them from latency-sensitive threads.
+ * Synchronization is limited to the reboot-client map and does not cover the underlying request
+ * queues, which manage their own concurrency.
+ *
+ * <ul>
+ *   <li>Registers persistent clients and routes global queue operations.
+ *   <li>Schedules persistence-affecting work on the job runner.
+ *   <li>Implements {@link DownloadCache} lookups for completed requests.
+ * </ul>
+ *
+ * @see FCPServer
+ * @see PersistentRequestClient
+ * @see PersistentRequestRoot
+ */
 final class FcpServerPersistentOps implements DownloadCache {
+  /** Logger for persistence operations and cache lookup diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(FcpServerPersistentOps.class);
+
+  /** Prefix used to construct global request identifiers for FProxy-backed fetches. */
   private static final String FPROXY_PREFIX = "FProxy:";
 
+  /** The owning server used for queue coordination and callback wiring. */
   private final FCPServer server;
+
+  /** Client core providing contexts, RNG, and bucket factories. */
   private final NodeClientCore core;
+
+  /** Root registry for forever-persistent clients. */
   private final PersistentRequestRoot persistentRoot;
+
+  /** Reboot-persistent clients keyed by name, weakly referenced. */
   private final WeakHashMap<String, PersistentRequestClient> rebootClientsByName;
+
+  /** Global reboot queue client; created eagerly during construction. */
   private final PersistentRequestClient globalRebootClient;
+
+  /** Global forever queue client sourced from the persistent root. */
   private final PersistentRequestClient globalForeverClient;
 
+  /**
+   * Creates a persistence helper bound to the provided server, core, and persistent root.
+   *
+   * <p>The constructor initializes the reboot-client map, wires the forever-global client from the
+   * provided root, and allocates the reboot-global client used for temporary persistence. No
+   * network operations occur here; the helper is ready for use immediately after construction.
+   *
+   * @param server owning server used when scheduling global queue operations.
+   * @param core client core supplying contexts, RNG, and storage factories.
+   * @param persistentRoot registry for forever-persistent clients and queues.
+   */
   FcpServerPersistentOps(
       FCPServer server, NodeClientCore core, PersistentRequestRoot persistentRoot) {
     this.server = server;
@@ -52,10 +102,27 @@ final class FcpServerPersistentOps implements DownloadCache {
         new PersistentRequestClient("Global Queue", null, true, null, Persistence.REBOOT, null);
   }
 
+  /**
+   * Reloads cached request status for the forever global queue.
+   *
+   * <p>This helper is typically invoked during startup to rebuild the status cache from the
+   * persisted request state. It is a no-op for reboot-only queues but will refresh in-memory status
+   * for forever persistence.
+   */
   void load() {
     globalForeverClient.updateRequestStatusCache();
   }
 
+  /**
+   * Registers or replaces a reboot-persistent client by name.
+   *
+   * <p>If a client with the same name already exists and is connected, the old connection is closed
+   * and replaced with the new handler. The returned client instance is stable across reconnections.
+   *
+   * @param name stable identifier for the reboot-persistent client; must not be {@code null}.
+   * @param handler active connection handler, or {@code null} when reconnecting headless.
+   * @return existing or newly created client bound to the provided handler.
+   */
   PersistentRequestClient registerRebootClient(String name, FCPConnectionHandler handler) {
     PersistentRequestClient oldClient;
     synchronized (this) {
@@ -78,14 +145,42 @@ final class FcpServerPersistentOps implements DownloadCache {
     }
   }
 
+  /**
+   * Registers a forever-persistent client with the global registry.
+   *
+   * <p>This delegates to {@link PersistentRequestRoot} to create or reuse the named client. The
+   * caller-supplied handler is attached when non-null.
+   *
+   * @param name stable client name used for persistence lookups; must not be {@code null}.
+   * @param handler current connection handler, or {@code null} when detached.
+   * @return persistent client instance representing the forever queue for the name.
+   */
   PersistentRequestClient registerForeverClient(String name, FCPConnectionHandler handler) {
     return persistentRoot.registerForeverClient(name, handler);
   }
 
+  /**
+   * Looks up a forever-persistent client and optionally refreshes its connection binding.
+   *
+   * <p>Returns {@code null} when no client with the given name exists. The supplied handler is
+   * stored when non-null to reattach an active connection.
+   *
+   * @param name stable client identifier used during registration.
+   * @param handler connection handler to attach, or {@code null} to leave unchanged.
+   * @return existing client, or {@code null} when no match exists.
+   */
   PersistentRequestClient getForeverClient(String name, FCPConnectionHandler handler) {
     return persistentRoot.getForeverClient(name, handler);
   }
 
+  /**
+   * Unregisters a client from persistence tracking when it is no longer active.
+   *
+   * <p>Reboot clients are removed from the local map, while forever clients delegate to the shared
+   * {@link PersistentRequestRoot} cleanup logic.
+   *
+   * @param client client to unregister; must not be {@code null}.
+   */
   void unregisterClient(PersistentRequestClient client) {
     if (client.persistence == Persistence.REBOOT) {
       synchronized (this) {
@@ -97,6 +192,16 @@ final class FcpServerPersistentOps implements DownloadCache {
     }
   }
 
+  /**
+   * Returns a snapshot of persistent request status entries across all global queues.
+   *
+   * <p>The method aggregates status from both reboot and forever queues. If persistence is disabled
+   * at the core, a {@link PersistenceDisabledException} is raised to signal that the cache cannot
+   * be read safely.
+   *
+   * @return array of request status entries; never {@code null}.
+   * @throws PersistenceDisabledException when persistence is unavailable or disabled.
+   */
   RequestStatus[] getGlobalRequests() throws PersistenceDisabledException {
     if (core.killedDatabase()) throw new PersistenceDisabledException();
     List<RequestStatus> v = new ArrayList<>();
@@ -105,6 +210,17 @@ final class FcpServerPersistentOps implements DownloadCache {
     return v.toArray(new RequestStatus[0]);
   }
 
+  /**
+   * Removes a single global request and blocks until completion.
+   *
+   * <p>The method first attempts removal from the reboot queue. If not found, it schedules a
+   * removal on the persistent job runner for the forever queue and waits for completion.
+   *
+   * @param identifier request identifier to remove; must not be {@code null}.
+   * @return {@code true} when the request was removed or removal was attempted; {@code false} when
+   *     the job failed.
+   * @throws PersistenceDisabledException when persistence is unavailable or disabled.
+   */
   boolean removeGlobalRequestBlocking(final String identifier) throws PersistenceDisabledException {
     if (!globalRebootClient.removeByIdentifier(identifier, true, server, core.getClientContext())) {
       final CountDownLatch done = new CountDownLatch(1);
@@ -146,6 +262,15 @@ final class FcpServerPersistentOps implements DownloadCache {
     } else return true;
   }
 
+  /**
+   * Removes all global requests and waits for the forever queue removal to complete.
+   *
+   * <p>The reboot queue is cleared immediately on the calling thread. The forever queue is cleared
+   * via a queued persistent job to maintain database consistency.
+   *
+   * @return {@code true} if both queues were cleared successfully; {@code false} otherwise.
+   * @throws PersistenceDisabledException when persistence is unavailable or disabled.
+   */
   boolean removeAllGlobalRequestsBlocking() throws PersistenceDisabledException {
     globalRebootClient.removeAll();
     final CountDownLatch done = new CountDownLatch(1);
@@ -185,6 +310,18 @@ final class FcpServerPersistentOps implements DownloadCache {
     return success.get();
   }
 
+  /**
+   * Updates the token and priority of a global request, blocking until applied.
+   *
+   * <p>Reboot queue updates occur immediately, while forever queue updates run on the persistent
+   * job runner and are synchronized using a wait/notify wrapper.
+   *
+   * @param identifier request identifier to locate in the queues.
+   * @param newToken replacement token string stored with the request; may be {@code null}.
+   * @param newPriority new priority class value for scheduling decisions.
+   * @return {@code true} when an update path executed; {@code false} when not found or failed.
+   * @throws PersistenceDisabledException when persistence is unavailable or disabled.
+   */
   boolean modifyGlobalRequestBlocking(
       final String identifier, final String newToken, final short newPriority)
       throws PersistenceDisabledException {
@@ -244,6 +381,17 @@ final class FcpServerPersistentOps implements DownloadCache {
     }
   }
 
+  /**
+   * Enqueues a persistent global request and blocks until registration completes.
+   *
+   * <p>The request creation runs on the persistent job runner to ensure a consistent database
+   * state. Exceptions are captured and rethrown once the job finishes.
+   *
+   * @param params request parameter bundle describing the fetch.
+   * @throws NotAllowedException when policy or DDA checks reject the request.
+   * @throws IOException when preparing disk output fails.
+   * @throws PersistenceDisabledException when persistence is unavailable or disabled.
+   */
   void makePersistentGlobalRequestBlocking(PersistentGlobalRequestParams params)
       throws NotAllowedException, IOException, PersistenceDisabledException {
     final CountDownLatch done = new CountDownLatch(1);
@@ -289,6 +437,23 @@ final class FcpServerPersistentOps implements DownloadCache {
     if (notAllowed.get() != null) throw notAllowed.get();
   }
 
+  /**
+   * Convenience overload that builds parameters for a persistent global request.
+   *
+   * <p>All arguments are forwarded into {@link PersistentGlobalRequestParams} and then queued via
+   * {@link #makePersistentGlobalRequestBlocking(PersistentGlobalRequestParams)}.
+   *
+   * @param fetchURI URI describing the content to fetch; must not be {@code null}.
+   * @param filterData whether to filter content before delivery to the client.
+   * @param expectedMimeType optional MIME hint for filename selection; may be {@code null}.
+   * @param persistenceTypeString persistence policy string such as {@code reboot}.
+   * @param returnTypeString return handling string such as {@code disk} or {@code none}.
+   * @param realTimeFlag whether to request real-time scheduling.
+   * @param downloadsDir directory for disk outputs when the return type is disk.
+   * @throws NotAllowedException when policy or DDA checks reject the request.
+   * @throws IOException when preparing disk output fails.
+   * @throws PersistenceDisabledException when persistence is unavailable or disabled.
+   */
   void makePersistentGlobalRequestBlocking(
       FreenetURI fetchURI,
       boolean filterData,
