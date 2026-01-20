@@ -27,24 +27,31 @@ import org.slf4j.LoggerFactory;
 /**
  * Coordinates a single FCP GET request over the asynchronous client interface.
  *
- * <p>The request owns its {@link FetchContext}, {@link ClientGetter}, progress caches, and
- * persistence metadata so it can migrate cleanly between the connection queue, the global queue,
- * and durable storage across node restarts. It translates raw client events into the higher-level
- * FCP messages required by remote clients, tracks retry policy, and resolves whatever output
- * strategy the caller selected (direct bucket, disk file, chunked stream, or acknowledgement only).
- * The class is therefore the boundary between long-lived persistent jobs and transient FCP
- * sessions.
+ * <p>This request owns its {@link FetchContext}, {@link ClientGetter}, progress caches, and
+ * persistence metadata so it can migrate cleanly between a connection queue, the global queue, and
+ * durable storage across node restarts. It translates client-side events into higher-level FCP
+ * messages, tracks retry and restart policy, and resolves the selected delivery strategy (direct
+ * bucket, disk file, chunked stream, or acknowledgement only). The class therefore acts as the
+ * boundary between long-lived persistent jobs and transient FCP sessions.
  *
  * <p>The implementation is largely thread-safe through fine-grained {@code synchronized} sections.
- * State transitions such as success, failure, or cancellation update cached progress snapshots and
- * immediately propagate notifications to any registered event listeners. During restarts, it
- * rehydrates buckets, metadata, and compatibility hints from the serialized form before delegating
- * back to {@link ClientGetter}.
+ * State transitions such as success, failure, cancellation, or restart update cached progress
+ * snapshots and immediately propagate notifications to any registered listeners. During restarts,
+ * it rehydrates buckets, metadata, and compatibility hints from the serialized form before
+ * delegating back to {@link ClientGetter}.
+ *
+ * <p>Typical usage is to construct the request from a {@link ClientGetMessage}, register it with
+ * the owning client queue, and then invoke {@link #start(ClientContext)}. The request may persist
+ * across reconnections, and callers should treat it as a long-lived state machine whose outputs are
+ * FCP messages rather than synchronous return values.
  *
  * <ul>
- *   <li>Queueing and persistence: registers against either the connection-scoped or global queue.
- *   <li>Progress and metadata: consumes splitter events to project hashes, sizes, and MIME types.
- *   <li>Delivery: enforces {@link ReturnType} semantics when writing buckets or emitting AllData.
+ *   <li><strong>Queueing and persistence</strong>: registers against either the connection-scoped
+ *       or global queue and emits persistent tags.
+ *   <li><strong>Progress and metadata</strong>: consumes splitfile events to project hashes, sizes,
+ *       and MIME types for status reporting.
+ *   <li><strong>Delivery</strong>: enforces {@link ReturnType} semantics when writing buckets or
+ *       emitting {@link AllDataMessage} payloads.
  * </ul>
  *
  * @see ClientRequest
@@ -84,6 +91,10 @@ public class ClientGet extends ClientRequest {
   /** Metadata bucket supplied at creation time, relayed untouched to the {@link ClientGetter}. */
   @SuppressWarnings("java:S1948")
   private final Bucket initialMetadata;
+
+  private transient ClientGetMessageReplay messageReplay;
+  private transient ClientGetLifecycle lifecycle;
+  private transient ClientGetStatusSnapshotBuilder statusSnapshotBuilder;
 
   // Verbosity bitmasks
   static final int VERBOSITY_SPLITFILE_PROGRESS = 1;
@@ -333,6 +344,7 @@ public class ClientGet extends ClientRequest {
     this.extensionCheck = setup.extension();
     this.initialMetadata = null;
     getter = makeGetter(core, returnBucket);
+    initHelpers();
   }
 
   /**
@@ -400,6 +412,7 @@ public class ClientGet extends ClientRequest {
     } catch (IOException e) {
       throw bucketCreationFailure(e);
     }
+    initHelpers();
   }
 
   private MessageInvalidException bucketCreationFailure(IOException e) {
@@ -456,6 +469,33 @@ public class ClientGet extends ClientRequest {
     initialMetadata = null;
   }
 
+  private void initHelpers() {
+    if (messageReplay == null) {
+      messageReplay = new ClientGetMessageReplay(this);
+    }
+    if (lifecycle == null) {
+      lifecycle = new ClientGetLifecycle(this);
+    }
+    if (statusSnapshotBuilder == null) {
+      statusSnapshotBuilder = new ClientGetStatusSnapshotBuilder(this);
+    }
+  }
+
+  private ClientGetMessageReplay messageReplay() {
+    initHelpers();
+    return messageReplay;
+  }
+
+  private ClientGetLifecycle lifecycle() {
+    initHelpers();
+    return lifecycle;
+  }
+
+  private ClientGetStatusSnapshotBuilder statusSnapshotBuilder() {
+    initHelpers();
+    return statusSnapshotBuilder;
+  }
+
   /**
    * Must be called just after construction but within a transaction.
    *
@@ -489,7 +529,12 @@ public class ClientGet extends ClientRequest {
    * {@link FetchException} instances and routed through {@link #onFailure(FetchException)} to
    * ensure consistent cleanup.
    *
-   * @param context client context providing schedulers and bucket factories for execution.
+   * <p>On success, this call merely schedules work; it does not block for results. If a failure is
+   * raised before progress events fire, the request is still marked as started so external status
+   * caches remain consistent. Callers may invoke this multiple times safely; only the first call
+   * before completion has any effect.
+   *
+   * @param context client context providing schedulers, bucket factories, and execution lanes.
    */
   @Override
   public void start(ClientContext context) {
@@ -539,7 +584,11 @@ public class ClientGet extends ClientRequest {
    * method does not attempt to resume or restart; it only decides whether the request remains
    * active based on the persistence model. The call is safe to invoke multiple times.
    *
-   * @param context client context owning the request; unused but retained for parity.
+   * <p>The method has no effect on finished requests and does not modify request metadata beyond a
+   * possible cancellation. It exists primarily so connection handlers can dispose of
+   * connection-scoped work without leaking persistent tasks.
+   *
+   * @param context client context owning the request and its scheduler association.
    */
   @Override
   public void onLostConnection(ClientContext context) {
@@ -557,35 +606,15 @@ public class ClientGet extends ClientRequest {
    * caches, and informs the owning {@link FCPConnectionHandler} or {@link PersistentRequestClient}.
    * Any secondary calls are ignored defensively to prevent double frees or duplicate notifications.
    *
-   * @param result result wrapper exposing MIME metadata and bucket accessors.
-   * @param state client getter instance used for blob access during BinaryBlob transfers.
+   * <p>For BinaryBlob requests, the MIME type is forced to the blob MIME and the bucket length is
+   * derived from the blob bucket rather than the decoded metadata bucket. The method always updates
+   * completion time before any outbound messages so that emitted timestamps remain consistent.
+   *
+   * @param result result wrapper providing MIME metadata and the decoded data bucket.
+   * @param state client getter instance used to access BinaryBlob payload buckets.
    */
   public void onSuccess(FetchResult result, ClientGetter state) {
-    LOG.debug("Succeeded: {}", identifier);
-    Bucket data = binaryBlob ? state.getBlobBucket() : result.asBucket();
-    synchronized (this) {
-      if (succeeded) {
-        LOG.error("onSuccess called twice for {} ({})", this, identifier);
-        return; // We might be called twice; ignore it if so.
-      }
-      started = true;
-      if (!binaryBlob) this.foundDataMimeType = result.getMimeType();
-      else this.foundDataMimeType = ClientGetGetterFactory.binaryBlobMimeType();
-
-      // completionTime is set here rather than in finish() for two reasons:
-      // 1. It must be set inside the lock.
-      // 2. It must be set before AllData is sent so it is consistent.
-      completionTime = System.currentTimeMillis();
-      progressPending = null;
-      this.foundDataLength = data.size();
-      this.succeeded = true;
-      finished = true;
-      if (returnType == ReturnType.DIRECT) returnBucketDirect = data;
-    }
-    trySendDataFoundOrGetFailed(null, null);
-    trySendAllDataMessage(null, null);
-    finish();
-    if (client != null) client.notifySuccess(this);
+    lifecycle().onSuccess(result, state);
   }
 
   /**
@@ -598,111 +627,32 @@ public class ClientGet extends ClientRequest {
    * {@link ResumeFailedException}, forcing the caller to restart the download rather than trusting
    * potentially corrupted state. This method is intended for controlled migration flows only.
    *
-   * @param context client context performing the migration and validation checks.
-   * @param completionTime epoch milliseconds representing the recorded completion instant.
-   * @param data bucket already holding the downloaded payload for direct returns.
-   * @throws ResumeFailedException validation failed because existing output looked inconsistent.
+   * <p>The method does not trigger network activity and does not emit FCP messages; it only updates
+   * cached fields so that later status queries and persistence writes reflect the migrated success
+   * state.
+   *
+   * @param context client context performing migration validation and bucket operations.
+   * @param completionTime epoch milliseconds for the recorded completion instant.
+   * @param data bucket containing the downloaded payload for direct delivery.
+   * @throws ResumeFailedException when stored output does not match recorded metadata.
    */
   @SuppressWarnings("unused")
   public void setSuccessForMigration(ClientContext context, long completionTime, Bucket data)
       throws ResumeFailedException {
-    if (context == null) {
-      throw new NullPointerException("context");
-    }
-    synchronized (this) {
-      succeeded = true;
-      started = true;
-      finished = true;
-      this.completionTime = completionTime;
-      switch (returnType) {
-        case ReturnType type when type == ReturnType.NONE -> {
-          // Nothing to validate.
-        }
-        case ReturnType type
-            when type == ReturnType.DISK
-                && (!targetFile.exists() || targetFile.length() != foundDataLength) ->
-            throw new ResumeFailedException("Success but target file doesn't exist or isn't valid");
-        case ReturnType type when type == ReturnType.DISK -> {
-          // Validation already passed.
-        }
-        case ReturnType type when type == ReturnType.DIRECT && data.size() != foundDataLength -> {
-          returnBucketDirect = data;
-          throw new ResumeFailedException(
-              "Success but temporary data bucket doesn't exist or isn't valid");
-        }
-        case ReturnType type when type == ReturnType.DIRECT -> returnBucketDirect = data;
-        case ReturnType type when type == ReturnType.CHUNKED ->
-            throw new ResumeFailedException("Chunked return type not supported for migration");
-        default -> throw new IllegalStateException("Unexpected return type: " + returnType);
-      }
-    }
+    lifecycle().setSuccessForMigration(context, completionTime, data);
   }
 
-  private void trySendDataFoundOrGetFailed(
+  void trySendDataFoundOrGetFailed(
       FCPConnectionOutputHandler handler, String listRequestIdentifier) {
-    FCPMessage msg;
-
-    // Don't need to lock. succeeded is only ever set, never unset.
-    // and succeeded and getFailedMessage are both atomic.
-    if (succeeded) {
-      // Mirrors AllDataMessage so connection-scoped clients receive DataFound with consistent
-      // timestamps even if completionTime was not set by finish().
-      msg =
-          new DataFoundMessage(
-              foundDataLength,
-              foundDataMimeType,
-              identifier,
-              global,
-              startupTime,
-              completionTime != 0 ? completionTime : System.currentTimeMillis());
-    } else {
-      msg = getFailedMessage;
-    }
-
-    if (handler == null && persistence == Persistence.CONNECTION) {
-      if (origHandler != null)
-        origHandler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
-    } else if (handler != null) {
-      handler.handler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
-    } else
-      client.queueClientRequestMessage(
-          FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier), 0);
+    messageReplay().trySendDataFoundOrGetFailed(handler, listRequestIdentifier);
   }
 
-  private synchronized AllDataMessage getAllDataMessage() {
-    if (returnType != ReturnType.DIRECT) return null;
-    AllDataMessage msg =
-        new AllDataMessage(
-            returnBucketDirect, identifier, global, startupTime, completionTime, foundDataMimeType);
-    if (persistence == Persistence.CONNECTION) msg.setFreeOnSent();
-    return msg;
-  }
-
-  private void trySendAllDataMessage(
-      FCPConnectionOutputHandler handler, String listRequestIdentifier) {
-    if (persistence == Persistence.CONNECTION && handler == null) {
-      if (origHandler != null) {
-        FCPMessage allData =
-            FCPMessage.withListRequestIdentifier(getAllDataMessage(), listRequestIdentifier);
-        if (allData != null) origHandler.send(allData);
-      }
-      return;
-    }
-    if (handler != null) {
-      FCPMessage allData =
-          FCPMessage.withListRequestIdentifier(getAllDataMessage(), listRequestIdentifier);
-      if (allData != null) handler.handler.send(allData);
-    }
+  void trySendAllDataMessage(FCPConnectionOutputHandler handler, String listRequestIdentifier) {
+    messageReplay().trySendAllDataMessage(handler, listRequestIdentifier);
   }
 
   void queueProgressMessageInner(FCPMessage msg, int verbosityMask) {
-    if (persistence == Persistence.CONNECTION) {
-      if (origHandler != null) {
-        origHandler.send(msg);
-      }
-      return;
-    }
-    client.queueClientRequestMessage(msg, verbosityMask);
+    messageReplay().queueProgressMessageInner(msg, verbosityMask);
   }
 
   /**
@@ -716,10 +666,14 @@ public class ClientGet extends ClientRequest {
    * {@link ProtocolErrorMessage}. The method is idempotent and only reflects the cached request
    * state at the time of invocation.
    *
-   * @param handler output handler representing the destination connection to replay into.
-   * @param listRequestIdentifier optional secondary identifier for multi-request list operations.
-   * @param includeData true to include {@link AllDataMessage} bodies when available.
-   * @param onlyData true to request data frames exclusively, skipping metadata messages.
+   * <p>The call does not mutate the request state; it simply replays cached snapshots and queued
+   * flags. Callers should ensure the handler is ready to accept messages because the method may
+   * emit multiple frames in quick succession.
+   *
+   * @param handler output handler representing the destination connection for replay.
+   * @param listRequestIdentifier optional identifier for list or batch operations.
+   * @param includeData {@code true} to include {@link AllDataMessage} bodies when present.
+   * @param onlyData {@code true} to send only payload frames, skipping metadata.
    */
   @Override
   public void sendPendingMessages(
@@ -727,81 +681,15 @@ public class ClientGet extends ClientRequest {
       String listRequestIdentifier,
       boolean includeData,
       boolean onlyData) {
-    if (!onlyData) {
-      FCPMessage msg = persistentTagMessage();
-      handler.handler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
-      if (progressPending != null) {
-        handler.handler.send(
-            FCPMessage.withListRequestIdentifier(progressPending, listRequestIdentifier));
-      }
-      if (sentToNetwork)
-        handler.handler.send(
-            FCPMessage.withListRequestIdentifier(
-                new SendingToNetworkMessage(identifier, global), listRequestIdentifier));
-      if (finished) trySendDataFoundOrGetFailed(handler, listRequestIdentifier);
-    } else if (returnType != ReturnType.DIRECT) {
-      FCPMessage msg =
-          new ProtocolErrorMessage(
-              ProtocolErrorMessage.WRONG_RETURN_TYPE, false, "No AllData", identifier, global);
-      handler.handler.send(msg);
-      return;
-    }
-
-    if (includeData) {
-      trySendAllDataMessage(handler, listRequestIdentifier);
-    }
-
-    CompatibilityMode cmsg;
-    ExpectedHashes hashesMessage;
-    ExpectedMIME mimeMsg = null;
-    ExpectedDataLength lengthMsg = null;
-    synchronized (this) {
-      cmsg = new CompatibilityMode(identifier, global, compatMode);
-      hashesMessage = this.expectedHashes;
-      if (foundDataMimeType != null)
-        mimeMsg = new ExpectedMIME(identifier, global, foundDataMimeType);
-      if (foundDataLength > 0)
-        lengthMsg = new ExpectedDataLength(identifier, global, foundDataLength);
-    }
-    handler.handler.send(FCPMessage.withListRequestIdentifier(cmsg, listRequestIdentifier));
-
-    if (hashesMessage != null) {
-      handler.handler.send(
-          FCPMessage.withListRequestIdentifier(hashesMessage, listRequestIdentifier));
-    }
-
-    if (mimeMsg != null) {
-      handler.handler.send(FCPMessage.withListRequestIdentifier(mimeMsg, listRequestIdentifier));
-    }
-    if (lengthMsg != null) {
-      handler.handler.send(FCPMessage.withListRequestIdentifier(lengthMsg, listRequestIdentifier));
-    }
+    messageReplay().sendPendingMessages(handler, listRequestIdentifier, includeData, onlyData);
   }
 
-  private FCPMessage persistentTagMessage() {
-    ClientRequestParams requestParams =
-        new ClientRequestParams(
-            uri,
-            identifier,
-            verbosity,
-            priorityClass,
-            persistence,
-            isRealTime(),
-            clientToken,
-            client.isGlobalQueue);
-    PersistentGetDescriptor descriptor =
-        new PersistentGetDescriptor(
-            returnType,
-            targetFile,
-            started,
-            fctx.getMaxNonSplitfileRetries(),
-            binaryBlob,
-            fctx.getMaxOutputLength());
-    return new PersistentGet(requestParams, descriptor);
+  FCPMessage persistentTagMessage() {
+    return statusSnapshotBuilder().persistentTagMessage();
   }
 
   // Mirrors ClientPut/ClientPutDir to keep low-level scheduling flags accessible to subclasses.
-  private boolean isRealTime() {
+  boolean isRealTime() {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
       // resulted in it getting deleted and also possibly failed deletions.
@@ -820,25 +708,13 @@ public class ClientGet extends ClientRequest {
    * equivalents, intentionally leaving buckets intact so restart attempts can reuse cached blocks.
    * Secondary invocations after completion are ignored to preserve idempotency.
    *
-   * @param e detailed {@link FetchException} describing the failure classification.
+   * <p>Callers should treat this as terminal for the current attempt; a later restart will clear
+   * the cached failure and reinitialize progress tracking.
+   *
+   * @param e failure descriptor that supplies the expected size, MIME type, and mode.
    */
   public void onFailure(FetchException e) {
-    if (finished) return;
-    synchronized (this) {
-      if (e.getExpectedSize() != 0) this.foundDataLength = e.getExpectedSize();
-      if (e.getExpectedMimeType() != null) this.foundDataMimeType = e.getExpectedMimeType();
-      succeeded = false;
-      getFailedMessage = new GetFailedMessage(e, identifier, global);
-      finished = true;
-      started = true;
-      completionTime = System.currentTimeMillis();
-    }
-    if (LOG.isDebugEnabled()) LOG.debug("Caught {}", e, e);
-    trySendDataFoundOrGetFailed(null, null);
-    // We do not want the data to be removed on failure, because the request
-    // may be restarted, and the bucket persists on the getter, even if we get rid of it here.
-    finish();
-    if (client != null) client.notifyFailure(this);
+    lifecycle().onFailure(e);
   }
 
   /**
@@ -850,28 +726,14 @@ public class ClientGet extends ClientRequest {
    * the superclass hook so shared accounting (such as tag persistence) also runs. This method is
    * safe to invoke once per removal event.
    *
+   * <p>The removal path does not attempt to stop network activity directly; it assumes the owning
+   * scheduler has already detached the underlying {@link ClientGetter}.
+   *
    * @param context client context invoking the removal for lifecycle bookkeeping.
    */
   @Override
   public void requestWasRemoved(ClientContext context) {
-    // if the request is still running, send a GetFailed with code=canceled
-    if (!finished) {
-      synchronized (this) {
-        succeeded = false;
-        finished = true;
-        FetchException cancelled = new FetchException(FetchExceptionMode.CANCELLED);
-        getFailedMessage = new GetFailedMessage(cancelled, identifier, global);
-      }
-      trySendDataFoundOrGetFailed(null, null);
-    }
-    // notify client that the request was removed
-    FCPMessage msg = new PersistentRequestRemovedMessage(getIdentifier(), global);
-    if (persistence != Persistence.CONNECTION) {
-      client.queueClientRequestMessage(msg, 0);
-    }
-
-    freeData();
-
+    lifecycle().requestWasRemoved();
     super.requestWasRemoved(context);
   }
 
@@ -924,6 +786,75 @@ public class ClientGet extends ClientRequest {
     }
   }
 
+  ReturnType returnTypeForReplay() {
+    return returnType;
+  }
+
+  Bucket returnBucketDirectForReplay() {
+    return returnBucketDirect;
+  }
+
+  void setReturnBucketDirect(Bucket bucket) {
+    returnBucketDirect = bucket;
+  }
+
+  boolean hasSucceededForReplay() {
+    return succeeded;
+  }
+
+  void setSucceeded(boolean succeeded) {
+    this.succeeded = succeeded;
+  }
+
+  long foundDataLengthForReplay() {
+    return foundDataLength;
+  }
+
+  void setFoundDataLength(long foundDataLength) {
+    this.foundDataLength = foundDataLength;
+  }
+
+  String foundDataMimeTypeForReplay() {
+    return foundDataMimeType;
+  }
+
+  void setFoundDataMimeType(String foundDataMimeType) {
+    this.foundDataMimeType = foundDataMimeType;
+  }
+
+  SimpleProgressMessage progressPendingForReplay() {
+    return progressPending;
+  }
+
+  @SuppressWarnings("SameParameterValue")
+  void setProgressPending(SimpleProgressMessage progressPending) {
+    this.progressPending = progressPending;
+  }
+
+  boolean sentToNetworkForReplay() {
+    return sentToNetwork;
+  }
+
+  CompatibilityAnalyser compatModeForReplay() {
+    return compatMode;
+  }
+
+  ExpectedHashes expectedHashesForReplay() {
+    return expectedHashes;
+  }
+
+  GetFailedMessage getFailedMessageForReplay() {
+    return getFailedMessage;
+  }
+
+  void setFailedMessage(GetFailedMessage message) {
+    getFailedMessage = message;
+  }
+
+  File targetFileForLifecycle() {
+    return targetFile;
+  }
+
   /**
    * Exposes the underlying {@link ClientRequester} for base-class scheduling operations.
    *
@@ -969,6 +900,10 @@ public class ClientGet extends ClientRequest {
    * is set when {@link #onSuccess(FetchResult, ClientGetter)} records the terminal state and never
    * reset unless a restart is initiated.
    *
+   * <p>This flag is a snapshot of the most recent attempt; it does not imply that payload data is
+   * still available in memory. Callers should consult {@link #getBucket()} or {@link
+   * #getDestFilename()} if they need access to the payload itself.
+   *
    * @return {@code true} once final success has been recorded for this request.
    */
   @Override
@@ -984,6 +919,8 @@ public class ClientGet extends ClientRequest {
    * back through the queue once the transfer has completed. This flag is informational and does not
    * initiate any I/O.
    *
+   * <p>Use this as a hint when deciding whether to request replayed data from a persistent queue.
+   *
    * @return {@code true} when AllData messages should be emitted upon completion.
    */
   public boolean isDirect() {
@@ -996,6 +933,8 @@ public class ClientGet extends ClientRequest {
    * <p>{@link ReturnType#DISK} requests rely on {@link #targetFile} for their lifecycle checks,
    * including restart validation to ensure partially written files are safe to reuse. This flag
    * mirrors the configured return type and does not check whether the file already exists.
+   *
+   * <p>Callers should treat this as configuration metadata, not proof of a completed download.
    *
    * @return {@code true} when this request writes into a caller-specified file.
    */
@@ -1010,6 +949,8 @@ public class ClientGet extends ClientRequest {
    * returned instance is the live reference used by this request, so callers should treat it as
    * read-only and avoid mutating it. This accessor is side-effect free and can be called at any
    * time, but it does not synchronize with concurrent updates beyond the request's own locking.
+   *
+   * <p>Use this value for status displays or persistence serialization rather than for mutation.
    *
    * @return current {@link FreenetURI} reference describing the active fetch target.
    */
@@ -1070,6 +1011,9 @@ public class ClientGet extends ClientRequest {
    * value of {@code -1} means the size is still unknown. This accessor does not trigger any network
    * activity and simply returns the latest cached estimate.
    *
+   * <p>The reported value may be provisional early in the fetch and should be treated as an
+   * estimate rather than a guarantee of final size.
+   *
    * @return recorded payload length in bytes, or {@code -1} when unknown.
    */
   public long getDataSize() {
@@ -1085,6 +1029,9 @@ public class ClientGet extends ClientRequest {
    * store results. The value can be {@code null} if no MIME information has been reported yet. This
    * accessor returns the latest cached value without forcing any additional validation.
    *
+   * <p>Callers should be prepared for {@code null} or generic MIME types when content is still
+   * being discovered.
+   *
    * @return MIME type reported for the payload, or {@code null} if undetermined.
    */
   public String getMIMEType() {
@@ -1099,6 +1046,8 @@ public class ClientGet extends ClientRequest {
    * restarts. It may not exist until the download succeeds, and callers should not assume it is
    * created or populated. When the return type is not {@link ReturnType#DISK}, this method returns
    * {@code null}.
+   *
+   * <p>Use this to locate persisted output only after completion has been reported.
    *
    * @return destination file for disk downloads, or {@code null} otherwise.
    */
@@ -1254,7 +1203,10 @@ public class ClientGet extends ClientRequest {
    * which typically means the request is still running or has completed successfully. The returned
    * text is suitable for UI display and is not guaranteed to be stable across versions.
    *
-   * @param longDescription {@code true} to include any extended diagnostic text when available.
+   * <p>This accessor does not alter the request state. Callers should treat the value as a snapshot
+   * of the last recorded failure rather than a live view of the underlying fetcher.
+   *
+   * @param longDescription {@code true} to append extended diagnostic detail when available.
    * @return human-readable failure summary, or {@code null} when no failure exists.
    */
   @Override
@@ -1279,6 +1231,8 @@ public class ClientGet extends ClientRequest {
    * or if no failure has been recorded yet. Callers should treat the value as a snapshot rather
    * than a live view of the underlying fetcher.
    *
+   * <p>The returned value is useful for UI classification or retry policy decisions.
+   *
    * @return failure classification mode, or {@code null} when no failure exists.
    */
   public FetchExceptionMode getFailureReasonCode() {
@@ -1293,6 +1247,8 @@ public class ClientGet extends ClientRequest {
    * count is stable and suitable for percent-based UI calculations. Completed successful requests
    * are treated as finalized even if no explicit progress snapshot is present. The value may be
    * {@code false} early in a fetch when metadata is incomplete.
+   *
+   * <p>This method does not force any progress updates; it reports only cached values.
    *
    * @return {@code true} once progress reporting marked the total as finalized or upon success.
    */
@@ -1312,6 +1268,8 @@ public class ClientGet extends ClientRequest {
    * other return types yield {@code null}. Callers should treat the returned bucket as read-only
    * and should not assume it is non-null unless the return type requires it. The returned instance
    * reflects the most recent stored payload and does not trigger additional disk or network work.
+   *
+   * <p>For disk-based downloads, the returned bucket is a lightweight wrapper over the file path.
    *
    * @return bucket containing the payload, or {@code null} when no bucket form exists.
    */
@@ -1339,6 +1297,9 @@ public class ClientGet extends ClientRequest {
    * attempt. This method performs the minimal checks needed to decide if {@link
    * #restart(ClientContext, boolean)} is likely to proceed without immediate failure.
    *
+   * <p>This method does not modify the state; it is intended for UI or scheduler decisions before
+   * initiating a restart.
+   *
    * @return {@code true} when {@link #restart(ClientContext, boolean)} may be invoked.
    */
   @Override
@@ -1363,8 +1324,11 @@ public class ClientGet extends ClientRequest {
    * If the underlying getter fails to restart, the failure is routed through {@link
    * #onFailure(FetchException)} and the method returns {@code false}.
    *
-   * @param context client context providing schedulers and persistent storage for restart logic.
-   * @param disableFilterData {@code true} to temporarily disable filtering for the next attempt.
+   * <p>Restarting does not guarantee success; it merely schedules a new attempt with the updated
+   * parameters. The method returns quickly once the getter acknowledges the restart request.
+   *
+   * @param context client context providing schedulers and bucket factories for restart logic.
+   * @param disableFilterData {@code true} to disable filtering for the next attempt.
    * @return {@code true} when the restart was initiated successfully.
    */
   @Override
@@ -1439,6 +1403,8 @@ public class ClientGet extends ClientRequest {
    * inference is attempted here. The method is synchronized to read the cached failure state
    * consistently.
    *
+   * <p>Callers should treat the result as a hint rather than a definitive redirect requirement.
+   *
    * @return {@code true} when {@link GetFailedMessage#redirectURI} is non-null.
    */
   public synchronized boolean hasPermRedirect() {
@@ -1453,6 +1419,8 @@ public class ClientGet extends ClientRequest {
    * current {@link FetchContext} setting and does not alter any state. Because restarts can change
    * the flag between attempts, callers should treat the value as a point-in-time snapshot rather
    * than a promise about future retries.
+   *
+   * <p>Use this to reflect the current filtering state in status reporting.
    *
    * @return {@code true} when payloads should be filtered before delivery.
    */
@@ -1495,9 +1463,12 @@ public class ClientGet extends ClientRequest {
    * so restarts can resume without re-downloading already verified blocks. Callers should provide a
    * stream already framed by the persistence layer.
    *
-   * @param dos destination stream receiving the serialized form with embedded checksums.
+   * <p>The serialization format is versioned; if it changes, the version constants in this class
+   * must be updated in lockstep with the restore logic.
+   *
+   * @param dos destination stream receiving the serialized form with checksums embedded.
    * @param checker checksum helper that wraps streams to guard against corruption.
-   * @throws IOException if serialization fails or a bucket cannot be stored.
+   * @throws IOException when serialization fails or a bucket cannot be stored.
    */
   @Override
   public void getClientDetail(DataOutputStream dos, ChecksumChecker checker) throws IOException {
@@ -1569,14 +1540,16 @@ public class ClientGet extends ClientRequest {
    * incomplete or inconsistent, it throws a {@link ResumeFailedException} to signal that the
    * request should restart rather than trust corrupted state.
    *
+   * <p>The returned request is fully initialized and ready to re-register with queues.
+   *
    * @param dis input stream positioned at the serialized client detail block.
    * @param reqID identifier tuple describing the owner and reference type.
    * @param context client context supplying factories used during restoration.
    * @param checker checksum helper verifying the integrity of embedded buckets.
    * @return fully reconstructed {@link ClientRequest} instance ready for resumption.
-   * @throws StorageFormatException serialized data failed validation or used unknown versions.
-   * @throws IOException stream IO failed while reading buckets or metadata.
-   * @throws ResumeFailedException request could not be reconstructed and must restart.
+   * @throws StorageFormatException when serialized data fails validation or version checks.
+   * @throws IOException when stream IO fails while reading buckets or metadata.
+   * @throws ResumeFailedException when the request must restart due to inconsistencies.
    */
   public static ClientRequest restartFrom(
       DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
@@ -1605,6 +1578,7 @@ public class ClientGet extends ClientRequest {
       restoredGetter = makeGetter(makeBucket(false));
     }
     this.getter = restoredGetter;
+    initHelpers();
   }
 
   private void validateClientDetailHeader(DataInputStream dis)
@@ -1707,6 +1681,8 @@ public class ClientGet extends ClientRequest {
    * does not trigger network activity; it only rebinds state so later status queries are
    * consistent.
    *
+   * <p>Callers should invoke this only during resume flows and not during normal execution.
+   *
    * @param context client context used for bucket resume callbacks and defaults.
    * @throws ResumeFailedException if bucket resume logic reports unrecoverable failure.
    */
@@ -1731,6 +1707,8 @@ public class ClientGet extends ClientRequest {
    * can continue without restarting. It delegates to {@link ClientGetter#resumedFetcher()} and also
    * ensures the getter itself is present. A {@code false} return indicates that the request should
    * be restarted or rebuilt.
+   *
+   * <p>The method has no side effects and should be safe to call repeatedly.
    *
    * @return {@code true} when {@link ClientGetter#resumedFetcher()} confirms a valid resume.
    */
