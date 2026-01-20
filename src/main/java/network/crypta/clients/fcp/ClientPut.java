@@ -1,42 +1,25 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.Objects;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.InsertException;
-import network.crypta.client.InsertException.InsertExceptionMode;
-import network.crypta.client.Metadata;
-import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.MetadataUnresolvedException;
-import network.crypta.client.async.BinaryBlob;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
-import network.crypta.crypt.SHA256;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
-import network.crypta.support.Base64;
-import network.crypta.support.IllegalBase64Exception;
-import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ResumeFailedException;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -157,9 +140,7 @@ public class ClientPut extends ClientPutBase {
     RandomAccessBucket tempData = upload.data();
 
     if (uploadFromType == UploadFrom.DISK) {
-      if (!core.allowUploadFrom(uploadOrigFilename)) throw new NotAllowedException();
-      if (!(uploadOrigFilename.exists() && uploadOrigFilename.canRead()))
-        throw new FileNotFoundException();
+      ClientPutDiskUploadValidator.validatePersistentDiskUpload(core, uploadOrigFilename);
     }
 
     this.binaryBlob = upload.binaryBlob();
@@ -171,26 +152,24 @@ public class ClientPut extends ClientPutBase {
     String mimeType = contentType;
     this.clientToken = request.clientToken();
     ClientMetadata cm = new ClientMetadata(mimeType);
-    boolean isMetadata = false;
     if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
-    if (uploadFrom == UploadFrom.REDIRECT) {
-      this.targetURI = upload.redirectTarget();
-      Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI, cm);
-      tempData = m.toBucket(core.getClientContext().getBucketFactory(isPersistentForever()));
-      isMetadata = true;
-    } else targetURI = null;
-
-    this.data = tempData;
+    PreparedData preparedData =
+        ClientPutPreparedDataFactory.prepareForPersistentUpload(
+            uploadFrom, cm, tempData, upload.redirectTarget(), core, isPersistentForever());
+    this.data = preparedData.bucket();
     this.clientMetadata = cm;
+    this.targetURI = preparedData.targetUri();
 
-    putter =
-        new ClientPutter(
-            new ClientPutterRequest(this, data, this.uri, cm, ctx, priorityClass, isMetadata),
-            new ClientPutterOptions(
-                this.uri.getDocName() == null ? uploadTargetFilename : null,
-                this.binaryBlob,
-                options.overrideSplitfileCryptoKey(),
-                -1));
+    ClientPutterRequest putterRequest =
+        new ClientPutterRequest(
+            this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata());
+    ClientPutterOptions putterOptions =
+        new ClientPutterOptions(
+            this.uri.getDocName() == null ? uploadTargetFilename : null,
+            this.binaryBlob,
+            options.overrideSplitfileCryptoKey(),
+            -1);
+    putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
   }
 
   /**
@@ -247,14 +226,15 @@ public class ClientPut extends ClientPutBase {
     binaryBlob = message.binaryBlob;
 
     DiskUploadContext diskContext =
-        validateDiskUpload(handler, message, message.identifier, message.global);
+        ClientPutDiskUploadValidator.validateDiskUpload(
+            handler, message, message.identifier, message.global);
 
     this.targetFilename = message.targetFilename;
     this.uploadFrom = message.uploadFromType;
     this.origFilename = message.origFilename;
 
     String mimeType =
-        resolveMimeType(
+        ClientPutMimeResolver.resolve(
             message,
             this.origFilename,
             this.targetFilename,
@@ -264,23 +244,26 @@ public class ClientPut extends ClientPutBase {
 
     clientToken = message.clientToken;
     ClientMetadata cm = new ClientMetadata(mimeType);
-    PreparedData preparedData = prepareDataForUpload(message, cm, server, isPersistentForever());
+    PreparedData preparedData =
+        ClientPutPreparedDataFactory.prepareForMessage(
+            message, cm, server, isPersistentForever(), uploadFrom, identifier, global);
     this.data = preparedData.bucket();
     this.clientMetadata = cm;
     this.targetURI = preparedData.targetUri();
 
-    verifySaltedHash(diskContext, data, message.identifier, message.global);
+    ClientPutDiskUploadValidator.verifySaltedHash(diskContext, data, identifier, global);
 
     if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
-    putter =
-        new ClientPutter(
-            new ClientPutterRequest(
-                this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata()),
-            new ClientPutterOptions(
-                this.uri.getDocName() == null ? targetFilename : null,
-                binaryBlob,
-                message.overrideSplitfileCryptoKey,
-                message.metadataThreshold));
+    ClientPutterRequest putterRequest =
+        new ClientPutterRequest(
+            this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata());
+    ClientPutterOptions putterOptions =
+        new ClientPutterOptions(
+            this.uri.getDocName() == null ? targetFilename : null,
+            binaryBlob,
+            message.overrideSplitfileCryptoKey,
+            message.metadataThreshold);
+    putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
   }
 
   private static String ensureConnectionIdentifierAvailable(
@@ -308,192 +291,6 @@ public class ClientPut extends ClientPutBase {
 
   private synchronized boolean shouldQueuePersistentTag() {
     return persistence != Persistence.CONNECTION && !finished;
-  }
-
-  private PreparedData prepareDataForUpload(
-      ClientPutMessage message,
-      ClientMetadata metadata,
-      FCPServer server,
-      boolean persistentForever)
-      throws MessageInvalidException, IOException {
-    RandomAccessBucket tempData = message.getRandomAccessBucket();
-    if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
-    if (uploadFrom == UploadFrom.REDIRECT) {
-      FreenetURI redirectTarget = message.redirectTarget;
-      Metadata metadataDoc =
-          new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, redirectTarget, metadata);
-      try {
-        RandomAccessBucket redirectData =
-            metadataDoc.toBucket(
-                server.getCore().getClientContext().getBucketFactory(persistentForever));
-        return new PreparedData(redirectData, true, redirectTarget);
-      } catch (MetadataUnresolvedException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INTERNAL_ERROR,
-            "Impossible: metadata unresolved: " + e,
-            identifier,
-            global);
-      }
-    }
-    return new PreparedData(tempData, false, null);
-  }
-
-  private void verifySaltedHash(
-      DiskUploadContext diskContext, RandomAccessBucket bucket, String identifier, boolean global)
-      throws MessageInvalidException {
-    if (!diskContext.hasSalt()) {
-      return;
-    }
-    MessageDigest md = SHA256.getMessageDigest();
-    md.update(diskContext.salt().getBytes(StandardCharsets.UTF_8));
-    byte[] foundHash;
-    try (InputStream is = bucket.getInputStream()) {
-      SHA256.hash(is, md);
-      foundHash = md.digest();
-    } catch (IOException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.COULD_NOT_READ_FILE,
-          "Unable to access file: " + e,
-          identifier,
-          global);
-    }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "FileHash result : we found {} and were given {}.",
-          Base64.encode(foundHash),
-          Base64.encode(diskContext.saltedHash()));
-    }
-    if (!Arrays.equals(diskContext.saltedHash(), foundHash)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED,
-          "The hash doesn't match! (salt used : \"" + diskContext.salt() + "\")",
-          identifier,
-          global);
-    }
-  }
-
-  private static DiskUploadContext validateDiskUpload(
-      FCPConnectionHandler handler, ClientPutMessage message, String identifier, boolean global)
-      throws MessageInvalidException {
-    if (message.uploadFromType != UploadFrom.DISK) {
-      return DiskUploadContext.empty();
-    }
-    if (!handler.getServer().getCore().allowUploadFrom(message.origFilename)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.ACCESS_DENIED,
-          "Not allowed to upload from " + message.origFilename,
-          identifier,
-          global);
-    }
-    if (message.fileHash != null) {
-      String salt =
-          handler.getConnectionIdentifierUUID().toString() + '-' + message.identifier + '-';
-      byte[] saltedHash = decodeFileHash(message.fileHash, identifier, global);
-      return new DiskUploadContext(salt, saltedHash);
-    }
-    if (!handler.ddaAccessController().allowDDAFrom(message.origFilename, false)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED,
-          "Not allowed to upload from "
-              + message.origFilename
-              + ". Have you done a testDDA previously ?",
-          identifier,
-          global);
-    }
-    return DiskUploadContext.empty();
-  }
-
-  private static byte[] decodeFileHash(String encoded, String identifier, boolean global)
-      throws MessageInvalidException {
-    try {
-      return Base64.decodeStandard(encoded);
-    } catch (IllegalBase64Exception _) {
-      try {
-        return Base64.decode(encoded);
-      } catch (IllegalBase64Exception _) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD,
-            "Can't base64 decode " + ClientPutBase.FILE_HASH,
-            identifier,
-            global);
-      }
-    }
-  }
-
-  private static String resolveMimeType(
-      ClientPutMessage message,
-      File origFilename,
-      String targetFilename,
-      boolean binaryBlob,
-      String identifier,
-      boolean global)
-      throws MessageInvalidException {
-    String mimeType = message.contentType;
-    if (binaryBlob && mimeType != null && !mimeType.equals(BinaryBlob.MIME_TYPE)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.INVALID_FIELD,
-          "No MIME type allowed when inserting a binary blob",
-          identifier,
-          global);
-    }
-    if (mimeType == null && origFilename != null) {
-      mimeType = DefaultMIMETypes.guessMIMEType(origFilename.getName(), true);
-    }
-    if (mimeType == null && targetFilename != null) {
-      mimeType = DefaultMIMETypes.guessMIMEType(targetFilename, true);
-    }
-    if (mimeType != null && mimeType.isEmpty()) {
-      mimeType = null;
-    }
-    if (mimeType != null && !DefaultMIMETypes.isPlausibleMIMEType(mimeType)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.BAD_MIME_TYPE,
-          "Bad MIME type in Metadata.ContentType",
-          identifier,
-          global);
-    }
-    return mimeType;
-  }
-
-  private record DiskUploadContext(String salt, byte[] saltedHash) {
-    private static final DiskUploadContext EMPTY = new DiskUploadContext(null, null);
-
-    static DiskUploadContext empty() {
-      return EMPTY;
-    }
-
-    boolean hasSalt() {
-      return salt != null;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o instanceof DiskUploadContext(String otherSalt, byte[] otherHash))) return false;
-      return Objects.equals(salt, otherSalt) && Arrays.equals(saltedHash, otherHash);
-    }
-
-    @Override
-    public int hashCode() {
-      int result = Objects.hash(salt);
-      result = 31 * result + Arrays.hashCode(saltedHash);
-      return result;
-    }
-
-    @Override
-    public @NotNull String toString() {
-      return "DiskUploadContext[salt="
-          + salt
-          + ", saltedHash="
-          + (saltedHash == null ? "null" : Arrays.toString(saltedHash))
-          + ']';
-    }
-  }
-
-  private record PreparedData(RandomAccessBucket bucket, boolean metadata, FreenetURI targetUri) {
-    boolean isMetadata() {
-      return metadata;
-    }
   }
 
   /**
@@ -594,13 +391,14 @@ public class ClientPut extends ClientPutBase {
       synchronized (this) {
         started = true;
       }
-      onFailure(new InsertException(InsertExceptionMode.INTERNAL_ERROR, t, null), null);
+      onFailure(
+          new InsertException(InsertException.InsertExceptionMode.INTERNAL_ERROR, t, null), null);
     }
   }
 
   @Override
   protected void freeData() {
-    Bucket d;
+    RandomAccessBucket d;
     synchronized (this) {
       d = data;
       data = null;
@@ -755,6 +553,10 @@ public class ClientPut extends ClientPutBase {
    */
   public String getMIMEType() {
     return clientMetadata.getMIMEType();
+  }
+
+  ClientMetadata clientMetadataForStatus() {
+    return clientMetadata;
   }
 
   /**
@@ -937,64 +739,7 @@ public class ClientPut extends ClientPutBase {
 
   @Override
   RequestStatus getStatus() {
-    FreenetURI finalURI = getFinalURI();
-    InsertExceptionMode failureCode = null;
-    String failureReasonShort = null;
-    String failureReasonLong = null;
-    if (putFailedMessage != null) {
-      failureCode = putFailedMessage.failureMode;
-      failureReasonShort = putFailedMessage.getShortFailedMessage();
-      failureReasonLong = putFailedMessage.getLongFailedMessage();
-    }
-    String mimeType = null;
-    if (persistence == Persistence.FOREVER) {
-      mimeType = clientMetadata.getMIMEType();
-    }
-    File fnam = getOrigFilename();
-    if (fnam != null) fnam = new File(fnam.getPath());
-
-    int total = 0;
-    int min = 0;
-    int fetched = 0;
-    int fatal = 0;
-    int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    Date latestSuccess = new Date();
-    Date latestFailure = null;
-    boolean totalFinalized = false;
-
-    if (progressMessage instanceof SimpleProgressMessage msg) {
-      total = (int) msg.getTotalBlocks();
-      min = (int) msg.getMinBlocks();
-      fetched = (int) msg.getFetchedBlocks();
-      latestSuccess = msg.getLatestSuccess();
-      fatal = (int) msg.getFatalyFailedBlocks();
-      failed = (int) msg.getFailedBlocks();
-      latestFailure = msg.getLatestFailure();
-      totalFinalized = msg.isTotalFinalized();
-    }
-
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            identifier,
-            persistence,
-            started,
-            finished,
-            succeeded,
-            total,
-            min,
-            fetched,
-            latestSuccess,
-            fatal,
-            failed,
-            latestFailure,
-            totalFinalized,
-            priorityClass);
-    UploadRequestStatusDetails details =
-        new UploadRequestStatusDetails(
-            finalURI, uri, failureCode, failureReasonShort, failureReasonLong);
-    return new UploadFileRequestStatus(
-        statusSnapshot, details, getDataSize(), mimeType, fnam, isCompressing());
+    return ClientPutStatusSnapshotBuilder.build(this);
   }
 
   /**
