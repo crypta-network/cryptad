@@ -1,73 +1,61 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.NotSerializableException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.Objects;
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.DefaultMIMETypes;
 import network.crypta.client.InsertException;
-import network.crypta.client.InsertException.InsertExceptionMode;
-import network.crypta.client.Metadata;
-import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.MetadataUnresolvedException;
-import network.crypta.client.async.BinaryBlob;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
-import network.crypta.crypt.SHA256;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
-import network.crypta.support.Base64;
-import network.crypta.support.IllegalBase64Exception;
-import network.crypta.support.api.Bucket;
 import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.io.ResumeFailedException;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Drives a single insert issued through the FCP interface, wrapping validation, upload preparation,
- * and {@link ClientPutter} lifecycle management for one file or metadata object.
+ * Drives a single insert issued through the FCP interface, coordinating validation and scheduling
+ * for a single payload or redirect.
  *
- * <p>The class mediates between user requests and the asynchronous node core: it verifies disk
- * permissions, synthesizes redirect metadata, builds MIME-aware {@link ClientMetadata}, and feeds
- * bytes to the low-level {@link ClientRequester}. Instances are stateful and survive restarts when
- * configured for persistent queues, persisting identifiers, retry budgets, and compression status
- * to ensure idempotent progress reports.
+ * <p>The class mediates between user requests and the asynchronous node core: it validates disk
+ * access, synthesizes redirect metadata, resolves MIME metadata, and constructs the underlying
+ * {@link ClientPutter}. Instances encapsulate all mutable states needed to monitor progress,
+ * respond to retries, and surface status updates across reconnections. Persistent requests are
+ * serialized so the node can resume in-flight inserts after restart without reloading the client’s
+ * original configuration.
  *
- * <p>Thread-safety follows the contract of {@link ClientPutBase}: the object is primarily accessed
- * from the asynchronous worker threads, yet several accessors are synchronized to guard progress
- * flags shared with client UI components. Completion and failure callbacks may arrive concurrently,
- * so callers should not mutate externally visible buckets once construction finishes.
+ * <p>Thread-safety follows the contract of {@link ClientPutBase}. Most state is mutated by worker
+ * threads, while a handful of accessors synchronize on {@code this} to guard shared progress flags
+ * used by UIs and status caches. Callers should treat the request as owning its buckets once
+ * construction finishes and avoid mutating those buckets directly.
  *
  * <ul>
  *   <li>Prepares uploads originating from disk, memory buckets, or redirect metadata.
  *   <li>Captures per-request metadata so status polling exposes MIME type and filenames.
- *   <li>Publishes persistent tag messages whenever the queue requires bookkeeping updates.
+ *   <li>Publishes persistent tag messages whenever queue bookkeeping updates are required.
  * </ul>
  *
  * @see ClientPutBase
  * @see ClientRequester
  */
 public class ClientPut extends ClientPutBase {
+  /** Logger for lifecycle and diagnostic messages. */
   private static final Logger LOG = LoggerFactory.getLogger(ClientPut.class);
+
+  /** Debugging template that logs bucket identity and upload source. */
   private static final String DATA_UPLOAD_LOG_TEMPLATE = "data = {}, uploadFrom = {}";
 
+  /** Serialization version for persistent request snapshots. */
   @Serial private static final long serialVersionUID = 1L;
 
   /**
@@ -108,27 +96,27 @@ public class ClientPut extends ClientPutBase {
   // Legacy threshold callback removed.
 
   /**
-   * Creates a persistent insert originating from FProxy or another long-lived client, wiring the
-   * request into {@link ClientPutBase}'s bookkeeping structures.
+   * Creates a persistent insert originating from a long-lived client or FProxy.
    *
    * <p>The constructor enforces disk-access policy, builds redirect metadata when needed, captures
-   * MIME hints, and sets up {@link ClientPutter} with the correct retry and redundancy policies.
-   * Use it whenever an external client wants the node to own persistence, resume points, and retry
-   * state for an upload that might span restarts. Callers remain responsible for supplying buckets
-   * that stay readable for the lifetime of the insert. Compression configuration is honored exactly
-   * as supplied, so callers can trade throughput for determinism.
+   * MIME hints, and sets up {@link ClientPutter} with the retry and redundancy settings supplied by
+   * the caller. It is intended for uploads that must survive restarts, so the node takes ownership
+   * of persistence and retry state while the caller keeps the backing bucket readable for the
+   * request’s lifetime. Compression settings are honored exactly as supplied, allowing clients to
+   * trade throughput for deterministic behavior.
    *
-   * @param request Persistent request metadata including URI, identifier, and queue settings.
-   * @param options Insert tuning options such as retries, compression, and redundancy.
-   * @param upload Upload payload metadata describing source and content hints.
-   * @param core Owning {@link NodeClientCore} providing policies, factories, and scheduler hooks.
-   * @throws IdentifierCollisionException Thrown when the chosen identifier already exists within
-   *     the persistence scope.
-   * @throws NotAllowedException Raised when a configured upload source violates server-side safety
-   *     policies.
-   * @throws MetadataUnresolvedException Bubble-up if redirect metadata cannot serialize into a
-   *     bucket factory.
-   * @throws IOException Propagated for filesystem or bucket reads when preparing payload streams.
+   * @param request persistent request metadata including URI, identifier, and queue settings; must
+   *     not be {@code null} and should reflect the intended persistence scope.
+   * @param options insert tuning options such as retries, compression, and redundancy; must not be
+   *     {@code null} and should be consistent with the request type.
+   * @param upload upload payload metadata describing source and content hints; must not be {@code
+   *     null} and should include a readable bucket if required.
+   * @param core owning {@link NodeClientCore} providing policies, factories, and scheduler hooks;
+   *     must not be {@code null}.
+   * @throws IdentifierCollisionException when the chosen identifier already exists in persistence.
+   * @throws NotAllowedException when the configured upload source violates server-side policy.
+   * @throws MetadataUnresolvedException when redirect metadata cannot serialize into a bucket.
+   * @throws IOException when filesystem or bucket reads fail during preparation.
    */
   public ClientPut(
       FcpInsertRequest request,
@@ -157,9 +145,7 @@ public class ClientPut extends ClientPutBase {
     RandomAccessBucket tempData = upload.data();
 
     if (uploadFromType == UploadFrom.DISK) {
-      if (!core.allowUploadFrom(uploadOrigFilename)) throw new NotAllowedException();
-      if (!(uploadOrigFilename.exists() && uploadOrigFilename.canRead()))
-        throw new FileNotFoundException();
+      ClientPutDiskUploadValidator.validatePersistentDiskUpload(core, uploadOrigFilename);
     }
 
     this.binaryBlob = upload.binaryBlob();
@@ -171,26 +157,24 @@ public class ClientPut extends ClientPutBase {
     String mimeType = contentType;
     this.clientToken = request.clientToken();
     ClientMetadata cm = new ClientMetadata(mimeType);
-    boolean isMetadata = false;
     if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
-    if (uploadFrom == UploadFrom.REDIRECT) {
-      this.targetURI = upload.redirectTarget();
-      Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI, cm);
-      tempData = m.toBucket(core.getClientContext().getBucketFactory(isPersistentForever()));
-      isMetadata = true;
-    } else targetURI = null;
-
-    this.data = tempData;
+    PreparedData preparedData =
+        ClientPutPreparedDataFactory.prepareForPersistentUpload(
+            uploadFrom, cm, tempData, upload.redirectTarget(), core, isPersistentForever());
+    this.data = preparedData.bucket();
     this.clientMetadata = cm;
+    this.targetURI = preparedData.targetUri();
 
-    putter =
-        new ClientPutter(
-            new ClientPutterRequest(this, data, this.uri, cm, ctx, priorityClass, isMetadata),
-            new ClientPutterOptions(
-                this.uri.getDocName() == null ? uploadTargetFilename : null,
-                this.binaryBlob,
-                options.overrideSplitfileCryptoKey(),
-                -1));
+    ClientPutterRequest putterRequest =
+        new ClientPutterRequest(
+            this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata());
+    ClientPutterOptions putterOptions =
+        new ClientPutterOptions(
+            this.uri.getDocName() == null ? uploadTargetFilename : null,
+            this.binaryBlob,
+            options.overrideSplitfileCryptoKey(),
+            -1);
+    putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
   }
 
   /**
@@ -204,16 +188,17 @@ public class ClientPut extends ClientPutBase {
    * happen before {@link ClientPutter} starts so any validation errors surface immediately to the
    * client.
    *
-   * @param handler Live FCP connection handler coordinating per-connection identifiers and DDA
-   *     rights.
-   * @param message Parsed {@link ClientPutMessage} containing payload descriptors, policy flags,
-   *     and metadata.
-   * @param server Owning server providing {@link NodeClientCore} accessors and capability checks.
-   * @throws IdentifierCollisionException If another request on the connection already uses the
+   * @param handler live FCP connection handler coordinating per-connection identifiers and DDA
+   *     rights; must not be {@code null} and should represent the active socket.
+   * @param message parsed {@link ClientPutMessage} containing payload descriptors and metadata;
+   *     must not be {@code null} and should already have validated field syntax.
+   * @param server owning server providing {@link NodeClientCore} accessors and capability checks;
+   *     must not be {@code null}.
+   * @throws IdentifierCollisionException if another request on the connection already uses the
    *     identifier.
-   * @throws MessageInvalidException Throw when client supplied fields (hashes, MIME, permissions)
-   *     prove invalid.
-   * @throws IOException If message-provided buckets cannot be read to compute salted hashes.
+   * @throws MessageInvalidException when client supplied fields (hashes, MIME, permissions) are
+   *     invalid or violate protocol constraints.
+   * @throws IOException when message-provided buckets cannot be read to compute salted hashes.
    */
   public ClientPut(FCPConnectionHandler handler, ClientPutMessage message, FCPServer server)
       throws IdentifierCollisionException, MessageInvalidException, IOException {
@@ -247,14 +232,15 @@ public class ClientPut extends ClientPutBase {
     binaryBlob = message.binaryBlob;
 
     DiskUploadContext diskContext =
-        validateDiskUpload(handler, message, message.identifier, message.global);
+        ClientPutDiskUploadValidator.validateDiskUpload(
+            handler, message, message.identifier, message.global);
 
     this.targetFilename = message.targetFilename;
     this.uploadFrom = message.uploadFromType;
     this.origFilename = message.origFilename;
 
     String mimeType =
-        resolveMimeType(
+        ClientPutMimeResolver.resolve(
             message,
             this.origFilename,
             this.targetFilename,
@@ -264,25 +250,37 @@ public class ClientPut extends ClientPutBase {
 
     clientToken = message.clientToken;
     ClientMetadata cm = new ClientMetadata(mimeType);
-    PreparedData preparedData = prepareDataForUpload(message, cm, server, isPersistentForever());
+    PreparedData preparedData =
+        ClientPutPreparedDataFactory.prepareForMessage(
+            message, cm, server, isPersistentForever(), uploadFrom, identifier, global);
     this.data = preparedData.bucket();
     this.clientMetadata = cm;
     this.targetURI = preparedData.targetUri();
 
-    verifySaltedHash(diskContext, data, message.identifier, message.global);
+    ClientPutDiskUploadValidator.verifySaltedHash(diskContext, data, identifier, global);
 
     if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
-    putter =
-        new ClientPutter(
-            new ClientPutterRequest(
-                this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata()),
-            new ClientPutterOptions(
-                this.uri.getDocName() == null ? targetFilename : null,
-                binaryBlob,
-                message.overrideSplitfileCryptoKey,
-                message.metadataThreshold));
+    ClientPutterRequest putterRequest =
+        new ClientPutterRequest(
+            this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata());
+    ClientPutterOptions putterOptions =
+        new ClientPutterOptions(
+            this.uri.getDocName() == null ? targetFilename : null,
+            binaryBlob,
+            message.overrideSplitfileCryptoKey,
+            message.metadataThreshold);
+    putter = ClientPutPutterFactory.create(putterRequest, putterOptions);
   }
 
+  /**
+   * Ensures the request identifier is unused within a connection-scoped persistence map.
+   *
+   * @param handler connection handler tracking in-flight requests; must not be {@code null}.
+   * @param message parsed put message containing the requested identifier; must not be {@code
+   *     null}.
+   * @return the validated identifier string when no collision exists.
+   * @throws IdentifierCollisionException when the identifier already exists for the connection.
+   */
   private static String ensureConnectionIdentifierAvailable(
       FCPConnectionHandler handler, ClientPutMessage message) throws IdentifierCollisionException {
     if (message.persistence != Persistence.CONNECTION) {
@@ -294,6 +292,14 @@ public class ClientPut extends ClientPutBase {
     return message.identifier;
   }
 
+  /**
+   * Ensures the identifier is free within the persistent request client, if present.
+   *
+   * @param client persistent request client, or {@code null} when not applicable.
+   * @param identifier identifier requested by the caller; must not be {@code null}.
+   * @return the identifier when it is not already in use.
+   * @throws IdentifierCollisionException when the identifier already exists in persistence.
+   */
   private static String ensurePersistentIdentifierAvailable(
       PersistentRequestClient client, String identifier) throws IdentifierCollisionException {
     if (client != null && client.getRequest(identifier) != null) {
@@ -302,198 +308,22 @@ public class ClientPut extends ClientPutBase {
     return identifier;
   }
 
+  /**
+   * Returns whether the request is already marked finished.
+   *
+   * @return {@code true} when the request has completed or failed.
+   */
   private synchronized boolean isFinishedRequest() {
     return finished;
   }
 
+  /**
+   * Determines whether a persistent tag message should be queued now.
+   *
+   * @return {@code true} when persistence is enabled and the request is not finished.
+   */
   private synchronized boolean shouldQueuePersistentTag() {
     return persistence != Persistence.CONNECTION && !finished;
-  }
-
-  private PreparedData prepareDataForUpload(
-      ClientPutMessage message,
-      ClientMetadata metadata,
-      FCPServer server,
-      boolean persistentForever)
-      throws MessageInvalidException, IOException {
-    RandomAccessBucket tempData = message.getRandomAccessBucket();
-    if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
-    if (uploadFrom == UploadFrom.REDIRECT) {
-      FreenetURI redirectTarget = message.redirectTarget;
-      Metadata metadataDoc =
-          new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, redirectTarget, metadata);
-      try {
-        RandomAccessBucket redirectData =
-            metadataDoc.toBucket(
-                server.getCore().getClientContext().getBucketFactory(persistentForever));
-        return new PreparedData(redirectData, true, redirectTarget);
-      } catch (MetadataUnresolvedException e) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INTERNAL_ERROR,
-            "Impossible: metadata unresolved: " + e,
-            identifier,
-            global);
-      }
-    }
-    return new PreparedData(tempData, false, null);
-  }
-
-  private void verifySaltedHash(
-      DiskUploadContext diskContext, RandomAccessBucket bucket, String identifier, boolean global)
-      throws MessageInvalidException {
-    if (!diskContext.hasSalt()) {
-      return;
-    }
-    MessageDigest md = SHA256.getMessageDigest();
-    md.update(diskContext.salt().getBytes(StandardCharsets.UTF_8));
-    byte[] foundHash;
-    try (InputStream is = bucket.getInputStream()) {
-      SHA256.hash(is, md);
-      foundHash = md.digest();
-    } catch (IOException e) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.COULD_NOT_READ_FILE,
-          "Unable to access file: " + e,
-          identifier,
-          global);
-    }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "FileHash result : we found {} and were given {}.",
-          Base64.encode(foundHash),
-          Base64.encode(diskContext.saltedHash()));
-    }
-    if (!Arrays.equals(diskContext.saltedHash(), foundHash)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED,
-          "The hash doesn't match! (salt used : \"" + diskContext.salt() + "\")",
-          identifier,
-          global);
-    }
-  }
-
-  private static DiskUploadContext validateDiskUpload(
-      FCPConnectionHandler handler, ClientPutMessage message, String identifier, boolean global)
-      throws MessageInvalidException {
-    if (message.uploadFromType != UploadFrom.DISK) {
-      return DiskUploadContext.empty();
-    }
-    if (!handler.getServer().getCore().allowUploadFrom(message.origFilename)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.ACCESS_DENIED,
-          "Not allowed to upload from " + message.origFilename,
-          identifier,
-          global);
-    }
-    if (message.fileHash != null) {
-      String salt =
-          handler.getConnectionIdentifierUUID().toString() + '-' + message.identifier + '-';
-      byte[] saltedHash = decodeFileHash(message.fileHash, identifier, global);
-      return new DiskUploadContext(salt, saltedHash);
-    }
-    if (!handler.ddaAccessController().allowDDAFrom(message.origFilename, false)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.DIRECT_DISK_ACCESS_DENIED,
-          "Not allowed to upload from "
-              + message.origFilename
-              + ". Have you done a testDDA previously ?",
-          identifier,
-          global);
-    }
-    return DiskUploadContext.empty();
-  }
-
-  private static byte[] decodeFileHash(String encoded, String identifier, boolean global)
-      throws MessageInvalidException {
-    try {
-      return Base64.decodeStandard(encoded);
-    } catch (IllegalBase64Exception _) {
-      try {
-        return Base64.decode(encoded);
-      } catch (IllegalBase64Exception _) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD,
-            "Can't base64 decode " + ClientPutBase.FILE_HASH,
-            identifier,
-            global);
-      }
-    }
-  }
-
-  private static String resolveMimeType(
-      ClientPutMessage message,
-      File origFilename,
-      String targetFilename,
-      boolean binaryBlob,
-      String identifier,
-      boolean global)
-      throws MessageInvalidException {
-    String mimeType = message.contentType;
-    if (binaryBlob && mimeType != null && !mimeType.equals(BinaryBlob.MIME_TYPE)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.INVALID_FIELD,
-          "No MIME type allowed when inserting a binary blob",
-          identifier,
-          global);
-    }
-    if (mimeType == null && origFilename != null) {
-      mimeType = DefaultMIMETypes.guessMIMEType(origFilename.getName(), true);
-    }
-    if (mimeType == null && targetFilename != null) {
-      mimeType = DefaultMIMETypes.guessMIMEType(targetFilename, true);
-    }
-    if (mimeType != null && mimeType.isEmpty()) {
-      mimeType = null;
-    }
-    if (mimeType != null && !DefaultMIMETypes.isPlausibleMIMEType(mimeType)) {
-      throw new MessageInvalidException(
-          ProtocolErrorMessage.BAD_MIME_TYPE,
-          "Bad MIME type in Metadata.ContentType",
-          identifier,
-          global);
-    }
-    return mimeType;
-  }
-
-  private record DiskUploadContext(String salt, byte[] saltedHash) {
-    private static final DiskUploadContext EMPTY = new DiskUploadContext(null, null);
-
-    static DiskUploadContext empty() {
-      return EMPTY;
-    }
-
-    boolean hasSalt() {
-      return salt != null;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o instanceof DiskUploadContext(String otherSalt, byte[] otherHash))) return false;
-      return Objects.equals(salt, otherSalt) && Arrays.equals(saltedHash, otherHash);
-    }
-
-    @Override
-    public int hashCode() {
-      int result = Objects.hash(salt);
-      result = 31 * result + Arrays.hashCode(saltedHash);
-      return result;
-    }
-
-    @Override
-    public @NotNull String toString() {
-      return "DiskUploadContext[salt="
-          + salt
-          + ", saltedHash="
-          + (saltedHash == null ? "null" : Arrays.toString(saltedHash))
-          + ']';
-    }
-  }
-
-  private record PreparedData(RandomAccessBucket bucket, boolean metadata, FreenetURI targetUri) {
-    boolean isMetadata() {
-      return metadata;
-    }
   }
 
   /**
@@ -556,13 +386,14 @@ public class ClientPut extends ClientPutBase {
    * request.
    *
    * <p>The method is idempotent: if the request already finished or the putter previously started,
-   * it simply refreshes the persistent tag. Otherwise, it schedules the insert, updates
-   * bookkeeping, and emits persistent-queue tags if necessary so external monitors observe the
-   * in-flight status. Callers should invoke this once after construction or resume to reattach the
-   * UI state.
+   * it refreshes the persistent tag and returns. Otherwise, it schedules the insert, updates
+   * bookkeeping, and emits persistent-queue tags so external monitors observe the in-flight status.
+   * Callers should invoke this once after construction or resume to reattach the UI state. Any
+   * startup failures are routed through the standard failure handler so retry logic stays
+   * consistent.
    *
-   * @param context Client execution context providing schedulers, bucket factories, and thread
-   *     pools.
+   * @param context client execution context providing schedulers, bucket factories, and thread
+   *     pools; must not be {@code null} and should be the active runtime context.
    */
   @Override
   public void start(ClientContext context) {
@@ -594,13 +425,14 @@ public class ClientPut extends ClientPutBase {
       synchronized (this) {
         started = true;
       }
-      onFailure(new InsertException(InsertExceptionMode.INTERNAL_ERROR, t, null), null);
+      onFailure(
+          new InsertException(InsertException.InsertExceptionMode.INTERNAL_ERROR, t, null), null);
     }
   }
 
   @Override
   protected void freeData() {
-    Bucket d;
+    RandomAccessBucket d;
     synchronized (this) {
       d = data;
       data = null;
@@ -649,6 +481,11 @@ public class ClientPut extends ClientPutBase {
     return new PersistentPut(requestParams, upload, metadata, getDataSize());
   }
 
+  /**
+   * Returns whether the low-level request is scheduled as real-time work.
+   *
+   * @return {@code true} when the underlying request uses the real-time flag.
+   */
   private boolean isRealTime() {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
@@ -660,15 +497,14 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Reports whether the put operation permanently succeeded, meaning the final URI is committed and
-   * any waiting clients may fetch it.
+   * Reports whether the put operation permanently succeeded, meaning the final URI is committed.
    *
    * <p>The flag flips to {@code true} only after {@link ClientPutter} notifies completion and
    * remains {@code true} even if future retries occur, allowing UIs to treat the request as
-   * immutable history. It is safe to poll frequently; the backing field is volatile through {@link
-   * ClientPutBase} synchronization.
+   * immutable history. It is safe to poll frequently because the underlying field is synchronized
+   * via {@link ClientPutBase} access patterns.
    *
-   * @return True, once the insert commits and the node has acknowledged durable storage.
+   * @return {@code true} once the insert commits and the node has acknowledged durable storage.
    */
   @Override
   public boolean hasSucceeded() {
@@ -680,33 +516,52 @@ public class ClientPut extends ClientPutBase {
    *
    * <p>The URI is generated lazily after encoding finishes, so callers should expect {@code null}
    * until the insert either succeeds or yields enough information (such as a CHK) to finalize the
-   * address. Consumers typically surface this in status tables or completion callbacks.
+   * address. Consumers typically surface this value in status tables or completion callbacks and
+   * should treat it as immutable once set.
    *
-   * @return Finalized URI when known; {@code null} until the node produces one.
+   * @return finalized URI when known, or {@code null} until the node produces one.
    */
   public FreenetURI getFinalURI() {
     return generatedURI;
   }
 
   /**
-   * Indicates whether the payload bytes were supplied inline via the FCP connection rather than
-   * read from disk or synthesized from metadata.
+   * Indicates whether the payload bytes were supplied inline via the FCP connection.
    *
    * <p>This mirrors the original {@link UploadFrom} choice. Direct uploads are useful for clients
    * that already hold data in memory and do not require DDA permissions. Disk-based inserts return
    * {@code false} so the UI can display security-sensitive origin information.
    *
-   * @return {@code true} if {@link UploadFrom#DIRECT} initiated the request; {@code false} else.
+   * @return {@code true} if {@link UploadFrom#DIRECT} initiated the request; {@code false}
+   *     otherwise.
    */
   public boolean isDirect() {
     return uploadFrom == UploadFrom.DIRECT;
   }
 
+  /**
+   * Compares this request with another object for identity equality.
+   *
+   * <p>This implementation preserves {@link Object#equals(Object)} semantics by delegating to the
+   * base class. Requests are treated as identity objects, so two distinct instances are not equal
+   * even if they carry the same identifier.
+   *
+   * @param obj object to compare against; may be {@code null}.
+   * @return {@code true} only when {@code obj} is the same instance as this request.
+   */
   @Override
   public boolean equals(Object obj) {
     return super.equals(obj);
   }
 
+  /**
+   * Returns the stable hash code assigned to this request instance.
+   *
+   * <p>The value is computed once and preserved across serialization by the base class, allowing
+   * hashed collections to remain stable even when requests are persisted and resumed.
+   *
+   * @return stable hash code derived from {@link Object#hashCode()} at construction time.
+   */
   @Override
   public int hashCode() {
     return super.hashCode();
@@ -719,7 +574,7 @@ public class ClientPut extends ClientPutBase {
    * information. When present, callers typically show it to the operator so they can match queued
    * requests with local files and confirm DDA permissions before allowing restarts.
    *
-   * @return Source filename for disk uploads; {@code null} in other cases.
+   * @return source filename for disk uploads, or {@code null} for non-disk sources.
    */
   public File getOrigFilename() {
     if (uploadFrom != UploadFrom.DISK) return null;
@@ -727,14 +582,13 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Reports the size of the payload in bytes, falling back to the last known finished size if the
-   * current bucket has already been released.
+   * Reports the size of the payload in bytes, falling back to the last known finished size.
    *
    * <p>The method enables status pages to compute completion ratios even after {@link
    * RandomAccessBucket} resources were freed to save memory. When {@code data} becomes {@code
    * null}, callers still receive the last committed length so the UI never regresses to zero.
    *
-   * @return Number of bytes scheduled for upload, or the last completed size snapshot.
+   * @return number of bytes scheduled for upload, or the last completed size snapshot.
    */
   public long getDataSize() {
     if (data == null) return finishedSize;
@@ -744,8 +598,7 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Returns the MIME type recorded for this request, which may be inferred from filenames or
-   * explicitly set by the client.
+   * Returns the MIME type recorded for this request, which may be inferred or explicitly set.
    *
    * <p>The metadata is used to populate {@link UploadFileRequestStatus} responses so GUI clients
    * can provide better UX. Binary blob inserts return {@code null} because they decline MIME
@@ -758,11 +611,21 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
+   * Exposes metadata for status assemblies without exposing it publicly.
+   *
+   * @return the {@link ClientMetadata} associated with this request.
+   */
+  ClientMetadata clientMetadataForStatus() {
+    return clientMetadata;
+  }
+
+  /**
    * Checks whether the insert can be retried by re-running compression and routing logic.
    *
    * <p>The method enforces the lifecycle contract: only completed yet failed requests are eligible,
    * and {@link ClientPutter} must agree that cached state still exists. Operators typically call
-   * this before surfacing a “Retry” action in the UI.
+   * this before surfacing a retry action in the UI. The check is read-only and does not mutate any
+   * request state.
    *
    * @return {@code true} when the request finished unsuccessfully and the putter retained restart
    *     data.
@@ -781,17 +644,17 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Replays the insert after a failure, optionally skipping filter-data regeneration when
-   * configured.
+   * Replays the insert after a failure, optionally skipping filter-data regeneration.
    *
    * <p>Before scheduling the new attempt, the method resets the local state, updates status caches,
    * and notifies observers that the request left the finished state. Failures during {@link
    * ClientPutter} startup are handed to {@link ClientPutBase#onFailure(InsertException,
    * network.crypta.client.async.BaseClientPutter)} so retry logic remains consistent with the
-   * normal start path.
+   * normal start path. The method returns immediately if the request is not eligible for restart.
    *
-   * @param context Execution context containing shared schedulers and crypto factories.
-   * @param disableFilterData Whether client filtering data should be bypassed for this retry.
+   * @param context execution context containing shared schedulers and crypto factories; must not be
+   *     {@code null} and should be active.
+   * @param disableFilterData whether client filtering data should be bypassed for this retry.
    * @return {@code true} when the restart was scheduled successfully; {@code false} otherwise.
    */
   @Override
@@ -829,7 +692,8 @@ public class ClientPut extends ClientPutBase {
    *
    * <p>The override extends {@link ClientPutBase#setVarsRestart()} by also pushing compression
    * indicators into the {@link RequestStatusCache} so user interfaces render accurate status after
-   * a manual retry.
+   * a manual retry. The method is synchronized to keep compression flags consistent with other
+   * state updates.
    */
   @Override
   public synchronized void setVarsRestart() {
@@ -843,14 +707,15 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Handles cleanup when the request leaves the queue completely, freeing heavyweight helpers when
-   * possible.
+   * Handles cleanup when the request leaves the queue completely.
    *
    * <p>FOREVER-persistent inserts null the {@link ClientPutter} reference so the object graph can
-   * be GC’d while the serialized form remains on disk. Subclasses may extend this point to release
-   * more resources.
+   * be garbage-collected while the serialized form remains on disk. Subclasses may extend this
+   * point to release more resources. The provided context is the one supplied by the queue at
+   * removal time.
    *
-   * @param context Context supplied by the queue notifying removal time hooks.
+   * @param context context supplied by the queue notifying removal time hooks; must not be {@code
+   *     null}.
    */
   @Override
   public void requestWasRemoved(ClientContext context) {
@@ -861,11 +726,11 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Lists the user-visible compression lifecycle so status polling can expose intuitive progress
-   * wording.
+   * Lists the user-visible compression lifecycle so status polling can expose intuitive progress.
    *
    * <p>The values summarize scheduler queues, CPU-bound work, and downstream insertion so clients
-   * quickly understand whether throughput bottlenecks stem from contention or routing.
+   * quickly understand whether throughput bottlenecks stem from contention or routing. The enum is
+   * used only for UI reporting and does not affect scheduling decisions.
    */
   public enum COMPRESS_STATE {
     /**
@@ -886,14 +751,14 @@ public class ClientPut extends ClientPutBase {
   }
 
   /**
-   * Reports the current {@link COMPRESS_STATE}, allowing UI callers to describe whether the request
-   * is queued, compressing, or already uploading.
+   * Reports the current {@link COMPRESS_STATE}, describing whether the request is queued or active.
    *
    * <p>The method inspects runtime flags so it reflects state across restarts: if compression ran
    * to completion previously, the state returns {@link COMPRESS_STATE#WORKING} even when the
-   * request is being resumed.
+   * request is being resumed. When compression is disabled entirely, the method always reports
+   * {@link COMPRESS_STATE#WORKING}.
    *
-   * @return Compression state describing scheduler waits, active compression, or working uploads.
+   * @return compression state describing scheduler waits, active compression, or working uploads.
    */
   public COMPRESS_STATE isCompressing() {
     if (ctx.isDontCompress()) return COMPRESS_STATE.WORKING;
@@ -937,64 +802,7 @@ public class ClientPut extends ClientPutBase {
 
   @Override
   RequestStatus getStatus() {
-    FreenetURI finalURI = getFinalURI();
-    InsertExceptionMode failureCode = null;
-    String failureReasonShort = null;
-    String failureReasonLong = null;
-    if (putFailedMessage != null) {
-      failureCode = putFailedMessage.failureMode;
-      failureReasonShort = putFailedMessage.getShortFailedMessage();
-      failureReasonLong = putFailedMessage.getLongFailedMessage();
-    }
-    String mimeType = null;
-    if (persistence == Persistence.FOREVER) {
-      mimeType = clientMetadata.getMIMEType();
-    }
-    File fnam = getOrigFilename();
-    if (fnam != null) fnam = new File(fnam.getPath());
-
-    int total = 0;
-    int min = 0;
-    int fetched = 0;
-    int fatal = 0;
-    int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    Date latestSuccess = new Date();
-    Date latestFailure = null;
-    boolean totalFinalized = false;
-
-    if (progressMessage instanceof SimpleProgressMessage msg) {
-      total = (int) msg.getTotalBlocks();
-      min = (int) msg.getMinBlocks();
-      fetched = (int) msg.getFetchedBlocks();
-      latestSuccess = msg.getLatestSuccess();
-      fatal = (int) msg.getFatalyFailedBlocks();
-      failed = (int) msg.getFailedBlocks();
-      latestFailure = msg.getLatestFailure();
-      totalFinalized = msg.isTotalFinalized();
-    }
-
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            identifier,
-            persistence,
-            started,
-            finished,
-            succeeded,
-            total,
-            min,
-            fetched,
-            latestSuccess,
-            fatal,
-            failed,
-            latestFailure,
-            totalFinalized,
-            priorityClass);
-    UploadRequestStatusDetails details =
-        new UploadRequestStatusDetails(
-            finalURI, uri, failureCode, failureReasonShort, failureReasonLong);
-    return new UploadFileRequestStatus(
-        statusSnapshot, details, getDataSize(), mimeType, fnam, isCompressing());
+    return ClientPutStatusSnapshotBuilder.build(this);
   }
 
   /**
