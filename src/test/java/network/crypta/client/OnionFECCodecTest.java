@@ -1,6 +1,8 @@
 package network.crypta.client;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -24,7 +26,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-/** Test the new (post db4o) high level FEC API */
+/** Test the new (post db4o) high-level FEC API */
 @ExtendWith(MockitoExtension.class)
 @SuppressWarnings("java:S100")
 class OnionFECCodecTest {
@@ -275,10 +277,10 @@ class OnionFECCodecTest {
     int r = 3;
     byte[][] d = new byte[k][BLOCK_SIZE];
     byte[][] c = new byte[r][BLOCK_SIZE];
-    // Mark only 1st and last as missing → encode indices {k+0, k+2}
+    // Mark the first and last checks as missing so only those parity blocks are encoded.
     boolean[] present = new boolean[] {false, true, false};
 
-    try (MockedConstruction<PureCode> cons = mockConstruction(PureCode.class, (mock, ctx) -> {})) {
+    try (MockedConstruction<PureCode> cons = mockConstruction(PureCode.class, (_, _) -> {})) {
       codec.encode(d, c, present, BLOCK_SIZE);
       PureCode mock = cons.constructed().getFirst();
 
@@ -401,7 +403,7 @@ class OnionFECCodecTest {
   void getCheckBlocks_whenCompat1250Small_expectAtMostData() {
     int data = 5;
     int checks = codec.getCheckBlocks(data, CompatibilityMode.COMPAT_1250);
-    assertEquals(5, checks); // data+1 would be 6, but capped to data for 1250
+    assertEquals(5, checks); // data+1 would be 6 but capped to data for 1250
   }
 
   @Test

@@ -132,7 +132,7 @@ class NodeCHKTest {
 
   @Test
   void routingKeyFromFullKey_whenUnknownHeader_returnsFirst32BytesCopy() {
-    // Arrange: first two bytes are not {BASE_TYPE, known algo}
+    // Arrange a header that does not match the expected type or algorithm bytes.
     byte[] full = new byte[NodeCHK.FULL_KEY_LENGTH];
     // Header deliberately invalid: type=9, algo=77
     full[0] = 9;
@@ -142,7 +142,7 @@ class NodeCHKTest {
     // Act
     byte[] rk = NodeCHK.routingKeyFromFullKey(full);
 
-    // Assert: equals first 32 bytes; not the same reference as input
+    // Assert: equals the first 32 bytes; different reference as input
     assertArrayEquals(Arrays.copyOf(full, NodeCHK.KEY_LENGTH), rk);
     assertNotSame(full, rk);
   }

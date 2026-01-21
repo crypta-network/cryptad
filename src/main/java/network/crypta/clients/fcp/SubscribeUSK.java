@@ -18,7 +18,7 @@ import network.crypta.node.NodeClientCore;
  * #unsubscribe()} when the client disconnects or no longer requires updates.
  *
  * <p>Typical usage is driven by the FCP protocol flow: the handler constructs this class when a
- * client issues a subscribe request, lets the node push progress callbacks, and eventually calls
+ * client issues a subscription request, lets the node push progress callbacks, and eventually calls
  * {@link #unsubscribe()} during teardown. The object does not perform retries itself; it relies on
  * the underlying USK manager for polling cadence, sparse polling decisions, and cache ownership.
  * All callbacks are expected to be invoked on the node's internal threads, so callers should avoid
@@ -107,7 +107,6 @@ public class SubscribeUSK implements USKProgressCallback {
       core.getUskManager().unsubscribe(key, toUnsub);
       return;
     }
-    // if(newKnownGood && !newSlotToo) return;
     FCPMessage msg =
         new SubscribedUSKUpdate(
             clientIdentifier,
@@ -121,7 +120,7 @@ public class SubscribeUSK implements USKProgressCallback {
   /**
    * Returns the client-requested priority for regular polling cycles.
    *
-   * <p>The value originates from the FCP subscribe message and is passed through unchanged so the
+   * <p>The value originates from the FCP subscribe message and is passed through unchanged, so the
    * USK manager can schedule this subscription relative to others. Lower values typically denote
    * higher priority depending on the underlying scheduler configuration.
    *
@@ -150,9 +149,9 @@ public class SubscribeUSK implements USKProgressCallback {
    * Cancels the active subscription with the USK manager.
    *
    * <p>Callers should invoke this when the FCP connection closes or when the client issues an
-   * unsubscribe request. The method forwards the removal to the node's USK manager using the key
-   * captured at construction. It is safe to call multiple times; redundant calls are ignored by the
-   * manager.
+   * unsubscribed request. The method forwards the removal to the node's USK manager using the key
+   * captured at construction. It is safe to call multiple times; the manager ignores redundant
+   * calls.
    */
   public void unsubscribe() {
     core.getUskManager().unsubscribe(usk, toUnsub);
