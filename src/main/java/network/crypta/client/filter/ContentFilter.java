@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * <p>Typical usage is to call one of the {@code filter(...)} overloads with an input stream, an
  * output stream, the declared MIME type, and the request context. The method returns a small {@link
  * FilterStatus} value describing the effective MIME/charset so that callers can persist or surface
- * that information. All methods are static and the internal registry is shared; the class is
+ * that information. All methods are static, and the internal registry is shared; the class is
  * thread-safe for concurrent use. Registration occurs at class initialization and may be extended
  * via {@link #register(FilterMIMEType)} at startup.
  *
@@ -53,10 +53,10 @@ public class ContentFilter {
   private static final String CHARSET_UTF16 = "UTF-16";
   private static final String CHARSET_UTF32 = "UTF-32";
 
-  // Use a concurrent map to avoid legacy synchronized Hashtable
+  // Use a concurrent map to avoid a legacy synchronized Hashtable
   static final ConcurrentMap<String, FilterMIMEType> mimeTypesByName = new ConcurrentHashMap<>();
 
-  /** The HTML mime types are defined here, to allow other modules to identify it */
+  /** The HTML mime types are defined here to allow other modules to identify it */
   protected static final String[] HTML_MIME_TYPES =
       new String[] {
         "text/html", "application/xhtml+xml", "text/xml+xhtml", "text/xhtml", "application/xhtml"
@@ -169,9 +169,9 @@ public class ContentFilter {
 
     /* FLAC - has a filter
      * Lossless audio format. This data is sometimes encapsulated inside
-     * ogg containers. It is, however, not currently supported, and
+     * ogg containers. It is, however, not currently supported and
      * is very dangerous, as it may specify URLs from which album art
-     * will be dwonloaded from
+     * will be downloaded from
      */
     register(
         new FilterMIMEType(
@@ -281,7 +281,7 @@ public class ContentFilter {
    * Register a {@link FilterMIMEType} under its primary and alternate names.
    *
    * <p>This associates the supplied handler with its {@code primaryMimeType} and any alternate
-   * types so that subsequent lookups via {@link #getMIMEType(String)} resolve to the same object.
+   * types so that later lookups via {@link #getMIMEType(String)} resolve to the same object.
    * Registration is idempotent with respect to keys; an existing mapping will be replaced.
    *
    * @param mimeType the handler describing capabilities, defaults, and filters for a MIME type; may
@@ -633,7 +633,7 @@ public class ContentFilter {
     } catch (UnsupportedEncodingException _) {
       if (LOG.isDebugEnabled()) LOG.debug("{} not supported", candidate);
       return null;
-    } catch (DataFilterException _) {
+    } catch (UnknownCharsetException | DataFilterException _) {
       return null;
     }
   }
@@ -768,7 +768,7 @@ public class ContentFilter {
   static byte[] bomBocu1 = new byte[] {(byte) 0xFB, (byte) 0xEE, (byte) 0x28};
 
   // These BOMs are invalid. That is, we do not support them, they will produce an unrecoverable
-  // error, since we cannot decode them, but the browser might be able to, as e.g. the CSS spec
+  // error, since we cannot decode them, but the browser might be able to, as e.g., the CSS spec
   // refers to them.
   static byte[] bomUtf322143 = new byte[] {(byte) 0x00, (byte) 0x00, (byte) 0xff, (byte) 0xfe};
   static byte[] bomUtf323412 = new byte[] {(byte) 0xfe, (byte) 0xff, (byte) 0x00, (byte) 0x00};
@@ -856,7 +856,7 @@ public class ContentFilter {
   }
 
   /**
-   * Validate whether a specific MIME type can be handled safely by this filter system.
+   * Validate whether this filter system can handle a specific MIME type safely.
    *
    * <p>Intended for preflight checks before downloading content. If the type is unknown or marked
    * unsafe (for example, formats that cannot be sanitized reliably), the method returns an

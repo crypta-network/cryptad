@@ -3,6 +3,7 @@ package network.crypta.client;
 import java.io.Serial;
 import java.util.HashMap;
 import network.crypta.client.filter.DataFilterException;
+import network.crypta.client.filter.UnsafeContentTypeException;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import org.slf4j.Logger;
@@ -22,7 +23,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>Network code constructs a {@code FetchException} when a request cannot progress or should
- *       stop, optionally attaching the underlying {@linkplain #getCause() cause} (for example a
+ *       stop, optionally attaching the underlying {@linkplain #getCause() cause} (for example, a
  *       content‑filter exception).
  *   <li>Higher layers inspect {@link #mode}, {@link #getCause()}, and helpers such as {@link
  *       #isFatal()} to decide between retry, redirect, or user‑visible error.
@@ -95,7 +96,7 @@ public class FetchException extends Exception {
   /**
    * Returns the expected size of the content, or {@code -1} if unknown.
    *
-   * <p>This value may be a best‑effort estimate provided by the network and is not always final
+   * <p>This value may be the best‑effort estimate provided by the network and is not always final
    * unless {@link #finalizedSize()} returns {@code true}.
    *
    * @return content length in bytes or {@code -1} when the size is unknown
@@ -109,7 +110,7 @@ public class FetchException extends Exception {
    *
    * <p>The returned instance preserves the original {@linkplain #mode error mode}, message, new
    * URI, error codes, and the direct {@linkplain #getCause() cause}. Only size/finalization/MIME
-   * fields may differ according to the arguments supplied.
+   * fields may differ, according to the arguments supplied.
    *
    * @param newExpectedSize the size in bytes to record for this failure; use {@code -1} when
    *     unknown
@@ -121,7 +122,7 @@ public class FetchException extends Exception {
   }
 
   /**
-   * If there are many failures, usually in a splitfile fetch, tracks the number of failures of each
+   * If there are many failures, usually in a splitfile fetch tracks the number of failures of each
    * type.
    */
   public final FailureCodeTracker errorCodes;
@@ -367,7 +368,33 @@ public class FetchException extends Exception {
   }
 
   /**
-   * Creates a failure with expected size, cause, and MIME type.
+   * Creates a failure for content that failed validation in the content filter.
+   *
+   * @param expectedSize estimated or final size in bytes, or {@code -1} when unknown
+   * @param t the filter-level exception describing why the content is unsafe; becomes the direct
+   *     cause
+   * @param expectedMimeType MIME type inferred or declared for the content; may be {@code null}
+   */
+  public FetchException(long expectedSize, UnsafeContentTypeException t, String expectedMimeType) {
+    super(
+        getMessage(FetchExceptionMode.CONTENT_VALIDATION_FAILED)
+            + " "
+            + NodeL10n.getBase().getString("FetchException.unsafeContentDetails")
+            + " "
+            + t.getMessage());
+    extraMessage = t.getMessage();
+    this.mode = FetchExceptionMode.CONTENT_VALIDATION_FAILED;
+    this.expectedSize = expectedSize;
+    this.expectedMimeType = expectedMimeType;
+    this.finalizedSizeAndMimeType = false;
+    errorCodes = null;
+    initCause(t);
+    newURI = null;
+    if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+  }
+
+  /**
+   * Creates a failure with the expected size, cause, and MIME type.
    *
    * @param mode the error mode; must not be {@code null}
    * @param expectedSize estimated or final size in bytes, or {@code -1} when unknown
@@ -661,7 +688,7 @@ public class FetchException extends Exception {
     /** Too many levels of recursion into archives */
     @Deprecated // not used
     TOO_DEEP_ARCHIVE_RECURSION(1),
-    /** Don't know what to do with splitfile */
+    /** Don't know what to do with a splitfile */
     @Deprecated // not used
     UNKNOWN_SPLITFILE_METADATA(2),
     /** Don't know what to do with metadata */
@@ -670,7 +697,7 @@ public class FetchException extends Exception {
     INVALID_METADATA(4),
     /** Got an ArchiveFailureException */
     ARCHIVE_FAILURE(5),
-    /** Failed to decode a block. But we found it i.e. it is valid on the network level. */
+    /** Failed to decode a block. But we found it i.e., it is valid on the network level. */
     BLOCK_DECODE_ERROR(6),
     /** Too many split metadata levels */
     @Deprecated // not used
@@ -711,7 +738,7 @@ public class FetchException extends Exception {
     TOO_BIG_METADATA(22),
     /** Splitfile has too big segments */
     TOO_MANY_BLOCKS_PER_SEGMENT(23),
-    /** Not enough meta strings in URI given and no default document */
+    /** Not enough meta-strings in URI given and no default document */
     NOT_ENOUGH_PATH_COMPONENTS(24),
     /** Explicitly canceled */
     CANCELLED(25),
@@ -731,15 +758,15 @@ public class FetchException extends Exception {
     CONTENT_VALIDATION_UNKNOWN_MIME(32),
     /** The content filter knows this data type is dangerous */
     CONTENT_VALIDATION_BAD_MIME(33),
-    /** The metadata specified a hash but the data didn't match it. */
+    /** The metadata specified a hash, but the data didn't match it. */
     CONTENT_HASH_FAILED(34),
     /** FEC decode produced a block that doesn't match the data in the original splitfile. */
     SPLITFILE_DECODE_ERROR(35),
     /**
      * For a filtered download to disk, the MIME type is incompatible with the extension,
-     * potentially resulting in data on disk filtered with one MIME type but accessed by the
+     * potentially resulting in data on the disk filtered with one MIME type but accessed by the
      * operating system with another MIME type. This is equivalent to it not being filtered at all
-     * i.e. potentially dangerous.
+     * i.e., potentially dangerous.
      */
     MIME_INCOMPATIBLE_WITH_EXTENSION(36),
     /** Not enough disk space to start a download or the next stage of a download. */
@@ -820,7 +847,7 @@ public class FetchException extends Exception {
           SPLITFILE_DECODE_ERROR ->
           true;
 
-      // Low level errors, can be retried. Not usually fatal.
+      // Low-level errors can be retried. Not usually fatal.
       case DATA_NOT_FOUND,
           ROUTE_NOT_FOUND,
           REJECTED_OVERLOAD,
@@ -893,7 +920,7 @@ public class FetchException extends Exception {
           SPLITFILE_DECODE_ERROR ->
           true;
 
-      // Low level errors, can be retried. Not usually fatal.
+      // Low-level errors can be retried. Not usually fatal.
       case DATA_NOT_FOUND,
           ROUTE_NOT_FOUND,
           REJECTED_OVERLOAD,
@@ -904,7 +931,7 @@ public class FetchException extends Exception {
           false;
       case BUCKET_ERROR, INTERNAL_ERROR, NOT_ENOUGH_DISK_SPACE ->
           // No point retrying.
-          // But it's not really fatal. I.e. it's not necessarily a problem with the inserted data.
+          // But it's not really fatal. I.e., it's not necessarily a problem with the inserted data.
           false;
 
       // The ContentFilter failed to validate the data. Retrying won't fix this.
@@ -914,8 +941,7 @@ public class FetchException extends Exception {
           MIME_INCOMPATIBLE_WITH_EXTENSION ->
           true;
 
-      // Wierd ones
-      // Not necessarily a problem with the inserted data.
+      // Weird ones are Not necessarily a problem with the inserted data.
       case CANCELLED -> false;
       case ARCHIVE_RESTART, PERMANENT_REDIRECT, WRONG_MIME_TYPE ->
           // Fatal
