@@ -30,11 +30,11 @@ import network.crypta.node.BaseSendableGet;
  * </ul>
  *
  * <p>Implementations should be thread-safe where noted, because some callbacks are invoked on a
- * decode thread. State is typically owned by the fetcher; callbacks should avoid long blocking
+ * decoding thread. State is typically owned by the fetcher; callbacks should avoid long blocking
  * operations and heavy locking. The interface itself is intentionally narrow to streamline unit
  * testing and to allow storage strategies to evolve independently.
  *
- * <p>FIXME reconsider.
+ * <p>Note: reviewed for current fetcher/storage responsibilities.
  *
  * @author toad
  * @see SplitFileFetcher
@@ -85,7 +85,7 @@ public interface SplitFileFetcherStorageCallback {
    *
    * <p>Unlike I/O failures, corruption indicates that on-disk data failed integrity verification
    * (e.g., checksum mismatch). Implementations should abort the request and surface a clear error
-   * to clients. This callback may be invoked on a decode thread.
+   * to clients. This callback may be invoked on a decoding thread.
    *
    * @param e the checksum failure that explains the corruption; non-null and specific to the
    *     detected condition.
@@ -100,7 +100,7 @@ public interface SplitFileFetcherStorageCallback {
    * correction. Values are non-negative and typically remain constant for the duration of the
    * request.
    *
-   * @param requiredBlocks the number of blocks that must be fetched for a successful decode; zero
+   * @param requiredBlocks the number of blocks that must be fetched for a successful decoding; zero
    *     is valid for empty content but unusual in practice.
    * @param remainingBlocks the number of non-required blocks (total minus required); used for
    *     progress reporting and scheduling decisions across segments.
@@ -115,12 +115,12 @@ public interface SplitFileFetcherStorageCallback {
    * @param max The highest CompatibilityMode that appears to be valid based on what we've fetched
    *     so far.
    * @param customSplitfileKey The fixed byte[] encryption key used on insert. On anything recent,
-   *     we generate a single key, randomly for an SSK, or based on the content for a CHK, and use
-   *     it for everything. This saves metadata space and improves security for SSKs.
+   *     we generate a single key, randomly for an SSK, or base on the content for a CHK, and use it
+   *     for everything. This saves metadata space and improves security for SSKs.
    * @param compressed Whether the content is compressed. If false, the dontCompress option was
    *     used.
    * @param bottomLayer Whether this report originates at the bottom layer of the splitfile pyramid.
-   *     I.e. the actual file, not the file containing the metadata to fetch the file (this can
+   *     I.e., the actual file, not the file containing the metadata to fetch the file (this can
    *     recurse for several levels!)
    * @param definitiveAnyway Whether this report is definitive even though it's not from the bottom
    *     layer. This is true of recent splitfiles, where we store all the data in the top key.
@@ -137,8 +137,8 @@ public interface SplitFileFetcherStorageCallback {
    * Queue a block for healing by the storage layer.
    *
    * <p>Healing requests are typically issued when decoding reveals an otherwise fixable defect or
-   * when parity information needs to be regenerated. The method is called from a decode thread, so
-   * implementations must avoid heavy locking and long-running operations.
+   * when parity information needs to be regenerated. The method is called from a decoding thread,
+   * so implementations must avoid heavy locking and long-running operations.
    *
    * @param data the raw block payload bytes to be considered for healing; must not be modified
    *     after the call returns by the implementation.
@@ -163,7 +163,7 @@ public interface SplitFileFetcherStorageCallback {
    *
    * <p>Callers invoke this for every successful block retrieval/verification. Implementations may
    * update progress indicators, adjust scheduling, or trigger downstream notifications. The call is
-   * side effect only and does not carry block content.
+   * a side effect only and does not carry block content.
    */
   void onFetchedBlock();
 
@@ -192,7 +192,7 @@ public interface SplitFileFetcherStorageCallback {
   void onResume(int succeededBlocks, int failedBlocks, ClientMetadata mimeType, long finalSize);
 
   /**
-   * Called when the fetch failed, for example after exhausting retry attempts.
+   * Called when the fetch failed, for example, after exhausting retry attempts.
    *
    * @param fetchException a structured description of the failure condition; contains user-facing
    *     details and internal causes that can be logged or surfaced to clients.
@@ -201,7 +201,7 @@ public interface SplitFileFetcherStorageCallback {
 
   /**
    * Called whenever we successfully download, decode or encode a block, and it matches the expected
-   * key. LOCKING: Called on the decode thread so should avoid taking any dangerous locks.
+   * key. LOCKING: Called on the decoding thread so should avoid taking any dangerous locks.
    *
    * @param decodedBlock the verified block that matched its expected key; implementations must not
    *     mutate the instance and should treat it as read-only input for aggregation logic.
@@ -232,9 +232,9 @@ public interface SplitFileFetcherStorageCallback {
   BaseSendableGet getSendableGet();
 
   /**
-   * Called when we recover from disk corruption, and have to re-download some blocks that we had
-   * already downloaded but which were corrupted on disk. E.g. when a segment attempts to decode but
-   * discovers that a block doesn't match the key given.
+   * Called when we recover from disk corruption and have to re-download some blocks that we had
+   * already downloaded but which were corrupted on disk. E.g., when a segment attempts to decode
+   * but discovers that a block doesn't match the key given.
    */
   void restartedAfterDataCorruption();
 
@@ -242,13 +242,13 @@ public interface SplitFileFetcherStorageCallback {
   void clearCooldown();
 
   /**
-   * Indicate that the cooldown wake-up time was reduced but the request remains non-fetchable.
+   * Indicate that the cooldown wake-up time was reduced, but the request remains non-fetchable.
    *
    * <p>Implementations may update internal timers or user-visible schedules. This is a hint rather
    * than a guarantee and does not by itself make the request immediately eligible for fetch.
    *
    * @param wakeupTime the next suggested wake-up time in milliseconds since the epoch; callers do
-   *     not assume strict adherence and may send subsequent updates.
+   *     not assume strict adherence and may send later updates.
    */
   void reduceCooldown(long wakeupTime);
 

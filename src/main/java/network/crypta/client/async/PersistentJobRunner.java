@@ -51,12 +51,12 @@ public interface PersistentJobRunner {
    * @param threadPriority the platform-specific priority to apply when running the job; higher
    *     numbers indicate higher priority as defined by the executor.
    * @throws PersistenceDisabledException if persistence is not available or the runner is shutting
-   *     down so jobs cannot be accepted.
+   *     down, so jobs cannot be accepted.
    */
   void queue(PersistentJob persistentJob, int threadPriority) throws PersistenceDisabledException;
 
   /**
-   * Queue a job at the normal priority, or silently drop it when persistence is disabled.
+   * Queue a job at the normal priority or silently drop it when persistence is disabled.
    *
    * <p>This is a convenience for callers that can safely ignore the work when persistence is not
    * active, avoiding checked exception handling. The job is not persisted and may be delayed until
@@ -68,13 +68,13 @@ public interface PersistentJobRunner {
   void queueNormalOrDrop(PersistentJob persistentJob);
 
   /**
-   * Start an "internal" job. We will not checkpoint until all the internal jobs have finished; we
+   * Start an "internal" job. We will not check point until all the internal jobs have finished; we
    * do not queue them at all. Hence, a series of internal jobs is atomic. This should be used for
    * stuff like creating the next stage of a request, where storing the half-way state would lead to
    * it potentially not restarting properly after shutdown. It MUST NOT be used for events from
-   * outside the client layer, including finding blocks in the datastore, on the network etc.
+   * outside the client layer, including finding blocks in the datastore, on the network, etc.
    *
-   * <p>FIXME this doesn't queue at all. Come up with a better name! :)
+   * <p>Note: this doesn't queue at all; the name reflects legacy usage.
    *
    * <p>Internal jobs often continue an in-progress workflow on a different thread to minimize lock
    * contention or increase throughput while preserving atomicity with respect to checkpointing
@@ -90,17 +90,17 @@ public interface PersistentJobRunner {
   void queueInternal(PersistentJob job, int threadPriority) throws PersistenceDisabledException;
 
   /**
-   * Start an "internal" job. We will not checkpoint until all the internal jobs have finished; we
+   * Start an "internal" job. We will not check point until all the internal jobs have finished; we
    * do not queue them at all. Hence, a series of internal jobs is atomic. This should be used for
    * stuff like creating the next stage of a request, where storing the half-way state would lead to
    * it potentially not restarting properly after shutdown. It MUST NOT be used for events from
-   * outside the client layer, including finding blocks in the datastore, on the network etc.
+   * outside the client layer, including finding blocks in the datastore, on the network, etc.
    *
-   * <p>Often when we call this we could have continued the job on the same thread. That's not
-   * always the best thing to do however; we frequently move work to another job to minimize lock
+   * <p>Often when we call this, we could have continued the job on the same thread. That's not
+   * always the best thing to do, however; we frequently move work to another job to minimize lock
    * contention or increase throughput.
    *
-   * <p>FIXME this doesn't queue at all. Come up with a better name! :)
+   * <p>Note: this doesn't queue at all; the name reflects legacy usage.
    *
    * @param job the internal job to execute immediately at the default priority; must participate in
    *     a short atomic sequence that should not be checkpointed midway.
@@ -112,7 +112,7 @@ public interface PersistentJobRunner {
    *
    * <p>Jobs may also request a checkpoint by returning {@code true} from {@link
    * PersistentJob#run(ClientContext)}. This method allows callers to request an early checkpoint
-   * inline, outside of job execution, for example when several related updates have just been
+   * inline, outside of job execution, for example, when several related updates have just been
    * enqueued.
    */
   void setCheckpointASAP();
@@ -139,26 +139,26 @@ public interface PersistentJobRunner {
      * Release the lock, optionally requesting an immediate checkpoint.
      *
      * <p>Callers should keep the protected section as small as possible to minimize checkpoint
-     * delay. Unlocking may trigger a write immediately when there are no running jobs and the
+     * delay. Unlocking may trigger a writing immediately when there are no running jobs and the
      * caller priority permits off-thread checkpointing.
      *
-     * @param forceWrite set to {@code true} to request a checkpoint as soon as feasible after the
+     * @param forceWrite set to {@code true} to request a checkpoint as soon as possible after the
      *     lock is released; {@code false} to leave scheduling unchanged.
-     * @param threadPriority the priority to use when scheduling any work resulting from the unlock;
-     *     higher values map to higher executor priority.
+     * @param threadPriority the priority to use when scheduling any work resulting from the
+     *     unlocking; higher values map to higher executor priority.
      */
     void unlock(boolean forceWrite, int threadPriority);
   }
 
   /**
-   * Obtain a lock which will prevent checkpointing until it is unlocked. This counts as a thread,
-   * and can be used for e.g. MemoryLimitedJob's that can change persistent data. Like any lock, you
+   * Get a lock which will prevent checkpointing until it is unlocked. This counts as a thread and
+   * can be used for e.g., MemoryLimitedJob's that can change persistent data. Like any lock, you
    * MUST use a try/finally block. lock() may block if a checkpoint is in progress or is scheduled.
    *
    * @return a {@link CheckpointLock} that defers checkpointing while held and must be released to
    *     allow the next checkpoint to proceed.
-   * @throws PersistenceDisabledException if unable to obtain the lock because the system is
-   *     shutting down or persistence is disabled.
+   * @throws PersistenceDisabledException if unable to get the lock because the system is shutting
+   *     down or persistence is disabled.
    */
   CheckpointLock lock() throws PersistenceDisabledException;
 
@@ -166,15 +166,15 @@ public interface PersistentJobRunner {
    * For persistent requests, return true if the bloom filter salt has changed when loading the
    * requests. In which case all the Bloom filters will be invalid and will need to be recomputed.
    *
-   * @return {@code true} when a new salt was detected during load and dependent Bloom filters must
-   *     be rebuilt; {@code false} when existing filters remain valid.
+   * @return {@code true} when a new salt was detected during the load and dependent Bloom filters
+   *     must be rebuilt; {@code false} when existing filters remain valid.
    */
   boolean newSalt();
 
   /**
    * Indicate whether the node is in the process of shutting down and no longer accepts new work.
    *
-   * @return {@code true} if shutdown has been requested and new submissions may be rejected;
+   * @return {@code true} if shutdown has been requested, and new submissions may be rejected;
    *     otherwise {@code false}.
    */
   boolean shuttingDown();

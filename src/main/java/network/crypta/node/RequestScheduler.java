@@ -169,7 +169,7 @@ public interface RequestScheduler {
    * @param key the key to evaluate
    * @return {@code true} if the key should be requested
    */
-  /* FIXME SECURITY Clarify trust and authorization boundaries if a future tunneling
+  /* Security note: Clarify trust and authorization boundaries if a future tunneling
    * mechanism allows starting requests remotely. Revisit the caller-side logic noted in
    * RequestHandler (onAbort() handler) to ensure this check remains valid. */
   boolean wantKey(Key key);

@@ -8,7 +8,7 @@ import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.SocketHandler;
 
 /**
- * Abstraction for composing and sending outgoing packets for a transport.
+ * Abstraction for composing and sending outgoing packets for transport.
  *
  * <p>Implementations provide the mechanics to initiate handshakes, assess connectivity constraints,
  * and emit wire-ready datagrams/frames to a {@link SocketHandler}. A UDP-based transport typically
@@ -92,14 +92,14 @@ public interface OutgoingPacketMangler {
   /**
    * Port forwarding status.
    *
-   * @return a status code from {@link network.crypta.io.AddressTracker}. FIXME: Consider
-   *     abstracting the return type away from {@code AddressTracker.Status} to a transport-agnostic
-   *     connectivity indicator when multiple transports require it.
+   * @return a status code from {@link network.crypta.io.AddressTracker}. Consider abstracting the
+   *     return type away from {@code AddressTracker.Status} to a transport-agnostic connectivity
+   *     indicator when multiple transports require it.
    */
   Status getConnectivityStatus();
 
   /**
-   * Is there any reason not to allow this connection? E.g. limits on the number of nodes on a
+   * Is there any reason not to allow this connection? E.g., limits on the number of nodes on a
    * specific IP address?
    *
    * @param node the peer node we intend to connect to.
