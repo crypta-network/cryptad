@@ -52,8 +52,8 @@ public interface KeysFetchingLocally {
    *
    * <p>Used to avoid duplicate inserts originating from the same scheduler context.
    *
-   * <p>FIXME: Track the request:token association in the inserter implementation and retire this
-   * interface-level query.
+   * <p>Note: this could move into the inserter implementation when "request:token" association is
+   * tracked there.
    *
    * @param token identifier for the in-flight insert
    * @return {@code true} if the token is executing locally; otherwise {@code false}

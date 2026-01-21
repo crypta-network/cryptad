@@ -41,10 +41,6 @@ class NodeClientCoreTransferPolicyTest {
   private static final String OUTSIDE_FILE_NAME = "outside.bin";
   private static final String DOWNLOAD_ALLOWED_DIRS_KEY = "downloadAllowedDirs";
   private static final String UPLOAD_ALLOWED_DIRS_KEY = "uploadAllowedDirs";
-  private static final String DOWNLOAD_ALLOWED_DIRS_SHORT = "NodeClientCore.downloadAllowedDirs";
-  private static final String DOWNLOAD_ALLOWED_DIRS_LONG = "NodeClientCore.downloadAllowedDirsLong";
-  private static final String UPLOAD_ALLOWED_DIRS_SHORT = "NodeClientCore.uploadAllowedDirs";
-  private static final String UPLOAD_ALLOWED_DIRS_LONG = "NodeClientCore.uploadAllowedDirsLong";
 
   @TempDir Path tempDir;
 

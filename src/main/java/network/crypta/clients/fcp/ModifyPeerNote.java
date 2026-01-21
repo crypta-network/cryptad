@@ -65,8 +65,8 @@ public class ModifyPeerNote extends FCPMessage {
    * Returns the field template for this message type.
    *
    * <p>The current implementation returns a new, empty {@link SimpleFieldSet} instance. This is
-   * sufficient because {@code ModifyPeerNote} is handled primarily as an inbound message parsed
-   * from the client, and the node does not need to advertise additional fields when constructing
+   * enough because {@code ModifyPeerNote} is handled primarily as an inbound message parsed from
+   * the client, and the node does not need to advertise additional fields when constructing
    * responses. Callers should not rely on the returned instance being reused.
    *
    * @return a new, empty field set instance representing the message fields for this type
@@ -101,10 +101,10 @@ public class ModifyPeerNote extends FCPMessage {
    * client reflecting the new state. Invalid or missing fields cause {@link
    * MessageInvalidException} to be thrown or a specific error response to be sent.
    *
-   * <p>The method is not idempotent with respect to note contents: subsequent calls with the same
-   * peer and note type overwrite the existing note. The call relies on the caller to provide a
-   * valid, running {@link Node} instance; behaviour is undefined if the node is stopping or the
-   * referenced peer disappears concurrently.
+   * <p>The method is not idempotent with respect to note contents: later calls with the same peer
+   * and note type overwrite the existing note. The call relies on the caller to provide a valid,
+   * running {@link Node} instance; behavior is undefined if the node is stopping or the referenced
+   * peer disappears concurrently.
    *
    * @param handler the connection handler that received the request and is used to send any reply
    *     or error messages back to the client; must have full access for the operation to proceed
@@ -162,8 +162,7 @@ public class ModifyPeerNote extends FCPMessage {
           false);
     }
     String noteText;
-    // **FIXME** this should be generalized for multiple peer notes per peer, after PeerNode is
-    // similarly generalized
+    // Note: this supports the single private note type until PeerNode supports multiple notes.
     try {
       noteText = Base64.decodeUTF8(encodedNoteText);
     } catch (IllegalBase64Exception e) {

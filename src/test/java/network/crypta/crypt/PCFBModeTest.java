@@ -14,7 +14,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Random;
 import network.crypta.crypt.ciphers.Rijndael;
-import network.crypta.support.HexUtil;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,9 +21,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-// 256,256 PCFB is the same as 256,256 CFB, however JCA does not support 256-bit block size, so we
+// 256,256 PCFB is the same as 256,256 CFB, however, JCA does not support 256-bit block size, so we
 // can't
-// test against JCA. We will move to the standard block size, and stop using PCFB, eventually, but
+// test against JCA. We will move to the standard block size and stop using PCFB, eventually, but
 // we'll
 // need PCFB for a while if only for old keys, so we need to test it.
 @SuppressWarnings("java:S100")
@@ -34,21 +33,21 @@ class PCFBModeTest {
   private final Random mt = new Random(1634L);
   private static final int RIJNDAEL_BLOCK_BITS = 256;
 
-  // FIXME I don't think there are any standard test vectors?
+  // Note: no standard test vectors are available for this configuration.
   private static final byte[] PCFB_256_ENCRYPT_KEY =
-      HexUtil.hexToBytes("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
-  // FIXME This IV was tailored for CTR mode and 128-bit block, maybe needs adjustment
+      hexToBytes("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4");
+  // Note: this IV was tailored for CTR mode and a 128-bit block.
   private static final byte[] PCFB_256_ENCRYPT_IV =
-      HexUtil.hexToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfefff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff");
-  // FIXME This plaintext was tailored for 128-bit block, maybe needs adjustment
+      hexToBytes("f0f1f2f3f4f5f6f7f8f9fafbfcfdfefff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff");
+  // Note: this plaintext was tailored for a 128-bit block.
   private static final byte[] PCFB_256_ENCRYPT_PLAINTEXT =
-      HexUtil.hexToBytes(
+      hexToBytes(
           "6bc1bee22e409f96e93d7e117393172a"
               + "ae2d8a571e03ac9c9eb76fac45af8e51"
               + "30c81c46a35ce411e5fbc1191a0a52ef"
               + "f69f2445df4f9b17ad2b417be66c3710");
   private static final byte[] PCFB_256_ENCRYPT_CIPHERTEXT =
-      HexUtil.hexToBytes(
+      hexToBytes(
           "c964b00326e216214f1a68f5b0872608"
               + "1b403c92fe02898664a81f5bbbbf8341"
               + "fc1d04b2c1addfb826cca1eab6813127"
@@ -148,7 +147,7 @@ class PCFBModeTest {
       mt.nextBytes(plaintext);
       mt.nextBytes(key);
       mt.nextBytes(iv);
-      // First encrypt as a block.
+      // First, encrypt as a block.
       Rijndael cipher = new Rijndael(RIJNDAEL_BLOCK_BITS, RIJNDAEL_BLOCK_BITS);
       cipher.initialize(key);
       PCFBMode pcfb = PCFBMode.create(cipher, iv);
@@ -447,5 +446,22 @@ class PCFBModeTest {
 
   private static PCFBMode createZeroIv(BlockCipher c) {
     return PCFBMode.create(c, new byte[PCFBMode.lengthIV(c)]);
+  }
+
+  private static byte[] hexToBytes(String hex) {
+    int length = hex.length();
+    int size = (length + 1) / 2;
+    byte[] out = new byte[size];
+    int offset = (length % 2 == 0) ? 0 : 1;
+    int index = 0;
+    if (offset == 1) {
+      out[index++] = (byte) Character.digit(hex.charAt(0), 16);
+    }
+    for (int i = offset; i < length; i += 2) {
+      int high = Character.digit(hex.charAt(i), 16);
+      int low = Character.digit(hex.charAt(i + 1), 16);
+      out[index++] = (byte) ((high << 4) | low);
+    }
+    return out;
   }
 }

@@ -52,8 +52,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @SuppressWarnings("java:S100")
 class NodeServicesSubsystemTest {
   private static final String PEERS_OFFERS_DISMISSED = "peersOffersDismissed";
-  private static final String PEERS_OFFERS_DISMISSED_SHORT = "Node.peersOffersDismissed";
-  private static final String PEERS_OFFERS_DISMISSED_LONG = "Node.peersOffersDismissedLong";
 
   @Mock private Node node;
   @Mock private NodeClientCore clientCore;

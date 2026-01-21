@@ -15,7 +15,7 @@ package network.crypta.client.async;
  *
  * <p><strong>Threading:</strong> unless otherwise documented by an implementation, instances are
  * not inherently thread-safe. Access should be serialized by the request scheduler or owning
- * subsystem. Methods do not guarantee idempotency: reducing or clearing wakeups mutates state and
+ * subsystem. Methods do not guarantee idempotency: reducing or clearing wakeup mutates state and
  * can propagate upward to parent nodes.
  *
  * <ul>
@@ -24,8 +24,8 @@ package network.crypta.client.async;
  *   <li>Propagates changes upward so parent nodes reflect earlier eligibility.
  * </ul>
  *
- * (but ClientRequestSelector isn't actually a RequestSelectionTreeNode at the moment, the root is
- * the priorities in the array on ClientRequestSelector; FIXME consistency with RGA.root etc)
+ * (but ClientRequestSelector isn't a RequestSelectionTreeNode at the moment, the root is the
+ * priorities in the array on ClientRequestSelector; consistency with RGA.root etc.)
  */
 public interface RequestSelectionTreeNode {
 
@@ -46,7 +46,7 @@ public interface RequestSelectionTreeNode {
    * Returns the next wakeup time for this node.
    *
    * <p>For aggregation nodes this is the wakeup time for the entire subtree rooted at this node.
-   * For a leaf (for example a {@code RandomGrabArrayItem}), this is the wakeup time for the single
+   * For a leaf (for example, a {@code RandomGrabArrayItem}), this is the wakeup time for the single
    * request represented by the leaf. The time base and units are implementation-defined; callers
    * should pass a {@code now} value from the same source they use to interpret the return value.
    *
@@ -64,8 +64,8 @@ public interface RequestSelectionTreeNode {
    * toward the root.
    *
    * <p>This method is used when an earlier eligibility is discovered within the subtree. If the
-   * change reaches the root and causes it to become earlier than previously recorded, the owning
-   * scheduler should be notified by the implementation. The operation is stateful and may alter the
+   * change reaches the root and causes it to become earlier than previously recorded, the
+   * implementation should notify the owning scheduler. The operation is stateful and may alter the
    * effective scheduling of ancestor nodes.
    *
    * @param wakeupTime a candidate earlier wakeup time, expressed in the time base used by the

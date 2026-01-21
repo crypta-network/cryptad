@@ -15,7 +15,7 @@ import network.crypta.keys.FreenetURI;
  * stream of events rather than a random-access model.
  *
  * <p>Thread-safety is implementation defined. Unless otherwise documented by the caller, you should
- * not assume that invocations are serialized; if shared state is mutated, synchronize or use
+ * not assume that invocations are serialized; if a shared state is mutated, synchronize or use
  * concurrent collections. Implementations are generally expected to be stateless or to scope state
  * to the current page between the first event and {@code onFinishedPage()}.
  *
@@ -38,9 +38,8 @@ public interface FoundURICallback {
    * once. The method is idempotent with respect to side effects only if the implementation makes it
    * so; callers may not perform duplicate suppression.
    *
-   * @param uri The URI. FIXME: Indicate the type of the link e.g. inline image, hyperlink, etc?
-   *     Consider clarifying how the caller communicates link semantics when richer metadata is
-   *     available.
+   * @param uri The URI. Consider clarifying how the caller communicates link semantics when richer
+   *     metadata is available.
    */
   void foundURI(FreenetURI uri);
 
@@ -50,12 +49,11 @@ public interface FoundURICallback {
    *
    * <p>This variant carries an {@code inline} flag to help distinguish embedded resources from
    * navigational links in simple pipelines. The flag is advisory only. Implementations may ignore
-   * it, or use it to prioritize fetching, indexing, or display decisions. Callers may repeat the
+   * it or use it to prioritize fetching, indexing, or display decisions. Callers may repeat the
    * same URI with different flags as they encounter it in multiple contexts.
    *
-   * @param uri The URI. FIXME: Indicate the type of the link e.g. inline image, hyperlink, etc?
-   *     Consider clarifying how the caller communicates link semantics when richer metadata is
-   *     available.
+   * @param uri The URI. Consider clarifying how the caller communicates link semantics when richer
+   *     metadata is available.
    * @param inline {@code true} when the URI appears as an inline/embedded resource in the current
    *     context (such as an image, stylesheet, or script); {@code false} when it is a navigational
    *     link or otherwise not rendered inline. Callers may pass either value; implementations
@@ -64,21 +62,21 @@ public interface FoundURICallback {
   void foundURI(FreenetURI uri, boolean inline);
 
   /**
-   * Called when some plain text is processed. This is used typically by spiders to index pages by
-   * their content.
+   * Called when some plain text is processed. Spiders use this typically to index pages by their
+   * content.
    *
    * <p>The supplied text has already been decoded according to the source format (for example, HTML
    * entity decoding if extracted from HTML). Implementations that forward text to a consumer which
    * expects display-ready data should re-encode as appropriate for that consumer.
    *
    * @param text The text. Will already have been fed through whatever decoding is necessary
-   *     depending on the type of the source document e.g. HTMLDecoder. Will need to be re-encoded
-   *     before being sent to e.g. a browser.
-   * @param type Can be null, or may be for example the name of the HTML tag directly surrounding
+   *     depending on the type of the source document e.g., HTMLDecoder. Will need to be re-encoded
+   *     before being sent to e.g., a browser.
+   * @param type Can be null, or may be, for example, the name of the HTML tag directly surrounding
    *     the text. E.g. "title" lets you find page titles.
    * @param baseURI The current base URI for this page. The base URI is not necessarily the URI of
    *     the page. It's the URI against which URIs on the page are resolved. It defaults to the URI
-   *     of the page but can be overridden by base href in html, for example.
+   *     of the page but can be overridden by base href in HTML, for example.
    */
   void onText(String text, String type, URI baseURI);
 
