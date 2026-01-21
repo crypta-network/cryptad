@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings("java:S100") // Allow method names in given_when_then style
+@SuppressWarnings("java:S100") // Allow method names in the given_when_then style
 class StringCounterTest {
 
   @Test
@@ -161,7 +161,7 @@ class StringCounterTest {
     assertEquals("td", c0.getName());
     assertEquals("td", c1.getName());
 
-    // First cell ends with NBSP; HTML encoding converts it to &nbsp;
+    // Expect the first cell text to end with a non-breaking space entity.
     assertEquals(count + "&nbsp;", c0.generateChildren());
     assertEquals(text, c1.generateChildren());
   }

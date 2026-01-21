@@ -73,7 +73,7 @@ class SimpleBlockChooserTest {
   @Test
   void chooseKey_whenMultipleCandidates_selectsUsingRandomAmongMinRetry() {
     SimpleBlockChooser chooser = new SimpleBlockChooser(5, new FixedRandom(0), 2);
-    // Set higher retry count for some blocks so min-retry candidates are {0,2,4}
+    // Increase retries on some blocks so the lowest-retry candidates are 0, 2, and 4.
     chooser.onNonFatalFailure(1);
     chooser.onNonFatalFailure(3);
 

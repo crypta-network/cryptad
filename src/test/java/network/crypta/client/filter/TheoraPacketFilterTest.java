@@ -141,7 +141,7 @@ class TheoraPacketFilterTest {
     w.u24(0);
     w.u24(0);
 
-    // CS ∈ {0,1,2}
+    // Use CS value 1 within the allowed 0-2 range.
     w.u8(1);
 
     // NOMBR + QUAL + KFGSHIFT: 35 bits (zeros)
@@ -162,7 +162,7 @@ class TheoraPacketFilterTest {
     BitWriter w = new BitWriter();
     w.u8(0x81);
     w.magic();
-    // Remaining bytes (vendor and user comments) are ignored by the parser; include a small filler.
+    // The parser ignores remaining bytes (vendor and user comments); include a small filler.
     w.u32(1); // vendor length (dummy)
     w.u8('x');
     w.u32(0); // userCommentsNumber
@@ -216,7 +216,7 @@ class TheoraPacketFilterTest {
       }
     }
 
-    // 80 Huffman tables: use single-leaf with TOKEN=0 (ISLEAF=1, then 5 bits token)
+    // 80 Huffman tables: use single-leaf with TOKEN=0 (ISLEAF=1, then 5-bit token)
     for (int i = 0; i < 80; i++) {
       w.bits(1, 1);
       w.bits(0, 5);
@@ -249,7 +249,9 @@ class TheoraPacketFilterTest {
     // (qti=0, pli=0): no NEWQR read here
     w.bits(0, 1); // QRBMIS with 1 bit (ilog(1) = 1)
     w.bits(63, 6); // QRSIZES -> 63 + 1 => 64 -> triggers exception
-    w.bits(0, 1); // second QRBMIS read (not reached logically, but consumed by reader before throw)
+    w.bits(
+        0, 1); // the second QRBMIS read (not reached logically, but consumed by the reader before
+    // throw)
 
     // The rest of the stream is irrelevant; parser will throw when qi > 63
     return w.toByteArray();
