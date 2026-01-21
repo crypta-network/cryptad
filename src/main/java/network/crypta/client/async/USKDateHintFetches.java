@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.io.Serial;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -21,7 +22,6 @@ import network.crypta.crypt.HashResult;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientSSK;
 import network.crypta.keys.FreenetURI;
-import network.crypta.keys.Key;
 import network.crypta.keys.USK;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.compress.Compressor;
@@ -40,29 +40,34 @@ import org.slf4j.LoggerFactory;
  * alongside the fetcher and call {@link #maybeStart(ClientContext)} once per polling cycle,
  * followed by {@link #cancelAll(ClientContext)} when the fetcher shuts down.
  *
- * <p>Instances are mutable and synchronize on {@code this} for state such as scheduled flags and
- * active attempts. The set of in-flight attempts is small (one per {@link USKDateHint.Type}) and is
- * pruned when a more precise hint succeeds. The helper is intentionally conservative: if hints are
- * disabled or already scheduled, it performs no work and leaves the fetcher to continue its normal
- * probing.
+ * <p>The helper is intentionally conservative about work. It schedules at most one attempt per
+ * {@link USKDateHint.Type} in a cycle, and it will skip scheduling entirely when hints are disabled
+ * or already attempted. Successful hint parses prune less precise siblings, keeping I/O minimal.
+ * The helper is mutable and tracks per-cycle counters for hints started and found to guide later
+ * probing decisions. Callers should treat the instance as tied to a single fetcher lifecycle and
+ * reuse it across polling rounds.
  *
  * <ul>
  *   <li><strong>Responsibilities</strong>: schedule DBR hint fetches, parse hint payloads, and
  *       forward valid editions to {@link USKManager}.
  *   <li><strong>State model</strong>: scheduled once per cycle; attempts cleared on completion or
- *       cancellation.
- *   <li><strong>Threading</strong>: internal collections are guarded by synchronization; callbacks
- *       may run on scheduler threads.
+ *       cancellation; hint counters reset per cycle.
+ *   <li><strong>Threading</strong>: synchronization guards internal collections and counters;
+ *       callbacks may run on scheduler threads.
  * </ul>
+ *
+ * @see USKFetcher
+ * @see USKManager
+ * @see USKDateHint
  */
 final class USKDateHintFetches {
   /** Logger for hint scheduling, parsing, and failure diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(USKDateHintFetches.class);
 
-  /** Owning fetcher that supplies priority class and completion hooks for DBR work. */
+  /** The owning fetcher that supplies priority class and completion hooks for DBR work. */
   private final USKFetcher owner;
 
-  /** Manager that consumes DBR hint updates and schedules follow-up probes. */
+  /** Manager that consumes DBR hints updates and schedules follow-up probes. */
   private final USKManager uskManager;
 
   /** Original USK used to derive hint request URIs and to copy with hinted editions. */
@@ -77,7 +82,7 @@ final class USKDateHintFetches {
   /** Parent requester that defines persistence and real-time scheduling policies. */
   private final ClientRequester parent;
 
-  /** Cached real-time flag from the parent to avoid repeated lookups. */
+  /** Cached the real-time flag from the parent to avoid repeated lookups. */
   private final boolean realTimeFlag;
 
   /** Active DBR attempts, guarded by {@code this} for thread-safe access. */
@@ -93,13 +98,79 @@ final class USKDateHintFetches {
   private int hintsStarted;
 
   /**
+   * Supplies a priority class for DBR hint fetchers with a safe fallback.
+   *
+   * <p>The provider captures the owner's priority at construction time so that serialized attempts
+   * still have a sensible priority even if the owning fetcher is not available after restart.
+   */
+  private static final class DBRPriorityProvider
+      implements SimpleSingleFileFetcher.PriorityClassProvider {
+    /** Serialization version for the priority provider. */
+    @Serial private static final long serialVersionUID = 1L;
+
+    /** Owning fetcher reference, transient for persistence safety. */
+    private final transient USKFetcher owner;
+
+    /** Priority to use when the owner reference is unavailable. */
+    private final short fallbackPriority;
+
+    /**
+     * Creates a provider bound to the owning fetcher.
+     *
+     * @param owner owning fetcher that supplies priority information never {@code null}
+     */
+    private DBRPriorityProvider(USKFetcher owner) {
+      this.owner = owner;
+      this.fallbackPriority = owner.getPriorityClass();
+    }
+
+    @Override
+    public short getPriorityClass() {
+      if (owner == null) return fallbackPriority;
+      return owner.getPriorityClass();
+    }
+  }
+
+  /**
+   * Creates key listeners for DBR attempts while honoring owner cancellation.
+   *
+   * <p>The factory delegates to the fetcher's listener creation helper while short-circuiting when
+   * the owning fetcher is already canceled.
+   */
+  private static final class DBRKeyListenerFactory
+      implements SimpleSingleFileFetcher.KeyListenerFactory {
+    /** Serialization version for the key listener factory. */
+    @Serial private static final long serialVersionUID = 1L;
+
+    /** Owning fetcher reference, transient for persistence safety. */
+    private final transient USKFetcher owner;
+
+    /**
+     * Creates a factory bound to the owning fetcher.
+     *
+     * @param owner owning fetcher used for cancellation checks, never {@code null}
+     */
+    private DBRKeyListenerFactory(USKFetcher owner) {
+      this.owner = owner;
+    }
+
+    @Override
+    public KeyListener makeKeyListener(
+        SimpleSingleFileFetcher fetcher, ClientContext context, boolean onStartup) {
+      if (owner != null && owner.isCancelled()) return null;
+      return fetcher.createKeyListener(fetcher.getPriorityClass());
+    }
+  }
+
+  /**
    * Creates a coordinator for DBR hint fetches associated with a single USK fetcher.
    *
    * <p>The instance is bound to the provided contexts and parent requester. It does not schedule
    * work until {@link #maybeStart(ClientContext)} is invoked, and it does not mutate the contexts.
    * Callers should reuse the instance for the lifetime of the owning {@link USKFetcher}.
    *
-   * @param owner owning fetcher that provides priority and lifecycle callbacks; must not be null
+   * @param owner the owning fetcher that provides priority and lifecycle callbacks; must not be
+   *     null
    * @param uskManager manager to receive parsed hint updates; must not be null
    * @param origUSK base USK used to derive hint URIs and to copy editions; must not be null
    * @param ctx main fetch context used for limits and parsing decisions; must not be null
@@ -183,9 +254,9 @@ final class USKDateHintFetches {
   /**
    * Cancels all in-flight DBR attempts and clears internal tracking.
    *
-   * <p>This method is idempotent and may be called multiple times; subsequent calls will simply
-   * observe an empty attempt set. It is typically invoked when the owning request is canceled or
-   * shut down, ensuring that no more hint callbacks will fire.
+   * <p>This method is idempotent and may be called multiple times; later calls will simply observe
+   * an empty attempt set. It is typically invoked when the owning request is canceled or shut down,
+   * ensuring that no more hint callbacks will fire.
    *
    * @param context client context used to propagate cancellation to schedulers; must not be null
    */
@@ -201,7 +272,7 @@ final class USKDateHintFetches {
   /**
    * Decides whether to add random edition probes based on prior hint outcomes.
    *
-   * <p>The decision is stochastic to spread load: the method samples a random value in a range
+   * <p>The decision is stochastic to the spread load: the method samples a random value in a range
    * based on how many hints were started and compares it to how many were successfully parsed. On
    * the first loop, the method always returns {@code false} to avoid extra work before hints have
    * had a chance to complete.
@@ -254,32 +325,9 @@ final class USKDateHintFetches {
                   .essential(false)
                   .dontAdd(true)
                   .deleteFetchContext(false)
-                  .realTime(realTimeFlag)) {
-            @Override
-            public short getPriorityClass() {
-              return owner.getPriorityClass();
-            }
-
-            @Override
-            public KeyListener makeKeyListener(ClientContext context, boolean onStartup) {
-              synchronized (this) {
-                if (finished) return null;
-              }
-              if (owner.isCancelled()) return null;
-              if (key == null) {
-                if (LOG.isErrorEnabled()) {
-                  LOG.error(
-                      "Key is null - left over BSSF? on {} in makeKeyListener()",
-                      this,
-                      new Exception("error"));
-                }
-                return null;
-              }
-              Key newKey = key.getNodeKey(true);
-              short prio = owner.getPriorityClass();
-              return new SingleKeyListener(newKey, this, prio, persistent);
-            }
-          };
+                  .realTime(realTimeFlag)
+                  .priorityClassProvider(new DBRPriorityProvider(owner))
+                  .keyListenerFactory(new DBRKeyListenerFactory(owner)));
       this.type = type;
       if (LOG.isTraceEnabled()) LOG.trace("Created {} with {}", this, fetcher);
     }
