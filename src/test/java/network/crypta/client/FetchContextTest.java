@@ -99,108 +99,76 @@ class FetchContextTest {
 
   @Test
   void constructor_whenNegativeMaxOutputLength_expectIllegalArgumentException() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder().limits(-1L, VALID_MAX_TEMP, VALID_MAX_METADATA).build()));
+    FetchContextOptions options =
+        validOptionsBuilder().limits(-1L, VALID_MAX_TEMP, VALID_MAX_METADATA).build();
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(options));
   }
 
   @Test
   void constructor_whenNegativeMaxTempLength_expectIllegalArgumentException() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder().limits(VALID_MAX_OUTPUT, -2L, VALID_MAX_METADATA).build()));
+    FetchContextOptions options =
+        validOptionsBuilder().limits(VALID_MAX_OUTPUT, -2L, VALID_MAX_METADATA).build();
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(options));
   }
 
   @Test
   void constructor_whenNegativeMaxMetadata_expectIllegalArgumentException() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder().limits(VALID_MAX_OUTPUT, VALID_MAX_TEMP, -1).build()));
+    FetchContextOptions options =
+        validOptionsBuilder().limits(VALID_MAX_OUTPUT, VALID_MAX_TEMP, -1).build();
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(options));
   }
 
   @Test
   void constructor_whenSplitRetriesLessThanMinusOne_expectIllegalArgumentException() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder()
-                    .retryLimits(-2, VALID_NON_SPLIT_RETRIES, VALID_USK_RETRIES)
-                    .build()));
+    FetchContextOptions options =
+        validOptionsBuilder().retryLimits(-2, VALID_NON_SPLIT_RETRIES, VALID_USK_RETRIES).build();
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(options));
   }
 
   @Test
   void constructor_whenNonSplitRetriesLessThanMinusOne_expectIllegalArgumentException() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder()
-                    .retryLimits(VALID_SPLIT_BLOCK_RETRIES, -5, VALID_USK_RETRIES)
-                    .build()));
+    FetchContextOptions options =
+        validOptionsBuilder().retryLimits(VALID_SPLIT_BLOCK_RETRIES, -5, VALID_USK_RETRIES).build();
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(options));
   }
 
   @Test
   void constructor_whenUSKRetriesLessThanMinusOne_expectIllegalArgumentException() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder()
-                    .retryLimits(VALID_SPLIT_BLOCK_RETRIES, VALID_NON_SPLIT_RETRIES, -2)
-                    .build()));
+    FetchContextOptions options =
+        validOptionsBuilder()
+            .retryLimits(VALID_SPLIT_BLOCK_RETRIES, VALID_NON_SPLIT_RETRIES, -2)
+            .build();
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(options));
   }
 
   @Test
   void constructor_whenDataBlocksOutOfRange_expectIllegalArgumentException() {
+    FetchContextOptions negativeOptions =
+        validOptionsBuilder().splitfileLimits(VALID_ALLOW_SPLIT, -1, VALID_MAX_CHECKBLOCKS).build();
     // Negative
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder()
-                    .splitfileLimits(VALID_ALLOW_SPLIT, -1, VALID_MAX_CHECKBLOCKS)
-                    .build()));
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(negativeOptions));
+    FetchContextOptions largeOptions =
+        validOptionsBuilder()
+            .splitfileLimits(
+                VALID_ALLOW_SPLIT, FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1, VALID_MAX_CHECKBLOCKS)
+            .build();
     // Greater than allowed
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder()
-                    .splitfileLimits(
-                        VALID_ALLOW_SPLIT,
-                        FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1,
-                        VALID_MAX_CHECKBLOCKS)
-                    .build()));
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(largeOptions));
   }
 
   @Test
   void constructor_whenCheckBlocksOutOfRange_expectIllegalArgumentException() {
+    FetchContextOptions negativeOptions =
+        validOptionsBuilder().splitfileLimits(VALID_ALLOW_SPLIT, VALID_MAX_DATABLOCKS, -1).build();
     // Negative
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder()
-                    .splitfileLimits(VALID_ALLOW_SPLIT, VALID_MAX_DATABLOCKS, -1)
-                    .build()));
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(negativeOptions));
+    FetchContextOptions largeOptions =
+        validOptionsBuilder()
+            .splitfileLimits(
+                VALID_ALLOW_SPLIT, VALID_MAX_DATABLOCKS, FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1)
+            .build();
     // Greater than allowed
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new FetchContext(
-                validOptionsBuilder()
-                    .splitfileLimits(
-                        VALID_ALLOW_SPLIT,
-                        VALID_MAX_DATABLOCKS,
-                        FECCodec.MAX_TOTAL_BLOCKS_PER_SEGMENT + 1)
-                    .build()));
+    assertThrows(IllegalArgumentException.class, () -> new FetchContext(largeOptions));
   }
 
   @Test
@@ -257,7 +225,7 @@ class FetchContextTest {
   @Test
   void copyConstructor_whenSplitfileDefaultBlockMask_appliesRestrictions() {
     FetchContext base = createValidContext();
-    // Ensure base has different values so mask effects are observable
+    // Ensure the base has different values so mask effects are observable
     base.setMaxRecursionLevel(5);
     base.setMaxArchiveRestarts(2);
     base.setDontEnterImplicitArchives(false);
@@ -397,7 +365,7 @@ class FetchContextTest {
   @Test
   void writeTo_whenTagReplacerPresent_expectUnsupportedOperationException() throws IOException {
     FetchContext ctx = createValidContext();
-    ctx.setTagReplacer((pt, uriProcessor) -> null);
+    ctx.setTagReplacer((_, _) -> null);
     try (var baos = new ByteArrayOutputStream();
         var dos = new DataOutputStream(baos)) {
       assertThrows(UnsupportedOperationException.class, () -> ctx.writeTo(dos));
@@ -412,7 +380,7 @@ class FetchContextTest {
     ctx.setCanWriteClientCache(true);
     ctx.setOverrideMIME("text/html");
     ctx.setIgnoreUSKDatehints(true);
-    ctx.setCharset("UTF-8");
+    ctx.setCharset(VALID_CHARSET);
 
     byte[] bytes;
     try (var baos = new ByteArrayOutputStream();
@@ -435,7 +403,7 @@ class FetchContextTest {
   void readFrom_whenStreamOmitsSchemeHostAndPort_setsNull() throws Exception {
     // Manually serialize the "old" format without the final schemeHostAndPort UTF string.
     FetchContext ctx = createValidContext();
-    ctx.setAllowedMIMETypes(new HashSet<>(Set.of("text/plain")));
+    ctx.setAllowedMIMETypes(new HashSet<>(Set.of(VALID_OVERRIDE_MIME)));
     ctx.setCharset(null);
     ctx.setCanWriteClientCache(false);
     ctx.setOverrideMIME(null);

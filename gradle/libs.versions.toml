@@ -20,7 +20,7 @@ dbusJava = "5.2.0"
 junitJupiter = "6.0.1"
 junitPlatform = "6.0.1"
 sonarqube = "7.2.2.6593"
-remalSonarlint = "7.0.0"
+remalSonarlint = "7.0.1"
 #noinspection UnusedVersionCatalogEntry
 jacoco = "0.8.14"
 

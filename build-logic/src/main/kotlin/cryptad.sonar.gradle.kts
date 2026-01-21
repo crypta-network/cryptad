@@ -51,6 +51,16 @@ extensions.configure<SonarLintSettings>("sonarLint") {
     sonarProperty("sonar.inclusions", value)
   }
 
+  val fileProp = providers.gradleProperty("sonarlint.file").orElse(providers.gradleProperty("file"))
+  fileProp.orNull?.let { value ->
+    if (value.startsWith("src/test/")) {
+      sonarProperty("sonar.tests", value)
+      sonarProperty("sonar.test.inclusions", value)
+    } else {
+      sonarProperty("sonar.inclusions", value)
+    }
+  }
+
   // Ensure Java language level is explicitly provided so rules that depend on
   // the runtime version (e.g., java:S6204 requiring Java 16+) are evaluated
   // consistently, including for single-file analyses.
@@ -98,11 +108,22 @@ tasks.register("sonarlintFile", SonarLint::class.java) {
   if (pattern != null && pattern.isNotBlank()) {
     // Normalize to project-relative path and set it as the only source
     val f = project.layout.projectDirectory.file(pattern).asFile
+    val rel = project.relativePath(f)
     if (f.isFile) {
       setSource(f)
+      val isTestSource = rel.startsWith("src/test/")
+      if (isTestSource) {
+        isTest.set(true)
+        val testSourceSet = sourceSets.named("test").get()
+        java {
+          testOutputDirectories.from(testSourceSet.output.classesDirs)
+          testClasspath.from(testSourceSet.runtimeClasspath)
+        }
+      } else {
+        isTest.set(false)
+      }
     } else {
       // Fall back to include when a glob or directory is provided
-      val rel = project.relativePath(f)
       include(rel)
     }
   } else {
