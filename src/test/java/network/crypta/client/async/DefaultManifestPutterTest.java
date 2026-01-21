@@ -69,20 +69,19 @@ class DefaultManifestPutterTest {
     InsertContext ctx = newInsertContextCurrent();
 
     // Act + Assert
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new DefaultManifestPutter(
-                new ManifestPutterParams(
-                    cb,
-                    root,
-                    /*prioClass*/ (short) 0,
-                    FreenetURI.EMPTY_CHK_URI,
-                    /*defaultName*/ "index.html",
-                    ctx,
-                    /*forceCryptoKey*/ null,
-                    /*context*/ mock(ClientContext.class)),
-                /*persistent*/ false));
+    ClientContext context = mock(ClientContext.class);
+    ManifestPutterParams params =
+        new ManifestPutterParams(
+            cb,
+            root,
+            /*prioClass*/ (short) 0,
+            FreenetURI.EMPTY_CHK_URI,
+            /*defaultName*/ "index.html",
+            ctx,
+            /*forceCryptoKey*/ null,
+            context);
+
+    assertThrows(IllegalArgumentException.class, () -> new DefaultManifestPutter(params, false));
   }
 
   // A subclass that lets us spy on the builders created during packing
@@ -172,7 +171,7 @@ class DefaultManifestPutterTest {
     assertEquals(ManifestElement.class, idx.getClass());
     assertEquals(ManifestElement.class, sty.getClass());
     assertEquals(Metadata.class, def.getClass());
-    // Access private field via reflection to verify shortlink type
+    // Access the private field via reflection to verify the shortlink type
     DocumentType dt1 = (DocumentType) readField(def, "documentType");
     assertEquals(DocumentType.SYMBOLIC_SHORTLINK, dt1);
   }
@@ -205,7 +204,7 @@ class DefaultManifestPutterTest {
             /*forceKey*/ null,
             /*context*/ mock(ClientContext.class));
 
-    // Assert: small file added in-container, big file added as external
+    // Assert: the small file added in-container, the big file added as external
     verify(putter.rootSpy, atLeastOnce())
         .addItem(eq("index.html"), eq("index.html"), any(ManifestElement.class), eq(true));
     verify(putter.rootSpy, atLeastOnce())
@@ -259,11 +258,11 @@ class DefaultManifestPutterTest {
             /*forceKey*/ null,
             /*context*/ mock(ClientContext.class));
 
-    // A is added as item, B and C are added to some archive (single or filled)
+    // A is added as an item, B and C are added to some archive (single or filled)
     verify(putter.rootSpy, atLeastOnce())
         .addItem(eq("A.bin"), eq("A.bin"), any(ManifestElement.class), eq(true));
 
-    // Capture the archive add calls and assert names
+    // Capture the archive, add calls and assert names
     org.mockito.ArgumentCaptor<BaseManifestPutter.ContainerBuilder> arcCap =
         org.mockito.ArgumentCaptor.forClass(BaseManifestPutter.ContainerBuilder.class);
     org.mockito.ArgumentCaptor<String> nameCap = org.mockito.ArgumentCaptor.forClass(String.class);

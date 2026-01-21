@@ -161,15 +161,13 @@ class PeerNodeRoutingReporterTest {
     RunningAverage bulk = mock(RunningAverage.class);
     Set<PeerNode> routedTo = Set.of();
     double target = 0.1;
+    PeerNodeRoutingReportParams params =
+        new PeerNodeRoutingReportParams(target, true, true, null, routedTo, 5);
     when(peerNode.getLocation()).thenReturn(-0.5);
 
     assertThrows(
         IllegalArgumentException.class,
-        () ->
-            PeerNodeRoutingReporter.reportRoutedTo(
-                node,
-                peerNode,
-                new PeerNodeRoutingReportParams(target, true, true, null, routedTo, 5)));
+        () -> PeerNodeRoutingReporter.reportRoutedTo(node, peerNode, params));
 
     verifyNoInteractions(overall, local, remote, rt, bulk);
   }
