@@ -198,11 +198,10 @@ class PersistentConfigTest {
     cfg.finishedInit();
     SubConfig sub = cfg.createSubConfig("s");
     NullIntCallback cb = new NullIntCallback();
+    Option.Meta meta = new Option.Meta(0, false, false, "sd", "ld");
 
     // Act + Assert
-    assertThrows(
-        IllegalStateException.class,
-        () -> sub.register("o", 1, new Option.Meta(0, false, false, "sd", "ld"), cb, false));
+    assertThrows(IllegalStateException.class, () -> sub.register("o", 1, meta, cb, false));
   }
 
   @Test

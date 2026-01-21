@@ -12,6 +12,7 @@ import network.crypta.crypt.HashType;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
 import org.mockito.Mockito;
 
 @SuppressWarnings("java:S100")
@@ -91,13 +92,10 @@ class ExpectedHashesTest {
   @Test
   void run_whenInvoked_expectUnsupportedOperationException() {
     ExpectedHashes expectedHashes = new ExpectedHashes(new HashResult[0], "run", false);
+    FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
+    Node node = Mockito.mock(Node.class, Answers.RETURNS_DEEP_STUBS);
 
-    assertThrows(
-        UnsupportedOperationException.class,
-        () ->
-            expectedHashes.run(
-                Mockito.mock(FCPConnectionHandler.class),
-                Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS)));
+    assertThrows(UnsupportedOperationException.class, () -> expectedHashes.run(handler, node));
   }
 
   private static HashResult createHash(HashType type, byte fillValue) {
