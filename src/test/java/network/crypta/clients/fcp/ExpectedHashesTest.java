@@ -92,6 +92,7 @@ class ExpectedHashesTest {
   @Test
   void run_whenInvoked_expectUnsupportedOperationException() {
     ExpectedHashes expectedHashes = new ExpectedHashes(new HashResult[0], "run", false);
+    //noinspection resource
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
     Node node = Mockito.mock(Node.class, Answers.RETURNS_DEEP_STUBS);
 
