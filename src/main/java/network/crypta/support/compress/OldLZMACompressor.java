@@ -27,17 +27,17 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>Compression uses a fixed dictionary size of {@code 1 << 20} (approximately 1 MiB), which
- *       corresponds to the legacy “lzma -4” setting. Coder properties are not written to the output
- *       stream by this class.
+ *       corresponds to the legacy “lzma -4” setting. This class does not write Coder properties to
+ *       the output stream.
  *   <li>The {@code maxReadLength} parameter of the stream-based {@code compress} overload is not
- *       enforced; input is read until end of stream.
- *   <li>{@code maxWriteLength} is enforced only after compression completes (a post-write check).
+ *       enforced; input is read until the end of stream.
+ *   <li>{@code maxWriteLength} is enforced only after compression completes (a post-writing check).
  *       If it is exceeded, a {@link CompressionOutputSizeException} is thrown and the output stream
  *       may already contain more data than the configured limit.
  *   <li>Decompression uses a fixed property array equivalent to the legacy encoder properties bytes
  *       {@code 5d 00 00 10 00}. The reader does not expect coder properties in the stream itself.
- *   <li>Instances are stateless and safe to use from multiple threads as long as the provided
- *       streams/buckets are not shared unsafely by the caller.
+ *   <li>Instances are stateless and safe to use from multiple threads as long as the caller does
+ *       not share the provided streams/buckets unsafely.
  *   <li>Unless otherwise documented, these methods do not close the caller-provided streams.
  *       Bucket-based methods manage their own bucket I/O streams via try-with-resources.
  * </ul>
@@ -52,7 +52,7 @@ public class OldLZMACompressor implements Compressor {
    * Compresses a bucket using the legacy LZMA settings.
    *
    * <p>This overload creates an output bucket via the supplied {@link BucketFactory} and writes the
-   * compressed data into it. It logs a deprecation warning on each call.
+   * compressed data into it. It logs a compatibility warning on each call.
    *
    * @param data input bucket; must not be {@code null}
    * @param bf factory used to construct the output bucket; must not be {@code null}
@@ -64,10 +64,7 @@ public class OldLZMACompressor implements Compressor {
    * @return a bucket containing the compressed output
    * @throws IOException if reading or writing fails
    * @throws CompressionOutputSizeException if the post-write size check detects an overflow
-   * @deprecated since 2019‑11‑17. OldLZMA compression is buggy and unsupported; retained only to
-   *     allow reinserting existing keys.
    */
-  @Deprecated(since = "2019-11-17", forRemoval = true)
   @Override
   public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
       throws IOException {
@@ -87,8 +84,8 @@ public class OldLZMACompressor implements Compressor {
   /**
    * Compresses data from an input stream to an output stream using the legacy LZMA settings.
    *
-   * <p>Dictionary size is fixed to {@code 1 << 20}. Encoder properties are not written to the
-   * output by this class. The caller remains responsible for closing the provided streams.
+   * <p>Dictionary size is fixed to {@code 1 << 20}. This class does not write encoder properties to
+   * the output. The caller remains responsible for closing the provided streams.
    *
    * @param is input stream; must not be {@code null}
    * @param os output stream; must not be {@code null}
@@ -99,10 +96,7 @@ public class OldLZMACompressor implements Compressor {
    * @return number of bytes written to {@code os}
    * @throws IOException if I/O fails
    * @throws CompressionOutputSizeException if the post-write size check detects an overflow
-   * @deprecated since 2019‑11‑17. OldLZMA compression is buggy and unsupported; retained only to
-   *     allow reinserting existing keys.
    */
-  @Deprecated(since = "2019-11-17", forRemoval = true)
   @Override
   public long compress(InputStream is, OutputStream os, long maxReadLength, long maxWriteLength)
       throws IOException {
@@ -174,7 +168,7 @@ public class OldLZMACompressor implements Compressor {
   }
 
   // Copied from the historical DecoderThread.
-  // LICENSING NOTE: DecoderThread was distributed under LGPL 2.1 / CPL according to its header.
+  // LICENSING NOTE: DecoderThread was distributed under LGPL 2.1 / CPL, according to its header.
 
   private static final int PROP_SIZE = 5;
 
