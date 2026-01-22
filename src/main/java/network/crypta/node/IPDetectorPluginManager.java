@@ -20,8 +20,6 @@ import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.useralerts.AbstractUserAlert;
-import network.crypta.node.useralerts.AbstractUserAlert.Body;
-import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.node.useralerts.ProxyUserAlert;
 import network.crypta.node.useralerts.SimpleUserAlert;
 import network.crypta.node.useralerts.UserAlert;
@@ -42,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * Coordinates IP-detection and port-forwarding plugins and decides when to run them.
  *
  * <p>The manager aggregates {@link FredPluginIPDetector} implementations (typically one, but
- * multiple are allowed) and applies lightweight heuristics to determine when a detection should be
+ * multiple are allowed) and applies lightweight heuristics to determine when detection should be
  * executed. It also receives callbacks from {@link FredPluginPortForward} plugins and updates user
  * alerts accordingly. Long-running work executes on the node's executor; this class keeps only the
  * scheduling and aggregation logic.
@@ -473,7 +471,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    * Starts the manager and registers user alerts.
    *
    * <p>After this call, the manager performs an immediate detection attempt (subject to heuristics)
-   * and schedules subsequent checks at one-minute intervals.
+   * and schedules later checks at one-minute intervals.
    */
   void start() {
     // Cannot be initialized until UserAlertManager has been created.
@@ -546,7 +544,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    *   30 minutes or (b) we have connected to at least two distinct real-IP peers since
    *   startup, skip detection (we might still be firewalled, so this is not a hard ban).
    * - With zero peers: run at most once every 6 hours (time not persisted across restarts).
-   * - With peers present: skip if a detection ran within the last hour.
+   * - With peers present: skip if detection ran within the last hour.
    * - Guard against bogus peer reports:
    *   If one or two connected peers report the same IP, other nodes have been connected
    *   recently, and this state has persisted for 2 minutes, run detection.
@@ -560,7 +558,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   private long firstTimeUrgent;
 
   /**
-   * Evaluates current state and runs detection plugins when heuristics allow.
+   * Evaluates the current state and runs detection plugins when heuristics allow.
    *
    * <p>Fast, non-blocking: schedules work to the executor when a run is needed. Safe to call
    * frequently.
@@ -611,7 +609,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
         return GateDecision.RETURN;
       }
       if (failedRunners.size() == plugins.length) {
-        // If detect attempt failed to produce an IP in the last 5 minutes, don't try again yet.
+        // If a detection attempt failed to produce an IP in the last 5 minutes, don't try again
+        // yet.
         if (now - lastDetectAttemptEndedTime < MINUTES.toMillis(5)) {
           if (LOG.isDebugEnabled()) LOG.debug("Skip detect; last failure < 5 minutes ago");
           return GateDecision.RETURN;
@@ -629,7 +628,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    * once every 6 hours.
    *
    * @param now The time at the start of the calling method.
-   * @return True if we should run a detection.
+   * @return True if we should run detection.
    */
   private boolean shouldDetectNoPeers(long now) {
     boolean tooSoon = now - lastDetectAttemptEndedTime < HOURS.toMillis(6);
@@ -647,7 +646,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    * @param now The time at the beginning of the calling method.
    * @param peers The node's peers.
    * @param conns The node's connected peers.
-   * @return True if we should run a detection.
+   * @return True if we should run detection.
    */
   private boolean shouldDetectWithPeers(
       long now, PeerNode[] peers, PeerNode[] conns, FreenetInetAddress[] nodeAddrs) {
@@ -722,7 +721,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   private Decision decideWithOldIP(long now) {
     if (LOG.isTraceEnabled()) LOG.trace("Schedule detect in 2 minutes (oldIPAddress present)");
     if (now - firstTimeUrgent > MINUTES.toMillis(2)) {
-      firstTimeUrgent = now; // Reset now rather than on next round.
+      firstTimeUrgent = now; // Reset now rather than on the next round.
       if (LOG.isDebugEnabled()) LOG.debug("Detect now; 2 minutes elapsed (oldIPAddress present)");
       return checkHourlyThrottleDecision(now);
     }
@@ -779,8 +778,9 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
 
   private static boolean isAddrUsable(InetAddress addr) {
     // Only treat peers with a concrete, validated InetAddress as usable.
-    // Peers often report null addresses transiently (e.g., on connect or IP-less transports).
-    // Counting those as usable inflates real connection counts and can suppress needed detection.
+    // Peers often report null addresses transiently (e.g., on connection or IP-less transports).
+    // Counting those as usable inflates real connection counts and can suppress necessary
+    // detection.
     return (addr != null) && IPUtil.isValidAddress(addr, false);
   }
 
@@ -801,7 +801,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
    * @param now The time at the beginning of the calling method.
    * @param peers The node's peers.
    * @param nodeAddrs Our peers' addresses.
-   * @return True if we should run a detection.
+   * @return True if we should run detection.
    */
   private boolean shouldDetectDespiteRealIP(
       long now, PeerNode[] peers, FreenetInetAddress[] nodeAddrs) {

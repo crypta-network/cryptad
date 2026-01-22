@@ -166,7 +166,7 @@ public final class NodeNetworkSubsystem {
    *
    * @param config persistent configuration root used to build the node load sub-config; non-null
    * @param sortOrder current configuration sort order, returned unchanged for chaining
-   * @return the next sort order for subsequent configuration registration calls
+   * @return the next sort order for later configuration registration calls
    * @throws NodeInitException if node statistics fail to initialize with the provided config
    */
   public int initNodeStats(PersistentConfig config, int sortOrder) throws NodeInitException {
@@ -204,7 +204,7 @@ public final class NodeNetworkSubsystem {
    *
    * <p>This method assumes the packet sender has been constructed during crypto/transport
    * initialization. It supplies stats for bandwidth and throughput tracking. Callers typically
-   * invoke this before networking begins so outgoing traffic is accounted for from the start.
+   * invoke this before networking begins, so outgoing traffic is accounted for from the start.
    */
   public void startPacketSender() {
     packetSender.start(nodeStats);
@@ -424,10 +424,10 @@ public final class NodeNetworkSubsystem {
    * should invoke {@link #startNetworking()} after other subsystems are ready.
    *
    * @param params bundled initialization inputs including config, executor, shutdown hook, and
-   *     security levels; must be non-null and contain non-null fields
+   *     security levels, must be non-null and contain non-null fields
    * @param sortOrder current configuration sort order for subsequent registration
    * @return updated sort order after registering crypto configuration options
-   * @throws NodeInitException if configuration is invalid or crypto cannot be initialized
+   * @throws NodeInitException if the configuration is invalid or crypto cannot be initialized
    */
   public int initCryptoAndTransport(CryptoAndTransportParams params, int sortOrder)
       throws NodeInitException {
@@ -985,7 +985,7 @@ public final class NodeNetworkSubsystem {
   }
 
   /**
-   * Attempts to read persisted peer references from disk.
+   * Attempts to read persisted peer references from the disk.
    *
    * <p>This method builds the expected peers filename from the current darknet port and delegates
    * loading to the {@link PeerManager}. It does not throw on missing files and does not start any
@@ -1484,7 +1484,7 @@ public final class NodeNetworkSubsystem {
   /**
    * Returns the array of currently connected peer nodes.
    *
-   * <p>The peer manager determines connected state based on its internal connection tracking. The
+   * <p>The peer manager determines a connected state based on its internal connection tracking. The
    * returned array reflects a snapshot at the time of the call and may change immediately
    * afterward. Callers should treat the array as read-only.
    *
@@ -1535,7 +1535,7 @@ public final class NodeNetworkSubsystem {
    * <p>This method constructs a routed ping message using a random UID and counter, dispatches it
    * via the node dispatcher, and waits up to five seconds for a matching routed pong. If the wait
    * fails, disconnects, or a rejection is received, it returns {@code -1}. On success, it returns
-   * the counter delta reported by the responder.
+   * the counter-delta reported by the responder.
    *
    * @param loc2 target location for the ping, expressed as a routing location
    * @param pubKeyHash public key hash of the target, used for routing and verification; non-null
@@ -1589,7 +1589,7 @@ public final class NodeNetworkSubsystem {
     dispatcher().handleRouted(m, null);
     try {
       if (!latch.await(5, SECONDS)) return -1;
-    } catch (InterruptedException e) {
+    } catch (InterruptedException _) {
       Thread.currentThread().interrupt();
       return -1;
     }
@@ -1845,7 +1845,7 @@ public final class NodeNetworkSubsystem {
   /**
    * Returns the count of swaps rejected due to rate limiting.
    *
-   * <p>This static counter reflects how often swap attempts were suppressed by rate limits. It is
+   * <p>This static counter reflects how often rate limits suppressed swap attempts. It is
    * maintained by {@link LocationManager} and is provided for diagnostics and tuning.
    *
    * @return count of swaps rejected due to rate limiting
@@ -1857,8 +1857,8 @@ public final class NodeNetworkSubsystem {
   /**
    * Returns the count of swaps rejected because the peer was already recognized.
    *
-   * <p>This static counter from {@link LocationManager} indicates swap attempts that were rejected
-   * because the peer ID was already known or did not meet uniqueness constraints.
+   * <p>This static counter from {@link LocationManager} indicates swap attempts rejected because
+   * the peer ID was already known or did not meet uniqueness constraints.
    *
    * @return count of swaps rejected due to recognized peer IDs
    */
@@ -1917,7 +1917,7 @@ public final class NodeNetworkSubsystem {
    * Adds a peer connection and writes the peers file urgently.
    *
    * <p>This method delegates to {@link PeerManager#addPeer(PeerNode)} and then requests an urgent
-   * peers file write to persist the new peer. The result indicates whether the peer was accepted.
+   * peers file writing to persist the new peer. The result indicates whether the peer was accepted.
    * The peer's opennet status determines which file or policy applies.
    *
    * @param pn peer node to add; must be non-null
@@ -1957,8 +1957,8 @@ public final class NodeNetworkSubsystem {
    * Reports whether the node is considered outdated.
    *
    * <p>This method delegates to the peer manager, which may evaluate protocol compatibility or
-   * update status based on peer feedback. The returned value is a snapshot and may change as peer
-   * state changes.
+   * update status based on peer feedback. The returned value is a snapshot and may change as the
+   * peer state changes.
    *
    * @return {@code true} if the node is considered outdated, {@code false} otherwise
    */
@@ -2254,9 +2254,9 @@ public final class NodeNetworkSubsystem {
    *
    * <p>The returned set always includes the darknet UDP port and additionally includes the opennet
    * UDP port when opennet is enabled. The set is newly constructed on each call and can be modified
-   * by the caller without affecting internal state.
+   * by the caller without affecting the internal state.
    *
-   * @return set of forwardable port descriptors for current network configuration
+   * @return set of forwardable port descriptors for the current network configuration
    */
   public Set<ForwardPort> publicInterfacePorts() {
     HashSet<ForwardPort> set = new HashSet<>();
@@ -2292,7 +2292,7 @@ public final class NodeNetworkSubsystem {
    *
    * <p>The returned array includes the darknet socket and, when opennet is enabled, the opennet
    * socket. The array is newly allocated on each call and can be modified by the caller without
-   * affecting internal state. The sockets are owned by their respective crypto components.
+   * affecting the internal state. The sockets are owned by their respective crypto components.
    *
    * @return array of UDP socket handlers in use by the node
    */
@@ -2308,7 +2308,7 @@ public final class NodeNetworkSubsystem {
    *
    * <p>If opennet and its announcer are present, this method requests that the announcer evaluate
    * whether a new announcement should be sent. The call is asynchronous and intended for use after
-   * IP discovery events. No action is taken when opennet is disabled.
+   * IP discovery events. No action is taken when the opennet is disabled.
    */
   public void onAddedValidIP() {
     OpennetManager om = opennet();
@@ -2325,7 +2325,7 @@ public final class NodeNetworkSubsystem {
    *
    * <p>This reflects the {@code acceptSeedConnections} configuration and indicates whether the node
    * should act as a seed for other peers. It is a simple boolean flag and does not validate other
-   * opennet state.
+   * opennet states.
    *
    * @return {@code true} if seed connections are accepted, {@code false} otherwise
    */

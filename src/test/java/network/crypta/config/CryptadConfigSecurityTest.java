@@ -42,7 +42,7 @@ class CryptadConfigSecurityTest {
   }
 
   @Test
-  void allowsNormalization_withinBase() throws IOException {
+  void allowsNormalization_withinBase() {
     Map<String, String> b = base();
     String expanded = CryptadConfig.expandValue("dataDir/foo/../bar", b);
     assertEquals(expanded, Path.of(b.get("dataDir"), "bar").toString());

@@ -23,12 +23,12 @@ import org.slf4j.LoggerFactory;
  * on {@code timedJobsByTime}. The ticker sleeps by calling {@link #sleep(long)}, which uses a timed
  * {@code wait} on {@code this}; wake‑ups use {@link #wakeUp()}.
  *
- * <p>Time base and units: Delays and times are in milliseconds. Absolute times are interpreted as
- * milliseconds since the epoch as returned by {@link System#currentTimeMillis()}.
+ * <p>Time base and units: Delays and times are in milliseconds. Absolute times have been
+ * interpreted as milliseconds since the epoch as returned by {@link System#currentTimeMillis()}.
  *
- * <p>Fairness and guarantees: Execution is best‑effort. Tasks run at or after their scheduled time;
- * no real‑time guarantees are made. When {@code noDupes} is enabled, duplicate tasks already queued
- * for the same or an earlier time are not added again.
+ * <p>Fairness and guarantees: Execution is the best‑effort. Tasks run at or after their scheduled
+ * time; no real‑time guarantees are made. When {@code noDupes} is enabled, duplicate tasks already
+ * queued for the same or an earlier time are not added again.
  *
  * @see Ticker
  * @see PriorityAwareExecutor
@@ -46,7 +46,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
       if (!(o instanceof Job)) {
         return false;
       }
-      // Ignore the name, we are only interested in the job, needed for noDupes.
+      // Ignore the name; we are only interested in the job, needed for noDupes.
       return ((Job) o).task == task;
     }
 
@@ -124,7 +124,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
         LOG.error(ERR_PREFIX + "{}", fatal, fatal);
         throw fatal;
       } catch (Throwable t) {
-        // Keep ticker alive even on Errors (e.g., AssertionError, LinkageError).
+        // Keep the ticker alive even on Errors (e.g., AssertionError, LinkageError).
         LOG.error(ERR_PREFIX + "{}", t, t);
       }
     }
@@ -225,9 +225,9 @@ public class PrioritizedTicker implements Ticker, Runnable {
    * Sleeps up to {@code sleepTime} milliseconds or until {@link #wakeUp()} notifies this monitor.
    *
    * <p>Design notes: - This uses a single timed {@code wait(sleepTime)} (no {@code while} loop) on
-   * purpose to maximize wake-up responsiveness. When notified, we return promptly so the ticker can
-   * re-check the timed-job queue outside the monitor and run any newly scheduled work without
-   * waiting out the remainder of the original sleep window. - Spurious wakeups are acceptable for
+   * purpose to maximize wake-up responsiveness. When notified, we return promptly, so the ticker
+   * can re-check the timed-job queue outside the monitor and run any newly scheduled work without
+   * waiting out the remainder of the original sleep window. - Spurious wakeup is acceptable for
    * this method: an early return only causes an early re-drain of the queue, which is safe and
    * desirable for latency. The queue/predicate is not tied to this monitor; it lives in {@code
    * timedJobsByTime} and is checked immediately after this method returns.
@@ -315,7 +315,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
    * Queue a job at a specific absolute time.
    *
    * @param runJobAt The absolute time at which the job should run.
-   * @param offset The offset in milliseconds from "now" (i.e. some recent call to
+   * @param offset The offset in milliseconds from "now" (i.e., some recent call to
    *     System.currentTimeMillis()).
    */
   private void queueTimedJobInner(
@@ -401,8 +401,8 @@ public class PrioritizedTicker implements Ticker, Runnable {
   /**
    * Attempts to remove a previously queued task that has not yet started.
    *
-   * <p>This is the best‑effort cancellation. If the task is not queued, or has already started,
-   * this method does nothing.
+   * <p>This is the best‑effort cancellation. If the task is not queued or has already started, this
+   * method does nothing.
    *
    * @param runnable the task instance to remove; must be the same {@link Runnable} instance that
    *     was queued
@@ -424,7 +424,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
    * all inside the timedJobsByTime lock.
    *
    * @param job The job to remove.
-   * @param t The time at which is it scheduled.
+   * @param t The time at which it is scheduled.
    */
   private void removeQueuedJobInner(Job job, Long t) {
     Object o = timedJobsByTime.get(t);

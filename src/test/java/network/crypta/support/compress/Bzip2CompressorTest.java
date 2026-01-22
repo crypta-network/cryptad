@@ -1,11 +1,24 @@
 package network.crypta.support.compress;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Random;
 import java.util.stream.Stream;
 import network.crypta.support.api.Bucket;
@@ -30,7 +43,7 @@ class Bzip2CompressorTest {
 
   private static byte[] repeat(byte value, int n) {
     byte[] arr = new byte[n];
-    for (int i = 0; i < n; i++) arr[i] = value;
+    Arrays.fill(arr, value);
     return arr;
   }
 
@@ -49,19 +62,19 @@ class Bzip2CompressorTest {
 
   private static Stream<Arguments> roundTripInputs() {
     return Stream.of(
-        Arguments.of(new byte[0], "empty"),
-        Arguments.of("hello world".getBytes(StandardCharsets.UTF_8), "small-text"),
-        Arguments.of(repeat((byte) 'A', 10_000), "repeated-10k"),
-        Arguments.of(randomBytes(1_000, 42L), "random-1k-seed42"),
-        Arguments.of(repeat((byte) 'Z', 32_768), "boundary-32k"),
-        Arguments.of(repeat((byte) 'Y', 32_769), "boundary-32k+1"));
+        Arguments.of((Object) new byte[0]),
+        Arguments.of((Object) "hello world".getBytes(StandardCharsets.UTF_8)),
+        Arguments.of((Object) repeat((byte) 'A', 10_000)),
+        Arguments.of((Object) randomBytes(1_000, 42L)),
+        Arguments.of((Object) repeat((byte) 'Z', 32_768)),
+        Arguments.of((Object) repeat((byte) 'Y', 32_769)));
   }
 
   // ------------------ Round-trip ------------------
 
-  @ParameterizedTest(name = "roundTrip: {1}")
+  @ParameterizedTest(name = "roundTrip[{index}]")
   @MethodSource("roundTripInputs")
-  void compressAndDecompress_roundTrip_success(byte[] original, String label) throws Exception {
+  void compressAndDecompress_roundTrip_success(byte[] original) throws Exception {
     // Arrange
     ByteArrayOutputStream compressed = new ByteArrayOutputStream();
 
@@ -104,8 +117,7 @@ class Bzip2CompressorTest {
 
     // Act + Assert
     assertThrows(
-        NullPointerException.class,
-        () -> compressor.compress((InputStream) null, out, 16, Long.MAX_VALUE, 0, 0));
+        NullPointerException.class, () -> compressor.compress(null, out, 16, Long.MAX_VALUE, 0, 0));
   }
 
   @Test
@@ -123,6 +135,7 @@ class Bzip2CompressorTest {
   @Test
   void compress_whenInputReadReturnsZero_expectIOException() throws IOException {
     // Arrange
+    //noinspection resource
     InputStream in = mock(InputStream.class);
     when(in.read(any(byte[].class), anyInt(), anyInt())).thenReturn(0); // force zero-length read
     ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -229,11 +242,11 @@ class Bzip2CompressorTest {
 
     RandomAccessBucket outputBucket = mock(RandomAccessBucket.class);
     ByteArrayOutputStream capturedOut = new ByteArrayOutputStream();
-    // Provide an OutputStream to collect compressed bytes
+    // Provide a OutputStream to collect compressed bytes
     when(outputBucket.getOutputStream()).thenReturn(capturedOut);
     // Allow test to later read what was written
     when(outputBucket.getInputStream())
-        .thenAnswer(inv -> new ByteArrayInputStream(capturedOut.toByteArray()));
+        .thenAnswer(_ -> new ByteArrayInputStream(capturedOut.toByteArray()));
 
     BucketFactory bf = mock(BucketFactory.class);
     when(bf.makeBucket(anyLong())).thenReturn(outputBucket);
@@ -244,7 +257,8 @@ class Bzip2CompressorTest {
     // Assert
     assertSame(outputBucket, result, "Should return the bucket created by the factory");
     // Verify factory interaction
-    verify(bf).makeBucket(eq(Long.MAX_VALUE));
+    //noinspection resource
+    verify(bf).makeBucket(Long.MAX_VALUE);
     verify(dataBucket).getInputStream();
     verify(outputBucket).getOutputStream();
 

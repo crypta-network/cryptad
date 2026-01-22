@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.util.EnumSet;
+import java.util.Set;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.node.Node;
@@ -64,9 +65,9 @@ public class ConfigData extends FCPMessage {
    * @param identifier identifier echoed into the payload via {@link FCPMessage#IDENTIFIER}; may be
    *     {@code null} when the caller does not need correlation.
    */
-  public ConfigData(Node node, EnumSet<Section> sections, String identifier) {
+  public ConfigData(Node node, Set<Section> sections, String identifier) {
     this.node = node;
-    this.sections = EnumSet.copyOf(sections);
+    this.sections = sections.isEmpty() ? EnumSet.noneOf(Section.class) : EnumSet.copyOf(sections);
     this.requestIdentifier = identifier;
   }
 
@@ -157,9 +158,9 @@ public class ConfigData extends FCPMessage {
   /**
    * Returns a snapshot of the enabled configuration sections.
    *
-   * @return a new {@link EnumSet} containing the enabled {@link Section} values.
+   * @return a new {@link Set} containing the enabled {@link Section} values.
    */
-  public EnumSet<Section> getSections() {
+  public Set<Section> getSections() {
     return EnumSet.copyOf(sections);
   }
 

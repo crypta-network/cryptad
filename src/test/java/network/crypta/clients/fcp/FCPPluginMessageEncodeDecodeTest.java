@@ -1,28 +1,28 @@
 package network.crypta.clients.fcp;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import network.crypta.node.FSParseException;
 import network.crypta.support.SimpleFieldSet;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 
 /**
  * Tests encoding and decoding of {@link FCPPluginMessage}s into the on-network format: - Encodes
- * them via {@link FCPPluginServerMessage}, which is the encoder for sending messages from a FCP
+ * them via {@link FCPPluginServerMessage}, which is the encoder for sending messages from an FCP
  * server plugin to a client which is attached by network.<br>
  * - Decodes them via {@link FCPPluginClientMessage}, which is the decoder for decoding messages
- * which we have received from a client which is attached by network.<br>
+ * which we have received from a client which network attaches.<br>
  * - Compares whether the decoded version matches the original {@link FCPPluginMessage}.<br>
  * <br>
  * Notice that this test is sort of an abuse: {@link FCPPluginClientMessage} is not meant to decode
  * {@link FCPPluginServerMessage}s as they are from the server, not from the client.<br>
- * It works because their format is very similar though.<br>
- * And it is the only way we have for testing encoding and decoding: There is no decoder for server
- * messages and no encoder for client messages because the current architecture of plugin FCP is to
- * always have the server plugin run locally in the same node as the FCP code and only allow clients
- * to be attached by network, not server plugins.<br>
+ * It works because their format is very similar, though.<br>
+ * And it is the only way we have for testing, encoding, and decoding: There is no decoder for
+ * server messages and no encoder for client messages because the current architecture of plugin FCP
+ * is to always have the server plugin run locally in the same node as the FCP code and only allow
+ * clients to be attached by network, not server plugins.<br>
  * See {@link FCPPluginConnectionImpl} for an overview of the architecture.
  */
 final class FCPPluginMessageEncodeDecodeTest {
@@ -32,7 +32,7 @@ final class FCPPluginMessageEncodeDecodeTest {
    * decoding is then tested using {@link #testEncodeDecode(FCPPluginMessage)}.
    */
   @Test
-  void testEncodeDecode() throws MessageInvalidException, IOException, FSParseException {
+  void testEncodeDecode() throws MessageInvalidException {
     ArrayList<FCPPluginMessage> messages = new ArrayList<>();
 
     // Non-reply messages. Can either have a SimpleFieldSet, or a Bucket, or both. We don't use
@@ -52,7 +52,7 @@ final class FCPPluginMessageEncodeDecodeTest {
     messages.add(FCPPluginMessage.constructSuccessReply(FCPPluginMessage.construct()));
 
     // Now the messages are created, but their SimpleFieldSet are empty. We test the
-    // encode-decode cycle with various amount of data in the SFS.
+    // encode-decode cycle with various amounts of data in the SFS.
 
     for (FCPPluginMessage message : messages) {
       // Non-reply messages cannot have an empty SFS and a null Bucket because then they have
@@ -80,21 +80,11 @@ final class FCPPluginMessageEncodeDecodeTest {
   }
 
   /**
-   * @see FCPPluginMessageEncodeDecodeTest Explained at class-level JavaDoc of this class.
+   * @see FCPPluginMessageEncodeDecodeTest Explained at class-level Javadoc of this class.
    */
-  private void testEncodeDecode(FCPPluginMessage message)
-      throws MessageInvalidException, IOException, FSParseException {
+  private void testEncodeDecode(FCPPluginMessage message) throws MessageInvalidException {
 
-    SimpleFieldSet encodedMessage = new FCPPluginServerMessage("testPlugin", message).getFieldSet();
-
-    // The params have a different prefix in FCPPluginServerMessage and FCPPluginClientMessage.
-    // So we have to rename them by removing the sub-SimpleFieldSet with the old prefix and
-    // re-adding it with the new one.
-    SimpleFieldSet params = encodedMessage.subset(FCPPluginServerMessage.PARAM_PREFIX);
-    if (params != null) {
-      encodedMessage.removeSubset(FCPPluginServerMessage.PARAM_PREFIX);
-      encodedMessage.put(FCPPluginClientMessage.PARAM_PREFIX, params);
-    }
+    SimpleFieldSet encodedMessage = getSimpleFieldSet(message);
 
     FCPPluginMessage decodedMessage =
         new FCPPluginClientMessage(encodedMessage).constructFCPPluginMessage();
@@ -104,7 +94,7 @@ final class FCPPluginMessageEncodeDecodeTest {
 
     assertEquals(message.identifier, decodedMessage.identifier);
 
-    // SimpleFieldSet offers no equals(). But its designed to be human readable, so we can
+    // SimpleFieldSet offers no equals(). But its designed to be human-readable, so we can
     // just encode them into Strings and compare those.
     if (message.params == null) {
       assertNull(decodedMessage.params);
@@ -115,7 +105,7 @@ final class FCPPluginMessageEncodeDecodeTest {
     if (message.data == null) {
       assertNull(decodedMessage.data);
     } else {
-      // Not implemented yet because the parsing of the data is higher level FCP code; i.e.
+      // Not implemented yet because the parsing of the data is higher level FCP code; i.e.,
       // it is not implemented in FCPPluginClientMessage, but one of its parent classes.
       throw new UnsupportedOperationException("Data parsing is not implemented here.");
     }
@@ -125,5 +115,19 @@ final class FCPPluginMessageEncodeDecodeTest {
     assertEquals(message.errorCode, decodedMessage.errorCode);
 
     assertEquals(message.errorMessage, decodedMessage.errorMessage);
+  }
+
+  private static @NonNull SimpleFieldSet getSimpleFieldSet(FCPPluginMessage message) {
+    SimpleFieldSet encodedMessage = new FCPPluginServerMessage("testPlugin", message).getFieldSet();
+
+    // The params have a different prefix in FCPPluginServerMessage and FCPPluginClientMessage.
+    // So we have to rename them by removing the sub-SimpleFieldSet with the old prefix and
+    // re-adding it with the new one.
+    SimpleFieldSet params = encodedMessage.subset(FCPPluginServerMessage.PARAM_PREFIX);
+    if (params != null) {
+      encodedMessage.removeSubset(FCPPluginServerMessage.PARAM_PREFIX);
+      encodedMessage.put(FCPPluginClientMessage.PARAM_PREFIX, params);
+    }
+    return encodedMessage;
   }
 }

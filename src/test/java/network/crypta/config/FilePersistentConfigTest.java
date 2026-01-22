@@ -38,7 +38,7 @@ class FilePersistentConfigTest {
     FilePersistentConfig cfgObj =
         FilePersistentConfig.constructFilePersistentConfig(cfg, HEADER_UNIT);
 
-    // Register subconfig and option; should read initial value from the file
+    // Register subconfig and option; should read the initial value from the file
     SubConfig sc = cfgObj.createSubConfig("test.prefix");
     sc.register(
         "key",
@@ -101,7 +101,7 @@ class FilePersistentConfigTest {
     assertFalse(cfg.exists(), "config file must not be created before finishedInit");
     assertFalse(tmpFile.exists(), "temp file must not exist before finishedInit");
 
-    // Act: now finish init — should trigger a write
+    // Act: now finish init — should trigger a writing
     cfgObj.finishedInit();
 
     // Assert: config written with header and our value
@@ -195,13 +195,13 @@ class FilePersistentConfigTest {
           }
         });
 
-    // Assert: initial value taken from temp file
+    // Assert: initial value taken from the temp file
     assertEquals("v", sc.getString("k"));
   }
 
   @Test
   @DisplayName("innerStore_whenNotFinished_throwsIllegalStateException")
-  void innerStore_whenNotFinished_throwsIllegalStateException(@TempDir File tmp) throws Exception {
+  void innerStore_whenNotFinished_throwsIllegalStateException(@TempDir File tmp) {
     // Arrange: use a test subclass to expose innerStore()
     File cfg = new File(tmp, "guard.ini");
     File tmpFile = new File(cfg.getPath() + ".tmp");
@@ -223,7 +223,7 @@ class FilePersistentConfigTest {
 
   /** Test subclass exposing {@code innerStore()} for precondition testing. */
   static final class TestableConfig extends FilePersistentConfig {
-    TestableConfig(SimpleFieldSet fs, File fnam, File tmp, String header) throws IOException {
+    TestableConfig(SimpleFieldSet fs, File fnam, File tmp, String header) {
       super(fs, fnam, tmp, header);
     }
 

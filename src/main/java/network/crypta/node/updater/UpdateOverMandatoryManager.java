@@ -60,7 +60,6 @@ import network.crypta.node.RequestClient;
 import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
 import network.crypta.node.useralerts.AbstractUserAlert;
-import network.crypta.node.useralerts.AbstractUserAlert.DismissOptions;
 import network.crypta.node.useralerts.UserAlert;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.HexUtil;
@@ -91,7 +90,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Behavior differs depending on the update mode. In the current package‑based updater flow
  * (where {@link NodeUpdateManager#supportsJarUOM()} returns {@code false}), UoM is only used for
- * revocation handling; main‑jar exchange is disabled and any received main‑jar offers are ignored
+ * revocation handling; main‑jar exchange is disabled, and any received main‑jar offers are ignored
  * after being logged for diagnostics. In legacy jar‑based mode, this manager may fetch a new jar
  * directly from peers after a configurable grace period.
  *
@@ -136,10 +135,10 @@ public class UpdateOverMandatoryManager implements RequestClient {
    */
   private final HashSet<PeerNode> nodesSayKeyRevokedTransferring;
 
-  /** PeerNode's which have offered the main jar which we are not fetching it from right now */
+  /** PeerNode's, which have offered the main jar which we are not fetching it from right now */
   private final HashSet<PeerNode> nodesOfferedMainJar;
 
-  /** PeerNode's which have offered the ext jar which we are not fetching it from right now */
+  /** PeerNode's, which have offered the ext jar which we are not fetching it from right now */
   private final HashSet<PeerNode> nodesAskedSendMainJar;
 
   /** PeerNode's sending us the main jar */
@@ -162,7 +161,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
    *
    * <p>When a peer offers a newer main jar, the normal updater is given this much time before UoM
    * initiates a peer‑to‑peer fetch. The value is expressed in milliseconds and currently equals
-   * three hours. Implementations should treat this as read‑only configuration; callers must not
+   * three hours. Implementations should treat this as a read ‑only configuration; callers must not
    * modify it.
    */
   public static final long GRACE_TIME = HOURS.toMillis(3);
@@ -182,7 +181,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private static final Pattern revocationTempBuildNumberPattern =
       Pattern.compile("^revocation(?:-jar)?-(\\d+-)?(\\d+)\\.fblob\\.tmp*$");
 
-  // Main jar insert policy via UOM is handled elsewhere; no random insert here.
+  // The main jar insert policy via UOM is handled elsewhere; no random insert here.
 
   private boolean fetchingUOM;
 
@@ -193,7 +192,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private final HashMap<ShortBuffer, UOMDependencyFetcher> dependencyFetchers;
 
   /**
-   * Creates a new manager bound to the given updater.
+   * Creates a new manager bound to the given-updater.
    *
    * <p>The instance observes and updates UoM‑related state through the provided {@link
    * NodeUpdateManager}. The manager is ready for use immediately after construction and maintains
@@ -226,9 +225,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
    * either fetches immediately (when outdated or past the grace time) or remembers the offer for a
    * later takeover.
    *
-   * @param m UOM announce message to handle. Expected to contain keys such as {@code MAIN_JAR_KEY},
-   *     {@code MAIN_JAR_VERSION}, and revocation fields; the map must be well‑formed for correct
-   *     processing.
+   * @param m UOM announcement message to handle. Expected to contain keys such as {@code
+   *     MAIN_JAR_KEY}, {@code MAIN_JAR_VERSION}, and revocation fields; the map must be well‑formed
+   *     for correct processing.
    * @param source The peer that sent the announcement. Must be a currently known {@link PeerNode};
    *     its connection status influences later scheduling.
    * @return Always {@code true}. Returning a value allows symmetry with other handlers and aids
@@ -347,7 +346,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
         tryFetchRevocation(source);
       } else {
-        // Should probably also be an useralert?
+        // Should probably also be a useralert?
         LOG.info(
             """
             Node {} sent us a UOM claiming that the auto-update key was blown, but it used a different key to us:
@@ -359,7 +358,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
             revocationURI);
       }
     } catch (MalformedURLException e) {
-      // Should maybe be an useralert?
+      // Should maybe be a useralert?
       LOG.error(
           "Node {} sent us a UOMAnnouncement claiming that the auto-update key was blown, but it"
               + " had an invalid revocation URI: {}",
@@ -457,7 +456,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
             SECONDS.toMillis(60));
 
     // The reply message will start the transfer. It includes the revocation URI
-    // so we can tell if anything wierd is happening.
+    // so we can tell if anything weird is happening.
 
   }
 
@@ -468,7 +467,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     long whenToTakeOverTheNormalUpdater =
         (started > 0) ? started + GRACE_TIME : System.currentTimeMillis() + GRACE_TIME;
     boolean isOutdated = updateManager.getNode().isOutdated();
-    // if the new build is self-mandatory or if the "normal" updater has been trying to update for
+    // if the new build is self-mandatory, or if the "normal" updater has been trying to update for
     // more than one hour
     if (LOG.isInfoEnabled()) {
       String takeoverDelay = TimeUtil.formatTime(whenToTakeOverTheNormalUpdater - now);
@@ -524,7 +523,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       int mainJarVersion,
       PeerNode source,
       String jarKey) {
-    // Take up the offer, subject to limits on number of simultaneous downloads.
+    // Take up the offer, subject to limits on the number of simultaneous downloads.
     // If we have fetches running already, then sendUOMRequestMainJar() will add the offer to
     // nodesOfferedMainJar, so that if all our fetches fail, we can fetch from this node.
     if (!isOutdated) {
@@ -553,7 +552,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
         }
       }
     } catch (MalformedURLException e) {
-      // Should maybe be an useralert?
+      // Should maybe be a useralert?
       LOG.error(
           "Node {} sent us a UOMAnnouncement claiming to have a new ext jar, but it had an invalid"
               + " URI: {}",
@@ -568,7 +567,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
   private void scheduleMainJarTakeover(
       long whenToTakeOverTheNormalUpdater, long now, final PeerNode source) {
-    // Don't take up the offer. Add to nodesOfferedMainJar, so that we know where to fetch it
+    // Don't take up the offer. Add to nodesOfferedMainJar so that we know where to fetch it
     // from when we need it.
     synchronized (this) {
       nodesOfferedMainJar.add(source);
@@ -1003,7 +1002,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       LOG.info(
           "Peer {} asked us for the blob file for the revocation key but we don't have it!",
           source);
-      // Probably a race condition on reconnect, hopefully we'll be asked again
+      // Probably a race condition on reconnection, hopefully we'll be asked again
     }
 
     return true;
@@ -1136,8 +1135,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
    * Handles a peer announcement that it is sending the revocation certificate to us.
    *
    * <p>Validates the advertised {@code URI} and length, checks acceptance rules and size limits,
-   * and, if acceptable, schedules a bulk receive to a temporary file followed by verification and
-   * processing. If the offer is rejected or malformed, the transfer is cancelled.
+   * and, if acceptable, schedules a bulk receiving to a temporary file followed by verification and
+   * processing. If the offer is rejected or malformed, the transfer is canceled.
    *
    * @param m Message describing the transfer, including {@code UID}, {@code FILE_LENGTH}, and
    *     {@code REVOCATION_KEY} fields.
@@ -1645,8 +1644,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
   /**
    * Unregisters and clears the current “peers say key blown” alert, if any.
    *
-   * <p>This is a best‑effort cleanup used when conditions rendering the alert obsolete are met. It
-   * is safe to call even when no alert is registered.
+   * <p>This is the best‑effort cleanup used when conditions rendering the alert obsolete are met.
+   * It is safe to call even when no alert is registered.
    */
   public void killAlert() {
     updateManager.getNode().services().clientCore().getAlerts().unregister(alert);
@@ -1679,7 +1678,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     File data;
     int version;
     FreenetURI uri;
-    // Legacy support removed - only serve current version
+    // Legacy support removed - only serve the current version
     if (!Version.isBuildAtLeast(
         source.getNodeName(), source.getBuildNumber(), NodeUpdateManager.TRANSITION_VERSION)) {
       // Don't serve updates to very old nodes
@@ -1695,7 +1694,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
     if (data == null) {
       LOG.info(PEER_ASKED_BLOB_PREFIX + "{} jar but we don't have it!", source, name);
-      // Probably a race condition on reconnect, hopefully we'll be asked again
+      // Probably a race condition on reconnection, hopefully we'll be asked again
       return;
     }
 
@@ -1827,7 +1826,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
    * Handles a peer announcement that it is sending the main jar to us.
    *
    * <p>Validates the advertised {@code URI}, version, and length, checks local acceptance rules,
-   * and, if acceptable, schedules a bulk receive to a temporary file followed by verification and
+   * and, if acceptable, schedules a bulk receiving to a temporary file followed by verification and
    * cleanup. If the offer is rejected, the method cancels the transfer.
    *
    * @param m Message describing the transfer, including {@code UID}, {@code FILE_LENGTH}, {@code
@@ -2007,7 +2006,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
    * Verifies and processes a received main‑jar binary blob.
    *
    * <p>Reads the blob, reconstructs a temporary fetch context using its blocks, and fetches the jar
-   * via the local store using the supplied {@code uri}. On success, the cleaned blob is freed and
+   * via the local store using the supplied {@code uri}. On success, the cleaned blob is freed, and
    * the temporary file is deleted; failures are logged and the temp file is removed.
    *
    * @param temp Temporary file containing the binary blob as received over UoM; must exist.
@@ -2147,7 +2146,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     if (cleanedBlob != null) cleanedBlob.free();
   }
 
-  // Removed unused method maybeInsertMainJar: insertion is coordinated via updater flows.
+  // Removed an unused method maybeInsertMainJar: insertion is coordinated via updater flows.
 
   /**
    * Deletes obsolete persistent temporary files related to UoM transfers.
@@ -2190,7 +2189,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       }
     }
 
-    // Result not used by caller; nothing to return.
+    // Caller doesn't use the result; nothing to return.
   }
 
   private boolean shouldDeleteTempFile(String fileName) {
@@ -2522,7 +2521,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
    * Fetches a single dependency by hash via UoM, retrying across peers.
    *
    * <p>Instances track their own progress and avoid duplicate concurrent requests to the same peer.
-   * Completion is signalled through a callback.
+   * Completion is signaled through a callback.
    */
   class UOMDependencyFetcher {
 

@@ -139,7 +139,7 @@ class JournalingRAFTest {
     }
   }
 
-  private JournalingRAF newJournalingRaf(File initialFile) throws Exception {
+  private JournalingRAF newJournalingRaf(File initialFile) {
     when(delegateRaf.getMode()).thenReturn("rw");
     when(delegateRaf.getFile()).thenReturn(initialFile);
     return new JournalingRAF(delegateRaf, journal);

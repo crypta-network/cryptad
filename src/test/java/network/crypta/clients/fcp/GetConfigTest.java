@@ -11,7 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.EnumSet;
+import java.util.Set;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
@@ -109,7 +109,7 @@ class GetConfigTest {
     ConfigData sent = captor.getValue();
 
     assertEquals(node, sent.node);
-    EnumSet<ConfigData.Section> sections = sent.getSections();
+    Set<ConfigData.Section> sections = sent.getSections();
     assertTrue(sections.contains(ConfigData.Section.CURRENT));
     assertTrue(sections.contains(ConfigData.Section.DEFAULTS));
     assertFalse(sections.contains(ConfigData.Section.SORT_ORDER));
