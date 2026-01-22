@@ -2,27 +2,27 @@ package network.crypta.tools
 
 import network.crypta.fs.AppDirs
 import network.crypta.fs.AppEnv
+import network.crypta.fs.Resolved
 import network.crypta.fs.ServiceDirs
 
 fun main() {
-  val env = System.getenv()
-  val appEnv = AppEnv(env)
+  val appEnv = AppEnv(System.getenv())
   println("cryptad.service.mode=${System.getProperty("cryptad.service.mode")}")
   if (appEnv.isServiceMode()) {
     val r = ServiceDirs().resolve()
     println("mode=service")
-    println("configDir=${r.configDir}")
-    println("dataDir=${r.dataDir}")
-    println("cacheDir=${r.cacheDir}")
-    println("runDir=${r.runDir}")
-    println("logsDir=${r.logsDir}")
+    printDirs(r)
   } else {
     val r = AppDirs().resolve()
     println("mode=user")
-    println("configDir=${r.configDir}")
-    println("dataDir=${r.dataDir}")
-    println("cacheDir=${r.cacheDir}")
-    println("runDir=${r.runDir}")
-    println("logsDir=${r.logsDir}")
+    printDirs(r)
   }
+}
+
+private fun printDirs(resolved: Resolved) {
+  println("configDir=${resolved.configDir}")
+  println("dataDir=${resolved.dataDir}")
+  println("cacheDir=${resolved.cacheDir}")
+  println("runDir=${resolved.runDir}")
+  println("logsDir=${resolved.logsDir}")
 }

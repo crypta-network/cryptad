@@ -32,8 +32,8 @@ import org.slf4j.LoggerFactory;
  * send/handshake methods. - Emits structured logs for diagnostics; does not expose public
  * callbacks.
  */
-// Historical note: This component once doubled as an ad‑hoc scheduler. Today, recurring work is
-// delegated to the Ticker; PacketSender focuses on send decisions and timing.
+// Historical note: This component once doubled as an ad‑hoc scheduler. Today recurring work is
+// delegated to the Ticker; PacketSender focuses on sending decisions and timing.
 public class PacketSender implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(PacketSender.class);
 
@@ -44,7 +44,7 @@ public class PacketSender implements Runnable {
    * Maximum time to queue bulk data before sending (milliseconds).
    *
    * <p>Bulk payloads typically fill a packet and are sent immediately; this value still influences
-   * realtime vs bulk selection (see {@code PeerMessageQueue.addMessages()}).
+   * realtime vs. bulk selection (see {@code PeerMessageQueue.addMessages()}).
    */
   static final long MAX_COALESCING_DELAY_BULK = SECONDS.toMillis(5);
 
@@ -69,11 +69,6 @@ public class PacketSender implements Runnable {
     localRandom = node.bootstrap().createRandom();
   }
 
-  /**
-   * Starts the sender thread and records the {@link NodeStats} sink.
-   *
-   * @param stats destination for periodic statistics updates; must be non‑{@code null}
-   */
   /**
    * Starts the packet sender thread using the provided stats counters.
    *
@@ -115,7 +110,7 @@ public class PacketSender implements Runnable {
   }
 
   /**
-   * Runs the main send loop.
+   * Runs the main sending loop.
    *
    * <p>Behavior: - Schedules periodic maintenance via the node ticker. - Iterates indefinitely,
    * selecting and sending work for peers, then sleeping until the next action time. - Logs and
@@ -127,7 +122,7 @@ public class PacketSender implements Runnable {
     if (LOG.isDebugEnabled()) LOG.debug("In PacketSender.run()");
 
     schedulePeriodicJob();
-    // Process peers, perform the selected action, then sleep until the next action time.
+    // Process peers perform the selected action, then sleep until the next action time.
     while (true) {
       lastReceivedPacketFromAnyNode = lastReportedNoPackets;
       try {
@@ -146,9 +141,9 @@ public class PacketSender implements Runnable {
    * the peer with the oldest data. - If there are peers with overdue ack's, send to the peer whose
    * acks are oldest.
    *
-   * <p>It does not attempt to ensure fairness, it attempts to minimise latency. Fairness is best
-   * dealt with at a higher level e.g. requests, although some transfers are not part of requests,
-   * e.g. bulk f2f transfers, so we may need to reconsider this eventually...
+   * <p>It does not attempt to ensure fairness, it attempts to minimize latency. Fairness is best
+   * dealt with at a higher level e.g., requests, although some transfers are not part of requests,
+   * e.g., bulk f2f transfers, so we may need to reconsider this eventually...
    */
   private void realRun() {
     long now = System.currentTimeMillis();
@@ -389,10 +384,8 @@ public class PacketSender implements Runnable {
       if (sel.toSendPacket.maybeSendPacket(now, false)) {
         agg.nextActionTime = now;
       }
-    } else if (sel.toSendAckOnly != null) {
-      if (sel.toSendAckOnly.maybeSendPacket(now, true)) {
-        agg.nextActionTime = now;
-      }
+    } else if (sel.toSendAckOnly != null && sel.toSendAckOnly.maybeSendPacket(now, true)) {
+      agg.nextActionTime = now;
     }
 
     if (sel.toSendHandshake != null) {
@@ -415,8 +408,8 @@ public class PacketSender implements Runnable {
   }
 
   private void processOldOpennetPeers(long now) {
-    // If we send something we will have to go around the loop again.
-    // Optimisation possibility: Track the second best, and check how many are in the array.
+    // If we send something, we will have to go around the loop again.
+    // Optimization possibility: Track the second best and check how many are in the array.
     OpennetManager om = node.network().opennet();
     if (om == null || node.network().uptime() <= SECONDS.toMillis(30)) return;
 

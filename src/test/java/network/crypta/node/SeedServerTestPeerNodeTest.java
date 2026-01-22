@@ -11,9 +11,11 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.lang.reflect.Field;
+import java.util.stream.Collectors;
 import network.crypta.node.SeedServerTestPeerNode.FATE;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.Ticker;
@@ -23,24 +25,29 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 
-@SuppressWarnings({"java:S100", "java:S106", "java:S112", "java:S3011"})
+@SuppressWarnings({"java:S100", "java:S112", "java:S3011"})
 @ExtendWith(MockitoExtension.class)
 class SeedServerTestPeerNodeTest {
 
-  private PrintStream originalErr;
-  private ByteArrayOutputStream errBuffer;
+  private Logger seedLogger;
+  private ListAppender<ILoggingEvent> logAppender;
 
   @BeforeEach
-  void setUpStreams() {
-    originalErr = System.err;
-    errBuffer = new ByteArrayOutputStream(256);
-    System.setErr(new PrintStream(errBuffer));
+  void setUpLogger() {
+    seedLogger = (Logger) LoggerFactory.getLogger(SeedServerTestPeerNode.class);
+    logAppender = new ListAppender<>();
+    logAppender.start();
+    seedLogger.addAppender(logAppender);
   }
 
   @AfterEach
-  void restoreStreams() {
-    System.setErr(originalErr);
+  void tearDownLogger() {
+    if (seedLogger != null && logAppender != null) {
+      seedLogger.detachAppender(logAppender);
+      logAppender.stop();
+    }
   }
 
   // -------- getFate() --------
@@ -158,7 +165,7 @@ class SeedServerTestPeerNodeTest {
 
     sut.onRemove();
 
-    String err = errBuffer.toString();
+    String err = getLoggedMessages();
     verify(sut, times(1)).disconnected(true, true);
     verify(ticker, times(1)).removeQueuedJob(any());
     // Expect the NEVER CONNECTED classification
@@ -189,7 +196,7 @@ class SeedServerTestPeerNodeTest {
 
     sut.onRemove();
 
-    String err = errBuffer.toString();
+    String err = getLoggedMessages();
     org.hamcrest.MatcherAssert.assertThat(
         err,
         org.hamcrest.Matchers.containsString(
@@ -218,7 +225,7 @@ class SeedServerTestPeerNodeTest {
 
     sut.onRemove();
 
-    String err = errBuffer.toString();
+    String err = getLoggedMessages();
     org.hamcrest.MatcherAssert.assertThat(
         err, org.hamcrest.Matchers.containsString("ID-UNK : REMOVED: UNKNOWN CAUSE"));
   }
@@ -229,5 +236,11 @@ class SeedServerTestPeerNodeTest {
     Field f = PeerNode.class.getDeclaredField("node");
     f.setAccessible(true);
     f.set(target, node);
+  }
+
+  private String getLoggedMessages() {
+    return logAppender.list.stream()
+        .map(ILoggingEvent::getFormattedMessage)
+        .collect(Collectors.joining(System.lineSeparator()));
   }
 }

@@ -60,7 +60,7 @@ public class NodeStarter implements WrapperListener {
    * Constructors
    *-------------------------------------------------------------*/
   private NodeStarter() {
-    // Force it to load right now, and log what exactly is loaded.
+    // Force it to load right now and log what exactly is loaded.
     JceLoader.dumpLoaded();
   }
 
@@ -68,7 +68,7 @@ public class NodeStarter implements WrapperListener {
    * Returns whether this JVM was initialized for testing via {@link #globalTestInit}.
    *
    * <p>When {@code true}, the process is in a test/simulator VM. When {@code false}, it is a
-   * regular node process. This method is valid only after startup has begun.
+   * regular node process. This method is valid only after the startup has begun.
    *
    * @return {@code true} when running in a testing VM; otherwise {@code false}
    * @throws IllegalStateException if called before startup initializes the flag
@@ -99,7 +99,7 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
-   * Initializes a testing VM. This is VM-scoped state; multiple nodes may be created afterward.
+   * Initializes a testing VM. This is a VM-scoped state; multiple nodes may be created afterward.
    *
    * @param baseDirectory directory for test data; created if missing (caller cleans up)
    * @param enablePlug when {@code true}, starts a background keep-alive thread
@@ -374,7 +374,7 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
-   * Returns a lazily-initialized process-wide {@link SecureRandom} and ensures it seeds eagerly.
+   * Returns a lazily initialized process-wide {@link SecureRandom} and ensures it seeds eagerly.
    *
    * @return shared {@link SecureRandom} instance
    */
@@ -382,7 +382,7 @@ public class NodeStarter implements WrapperListener {
     if (globalSecureRandom == null) {
       globalSecureRandom = new SecureRandom();
       globalSecureRandom.nextBytes(
-          new byte[16]); // Force it to seed itself so it blocks now not later.
+          new byte[16]); // Force it to seed itself so it blocks now, not later.
     }
     return globalSecureRandom;
   }
@@ -399,7 +399,7 @@ public class NodeStarter implements WrapperListener {
   /**
    * Print resolved directories to stdout to help users understand where files are stored. Includes
    * the configuration file path and the resolved config, data, cache, run, and logs directories.
-   * Reflects environment detection (service vs user) and CLI overrides.
+   * Reflects environment detection (service vs. user) and CLI overrides.
    */
   private static void printResolvedDirectories(Resolved r, File configFile, boolean serviceMode) {
     try {
@@ -420,8 +420,8 @@ public class NodeStarter implements WrapperListener {
           r.getCacheDir(),
           r.getRunDir(),
           r.getLogsDir());
-    } catch (Throwable _) {
-      // Do not fail startup due to logging
+    } catch (Exception _) {
+      // Do not fail to start up due to logging
     }
   }
 
@@ -447,7 +447,7 @@ public class NodeStarter implements WrapperListener {
    *
    * @param args List of arguments used to initialize the application.
    * @return Any error code if the application should exit on completion of the start method. If
-   *     there were no problems then this method should return null.
+   *     there were no problems, then this method should return null.
    */
   @Override
   public Integer start(String[] args) {
@@ -505,7 +505,7 @@ public class NodeStarter implements WrapperListener {
 
     PooledExecutor executor = startExecutor();
 
-    // Extend wrapper startup timeout to 500000 ms. Diffie-Hellman init can be slow on some hosts.
+    // Extend wrapper startup timeout to 500,000 ms. Diffie-Hellman init can be slow on some hosts.
     WrapperManager.signalStarting(500000);
 
     startKeepAliveNativePlugThread();
@@ -687,19 +687,19 @@ public class NodeStarter implements WrapperListener {
    * Called when the application is shutting down. The Wrapper assumes that this method will return
    * fairly quickly. If the shutdown code could take a long time, then
    * WrapperManager.signalStopping() should be called to extend the timeout period. If for some
-   * reason, the stop method can not return, then it must call WrapperManager.stopped() to avoid
+   * reason, the stop method cannot return, then it must call WrapperManager.stopped() to avoid
    * warning messages from the Wrapper.
    *
    * @param exitCode The suggested exit code that will be returned to the OS when the JVM exits.
    * @return The exit code to actually return to the OS. In most cases, this should just be the
-   *     value of exitCode, however the user code has the option of changing the exit code if there
+   *     value of exitCode. However, the user code has the option of changing the exit code if there
    *     are any problems during shutdown.
    */
   @Override
   public int stop(int exitCode) {
     LOG.info("Shutting down with exit code {}", exitCode);
     node.park();
-    // Extend wrapper shutdown timeout to 120000 ms (see #354).
+    // Extend the wrapper shutdown timeout to 120,000 ms (see #354).
     WrapperManager.signalStopping(120000);
 
     return exitCode;

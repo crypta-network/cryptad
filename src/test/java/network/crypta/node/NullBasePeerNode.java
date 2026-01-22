@@ -7,14 +7,12 @@ import java.util.Random;
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.Message;
-import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
-import network.crypta.io.comm.Peer.LocalAddressException;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.io.comm.SocketHandler;
 import network.crypta.io.xfer.PacketThrottle;
 
-/** Tests can override this to record specific events e.g. rekey */
+/** Tests can override this to record specific events e.g., rekey */
 public class NullBasePeerNode implements BasePeerNode {
   private final PeerTransport transport = new NullTransport();
 
@@ -130,7 +128,14 @@ public class NullBasePeerNode implements BasePeerNode {
 
   protected ArrayList<byte[]> decryptedMessages;
 
-  protected void processDecryptedMessage(byte[] data, int offset, int length, int overhead) {
+  /**
+   * Records a decrypted message for tests that opt in to capturing data.
+   *
+   * @param data packet buffer containing the decrypted payload
+   * @param offset start offset into {@code data}
+   * @param length number of bytes to record
+   */
+  protected void processDecryptedMessage(byte[] data, int offset, int length) {
     if (decryptedMessages == null) {
       throw new UnsupportedOperationException();
     } else {
@@ -173,7 +178,7 @@ public class NullBasePeerNode implements BasePeerNode {
   byte[] sentEncryptedPacket;
 
   @Override
-  public void sendEncryptedPacket(byte[] data) throws LocalAddressException {
+  public void sendEncryptedPacket(byte[] data) {
     sentEncryptedPacket = data;
   }
 
@@ -237,19 +242,17 @@ public class NullBasePeerNode implements BasePeerNode {
   private final class NullTransport implements PeerTransport {
 
     @Override
-    public MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr)
-        throws NotConnectedException {
+    public MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public void sendSync(Message req, ByteCounter ctr, boolean realTime)
-        throws NotConnectedException, SyncSendWaitedTooLongException {
+    public void sendSync(Message req, ByteCounter ctr, boolean realTime) {
       throw new UnsupportedOperationException();
     }
 
     @Override
-    public boolean ping(int pingID) throws NotConnectedException {
+    public boolean ping(int pingID) {
       throw new UnsupportedOperationException();
     }
 
@@ -274,7 +277,7 @@ public class NullBasePeerNode implements BasePeerNode {
 
         @Override
         public void processDecryptedMessage(byte[] data, int offset, int length, int overhead) {
-          NullBasePeerNode.this.processDecryptedMessage(data, offset, length, overhead);
+          NullBasePeerNode.this.processDecryptedMessage(data, offset, length);
         }
 
         @Override

@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,10 +9,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Coordinates darknet and opennet peers for the local node.
  *
- * <p>Responsibilities include maintaining the desired peer set (configured + discovered), tracking
- * currently connected peers, recording per-peer status, selecting routing targets, and persisting
- * peer references to disk. The manager also exposes helper queries for counts, lookups, and status
- * summaries, and emits user alerts summarizing connectivity.
+ * <p>Responsibilities include maintaining the desired peer set (configured and discovered),
+ * tracking currently connected peers, recording per-peer status, selecting routing targets, and
+ * persisting peer references to disk. The manager also exposes helper queries for counts, lookups,
+ * and status summaries, and emits user alerts summarizing connectivity.
  *
  * <p>Threading: most public methods briefly synchronize on the manager when reading/writing the
  * peer arrays. Callers should avoid holding unrelated locks when invoking selection or mutation
@@ -25,7 +26,7 @@ public class PeerManager {
   /** Our Node */
   final Node node;
 
-  /** First time we got any connections since startup. */
+  /** First time we've got any connections since startup. */
   long timeFirstAnyConnections = 0;
 
   /** Handles peer reference persistence and scheduling. */
@@ -84,8 +85,8 @@ public class PeerManager {
    * <p>The manager starts empty; peers are added by higher-level components or by reading persisted
    * files during startup. The supplied shutdown hook flushes peer lists on early shutdown.
    *
-   * @param node Owning node instance. Must be fully constructed before invoking methods that call
-   *     back into {@code node}.
+   * @param node The owning node instance. Must be fully constructed before invoking methods that
+   *     call back into {@code node}.
    * @param shutdownHook Hook used to register an early job that writes peers to disk on shutdown.
    */
   public PeerManager(Node node, SemiOrderedShutdownHook shutdownHook) {
@@ -134,7 +135,7 @@ public class PeerManager {
     return routingSelector;
   }
 
-  /** Reads peers from disk using the configured persistence helper. */
+  /** Reads peers from the disk using the configured persistence helper. */
   public void tryReadPeers(
       String filename,
       NodeCrypto crypto,
@@ -152,15 +153,15 @@ public class PeerManager {
    * Add a peer.
    *
    * @param pn The node to add to the routing table.
-   * @param ignoreOpennet If true, don't check for opennet peers. If false, check for opennet peers
-   *     and if so, if opennet is enabled auto-add them to the opennet LRU, otherwise fail.
+   * @param ignoreOpennet If true, don't check for opennet peers. If false, check for opennet peers,
+   *     and if so, if opennet is enabled, auto-add them to the opennet LRU, otherwise fail.
    * @param reactivate If true, re-enable the peer if it is in state DISCONNECTING before re-adding
    *     it.
    * @return True if the node was successfully added. False if it was already present, or if we
    *     tried to add an opennet peer when opennet was disabled.
    */
   public boolean addPeer(PeerNode pn, boolean ignoreOpennet, boolean reactivate) {
-    assert (pn != null);
+    Objects.requireNonNull(pn, "pn");
     boolean added = roster.addPeer(pn, reactivate);
     if (!added) return false;
     statusBook.onPeerAdded(pn);
@@ -225,7 +226,7 @@ public class PeerManager {
   /**
    * Returns the timestamp of the first successful connection since startup.
    *
-   * @return Epoch milliseconds of first connection, or 0 if none yet.
+   * @return Epoch milliseconds of the first connection, or 0 if none yet.
    */
   public long getTimeFirstAnyConnections() {
     return timeFirstAnyConnections;
@@ -259,7 +260,7 @@ public class PeerManager {
    * Returns the current locations of connected peers as doubles in [0.0, 1.0).
    *
    * @param pruneBackedOffPeers When true, omit peers excluded from lists due to backoff.
-   * @return A sorted array of peer locations, or an empty array when publishing is disabled.
+   * @return A sorted array of peer locations or an empty array when publishing is disabled.
    */
   public double[] getPeerLocationDoubles(boolean pruneBackedOffPeers) {
     return roster.getPeerLocationDoubles(pruneBackedOffPeers);
@@ -313,7 +314,7 @@ public class PeerManager {
   }
 
   /**
-   * Update the numbers needed by our PeerManagerUserAlert on the UAM. Also run the node's
+   * Update the numbers needed by our PeerManagerUserAlert on the UAM. Also, run the node's
    * onConnectedPeers() method if applicable. LOCKING: Do not call inside PeerNode lock.
    */
   public void updatePMUserAlert() {
@@ -343,7 +344,7 @@ public class PeerManager {
     roster.readExtraPeerData();
   }
 
-  /** Initializes user alerts and schedules the first peer persistence write. */
+  /** Initializes user alerts and schedules the first peer persistence writing. */
   public void start() {
     alertCoordinator.start();
     peerPersistence.scheduleInitialWrite();
@@ -544,7 +545,7 @@ public class PeerManager {
     roster.incrementSelectionSamples(pn);
   }
 
-  /** Notifies the listeners about status change */
+  /** Notifies the listeners about the status change */
   private void notifyPeerStatusChangeListeners() {
     for (PeerStatusChangeListener l : listeners) {
       l.onPeerStatusChange();
@@ -555,7 +556,7 @@ public class PeerManager {
   }
 
   /**
-   * Registers a listener to be notified when peers' statuses changes
+   * Registers a listener to be notified when peers' statuses change
    *
    * @param listener - the listener to be registered
    */
@@ -578,7 +579,7 @@ public class PeerManager {
 
   /** A listener interface that can be used to be notified about peer status change events */
   public interface PeerStatusChangeListener {
-    /** Peers status have changed */
+    /** Peers status has changed */
     void onPeerStatusChange();
   }
 
@@ -586,9 +587,6 @@ public class PeerManager {
    * Get a non-copied snapshot of the peers list. NOTE: LOW LEVEL: Should be up to date (but not
    * guaranteed when exit lock), DO NOT MODIFY THE RETURNED DATA! Package-local - stuff outside
    * node/ should use the copying getters (which are a little more expensive).
-   */
-  /**
-   * Returns a snapshot of all configured peers.
    *
    * @return peer array snapshot
    */
@@ -602,9 +600,6 @@ public class PeerManager {
    *
    * <p>Note: Check all callers. Should they use myPeers and check for connectedness, and/or should
    * they use a copying method? I'm not sure how reliable updating of connectedPeers is ...
-   */
-  /**
-   * Returns a snapshot of currently connected peers.
    *
    * @return connected peer array snapshot
    */
@@ -642,9 +637,9 @@ public class PeerManager {
 
     int tooNewOpennet = getPeerNodeStatusSize(PEER_NODE_STATUS_TOO_NEW, false);
 
-    // Note: constants below are heuristics and may require tuning.
+    // Note: the constants below are heuristics and may require tuning.
     // We cannot count on the version announcements.
-    // Until we actually get a validated update jar it's all potentially bogus.
+    // Until we actually get a validated update jar, it's all potentially bogus.
 
     int connections =
         getPeerNodeStatusSize(PEER_NODE_STATUS_CONNECTED, false)
