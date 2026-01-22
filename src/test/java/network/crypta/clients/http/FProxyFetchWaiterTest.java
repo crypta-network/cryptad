@@ -75,7 +75,7 @@ class FProxyFetchWaiterTest {
     assertTrue(started, "waiter thread did not start");
     int attempts = 0;
     while (waiterThread.getState() != Thread.State.WAITING && attempts < 1000) {
-      Thread.sleep(1);
+      Thread.onSpinWait();
       attempts++;
     }
     assertEquals(Thread.State.WAITING, waiterThread.getState(), "waiter thread not waiting");
