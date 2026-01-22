@@ -9,7 +9,9 @@ import network.crypta.launcher.PortalThemeDetectorImpl
  * OsThemeDetector (its constructor is package‑private). The implementation lives in
  * network.crypta.launcher.PortalThemeDetectorImpl to avoid split ownership.
  */
-class PortalThemeDetector(private val impl: PortalThemeDetectorImpl = PortalThemeDetectorImpl()) :
+class PortalThemeDetector
+@JvmOverloads
+constructor(private val impl: PortalThemeDetectorImpl = PortalThemeDetectorImpl()) :
   OsThemeDetector(), Closeable by impl {
   override fun isDark(): Boolean = impl.isDark()
 
