@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -75,7 +76,7 @@ class FProxyFetchWaiterTest {
     assertTrue(started, "waiter thread did not start");
     int attempts = 0;
     while (waiterThread.getState() != Thread.State.WAITING && attempts < 1000) {
-      Thread.onSpinWait();
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
       attempts++;
     }
     assertEquals(Thread.State.WAITING, waiterThread.getState(), "waiter thread not waiting");
