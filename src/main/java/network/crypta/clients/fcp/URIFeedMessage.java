@@ -35,7 +35,7 @@ import network.crypta.support.io.NullBucket;
  * @see FreenetURI
  * @see network.crypta.node.useralerts.DownloadFeedUserAlert
  */
-public class URIFeedMessage extends N2NFeedMessage {
+public class URIFeedMessage extends FeedMessage {
   /**
    * Protocol message name used on the FCP wire for URI feed notifications.
    *
@@ -46,6 +46,7 @@ public class URIFeedMessage extends N2NFeedMessage {
    */
   public static final String NAME = "URIFeed";
 
+  private final N2NFeedMetadata metadata;
   private final FreenetURI uri;
 
   /**
@@ -71,7 +72,15 @@ public class URIFeedMessage extends N2NFeedMessage {
    *     {@link NullBucket} is used to represent the absence of description data.
    */
   public URIFeedMessage(N2NFeedMessageParams params, FreenetURI uri, String description) {
-    super(params);
+    super(
+        params.header(),
+        params.shortText(),
+        params.text(),
+        params.priorityClass(),
+        params.updatedTime());
+    this.metadata =
+        new N2NFeedMetadata(
+            params.sourceNodeName(), params.composed(), params.sent(), params.received());
     this.uri = Objects.requireNonNull(uri, "uri");
     final Bucket descriptionBucket;
     if (description != null) {
@@ -98,7 +107,7 @@ public class URIFeedMessage extends N2NFeedMessage {
    */
   @Override
   public SimpleFieldSet getFieldSet() {
-    SimpleFieldSet fs = super.getFieldSet();
+    SimpleFieldSet fs = metadata.applyTo(super.getFieldSet());
     fs.putSingle("URI", uri.toString());
     return fs;
   }

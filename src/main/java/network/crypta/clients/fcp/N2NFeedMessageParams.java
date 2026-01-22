@@ -5,7 +5,7 @@ package network.crypta.clients.fcp;
  *
  * <p>Instances capture the core feed text fields alongside the originating node name and the
  * timestamps that describe when the message was composed, sent, and received. The values are passed
- * through to {@link FeedMessage} and {@link N2NFeedMessage} without modification, preserving the
+ * through to {@link FeedMessage} and {@link N2NFeedMetadata} without modification, preserving the
  * existing wire format and validation behavior.
  *
  * @param header short one-line title shown prominently to users; may be {@code null} if no distinct

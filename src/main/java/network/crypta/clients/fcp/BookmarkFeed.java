@@ -36,7 +36,7 @@ import network.crypta.support.io.NullBucket;
  * inherited bucket map. All fields are final except the map inherited from {@link FeedMessage},
  * which is populated once in the constructor and then treated as read-only.
  */
-public class BookmarkFeed extends N2NFeedMessage {
+public class BookmarkFeed extends FeedMessage {
 
   /**
    * Public FCP message identifier for bookmark notifications, emitted by {@link #getName()} and
@@ -46,6 +46,7 @@ public class BookmarkFeed extends N2NFeedMessage {
    */
   public static final String NAME = "BookmarkFeed";
 
+  private final N2NFeedMetadata metadata;
   private final String bookmarkTitle;
   private final FreenetURI bookmarkUri;
   private final boolean hasAnActivelink;
@@ -77,7 +78,15 @@ public class BookmarkFeed extends N2NFeedMessage {
       FreenetURI bookmarkUri,
       String description,
       boolean hasAnActivelink) {
-    super(params);
+    super(
+        params.header(),
+        params.shortText(),
+        params.text(),
+        params.priorityClass(),
+        params.updatedTime());
+    this.metadata =
+        new N2NFeedMetadata(
+            params.sourceNodeName(), params.composed(), params.sent(), params.received());
     this.bookmarkTitle = bookmarkTitle;
     this.bookmarkUri = bookmarkUri;
     this.hasAnActivelink = hasAnActivelink;
@@ -105,7 +114,7 @@ public class BookmarkFeed extends N2NFeedMessage {
    */
   @Override
   public SimpleFieldSet getFieldSet() {
-    SimpleFieldSet fs = super.getFieldSet();
+    SimpleFieldSet fs = metadata.applyTo(super.getFieldSet());
     fs.putSingle("Name", bookmarkTitle);
     fs.putSingle("URI", bookmarkUri.toString());
     fs.put("HasAnActivelink", hasAnActivelink);
