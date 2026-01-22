@@ -298,7 +298,7 @@ class SplitFileInserterSenderTest {
     Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(core.getNode()).thenReturn(node);
 
-    // Build chosen block with localRequestOnly=true
+    // Build the chosen block with localRequestOnly=true
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
             sender,
@@ -347,7 +347,7 @@ class SplitFileInserterSenderTest {
     NodeClientCoreTransfers transfers = mock(NodeClientCoreTransfers.class);
     when(core.getTransfers()).thenReturn(transfers);
 
-    // Build chosen block with localRequestOnly=false, canWriteClientCache=false,
+    // Build a chosen block with localRequestOnly=false, canWriteClientCache=false,
     // forkOnCacheable=true
     ChosenBlockImpl chosen =
         new ChosenBlockImpl(
@@ -397,12 +397,12 @@ class SplitFileInserterSenderTest {
 
     NodeClientCore core = mock(NodeClientCore.class);
     Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-    network.crypta.node.subsystem.NodeStorageSubsystem storage =
+    network.crypta.node.subsystem.NodeStorageSubsystem nodeStorage =
         mock(network.crypta.node.subsystem.NodeStorageSubsystem.class);
     when(core.getNode()).thenReturn(node);
-    when(node.storage()).thenReturn(storage);
+    when(node.storage()).thenReturn(nodeStorage);
     doThrow(new network.crypta.store.KeyCollisionException())
-        .when(storage)
+        .when(nodeStorage)
         .store(chkBlock, false, true, true, false);
 
     ChosenBlockImpl chosen =
@@ -584,7 +584,7 @@ class SplitFileInserterSenderTest {
     @Override
     public CheckpointLock lock() {
       // Return a no-op lock; unit tests do not exercise checkpoint serialization.
-      return (forceWrite, threadPriority) -> {
+      return (_, _) -> {
         // No-op unlock in test stub
       };
     }

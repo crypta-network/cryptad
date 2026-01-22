@@ -9,8 +9,8 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
 abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccessBuffer {
 
   /**
-   * Size of the temporary storage. Note that this may be smaller than underlying.size(), and will
-   * be enforced before passing requests on.
+   * Size of the temporary storage. Note that this may be smaller than underlying.size() and will be
+   * enforced before passing requests on.
    */
   final long size;
 
@@ -21,7 +21,7 @@ abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccess
   private LockableRandomAccessBuffer underlying;
 
   /**
-   * Number of currently valid RAFLock's on this RAF. We centralise this here so that we only have
+   * Number of currently valid RAFLock's on this RAF. We centralize this here so that we only have
    * to take a single new lock when migrating.
    */
   private int lockOpenCount;
@@ -33,8 +33,8 @@ abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccess
 
   /**
    * Read/write lock for the pointer to underlying and lockOpenCount. That is, we take a write lock
-   * when we want to change the underlying pointer or other mutable fields, e.g. during migration or
-   * freeing the data, and a read lock for any other operation, hence we ensure that there is no
+   * when we want to change the underlying pointer or other mutable fields, e.g., during migration
+   * or freeing the data, and a read lock for any other operation, hence we ensure that there is no
    * other I/O going on during a migration.
    */
   private final ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -113,6 +113,7 @@ abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccess
     return true;
   }
 
+  @SuppressWarnings("unused")
   public boolean hasBeenFreed() {
     try {
       lock.readLock().lock();
@@ -135,7 +136,7 @@ abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccess
     try {
       lock.writeLock().lock();
       if (closed || underlying == null) throw new IOException("Already closed");
-      RAFLock lock =
+      RAFLock rafLock =
           new RAFLock() {
 
             @Override
@@ -148,7 +149,7 @@ abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccess
         assert (underlyingLock == null);
         underlyingLock = underlying.lockOpen();
       }
-      return lock;
+      return rafLock;
     } finally {
       lock.writeLock().unlock();
     }
@@ -200,7 +201,7 @@ abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccess
   /**
    * Create a new LockableRandomAccessBuffer containing the same data as the current underlying.
    *
-   * @throws IOException If the migrate failed.
+   * @throws IOException If the migrating failed.
    */
   protected abstract LockableRandomAccessBuffer innerMigrate(LockableRandomAccessBuffer underlying)
       throws IOException;
