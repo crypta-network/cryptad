@@ -14,12 +14,25 @@ import org.freedesktop.dbus.types.UInt32
 import org.freedesktop.dbus.types.Variant
 
 /**
- * Portal-backed implementation of OsThemeDetector that queries the XDG Desktop Portal
- * (org.freedesktop.portal.Settings) for org.freedesktop.appearance/color-scheme. Works inside
- * Flatpak and on host desktops. Fallback selection is handled by the factory.
+ * Portal-backed theme detector that reads the XDG Desktop Portal color scheme setting.
+ *
+ * This implementation connects to the session D-Bus and queries `org.freedesktop.portal.Settings`
+ * for the `org.freedesktop.appearance/color-scheme` key. It is intended for environments where a
+ * portal is available (for example, inside Flatpak), and it provides a minimal adapter that the
+ * launcher can use without pulling in UI logic. Callers typically construct the detector once, call
+ * [isDark] when a value is needed, and optionally register a listener to receive updates when the
+ * portal signals a change.
+ *
+ * The detector treats failures conservatively: if a read fails, it reports a non-dark preference
+ * and keeps the connection open to allow later reads or signals to succeed. Listener callbacks are
+ * invoked from the D-Bus signal handler, so callers should keep work lightweight and thread-safe.
+ * <ul>
+ * <li>Reads the portal value on demand and maps it to a boolean preference.</li>
+ * <li>Registers a single signal handler that fan-outs notifications to listeners.</li>
+ * <li>Closes the D-Bus connection on [close] as a best-effort cleanup.</li>
+ * </ul>
  */
 class PortalThemeDetectorImpl : Closeable {
-
   private val conn by lazy { DBusConnectionBuilder.forSessionBus().build() }
   private val settings by lazy {
     conn.getRemoteObject(DESKTOP_PORTAL, DESKTOP_PATH, PortalSettings::class.java)
@@ -37,13 +50,24 @@ class PortalThemeDetectorImpl : Closeable {
         settings.Read(APPEARANCE, COLOR_SCHEME)
       }
     } catch (t: Throwable) {
-      // Propagate to factory so it can choose the upstream detector
+      // Propagate to the factory so it can choose the upstream detector
       throw t
     }
   }
 
-  fun isDark(): Boolean {
-    return try {
+  /**
+   * Returns whether the portal reports a preference for a dark theme.
+   *
+   * This call reads the current value of the portal `color-scheme` key and maps known values to a
+   * boolean. A value of `1` is treated as a dark preference, while other values are interpreted as
+   * not dark. If the portal cannot be reached or returns an unexpected payload, this method returns
+   * {@code false} and does not throw. The result is a snapshot of the current portal state; callers
+   * that need updates should also register a listener.
+   *
+   * @return `true` when the portal reports a dark preference; `false` otherwise.
+   */
+  fun isDark(): Boolean =
+    try {
       val v =
         try {
           settings.ReadOne(APPEARANCE, COLOR_SCHEME)
@@ -54,8 +78,19 @@ class PortalThemeDetectorImpl : Closeable {
     } catch (_: Throwable) {
       false
     }
-  }
 
+  /**
+   * Registers a listener notified when the portal reports a theme change.
+   *
+   * The listener is stored in a thread-safe set and will be invoked whenever the portal emits a
+   * `SettingChanged` signal for the appearance color scheme. The first call to this method
+   * registers a single D-Bus signal handler; later calls only add listeners. Listener callbacks are
+   * best-effort and any runtime exception thrown by a listener is ignored, so other listeners
+   * continue to receive updates.
+   *
+   * @param darkThemeListener consumer receiving `true` for dark preference, `false` otherwise;
+   *   non-null.
+   */
   fun registerListener(darkThemeListener: Consumer<Boolean>) {
     listeners.add(darkThemeListener)
     if (signalRegistered.compareAndSet(false, true)) {
@@ -66,31 +101,51 @@ class PortalThemeDetectorImpl : Closeable {
             listeners.forEach { l ->
               try {
                 l.accept(isDark)
-              } catch (_: RuntimeException) {}
+              } catch (_: RuntimeException) {
+                // Ignore listener exceptions to keep notifications flowing.
+              }
             }
           }
         }
       } catch (_: DBusConnectionException) {
-        /* ignore, no live updates */
+        // ignore, no live updates
       }
     }
   }
 
+  /**
+   * Removes a previously registered listener from the notification set.
+   *
+   * Passing `null` is a no-op. The D-Bus signal handler remains registered after removal so that
+   * other listeners can continue to receive updates. This method does not close the connection; use
+   * [close] when the detector is no longer needed.
+   *
+   * @param darkThemeListener listener to remove; `null` leaves the set unchanged.
+   */
   fun removeListener(darkThemeListener: Consumer<Boolean>?) {
     if (darkThemeListener != null) listeners.remove(darkThemeListener)
     // Keep handler registered; connection is closed on process exit.
   }
 
+  /**
+   * Closes the underlying D-Bus connection used by this detector.
+   *
+   * Closing is best-effort and ignores shutdown failures, which mirrors the non-fatal behavior used
+   * elsewhere in the detector. After closing, further reads or listener registration may fail
+   * depending on the connection state, so callers should discard the instance and create a new one
+   * if they need to resume portal access.
+   */
   override fun close() {
     try {
       if (conn.isConnected) conn.close()
-    } catch (_: Exception) {}
+    } catch (_: Exception) {
+      // Ignore shutdown failures; connection is best-effort.
+    }
   }
 
   private fun mapVariantToDark(v: Variant<*>): Boolean {
-    val raw = unwrap(v)
     val code =
-      when (raw) {
+      when (val raw = unwrap(v)) {
         is UInt32 -> raw.toInt()
         is Number -> raw.toInt()
         is String -> raw.toIntOrNull() ?: 0
@@ -114,13 +169,14 @@ class PortalThemeDetectorImpl : Closeable {
   }
 }
 
+@Suppress("FunctionName")
 @DBusInterfaceName("org.freedesktop.portal.Settings")
 private interface PortalSettings : DBusInterface {
   fun Read(namespace: String, key: String): Variant<*>
 
   fun ReadOne(namespace: String, key: String): Variant<*>
 
-  fun ReadAll(namespace: String): Map<String, Variant<*>>
+  @Suppress("unused") fun ReadAll(namespace: String): Map<String, Variant<*>>
 
   // dbus-java expects signal classes to be declared as members of a class
   // implementing DBusInterface and present in a named package.
