@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -200,11 +201,11 @@ class PooledExecutorTest {
           ran2.countDown();
         };
 
-    // Run first job and wait until it completed.
+    // Run the first job and wait until it completed.
     exec.execute(first, "first");
     assertTrue(uninterruptiblyAwait(ran1, 2), "first job did not run");
 
-    // Wait until worker has entered the waiting list before submitting the next job.
+    // Wait until a worker has entered the waiting list before submitting the next job.
     assertTimeout(
         Duration.ofSeconds(2),
         () -> {
@@ -214,7 +215,7 @@ class PooledExecutorTest {
           }
         });
 
-    // Submit second job and ensure it runs.
+    // Submit a second job and ensure it runs.
     exec.execute(second, "second");
     assertTrue(uninterruptiblyAwait(ran2, 2), "second job did not run");
 
@@ -288,8 +289,7 @@ class PooledExecutorTest {
     String id1 = extractWorkerIdSuffix(firstName.get());
     String id2 = extractWorkerIdSuffix(secondName.get());
     // If the interrupted worker retired, the thread id suffix must differ.
-    org.junit.jupiter.api.Assertions.assertFalse(
-        id1.equals(id2), "expected a new worker thread after interrupt");
+    Assertions.assertNotEquals(id1, id2, "expected a new worker thread after interrupt");
   }
 
   // --- Helpers ---
