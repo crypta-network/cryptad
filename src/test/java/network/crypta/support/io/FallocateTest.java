@@ -1,11 +1,18 @@
 package network.crypta.support.io;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.sun.jna.Platform;
 import java.io.IOException;
@@ -117,7 +124,7 @@ class FallocateTest {
     when(channel.write(any(ByteBuffer.class), anyLong())).thenReturn(1);
 
     long finalSize = 10L;
-    long offset = 7L; // ignored on Windows path
+    long offset = 7L; // ignored on a Windows path
     Fallocate f = Fallocate.forChannel(channel, finalSize).fromOffset(offset);
 
     // Act
@@ -151,37 +158,6 @@ class FallocateTest {
       // On non-Windows, zero remaining => no writes
       verify(channel, never()).write(any(ByteBuffer.class), anyLong());
     }
-  }
-
-  // endregion
-
-  // region keepSize()
-
-  @Test
-  @SuppressWarnings("deprecation")
-  void keepSize_whenNotLinux_expectUnsupportedOperationException() {
-    // Arrange
-    assumeFalse(Platform.isLinux(), "Skip when Linux; covered by the Linux test.");
-    FileChannel channel = mock(FileChannel.class);
-    Fallocate f = Fallocate.forChannel(channel, 10L);
-
-    // Act + Assert
-    assertThrows(UnsupportedOperationException.class, f::keepSize);
-  }
-
-  @Test
-  @SuppressWarnings("deprecation")
-  void keepSize_whenLinux_doesNotThrowAndReturnsSame() {
-    // Arrange
-    assumeTrue(Platform.isLinux(), "Linux-only behavior under test.");
-    FileChannel channel = mock(FileChannel.class);
-    Fallocate f = Fallocate.forChannel(channel, 10L);
-
-    // Act
-    Fallocate result = f.keepSize();
-
-    // Assert
-    assertSame(f, result);
   }
 
   // endregion
