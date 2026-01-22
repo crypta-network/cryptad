@@ -35,7 +35,7 @@ public class RetrievalException extends LightweightException {
   /** Operation exceeded the allowed time. */
   public static final int TIMED_OUT = 4;
 
-  /** Requested block already exists locally; retrieval not performed. */
+  /** The requested block already exists locally; retrieval not performed. */
   public static final int ALREADY_CACHED = 6;
 
   /** Sender disconnected before completion. */
@@ -44,7 +44,7 @@ public class RetrievalException extends LightweightException {
   /** Data insert is unavailable or not permitted for this operation. */
   public static final int NO_DATAINSERT = 8;
 
-  /** Transfer was cancelled by the receiver. */
+  /** Transfer was canceled by the receiver. */
   public static final int CANCELLED_BY_RECEIVER = 9;
 
   /** Receiver terminated unexpectedly during the transfer. */
@@ -60,9 +60,9 @@ public class RetrievalException extends LightweightException {
   public static final int TURTLE_KILLED = 14;
 
   // Numeric reason code; one of the public constants above.
-  int reason;
+  final int reason;
   // Optional human-readable detail for diagnostics (may be empty).
-  String cause;
+  final String cause;
 
   /**
    * Creates an instance with the given reason code.
@@ -85,8 +85,8 @@ public class RetrievalException extends LightweightException {
    */
   public RetrievalException(int reason, String cause) {
     this.reason = reason;
-    this.cause = cause;
-    if (cause == null || cause.isEmpty() || cause.equals("null")) this.cause = getErrString(reason);
+    this.cause =
+        cause == null || cause.isEmpty() || cause.equals("null") ? getErrString(reason) : cause;
   }
 
   /**

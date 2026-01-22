@@ -325,7 +325,7 @@ public interface Compressor {
    * @since 1
    */
   Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
-      throws IOException, CompressionOutputSizeException;
+      throws IOException;
 
   /**
    * Compress data from an input stream to an output stream.
@@ -342,7 +342,7 @@ public interface Compressor {
    * @since 1
    */
   long compress(InputStream input, OutputStream output, long maxReadLength, long maxWriteLength)
-      throws IOException, CompressionOutputSizeException;
+      throws IOException;
 
   /**
    * Compress data with an optional minimum compression effectiveness check.
@@ -386,7 +386,7 @@ public interface Compressor {
    */
   long decompress(
       InputStream input, OutputStream output, long maxLength, long maxEstimateSizeLength)
-      throws IOException, CompressionOutputSizeException;
+      throws IOException;
 
   /**
    * Decompress from a byte array into another byte array.

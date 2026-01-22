@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
  * <p>This entry maintains two weakly referenced peer sets for the tracked key:
  *
  * <ul>
- *   <li>Requestors — peers that asked us for the key. When the data becomes available we offer it
+ *   <li>Requestors — peers that asked us for the key. When the data becomes available, we offer it
  *       to them to reduce latency for polling clients.
  *   <li>Requested-from — peers we routed a request to. Failures on this path set timeouts so we do
  *       not retry the same peer too soon. Timeouts are tracked per-HTL (hops-to-live).
@@ -111,7 +111,7 @@ class FailureTableEntry implements TimedOutNodesList {
   private static PeerNodeUnlocked asPeerNodeUnlocked(WeakReference<PeerContext> ref) {
     if (ref == null) return null;
     PeerContext ctx = ref.get();
-    return (ctx instanceof PeerNodeUnlocked) ? (PeerNodeUnlocked) ctx : null;
+    return ctx instanceof PeerNodeUnlocked peerNodeUnlocked ? peerNodeUnlocked : null;
   }
 
   FailureTableEntry(Key key) {
@@ -145,7 +145,7 @@ class FailureTableEntry implements TimedOutNodesList {
    * @param ftTimeout duration in milliseconds for the per-node failure-table timeout; {@code <= 0}
    *     means no update.
    * @param now current time in milliseconds since epoch.
-   * @param htl HTL used when the failure occurred; determines applicability of the timeout.
+   * @param htl HTL used when the failure occurred; determines the applicability of the timeout.
    */
   public synchronized void failedTo(
       PeerNodeUnlocked routedTo, long rfTimeout, long ftTimeout, long now, short htl) {
@@ -437,7 +437,7 @@ class FailureTableEntry implements TimedOutNodesList {
   /**
    * Offers the key to peers that previously asked for it and to peers we previously queried.
    *
-   * <p>Intended to be called after the data is stored and this entry is removed from the failure
+   * <p>Intended to be called after the data is stored, and this entry is removed from the failure
    * table. Offers are deduplicated across both lists and sent outside this entry's monitor.
    */
   public void offer() {
@@ -625,8 +625,8 @@ class FailureTableEntry implements TimedOutNodesList {
    * Returns the timeout time for the given peer, taking HTL into account.
    *
    * <p>If a timeout was recorded at HTL {@code 1} and we now send at HTL {@code 2}, the timeout is
-   * ignored. The result is an absolute time in milliseconds since epoch, or {@code -1} if there is
-   * no applicable timeout.
+   * ignored. The result has been an absolute time in milliseconds since epoch, or {@code -1} if
+   * there is no applicable timeout.
    *
    * @param peer peer to query.
    * @param htl HTL for the pending request.

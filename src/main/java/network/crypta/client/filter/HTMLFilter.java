@@ -45,7 +45,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Streams and sanitizes HTML emitted by the node so the FProxy surface only exposes vetted,
+ * Streams and sanitizes HTML emitted by the node, so the FProxy surface only exposes vetted,
  * policy-compliant markup. The filter rewrites tags, normalizes attributes, and optionally injects
  * helper snippets while preserving the original document structure as closely as possible.
  *
@@ -237,7 +237,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * Streams untrusted HTML from {@code input}, sanitizes it according to the current policy, and
    * writes the resulting markup to {@code output}. The method configures buffered character
    * streams, enforces the negotiated {@code charset}, and drives an {@link HTMLParseContext} that
-   * emits callbacks for visible text or URIs while blocking unsafe constructs. All state lives
+   * emits callbacks for visible text or URIs while blocking unsafe constructs. All states live
    * inside the parse context, so callers may safely reuse {@link HTMLFilter} instances only when
    * they have completed a previous invocation.
    *
@@ -256,7 +256,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * @param otherParams mutable metadata map passed through unchanged for downstream handlers
    * @param schemeHostAndPort absolute origin string used when rewriting relative resource links
    * @param cb callback receiving sanitized text and URIs; a {@link NullFilterCallback} is allowed
-   * @throws IOException if the input cannot be decoded or the output stream rejects the write
+   * @throws IOException if the input cannot be decoded or the output stream rejects the writing
    */
   @Override
   public void readFilter(
@@ -289,7 +289,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   /**
    * Detects the declared character set within an HTML byte buffer by running the tokenizer in a
-   * special "detection only" mode. The method reads at most {@link #getCharsetBufferSize()} bytes
+   * special "detection-only" mode. The method reads at most {@link #getCharsetBufferSize()} bytes
    * through a {@link java.io.BufferedReader}, stops after the head section is conclusively parsed,
    * and returns the first {@code <meta charset>} encountered. Mixed encodings or malformed markup
    * cause the detector to bail out early so downstream consumers can fall back to defaults.
@@ -354,8 +354,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     boolean firstChar = true;
 
     /**
-     * If <head> is found, then it is true. It is needed that if <title> or <meta> is found outside
-     * <head> or if a <body> is found first, then insert a <head> too
+     * If <head> is found, then it is true. It is necessary that if <title> or <meta> is found
+     * outside <head> or if a <body> is found first, then insert a <head> too
      */
     boolean wasHeadElementFound = false;
 
@@ -843,7 +843,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * Reports whether the sanitizer should inject the lightweight M3U JavaScript player when media
    * tags are encountered. Toggling this value lets administrators balance user convenience against
    * strict content policies without recompiling the node. The flag is read on every HTML parse, so
-   * changes take effect immediately for subsequent requests.
+   * changes take effect immediately for later requests.
    *
    * @return {@code true} when eligible media tags cause the player snippet to be inlined
    */
@@ -875,7 +875,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   }
 
   /**
-   * Updates the interval guarding same-page meta refresh operations. Negative values disable the
+   * Updates the interval guarding same-page meta-refresh operations. Negative values disable the
    * tag entirely, while zero preserves only single-refresh pages. Higher numbers give users more
    * time to react when viewing large forms or threaded discussions.
    *
@@ -886,7 +886,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   }
 
   /**
-   * Returns the policy-controlled delay required before a meta refresh pointing to another location
+   * Returns the policy-controlled delay required before a meta-refresh pointing to another location
    * is allowed to survive filtering. Redirects that fire too quickly are frequently used for
    * phishing and annoyance attacks, so this value determines how aggressively the node trims such
    * tags.
@@ -898,7 +898,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   }
 
   /**
-   * Sets the minimum delay enforced for meta refreshes that redirect the browser to a new URL.
+   * Sets the minimum delay enforced for meta-refreshes that redirect the browser to a new URL.
    * Values less than zero reject all redirect refresh tags; large values effectively disable the
    * feature unless the document explicitly opts in with a long timeout. Update this setting only
    * during configuration reloads to avoid surprising concurrent sanitization tasks.
@@ -1163,11 +1163,11 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    * <p>The structure is purposely forgiving: {@code startSlash} and {@code endSlash} are recorded
    * even when the tokenizer encountered mismatched syntax, allowing downstream verifiers to insert
    * recovery comments or drop the offending tag entirely. String casing is normalized during
-   * parsing so comparisons can be performed cheaply.
+   * parsing, so comparisons can be performed cheaply.
    */
   public static class ParsedTag {
     /**
-     * Element name captured from the tokenizer, normalized to lower-case ASCII so case-insensitive
+     * Element name captured from the tokenizer, normalized to lower-case ASCII, so case-insensitive
      * comparisons and hash lookups remain cheap even when reserializing the tag later.
      */
     public final String element;
@@ -1293,7 +1293,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     /**
      * Serializes this token back into an HTML tag, honoring whether it was originally a closing or
-     * self-closing construct. Attribute ordering and quoting are preserved exactly as captured so
+     * self-closing construct. Attribute ordering and quoting are preserved exactly as captured, so
      * higher layers can re-emit familiar markup for trusted clients. The string is primarily used
      * by {@link #htmlwrite(Writer, HTMLParseContext)} when committing sanitized tags to the output.
      *
@@ -1343,25 +1343,25 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       for (String rawAttribute : unparsedAttrs) {
         // Skip empty or whitespace-only fragments that can appear due to trailing spaces
         // before '>' or multiple consecutive spaces between attributes.
-        if (rawAttribute == null) {
-          continue;
+        String trimmedAttribute = rawAttribute;
+        if (trimmedAttribute != null) {
+          trimmedAttribute = trimmedAttribute.trim();
         }
-        rawAttribute = rawAttribute.trim();
-        if (rawAttribute.isEmpty()) {
+        if (trimmedAttribute == null || trimmedAttribute.isEmpty()) {
           continue;
         }
         if (waitingForValue) {
           waitingForValue = false;
-          previousKey = applyDeferredValue(attributes, previousKey, rawAttribute);
-          continue;
-        }
-        AttributeToken token = parseAttributeToken(rawAttribute, previousKey);
-        waitingForValue = token.expectingValue;
-        previousKey = token.key;
-        if (token.value != null) {
-          attributes.put(token.key, token.value);
-        } else if (!waitingForValue) {
-          attributes.put(token.key, new Object());
+          previousKey = applyDeferredValue(attributes, previousKey, trimmedAttribute);
+        } else {
+          AttributeToken token = parseAttributeToken(trimmedAttribute, previousKey);
+          waitingForValue = token.expectingValue;
+          previousKey = token.key;
+          if (token.value != null) {
+            attributes.put(token.key, token.value);
+          } else if (!waitingForValue) {
+            attributes.put(token.key, new Object());
+          }
         }
       }
       return attributes;
@@ -2141,7 +2141,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
      * not included so don't try using them. xref not supported as it is
      * mainly used to link presentation and content in parallel markup.
      *
-     * Content markup not supported as it is larger and presumably not
+     * Content markup isn't supported as it is larger and presumably not
      * used that much, and **HAS SECURITY ISSUES**: Content markup uses
      * Content Dictionaries, which by default are loaded from a default
      * URL on the web.
@@ -2817,7 +2817,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             emptyStringArray,
             emptyStringArray,
             emptyStringArray));
-    // <maction> would go here though it seems a bit pointless and may require extra filtering
+    // <maction> would go here, though it seems a bit pointless and may require extra filtering
     // MathML content tags would go here if anyone used them
 
     return allowedTagsVerifiers;
@@ -2842,7 +2842,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     // Attributes which need no sanitation
     private final HashSet<String> allowedAttrs;
 
-    // Attributes which will be sanitized by child classes
     /**
      * Set of attribute names that require special handling (event handlers, core attrs, etc.) and
      * therefore must be copied into {@link ParsedTag} instances even if they are removed from the
@@ -3707,8 +3706,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
   /**
    * Verify media tags (audio and video). This needs its own verifier, because different from
    * images, browsers use content sniffing to find out whether to display it as media content. Using
-   * text/plain as content type would allow exploiting this to run unfiltered files as media files.
-   * We fix this by encoding the mime type into the uri.
+   * text/plain as a content type would allow exploiting this to run unfiltered files as media
+   * files. We fix this by encoding the mime type into the uri.
    */
   static class MediaTagVerifier extends CoreTagVerifier {
     private static final String[] locallyVerifiedAttrs = new String[] {"src"};
@@ -3821,7 +3820,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         throws DataFilterException {
       Map<String, Object> hn = super.sanitizeHash(h, p, pc);
 
-      // We drop the whole <input> if type isn't allowed (case-insensitive)
+      // We drop the whole <input> if the type isn't allowed (case-insensitive)
       if (hn.get("type") != null
           && !allowedTypes.contains(hn.get("type").toString().toLowerCase())) {
         return dropTag();
@@ -4058,7 +4057,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         // Same-page refreshes are disabled: drop the tag.
         return false;
       } else if (getMetaRefreshRedirectMinInterval() >= 0) {
-        // Redirect refresh: separator present and redirect filtering enabled.
+        // Redirect refresh: separator presents and redirect filtering enabled.
         return handleRedirectRefresh(content, idx, output, pc);
       }
       // Redirect refreshes are disabled: drop the tag.
@@ -4552,7 +4551,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
    *
    * @param input byte buffer containing the beginning of the document
    * @param length number of bytes provided for inspection
-   * @return always {@code null}, indicating BOM checks should be handled by the caller
+   * @return always {@code null}, indicating the caller should handle BOM checks
    */
   @Override
   public BOMDetection getCharsetByBOM(byte[] input, int length) {
@@ -4561,7 +4560,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
   /**
    * Indicates how many bytes callers should supply when asking {@link #getCharset(byte[], int,
-   * String)} to detect a charset. The value balances accuracy (meta tags can appear deep inside a
+   * String)} to detect a charset. The value balances accuracy (meta-tags can appear deep inside a
    * head section) with memory consumption. Override this only if the upstream buffering strategy is
    * known to surface unusually large {@code <head>} sections.
    *
