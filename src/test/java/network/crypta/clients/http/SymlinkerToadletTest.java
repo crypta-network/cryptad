@@ -53,7 +53,8 @@ class SymlinkerToadletTest {
 
   @Test
   void handleMethodGET_whenAliasMatches_redirectsWithOriginalQueryAndFragment() throws Exception {
-    SymlinkerToadlet toadlet = createToadletWithConfigLinks("/cfg/#/target/");
+    when(subConfig.getStringArr("symlinks")).thenReturn(new String[] {"/cfg/#/target/"});
+    SymlinkerToadlet toadlet = new SymlinkerToadlet(client, node);
 
     URI incoming = new URI("http://localhost/cfg/path?foo=bar#frag");
 
@@ -139,7 +140,7 @@ class SymlinkerToadletTest {
   }
 
   @Test
-  void handleMethodGET_whenTargetContainsSpaces_redirectsWithEncodedPath() throws Exception {
+  void handleMethodGET_whenTargetContainsSpaces_redirectsWithEncodedPath() {
     when(subConfig.getStringArr("symlinks")).thenReturn(new String[0]);
     SymlinkerToadlet toadlet = new SymlinkerToadlet(client, node);
     toadlet.addLink("/bad/", "/target with space/", false);
@@ -151,10 +152,5 @@ class SymlinkerToadletTest {
 
     assertEquals("/target with space/here", redirect.getTarget().getPath());
     assertEquals("/target%20with%20space/here", redirect.getTarget().getRawPath());
-  }
-
-  private SymlinkerToadlet createToadletWithConfigLinks(String... links) {
-    when(subConfig.getStringArr("symlinks")).thenReturn(links);
-    return new SymlinkerToadlet(client, node);
   }
 }

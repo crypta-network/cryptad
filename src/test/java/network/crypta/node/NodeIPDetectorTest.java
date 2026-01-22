@@ -33,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -99,7 +100,7 @@ class NodeIPDetectorTest {
     InetAddress a = ip("203.0.113.10");
     primeIpDetector(det, a);
 
-    // First detection writes file
+    // First detection writes a file
     det.redetectAddress();
     verify(node).writeNodeFile();
 
@@ -122,7 +123,7 @@ class NodeIPDetectorTest {
     when(network.peers()).thenReturn(null);
     when(network.dontDetect()).thenReturn(false);
 
-    // No directly detected addresses; plugin IPs should be considered
+    // No direct-detected addresses; plugin IPs should be considered
     primeIpDetector(det /* none */);
 
     DetectedIP v4 = new DetectedIP(ip("203.0.113.7"), DetectedIP.FULL_INTERNET);
@@ -152,7 +153,7 @@ class NodeIPDetectorTest {
     assertEquals(Integer.MAX_VALUE, det.getMinimumDetectedMTU(true));
     assertEquals(Integer.MAX_VALUE, det.getMinimumDetectedMTU());
 
-    // First valid report lowers the minima and triggers node.network().updateMTU()
+    // The first valid report lowers the minima and triggers node.network().updateMTU()
     det.reportMTU(1400, false);
     verify(network).updateMTU();
     assertEquals(1400, det.getMinimumDetectedMTU(false));
@@ -181,7 +182,7 @@ class NodeIPDetectorTest {
     // Complete IPAddressDetector path by redetecting once
     primeIpDetector(det, ip("203.0.113.20"));
     det.redetectAddress();
-    assertTrue(det.isDetecting()); // PM not yet signaled
+    assertTrue(det.isDetecting()); // PM isn't yet signaled
 
     // Signal plugin manager completion
     det.hasDetectedPM();
@@ -208,7 +209,7 @@ class NodeIPDetectorTest {
     Option<?> override = nodeCfg.getOption("ipAddressOverride");
     assertThrows(InvalidConfigValueException.class, () -> override.setValue("bad host$"));
 
-    // ipAddressOverride: valid hostname triggers redetect and keeps hostname-only entry
+    // ipAddressOverride: a valid hostname triggers redetect and keeps hostname-only entry
     // Force detector to avoid direct detection so only the override is considered
     when(network.dontDetect()).thenReturn(true);
     when(node.services().clientCore()).thenReturn(null);
@@ -249,8 +250,7 @@ class NodeIPDetectorTest {
     assertTrue(det.hasValidAddressOverride());
     verify(alerts)
         .unregister(
-            org.mockito.ArgumentMatchers.argThat(
-                (UserAlert ua) -> ua instanceof InvalidAddressOverrideUserAlert));
+            ArgumentMatchers.<UserAlert>argThat(InvalidAddressOverrideUserAlert.class::isInstance));
   }
 
   @Test

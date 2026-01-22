@@ -67,7 +67,6 @@ class PluginRespiratorTest {
   @Mock private HighLevelSimpleClient highLevelSimpleClient;
   @Mock private PluginStores pluginStores;
   @Mock private PluginInfoWrapper pluginInfoWrapper;
-  @Mock private FilterCallback filterCallback;
   @Mock private SimpleToadletServer toadletContainer;
   @Mock private ClientEndpoints endpoints;
   @Mock private PageMaker pageMaker;
@@ -114,7 +113,7 @@ class PluginRespiratorTest {
   }
 
   @Test
-  void makeFilterCallback_whenPathRequiresEncoding_passesEncodedUriToCore() throws Exception {
+  void makeFilterCallback_whenPathRequiresEncoding_passesEncodedUriToCore() {
     // Arrange
     PluginRespirator respirator = new PluginRespirator(node, pluginInfoWrapper);
     String rawPath = "http://example.invalid/a b?q=c d";
