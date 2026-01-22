@@ -33,8 +33,8 @@ import org.slf4j.LoggerFactory;
  *   <li>Instances are not thread-safe. Use a separate instance per file/channel.
  *   <li>{@link FileChannel} must be open and writable. Behavior is undefined if the channel is
  *       closed during execution.
- *   <li>The implementation uses reflection to obtain the underlying file descriptor. If the
- *       descriptor cannot be accessed, the code silently falls back to the legacy fill path.
+ *   <li>The implementation uses reflection to get the underlying file descriptor. If the descriptor
+ *       cannot be accessed, the code silently falls back to the legacy fill path.
  *   <li>Native calls are made via JNA to the platform C library.
  * </ul>
  *
@@ -50,10 +50,7 @@ public final class Fallocate {
       !Platform.isWindows() && !Platform.isMac() && !Platform.isOpenBSD();
   private static final boolean IS_ANDROID = Platform.isAndroid();
 
-  private static final int FALLOC_FL_KEEP_SIZE = 0x01;
-
   private final int fd;
-  private int mode;
   private long offset;
   private final long finalFilesize;
   private final FileChannel channel;
@@ -75,8 +72,8 @@ public final class Fallocate {
    * Creates an instance for the given channel and desired final size.
    *
    * <p>Attempts to discover the native file descriptor behind the channel via reflection. If this
-   * discovery fails due to platform or security restrictions, subsequent execution falls back to
-   * the legacy writer.
+   * discovery fails due to platform or security restrictions, later execution falls back to the
+   * legacy writer.
    *
    * @param channel target channel; must be open and writable
    * @param finalFilesize desired file size in bytes after allocation completes
@@ -117,29 +114,6 @@ public final class Fallocate {
   }
 
   /**
-   * Requests Linux {@code FALLOC_FL_KEEP_SIZE} mode.
-   *
-   * <p>This flag preallocates blocks without extending the apparent file length. The mode is only
-   * supported on Linux; calling it on other platforms throws an exception.
-   *
-   * @deprecated Linux-only; on non-Linux systems this method throws {@link
-   *     UnsupportedOperationException}. Prefer the default behavior or simply call {@link
-   *     #execute()} without keep-size mode.
-   * @since 2
-   * @return this instance for fluent chaining
-   * @throws UnsupportedOperationException when invoked on non-Linux platforms
-   */
-  @Deprecated(since = "2")
-  public Fallocate keepSize() {
-    if (!IS_LINUX) {
-      throw new UnsupportedOperationException(
-          "fallocate keep size is not supported on this file system");
-    }
-    mode |= FALLOC_FL_KEEP_SIZE;
-    return this;
-  }
-
-  /**
    * Performs the allocation using the best available strategy on the current platform.
    *
    * <p>Behavior by platform:
@@ -165,7 +139,7 @@ public final class Fallocate {
     boolean isUnsupported = false;
     if (fd > 2) {
       if (IS_LINUX) {
-        final int result = FallocateHolder.fallocate(fd, mode, offset, finalFilesize - offset);
+        final int result = FallocateHolder.fallocate(fd, 0, offset, finalFilesize - offset);
         errno = result == 0 ? 0 : Native.getLastError();
       } else if (IS_POSIX) {
         errno = FallocateHolderPOSIX.posix_fallocate(fd, offset, finalFilesize - offset);
@@ -205,7 +179,7 @@ public final class Fallocate {
   }
 
   /**
-   * Best-effort extraction of a channel's {@link FileDescriptor} to obtain its native fd value.
+   * Best-effort extraction of a channel's {@link FileDescriptor} to get its native fd value.
    *
    * <p>Returns {@code 0} when the descriptor is inaccessible (e.g., different JDK implementation or
    * insufficient permissions) which forces legacy behavior for allocation.
@@ -242,7 +216,7 @@ public final class Fallocate {
       }
       return (int) field.get(descriptor);
     } catch (final Exception _) {
-      // Intentionally fall back: descriptor is unavailable or null; return 0 for legacy path.
+      // Intentionally fall back: descriptor is unavailable or null; return 0 for the legacy path.
       return 0;
     }
   }
@@ -257,7 +231,7 @@ public final class Fallocate {
    * @param fc target channel
    * @param newLength desired file size in bytes after the operation
    * @param offset starting position (inclusive)
-   * @throws IOException if any channel write fails
+   * @throws IOException if any channel writing fails
    */
   private static void legacyFill(FileChannel fc, long newLength, long offset) throws IOException {
     if (IS_WINDOWS) {
