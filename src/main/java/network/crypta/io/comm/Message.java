@@ -1,6 +1,7 @@
 package network.crypta.io.comm;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataInput;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
@@ -26,8 +27,8 @@ import org.slf4j.LoggerFactory;
  * top‑level types.
  *
  * <p>Security note: Prefer constructing a fresh {@code Message} when forwarding rather than passing
- * an incoming instance verbatim. Forwarding as‑is preserves any embedded sub‑messages, and can
- * inadvertently leak metadata (e.g., labelling, collusion signals along a route) and waste
+ * an incoming instance verbatim. Forwarding as‑is preserves any embedded submessages and can
+ * inadvertently leak metadata (e.g., labeling, collusion signals along a route) and waste
  * bandwidth. Sub‑messages exist primarily for historical compatibility and should be used
  * judiciously.
  *
@@ -173,13 +174,16 @@ public class Message {
 
   private static void readMessageFields(MessageType mspec, Message m, ByteBufferInputStream bb)
       throws IOException {
+    DataInput dataInput = bb.asDataInput();
     for (String name : mspec.getOrderedFields()) {
       Class<?> type = mspec.getFields().get(name);
       if (type.equals(LinkedList.class)) {
         m.set(
-            name, Serializer.readListFromDataInputStream(mspec.getLinkedListTypes().get(name), bb));
+            name,
+            Serializer.readListFromDataInputStream(
+                mspec.getLinkedListTypes().get(name), dataInput));
       } else {
-        m.set(name, Serializer.readFromDataInputStream(type, bb));
+        m.set(name, Serializer.readFromDataInputStream(type, dataInput));
       }
     }
   }
@@ -224,7 +228,7 @@ public class Message {
   }
 
   /**
-   * Constructs a new, locally originated message with default priority.
+   * Constructs a new, locally originated message with a default priority.
    *
    * @param spec message type descriptor; must not be {@code null}
    */
@@ -738,7 +742,7 @@ public class Message {
   /**
    * Creates a shallow copy without sub‑messages and with a local origin.
    *
-   * <p>Payload entries and priority are copied; sub‑messages are dropped and the source reference
+   * <p>Payload entries and priority are copied; sub‑messages are dropped, and the source reference
    * is cleared.
    *
    * @return a new {@code Message} with no sub‑messages

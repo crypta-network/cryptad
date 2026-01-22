@@ -10,24 +10,102 @@ import java.nio.ByteBuffer;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * An {@link InputStream} and {@link DataInput} implementation backed by a {@link ByteBuffer}.
+ * An {@link InputStream} implementation backed by a {@link ByteBuffer}.
  *
  * <p>This stream exposes sequential read access over the remaining region of a provided {@code
- * ByteBuffer} (or over a wrapped byte array). All {@code DataInput} primitive reads delegate to the
- * underlying buffer (e.g., {@link ByteBuffer#getInt()}), therefore they use the buffer's current
- * byte order (default is big-endian unless the buffer was created/modified with a different order).
+ * ByteBuffer} (or over a wrapped byte array). Primitive reads delegate to the underlying buffer
+ * (e.g., {@link ByteBuffer#getInt()}), therefore, they use the buffer's current byte order (default
+ * is big-endian unless the buffer was created/modified with a different order).
  *
  * <p>Instances are not thread-safe. The buffer position advances as data is read. No copying is
  * performed by the constructors; the stream reflects the provided buffer's state.
  *
  * @author sdiz
  */
-public class ByteBufferInputStream extends InputStream implements DataInput {
+public class ByteBufferInputStream extends InputStream {
   /**
    * The backing buffer. Reads advance its position. The buffer's byte order controls the semantics
    * of multibyte reads.
    */
   protected ByteBuffer buf;
+
+  private final DataInput dataInputView =
+      new DataInput() {
+        @Override
+        public void readFully(byte @NotNull [] b) throws IOException {
+          ByteBufferInputStream.this.readFully(b);
+        }
+
+        @Override
+        public void readFully(byte @NotNull [] b, int off, int len) throws IOException {
+          ByteBufferInputStream.this.readFully(b, off, len);
+        }
+
+        @Override
+        public int skipBytes(int n) {
+          return ByteBufferInputStream.this.skipBytes(n);
+        }
+
+        @Override
+        public boolean readBoolean() throws IOException {
+          return ByteBufferInputStream.this.readBoolean();
+        }
+
+        @Override
+        public byte readByte() throws IOException {
+          return ByteBufferInputStream.this.readByte();
+        }
+
+        @Override
+        public int readUnsignedByte() throws IOException {
+          return ByteBufferInputStream.this.readUnsignedByte();
+        }
+
+        @Override
+        public short readShort() throws IOException {
+          return ByteBufferInputStream.this.readShort();
+        }
+
+        @Override
+        public int readUnsignedShort() throws IOException {
+          return ByteBufferInputStream.this.readUnsignedShort();
+        }
+
+        @Override
+        public char readChar() throws IOException {
+          return ByteBufferInputStream.this.readChar();
+        }
+
+        @Override
+        public int readInt() throws IOException {
+          return ByteBufferInputStream.this.readInt();
+        }
+
+        @Override
+        public long readLong() throws IOException {
+          return ByteBufferInputStream.this.readLong();
+        }
+
+        @Override
+        public float readFloat() throws IOException {
+          return ByteBufferInputStream.this.readFloat();
+        }
+
+        @Override
+        public double readDouble() throws IOException {
+          return ByteBufferInputStream.this.readDouble();
+        }
+
+        @Override
+        public String readLine() {
+          throw new UnsupportedOperationException("readLine is deprecated");
+        }
+
+        @Override
+        public @NotNull String readUTF() throws IOException {
+          return DataInputStream.readUTF(this);
+        }
+      };
 
   /**
    * Creates a stream over the entire {@code array}.
@@ -113,7 +191,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 1 byte remains
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public boolean readBoolean() throws IOException {
     try {
       return buf.get() != 0;
@@ -129,7 +206,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 1 byte remains
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public byte readByte() throws IOException {
     try {
       return buf.get();
@@ -145,7 +221,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 2 bytes remain
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public char readChar() throws IOException {
     try {
       return buf.getChar();
@@ -161,7 +236,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 8 bytes remain
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public double readDouble() throws IOException {
     try {
       return buf.getDouble();
@@ -177,7 +251,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 4 bytes remain
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public float readFloat() throws IOException {
     try {
       return buf.getFloat();
@@ -193,7 +266,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer bytes remain than {@code b.length}
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public void readFully(byte @NotNull [] b) throws IOException {
     try {
       buf.get(b);
@@ -212,7 +284,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws IndexOutOfBoundsException if {@code off} or {@code len} are invalid
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public void readFully(byte @NotNull [] b, int off, int len) throws IOException {
     try {
       buf.get(b, off, len);
@@ -228,7 +299,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 4 bytes remain
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public int readInt() throws IOException {
     try {
       return buf.getInt();
@@ -244,7 +314,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 8 bytes remain
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public long readLong() throws IOException {
     try {
       return buf.getLong();
@@ -260,7 +329,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 2 bytes remain
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public short readShort() throws IOException {
     try {
       return buf.getShort();
@@ -276,7 +344,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 1 byte remains
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public int readUnsignedByte() throws IOException {
     try {
       return buf.get() & 0xFF;
@@ -292,7 +359,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if fewer than 2 bytes remain
    * @throws IOException if an I/O error occurs
    */
-  @Override
   public int readUnsignedShort() throws IOException {
     try {
       return buf.getShort() & 0xFFFF;
@@ -307,7 +373,6 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @param n the requested number of bytes to skip (non-negative)
    * @return the actual number of bytes skipped (may be less than {@code n})
    */
-  @Override
   public int skipBytes(int n) {
     int skip = Math.min(n, buf.remaining());
     buf.position(buf.position() + skip);
@@ -324,28 +389,19 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    * @throws EOFException if the stream ends prematurely
    * @throws IOException if an I/O error occurs or the UTF data is malformed
    */
-  @Override
   public @NotNull String readUTF() throws IOException {
-    return DataInputStream.readUTF(this);
+    return DataInputStream.readUTF(dataInputView);
   }
 
   /**
-   * Reads a line of text as defined by the deprecated {@link DataInputStream#readLine()} contract.
+   * Returns a {@link DataInput} view over this stream.
    *
-   * <p>This method exists only for compatibility with {@link DataInput}. It delegates to the
-   * deprecated API in {@link DataInputStream}. For new code, prefer well-defined text encodings
-   * (for example, {@code readUTF()}) and avoid this method.
+   * <p>The returned view shares this stream's position and byte order.
    *
-   * @return the line without any line-termination characters, or {@code null} at end of stream
-   * @throws IOException if an I/O error occurs
-   * @deprecated This method is deprecated along with {@link DataInputStream#readLine()}. See that
-   *     method's documentation for details.
+   * @return a {@link DataInput} that reads from this stream
    */
-  @Override
-  @Deprecated(since = "2")
-  public String readLine() throws IOException {
-    // Delegate to the legacy implementation for compatibility with DataInput.
-    return new DataInputStream(this).readLine();
+  public DataInput asDataInput() {
+    return dataInputView;
   }
 
   /**
@@ -353,7 +409,7 @@ public class ByteBufferInputStream extends InputStream implements DataInput {
    *
    * <p>The returned stream is backed by a {@link ByteBuffer#slice()} of the remaining region and
    * reflects the same byte order. On success, this stream's position advances by {@code size} so
-   * subsequent reads continue after the slice.
+   * later reads continue after the slice.
    *
    * @param size number of bytes to expose in the slice
    * @return a new {@code ByteBufferInputStream} reading exactly {@code size} bytes
