@@ -41,6 +41,7 @@ class CorruptingOutputStream extends OutputStream {
     os.write(b);
   }
 
+  @Override
   public void close() throws IOException {
     os.close();
   }
