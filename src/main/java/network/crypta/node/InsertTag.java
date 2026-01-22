@@ -58,7 +58,7 @@ public class InsertTag extends UIDTag {
    * Mark that the outbound sender has finished and attempt to release the UID if eligible.
    *
    * <p>If {@link #mustUnlock()} evaluates to {@code true} after updating state, this method invokes
-   * the standard unlock path to allow the UID to be reused.
+   * the standard unlocking path to allow the UID to be reused.
    */
   public void finishedSender() {
     boolean noRecordUnlock;
@@ -101,15 +101,17 @@ public class InsertTag extends UIDTag {
    */
   @Override
   public void logStillPresent(Long uid) {
-    StringBuilder sb = new StringBuilder();
-    sb.append("Still present after ").append(TimeUtil.formatTime(age()));
-    sb.append(" : ").append(uid);
-    sb.append(" : start=").append(start);
-    sb.append(" ssk=").append(ssk);
-    sb.append(" : ");
-    sb.append(super.toString());
-    if (handlerThrew != null) LOG.error(sb.toString(), handlerThrew);
-    else LOG.error(sb.toString());
+    if (LOG.isErrorEnabled()) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Still present after ").append(TimeUtil.formatTime(age()));
+      sb.append(" : ").append(uid);
+      sb.append(" : start=").append(start);
+      sb.append(" ssk=").append(ssk);
+      sb.append(" : ");
+      sb.append(super.toString());
+      if (handlerThrew != null) LOG.error(sb.toString(), handlerThrew);
+      else LOG.error(sb.toString());
+    }
   }
 
   /**
@@ -120,7 +122,7 @@ public class InsertTag extends UIDTag {
    *
    * @param ignoreLocalVsRemote When {@code true}, treat as remote regardless of origin.
    * @param outwardTransfersPerInsert Ignored for inbound estimates.
-   * @param forAccept Indicator for admission vs sending decisions; does not change this logic.
+   * @param forAccept Indicator for admission vs. sending decisions; does not change this logic.
    * @return Expected inbound transfers (0 or 1).
    */
   @Override
@@ -138,7 +140,7 @@ public class InsertTag extends UIDTag {
    *
    * @param ignoreLocalVsRemote When {@code true}, has no effect for outbound estimates.
    * @param outwardTransfersPerInsert Expected number of outbound transfers per insert operation.
-   * @param forAccept Indicator for admission vs sending decisions; does not change this logic.
+   * @param forAccept Indicator for admission vs. sending decisions; does not change this logic.
    * @return Expected outbound transfers.
    */
   @Override
