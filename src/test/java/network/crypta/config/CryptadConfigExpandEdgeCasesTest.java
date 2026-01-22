@@ -7,8 +7,11 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class CryptadConfigExpandEdgeCasesTest {
 
@@ -59,25 +62,26 @@ class CryptadConfigExpandEdgeCasesTest {
   }
 
   @Test
-  void placeholder_windowsTraversal_rejectedWhenAnchored() {
-    Map<String, String> b = base();
-    assertThrows(
-        IOException.class, () -> CryptadConfig.expandValue("${dataDir}\\..\\..\\etc\\passwd", b));
-  }
-
-  @Test
   void placeholder_inMiddle_isReplaced() {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue("prefix-${cacheDir}-suffix", b);
     assertEquals(out, "prefix-" + b.get("cacheDir") + "-suffix");
   }
 
-  @Test
-  void placeholder_inMiddle_withTraversal_rejected() {
+  static Stream<String> traversalInputs() {
+    return Stream.of(
+        "${dataDir}\\..\\..\\etc\\passwd",
+        "prefix-${dataDir}/../../etc/passwd",
+        "dataDir/..\\..\\evil");
+  }
+
+  // Mixed traversal using interleaved separators must be rejected when it would
+  // escape the base directory after normalization.
+  @ParameterizedTest
+  @MethodSource("traversalInputs")
+  void traversal_rejected(String input) {
     Map<String, String> b = base();
-    assertThrows(
-        IOException.class,
-        () -> CryptadConfig.expandValue("prefix-${dataDir}/../../etc/passwd", b));
+    assertThrows(IOException.class, () -> CryptadConfig.expandValue(input, b));
   }
 
   @Test
@@ -106,13 +110,5 @@ class CryptadConfigExpandEdgeCasesTest {
     Map<String, String> b = base();
     String out = CryptadConfig.expandValue(b.get("dataDir") + "\\x\\y", b);
     assertEquals(out, Path.of(b.get("dataDir"), "x", "y").toString());
-  }
-
-  // Mixed traversal using interleaved separators must be rejected when it would
-  // escape the base directory after normalization.
-  @Test
-  void leadingToken_mixedTraversal_rejected() {
-    Map<String, String> b = base();
-    assertThrows(IOException.class, () -> CryptadConfig.expandValue("dataDir/..\\..\\evil", b));
   }
 }

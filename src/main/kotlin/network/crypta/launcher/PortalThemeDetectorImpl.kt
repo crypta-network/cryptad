@@ -127,22 +127,6 @@ class PortalThemeDetectorImpl : Closeable {
     // Keep handler registered; connection is closed on process exit.
   }
 
-  /**
-   * Closes the underlying D-Bus connection used by this detector.
-   *
-   * Closing is best-effort and ignores shutdown failures, which mirrors the non-fatal behavior used
-   * elsewhere in the detector. After closing, further reads or listener registration may fail
-   * depending on the connection state, so callers should discard the instance and create a new one
-   * if they need to resume portal access.
-   */
-  override fun close() {
-    try {
-      if (conn.isConnected) conn.close()
-    } catch (_: Exception) {
-      // Ignore shutdown failures; connection is best-effort.
-    }
-  }
-
   private fun mapVariantToDark(v: Variant<*>): Boolean {
     val code =
       when (val raw = unwrap(v)) {
@@ -153,6 +137,14 @@ class PortalThemeDetectorImpl : Closeable {
       }
     val dark = code == 1 // 1 = prefer-dark, 2 = prefer-light, 0 = no preference
     return dark
+  }
+
+  override fun close() {
+    try {
+      if (conn.isConnected) conn.close()
+    } catch (_: Exception) {
+      // Ignore shutdown failures; connection is best-effort.
+    }
   }
 
   private tailrec fun unwrap(any: Any?): Any? =

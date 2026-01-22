@@ -124,14 +124,13 @@ public class SeedServerTestPeerNode extends SeedServerPeerNode {
   }
 
   /**
-   * Mirrors the removal reason to both stderr and the structured logger.
+   * Mirrors the removal reason to the structured logger.
    *
-   * <p>This class is used exclusively by seed-server tests. Tests capture {@code System.err} to
-   * assert on the textual classification, so we emit to both the console and the logger.
+   * <p>This class is used exclusively by seed-server tests. Tests assert on the logger output to
+   * validate the textual classification.
    */
   private void printRemovalReason(String reason) {
     String msg = this.getIdentityString() + " : REMOVED: " + reason;
-    System.err.println(msg);
     LOG.warn(msg);
   }
 

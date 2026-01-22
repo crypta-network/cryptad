@@ -1,6 +1,7 @@
 package network.crypta.node;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -65,7 +66,8 @@ class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
       throws NodeInitException, InsertException, FetchException {
     final PriorityAwareExecutor executor = new PooledExecutor();
     FileUtil.removeAll(dir);
-    dir.mkdir();
+    boolean created = dir.mkdir();
+    assertTrue(created || dir.isDirectory(), "Failed to create test directory: " + dir);
     NodeStarter.globalTestInit(dir, false, Level.ERROR, "", true, random);
     TestNodeParameters params = new TestNodeParameters();
     params.setRandom(new DummyRandomSource(253121));
@@ -79,7 +81,7 @@ class NodeAndClientLayerTest extends NodeAndClientLayerTestBase {
     InsertContext ictx = client.getInsertContext(true);
     ictx.setLocalRequestOnly(true);
     FreenetURI uri = client.insert(block, "", (short) 0, ictx);
-    assertEquals(uri.getKeyType(), "SSK");
+    assertEquals("SSK", uri.getKeyType());
     FetchContext ctx = client.getFetchContext(FILE_SIZE * 2);
     ctx.setLocalRequestOnly(true);
     FetchWaiter fw = new FetchWaiter(rc);

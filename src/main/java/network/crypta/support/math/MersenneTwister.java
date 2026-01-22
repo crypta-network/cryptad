@@ -21,7 +21,7 @@ import network.crypta.support.Fields;
  ** As of fred commit e89a2f63e819e8c088a14eaa3c809770db822956, this class, and
  ** its associated test, re-implements the diff between X-A, by extending
  ** o.s.m.r.MersenneTwister. Above that, it is also runtime-compatible with any
- ** version (O,A,X) of it.
+ ** version (O, A, X) of it.
  **
  ** This should provide a smooth upgrade path:
  **
@@ -76,18 +76,18 @@ public class MersenneTwister extends MersenneTwisterBase {
 
   /** {@inheritDoc} */
   @Override
-  public void setSeed(long seed) {
-    synchronized (this) {
-      super.setSeed(seed);
-    }
+  public synchronized void setSeed(long seed) {
+    super.setSeed(seed);
   }
 
   /**
    * * Reinitialize the generator as if just built with the given byte array seed. *
    *
    * <p>The state of the generator is exactly the same as a new * generator built with the same
-   * seed. * @param seed the initial seed (8 bits byte array), if null * the seed of the generator
-   * will be related to the current time
+   * seed.
+   *
+   * @param seed the initial seed (8-bit byte array), if null * the seed of the generator will be
+   *     related to the current time
    */
   public void setSeed(byte[] seed) {
     synchronized (this) {
@@ -141,7 +141,7 @@ public class MersenneTwister extends MersenneTwisterBase {
     }
 
     @Override
-    public void setSeed(long seed) {
+    public synchronized void setSeed(long seed) {
       unsynchronizedSetSeed(seed);
     }
 
