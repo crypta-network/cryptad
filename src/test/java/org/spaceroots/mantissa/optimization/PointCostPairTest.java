@@ -2,10 +2,9 @@ package org.spaceroots.mantissa.optimization;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,7 +48,6 @@ class PointCostPairTest {
   void constructor_whenPointIsNull_throwsNullPointerException() {
     // Arrange
     // Act / Assert
-    //noinspection DataFlowIssue
     assertThrows(NullPointerException.class, () -> new PointCostPair(null, 1.0));
   }
 
@@ -61,7 +59,7 @@ class PointCostPairTest {
     PointCostPair second = new PointCostPair(new double[] {1.0, 2.0}, 3.0);
 
     // Act + Assert
-    assertTrue(first.equals(second));
+    assertEquals(first, second);
     assertEquals(first.hashCode(), second.hashCode());
   }
 
@@ -73,7 +71,7 @@ class PointCostPairTest {
     PointCostPair second = new PointCostPair(new double[] {1.0, 2.0}, 4.0);
 
     // Act + Assert
-    assertFalse(first.equals(second));
+    assertNotEquals(first, second);
   }
 
   @Test
@@ -84,7 +82,7 @@ class PointCostPairTest {
     PointCostPair second = new PointCostPair(new double[] {1.0, 2.1}, 3.0);
 
     // Act + Assert
-    assertFalse(first.equals(second));
+    assertNotEquals(first, second);
   }
 
   @Test
