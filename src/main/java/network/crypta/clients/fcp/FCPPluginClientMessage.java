@@ -219,9 +219,6 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
     } catch (PluginNotFoundException _) {
       throw pluginUnavailable();
     }
-    if (serverConnection == null) {
-      throw pluginUnavailable();
-    }
 
     FCPPluginMessage message = constructFCPPluginMessage();
 

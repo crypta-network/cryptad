@@ -28,7 +28,7 @@ private fun tsNow(): String =
 
 private fun emit(level: Lvl, msg: String, t: Throwable? = null) {
   if (level == Lvl.DEBUG && !debugEnabled) return
-  val base = "${tsNow()} [Launcher/${level.name}] ${msg}"
+  val base = "${tsNow()} [Launcher/${level.name}] $msg"
   if (t == null) {
     System.err.println(base)
   } else {
