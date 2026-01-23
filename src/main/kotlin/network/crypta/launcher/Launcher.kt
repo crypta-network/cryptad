@@ -47,7 +47,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
   // Auto-scroll tracking
   @Volatile private var autoScrollEnabled: Boolean = true
 
-  // Global key dispatcher to ensure shortcuts work even when text area has focus
+  // Global key dispatcher to ensure shortcuts work even when the text area has focus
   private val globalDispatcher = KeyEventDispatcher { e ->
     if (e.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
     when (e.keyCode) {
@@ -134,11 +134,11 @@ class CryptaLauncher : JFrame(APP_NAME) {
     KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(globalDispatcher)
 
     // Handle window manager close button (e.g., Ubuntu). We keep DO_NOTHING to ensure we can
-    // stop the wrapper first, but trigger our quit sequence on close requests.
+    // stop the wrapper first but trigger our quit sequence on close requests.
     addWindowListener(
       object : WindowAdapter() {
         override fun windowClosing(e: WindowEvent?) {
-          if (network.crypta.fs.AppEnv().isMac()) {
+          if (AppEnv().isMac()) {
             // On macOS, close should only hide the window, not quit the app.
             isVisible = false
           } else {
@@ -149,7 +149,8 @@ class CryptaLauncher : JFrame(APP_NAME) {
       }
     )
 
-    // Handle macOS Command+Q (app quit). Use Desktop quit handler to route through our shutdown.
+    // Handle macOS Command+Q (app quit). Use the Desktop quit handler to route through our
+    // shutdown.
     try {
       if (Desktop.isDesktopSupported()) {
         val d = Desktop.getDesktop()
@@ -188,8 +189,8 @@ class CryptaLauncher : JFrame(APP_NAME) {
               }
 
               override fun appMovedToBackground(e: AppForegroundEvent?) {
-                // Intentionally no-op: do not auto-hide or dispose when moved to background.
-                // Keeping the current window state avoids flicker and preserves any in-flight
+                // Intentionally no-op: do not auto-hide or dispose when moved to the background.
+                // Keeping the current window state avoids flickering and preserves any in-flight
                 // start/stop interactions initiated by the user.
               }
             }
@@ -202,7 +203,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
       logDebug("Desktop integration initialization failed", t)
     }
 
-    // Track manual scroll: disable auto-scroll when the user scrolls away from bottom
+    // Track manual scroll: disable auto-scroll when the user scrolls away from the bottom
     val vbar: JScrollBar = scrollPane.verticalScrollBar
     vbar.addAdjustmentListener { autoScrollEnabled = isAtBottom() }
 
@@ -272,7 +273,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
     launchBtn.isEnabled = false
     quitBtn.isEnabled = false
     uiScope.launch {
-      // Wait for wrapper to exit before quitting the launcher
+      // Wait for the wrapper to exit before quitting the launcher
       controller.shutdownAndWait()
       try {
         KeyboardFocusManager.getCurrentKeyboardFocusManager()
@@ -323,7 +324,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
     right.add(title, gbc)
 
     val javaVer = System.getProperty("java.runtime.version") ?: System.getProperty("java.version")
-    val env = network.crypta.fs.AppEnv()
+    val env = AppEnv()
     val os = env.osNameRaw() + " " + env.osVersionRaw()
     val build = runCatching { network.crypta.node.currentBuildNumber() }.getOrDefault(0)
     val git =
@@ -420,7 +421,7 @@ fun main() {
   // Rely on the JVM shutdown hook; external TERM will trigger it.
 }
 
-/** Set macOS application menu name early, before any AWT/Swing initialization. */
+/** Set the macOS application menu name early, before any AWT/Swing initialization. */
 private fun applyMacAppMenuName() {
   try {
     System.setProperty("apple.awt.application.name", APP_NAME)
@@ -431,7 +432,7 @@ private fun applyMacAppMenuName() {
 }
 
 /**
- * Install FlatLaf using ThemeSwitcher. If installation fails, fall back to the system look & feel
+ * Install FlatLaf using ThemeSwitcher. If installation fails, fall back to the system look and feel
  * only when FlatLaf is not already active.
  */
 private fun installLookAndFeelWithFallback() {
@@ -449,7 +450,7 @@ private fun installLookAndFeelWithFallback() {
   }
 }
 
-/** Create, size, iconize, show the launcher frame and install platform-specific hooks. */
+/** Create, size, iconize, show the launcher frame, and install platform-specific hooks. */
 private fun createAndShowLauncherUi() {
   val f = CryptaLauncher()
   setWindowAndDockIcons(f)
@@ -492,7 +493,7 @@ private fun installWindowsHooksIfNeeded(f: CryptaLauncher) {
   }
 }
 
-/** Ensure graceful shutdown on signals (e.g., CTRL+C forwarded by launcher script). */
+/** Ensure a graceful shutdown on signals (e.g., CTRL+C forwarded by launcher script). */
 private fun registerJvmShutdownHook() {
   try {
     Runtime.getRuntime()

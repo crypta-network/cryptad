@@ -28,6 +28,7 @@ import network.crypta.support.BitArray;
 import network.crypta.support.Buffer;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +45,7 @@ class BlockReceiverTest {
   private final PriorityAwareExecutor inlineExecutor =
       new PriorityAwareExecutor() {
         @Override
-        public void execute(Runnable job) {
+        public void execute(@NonNull Runnable job) {
           job.run();
         }
 

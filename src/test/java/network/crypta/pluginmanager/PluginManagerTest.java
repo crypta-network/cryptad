@@ -35,6 +35,7 @@ import network.crypta.node.NodeClientCore;
 import network.crypta.pluginmanager.OfficialPlugins.OfficialPluginDescription;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.StringCallback;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -444,7 +445,7 @@ class PluginManagerTest {
 
   private static final class InlinePriorityAwareExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 

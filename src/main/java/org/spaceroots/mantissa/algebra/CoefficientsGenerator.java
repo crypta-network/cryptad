@@ -104,7 +104,7 @@ public abstract class CoefficientsGenerator {
       // we use bik = aik/a1k
       setRecurrenceCoefficients(k);
 
-      RationalNumber ckPrev = null;
+      RationalNumber ckPrev;
       RationalNumber ck = l.get(startK);
       RationalNumber ckm1 = l.get(startKm1);
 
@@ -135,7 +135,7 @@ public abstract class CoefficientsGenerator {
    * Get the coefficients array for a given degree.
    *
    * <p>The method lazily computes missing polynomials up to {@code degree} using the recurrence
-   * supplied by the subclass. Expansion is synchronized on the generator instance so concurrent
+   * supplied by the subclass. Expansion is synchronized on the generator instance, so concurrent
    * callers will not interleave writes to the shared coefficient list. When the requested degree
    * has already been generated, the existing values are reused without recomputation. The returned
    * array contains references to the internally stored {@link RationalNumber} objects; callers

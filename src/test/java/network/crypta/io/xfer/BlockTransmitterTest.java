@@ -27,6 +27,7 @@ import network.crypta.node.PeerTransport;
 import network.crypta.support.BitArray;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.Ticker;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,7 @@ class BlockTransmitterTest {
   // Minimal inline executor that runs tasks immediately on the caller thread
   static final class InlineExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 

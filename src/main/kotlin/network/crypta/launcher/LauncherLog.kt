@@ -13,7 +13,7 @@ import java.io.StringWriter
  */
 private enum class Lvl {
   DEBUG,
-  INFO,
+  @Suppress("unused") INFO,
   WARN,
   ERROR,
 }
@@ -28,7 +28,7 @@ private fun tsNow(): String =
 
 private fun emit(level: Lvl, msg: String, t: Throwable? = null) {
   if (level == Lvl.DEBUG && !debugEnabled) return
-  val base = "${tsNow()} [Launcher/${level.name}] ${msg}"
+  val base = "${tsNow()} [Launcher/${level.name}] $msg"
   if (t == null) {
     System.err.println(base)
   } else {
@@ -42,4 +42,4 @@ fun logDebug(msg: String, t: Throwable? = null) = emit(Lvl.DEBUG, msg, t)
 
 fun logWarn(msg: String, t: Throwable? = null) = emit(Lvl.WARN, msg, t)
 
-fun logError(msg: String, t: Throwable? = null) = emit(Lvl.ERROR, msg, t)
+@Suppress("unused") fun logError(msg: String, t: Throwable? = null) = emit(Lvl.ERROR, msg, t)

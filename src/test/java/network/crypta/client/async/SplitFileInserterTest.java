@@ -30,6 +30,7 @@ import network.crypta.support.Ticker;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.LockableRandomAccessBufferFactory;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -76,7 +77,7 @@ class SplitFileInserterTest {
     PriorityAwareExecutor immediateExecutor =
         new PriorityAwareExecutor() {
           @Override
-          public void execute(Runnable job) {
+          public void execute(@NonNull Runnable job) {
             job.run();
           }
 

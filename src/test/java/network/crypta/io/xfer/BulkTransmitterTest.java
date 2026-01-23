@@ -30,6 +30,7 @@ import network.crypta.node.MessageItem;
 import network.crypta.node.PeerTransport;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.io.ByteArrayRandomAccessBuffer;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,7 +54,7 @@ class BulkTransmitterTest {
   // Inline executor used by MessageCore (runs tasks on the calling thread deterministically).
   private static final class InlineExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 

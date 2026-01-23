@@ -3,11 +3,7 @@ package network.crypta.node.updater
 import java.io.File
 import java.net.URI
 import network.crypta.client.HighLevelSimpleClient
-import network.crypta.clients.http.PageMaker
-import network.crypta.clients.http.PageNode
-import network.crypta.clients.http.ReplyHeaders
-import network.crypta.clients.http.Toadlet
-import network.crypta.clients.http.ToadletContext
+import network.crypta.clients.http.*
 import network.crypta.fs.AppEnv
 import network.crypta.l10n.NodeL10n
 import network.crypta.node.Node
@@ -23,7 +19,7 @@ import org.slf4j.LoggerFactory
  * single, fixed mount path (`/core-update/`) that accepts browser posts initiated by the alert
  * panel. The handler validates the form password, resolves the current [CoreUpdater], and
  * dispatches to well-defined actions (download, install, openStore). Responses are kept
- * intentionally small: most requests redirect back to Alerts, while install/openStore return a
+ * intentionally small: most requests redirect back to Alerts, while install/openStore returns a
  * compact result page with guidance when an OS-specific manual step is required.
  *
  * Key invariants are defensive: file paths are canonicalized and required to live under the node's
@@ -113,8 +109,8 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    *
    * The mount path is stable (`/core-update/`) so the Alerts UI can post actions without needing to
    * discover the URL at runtime. Callers should treat this as read-only metadata; it has no side
-   * effects and does not depend on node state. Tests and log statements can also rely on this value
-   * remaining constant across releases because alert wiring assumes a fixed endpoint.
+   * effects and does not depend on the node state. Tests and log statements can also rely on this
+   * value remaining constant across releases because alert wiring assumes a fixed endpoint.
    *
    * @return constant path segment used to route requests for this toadlet instance.
    */
@@ -132,7 +128,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
    * @param ctx context used to emit the redirect response.
    */
   override fun handleMethodGET(uri: URI, request: HTTPRequest, ctx: ToadletContext) {
-    // Redirect to alerts page by default
+    // Redirect to the alerts page by default
     val headers = MultiValueTable.from("Location", "/alerts/")
     ctx.sendReplyHeaders(302, "Found", headers, null, 0)
   }
@@ -140,7 +136,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /**
    * Handles download, install, and store-opening POST actions from the Alerts UI.
    *
-   * The request must include a valid form password; otherwise no action is taken and the call
+   * The request must include a valid form password; otherwise no action is taken, and the call
    * returns silently to avoid leaking status. The `action` field controls the dispatch path and is
    * limited to a small whitelist (`download`, `install`, `openStore`). The implementation delegates
    * to specific helpers that validate inputs and emit either a redirect or a small result page with
@@ -260,7 +256,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
 
   /**
    * Best‑effort attempt to launch the OS installer for the given file. Returns `(success, message)`
-   * where message is suitable for user display.
+   * where the message is suitable for user display.
    */
 
   /** Attempts to launch an OS-appropriate installer for the provided file. */
@@ -356,7 +352,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     val isSnapPkg = lowerName.endsWith(EXT_SNAP)
     var guiOpenCmd: ProcessBuilder? =
       if (isSnapPkg) null else guiOpenCommand(file, preferHost = inFlatpak)
-    // If running in Flatpak and opener not available, try host Software Center with
+    // If running in Flatpak and opener not available, try to host Software Center with
     // --local-filename
     if (
       guiOpenCmd == null &&
@@ -391,7 +387,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         }
       }
 
-    // Prefer GUI if we have a way to open it. Otherwise, return fallback command.
+    // Prefer GUI if we have a way to open it. Otherwise, return a fallback command.
     return if (guiOpenCmd != null) {
       InstallerDelegate.Spawn(guiOpenCmd, msg("installer.guiHandOff"))
     } else {
@@ -424,9 +420,9 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
     data class Manual(val message: LocalMessage) : InstallerDelegate
   }
 
-  /** Detects rpm-ostree based systems (immutable operating environments). */
+  /** Detects rpm-ostree-based systems (immutable operating environments). */
   private fun isOstree(): Boolean {
-    // Prefer runtime marker file; fall back to presence of rpm-ostree tool
+    // Prefer the runtime marker file; fall back to the presence of rpm-ostree tool
     return File("/run/ostree-booted").exists() || appEnv.onPath("rpm-ostree")
   }
 
@@ -438,8 +434,6 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Builds a GUI opener command for local files, considering sandbox constraints. */
   private fun guiOpenCommand(file: File, preferHost: Boolean): ProcessBuilder? =
     guiOpenCommandForTarget(file.absolutePath, preferHost)
-
-  /** Choose preferred GUI opener available on PATH, including subcommand args. */
 
   /** Chooses the first available GUI opener command from the current environment. */
   private fun pickGuiOpener(): List<String>? =
@@ -644,7 +638,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         }
 
         kind.equals("flatpak", ignoreCase = true) && !id.isNullOrBlank() -> {
-          // appstream is widely handled by GNOME/KDE software centers; fallback to flathub page
+          // appstream is widely handled by GNOME/KDE software centers; fallback to the flathub page
           if (appEnv.onPath("gio") || appEnv.onPath(CMD_XDG_OPEN)) {
             "appstream://$id"
           } else {
@@ -700,7 +694,7 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   private fun writeMessage(ctx: ToadletContext, success: Boolean, msg: String) {
     val view = renderResultPage(ctx, success, msg)
     addHomepageLink(view.content)
-    // Allow JS on result page; CSP was previously too strict here.
+    // Allow JS on the result page; CSP was previously too strict here.
     this.writeHTMLReply(
       ctx,
       ReplyHeaders.of(200, "OK", "text/html; charset=utf-8"),
@@ -768,8 +762,8 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
         if (file.name.lowercase().endsWith(".exe")) windowsExeGuidance(content, pm)
       }
 
-      else -> {
-        Unit
+      AppEnv.OsKind.OTHER -> {
+        return
       }
     }
   }

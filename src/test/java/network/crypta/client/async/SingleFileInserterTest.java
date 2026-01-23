@@ -25,6 +25,7 @@ import network.crypta.support.api.RandomAccessBucket;
 import network.crypta.support.compress.Compressor;
 import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
 import network.crypta.support.io.ArrayBucket;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +45,7 @@ class SingleFileInserterTest {
   // Simple executor that runs tasks inline for determinism
   private static final class InlineExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 
