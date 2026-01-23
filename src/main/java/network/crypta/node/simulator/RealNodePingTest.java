@@ -116,7 +116,7 @@ public class RealNodePingTest {
    * @throws NodeInitException if a test node fails to initialize required components.
    * @throws PeerTooOldException if the peer build is too old to establish a connection.
    */
-  public static void main()
+  static void main()
       throws FSParseException,
           PeerParseException,
           InterruptedException,

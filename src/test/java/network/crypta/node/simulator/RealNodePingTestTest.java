@@ -2,6 +2,7 @@ package network.crypta.node.simulator;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
@@ -28,12 +29,12 @@ class RealNodePingTestTest {
 
   @Test
   void main_whenReflected_expectPublicStaticVoidSignature() throws Exception {
-    Method main = RealNodePingTest.class.getDeclaredMethod("main", String[].class);
+    Method main = RealNodePingTest.class.getDeclaredMethod("main");
 
     int modifiers = main.getModifiers();
-    assertTrue(Modifier.isPublic(modifiers));
+    assertFalse(Modifier.isPublic(modifiers));
     assertTrue(Modifier.isStatic(modifiers));
     assertEquals(void.class, main.getReturnType());
-    assertArrayEquals(new Class<?>[] {String[].class}, main.getParameterTypes());
+    assertArrayEquals(new Class<?>[0], main.getParameterTypes());
   }
 }
