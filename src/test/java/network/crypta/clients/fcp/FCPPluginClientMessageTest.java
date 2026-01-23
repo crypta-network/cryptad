@@ -220,7 +220,6 @@ class FCPPluginClientMessageTest {
     }
   }
 
-  @Test
   private FCPPluginClientMessage createMessage(Consumer<SimpleFieldSet> customizer)
       throws MessageInvalidException {
     SimpleFieldSet fs = minimalFieldSet();
