@@ -1,9 +1,3 @@
-import java.math.BigDecimal
-import org.gradle.api.artifacts.VersionCatalogsExtension
-import org.gradle.kotlin.dsl.getByType
-import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
-import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
-import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -106,7 +100,7 @@ tasks.withType<Test>().configureEach { enableAssertions = false }
 
 // JaCoCo setup: use a recent agent and produce XML for Sonar
 // Version is sourced from the version catalog (gradle/libs.versions.toml: [versions].jacoco)
-val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
+val libs: VersionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
 extensions.configure<JacocoPluginExtension>("jacoco") {
   toolVersion = libs.findVersion("jacoco").get().requiredVersion
@@ -122,7 +116,7 @@ tasks.withType<JacocoReport>().configureEach {
   }
 }
 
-// Enforce coverage threshold (80% minimum)
+// Enforce a coverage threshold (80% minimum)
 tasks.withType<JacocoCoverageVerification>().configureEach {
   dependsOn(tasks.withType<Test>())
   violationRules {

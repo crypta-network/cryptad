@@ -1,9 +1,5 @@
 import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
-import org.gradle.api.JavaVersion
-import org.gradle.api.plugins.JavaPluginExtension
-import org.gradle.api.tasks.SourceSetContainer
-import org.gradle.jvm.toolchain.JavaLanguageVersion
 
 plugins {
   // Apply SonarQube/SonarCloud and SonarLint centrally via convention plugin
@@ -75,21 +71,20 @@ extensions.configure<SonarLintSettings>("sonarLint") {
 // Usage:
 //   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
 //   (aliases: -Pfile=..., -Psonarlint.sources=...)
-val sourceSets = extensions.getByType(SourceSetContainer::class.java)
+val sourceSets: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
 
 tasks.register("sonarlintFile", SonarLint::class.java) {
   group = "verification"
   description = "Run SonarLint on a single file (-Psonarlint.file=<path>)."
   // Analyze against main sources by default
   setSource(sourceSets.named("main").get().allSource)
-  // Propagate Java language level explicitly for single-file analysis
+  // Propagate the Java language level explicitly for single-file analysis
   val javaExt = project.extensions.findByType(JavaPluginExtension::class.java)
-  val sourceVersion = (javaExt?.sourceCompatibility ?: JavaVersion.current()).majorVersion
   val targetVersion = (javaExt?.targetCompatibility ?: JavaVersion.current()).majorVersion
-  // Configure task-scoped Java release for the SonarLint engine
-  java { release.set(JavaLanguageVersion.of(sourceVersion.toInt())) }
+  // Configure a task-scoped Java release for the SonarLint engine
+  java { release.set(JavaLanguageVersion.of(targetVersion.toInt())) }
 
-  // Provide classpath and output directories so Java rules that require
+  // Provide classpath and output directories, so Java rules that require
   // semantic information are enabled even for single-file analysis.
   val mainSourceSet = sourceSets.named("main").get()
   java {
@@ -105,8 +100,8 @@ tasks.register("sonarlintFile", SonarLint::class.java) {
       .orElse(providers.gradleProperty("sonar.inclusions"))
 
   val pattern = fileProp.orNull
-  if (pattern != null && pattern.isNotBlank()) {
-    // Normalize to project-relative path and set it as the only source
+  if (!pattern.isNullOrBlank()) {
+    // Normalize to a project-relative path and set it as the only source
     val f = project.layout.projectDirectory.file(pattern).asFile
     val rel = project.relativePath(f)
     if (f.isFile) {

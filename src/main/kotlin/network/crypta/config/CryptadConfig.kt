@@ -113,7 +113,7 @@ private fun replacePlaceholders(input: String, base: Map<String, String>): Pair<
   var out = input
   var replacedAny = false
   base.forEach { (k, v) ->
-    val placeholder = "\${$k}"
+    val placeholder = $$"${$$k}"
     if (out.contains(placeholder)) replacedAny = true
     out = out.replace(placeholder, v)
   }

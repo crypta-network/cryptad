@@ -19,7 +19,7 @@ val gitrev: String =
     "@unknown@"
   }
 
-val sourceSetsContainer = extensions.getByType(SourceSetContainer::class.java)
+val sourceSetsContainer: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
 // Also consider Kotlin source roots so the Version.kt template may live under src/*/kotlin/
 val kotlinExt =
   extensions.findByType(org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension::class.java)

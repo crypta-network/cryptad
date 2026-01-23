@@ -6,10 +6,10 @@ plugins { java }
 // We keep our existing custom distribution (assembleCryptadDist) intact.
 // This plugin builds a jlink image directly (no external runtime plugin).
 
-val cryptadDistDir = layout.buildDirectory.dir("cryptad-dist")
-val jlinkImageDir = layout.buildDirectory.dir("cryptad-jlink-image")
+val cryptadDistDir: Provider<Directory> = layout.buildDirectory.dir("cryptad-dist")
+val jlinkImageDir: Provider<Directory> = layout.buildDirectory.dir("cryptad-jlink-image")
 
-// No application plugin: launchers below invoke the main class directly
+// No application plugin: the launchers below invoke the main class directly
 
 // jdeps prefers a versioned jar; copy our custom jar to that name
 val syncRuntimeJar by
@@ -31,7 +31,7 @@ val syncRuntimeJar by
 
 // No external runtime plugin configuration; jlink is invoked below
 
-// Our existing bin/cryptad script (Tanuki Wrapper) isn't patched by the plugin.
+// The plugin doesn't patch our existing bin/cryptad script (Tanuki Wrapper).
 // No separate jlink-specific launchers; we reuse dist/bin scripts and wrapper binaries
 
 // Discover Java modules with jdeps for the assembled app classpath
@@ -45,6 +45,7 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
   @get:InputFiles @get:Classpath abstract val classpath: ConfigurableFileCollection
 
   @get:Input abstract val javaLanguageVersion: Property<Int>
+
   // Provide JDK home explicitly to avoid accessing Project services during execution
   @get:Input abstract val javaHomePath: Property<String>
 
@@ -61,8 +62,8 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
     val jdeps =
       javaHome.resolve(
         "bin/jdeps${
-              if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
-          }"
+                        if (System.getProperty("os.name").lowercase().contains("win")) ".exe" else ""
+                    }"
       )
 
     val classpathArg =
@@ -89,9 +90,9 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
 
     val baseline = baselineModules.get().toSet()
     val modules: Set<String> =
-      if (exit == 0 && detected.isNotBlank())
+      if (exit == 0 && detected.isNotBlank()) {
         detected.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet() + baseline
-      else
+      } else {
         baseline +
           setOf(
             "java.base",
@@ -106,6 +107,7 @@ abstract class ComputeJlinkModules @Inject constructor(private val execOps: Exec
             "java.sql",
             "java.xml",
           )
+      }
 
     val outFile = modulesFile.get().asFile
     outFile.parentFile.mkdirs()
@@ -135,7 +137,7 @@ val computeJlinkModules by
 
     // Toolchain + baseline
     javaLanguageVersion.set(25)
-    // Resolve toolchain at configuration time and pass JDK home path as input
+    // Resolve the toolchain at configuration time and pass JDK home path as input
     val toolchains = project.serviceOf<JavaToolchainService>()
     val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
     javaHomePath.set(launcher.map { it.metadata.installationPath.asFile.absolutePath })
@@ -237,7 +239,7 @@ val prepareJlinkImage by
     }
   }
 
-// Zip the jlink image with predictable name
+// Zip the jlink image with a predictable name
 val distZipCryptadJlink by
   tasks.registering(Zip::class) {
     group = "distribution"
