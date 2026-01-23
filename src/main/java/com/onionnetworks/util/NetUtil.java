@@ -36,15 +36,7 @@ public class NetUtil {
 
   private static final Logger LOGGER = Logger.getLogger(NetUtil.class.getName());
 
-  /**
-   * Creates a new NetUtil instance. The class is stateless, so constructing it is rarely necessary;
-   * callers typically access the static utilities directly. The constructor exists only to satisfy
-   * environments that prefer instance-based access patterns or dependency injection frameworks and
-   * performs no initialization work.
-   */
-  public NetUtil() {
-    // Intentional no-op: class is stateless and intended for static access patterns only.
-  }
+  private NetUtil() {}
 
   /**
    * Returns IP-literal variants of the provided URL for each DNS address.
@@ -53,8 +45,8 @@ public class NetUtil {
    * supplied URL, substitutes each textual address into the host field, and preserves protocol,
    * user info, port, path, query, and fragment components. When the host is null or empty, the
    * original URL is returned in a single-element array to avoid resolver failures. The order of the
-   * returned URLs mirrors the resolver output so callers can respect the system's preferred address
-   * ordering.
+   * returned URLs mirrors the resolver output, so callers can respect the system's preferred
+   * address ordering.
    *
    * @param url non-null URL whose hostname should be expanded into concrete IP addresses; other
    *     components remain unchanged.
@@ -111,10 +103,8 @@ public class NetUtil {
    *
    * @param args optional URL strings to resolve; when empty, built-in examples are used to showcase
    *     common edge cases.
-   * @throws Exception if parsing inputs, resolving DNS records, or constructing URL objects fails
-   *     at any stage.
    */
-  public static void main(String[] args) throws Exception {
+  static void main(String[] args) throws IOException {
 
     if (args.length == 0) {
       args =

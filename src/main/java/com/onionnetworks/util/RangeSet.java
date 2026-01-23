@@ -56,7 +56,7 @@ public class RangeSet {
   /**
    * Creates an empty {@code RangeSet} with capacity for {@link #DEFAULT_CAPACITY} range pairs.
    *
-   * <p>No ranges are present after construction and both infinity flags are clear. Callers
+   * <p>No ranges are present after construction, and both infinity flags are clear. Callers
    * typically add values or ranges immediately using {@link #add(long)} or {@link #add(Range)}. The
    * instance is mutable and may expand its internal storage automatically as additional ranges are
    * merged.
@@ -82,9 +82,9 @@ public class RangeSet {
   /**
    * Copy constructor that duplicates another {@code RangeSet} including infinity markers.
    *
-   * <p>All endpoints are copied into a fresh backing array and the source set remains unchanged.
-   * The resulting instance is a shallow structural clone: subsequent modifications to either set do
-   * not affect the other, but {@link Range} objects returned by iterators are newly allocated each
+   * <p>All endpoints are copied into a fresh backing array, and the source set remains unchanged.
+   * The resulting instance is a shallow structural clone: later modifications to either set do not
+   * affect the other, but {@link Range} objects returned by iterators are newly allocated each
    * time.
    *
    * @param source the {@code RangeSet} to replicate, including its current ranges and flags.
@@ -110,7 +110,7 @@ public class RangeSet {
    */
   public RangeSet union(RangeSet rs) {
     // This should be rewritten to interleave the additions so that there
-    // is fewer midlist insertions.
+    // are fewer midlist insertions.
     RangeSet result = new RangeSet();
     result.add(this);
     result.add(rs);
@@ -120,7 +120,7 @@ public class RangeSet {
   /**
    * Produces the intersection of this set and the provided set.
    *
-   * <p>The returned {@code RangeSet} contains only values present in both operands. Internally the
+   * <p>The returned {@code RangeSet} contains only values present in both operands. Internally, the
    * method leverages complement logic, so infinite bounds are handled consistently with other set
    * operations. Neither input set is modified. When the operands do not overlap, an empty set is
    * returned.
@@ -166,7 +166,7 @@ public class RangeSet {
   /**
    * Determines whether the specified value is a member of this set.
    *
-   * <p>The lookup uses a binary search across stored endpoints and completes in O(log n) time where
+   * <p>The lookup uses a binary search across stored endpoints and completes in O(log n) time when
    * {@code n} is the number of disjoint ranges. Negative and positive infinity markers are honored,
    * so values beyond the finite endpoints are considered present when the corresponding flag is
    * set.
@@ -268,8 +268,8 @@ public class RangeSet {
       return;
     }
 
-    // This case should be the most common (insert at the end) so we will
-    // specifically check for it.  Its +1 so that we make sure it's not
+    // This case should be the most common (insert at the end), so we will
+    // specifically check for it.  It's +1 so that we make sure it's not
     // adjacent.  Do the MIN_VALUE check to make sure we don't overflow
     // the long.
     if (min != Long.MIN_VALUE && min - 1 > ranges[(rangeCount - 1) * 2 + 1]) {
@@ -361,8 +361,8 @@ public class RangeSet {
    * Returns an iterator over normalized {@link Range} instances contained in this set.
    *
    * <p>The iterator produces ranges in ascending order and expands infinity markers into explicit
-   * {@link Range} objects. The returned iterator is fail-safe with respect to subsequent mutations
-   * of this set because it iterates over a snapshot list created at invocation time.
+   * {@link Range} objects. The returned iterator is fail-safe with respect to later mutations of
+   * this set because it iterates over a snapshot list created at invocation time.
    *
    * @return an iterator that traverses each stored range exactly once in ascending order.
    */
@@ -513,12 +513,8 @@ public class RangeSet {
    * when enabled, and then processes user commands to add ranges, intersect with another set, or
    * invert the current set. Input of {@code q} ends the loop. This method is intended as a quick
    * manual exploration aid rather than a production interface.
-   *
-   * @param args command-line arguments, currently unused but accepted for conventional entry
-   *     points.
-   * @throws Exception if parsing or I/O fails while processing input.
    */
-  public static void main(String[] args) throws Exception {
+  static void main() throws IOException, ParseException {
     RangeSet rs = RangeSet.parse("5-10,15-20,25-30");
     try (BufferedReader br = new BufferedReader(new InputStreamReader(System.in))) {
       boolean exit = false;

@@ -16,10 +16,10 @@ import org.bitpedia.util.TigerTree;
  *
  * <p>The class encapsulates the lifecycle needed to derive the combined binary digest used by the
  * Bitzi submission format: call {@link #analyzeInit()} to seed internal hashers, feed data chunks
- * through {@link #analyzeUpdate(byte[], int, int)}, then call {@link #analyzeFinal()} to obtain the
+ * through {@link #analyzeUpdate(byte[], int, int)}, then call {@link #analyzeFinal()} to get the
  * concatenated digest (SHA-1 bytes followed by Tiger Tree bytes). Clients are expected to encode
  * the result with {@link Base32} and split it at {@link #SHA_BASE32SIZE} characters when producing
- * the canonical dotted bitprint string. Instances maintain mutable state and are not thread-safe.
+ * the canonical dotted bitprint string. Instances maintain a mutable state and are not thread-safe.
  *
  * <p>Hashing is strictly forward-only: once {@link #analyzeFinal()} is called, the internal state
  * is consumed and the instance should be discarded or reinitialized before reuse. Built-in
@@ -79,7 +79,7 @@ public class Bitprint {
    * synchronization.
    */
   public Bitprint() {
-    // Constructor intentionally empty: lifecycle begins when analyzeInit() allocates hash state.
+    // Constructor intentionally empties: lifecycle begins when analyzeInit() allocates hash state.
   }
 
   /* NOTE: This function returns true if it failed the check! */
@@ -189,10 +189,8 @@ public class Bitprint {
    * Command-line entry point that runs the internal hash sanity check and logs the outcome. This
    * helper is intended for quick verification that the embedded SHA-1 and Tiger Tree
    * implementations produce the expected vectors on the current platform.
-   *
-   * @param args command-line arguments; ignored because the self-test uses built-in sample data.
    */
-  public static void main(String[] args) {
+  static void main() {
 
     if (hashSanityCheck()) {
       LOGGER.info("Hash test FAILED");

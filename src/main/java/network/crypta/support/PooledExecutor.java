@@ -34,7 +34,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
   private static final Logger LOG = LoggerFactory.getLogger(PooledExecutor.class);
 
   /**
-   * Counts of workers that exist per priority (running + waiting). Subtract the corresponding
+   * Counts of workers that exist per priority (running and waiting). Subtract the corresponding
    * waiting count to estimate actively running workers.
    */
   private final int[] runningThreads = new int[NativeThread.JAVA_PRIORITY_RANGE + 1];
@@ -77,7 +77,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
   /**
    * No-op lifecycle hook kept for API compatibility.
    *
-   * <p>PooledExecutor creates worker threads lazily on first task submission and allows them to
+   * <p>PooledExecutor creates worker threads lazily on the first task submission and allows them to
    * expire after inactivity; there is no global start/shutdown state to initialize here.
    */
   public void start() {
@@ -279,7 +279,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
   }
 
   /** Immutable diagnostic sample for a worker thread. */
-  public static record DiagSample(int jobId, String name, long cpuTime) {}
+  public record DiagSample(int jobId, String name, long cpuTime) {}
 
   /**
    * Worker that executes tasks and returns to an idle state when finished.
@@ -428,7 +428,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
           // We observed an interrupt while idle: clear the status unconditionally so that user
           // code never starts with an unexpected interrupted flag, regardless of whether a job is
           // already assigned now or will be assigned just after we release this monitor.
-          // Capture the return value to satisfy static analysis (don’t ignore result).
+          // Capture the return value to satisfy static analysis (don’t ignore the result).
           boolean cleared = Thread.interrupted();
           if (LOG.isDebugEnabled()) {
             LOG.debug("Cleared interrupt status after idle interrupt (cleared={})", cleared);

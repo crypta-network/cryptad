@@ -98,7 +98,7 @@ public class Node implements TimeSkewDetectorCallback {
   /** Config key name used to control datastore preallocation. */
   private static final String STORE_PREALLOCATE_KEY = "storePreallocate";
 
-  /** SimpleFieldSet key for Node-to-Node message type. */
+  /** SimpleFieldSet key for a Node-to-Node message type. */
   public static final String N2N_TYPE_KEY = "n2nType";
 
   /** System property to override the hardware RNG device path. */
@@ -106,8 +106,6 @@ public class Node implements TimeSkewDetectorCallback {
 
   /** Default hardware RNG device path for Unix-like systems. */
   public static final String DEFAULT_HWRNG_PATH = "/dev/hwrng";
-
-  // Static initializer not required
 
   /** Config object for the whole node. */
   private final PersistentConfig config;
@@ -128,16 +126,16 @@ public class Node implements TimeSkewDetectorCallback {
   /** Probability of decrementing at the maximum HTL boundary. */
   public static final double DECREMENT_AT_MAX_PROB = 0.5;
 
-  // Send keepalives every 7-14 seconds. Will be acked and if necessary resent.
+  // Send keepalives every 7-14 seconds. Will be acked and if necessary, resent.
   // Old behavior was keepalives every 14-28. Even that was adequate for a 30-second
   // timeout. Most nodes don't need to send keepalives because they are constantly busy,
-  // this is only an issue for disabled darknet connections, very quiet private networks
+  // this is only an issue for disabled darknet connections, very quiet private networks,
   // etc.
   /** Interval for sending keep‑alive packets on idle connections (milliseconds). */
   public static final long KEEPALIVE_INTERVAL = SECONDS.toMillis(7);
 
-  // If no activity for 30 seconds, node is dead
-  // 35 seconds allows plenty of time for resends etc. even if above is 14 sec as it is on older
+  // If no activity for 30 seconds, the node is dead
+  // 35 seconds allows plenty of time for resends etc. even if the above is 14 sec as it is on older
   // nodes.
   /** Inactivity timeout after which a peer is considered dead (milliseconds). */
   public static final long MAX_PEER_INACTIVITY = SECONDS.toMillis(35);
@@ -222,8 +220,6 @@ public class Node implements TimeSkewDetectorCallback {
 
   private String myName;
 
-  // location manager and peers live in network subsystem
-
   /** Node-reference directory (node identity, peers, etc.) */
   private final ProgramDirectory nodeDir;
 
@@ -276,7 +272,7 @@ public class Node implements TimeSkewDetectorCallback {
   /** Threshold in milliseconds defining a "low" backoff period for inserts. */
   public static final long LOW_BACKOFF = SECONDS.toMillis(30);
 
-  /** Default policy for prioritizing inserts on accept. */
+  /** Default policy for prioritizing inserts on acceptance. */
   public static final boolean PREFER_INSERT_DEFAULT = false;
 
   /** Default policy for forking insert when an item becomes cacheable. */
@@ -326,9 +322,9 @@ public class Node implements TimeSkewDetectorCallback {
 
   /**
    * The bootID of the last time the node booted up. Or -1 if we don't know due to permissions
-   * problems, or we suspect that the node has been booted and not written the file e.g. if we can't
-   * write it. So if we want to compare data gathered in the last session and only recorded to disk
-   * on a clean shutdown to data we have now, we just include the lastBootID.
+   * problems, or we suspect that the node has been booted and not written the file e.g., if we
+   * can't write it. So if we want to compare data gathered in the last session and only recorded to
+   * disk on a clean shutdown to data we have now, we just include the lastBootID.
    */
   private final long lastBootID;
 
@@ -357,7 +353,7 @@ public class Node implements TimeSkewDetectorCallback {
   /**
    * Minimum uptime for us to consider a node an acceptable place to store a key. We store a key to
    * the datastore only if it's from an insert, and we are a sink, but when calculating whether we
-   * are a sink we ignore nodes which have less uptime (percentage) than this parameter.
+   * are a sink, we ignore nodes which have less uptime (percentage) than this parameter.
    */
   static final int MIN_UPTIME_STORE_KEY = 40;
 
@@ -370,7 +366,7 @@ public class Node implements TimeSkewDetectorCallback {
   /**
    * Minimum bandwidth limit in bytes considered usable: 10 KiB. If there is an attempt to set a
    * limit below this - excluding the reserved -1 for input bandwidth - the callback will throw. See
-   * the callbacks for outputBandwidthLimit and inputBandwidthLimit. 10 KiB are equivalent to 50 GiB
+   * the callbacks for outputBandwidthLimit and inputBandwidthLimit. 10 KiB is equivalent to 50 GiB
    * traffic per month.
    */
   private static final int MINIMUM_BANDWIDTH = 10 * 1024;
@@ -381,7 +377,7 @@ public class Node implements TimeSkewDetectorCallback {
    * <p>This accessor exposes the hard floor enforced by bandwidth configuration callbacks. Values
    * below this threshold are treated as invalid because they would effectively stall node traffic.
    * The threshold does not apply to the reserved input-bandwidth sentinel value {@code -1}, which
-   * is handled separately by the configuration logic. The method is pure and side-effect free.
+   * is handled separately by the configuration logic. The method is pure and side-effect-free.
    *
    * @return minimum acceptable bandwidth limit, expressed in bytes per second.
    * @see #MINIMUM_BANDWIDTH
@@ -506,7 +502,7 @@ public class Node implements TimeSkewDetectorCallback {
    *
    * @param args command-line arguments forwarded to the wrapper-managed launcher; may be empty.
    */
-  public static void main(String[] args) {
+  static void main(String[] args) {
     NodeStarter.main(args);
   }
 
@@ -542,9 +538,9 @@ public class Node implements TimeSkewDetectorCallback {
    *
    * @param config The Config object for this node.
    * @param r The random number generator for this node. Passed in because we may want to use a
-   *     non-secure RNG for e.g. one-JVM live-code simulations. Should be a Yarrow in a production
+   *     non-secure RNG for e.g., one-JVM live-code simulations. Should be a Yarrow in a production
    *     node. Yarrow will be used if that parameter is null
-   * @param weakRandom The fast random number generator the node will use. If null an MT instance
+   * @param weakRandom The fast random number generator the node will use. If null, an MT instance
    *     will be used, seeded from the secure PRNG.
    * @param ns NodeStarter
    * @param executor Executor
@@ -839,11 +835,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     /*
      * On Windows, setting the file length normally involves writing lots of zeros.
-     * So it's an uninterruptible system call that takes a loooong time. On OS/X,
+     * So it's an uninterruptible system call that takes a long time. On OS/X,
      * presumably the same is true. If the RNG is fast enough, this means that
      * setting the length and writing random data take exactly the same amount
-     * of time. On most versions of Unix, holes can be created. However on all
-     * systems, predictable disk usage is a good thing. So lets turn it on by
+     * of time. On most versions of Unix, holes can be created. However, on all
+     * systems, predictable disk usage is a good thing. So let's turn it on by
      * default for now, on all systems. The datastore can be read but mostly not
      * written while the random data is being written.
      */
@@ -1099,9 +1095,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     // Short timeouts and JVM timeouts with nothing more said than the above have been seen...
     // I don't know why... need a stack dump...
     // For now just give it an extra 2 minutes. If it doesn't start in that time,
-    // it's likely (on reports so far) that a restart will fix it.
+    // it's likely (from reports so far) that a restart will fix it.
     // And we have to get a build out because ALL plugins are now failing to load,
-    // including the absolutely essential (for most nodes) JSTUN and UPnP.
+    // including the essential (for most nodes) JSTUN and UPnP.
     WrapperManager.signalStarting((int) MINUTES.toMillis(2));
 
     FetchContext ctx = services.clientCore().makeClient((short) 0, true, false).getFetchContext();
@@ -1124,7 +1120,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     // Note: this is a hack
     // toadlet server should start after all initialized
-    // see NodeClientCore line 437
+    // to see NodeClientCore line 437
     finishToadletsIfEnabled();
 
     LOG.info("Node constructor completed");
@@ -1148,7 +1144,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   private int registerMasterKeyFileConfig(SubConfig nodeConfig, int sortOrder)
       throws NodeInitException {
-    // Location of master key
+    // Location of the master key
     nodeConfig.register(
         "masterKeyFile",
         "master.keys",
@@ -1163,8 +1159,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
           @Override
           public void set(String val) throws InvalidConfigValueException {
-            // Localization may be needed
-            // Wipe the old one and move
+            // Localization may be needed to Wipe the old one and move
             throw new InvalidConfigValueException(
                 "Node.masterKeyFile cannot be changed on the fly, you must shutdown, wipe the old"
                     + " file and reconfigure");
@@ -1762,9 +1757,11 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   private BootIdState initializeBootId() {
     // Boot ID
     long bootId = bootstrap.random().nextLong();
-    // Fixed length file containing boot ID. Accessed with random access file. So hopefully it will
-    // always be written. Note that we set lastBootID to -1 if we can't _write_ our ID as well as if
-    // we can't read it, because if we can't write it then we probably couldn't write it on the
+    // Fixed the length file containing boot ID. Accessed with a random access file. So hopefully it
+    // will
+    // always be written. Note that we set the lastBootID to -1 if we can't _write_ our ID as well
+    // as if
+    // we can't read it, because if we can't write it, then we probably couldn't write it on the
     // last bootup either.
     File bootIDFile = runDir.file("bootID");
     int bootFileLength = 64 / 4; // A long in padded hex bytes
@@ -1792,9 +1789,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   private void loadOrInitNodeFile(File nodeFile, File nodeFileBackup) {
-    // After we have set up testnet and IP address, load the node file
+    // After we have set up the testnet and IP address, load the node file
     try {
-      // May take file directly in the future.
+      // May take the file directly in the future.
       readNodeFile(nodeFile.getPath());
     } catch (IOException e) {
       try {
@@ -1969,7 +1966,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   private void finishToadletsIfEnabled() {
     // Note: this is a hack
     // toadlet server should start after all initialized
-    // see NodeClientCore line 437
+    // to see NodeClientCore line 437
     if (services.toadlets().isEnabled()) {
       services.toadlets().finishStart();
       services.toadlets().createFproxy();
@@ -1987,7 +1984,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     else if (memoryLimit <= 128 * 1024 * 1024)
       defaultCacheSize = 0; // Turn off completely for very small memory.
     else {
-      // 9 stores, total should be 5% of memory, up to maximum of 1MB per store at 308MB+
+      // 9 stores, total should be 5% of memory, up to a maximum of 1MB per store at 308MB+
       defaultCacheSize = Math.min(1024L * 1024, (memoryLimit - 128L * 1024 * 1024) / (20 * 9));
     }
     return defaultCacheSize;
@@ -2040,7 +2037,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * @param installConfig configuration section to register and read the directory option from.
    * @param cfgKey option key under which the directory path is stored.
-   * @param defaultValue default path used when the option is unset; may be absolute or relative.
+   * @param defaultValue the default path used when the option is unset; may be absolute or
+   *     relative.
    * @param shortdesc i18n key for a short description shown to users.
    * @param longdesc i18n key for a longer description shown to users.
    * @param moveErrMsg message used when emitting errors during directory creation/move; may be
@@ -2085,7 +2083,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * @param installConfig configuration section to register and read the directory option from.
    * @param cfgKey option key under which the directory path is stored.
-   * @param defaultValue default path used when the option is unset; may be absolute or relative.
+   * @param defaultValue the default path used when the option is unset; may be absolute or
+   *     relative.
    * @param shortdesc i18n key for a short description shown to users.
    * @param longdesc i18n key for a longer description shown to users.
    * @return a {@link ProgramDirectory} bound to the resolved path and callbacks.
@@ -2106,10 +2105,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * <p>This method transitions the node from initialized to running by starting network
    * dispatchers, peers, routing maintenance, and service layers. It also starts the updater,
-   * applies startup logging, and persists configuration state. The call is not idempotent; callers
-   * should invoke it exactly once after construction. Startup ordering is significant, particularly
-   * for peer loading and dispatcher setup, so the method should not be interrupted or run
-   * concurrently.
+   * applies startup logging, and persists the configuration state. The call is not idempotent;
+   * callers should invoke it exactly once after construction. Startup ordering is significant,
+   * particularly for peer loading and dispatcher setup, so the method should not be interrupted or
+   * run concurrently.
    *
    * @param noSwaps when {@code true}, suppresses swap activity even if configured otherwise.
    * @throws NodeInitException if a required subsystem fails to initialize or start.
@@ -2189,7 +2188,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   }
 
   /**
-   * Returns a human‑readable summary of current node status.
+   * Returns a human‑readable summary of the current node status.
    *
    * <p>The summary includes peer connectivity information and the current number of transferring
    * request senders. The exact formatting is intended for diagnostics or operator output rather
@@ -2277,9 +2276,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Quiesces the node so it can be stopped safely.
    *
    * <p>The method is idempotent and may be called multiple times, including during wrapper-driven
-   * shutdown sequences. It broadcasts disconnects to peers, persists configuration, and flushes any
-   * persistent random seed data. It does not block for full subsystem shutdown and should be used
-   * as a best-effort transition into a safe-to-exit state rather than a full stop barrier.
+   * shutdown sequences. It broadcasts, disconnects to peers, persists configuration, and flushes
+   * any persistent random seed data. It does not block for full subsystem shutdown and should be
+   * used as a best-effort transition into a safe-to-exit state rather than a full stop barrier.
    */
   public void park() {
     synchronized (this) {
@@ -2339,7 +2338,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Returns whether advanced mode is enabled in the client UI.
    *
    * <p>Advanced mode controls the visibility of expert settings and diagnostics. If the client core
-   * is not yet initialized, this method returns {@code false}. The value reflects current UI
+   * is not yet initialized, this method returns {@code false}. The value reflects the current UI
    * configuration and does not affect underlying networking behavior directly.
    *
    * @return {@code true} when advanced mode is enabled; {@code false} otherwise.
@@ -2381,9 +2380,9 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Accumulates payload bytes sent by the node.
    *
    * <p>Callers should supply the number of payload bytes (not including protocol overhead) for a
-   * completed send. The method performs a synchronized increment and does not validate the value,
-   * so callers must ensure the length is non-negative. It has no return value and is safe for
-   * concurrent use.
+   * completed sending. The method performs a synchronized increment and does not validate the
+   * value, so callers must ensure the length is non-negative. It has no return value and is safe
+   * for concurrent use.
    *
    * @param len number of payload bytes sent; must be non-negative.
    */
@@ -2428,8 +2427,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Returns the current maximum hop-to-live (HTL) value.
    *
    * <p>The value is derived from configuration and applies to routed requests that do not specify
-   * an explicit HTL. It is read-only from callers' perspective and does not perform synchronization
-   * because updates are serialized through configuration callbacks.
+   * an explicit HTL. It is read-only from the callers' perspective and does not perform
+   * synchronization because updates are serialized through configuration callbacks.
    *
    * @return maximum HTL value used by default for routing decisions.
    */
@@ -2462,10 +2461,10 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns the node directory root (identity and peer files).
    *
-   * <p>This directory holds the node identity file, peer references, and other core state that is
-   * tied to the node's network identity. The value is derived from startup configuration and is
-   * stable for the lifetime of the process. Callers should not mutate the directory structure while
-   * the node is running.
+   * <p>This directory holds the node identity file, peer references, and other core states tied to
+   * the node's network identity. The value is derived from startup configuration and is stable for
+   * the lifetime of the process. Callers should not mutate the directory structure while the node
+   * is running.
    *
    * @return node directory path.
    */
@@ -2628,7 +2627,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Indicates whether opennet references are allowed to pass through darknet peers.
    *
    * <p>This setting affects how peer references are forwarded between networks. The method returns
-   * a snapshot of current configuration and is synchronized to align with updates from config
+   * a snapshot of the current configuration and is synchronized to align with updates from config
    * callbacks.
    *
    * @return {@code true} if opennet references may pass through darknet; {@code false} otherwise.
@@ -2673,7 +2672,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * <p>The decision depends on both the configuration flag and the provided hop-to-live value. The
    * method returns {@code false} for {@code htl <= 1} to avoid unnecessary routing heuristics on
-   * near-terminal hops. It is a pure check and does not modify state.
+   * near-terminal hops. It is a pure check and does not modify the state.
    *
    * @param htl hop-to-live value for the current request; must be non-negative.
    * @return {@code true} if peer-location routing should be applied; {@code false} otherwise.
@@ -2817,7 +2816,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
   /**
    * Returns whether the Slashdot cache is enabled.
    *
-   * <p>The Slashdot cache is a transient cache layer for frequently accessed blocks. When disabled
+   * <p>The Slashdot cache is a transient cache layer for frequently accessed blocks. When disabled,
    * the node still operates normally but may serve less effectively under load. This method is a
    * configuration snapshot with no side effects.
    *
@@ -2978,7 +2977,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    *
    * <p>The network subsystem owns peer managers, packet dispatchers, and transport configuration.
    * It is initialized during construction and started via {@link #start(boolean)}. Callers should
-   * treat the returned instance as node-owned shared state.
+   * treat the returned instance as a node-owned shared state.
    *
    * @return network subsystem instance.
    */
@@ -3108,8 +3107,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Returns the active {@link SecurityLevels} configuration.
    *
    * <p>The returned instance is owned by the node and may be mutated by configuration callbacks.
-   * Callers should treat it as shared mutable state and avoid storing long-lived references unless
-   * they can tolerate updates.
+   * Callers should treat it as a shared mutable state and avoid storing long-lived references
+   * unless they can tolerate updates.
    *
    * @return current security levels configuration instance.
    */
@@ -3165,8 +3164,8 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
    * Returns the non-persistent real-time request client.
    *
    * <p>This client issues real-time priority requests and does not persist state. It is suited for
-   * interactive operations where latency matters. The client is owned by the node; callers should
-   * treat it as shared and not attempt to close it directly.
+   * interactive operations where latency matters. The node owns the client; callers should treat it
+   * as shared and not attempt to close it directly.
    *
    * @return non-persistent real-time request client instance.
    */
