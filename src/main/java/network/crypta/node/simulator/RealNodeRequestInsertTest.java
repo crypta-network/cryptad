@@ -111,12 +111,11 @@ public class RealNodeRequestInsertTest extends RealNodeRoutingTest {
    * The method is not idempotent because it deletes and recreates the working directory on each
    * run. It is intended to be executed from the command line in a controlled environment.
    *
-   * @throws CHKEncodeException if CHK key generation fails for the test payload
    * @throws NodeInitException if node initialization fails during test setup
    * @throws InterruptedException if the test thread is interrupted while waiting
    */
   @SuppressWarnings("unused")
-  static void main() throws CHKEncodeException, NodeInitException, InterruptedException {
+  static void main() throws NodeInitException, InterruptedException {
     String name = "realNodeRequestInsertTest";
     File wd = new File(name);
     if (!FileUtil.removeAll(wd)) {

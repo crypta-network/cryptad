@@ -52,7 +52,7 @@ public class AddRef {
   private AddRef() {}
 
   /**
-   * Runs the AddRef command-line entry point, validating arguments and executing the add flow.
+   * Runs the AddRef command-line entry point, validating arguments and executing the adding flow.
    *
    * <p>This method configures console logging suitable for standalone execution, validates that a
    * reference file path is provided and readable, and then attempts to connect to the local FCP
@@ -64,7 +64,7 @@ public class AddRef {
    * @param args command-line arguments where {@code args[0]} is a readable reference file path
    *     suitable for {@link SimpleFieldSet#readFrom(File, boolean, boolean)}.
    */
-  public static void main(String[] args) {
+  static void main(String[] args) {
     configureStandaloneConsoleLogging();
     if (args.length < 1) {
       LOG.error("Please provide a file name as the first argument.");

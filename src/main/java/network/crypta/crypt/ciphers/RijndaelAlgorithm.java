@@ -542,7 +542,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       }
     }
 
-    // last round is special
+    // the last round is special
     ker = ke[rounds];
     int tt = ker[0];
     result[0] = (byte) (S[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
@@ -718,7 +718,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       }
     }
 
-    // last round is special
+    // the last round is special
     ker = ke[rounds];
     int tt = ker[0];
     result[0] = (byte) (S[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
@@ -861,7 +861,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       }
     }
 
-    // last round is special
+    // the last round is special
     kdr = kd[rounds];
     int tt = kdr[0];
     result[0] = (byte) (Si[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
@@ -1042,7 +1042,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       }
     }
 
-    // last round is special
+    // the last round is special
     kdr = kd[rounds];
     int tt = kdr[0];
     result[0] = (byte) (Si[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
@@ -1145,7 +1145,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     KeyScheduleCtx ctx = new KeyScheduleCtx(ke, kd, rounds, bcShift, bc, kc, roundKeyCount);
     // copy initial round keys
     int t = copyRoundKeysFromTk(ctx, tk, 0);
-    // evolve key schedule and continue copying until filled
+    // evolve a key schedule and continue copying until filled
     evolveKeySchedule(ctx, tk, t);
     // inverse MixColumn where needed for decryption keys
     inverseMixColumnsOnKd(ctx.kd, ctx.rounds, ctx.bc);
@@ -1477,7 +1477,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       ok = encryptDecryptAndCompare(kb, pt);
       if (!ok) throw new IllegalStateException("Symmetric operation failed");
     } catch (Exception x) {
-      // Always log unexpected runtime exceptions at error level.
+      // Always log unexpected runtime exceptions at the error level.
       LOG.error("Self-test failed for keysize {}", keysize, x);
       ok = false;
     }
@@ -1568,8 +1568,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Returns a string of 2 hexadecimal digits (most significant digit first) corresponding to the
-   * lowest 8 bits of <i>n</i>.
+   * Returns a string of 2 hexadecimal digits (the most significant digit first) corresponding to
+   * the lowest 8 bits of <i>n</i>.
    */
   private static String byteToString(int n) {
     char[] buf = {HEX_DIGITS[n >>> 4 & 0x0F], HEX_DIGITS[n & 0x0F]};
@@ -1577,8 +1577,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   }
 
   /**
-   * Returns a string of 8 hexadecimal digits (most significant digit first) corresponding to the
-   * integer <i>n</i>, which is treated as unsigned.
+   * Returns a string of 8 hexadecimal digits (the most significant digit first) corresponding to
+   * the integer <i>n</i>, which is treated as unsigned.
    */
   private static String intToString(int n) {
     char[] buf = new char[8];
@@ -1633,10 +1633,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
    *
    * <p>Runs internal self‑tests for 128‑, 192‑, and 256‑bit keys using the default 128‑bit block
    * size. Intended for developers; production code does not invoke this method.
-   *
-   * @param args Unused.
    */
-  public static void main(String[] args) {
+  static void main() {
     selfTest(16);
     selfTest(24);
     selfTest(32);

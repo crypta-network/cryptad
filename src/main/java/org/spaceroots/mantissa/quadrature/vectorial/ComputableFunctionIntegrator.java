@@ -15,8 +15,8 @@ import org.spaceroots.mantissa.functions.vectorial.ComputableFunction;
  * reuse scratch buffers, or allocate per call, but they all guarantee that the returned vector
  * corresponds to the definite integral from {@code a} to {@code b}, preserving sign when the bounds
  * are reversed. Unless stated otherwise by a concrete class, instances are not guaranteed to be
- * thread-safe; prefer one integrator per concurrent integration task to avoid shared mutable state.
- * Callers remain responsible for ensuring that the supplied function is side-effect free or
+ * thread-safe; prefer one integrator per concurrent integration task to avoid a shared mutable
+ * state. Callers remain responsible for ensuring that the supplied function is side-effect free or
  * otherwise safe to sample repeatedly.
  *
  * <ul>
@@ -56,5 +56,5 @@ public interface ComputableFunctionIntegrator {
    * @throws FunctionException if evaluating the supplied function fails or signals an unrecoverable
    *     condition during integration
    */
-  public double[] integrate(ComputableFunction f, double a, double b) throws FunctionException;
+  double[] integrate(ComputableFunction f, double a, double b) throws FunctionException;
 }

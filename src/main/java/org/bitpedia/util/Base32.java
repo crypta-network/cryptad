@@ -25,7 +25,7 @@ import java.util.logging.Logger;
  *   <li>Optimizes shifts to avoid temporary byte arrays while preserving deterministic output.
  * </ul>
  *
- * <p>Typical flow: supply a byte array to {@link #encode(byte[])} to obtain its textual form, then
+ * <p>Typical flow: supply a byte array to {@link #encode(byte[])} to get its textual form, then
  * later feed that string to {@link #decode(String)} to restore the original bytes. Because padding
  * is omitted, consumers must rely on external framing to detect truncation. Input arguments must be
  * non-null; callers retain ownership of provided buffers.
@@ -58,7 +58,7 @@ public class Base32 {
    * Callers should prefer the static utility methods unless dependency injection or reflective
    * creation requires an instance.
    */
-  public Base32() {
+  private Base32() {
     // Constructor intentionally empty because the utility holds no instance state or resources.
   }
 
@@ -113,7 +113,7 @@ public class Base32 {
   /**
    * Decodes an unpadded Base32 string into its original byte sequence.
    *
-   * <p>The decoder tolerates and skips characters outside the Base32 alphabet so callers may pass
+   * <p>The decoder tolerates and skips characters outside the Base32 alphabet, so callers may pass
    * strings containing whitespace or incidental punctuation. Bits are reassembled in order; when
    * the input length is not a multiple of eight characters, the final byte may be partially filled,
    * mirroring the behavior of the original Bitzi implementation. The returned array has a
@@ -128,7 +128,7 @@ public class Base32 {
    *
    * @param base32 text to decode; characters outside {@code A-Z2-7} are ignored rather than failing
    *     the operation
-   * @return newly allocated byte array containing the decoded data in original order
+   * @return newly allocated byte array containing the decoded data in the original order
    */
   public static byte[] decode(final String base32) {
     byte[] bytes = new byte[base32.length() * 5 / 8];
@@ -174,7 +174,7 @@ public class Base32 {
    * @param args command-line arguments where {@code args[0]} should hold a Base32-encoded payload;
    *     additional elements are ignored
    */
-  public static void main(String[] args) {
+  static void main(String[] args) {
     if (args.length == 0) {
       LOGGER.info("Supply a Base32-encoded argument.");
       return;

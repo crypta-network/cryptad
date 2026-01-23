@@ -5,6 +5,7 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.LocationManager;
 import network.crypta.node.Node;
+import network.crypta.node.NodeInitException;
 import network.crypta.node.NodeStarter;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;
@@ -20,8 +21,8 @@ import org.slf4j.event.Level;
  * Runs a deterministic routing simulation across a small in-process darknet mesh.
  *
  * <p>This class creates a fixed-size set of real nodes, wires them into a Kleinberg-style topology,
- * and repeatedly issues routed pings until the observed success rate reaches a target accuracy. It
- * is intended for manual, long-running experiments that compare routing behavior under different
+ * and repeatedly issues routed pings until the observed success rate reaches target accuracy. It is
+ * intended for manual, long-running experiments that compare routing behavior under different
  * configuration knobs, rather than for unit-test execution. The harness keeps the random seed
  * stable so that routing changes can be compared across runs, while still allowing natural timing
  * variance from the threaded node runtime.
@@ -58,7 +59,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
    * Last darknet port reserved for the simulated node range, inclusive.
    *
    * <p>This value is derived from the base port and {@link #NUMBER_OF_NODES} so that the simulator
-   * can allocate a contiguous range without scanning. It is constant for a given run and is
+   * can allocate a contiguous range without scanning. It is constant for a given run and is a
    * read-only configuration used when setting up external tooling or log filters.
    */
   public static final int DARKNET_PORT_END = DARKNET_PORT_BASE + NUMBER_OF_NODES;
@@ -74,17 +75,17 @@ public class RealNodeRoutingTest extends RealNodeTest {
    * the network to connect and performs routed pings in cycles, logging location swaps and hop
    * statistics. The process exits with a non-zero status if it cannot prepare the working directory
    * or if the accuracy target is not reached within the configured maximum tests. This entry point
-   * is not intended to be idempotent because it wipes prior state on each run.
+   * is not intended to be idempotent because it wipes the prior state on each run.
    *
    * <pre>{@code
    * // Example: run the routing simulator from the command line.
    * RealNodeRoutingTest.main(new String[0]);
    * }</pre>
    *
-   * @param args ignored command-line arguments, typically an empty array for manual runs
-   * @throws Exception if node initialization or startup throws an unexpected checked failure
+   * @throws NodeInitException if node initialization fails while creating the test nodes
+   * @throws InterruptedException if the thread is interrupted while waiting for connectivity
    */
-  public static void main(String[] args) throws Exception {
+  static void main() throws NodeInitException, InterruptedException {
     LOG.info("Routing test using real nodes:");
     LOG.info("");
     String dir = "realNodeRequestInsertTest";
@@ -97,7 +98,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
       LOG.error("Working directory could not be created: {}", wd.getAbsolutePath());
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
-    // NOTE: globalTestInit returns in ignored random source
+    // NOTE: globalTestInit returns in an ignored random source
     NodeStarter.globalTestInit(wd, false, Level.ERROR, "", true, null);
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.

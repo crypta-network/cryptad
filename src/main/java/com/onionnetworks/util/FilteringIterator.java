@@ -118,7 +118,7 @@ public abstract class FilteringIterator<T> implements Iterator<T> {
    * <p>If no such element exists, the method throws {@link NoSuchElementException} in accordance
    * with the iterator contract. When a buffered element is present from a prior {@link #hasNext()}
    * call, it is returned immediately; otherwise the method advances the parent until it finds a
-   * match or exhausts the source. Each successful call clears the buffer so the next invocation
+   * match or exhausts the source. Each successful call clears the buffer, so the next invocation
    * will re-evaluate availability.
    *
    * @return the next acceptable element; never {@code null} unless the parent produces nulls and
@@ -140,12 +140,10 @@ public abstract class FilteringIterator<T> implements Iterator<T> {
    *
    * <p>The example logs both the unfiltered list and the filtered output to illustrate iteration
    * order preservation. It intentionally uses explicit {@link #hasNext()} / {@link #next()} calls
-   * to mirror typical consumer code. Any unexpected state during the walk triggers a logged warning
-   * so the example remains simple to debug.
-   *
-   * @param args ignored command-line arguments; present for standard Java entry-point compatibility
+   * to mirror typical consumer code. Any unexpected state during the walk triggers a logged
+   * warning, so the example remains simple to debug.
    */
-  public static void main(String[] args) {
+  static void main() {
     List<String> l = new LinkedList<>(Arrays.asList("a", null, "was", null));
     Iterator<String> i = l.iterator();
     FilteringIterator<String> f =
