@@ -1,10 +1,6 @@
 package network.crypta.support.compress
 
-import java.io.BufferedInputStream
-import java.io.IOException
-import java.io.InputStream
-import java.io.PipedInputStream
-import java.io.PipedOutputStream
+import java.io.*
 import java.util.concurrent.CountDownLatch
 import org.sevenzip.compression.lzma.Decoder
 
@@ -129,7 +125,7 @@ class LzmaInputStream(private val source: InputStream) : InputStream() {
   /**
    * Reads up to `len` decoded bytes into `b` starting at `off`.
    *
-   * This method may block until data becomes available from the decoder or end of stream is
+   * This method may block until data becomes available from the decoder or the end of the stream is
    * reached.
    *
    * @return number of bytes read, or `-1` if the end of stream has been reached.
@@ -152,10 +148,6 @@ class LzmaInputStream(private val source: InputStream) : InputStream() {
    * @throws IOException if closing the underlying streams fails.
    */
   override fun close() {
-    try {
-      pipeIn.close()
-    } finally {
-      source.close()
-    }
+    source.use { _ -> pipeIn.close() }
   }
 }
