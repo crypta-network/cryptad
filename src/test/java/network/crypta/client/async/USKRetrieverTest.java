@@ -54,6 +54,7 @@ import network.crypta.support.io.InsufficientDiskSpaceException;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -71,7 +72,7 @@ class USKRetrieverTest {
 
   private static final class DirectExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 

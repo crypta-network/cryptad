@@ -24,7 +24,7 @@ public class NodePinger implements Runnable {
   private final Node node;
   private volatile double meanPing = 0;
 
-  /** One year in milliseconds; used by callers as an upper sanity bound for ping. */
+  /** One year in milliseconds; used by callers as upper sanity bound for ping. */
   public static final double CRAZY_MAX_PING_TIME = 365.25 * DAYS.toMillis(1);
 
   NodePinger(Node n) {
@@ -104,7 +104,7 @@ public class NodePinger implements Runnable {
    * <p>Values come from {@link PeerLoadStats#peerLimit(boolean)} of peers that provided a recent
    * load status for the selected class. Units are the same as reported by peers.
    */
-  class CapacityChecker {
+  static class CapacityChecker {
     final boolean isInput;
     final boolean isRealtime;
     private double min;

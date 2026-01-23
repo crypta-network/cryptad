@@ -3,10 +3,7 @@ package network.crypta.launcher
 import com.sun.jna.CallbackReference
 import com.sun.jna.Native
 import com.sun.jna.Pointer
-import com.sun.jna.platform.win32.WinDef.HWND
-import com.sun.jna.platform.win32.WinDef.LPARAM
-import com.sun.jna.platform.win32.WinDef.LRESULT
-import com.sun.jna.platform.win32.WinDef.WPARAM
+import com.sun.jna.platform.win32.WinDef.*
 import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.win32.W32APIOptions
 import javax.swing.JFrame
@@ -19,7 +16,7 @@ import network.crypta.fs.AppEnv
  *
  * Specifically handles:
  * - WM_QUERYENDSESSION: signal that a logoff/shutdown is requested → start quit and return TRUE
- * - WM_ENDSESSION: confirms session end (wParam != 0) → start quit
+ * - WM_ENDSESSION: confirms the session end (wParam != 0) → start quit
  * - WM_CLOSE: user/system close request → start quit
  *
  * Uses JNA to subclass the window procedure and forwards all other messages to the original proc.
@@ -66,8 +63,7 @@ object WindowsMessageHooks {
     }
 
   /** Window procedure hook forwarding unhandled messages to the original WNDPROC. */
-  private class WndProcHook(private val hWnd: HWND, private val onQuit: () -> Unit) :
-    WinUser.WindowProc {
+  private class WndProcHook(hWnd: HWND, private val onQuit: () -> Unit) : WinUser.WindowProc {
     private val prevWndProc: Pointer
     @Volatile private var invoked = false
 
@@ -109,6 +105,7 @@ object WindowsMessageHooks {
 }
 
 // Local narrow interface to avoid signature differences across JNA versions.
+@Suppress("FunctionName")
 private interface User32Ex : com.sun.jna.win32.StdCallLibrary {
   fun SetWindowLongPtr(hWnd: HWND, nIndex: Int, dwNewLong: Pointer): Pointer
 

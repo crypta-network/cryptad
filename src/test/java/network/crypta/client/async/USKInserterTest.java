@@ -30,6 +30,7 @@ import network.crypta.keys.USK;
 import network.crypta.node.ClientContextResources;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.Bucket;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,7 +57,7 @@ class USKInserterTest {
 
   private static class InlineExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 

@@ -47,6 +47,7 @@ import network.crypta.support.io.FilenameGenerator;
 import network.crypta.support.io.PersistentFileTracker;
 import network.crypta.support.io.PersistentTempBucketFactory;
 import network.crypta.support.io.TempBucketFactory;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -70,7 +71,7 @@ class USKAttemptManagerTest {
 
   private static final class DirectExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 

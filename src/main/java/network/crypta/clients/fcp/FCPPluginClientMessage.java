@@ -202,7 +202,7 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
    *     lifetimes and transport policies
    * @param node owning node instance for contextual logging or metrics; may be unused but must not
    *     be {@code null}
-   * @throws MessageInvalidException if the plugin cannot be found or an I/O error occurs while
+   * @throws MessageInvalidException if the plugin cannot be found, or an I/O error occurs while
    *     forwarding the message to the server side implementation
    */
   @Override
@@ -217,9 +217,6 @@ public class FCPPluginClientMessage extends DataCarryingMessage {
       serverConnection =
           handler.pluginConnectionRegistry().get(pluginname, handler.getServer(), handler);
     } catch (PluginNotFoundException _) {
-      throw pluginUnavailable();
-    }
-    if (serverConnection == null) {
       throw pluginUnavailable();
     }
 

@@ -8,7 +8,6 @@ import network.crypta.fs.AppDirs;
 import network.crypta.fs.AppEnv;
 import network.crypta.fs.Resolved;
 import network.crypta.fs.ServiceDirs;
-import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.NodeStarter;
 import org.slf4j.Logger;
@@ -26,7 +25,7 @@ import org.slf4j.LoggerFactory;
  *       on simple thresholds for first‑time configuration.
  * </ul>
  *
- * <p>Units: sizes are expressed in bytes. Methods are side‑effect free and thread‑safe.
+ * <p>Units: sizes are expressed in bytes. Methods are side‑effect-free and thread‑safe.
  */
 public class DatastoreUtil {
   private static final Logger LOG = LoggerFactory.getLogger(DatastoreUtil.class);
@@ -54,9 +53,10 @@ public class DatastoreUtil {
    * <ol>
    *   <li>a memory‑derived limit based on {@link NodeStarter#getMemoryLimitBytes()}, reserving
    *       100&nbsp;MiB, using 50% of the remainder for slot filters (4&nbsp;bytes/slot, three key
-   *       types), then converting slot count to bytes on disk via {@link Node#sizePerKey}; and
-   *   <li>the unallocated space of the Cryptad data directory (resolved using the same service/user
-   *       detection as the launcher).
+   *       types), then converting slot count to bytes on disk via {@link
+   *       network.crypta.node.subsystem.NodeStorageSubsystem#SIZE_PER_KEY}; and
+   *   <li>the unallocated space of the Cryptad data directory (resolved to use the same
+   *       service/user detection as the launcher).
    * </ol>
    *
    * <p>On {@link IOException} while querying the filesystem, the method returns the memory‑derived
@@ -73,7 +73,7 @@ public class DatastoreUtil {
       Resolved dirs = env.isServiceMode() ? new ServiceDirs().resolve() : new AppDirs().resolve();
       Path dataDirPath = dirs.getDataDir();
       long unallocatedSpace = Files.getFileStore(dataDirPath).getUnallocatedSpace();
-      // Constrain by the lesser of disk free space and the memory-derived cap.
+      // Constrain by the lesser of disk-free space and the memory-derived cap.
       // Any additional reserve policy is handled elsewhere.
       return Math.min(unallocatedSpace, maxDatastoreSize);
     } catch (IOException e) {
@@ -97,10 +97,10 @@ public class DatastoreUtil {
       available = available / 2;
       // Slot filters are 4 bytes per slot.
       long slots = available / 4;
-      // There are 3 types of keys. We want the number of { SSK, CHK, pubkey } i.e. the number of
+      // There are 3 types of keys. We want the number of { SSK, CHK, pubkey } i.e., the number of
       // slots in each store.
       slots /= 3;
-      // We return the total size, so we don't need to worry about cache vs store or even client
+      // We return the total size, so we don't need to worry about cache vs. store or even client
       // cache.
       // One key of all 3 types combined uses NodeStorageSubsystem.SIZE_PER_KEY bytes on disk.
       maxDatastoreSize =
@@ -127,7 +127,7 @@ public class DatastoreUtil {
    * <p>Returns {@code -1} when the {@code node.storeSize} option is explicitly set, or when free
    * space is non‑positive, to indicate that no suggestion should be presented.
    *
-   * @param core node core used to obtain the store directory and its free space
+   * @param core node core used to get the store directory and its free space
    * @param config configuration root used to inspect {@code node.storeSize}
    * @return suggested datastore size in bytes, or {@code -1} when not applicable
    */
@@ -144,7 +144,7 @@ public class DatastoreUtil {
       long shortSize;
       // Maximum for Freenet: 256GB. That's a 128MiB bloom filter.
       long bloomFilter128MiBMax = 256 * ONE_GIB;
-      // SSD era: disk I/O cap equals bloom-filter cap; use that as upper bound.
+      // SSD era: disk I/O cap equals bloom-filter cap; use that as the upper bound.
 
       // Choose a suggested store size based on available free space.
       if (freeSpace > 50 * ONE_GIB) {

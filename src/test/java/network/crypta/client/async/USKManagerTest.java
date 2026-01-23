@@ -26,6 +26,7 @@ import network.crypta.node.RequestClientBuilder;
 import network.crypta.node.RequestStarter;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.Bucket;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class USKManagerTest {
   // Minimal inline executor: runs tasks immediately on the calling thread
   private static final class DirectExecutor implements PriorityAwareExecutor {
     @Override
-    public void execute(Runnable job) {
+    public void execute(@NonNull Runnable job) {
       job.run();
     }
 

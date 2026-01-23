@@ -28,6 +28,7 @@ import network.crypta.keys.InsertableClientSSK;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,7 +60,7 @@ class NodeARKInserterTest {
     PriorityAwareExecutor inlineExecutor =
         new PriorityAwareExecutor() {
           @Override
-          public void execute(Runnable job) {
+          public void execute(@NonNull Runnable job) {
             job.run();
           }
 
