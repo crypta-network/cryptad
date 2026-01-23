@@ -9,17 +9,17 @@ plugins { java }
  * - Creates an app image via `jpackage --type app-image`
  * - Optionally builds native installers via `jpackage --type <os-default>`
  * - Copies the portable node layout (build/cryptad-dist) into the app image under app/cryptad-dist
- * - Prepares standard resources (LICENSE.txt, EULA.txt, README.txt) from project root
+ * - Prepares standard resources (LICENSE.txt, EULA.txt, README.txt) from the project root
  *
  * This file intentionally avoids duplicating jars under the jpackage image; instead a tiny
  * bootstrap jar is created so we can later rewrite `Crypta.cfg` to reference the jars under
  * `app/cryptad-dist/lib/` + `*.jar` as the runtime classpath.
  */
-val jreDir = layout.buildDirectory.dir("jre")
-val cryptadDistDir = layout.buildDirectory.dir("cryptad-dist")
-val jpackageOutDir = layout.buildDirectory.dir("jpackage")
-val jpackageResourcesDir = layout.buildDirectory.dir("jpackage/resources")
-val jpackageInputDir = layout.buildDirectory.dir("jpackage/input")
+val jreDir: Provider<Directory> = layout.buildDirectory.dir("jre")
+val cryptadDistDir: Provider<Directory> = layout.buildDirectory.dir("cryptad-dist")
+val jpackageOutDir: Provider<Directory> = layout.buildDirectory.dir("jpackage")
+val jpackageResourcesDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/resources")
+val jpackageInputDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/input")
 
 // Compute version string: v<project.version>+<gitRevShort>
 fun gitRevShort(): String =
@@ -35,6 +35,18 @@ fun gitRevShort(): String =
     "unknown"
   }
 
+fun clearXattrsQuiet(target: File, timeoutSeconds: Long) {
+  try {
+    val xattr = File("/usr/bin/xattr")
+    if (xattr.canExecute()) {
+      ProcessBuilder(xattr.absolutePath, "-cr", target.absolutePath)
+        .redirectErrorStream(true)
+        .start()
+        .waitFor(timeoutSeconds, TimeUnit.SECONDS)
+    }
+  } catch (_: Exception) {}
+}
+
 val appName = "Crypta"
 val vendor = "crypta.network"
 val appId = "network.crypta.cryptad"
@@ -43,6 +55,7 @@ val appId = "network.crypta.cryptad"
 
 // jpackage --app-version is strict (e.g., macOS CFBundleVersion must be 1..3 integers separated by
 // dots).
+
 /** Returns a numeric app version accepted by jpackage (platform compliant). */
 fun numericAppVersion(): String {
   val raw = project.version.toString()
@@ -80,7 +93,7 @@ val prepareJpackageResources by
     }
     // For RPM: jpackage supports overriding its spec via a file named
     // "<package-name>.spec" in the resource dir (package-name defaults to the application
-    // name lowercased; here it is "crypta"). Include our customized spec. We also copy
+    // name lowercased; here it is "crypta"). Include our customized specs. We also copy
     // template.spec for completeness, but the concrete package spec takes precedence.
     from(layout.projectDirectory.dir("src/jpackage/linux")) {
       include("crypta.spec", "template.spec")
@@ -136,7 +149,8 @@ val prepareJpackageResources by
     }
   }
 
-// Helper resolving OS and icon path
+// Helper resolving the OS and icon path
+
 /** Detects the current OS as a stable token: mac|win|linux. */
 fun currentOs(): String {
   val os = org.gradle.internal.os.OperatingSystem.current()
@@ -147,13 +161,16 @@ fun currentOs(): String {
   }
 }
 
-/** Checks if an executable exists on PATH using platform-appropriate command. */
+/** Checks if an executable exists on PATH using the platform-appropriate command. */
 fun hasExe(name: String): Boolean =
   try {
     val pb =
       ProcessBuilder(
-        if (org.gradle.internal.os.OperatingSystem.current().isWindows) listOf("where", name)
-        else listOf("which", name)
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+          listOf("where", name)
+        } else {
+          listOf("which", name)
+        }
       )
     pb.redirectErrorStream(true)
     val p = pb.start()
@@ -164,13 +181,16 @@ fun hasExe(name: String): Boolean =
   }
 
 /**
- * Picks installer type for the current OS; Windows intentionally unsupported. On Linux, supports
- * override via `-PlinuxInstaller=<deb|rpm>` or env `CRYPTA_LINUX_INSTALLER`. Defaults to preferring
- * rpm when both tools are present.
+ * Picks the installer type for the current OS; Windows intentionally unsupported. On Linux,
+ * supports override via `-PlinuxInstaller=<deb|rpm>` or env `CRYPTA_LINUX_INSTALLER`. Defaults to
+ * preferring rpm when both tools are present.
  */
 fun resolveInstallerType(os: String): String =
   when (os) {
-    "mac" -> "dmg"
+    "mac" -> {
+      "dmg"
+    }
+
     else -> {
       val override =
         (providers.gradleProperty("linuxInstaller").orNull
@@ -178,14 +198,21 @@ fun resolveInstallerType(os: String): String =
           ?.trim()
           ?.lowercase()
       when (override) {
-        "deb" -> "deb"
-        "rpm" -> "rpm"
-        else ->
+        "deb" -> {
+          "deb"
+        }
+
+        "rpm" -> {
+          "rpm"
+        }
+
+        else -> {
           when {
             hasExe("rpmbuild") -> "rpm"
             hasExe("dpkg-deb") -> "deb"
             else -> "deb"
           }
+        }
       }
     }
   }
@@ -206,7 +233,11 @@ fun resolveJpackageExecutable(): File {
   val exe =
     javaHome.resolve(
       "bin/jpackage" +
-        if (org.gradle.internal.os.OperatingSystem.current().isWindows) ".exe" else ""
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+          ".exe"
+        } else {
+          ""
+        }
     )
   if (!exe.isFile) throw GradleException("jpackage not found in toolchain: $exe")
   return exe
@@ -270,7 +301,7 @@ val jpackageImageCryptad by
       val inputDir = jpackageInputDir.get().asFile
       val stagedMain = createBootstrapJar(inputDir)
 
-      // Ensure we start from a clean target (jpackage fails if image exists)
+      // Ensure we start from a clean target (jpackage fails if the image exists)
       cleanExistingImage(outDir, os)
 
       // On macOS, stage the app image under the system temp directory to avoid iCloud/
@@ -282,7 +313,9 @@ val jpackageImageCryptad by
             System.getProperty("java.io.tmpdir"),
             "crypta-jpackage-${System.currentTimeMillis()}",
           )
-        } else outDir
+        } else {
+          outDir
+        }
       destDir.mkdirs()
 
       val args =
@@ -326,21 +359,13 @@ val jpackageImageCryptad by
             logger.lifecycle("Relocating app image from staging -> {}", target.absolutePath)
             staged.copyRecursively(target, overwrite = true)
             // Best-effort: remove any staging attributes after copy
-            try {
-              val xattr = File("/usr/bin/xattr")
-              if (xattr.canExecute()) {
-                ProcessBuilder(xattr.absolutePath, "-cr", target.absolutePath)
-                  .redirectErrorStream(true)
-                  .start()
-                  .waitFor(5, TimeUnit.SECONDS)
-              }
-            } catch (_: Exception) {}
+            clearXattrsQuiet(target, 5)
             destDir.deleteRecursively()
           }
         }
       } catch (e: Exception) {
         // Workaround for macOS codesign failing with FinderInfo xattr on the app bundle root.
-        // On some macOS versions, jpackage ad-hoc signs the bundle and codesign rejects
+        // On some macOS versions, jpackage ad-hoc signs the bundle, and codesign rejects
         // com.apple.FinderInfo on the freshly created <App>.app, yielding:
         //   resource fork, Finder information, or similar detritus not allowed
         // If we see a failure and the output image exists, clear xattrs and ad-hoc sign the
@@ -386,15 +411,7 @@ val jpackageImageCryptad by
                 if (finalApp.exists()) finalApp.deleteRecursively()
                 stagedApp.copyRecursively(finalApp, overwrite = true)
                 // Remove any staged attrs again just in case
-                try {
-                  val x = File("/usr/bin/xattr")
-                  if (x.canExecute()) {
-                    ProcessBuilder(x.absolutePath, "-cr", finalApp.absolutePath)
-                      .redirectErrorStream(true)
-                      .start()
-                      .waitFor(5, TimeUnit.SECONDS)
-                  }
-                } catch (_: Exception) {}
+                clearXattrsQuiet(finalApp, 5)
                 // Clean up staging directory
                 destDir.deleteRecursively()
                 logger.lifecycle("Relocated fixed app image -> {}", finalApp.absolutePath)
@@ -458,7 +475,7 @@ val enrichAppImageWithDist by
             dstIcon.length(),
           )
 
-          // Also place a stable copy and our own .desktop file referencing it, so the desktop
+          // Also, place a stable copy and our own .desktop file referencing it, so the desktop
           // entry uses the exact provided icon even if jpackage generates a 32x32 fallback.
           val stableIcon = imageRoot.resolve("lib/cryptad.png")
           srcIcon.copyTo(stableIcon, overwrite = true)
@@ -483,7 +500,7 @@ val enrichAppImageWithDist by
           logger.warn("Failed to finalize Linux icon/desktop: {}", e.message)
         }
 
-        // Also stage systemd units and helper artifacts under lib/ so installers and
+        // Also, stage systemd units and helper artifacts under lib/ so installers and
         // post-install scripts can find them inside the app image.
         try {
           val serviceSrc = project.file("src/jpackage/linux/cryptad.service")
@@ -547,7 +564,8 @@ val enrichAppImageWithDist by
         }
       }
 
-      // Patch the jpackage launcher config to point classpath to cryptad-dist/lib and correct main
+      // Patch the jpackage launcher config to point the classpath to cryptad-dist/lib and correct
+      // the main
       // class.
       val cfg =
         when (os) {
@@ -568,7 +586,7 @@ val enrichAppImageWithDist by
         val jars =
           jarDir.listFiles { f -> f.isFile && f.name.endsWith(".jar") }?.sortedBy { it.name }
         val cpPrefix =
-          if (os == "linux") "\$APPDIR/cryptad-dist/lib/" else "\$APPDIR/cryptad-dist/lib/"
+          if (os == "linux") $$"$APPDIR/cryptad-dist/lib/" else $$"$APPDIR/cryptad-dist/lib/"
         out += "app.classpath=${cpPrefix}cryptad.jar"
         jars
           ?.filter { it.name != "cryptad.jar" }
@@ -584,7 +602,7 @@ val enrichAppImageWithDist by
     }
   }
 
-// Build OS-native installer (dmg/msi/deb) using the image created above.
+// Build an OS-native installer (dmg/msi/deb) using the image created above.
 val jpackageInstallerCryptad by
   tasks.registering {
     group = "jpackage"
@@ -593,7 +611,10 @@ val jpackageInstallerCryptad by
     onlyIf {
       when (currentOs()) {
         "linux" -> hasExe("dpkg-deb") || hasExe("rpmbuild")
-        "win" -> false // Windows installers removed
+
+        "win" -> false
+
+        // Windows installers removed
         else -> true
       }
     }

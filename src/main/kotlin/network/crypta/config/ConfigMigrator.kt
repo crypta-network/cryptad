@@ -55,7 +55,7 @@ private fun moveIfPresent(src: Path, dst: Path) {
     if (!Files.exists(dst.parent)) Files.createDirectories(dst.parent)
     Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE)
     LOG.info("Moved {} -> {} (atomic)", src, dst)
-  } catch (e: AtomicMoveNotSupportedException) {
+  } catch (_: AtomicMoveNotSupportedException) {
     // Fallback to non-atomic move and log
     try {
       Files.move(src, dst)
@@ -83,21 +83,21 @@ private fun rewriteLegacyPaths(configFile: Path) {
       val v = sfs[key] ?: return
       if (v == rel || v == "./$rel") sfs.putOverwrite(key, placeholder)
     }
-    rewrite("node.install.cfgDir", ".", "\${configDir}")
-    rewrite("node.install.userDir", ".", "\${configDir}")
-    rewrite("node.install.nodeDir", ".", "\${dataDir}/node")
-    rewrite("node.install.storeDir", "./datastore", "\${dataDir}/datastore")
-    rewrite("node.install.pluginDir", "./plugins", "\${dataDir}/plugins")
-    rewrite("node.install.pluginStoresDir", "plugin-data", "\${dataDir}/plugins")
-    rewrite("node.install.tempDir", "./temp", "\${cacheDir}/tmp")
-    rewrite("node.install.persistentTempDir", "./persistent-temp", "\${cacheDir}/persistent-temp")
-    rewrite("node.downloadsDir", "./downloads", "\${dataDir}/downloads")
-    rewrite("logger.dirname", "./logs", "\${logsDir}")
+    rewrite("node.install.cfgDir", ".", $$"${configDir}")
+    rewrite("node.install.userDir", ".", $$"${configDir}")
+    rewrite("node.install.nodeDir", ".", $$"${dataDir}/node")
+    rewrite("node.install.storeDir", "./datastore", $$"${dataDir}/datastore")
+    rewrite("node.install.pluginDir", "./plugins", $$"${dataDir}/plugins")
+    rewrite("node.install.pluginStoresDir", "plugin-data", $$"${dataDir}/plugins")
+    rewrite("node.install.tempDir", "./temp", $$"${cacheDir}/tmp")
+    rewrite("node.install.persistentTempDir", "./persistent-temp", $$"${cacheDir}/persistent-temp")
+    rewrite("node.downloadsDir", "./downloads", $$"${dataDir}/downloads")
+    rewrite("logger.dirname", "./logs", $$"${logsDir}")
 
     Files.newOutputStream(configFile).use { os -> sfs.writeToBigBuffer(os) }
     LOG.info("Rewrote legacy paths in {}", configFile)
   } catch (e: Exception) {
-    // Tolerate parse errors; continue without rewrite, but log for visibility
+    // Tolerate parse errors; continue without a rewrite, but log for visibility
     LOG.warn("Failed to rewrite legacy paths in {}: {}", configFile, e.message, e)
   }
 }
