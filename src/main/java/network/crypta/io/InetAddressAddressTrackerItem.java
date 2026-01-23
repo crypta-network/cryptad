@@ -25,9 +25,9 @@ public class InetAddressAddressTrackerItem extends AddressTrackerItem {
    * Create a tracker for the given address with known upper bounds for the initial "no packets"
    * window.
    *
-   * @param timeDefinitelyNoPacketsReceived earliest time (ms since epoch) at which receiving was
-   *     definitely impossible for this address
-   * @param timeDefinitelyNoPacketsSent earliest time (ms since epoch) at which sending was
+   * @param timeDefinitelyNoPacketsReceived the earliest time (ms since epoch) at which receiving
+   *     was definitely impossible for this address
+   * @param timeDefinitelyNoPacketsSent the earliest time (ms since epoch) at which sending was
    *     definitely impossible
    * @param addr the {@link InetAddress} to track; the reference is stored as-is and not cloned
    */
@@ -70,8 +70,7 @@ public class InetAddressAddressTrackerItem extends AddressTrackerItem {
     try {
       addr = InetAddress.getByName(fs.getString("Address"));
     } catch (UnknownHostException e) {
-      throw (FSParseException)
-          new FSParseException("Unknown domain name in Address: " + e).initCause(e);
+      throw new FSParseException("Unknown domain name in Address: " + e, e);
     }
   }
 }

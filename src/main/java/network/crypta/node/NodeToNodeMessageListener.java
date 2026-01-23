@@ -1,5 +1,7 @@
 package network.crypta.node;
 
+import network.crypta.node.subsystem.NodeMessagingSubsystem;
+
 /**
  * Listener for node‑to‑node messages exchanged between peers.
  *
@@ -10,10 +12,10 @@ package network.crypta.node;
  * payload format is defined by the producer of the message; some built‑in handlers use UTF‑8
  * encoded {@code SimpleFieldSet}, but callers are free to define other formats.
  *
- * <p>Threading and call ordering are controlled by the caller. No serialization guarantees are
- * provided by this interface; implementations should assume that invocations may occur on internal
- * I/O or networking threads and should return promptly. If substantial work is needed, prefer
- * offloading to application‑controlled executors.
+ * <p>The caller controls threading and call ordering. This interface provides no serialization
+ * guarantees; implementations should assume that invocations may occur on internal I/O or
+ * networking threads and should return promptly. If significant work is needed, prefer offloading
+ * to application‑controlled executors.
  *
  * <p>Implementations should handle their own errors; the node does not wrap calls to {@link
  * #handleMessage(byte[], boolean, PeerNode, int)} in a protective {@code try/catch} at the

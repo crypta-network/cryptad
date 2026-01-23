@@ -3,12 +3,13 @@ package network.crypta.crypt;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import org.bitpedia.util.hash.StreamingHash;
 
 /**
  * Computes several cryptographic hashes over the same byte stream in one pass.
  *
  * <p>This utility owns one {@link java.security.MessageDigest} per {@link HashType} selected via a
- * bit mask. Feed data through {@link #update(byte[], int, int)} and obtain all results via {@link
+ * bit mask. Feed data through {@link #update(byte[], int, int)} and get all results via {@link
  * #getResults()}. The order of results follows {@link HashType#values()}.
  *
  * <p>Thread-safety: not thread-safe. Create a new instance per computation and use it from a single

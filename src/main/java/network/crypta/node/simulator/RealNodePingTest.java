@@ -19,6 +19,7 @@ import network.crypta.node.NodeStarter;
 import network.crypta.node.NodeStarter.TestNodeParameters;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
+import network.crypta.node.PeerTransport;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.PriorityAwareExecutor;
 import org.slf4j.Logger;
@@ -30,16 +31,16 @@ import org.slf4j.event.Level;
  * requests while logging send/receive events and sequence numbers.
  *
  * <p>This class is a manual simulation harness for exercising end-to-end ping traffic between two
- * local darknet nodes. The {@link #main(String[])} method sets up a temporary base directory,
- * initializes test randomness, and configures two nodes with RAM-backed stores and high thread
- * limits. After connecting the nodes with fixed trust and visibility settings, it starts them and
- * schedules periodic {@link PeerNode#ping(int)} calls. The scheduler runs on a single thread while
- * the nodes operate asynchronously, so the ping cadence is approximate and influenced by node
- * activity and network timing.
+ * local darknet nodes. The {@link #main()} method sets up a temporary basis directory, initializes
+ * test randomness, and configures two nodes with RAM-backed stores and high thread limits. After
+ * connecting the nodes with fixed trust and visibility settings, it starts them and schedules
+ * periodic {@link PeerTransport#ping(int)} calls. The scheduler runs on a single thread while the
+ * nodes operate asynchronously, so the ping cadence is approximate and influenced by node activity
+ * and network timing.
  *
- * <p>The test runs until interrupted and does not attempt cleanup beyond process shutdown. It is
- * intended for local diagnostics rather than production deployments, and the hard-coded ports must
- * be free on the host.
+ * <p>The test runs until interrupted and does not attempt cleanup beyond the process shutdown. It
+ * is intended for local diagnostics rather than production deployments, and the hard-coded ports
+ * must be free on the host.
  *
  * <ul>
  *   <li>Responsibility: create two test nodes with deterministic test configuration.
@@ -48,7 +49,7 @@ import org.slf4j.event.Level;
  * </ul>
  *
  * @see NodeStarter
- * @see PeerNode#ping(int)
+ * @see PeerTransport#ping(int)
  */
 public class RealNodePingTest {
   private static final Logger LOG = LoggerFactory.getLogger(RealNodePingTest.class);
@@ -56,12 +57,12 @@ public class RealNodePingTest {
   /**
    * Creates an instance of the ping test harness without additional initialization.
    *
-   * <p>The class is designed to be driven through {@link #main(String[])}, so constructing it
-   * directly is rarely needed. This explicit constructor exists to provide a documented public
-   * entry point for tools that inspect Javadoc, and it performs no work or side effects beyond
-   * creating the instance.
+   * <p>The class is designed to be driven through {@link #main()}, so constructing it directly is
+   * rarely needed. This explicit constructor exists to provide a documented public entry point for
+   * tools that inspect Javadoc, and it performs no work or side effects beyond creating the
+   * instance.
    */
-  public RealNodePingTest() {
+  private RealNodePingTest() {
     // Intentionally empty: this harness is driven via static main entry points only.
   }
 
@@ -108,7 +109,6 @@ public class RealNodePingTest {
    * RealNodePingTest.main(new String[0]);
    * }</pre>
    *
-   * @param args command-line arguments; currently unused and may be empty or null.
    * @throws FSParseException if node configuration parsing fails for the local test setup.
    * @throws PeerParseException if peer references cannot be parsed during node creation.
    * @throws InterruptedException if the calling thread is interrupted during setup or wait.
@@ -116,7 +116,7 @@ public class RealNodePingTest {
    * @throws NodeInitException if a test node fails to initialize required components.
    * @throws PeerTooOldException if the peer build is too old to establish a connection.
    */
-  public static void main(String[] args)
+  public static void main()
       throws FSParseException,
           PeerParseException,
           InterruptedException,

@@ -1,8 +1,23 @@
 package network.crypta.crypt;
 
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.FilterInputStream;
+import java.io.FilterOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.ObjectOutputStream.PutField;
+import java.io.ObjectStreamField;
 import java.io.OptionalDataException;
+import java.io.OutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.InvalidAlgorithmParameterException;
@@ -253,8 +268,8 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
   }
 
   static class MyOutputStream extends FilterOutputStream {
-    // Encrypts bytes on write using the configured stream cipher. The header has already been
-    // written by the caller.
+    // Encrypts bytes on writing using the configured stream cipher. The caller has already
+    // written the header.
     private final SkippingStreamCipher cipherWrite;
 
     public MyOutputStream(OutputStream out, SkippingStreamCipher cipher) {
@@ -345,7 +360,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
    * unbuffered; see {@link #getInputStream()} for a buffered variant.
    *
    * @return an unbuffered stream that decrypts data as it is read.
-   * @throws IOException if the bucket has been freed or the header is missing/invalid.
+   * @throws IOException if the bucket has been freed, or the header is missing/invalid.
    */
   @Override
   public InputStream getInputStreamUnbuffered() throws IOException {
@@ -394,7 +409,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
   }
 
   /**
-   * Marks the underlying bucket read-only. Subsequent write attempts will fail according to the
+   * Marks the underlying bucket read-only. Subsequent write attempts will fail, according to the
    * underlying implementation's contract.
    */
   @Override
@@ -405,7 +420,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
   /**
    * Releases resources held by this bucket and the underlying bucket.
    *
-   * <p>Safe to call multiple times; subsequent calls are no-ops.
+   * <p>Safe to call multiple times; later calls are no-ops.
    */
   @Override
   public void free() {

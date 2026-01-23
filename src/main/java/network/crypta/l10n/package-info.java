@@ -10,12 +10,12 @@
  *   <li>{@link network.crypta.l10n.BaseL10n} — Core resolver. Loads language files, applies
  *       variable substitution, exposes string and HTML helpers, and supports on-disk overrides.
  *   <li>{@link network.crypta.l10n.NodeL10n} — Application-wide façade that exposes a single shared
- *       {@code BaseL10n}. Lazily initialized on first access or re-initialized via its
+ *       {@code BaseL10n}. Lazily initialized on the first access or re-initialized via its
  *       constructors.
  *   <li>{@link network.crypta.l10n.PluginL10n} — Per-plugin bridge that wires a {@code BaseL10n}
  *       using paths, masks, and class loader provided by the plugin.
- *   <li>{@link network.crypta.l10n.ISO639_3} — Typed access to the ISO 639‑3 language code table
- *       for UIs and tooling.
+ *   <li>{@link network.crypta.l10n.BaseL10n.LANGUAGE} — Supported language registry with ISO-style
+ *       short codes and display names.
  * </ul>
  *
  * <h2>Resource format and lookup</h2>
@@ -76,7 +76,7 @@
  * @see network.crypta.l10n.BaseL10n
  * @see network.crypta.l10n.NodeL10n
  * @see network.crypta.l10n.PluginL10n
- * @see network.crypta.l10n.ISO639_3
+ * @see network.crypta.l10n.BaseL10n.LANGUAGE
  * @see network.crypta.support.HTMLNode
  */
 package network.crypta.l10n;

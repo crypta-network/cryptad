@@ -30,17 +30,7 @@ public class HTMLDecoder {
     return sb.toString();
   }
 
-  private static final class DecodeResult {
-    final boolean decoded;
-    final char ch;
-    final int nextPos;
-
-    DecodeResult(boolean decoded, char ch, int nextPos) {
-      this.decoded = decoded;
-      this.ch = ch;
-      this.nextPos = nextPos;
-    }
-  }
+  private record DecodeResult(boolean decoded, char ch, int nextPos) {}
 
   private static DecodeResult decodeAfterAmp(String s, int curPos, int maxPos) {
     int tmpPos = curPos;
@@ -74,18 +64,23 @@ public class HTMLDecoder {
       return new DecodeResult(false, '&', curPos);
     }
     char d = s.charAt(tmpPos++);
-    if (!isHexDigit(d)) {
-      return new DecodeResult(false, '&', curPos);
+    if (isHexDigit(d)) {
+      return scanHexEntity(s, tmpPos, maxPos, curPos);
     }
-    while (tmpPos < maxPos) {
-      d = s.charAt(tmpPos++);
+    return new DecodeResult(false, '&', curPos);
+  }
+
+  private static DecodeResult scanHexEntity(String s, int tmpPos, int maxPos, int curPos) {
+    boolean done = false;
+    while (tmpPos < maxPos && !done) {
+      char d = s.charAt(tmpPos++);
       if (!isHexDigit(d)) {
         if (d == ';') {
           String t = s.substring(curPos + 2, tmpPos - 1);
           Character ch = parseHexChar(t);
           if (ch != null) return new DecodeResult(true, ch, tmpPos);
         }
-        break;
+        done = true;
       }
     }
     return new DecodeResult(false, '&', curPos);
@@ -170,7 +165,7 @@ public class HTMLDecoder {
         // Unix newline
         || (ch == '\n')
         // tab
-        || (ch == '\u0009')
+        || (ch == '\t')
         // Control
         || (ch == '\u000c')
         // zero width space

@@ -7,6 +7,7 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeFile;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.HTTPRequest;

@@ -2,18 +2,19 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 
 /**
- * Represents the {@code ListPeers} FCP command sent from a client to the node to obtain the current
+ * Represents the {@code ListPeers} FCP command sent from a client to the node to get the current
  * set of known peers.
  *
- * <p>This message is read-only and simply instructs the node to enumerate its peers without
- * changing state. Instances are immutable once created; the flags provided by the client are stored
- * in final fields and reused when generating individual peer responses. Typical callers create one
- * instance per request, hand it to the {@link FCPConnectionHandler}, and rely on the handler to
- * stream {@link PeerMessage} objects back to the client followed by {@link EndListPeersMessage} as
- * a terminator.
+ * <p>This message is read-only and simply instructs the node to list its peers without changing
+ * state. Instances are immutable once created; the flags provided by the client are stored in final
+ * fields and reused when generating individual peer responses. Typical callers create one instance
+ * per request, hand it to the {@link FCPConnectionHandler}, and rely on the handler to stream
+ * {@link PeerMessage} objects back to the client followed by {@link EndListPeersMessage} as a
+ * terminator.
  *
  * <p>Use this command when a UI or monitoring tool needs a snapshot of active peers along with
  * optional metadata or volatile runtime statistics. The message runs within the handler's thread

@@ -9,6 +9,7 @@ import java.util.Map;
 import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.node.Node;
+import network.crypta.node.subsystem.NodeServicesSubsystem;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.ManifestElement;
@@ -29,12 +30,13 @@ import org.slf4j.LoggerFactory;
  * <p>Larger directory puts benefit from this class because it keeps metadata, MIME hints, and
  * {@link ManifestElement ManifestElements} adjacent to their payloads while enforcing sequential
  * numbering and ordering rules. Error reporting distinguishes between malformed hierarchies, access
- * restrictions, and I/O problems so the client can retry selectively.
+ * restrictions, and I/O problems, so the client can retry selectively.
  *
  * <ul>
  *   <li>Builds a nested {@code Map} structure that mirrors directory layout before dispatch.
  *   <li>Streams {@code UploadFrom=direct} payloads in alphabetical order to avoid buffering.
- *   <li>Validates disk-sourced files against {@link Node#getClientCore()} upload policy.
+ *   <li>Validates disk-sourced files against {@link NodeServicesSubsystem#clientCore()} upload
+ *       policy.
  * </ul>
  *
  * <p>Example payload:
@@ -80,7 +82,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
    *
    * @param fs structured field set describing {@code Files.*} entries plus metadata
    * @param bfTemp transient bucket factory for non-forever uploads and streaming buffers
-   * @param bfPersistent persistent bucket factory keeping FOREVER payloads durably available
+   * @param bfPersistent a persistent bucket factory keeping FOREVER payloads durably available
    * @throws MessageInvalidException if mandatory headers are missing or hierarchy rules break
    */
   public ClientPutComplexDirMessage(
@@ -158,7 +160,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
   /**
    * Returns the canonical command name advertised to the FCP layer and logging facilities.
    *
-   * <p>The identifier is a constant shared by every instance so routers can compare it cheaply
+   * <p>The identifier is a constant shared by every instance, so routers can compare it cheaply
    * against incoming tokens and dispatch without additional allocations. It is also used by unit
    * tests to assert protocol compatibility when future versions add optional fields.
    *
@@ -192,7 +194,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * @param is decoded message continuation stream containing the concatenated direct payload bytes
    * @param bf bucket factory already selected for this request, reused for direct attachments
    * @param server FCP server orchestrating the client session, never {@code null}
-   * @throws IOException if the socket or bucket write fails while copying payload bytes
+   * @throws IOException if the socket or bucket writing fails while copying payload bytes
    * @throws MessageInvalidException if read sizes mismatch declarations or validation rejects input
    */
   @Override
@@ -227,12 +229,12 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * Converts parsed files into {@link ManifestElement} trees and instructs the handler to start the
    * directory insert.
    *
-   * <p>During execution the method validates disk-backed files through {@link Node#getClientCore()}
-   * before constructing the manifest, thereby ensuring policy compliance without touching the
-   * network. The resulting map mirrors the original hierarchy so downstream components can process
-   * nested directories without recomputing paths. The insert begins immediately afterward, and any
-   * {@link MessageInvalidException} bubbles up to the caller so the FCP client receives actionable
-   * feedback.
+   * <p>During execution the method validates disk-backed files through {@link
+   * NodeServicesSubsystem#clientCore()} before constructing the manifest, thereby ensuring policy
+   * compliance without touching the network. The resulting map mirrors the original hierarchy, so
+   * downstream components can process nested directories without recomputing paths. The insert
+   * begins immediately afterward, and any {@link MessageInvalidException} bubbles up to the caller
+   * so the FCP client receives actionable feedback.
    *
    * @param handler active connection handler responsible for initiating the put job
    * @param node node instance that supplies policy checks and storage context for the request

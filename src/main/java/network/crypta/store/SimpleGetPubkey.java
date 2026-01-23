@@ -1,8 +1,8 @@
 package network.crypta.store;
 
+import com.onionnetworks.util.Util;
 import java.io.IOException;
 import network.crypta.crypt.DSAPublicKey;
-import network.crypta.support.HexUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
  * <p>This facade deliberately ignores all read/write hint flags exposed by the interface. Reads are
  * performed via one direct lookup and writes via one direct put using conservative options. Any
  * {@link IOException} raised by the backing store is logged and suppressed; callers receive {@code
- * null} on read failures and silent no-ops on write failures.
+ * null} on read failures and silent no-ops on writing failures.
  *
  * <p>Thread-safety: The instance holds only a reference to the provided store and does not keep any
  * mutable state. Concurrency characteristics therefore depend entirely on the {@link PubkeyStore}
@@ -58,7 +58,7 @@ public class SimpleGetPubkey implements GetPubkey {
     try {
       return store.fetch(hash, false, false, meta);
     } catch (IOException e) {
-      LOG.error("Caught {} fetching pubkey for {}", e, HexUtil.bytesToHex(hash));
+      LOG.error("Caught {} fetching pubkey for {}", e, Util.bytesToHex(hash));
       return null;
     }
   }
@@ -70,7 +70,7 @@ public class SimpleGetPubkey implements GetPubkey {
    *
    * <ul>
    *   <li>All write-control flags are ignored; the method always delegates to {@link
-   *       PubkeyStore#put(byte[], DSAPublicKey, boolean)} with {@code isOldBlock=false}.
+   *       PubkeyStore#put(DSAPublicKey, boolean)} with {@code isOldBlock=false}.
    *   <li>On {@link IOException}, an error is logged and the exception is suppressed.
    * </ul>
    *
@@ -94,7 +94,7 @@ public class SimpleGetPubkey implements GetPubkey {
     try {
       store.put(key, false);
     } catch (IOException e) {
-      LOG.error("Caught {} storing pubkey for {}", e, HexUtil.bytesToHex(hash));
+      LOG.error("Caught {} storing pubkey for {}", e, Util.bytesToHex(hash));
     }
   }
 }
