@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import network.crypta.node.Node;
 import network.crypta.node.PeerNode;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -45,9 +46,8 @@ public class RemovePeer extends FCPMessage {
    * <p>The constructor reads the {@code Identifier} field from the supplied {@link SimpleFieldSet}
    * to keep it available for later replies and removes it from the mutable field set to avoid
    * accidental forwarding. The remaining fields, including {@code NodeIdentifier}, are processed
-   * during {@link #run(FCPConnectionHandler, Node)}. The supplied field set is retained by
-   * reference, so callers should not modify it after construction if consistent behavior is
-   * required.
+   * during {@link #run(FCPConnectionHandler, Node)}. Reference retains the supplied field set, so
+   * callers should not modify it after construction if consistent behavior is required.
    *
    * @param fs inbound protocol fields for this request; must contain {@code Identifier} and is
    *     expected to contain {@code NodeIdentifier} when {@link #run(FCPConnectionHandler, Node)} is
@@ -64,8 +64,8 @@ public class RemovePeer extends FCPMessage {
    * during dispatch.
    *
    * <p>The returned instance is freshly allocated and marked as case-insensitive, matching the
-   * expectations of other FCP message builders. Callers can treat it as immutable for the purposes
-   * of sending but should avoid caching it across messages because it carries no payload.
+   * expectations of other FCP message builders. Callers can treat it as immutable for sending but
+   * should avoid caching it across messages because it carries no payload.
    *
    * @return new {@link SimpleFieldSet} with no entries, suitable for immediate transmission.
    */
@@ -111,7 +111,7 @@ public class RemovePeer extends FCPMessage {
    *     privileges for the operation to proceed and must not be null.
    * @param node target node on which the peer should be removed; must not be null and must support
    *     lookup of the specified node identifier.
-   * @throws MessageInvalidException when access is denied or required fields are absent, halting
+   * @throws MessageInvalidException when access is denied or required, fields are absent, halting
    *     further processing and surfacing a protocol-level error to the caller.
    */
   @Override

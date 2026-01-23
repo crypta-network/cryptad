@@ -63,7 +63,7 @@ public class PeerRoster {
    *
    * <p>The returned array is the internal snapshot captured under the shared lock. Its contents
    * represent the roster state at the time of the call, but the array may be replaced immediately
-   * afterward by subsequent mutations. Callers must not modify the array and should copy it if they
+   * afterward by later mutations. Callers must not modify the array and should copy it if they
    * require a stable, caller-owned view.
    *
    * @return the internal array snapshot of all known peers, potentially empty.
@@ -118,7 +118,7 @@ public class PeerRoster {
    * connected or modify the connected-peers snapshot.
    *
    * @param peer the peer instance to add to the roster snapshot.
-   * @param reactivate whether to cancel disconnecting state before the add attempt.
+   * @param reactivate whether to cancel disconnecting state before the adding attempt.
    * @return {@code true} if the peer was newly added; {@code false} if already present.
    */
   public boolean addPeer(PeerNode peer, boolean reactivate) {
@@ -298,7 +298,7 @@ public class PeerRoster {
    *
    * <p>The roster is scanned twice: first for peers whose transport address and port match the
    * supplied {@link Peer}, and then for peers whose IP matches the same address regardless of port.
-   * Disabled peers are skipped. The method returns the first matching peer and does not modify
+   * Disabled peers are skipped. The method returns the first matching peer and does not modify the
    * roster state.
    *
    * @param peer the transport address descriptor to match against the roster.
@@ -323,7 +323,7 @@ public class PeerRoster {
    *
    * <p>This method mirrors {@link #getByPeer(Peer)} but additionally requires the peer's outgoing
    * {@link FNPPacketMangler} to match the supplied {@code mangler}. Disabled peers are skipped. The
-   * method returns the first matching peer and does not modify roster state.
+   * method returns the first matching peer and does not modify the roster state.
    *
    * @param peer the transport address descriptor to match against the roster.
    * @param mangler the outgoing mangler instance that must match the peer configuration.
@@ -463,7 +463,7 @@ public class PeerRoster {
    * order. The returned array is a new allocation owned by the caller.
    *
    * @param pruneBackedOffPeers whether to exclude peers that should be pruned from peer lists.
-   * @return a sorted array of peer locations, or an empty array when publishing is disabled.
+   * @return a sorted array of peer locations or an empty array when publishing is disabled.
    */
   public double[] getPeerLocationDoubles(boolean pruneBackedOffPeers) {
     if (!node.shallWePublishOurPeersLocation()) return new double[0];
@@ -491,8 +491,8 @@ public class PeerRoster {
    * Returns whether any connected peer is currently routable.
    *
    * <p>This method scans the connected snapshot and checks routability on each peer. It does not
-   * alter roster state and returns immediately on the first routable peer found. The snapshot used
-   * for scanning is retrieved atomically but can become stale once the method returns. It is a
+   * alter the roster state and returns immediately on the first routable peer found. The snapshot
+   * used for scanning is retrieved atomically but can become stale once the method returns. It is a
    * lightweight read-only query intended for fast status checks.
    *
    * @return {@code true} if any connected peer is routable; {@code false} otherwise.
@@ -566,8 +566,9 @@ public class PeerRoster {
    *
    * <p>The method scans the roster snapshot and collects peers that are either {@link
    * OpennetPeerNode} instances or {@link SeedServerPeerNode} instances. The snapshot is not
-   * filtered by connection state or disabled flag, so the result is purely type-based. The returned
-   * array is a new allocation owned by the caller and ordered by the roster iteration order.
+   * filtered by a connection state or disabled flag, so the result is purely type-based. The
+   * returned array is a new allocation owned by the caller and ordered by the roster iteration
+   * order.
    *
    * @return an array of opennet and seed-server peers, possibly empty.
    */
@@ -598,8 +599,7 @@ public class PeerRoster {
         keep.add(pn);
         if (pn.isConnected()) conn.add(pn);
       }
-      PeerNode[] keepArray = keep.toArray(new PeerNode[0]);
-      myPeers = keepArray;
+      myPeers = keep.toArray(new PeerNode[0]);
       connectedPeers = conn.toArray(new PeerNode[0]);
     }
   }
@@ -656,7 +656,7 @@ public class PeerRoster {
    * Counts connected peers that are routable and not in routing backoff.
    *
    * <p>The method scans the connected snapshot and counts peers that are routable and not backed
-   * off for the requested traffic class. It does not modify roster state and performs no
+   * off for the requested traffic class. It does not modify the roster state and performs no
    * allocations other than local counters. The result is a snapshot and should not be treated as a
    * stable capacity guarantee.
    *
@@ -761,8 +761,8 @@ public class PeerRoster {
    *
    * <p>The roster snapshot is scanned for peers that report a real connection, are connected, and
    * are routing-compatible. This count includes both darknet and opennet peers that satisfy the
-   * criteria and does not distinguish between them. The result is a snapshot and may change as
-   * peers connect or disconnect.
+   * criteria and do not distinguish between them. The result is a snapshot and may change as peers
+   * connect or disconnect.
    *
    * @return the number of real, connected peers that are routing-compatible.
    */
@@ -803,7 +803,7 @@ public class PeerRoster {
    * The count is a snapshot and may change as peers are added or removed. This method does not
    * attempt any network operations.
    *
-   * @return the number of peers that may connect based on current roster state.
+   * @return the number of peers that may connect based on the current roster state.
    */
   public int countValidPeers() {
     int count = 0;
@@ -876,7 +876,7 @@ public class PeerRoster {
   /**
    * Counts peers by their current status value.
    *
-   * <p>The roster snapshot is scanned and each peer's status is compared to the supplied status
+   * <p>The roster snapshot is scanned, and each peer's status is compared to the supplied status
    * code. No normalization or translation is performed; the integer is compared directly, so the
    * caller should use the exact status constants expected by {@link PeerNode#getPeerNodeStatus()}.
    * The scan is linear and does not allocate.

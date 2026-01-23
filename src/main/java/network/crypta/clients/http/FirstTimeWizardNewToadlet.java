@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Collects threat-level choices and optionally enforces a master password.
  *   <li>Suggests datastore and bandwidth limits based on detected capabilities.
- *   <li>Redirects to {@link WelcomeToadlet#PATH} after successful completion.
+ *   <li>Redirects to {@link WelcomeToadlet#ROOT_PATH} after successful completion.
  * </ul>
  *
  * @see WebTemplateToadlet
@@ -58,7 +58,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
 
   /**
    * Public URL prefix under which the wizard is mounted; used by {@link #path()} and redirects from
-   * the legacy flow. The value is stable so bookmarks and deep links continue to work across
+   * the legacy flow. The value is stable, so bookmarks and deep links continue to work across
    * releases.
    */
   public static final String TOADLET_URL = "/wiz/";
@@ -123,7 +123,8 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
       return;
     }
 
-    // if threat level is high, the password must already be set: user is running the wizard again?
+    // if the threat level is high, the password must already be set: user is running the wizard
+    // again?
     isPasswordAlreadySet =
         core.getNode().services().securityLevels().getPhysicalThreatLevel()
             == SecurityLevels.PHYSICAL_THREAT_LEVEL.HIGH;
@@ -139,7 +140,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
    * in a {@code FormModel}, validated for bandwidth, datastore size, and optional password rules,
    * then saved when no errors are present. A successful submission triggers a temporary redirect to
    * the welcome page; otherwise the form is displayed again with localized error messages. The
-   * method performs no partial saves on invalid input, keeping configuration atomic.
+   * method performs no partial saves on invalid input, keeping the configuration atomic.
    *
    * @param uri the original request URI supplied by the toadlet container
    * @param request the request body carrying the form fields to validate and apply
@@ -325,7 +326,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
               l10n("valid.uploadLimit", Integer.toString(Node.getMinimumBandwidth() / KIB)));
         }
         int nanosInSecond = (int) SECONDS.toNanos(1);
-        if (nanosInSecond < parsedUploadLimit) { // see Node set outputBandwidthLimit
+        if (nanosInSecond < parsedUploadLimit) { // see the Node set outputBandwidthLimit
           errors.put(
               UPLOAD_LIMIT_ERROR_KEY,
               l10n("valid.uploadLimitMax", Integer.toString(nanosInSecond / KIB)));
@@ -412,7 +413,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
             BandwidthManipulator.detectBandwidthLimits(
                 core.getNode().network().ipDetector().getBandwidthIndicator());
 
-        // Detected limits reasonable; add half of both as recommended option.
+        // Detected limits reasonable; add half of both as a recommended option.
         downloadLimitDetected = Long.toString(detected.downBytes / 2 / KIB);
         uploadLimitDetected = Long.toString(detected.upBytes / 2 / KIB);
       } catch (PluginNotFoundException | IllegalValueException e) {

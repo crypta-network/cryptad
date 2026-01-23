@@ -5,6 +5,7 @@ import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.node.DarknetPeerNode.FRIEND_TRUST;
 import network.crypta.node.DarknetPeerNode.FRIEND_VISIBILITY;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
 
 /**
@@ -14,7 +15,7 @@ import network.crypta.support.SimpleFieldSet;
  * adds it to the owning {@link PeerManager} when the peer is not already present. It is a small
  * coordination layer that keeps the reference parsing, duplicate detection, and registration steps
  * in one place so that callers do not need to know the peer list internals. Typical use is during
- * UI-driven friend adds, configuration import, or any path that receives a noderef and needs to
+ * UI-driven friend adding, configuration import, or any path that receives a noderef and needs to
  * enroll it in the darknet peer set.
  *
  * <p>The duplicate check is based on the peer's ECDSA public-key hash, which is stable for the
@@ -51,8 +52,8 @@ public class PeerConnector {
    *
    * <p>The call is idempotent with respect to the peer's public-key hash: repeated calls with
    * references that resolve to the same hash will not create additional peers. The method does not
-   * validate or normalize the {@link SimpleFieldSet} beyond what {@link Node#createNewDarknetNode}
-   * performs, and it does not retry on failures.
+   * validate or normalize the {@link SimpleFieldSet} beyond what {@link
+   * NodeNetworkSubsystem#createNewDarknetNode} performs, and it does not retry on failures.
    *
    * <pre>{@code
    * PeerConnector connector = new PeerConnector(node, peerManager);

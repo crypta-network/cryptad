@@ -28,10 +28,10 @@ public class PeerAddressTrackerItem extends AddressTrackerItem {
   /**
    * Creates an item with initial upper bounds and a concrete peer.
    *
-   * @param timeDefinitelyNoPacketsReceived earliest time at which receiving was impossible (for
+   * @param timeDefinitelyNoPacketsReceived the earliest time at which receiving was impossible (for
    *     example, socket startup), in milliseconds since epoch
-   * @param timeDefinitelyNoPacketsSent earliest time at which sending was impossible (for example,
-   *     node startup), in milliseconds since epoch
+   * @param timeDefinitelyNoPacketsSent the earliest time at which sending was impossible (for
+   *     example, node startup), in milliseconds since epoch
    * @param peer peer identity to track; must not be {@code null}
    */
   public PeerAddressTrackerItem(
@@ -56,11 +56,10 @@ public class PeerAddressTrackerItem extends AddressTrackerItem {
   public PeerAddressTrackerItem(SimpleFieldSet fs) throws FSParseException {
     super(fs);
     try {
-      // Disallow unknown hosts so invalid DNS names fail fast during load.
+      // Disallow unknown hosts so invalid DNS names fail fast during the load.
       peer = new Peer(fs.getString("Address"), false);
     } catch (UnknownHostException e) {
-      throw (FSParseException)
-          new FSParseException("Unknown domain name in Address: " + e).initCause(e);
+      throw new FSParseException("Unknown domain name in Address: " + e, e);
     } catch (PeerParseException e) {
       throw new FSParseException(e);
     }

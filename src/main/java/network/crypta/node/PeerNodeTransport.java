@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>State is mutable and scoped to a single peer instance; the class is not thread-safe on its own
  * and relies on {@link PeerNode} and queue synchronization where needed (for example, incrementing
- * resend counters). It trades immediate sender wakeups against packet coalescing to reduce overhead
+ * resend counters). It trades immediate sender wakeup against packet coalescing to reduce overhead
  * while still honoring size thresholds.
  *
  * <ul>
@@ -99,13 +99,12 @@ final class PeerNodeTransport implements PeerTransport {
     this.peer = peer;
   }
 
-  @Override
   /**
    * Enqueues a message for asynchronous sending on the peer link.
    *
    * <p>The message is wrapped into a {@link MessageItem} and placed into the peer's message queue.
    * The queue estimate determines whether the packet sender is woken immediately or left to
-   * coalesce traffic. If {@code ctr} is {@code null}, an error is logged and the send still
+   * coalesce traffic. If {@code ctr} is {@code null}, an error is logged, and the sending still
    * proceeds; callers should provide a counter to keep bandwidth accounting accurate. If the peer
    * is not connected, the callback is notified and a {@link NotConnectedException} is thrown.
    *
@@ -120,6 +119,7 @@ final class PeerNodeTransport implements PeerTransport {
    * @return queued {@link MessageItem} for tracking or unqueueing later
    * @throws NotConnectedException if the peer is disconnected at enqueue time
    */
+  @Override
   public MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr)
       throws NotConnectedException {
     if (ctr == null)
@@ -162,14 +162,13 @@ final class PeerNodeTransport implements PeerTransport {
     return item;
   }
 
-  @Override
   /**
    * Sends a message and waits for completion with bounded timeouts.
    *
-   * <p>This method enqueues the message and then waits up to one minute for the send to complete.
-   * On timeout it attempts to unqueue the message; if unqueueing fails, it waits an additional ten
-   * seconds before declaring a fatal timeout. The {@code realTime} flag is passed to overload
-   * reporting so higher-priority paths can be treated differently by admission control.
+   * <p>This method enqueues the message and then waits up to one minute for the sending to
+   * complete. On timeout, it attempts to un-queue the message; if un-queueing fails, it waits an
+   * additional ten seconds before declaring a fatal timeout. The {@code realTime} flag is passed to
+   * overload reporting so higher-priority paths can be treated differently by admission control.
    *
    * <pre>{@code
    * Message msg = DMT.createFNPPing(7);
@@ -178,10 +177,11 @@ final class PeerNodeTransport implements PeerTransport {
    *
    * @param req message to enqueue and send; must be non-null and locally constructed
    * @param ctr byte counter for bandwidth accounting; null logs and proceeds
-   * @param realTime whether this send is real-time for overload reporting
+   * @param realTime whether this sending is real-time for overload reporting
    * @throws NotConnectedException if the peer disconnects before completion
-   * @throws SyncSendWaitedTooLongException if the send does not complete in time
+   * @throws SyncSendWaitedTooLongException if the sending does not complete in time
    */
+  @Override
   public void sendSync(Message req, ByteCounter ctr, boolean realTime)
       throws NotConnectedException, SyncSendWaitedTooLongException {
     SyncMessageCallback cb = new SyncMessageCallback();
@@ -194,16 +194,16 @@ final class PeerNodeTransport implements PeerTransport {
           peer.selfPeerNode(),
           new Exception(STR_ERROR));
       peer.localRejectedOverload("SendSyncTimeout", realTime);
-      // Try to unqueue it, since it presumably won't be of any use now.
+      // Try to un-queue it, since it presumably won't be of any use now.
       if (!peer.getMessageQueue().removeMessage(item)) {
         cb.waitForSend(SECONDS.toMillis(10));
         if (!cb.done) {
           LOG.error(
-              "Waited too long for blocking send and then could not unqueue for {} to {}",
+              "Waited too long for blocking send and then could not un-queue for {} to {}",
               req,
               peer.selfPeerNode(),
               new Exception(STR_ERROR));
-          // Can't cancel yet can't send, something seriously wrong.
+          // Can't cancel yet, can't send it, something seriously wrong.
           // Treat as fatal timeout as probably their fault.
           // Note: We have already waited more than the no-messages timeout; do not wait again.
           peer.fatalTimeout();
@@ -216,7 +216,6 @@ final class PeerNodeTransport implements PeerTransport {
     }
   }
 
-  @Override
   /**
    * Sends a ping and waits briefly for a matching pong.
    *
@@ -229,6 +228,7 @@ final class PeerNodeTransport implements PeerTransport {
    * @return {@code true} when a matching pong is received; {@code false} on timeout
    * @throws NotConnectedException if the peer disconnects while awaiting the pong
    */
+  @Override
   public boolean ping(int pingID) throws NotConnectedException {
     Message ping = DMT.createFNPPing(pingID);
     peer.node.network().usm().send(peer, ping, peer.node.network().dispatcher().pingCounter);
@@ -250,21 +250,20 @@ final class PeerNodeTransport implements PeerTransport {
     return msg != null;
   }
 
-  @Override
   /**
    * Returns the packet throttle instance associated with this transport.
    *
    * <p>The returned throttle object is stable for the life of the transport and is owned by this
-   * instance. Callers should treat it as mutable shared state and avoid concurrent modification
+   * instance. Callers should treat it as a mutable shared state and avoid concurrent modification
    * without appropriate synchronization.
    *
    * @return throttle instance used for packet pacing on this link
    */
+  @Override
   public PacketThrottle getThrottle() {
     return lastThrottle;
   }
 
-  @Override
   /**
    * Returns the socket handler used for outbound packets to this peer.
    *
@@ -274,11 +273,11 @@ final class PeerNodeTransport implements PeerTransport {
    *
    * @return socket handler for outbound packet IO
    */
+  @Override
   public SocketHandler getSocketHandler() {
     return peer.getOutgoingMangler().getSocketHandler();
   }
 
-  @Override
   /**
    * Hands a decoded message to the messaging core for filtering and dispatch.
    *
@@ -289,13 +288,13 @@ final class PeerNodeTransport implements PeerTransport {
    *
    * @param m decoded message to handle; must be non-null and peer-associated
    */
+  @Override
   public void handleMessage(Message m) {
     peer.node.network().usm().checkFilters(m, peer.crypto.getSocket());
   }
 
-  @Override
   /**
-   * Starts a grouped decode session for a batch of decrypted packets.
+   * Starts a grouped decoding session for a batch of decrypted packets.
    *
    * <p>The returned {@link DecodingMessageGroup} collects decoded messages, immediately handling
    * peer-load status updates and deferring load-limited requests until after other messages. This
@@ -304,6 +303,7 @@ final class PeerNodeTransport implements PeerTransport {
    * @param size expected number of messages; used only for internal list sizing
    * @return a new decoding group instance for the caller to use
    */
+  @Override
   public DecodingMessageGroup startProcessingDecryptedMessages(int size) {
     return new DecodingMessageGroupImpl(size);
   }
@@ -367,13 +367,13 @@ final class PeerNodeTransport implements PeerTransport {
    *
    * <p>The method mutates {@code fs} by setting {@code n2nType} and optionally {@code sentTime}.
    * For darknet peers with {@code queueOnNotConnected} enabled, the message is queued for later
-   * replay and an unqueue-on-ack callback is attached. If the send fails and a sent time was
+   * replay and an unqueue-on-ack callback is attached. If the sending fails and a sent-time was
    * injected, that field is removed to avoid persisting a stale timestamp.
    *
    * @param fs field set serialized into the message body; mutated in place
    * @param n2nType node-to-node message type identifier to embed
    * @param includeSentTime whether to include a {@code sentTime} value
-   * @param now timestamp in milliseconds since epoch when the message is created
+   * @param now timestamp in milliseconds since the epoch when the message is created
    * @param queueOnNotConnected whether to queue the message for darknet peers
    */
   void sendNodeToNodeMessage(
@@ -430,12 +430,12 @@ final class PeerNodeTransport implements PeerTransport {
    * Callback used by {@link #sendSync(Message, ByteCounter, boolean)} to track send completion.
    *
    * <p>The instance is stateful and guarded by {@code synchronized} blocks. The callback waits for
-   * a send to complete, records disconnection, and exposes a minimal lifecycle for the blocking
-   * send path.
+   * a sending to complete, records disconnection, and exposes a minimal lifecycle for the blocking
+   * sending path.
    */
   private class SyncMessageCallback implements AsyncMessageCallback {
 
-    /** True once the send path completes or terminates with an error. */
+    /** True, once the sending path completes or terminates with an error. */
     private boolean done = false;
 
     /** True if completion occurred due to a disconnect. */
@@ -445,11 +445,11 @@ final class PeerNodeTransport implements PeerTransport {
     private boolean sent = false;
 
     /**
-     * Waits for the send to complete or for the deadline to elapse.
+     * Waits for the sending to complete or for the deadline to elapse.
      *
      * <p>If the callback completes because the connection was lost, this method throws {@link
      * NotConnectedException}. Interrupts are honored by re-interrupting the thread and returning
-     * early without changing callback state.
+     * early without changing the callback state.
      *
      * @param maxWaitInterval maximum time to wait in milliseconds
      * @throws NotConnectedException if the peer disconnects before completion
@@ -466,7 +466,7 @@ final class PeerNodeTransport implements PeerTransport {
         try {
           wait(waitTime);
         } catch (InterruptedException _) {
-          // Re-interrupt current thread and stop waiting
+          // Re-interrupt the current thread and stop waiting
           Thread.currentThread().interrupt();
           return;
         }
@@ -541,13 +541,13 @@ final class PeerNodeTransport implements PeerTransport {
       messagesWantSomething = new ArrayList<>(size);
     }
 
-    @Override
     /**
      * {@inheritDoc}
      *
      * <p>Messages are decoded using the node's {@link network.crypta.io.comm.MessageCore}. Load
      * status messages are handled immediately; load-limited requests are queued for later.
      */
+    @Override
     public void processDecryptedMessage(byte[] data, int offset, int length, int overhead) {
       Message m =
           peer.node.network().usm().decodeSingleMessage(data, offset, length, peer, overhead);
@@ -567,13 +567,13 @@ final class PeerNodeTransport implements PeerTransport {
       }
     }
 
-    @Override
     /**
      * {@inheritDoc}
      *
      * <p>Normal messages are handled first, followed by load-limited requests to preserve
      * responsiveness for non-load-controlled traffic.
      */
+    @Override
     public void complete() {
       for (Message msg : messages) {
         handleMessage(msg);

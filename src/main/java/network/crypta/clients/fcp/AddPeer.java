@@ -26,6 +26,7 @@ import network.crypta.node.OpennetDisabledException;
 import network.crypta.node.PeerNode;
 import network.crypta.node.PeerTooOldException;
 import network.crypta.node.RequestStarter;
+import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.MediaType;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.Bucket;
@@ -216,7 +217,7 @@ public class AddPeer extends FCPMessage {
    *     any trailing newline characters
    * @throws IOException if reading the fetched data from the node fails due to I/O errors in the
    *     underlying stream
-   * @throws FetchException if the URI cannot be fetched successfully, for example due to routing
+   * @throws FetchException if the URI cannot be fetched successfully, for example, due to routing
    *     failures, timeouts, or protocol-level error responses
    */
   public static StringBuilder getReferenceFromFreenetURI(
