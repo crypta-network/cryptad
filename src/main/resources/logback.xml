@@ -60,7 +60,7 @@
     <appender-ref ref="UID_TRACE_FILE"/>
   </appender>
 
-  <logger name="network.crypta.uidtrace" level="INFO" additivity="false">
+  <logger name="network.crypta.uidtrace" level="OFF" additivity="false">
     <appender-ref ref="ASYNC_UID_TRACE"/>
   </logger>
 
