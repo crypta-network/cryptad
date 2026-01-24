@@ -181,7 +181,7 @@ public final class NodeClientCoreTransfers {
             synchronized (this) {
               rejectedOverloadLocal = this.rejectedOverload;
             }
-            handleAsyncGetFinished(context, realTimeFlag, rs, rejectedOverloadLocal);
+            handleAsyncGetFinished(context, realTimeFlag, rs, rejectedOverloadLocal, status);
           }
 
           @Override
@@ -217,12 +217,15 @@ public final class NodeClientCoreTransfers {
   }
 
   private void handleAsyncGetFinished(
-      AsyncGetContext context, boolean realTimeFlag, RequestSender rs, boolean rejectedOverload) {
+      AsyncGetContext context,
+      boolean realTimeFlag,
+      RequestSender rs,
+      boolean rejectedOverload,
+      int status) {
     boolean isSSK = context.isSSK();
     RequestCompletionListener listener = context.listener();
     long startTime = context.startTime();
     Key key = context.key();
-    int status = rs.getStatus();
     if (status == RequestSender.NOT_FINISHED) {
       LOG.error("Bogus status in onRequestSenderFinished for {}", rs, new Exception("error"));
       listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));

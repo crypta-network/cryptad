@@ -169,7 +169,7 @@ class NodeClientCoreTransfersTest {
     RequestSender sender = mock(RequestSender.class);
     when(node.routing().makeRequestSender(any(), anyShort(), anyLong(), any(), any(), any()))
         .thenReturn(sender);
-    when(sender.getStatus()).thenReturn(RequestSender.TIMED_OUT);
+    when(sender.getStatus()).thenReturn(RequestSender.NOT_FINISHED);
     when(sender.hasForwarded()).thenReturn(false);
 
     AtomicReference<RequestSenderListener> listenerRef = new AtomicReference<>();
