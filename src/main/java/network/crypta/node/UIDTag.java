@@ -112,13 +112,19 @@ public abstract class UIDTag {
           new Exception(DEBUG_EXCEPTION_MESSAGE));
     if (routedTo == null) routedTo = new HashSet<>();
     routedTo.add(peer);
+    boolean added;
     if (offeredKey) {
       if (fetchingOfferedKeyFrom == null) fetchingOfferedKeyFrom = new HashSet<>();
-      return fetchingOfferedKeyFrom.add(peer);
+      added = fetchingOfferedKeyFrom.add(peer);
     } else {
       if (currentlyRoutingTo == null) currentlyRoutingTo = new HashSet<>();
-      return currentlyRoutingTo.add(peer);
+      added = currentlyRoutingTo.add(peer);
     }
+    UIDTraceLogger.log(
+        "routeAdd",
+        this,
+        () -> "peer=" + peer.shortToString() + " offered=" + offeredKey + " added=" + added);
+    return added;
   }
 
   /**
@@ -169,16 +175,29 @@ public abstract class UIDTag {
    * @param next Peer we are no longer fetching an offered key from.
    */
   public void removeFetchingOfferedKeyFrom(PeerNode next) {
+    boolean removed;
+    boolean unlockNow;
     boolean localNoRecordUnlock;
     synchronized (this) {
       if (fetchingOfferedKeyFrom == null) return;
-      fetchingOfferedKeyFrom.remove(next);
+      removed = fetchingOfferedKeyFrom.remove(next);
       if (handlingTimeouts != null) {
         handlingTimeouts.remove(next);
       }
-      if (!mustUnlock()) return;
+      if (!mustUnlock()) {
+        UIDTraceLogger.log(
+            "offerRemove",
+            this,
+            () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=false");
+        return;
+      }
+      unlockNow = true;
       localNoRecordUnlock = this.noRecordUnlock;
     }
+    UIDTraceLogger.log(
+        "offerRemove",
+        this,
+        () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=" + unlockNow);
     if (LOG.isDebugEnabled()) LOG.debug("Unlock tag {}", this);
     innerUnlock(localNoRecordUnlock);
   }
@@ -199,20 +218,34 @@ public abstract class UIDTag {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Stop routing to {} on {}", next, this);
     }
+    boolean removed;
+    boolean unlockNow;
     boolean localNoRecordUnlock;
     synchronized (this) {
       if (currentlyRoutingTo == null) {
         return;
       }
-      if (!currentlyRoutingTo.remove(next) && LOG.isDebugEnabled()) {
+      removed = currentlyRoutingTo.remove(next);
+      if (!removed && LOG.isDebugEnabled()) {
         LOG.debug("Unexpected remove in {} for node {}", this, next);
       }
       if (handlingTimeouts != null) {
         handlingTimeouts.remove(next);
       }
-      if (!mustUnlock()) return;
+      if (!mustUnlock()) {
+        UIDTraceLogger.log(
+            "routeRemove",
+            this,
+            () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=false");
+        return;
+      }
+      unlockNow = true;
       localNoRecordUnlock = this.noRecordUnlock;
     }
+    UIDTraceLogger.log(
+        "routeRemove",
+        this,
+        () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=" + unlockNow);
     if (LOG.isDebugEnabled()) {
       LOG.debug("Unlock tag {}", this);
     }
@@ -285,6 +318,7 @@ public abstract class UIDTag {
   public synchronized void reassignToSelf() {
     if (wasLocal) return;
     reassigned = true;
+    UIDTraceLogger.log("reassignToSelf", this);
   }
 
   /** Whether the request originated locally. Not affected by {@link #reassignToSelf()}. */
@@ -415,6 +449,8 @@ public abstract class UIDTag {
       unlockedHandler = true;
       canUnlock = mustUnlock();
     }
+    UIDTraceLogger.log(
+        "unlockHandler", this, () -> "noRecord=" + noRecord + " canUnlock=" + canUnlock);
     if (canUnlock) innerUnlock(noRecordUnlock);
     else {
       LOG.info("Defer unlock in unlockHandler; still sending requests");
@@ -462,6 +498,7 @@ public abstract class UIDTag {
   public synchronized void handlingTimeout(PeerNode next) {
     if (handlingTimeouts == null) handlingTimeouts = new HashSet<>();
     handlingTimeouts.add(next);
+    UIDTraceLogger.log("handlingTimeout", this, () -> "peer=" + next.shortToString());
   }
 
   private long loggedStillPresent;
@@ -497,6 +534,7 @@ public abstract class UIDTag {
    */
   public synchronized void timedOutToHandlerButContinued() {
     timedOutButContinued = true;
+    UIDTraceLogger.log("timeoutContinue", this);
   }
 
   /** Mark that the handler disconnected or restarted. */

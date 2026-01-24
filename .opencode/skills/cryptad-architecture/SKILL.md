@@ -53,6 +53,13 @@ Use this skill when you need to:
 ### Supporting infrastructure (`network.crypta.support`)
 - Logging, data structures, threading, helpers
 
+### UID trace logging
+- UID lifecycle tracing logs routing/timeout/finish events to `crypta-uidtrace-latest.log` to debug
+  stuck requests/inserts.
+- Disabled by default in `src/main/resources/logback.xml` (logger `network.crypta.uidtrace`).
+- Enable by setting `logger.priorityDetail=network.crypta.uidtrace:INFO` (or `DEBUG`) and
+  restarting. The log file is written under `logger.dirname` (falls back to `crypta.log.dir`).
+
 ## Key design patterns
 ### Request routing (high level)
 1. `RequestStarter` initiates requests

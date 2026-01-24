@@ -52,6 +52,7 @@ public class InsertTag extends UIDTag {
    */
   public synchronized void startedSender() {
     senderStarted = true;
+    UIDTraceLogger.log("insertSenderStart", this);
   }
 
   /**
@@ -61,13 +62,18 @@ public class InsertTag extends UIDTag {
    * the standard unlocking path to allow the UID to be reused.
    */
   public void finishedSender() {
-    boolean noRecordUnlock;
+    boolean unlockNow;
+    boolean localNoRecordUnlock = false;
     synchronized (this) {
       senderFinished = true;
-      if (!mustUnlock()) return;
-      noRecordUnlock = this.noRecordUnlock;
+      unlockNow = mustUnlock();
+      if (unlockNow) {
+        localNoRecordUnlock = this.noRecordUnlock;
+      }
     }
-    innerUnlock(noRecordUnlock);
+    UIDTraceLogger.log("insertSenderFinish", this, () -> "unlock=" + unlockNow);
+    if (!unlockNow) return;
+    innerUnlock(localNoRecordUnlock);
   }
 
   /**
@@ -89,6 +95,9 @@ public class InsertTag extends UIDTag {
    */
   public synchronized void handlerThrew(Throwable t) {
     handlerThrew = t;
+    if (t != null) {
+      UIDTraceLogger.log("handlerThrew", this, () -> "error=" + t.getClass().getSimpleName());
+    }
   }
 
   /**

@@ -115,6 +115,11 @@ public class LoggingConfigHandler {
   }
 
   private static final String SYS_PROP_LOG_DIR = "crypta.log.dir";
+  private static final String APPENDER_ASYNC_FILE = "ASYNC_FILE";
+  private static final String APPENDER_ASYNC_UID_TRACE = "ASYNC_UID_TRACE";
+  private static final String LOG_FILE_PREFIX = "crypta";
+  private static final String UID_TRACE_FILE_PREFIX = "crypta-uidtrace";
+  private static final String LOGGER_UID_TRACE = "network.crypta.uidtrace";
   // Total on-disk usage cap for rotated/archived logs.
   private static final String CONF_LOGS_TOTAL_SIZE_CAP = "logsTotalSizeCap";
   private static final long MIN_LOGS_TOTAL_SIZE_CAP_BYTES = 50L * 1024L * 1024L; // 50 MiB
@@ -471,18 +476,23 @@ public class LoggingConfigHandler {
     try {
       LoggerContext ctx = resolveLoggerContext();
       if (ctx == null) return;
-      AsyncAppender aa = resolveAsyncFileAppender(ctx);
-      if (aa == null) return;
-
-      RollingFileAppender<ILoggingEvent> rfa = findRollingFileAppender(aa);
-      if (rfa == null) return;
-
       String datePat = datePatternForInterval(logRotateInterval);
-      String newPattern =
-          new File(newDir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
-      String newFile = new File(newDir, "crypta-latest.log").getAbsolutePath();
-
-      applyRollingPolicyUpdate(ctx, rfa, newFile, newPattern);
+      updateRollingAppenderDirectory(
+          ctx,
+          newDir,
+          datePat,
+          Logger.ROOT_LOGGER_NAME,
+          APPENDER_ASYNC_FILE,
+          LOG_FILE_PREFIX,
+          "crypta-latest.log");
+      updateRollingAppenderDirectory(
+          ctx,
+          newDir,
+          datePat,
+          LOGGER_UID_TRACE,
+          APPENDER_ASYNC_UID_TRACE,
+          UID_TRACE_FILE_PREFIX,
+          "crypta-uidtrace-latest.log");
     } catch (Exception e) {
       System.err.println("Logback file directory reconfiguration failed: " + e);
     }
@@ -496,9 +506,10 @@ public class LoggingConfigHandler {
     return null;
   }
 
-  private AsyncAppender resolveAsyncFileAppender(LoggerContext ctx) {
-    ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-    Appender<?> async = root.getAppender("ASYNC_FILE");
+  private AsyncAppender resolveAsyncAppender(
+      LoggerContext ctx, String loggerName, String appenderName) {
+    ch.qos.logback.classic.Logger logger = ctx.getLogger(loggerName);
+    Appender<?> async = logger.getAppender(appenderName);
     if (async instanceof AsyncAppender asyncappender) {
       return asyncappender;
     }
@@ -513,6 +524,23 @@ public class LoggingConfigHandler {
       }
     }
     return null;
+  }
+
+  private void updateRollingAppenderDirectory(
+      LoggerContext ctx,
+      File dir,
+      String datePat,
+      String loggerName,
+      String asyncAppenderName,
+      String prefix,
+      String latestName) {
+    AsyncAppender aa = resolveAsyncAppender(ctx, loggerName, asyncAppenderName);
+    if (aa == null) return;
+    RollingFileAppender<ILoggingEvent> rfa = findRollingFileAppender(aa);
+    if (rfa == null) return;
+    String newPattern = new File(dir, prefix + "-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
+    String newFile = new File(dir, latestName).getAbsolutePath();
+    applyRollingPolicyUpdate(ctx, rfa, newFile, newPattern);
   }
 
   private void applyRollingPolicyUpdate(
@@ -582,30 +610,35 @@ public class LoggingConfigHandler {
     try {
       ILoggerFactory lf = LoggerFactory.getILoggerFactory();
       if (!(lf instanceof LoggerContext loggercontext)) return;
-      ch.qos.logback.classic.Logger root =
-          loggercontext.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-      Appender<?> async = root.getAppender("ASYNC_FILE");
-      if (!(async instanceof AsyncAppender asyncappender)) return;
-      for (Iterator<Appender<ILoggingEvent>> it = asyncappender.iteratorForAppenders();
-          it.hasNext(); ) {
-        Appender<ILoggingEvent> child = it.next();
-        if (child instanceof RollingFileAppender<ILoggingEvent> rfa) {
-          RollingPolicy rp = rfa.getRollingPolicy();
-          if (rp instanceof SizeAndTimeBasedRollingPolicy<?> st) {
-            st.stop();
-            st.setTotalSizeCap(new FileSize(bytes));
-            // Ensure file pattern reflects current interval as well
-            String datePat = datePatternForInterval(logRotateInterval);
-            String dir = System.getProperty(SYS_PROP_LOG_DIR, new File(".").getAbsolutePath());
-            String pat = new File(dir, "crypta-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
-            st.setFileNamePattern(pat);
-            st.start();
-          }
-          break;
-        }
-      }
+      updateRollingTotalSizeCap(
+          loggercontext, bytes, Logger.ROOT_LOGGER_NAME, APPENDER_ASYNC_FILE, LOG_FILE_PREFIX);
+      updateRollingTotalSizeCap(
+          loggercontext, bytes, LOGGER_UID_TRACE, APPENDER_ASYNC_UID_TRACE, UID_TRACE_FILE_PREFIX);
     } catch (Exception e) {
       System.err.println("Update of Logback totalSizeCap failed: " + e);
+    }
+  }
+
+  private void updateRollingTotalSizeCap(
+      LoggerContext ctx, long bytes, String loggerName, String asyncAppenderName, String prefix) {
+    AsyncAppender asyncappender = resolveAsyncAppender(ctx, loggerName, asyncAppenderName);
+    if (asyncappender == null) return;
+    for (Iterator<Appender<ILoggingEvent>> it = asyncappender.iteratorForAppenders();
+        it.hasNext(); ) {
+      Appender<ILoggingEvent> child = it.next();
+      if (child instanceof RollingFileAppender<ILoggingEvent> rfa) {
+        RollingPolicy rp = rfa.getRollingPolicy();
+        if (rp instanceof SizeAndTimeBasedRollingPolicy<?> st) {
+          st.stop();
+          st.setTotalSizeCap(new FileSize(bytes));
+          String datePat = datePatternForInterval(logRotateInterval);
+          String dir = System.getProperty(SYS_PROP_LOG_DIR, new File(".").getAbsolutePath());
+          String pat = new File(dir, prefix + "-%d{" + datePat + "}.%i.log.gz").getAbsolutePath();
+          st.setFileNamePattern(pat);
+          st.start();
+        }
+        break;
+      }
     }
   }
 
