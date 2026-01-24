@@ -23,6 +23,9 @@ sonar {
         .absolutePath
     property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
 
+    val junitReports = layout.buildDirectory.dir("test-results/test").get().asFile.absolutePath
+    property("sonar.junit.reportPaths", junitReports)
+
     // Read token from environment if provided to avoid passing on CLI (modern scanners read
     // sonar.token)
     providers.environmentVariable("SONAR_TOKEN").orNull?.let { token ->
