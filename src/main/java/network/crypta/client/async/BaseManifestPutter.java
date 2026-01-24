@@ -56,7 +56,7 @@ import org.slf4j.LoggerFactory;
  *       incremental updates and archival behavior.
  *   <li>Concurrency: multiple file puts and container builds may run concurrently; state
  *       transitions are synchronized at the handler level to ensure consistent completion and
- *       fetchability signaling.
+ *       fetch-ability signaling.
  * </ul>
  *
  * <p>Operating modes:
@@ -81,9 +81,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
   @Serial private static final long serialVersionUID = 1L;
 
-  // Shared log message patterns to avoid duplication (Sonar java:S1192)
-  private static final String LOG_ON_ENCODE_FOR = "onEncode({}) for {}";
-  private static final String LOG_COMPLETED_FOR = "Completed '{}' {}";
+  private static final String LOG_ARCHIVE_ON_ENCODE = "event=archive-encode key={} handler={}";
+  private static final String LOG_CONTAINER_ON_ENCODE = "event=container-encode key={} handler={}";
+  private static final String LOG_META_ON_ENCODE = "event=metadata-encode key={} handler={}";
+  private static final String LOG_EXTERN_ON_ENCODE = "event=external-encode key={} handler={}";
+  private static final String LOG_ARCHIVE_COMPLETED = "event=archive-complete item='{}' handler={}";
+  private static final String LOG_CONTAINER_COMPLETED =
+      "event=container-complete item='{}' handler={}";
+  private static final String LOG_PUT_COMPLETED = "event=put-complete item='{}' handler={}";
   private static final String DEBUG_STRING = "debug";
 
   @Override
@@ -100,9 +105,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /**
    * ArchivePutHandler - wrapper for ContainerInserter
    *
-   * <p>Archives are not part of the site structure, they are used to group files that not fit into
-   * a container (for example a directory with a bazillion files in it) Archives are always inserted
-   * as CHK, references to items in it are normal redirects to CHK@blah,blub,AA/nameinarchive
+   * <p>Archives are not part of the site structure; they are used to group files that not fit into
+   * a container (for example, a directory with a bazillion files in it) Archives are always
+   * inserted as CHK, references to items in it are normal redirects to
+   * CHK@blah,blub,AA/nameinarchive
    */
   private final class ArchivePutHandler extends PutHandler {
 
@@ -124,7 +130,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Override
     public void onEncode(BaseClientKey key, ClientPutState state, ClientContext context) {
       if (LOG.isDebugEnabled())
-        LOG.debug(LOG_ON_ENCODE_FOR, key.getURI().toString(false, false), this);
+        LOG.debug(LOG_ARCHIVE_ON_ENCODE, key.getURI().toString(false, false), this);
 
       synchronized (BaseManifestPutter.this) {
         // transform the placeholders to redirects (redirects to 'uri/name') and
@@ -157,7 +163,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public void onSuccess(ClientPutState state, ClientContext context) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOG_COMPLETED_FOR, this.itemName, this);
+      if (LOG.isDebugEnabled()) LOG.debug(LOG_ARCHIVE_COMPLETED, this.itemName, this);
       if (!containerPutHandlers.remove(this))
         throw new IllegalStateException("was not in containerPutHandlers");
 
@@ -169,7 +175,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    * ContainerPutHandler - wrapper for ContainerInserter
    *
    * <p>Containers are an integral part of the site structure, they are inserted as CHK, the root
-   * container is inserted at targetURI. references to items in it are ARCHIVE_INTERNAL_REDIRECT
+   * container is inserted at targetURI. References to items in it are ARCHIVE_INTERNAL_REDIRECT
    */
   private final class ContainerPutHandler extends PutHandler {
 
@@ -192,7 +198,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Override
     public void onEncode(BaseClientKey key, ClientPutState state, ClientContext context) {
       if (LOG.isDebugEnabled())
-        LOG.debug(LOG_ON_ENCODE_FOR, key.getURI().toString(false, false), this);
+        LOG.debug(LOG_CONTAINER_ON_ENCODE, key.getURI().toString(false, false), this);
 
       if (rootContainerPutHandler == this) {
         finalURI = key.getURI();
@@ -216,7 +222,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public void onSuccess(ClientPutState state, ClientContext context) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOG_COMPLETED_FOR, this.itemName, this);
+      if (LOG.isDebugEnabled()) LOG.debug(LOG_CONTAINER_COMPLETED, this.itemName, this);
 
       if (rootContainerPutHandler == this) {
         if (containerPutHandlers.contains(this))
@@ -267,10 +273,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public void onEncode(BaseClientKey key, ClientPutState state, ClientContext context) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOG_ON_ENCODE_FOR, key, this);
+      if (LOG.isDebugEnabled()) LOG.debug(LOG_EXTERN_ON_ENCODE, key, this);
 
       if (metadata != null) {
-        LOG.warn("Reassigning metadata: {}", metadata);
+        LOG.warn("Duplicate metadata onEncode: {}", metadata);
       }
       // The file was too small to have its own metadata, we get this instead.
       // So we make the key into metadata.
@@ -289,7 +295,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
             state,
             persistent);
       if (metadata != null) {
-        LOG.warn("Reassigning metadata");
+        LOG.warn("Duplicate metadata onMetadata; ignoring");
         return;
       }
       metadata = m;
@@ -299,7 +305,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       } else if (containerMode) {
         handleContainerOnMetadata(m, context);
       } else {
-        throw new IllegalStateException("Neiter container nor freeform mode. Hu?");
+        throw new IllegalStateException("Neither container nor freeform mode. Hu?");
       }
     }
 
@@ -345,10 +351,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   }
 
   // metadata inserter / resolver
-  // these MPH are usually created on demand, so they are outside (main)constructor
+  // this MPH is usually created on demand, so they are outside (main)constructor
   private final class MetaPutHandler extends PutHandler {
 
-    // Metadata is not put with a cryptokey. It is derived from other stuff that is already
+    // Metadata is not put with a cryptokey. It is derived from other stuff already
     // encrypted with random keys.
 
     @Serial private static final long serialVersionUID = 1L;
@@ -356,7 +362,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     // final metadata
     private MetaPutHandler(BaseManifestPutter smp, PutHandler parent, InsertBlock insertBlock) {
       super(smp, parent, null, null, null);
-      // Treat as splitfile for purposes of determining number of reinserts.
+      // Treat as a splitfile for purposes of determining the number of reinserting.
       InsertExecutionOptions execOptions =
           new InsertExecutionOptions(false, false, null, null, cryptoAlgorithm, realTimeFlag);
       SingleFileInserterParams params =
@@ -387,7 +393,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       super(smp, parent, null, null, runningPutHandlers);
       RandomAccessBucket b = toResolve.toBucket(bf);
       metadata = toResolve;
-      // Treat as splitfile for purposes of determining number of reinserts.
+      // Treat as a splitfile for purposes of determining the number of reinserting.
       InsertBlock ib = new InsertBlock(b, null, FreenetURI.EMPTY_CHK_URI);
       InsertExecutionOptions execOptions =
           new InsertExecutionOptions(false, false, null, null, cryptoAlgorithm, realTimeFlag);
@@ -416,7 +422,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Override
     public void onEncode(BaseClientKey key, ClientPutState state, ClientContext context) {
       if (LOG.isDebugEnabled())
-        LOG.debug(LOG_ON_ENCODE_FOR, key.getURI().toString(false, false), this);
+        LOG.debug(LOG_META_ON_ENCODE, key.getURI().toString(false, false), this);
 
       if (rootMetaPutHandler == this) {
         finalURI = key.getURI();
@@ -446,7 +452,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Serial private static final long serialVersionUID = 1L;
 
-    /** a normal ( freeform) redirect */
+    /** a normal (freeform) redirect */
     public JokerPutHandler(
         BaseManifestPutter bmp, String name, FreenetURI targetURI2, ClientMetadata cm2) {
       super(bmp, null, name, null, null, cm2);
@@ -500,7 +506,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
       synchronized (putHandlerWaitingForBlockSets) {
         if (putHandlerWaitingForBlockSets.contains(this)) {
-          LOG.warn("PutHandler already in 'waitingForBlockSets'!");
+          LOG.warn("Duplicate registration in waitingForBlockSets");
         } else {
           putHandlerWaitingForBlockSets.add(this);
         }
@@ -508,7 +514,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
       synchronized (putHandlersWaitingForFetchable) {
         if (putHandlersWaitingForFetchable.contains(this)) {
-          LOG.warn("PutHandler already in 'waitingForFetchable'!");
+          LOG.warn("Duplicate registration in waitingForFetchable");
         } else {
           putHandlersWaitingForFetchable.add(this);
         }
@@ -520,7 +526,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (runningMap == containerPutHandlers) {
         synchronized (containerPutHandlers) {
           if (containerPutHandlers.contains(this)) {
-            LOG.warn("PutHandler already in 'runningMap': {}", containerPutHandlers);
+            LOG.warn("Duplicate registration in containerPutHandlers: {}", containerPutHandlers);
           } else {
             containerPutHandlers.add(this);
           }
@@ -528,7 +534,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       } else { // runningMap == runningPutHandlers
         synchronized (runningPutHandlers) {
           if (runningPutHandlers.contains(this)) {
-            LOG.warn("PutHandler already in 'runningMap': {}", runningPutHandlers);
+            LOG.warn("Duplicate registration in runningPutHandlers: {}", runningPutHandlers);
           } else {
             runningPutHandlers.add(this);
           }
@@ -599,7 +605,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
           }
           if (!ok) {
             throw new IllegalStateException(
-                "Starting a PutHandler thats not in 'containerPutHandlers'! " + this);
+                "Starting a PutHandler that's not in 'containerPutHandlers'! " + this);
           }
         }
       } else {
@@ -609,7 +615,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
           }
           if (!ok) {
             throw new IllegalStateException(
-                "Starting a PutHandler thats not in 'runningPutHandlers'! " + this);
+                "Starting a PutHandler that's not in 'runningPutHandlers'! " + this);
           }
         }
       }
@@ -622,7 +628,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       }
       if (!ok) {
         LOG.error(
-            "Starting a PutHandler thats not in 'waitingForBlockSets'! {}",
+            "Starting a PutHandler that's not in 'waitingForBlockSets'! {}",
             this,
             new Error("error"));
       }
@@ -655,7 +661,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Override
     public void onSuccess(ClientPutState state, ClientContext context) {
       if (LOG.isDebugEnabled()) {
-        // temp hack, ignored if called via super
+        // temp hack, ignored if called via super method
         Throwable t = new Throwable("DEBUG onSuccess");
         StackTraceElement te = t.getStackTrace()[1];
         if (!("BaseManifestPutter.java".equals(te.getFileName())
@@ -665,7 +671,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         // temp hack end
       }
 
-      if (LOG.isDebugEnabled()) LOG.debug(LOG_COMPLETED_FOR, this.itemName, this);
+      if (LOG.isDebugEnabled()) LOG.debug(LOG_PUT_COMPLETED, this.itemName, this);
 
       if (putHandlersWaitingForFetchable.contains(this)) this.maybeNotifyFetchable();
 
@@ -676,7 +682,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         runningPutHandlers.remove(this);
         if (putHandlersWaitingForMetadata.remove(this)) {
           LOG.error(
-              "PutHandler '{}' was in waitingForMetadata in onSuccess() on {} for {}",
+              "event=cleanup-metadata-onSuccess item='{}' handler={} putter={}",
               this.itemName,
               this,
               BaseManifestPutter.this,
@@ -685,14 +691,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
         if (putHandlerWaitingForBlockSets.remove(this)) {
           LOG.error(
-              "PutHandler was in waitingForBlockSets in onSuccess() on {} for {}",
+              "event=cleanup-blocksets-onSuccess handler={} putter={}",
               this,
               BaseManifestPutter.this,
               new Error(DEBUG_STRING));
         }
         if (putHandlersWaitingForFetchable.remove(this)) {
           LOG.error(
-              "PutHandler was in waitingForFetchable in onSuccess() on {} for {}",
+              "event=cleanup-fetchable-onSuccess handler={} putter={}",
               this,
               BaseManifestPutter.this,
               new Error(DEBUG_STRING));
@@ -726,7 +732,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (LOG.isTraceEnabled()) LOG.trace("try complete");
       synchronized (BaseManifestPutter.this) {
         if (finished || cancelled) {
-          if (LOG.isDebugEnabled()) LOG.debug("Already {}", finished ? "finished" : "cancelled");
+          if (LOG.isDebugEnabled())
+            LOG.debug("event=try-complete-skip status={}", finished ? "finished" : "cancelled");
           return;
         }
         if (hasOutstandingWork()) return;
@@ -742,7 +749,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     private boolean hasRunningWork() {
       if (!runningPutHandlers.isEmpty()) {
-        if (LOG.isTraceEnabled()) LOG.trace("Not finished, runningPutHandlers not empty.");
+        if (LOG.isTraceEnabled()) LOG.trace("Outstanding leaf work: runningPutHandlers not empty.");
         return true;
       }
       return false;
@@ -750,7 +757,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     private boolean hasContainerWork() {
       if (!containerPutHandlers.isEmpty()) {
-        if (LOG.isTraceEnabled()) LOG.trace("Not finished, containerPutHandlers not empty.");
+        if (LOG.isTraceEnabled())
+          LOG.trace("Outstanding container work: containerPutHandlers not empty.");
         return true;
       }
       return false;
@@ -759,12 +767,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     private boolean hasRootWork() {
       if (containerMode) {
         if (rootContainerPutHandler != null) {
-          if (LOG.isTraceEnabled()) LOG.trace("Not finished, rootContainerPutHandler not empty.");
+          if (LOG.isTraceEnabled())
+            LOG.trace("Outstanding root container work: rootContainerPutHandler not empty.");
           return true;
         }
       } else {
         if (rootMetaPutHandler != null) {
-          if (LOG.isTraceEnabled()) LOG.trace("Not finished, rootMetaPutHandler not empty.");
+          if (LOG.isTraceEnabled())
+            LOG.trace("Outstanding root metadata work: rootMetaPutHandler not empty.");
           return true;
         }
       }
@@ -787,7 +797,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
           currentState = newState;
           if (LOG.isDebugEnabled())
             LOG.debug(
-                "onTransition: cur={}, old={}, new={} for {}",
+                "event=transition-applied cur={} old={} new={} handler={}",
                 currentState,
                 oldState,
                 newState,
@@ -795,7 +805,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
           return;
         }
         LOG.error(
-            "Ignoring onTransition: cur={}, old={}, new={} for {}",
+            "event=transition-ignored cur={} old={} new={} handler={}",
             currentState,
             oldState,
             newState,
@@ -965,17 +975,17 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   // All the default names are in the root.
   // Code will need to be changed if we have index/index.html or similar.
 
-  /** if true top level metadata is a container */
+  /** if true, top level metadata is a container */
   private boolean containerMode = false;
 
-  /** if true top level metadata is a single chunk */
+  /** if true, top level metadata is a single chunk */
   private boolean freeformMode = false;
 
   /* common stuff, fields used in freeform and container mode */
   /** put is finalized if empty */
   private final HashSet<PutHandler> putHandlerWaitingForBlockSets;
 
-  /** if empty put is fetchable */
+  /** if empty, put is fetchable */
   private final HashSet<PutHandler> putHandlersWaitingForFetchable;
 
   /**
@@ -988,7 +998,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /** Builder for the root container when operating in container mode; otherwise {@code null}. */
   private ContainerBuilder rootContainerBuilder;
 
-  /** Put handler for the root container; only set while that container is live. */
+  /** Put a handler for the root container; only set while that container is live. */
   private ContainerPutHandler rootContainerPutHandler;
 
   /** Set of active container put handlers (excluding the root) in container mode. */
@@ -1020,7 +1030,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /** Root builder in freeform mode; {@code null} in container mode. */
   private FreeFormBuilder rootBuilder;
 
-  /** Put handler responsible for inserting the top-level metadata in freeform mode. */
+  /** Put the handler responsible for inserting the top-level metadata in freeform mode. */
   private MetaPutHandler rootMetaPutHandler;
 
   /** The logical root directory map for freeform mode composition. */
@@ -1033,7 +1043,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    */
   private final HashSet<PutHandler> putHandlersWaitingForMetadata;
 
-  /** Final URI of the inserted manifest/container, available after encode of the root. */
+  /** Final URI of the inserted manifest/container, available after encoding of the root. */
   private FreenetURI finalURI;
 
   /** Target URI (e.g., SSK) for the root container or base metadata. */
@@ -1042,7 +1052,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /** True when the overall operation has finished (successfully or due to cancellation). */
   private boolean finished;
 
-  /** Insert context providing policy, compatibility mode and storage factories. */
+  /** Insert context providing policy, compatibility mode, and storage factories. */
   private final InsertContext ctx;
 
   final transient ClientPutCallback cb;
@@ -1059,11 +1069,11 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    */
   private Metadata baseMetadata;
 
-  /** Whether the base metadata has been resolved to a bucket or sub-parts that can be inserted. */
+  /** Whether the base metadata has been resolved to a bucket or subparts that can be inserted. */
   private boolean hasResolvedBase; // if this is true, the final block is ready for insert
 
   /**
-   * True once all running handlers indicate the content is fetchable (i.e., enough blocks exist).
+   * True, once all running handlers indicate the content is fetchable (i.e., enough blocks exist).
    */
   private boolean fetchable;
 
@@ -1076,14 +1086,14 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /**
    * Creates a new putter with the provided initialization parameters.
    *
-   * <p>The constructor wires the callback client, target URI, insertion context and optional
+   * <p>The constructor wires the callback client, target URI, insertion context, and optional
    * cryptographic key material. When {@code randomiseCryptoKeys} is requested and {@code
    * forceCryptoKey} is absent, a random 32‑byte key is generated using the provided {@link
    * ClientContext} RNG. This does not start any work; callers must invoke {@link
    * #start(ClientContext)}.
    *
-   * @param p initialization parameters including callback, target, context and crypto options. Must
-   *     be non-null and internally consistent (e.g., a non-null callback/client).
+   * @param p initialization parameters including callback, target, context, and crypto options.
+   *     Must be non-null and internally consistent (e.g., a non-null callback/client).
    * @throws TooManyFilesInsertException when the manifest would exceed implementation limits on the
    *     number of concurrently handled files or containers.
    */
@@ -1122,7 +1132,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   }
 
   /**
-   * Aggregates constructor arguments to keep parameter count reasonable (Sonar S107). This is a
+   * Aggregates constructor arguments to keep the parameter count reasonable (Sonar S107). This is a
    * simple data holder; behavior is unchanged.
    */
   protected static final class InitParams {
@@ -1218,10 +1228,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    * Starts asynchronous insertion of the prepared manifest.
    *
    * <p>Depending on the chosen mode, this launches individual file puts, container builds, or both
-   * and tracks their progress. If no container work is necessary and all leaf metadata are already
-   * available, this method proceeds to building the top‑level metadata.
+   * and tracks their progress. If no container work is necessary and all leaf metadata is already
+   * available, this method proceeds to build the top‑level metadata.
    *
-   * @param context the client execution context providing schedulers, bucket factories and RNGs;
+   * @param context the client execution context providing schedulers, bucket factories, and RNGs;
    *     must be non-null and match the constructor’s {@link InsertContext} origin.
    * @throws InsertException if starting any handler fails (e.g., due to bucket access errors or
    *     scheduler issues). On failure the putter cancels outstanding work and marks itself
@@ -1259,14 +1269,15 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       throws InsertException {
     for (int i = 0; i < handlers.length; i++) {
       handlers[i].start(context);
-      if (LOG.isDebugEnabled()) LOG.debug("Started {} of {}{}", i, handlers.length, label);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Handler start progress: {} of {}{}", i, handlers.length, label);
       if (isFinished()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Already finished, killing start() on {}", this);
+        if (LOG.isDebugEnabled()) LOG.debug("event=handler-start-abort putter={}", this);
         return;
       }
     }
     if (LOG.isDebugEnabled())
-      LOG.debug("Started {} PutHandler's{} for {}", handlers.length, label, this);
+      LOG.debug("Handler start summary: {} handlers{} for {}", handlers.length, label, this);
   }
 
   private PutHandler[] getContainersToStart(boolean excludeRoot) {
@@ -1296,8 +1307,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    *     mutate nested maps to attach handler placeholders.
    * @param defaultName the default document name to use for the root directory (e.g., {@code
    *     index.html}); may be empty when no suitable default is present.
-   * @throws TooManyFilesInsertException if the number of files or containers would exceed safe
-   *     limits for the current configuration.
+   * @throws TooManyFilesInsertException if the number of files or containers exceeds safe limits
+   *     for the current configuration.
    */
   protected abstract void makePutHandlers(
       HashMap<String, Object> manifestElements, String defaultName)
@@ -1467,7 +1478,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     for (PutHandler putter : running) {
       putter.cancel(context);
     }
-    // Note: if we add additional metadata put states, they should be cancelled here as well.
+    // Note: if we add additional metadata put states, they should be canceled here as well.
   }
 
   @Override
@@ -1501,7 +1512,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     super.addBlocks(num);
   }
 
-  /** Add one or more blocks to the number of requires blocks, and don't notify the clients. */
+  /** Add one or more blocks to the number of required blocks and don't notify the clients. */
   @Override
   public synchronized void addMustSucceedBlocks(int blocks) {
     synchronized (this) {
@@ -1511,7 +1522,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   }
 
   /**
-   * Add one or more blocks to the number of requires blocks, and don't notify the clients. These
+   * Add one or more blocks to the number of required blocks and don't notify the clients. These
    * blocks are added to the minSuccessFetchBlocks for the insert, but not to the counter for what
    * the requestor must fetch.
    */
@@ -1544,7 +1555,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     return minSuccessFetchBlocks;
   }
 
-  // Inherit blockSetFinalized behavior from parent
+  // Inherit blockSetFinalized behavior from a parent
 
   public int countFiles() {
     return numberOfFiles;
@@ -1677,7 +1688,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     /**
      * Map from name to either a Metadata (to be included as-is), a ManifestElement (either a
-     * redirect or a file), or another HashMap. Eventually processed by e.g.
+     * redirect or a file), or another HashMap. Eventually processed by e.g.,
      * ContainerInserter.makeManifest() (for a ContainerBuilder).
      */
     protected transient Map<String, Object> currentDir;
@@ -1885,8 +1896,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       /*
        * Tree containing the status of the insert. Can have ManifestElement's (original files to
        * insert or bundle inside a container), HashMap's (more subdirs), Metadata (to be put into a
-       * container as metadata for e.g. an external file), a ContainerPutHandler or an
-       * ArchivePutHandler (for containers that are part of the structure, and external containers
+       * container as metadata for e.g., an external file), a ContainerPutHandler or an
+       * ArchivePutHandler (for containers that are part of the structure and external containers
        * for overflow, respectively).
        */
       HashMap<String, Object> rootDirMap = new HashMap<>();
@@ -1940,8 +1951,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     /**
      * Add a ManifestElement, which can be a file in an archive, or a redirect.
      *
-     * @param name The original name of the file (e.g. index.html).
-     * @param nameInArchive The fully qualified name of the file in the archive (e.g.
+     * @param name The original name of the file (e.g., index.html).
+     * @param nameInArchive The fully qualified name of the file in the archive (e.g.,
      *     testing/index.html).
      * @param element The ManifestElement specifying the data, redirect, etc. Note that redirects
      *     are still included in containers, both for structural reasons and because the metadata
