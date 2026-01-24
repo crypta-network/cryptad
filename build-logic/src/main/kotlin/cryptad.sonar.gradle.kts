@@ -1,3 +1,4 @@
+import java.io.File
 import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
 
@@ -19,7 +20,8 @@ sonar {
       "sonar.coverage.jacoco.xmlReportPaths",
       "build/reports/jacoco/test/jacocoTestReport.xml",
     )
-    property("sonar.junit.reportPaths", "build/test-results/test")
+    // Use Kotlin-only JUnit reports to avoid KotlinSurefire warnings on Java tests.
+    property("sonar.junit.reportPaths", "build/sonar-test-results/kotlin")
     property("sonar.tests", "src/test/java,src/test/kotlin")
     property("sonar.test.inclusions", "src/test/java/**,src/test/kotlin/**")
 
@@ -72,6 +74,56 @@ extensions.configure<SonarLintSettings>("sonarLint") {
 //   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
 //   (aliases: -Pfile=..., -Psonarlint.sources=...)
 val sourceSets: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
+val kotlinTestReportDir = layout.buildDirectory.dir("sonar-test-results/kotlin")
+val testResultsDir = layout.buildDirectory.dir("test-results/test")
+
+tasks.register("prepareKotlinTestReports") {
+  group = "verification"
+  description = "Collect Kotlin JUnit reports for Sonar analysis."
+  dependsOn(tasks.withType<Test>())
+  inputs.dir(testResultsDir)
+  outputs.dir(kotlinTestReportDir)
+
+  doLast {
+    val testSourceSet = sourceSets.named("test").get()
+    val kotlinTestFiles = testSourceSet.allSource.matching { include("**/*.kt") }.files
+
+    val kotlinClassNames =
+      kotlinTestFiles
+        .mapNotNull { file ->
+          val rootDir =
+            testSourceSet.allSource.srcDirs.firstOrNull { srcDir ->
+              file.toPath().startsWith(srcDir.toPath())
+            }
+          rootDir?.toPath()?.relativize(file.toPath())?.toString()
+        }
+        .map { relativePath ->
+          relativePath
+            .removeSuffix(".kt")
+            .replace(File.separatorChar, '.')
+            .replace('/', '.')
+            .replace('\\', '.')
+        }
+        .distinct()
+
+    val reportDir = testResultsDir.get().asFile
+    val outputDir = kotlinTestReportDir.get().asFile
+    project.delete(outputDir)
+    outputDir.mkdirs()
+
+    val reportNames =
+      kotlinClassNames
+        .flatMap { className -> listOf("TEST-$className.xml", "TESTS-$className.xml") }
+        .toSet()
+
+    reportNames.forEach { reportName ->
+      val reportFile = File(reportDir, reportName)
+      if (reportFile.isFile) {
+        reportFile.copyTo(File(outputDir, reportName), overwrite = true)
+      }
+    }
+  }
+}
 
 tasks.register("sonarlintFile", SonarLint::class.java) {
   group = "verification"
@@ -156,6 +208,6 @@ tasks.named("sonarlintTest", SonarLint::class.java).configure {
 
 // Ensure coverage reports exist before publishing analysis.
 // Explicitly depend on jacocoTestReport for the SonarQube task; guard optional 'sonar' alias.
-tasks.named("sonarqube").configure { dependsOn("jacocoTestReport") }
+tasks.named("sonarqube").configure { dependsOn("jacocoTestReport", "prepareKotlinTestReports") }
 
-tasks.findByName("sonar")?.dependsOn("jacocoTestReport")
+tasks.findByName("sonar")?.dependsOn("jacocoTestReport", "prepareKotlinTestReports")
