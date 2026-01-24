@@ -1,3 +1,7 @@
+import java.io.File
+import javax.xml.stream.XMLInputFactory
+import javax.xml.stream.XMLOutputFactory
+import javax.xml.stream.XMLStreamConstants
 import name.remal.gradle_plugins.sonarlint.SonarLint
 import name.remal.gradle_plugins.sonarlint.SonarLintSettings
 
@@ -15,13 +19,15 @@ sonar {
     property("sonar.host.url", "https://sonarcloud.io")
 
     // Point Sonar to the JaCoCo XML report produced by jacocoTestReport
-    val jacocoXml =
-      layout.buildDirectory
-        .file("reports/jacoco/test/jacocoTestReport.xml")
-        .get()
-        .asFile
-        .absolutePath
-    property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
+    property(
+      "sonar.coverage.jacoco.xmlReportPaths",
+      "build/reports/jacoco/test/jacocoTestReport.xml",
+    )
+    // Use Kotlin-only JUnit reports to avoid KotlinSurefire warnings on Java tests.
+    property("sonar.junit.reportPaths", "build/sonar-test-results/kotlin")
+    property("sonar.testExecutionReportPaths", "build/sonar-test-results/test-execution.xml")
+    property("sonar.tests", "src/test/java,src/test/kotlin")
+    property("sonar.test.inclusions", "src/test/java/**,src/test/kotlin/**")
 
     // Read token from environment if provided to avoid passing on CLI (modern scanners read
     // sonar.token)
@@ -72,6 +78,212 @@ extensions.configure<SonarLintSettings>("sonarLint") {
 //   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
 //   (aliases: -Pfile=..., -Psonarlint.sources=...)
 val sourceSets: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
+val kotlinTestReportDir = layout.buildDirectory.dir("sonar-test-results/kotlin")
+val testExecutionReportFile = layout.buildDirectory.file("sonar-test-results/test-execution.xml")
+val testResultsDir = layout.buildDirectory.dir("test-results/test")
+
+tasks.register("prepareKotlinTestReports") {
+  group = "verification"
+  description = "Collect Kotlin JUnit reports for Sonar analysis."
+  dependsOn(tasks.withType<Test>())
+  inputs.dir(testResultsDir)
+  outputs.dir(kotlinTestReportDir)
+
+  doLast {
+    val testSourceSet = sourceSets.named("test").get()
+    val kotlinTestFiles = testSourceSet.allSource.matching { include("**/*.kt") }.files
+
+    val kotlinClassNames =
+      kotlinTestFiles
+        .mapNotNull { file ->
+          val rootDir =
+            testSourceSet.allSource.srcDirs.firstOrNull { srcDir ->
+              file.toPath().startsWith(srcDir.toPath())
+            }
+          rootDir?.toPath()?.relativize(file.toPath())?.toString()
+        }
+        .map { relativePath ->
+          relativePath
+            .removeSuffix(".kt")
+            .replace(File.separatorChar, '.')
+            .replace('/', '.')
+            .replace('\\', '.')
+        }
+        .distinct()
+
+    val reportDir = testResultsDir.get().asFile
+    val outputDir = kotlinTestReportDir.get().asFile
+    project.delete(outputDir)
+    outputDir.mkdirs()
+
+    val reportNames =
+      kotlinClassNames
+        .flatMap { className -> listOf("TEST-$className.xml", "TESTS-$className.xml") }
+        .toSet()
+
+    reportNames.forEach { reportName ->
+      val reportFile = File(reportDir, reportName)
+      if (reportFile.isFile) {
+        reportFile.copyTo(File(outputDir, reportName), overwrite = true)
+      }
+    }
+  }
+}
+
+tasks.register("prepareTestExecutionReport") {
+  group = "verification"
+  description = "Convert JUnit XML reports into Sonar's generic test execution format."
+  dependsOn(tasks.withType<Test>())
+  inputs.dir(testResultsDir)
+  outputs.file(testExecutionReportFile)
+
+  doLast {
+    data class TestCase(
+      val name: String,
+      val durationMs: Long,
+      val status: String?,
+      val message: String?,
+    )
+
+    val reportDir = testResultsDir.get().asFile
+    val outputFile = testExecutionReportFile.get().asFile
+    outputFile.parentFile.mkdirs()
+
+    val testSourceSet = sourceSets.named("test").get()
+    val testSourceDirs = testSourceSet.allSource.srcDirs
+
+    val byFile = linkedMapOf<String, MutableList<TestCase>>()
+    val xmlInputFactory = XMLInputFactory.newInstance()
+
+    reportDir
+      .listFiles { _, name ->
+        (name.startsWith("TEST-") || name.startsWith("TESTS-")) && name.endsWith(".xml")
+      }
+      ?.forEach { reportFile ->
+        val reader = xmlInputFactory.createXMLStreamReader(reportFile.inputStream())
+        try {
+          var suiteName: String? = null
+          while (reader.hasNext()) {
+            when (reader.next()) {
+              XMLStreamConstants.START_ELEMENT -> {
+                when (reader.localName) {
+                  "testsuite" -> {
+                    suiteName = reader.getAttributeValue(null, "name")
+                  }
+
+                  "testcase" -> {
+                    val name = reader.getAttributeValue(null, "name") ?: continue
+                    val className =
+                      reader.getAttributeValue(null, "classname") ?: suiteName ?: continue
+                    val durationMs =
+                      reader.getAttributeValue(null, "time")?.toDoubleOrNull()?.let {
+                        (it * 1000).toLong()
+                      } ?: 0L
+                    var status: String? = null
+                    var messageText: String? = null
+
+                    while (reader.hasNext()) {
+                      when (reader.next()) {
+                        XMLStreamConstants.START_ELEMENT -> {
+                          when (reader.localName) {
+                            "failure",
+                            "error" -> {
+                              status = reader.localName
+                              val message =
+                                reader.getAttributeValue(null, "message")?.takeIf {
+                                  it.isNotBlank()
+                                }
+                              val type =
+                                reader.getAttributeValue(null, "type")?.takeIf { it.isNotBlank() }
+                              val text = reader.elementText.trim().takeIf { it.isNotBlank() }
+                              messageText =
+                                listOfNotNull(message, type, text).joinToString("\n").ifBlank {
+                                  null
+                                }
+                            }
+
+                            "skipped" -> {
+                              status = "skipped"
+                            }
+                          }
+                        }
+
+                        XMLStreamConstants.END_ELEMENT -> {
+                          if (reader.localName == "testcase") break
+                        }
+                      }
+                    }
+
+                    val normalizedClassName = className.substringBefore('$')
+                    val relativeBase = normalizedClassName.replace('.', '/')
+                    val relativePaths = mutableListOf("$relativeBase.java", "$relativeBase.kt")
+                    if (normalizedClassName.endsWith("Kt")) {
+                      relativePaths.add(
+                        normalizedClassName.removeSuffix("Kt").replace('.', '/') + ".kt"
+                      )
+                    }
+                    val sourceFile =
+                      relativePaths
+                        .asSequence()
+                        .mapNotNull { relativePath ->
+                          testSourceDirs
+                            .firstOrNull { srcDir -> File(srcDir, relativePath).isFile }
+                            ?.let { srcDir -> File(srcDir, relativePath) }
+                        }
+                        .firstOrNull() ?: continue
+                    val sonarPath = project.relativePath(sourceFile)
+                    byFile
+                      .getOrPut(sonarPath) { mutableListOf() }
+                      .add(TestCase(name, durationMs, status, messageText))
+                  }
+                }
+              }
+            }
+          }
+        } finally {
+          reader.close()
+        }
+      }
+
+    val xmlOutputFactory = XMLOutputFactory.newInstance()
+    outputFile.outputStream().use { stream ->
+      val writer = xmlOutputFactory.createXMLStreamWriter(stream, "UTF-8")
+      writer.writeStartDocument("UTF-8", "1.0")
+      writer.writeStartElement("testExecutions")
+      writer.writeAttribute("version", "1")
+      byFile.forEach { (filePath, testCases) ->
+        writer.writeStartElement("file")
+        writer.writeAttribute("path", filePath)
+        testCases.forEach { testCase ->
+          writer.writeStartElement("testCase")
+          writer.writeAttribute("name", testCase.name)
+          writer.writeAttribute("duration", testCase.durationMs.toString())
+          when (testCase.status) {
+            "failure",
+            "error" -> {
+              writer.writeAttribute(testCase.status, "true")
+              testCase.message
+                ?.lineSequence()
+                ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { writer.writeAttribute("message", it) }
+            }
+
+            "skipped" -> {
+              writer.writeAttribute("skipped", "true")
+            }
+          }
+          writer.writeEndElement()
+        }
+        writer.writeEndElement()
+      }
+      writer.writeEndElement()
+      writer.writeEndDocument()
+      writer.flush()
+      writer.close()
+    }
+  }
+}
 
 tasks.register("sonarlintFile", SonarLint::class.java) {
   group = "verification"
@@ -156,6 +368,10 @@ tasks.named("sonarlintTest", SonarLint::class.java).configure {
 
 // Ensure coverage reports exist before publishing analysis.
 // Explicitly depend on jacocoTestReport for the SonarQube task; guard optional 'sonar' alias.
-tasks.named("sonarqube").configure { dependsOn("jacocoTestReport") }
+tasks.named("sonarqube").configure {
+  dependsOn("jacocoTestReport", "prepareKotlinTestReports", "prepareTestExecutionReport")
+}
 
-tasks.findByName("sonar")?.dependsOn("jacocoTestReport")
+tasks
+  .findByName("sonar")
+  ?.dependsOn("jacocoTestReport", "prepareKotlinTestReports", "prepareTestExecutionReport")
