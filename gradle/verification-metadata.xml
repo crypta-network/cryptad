@@ -105,6 +105,7 @@
             <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.18.300"/>
             <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.23.100"/>
             <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.23.200"/>
+            <trusting group="org.eclipse.platform" name="org.eclipse.osgi" version="3.24.0"/>
          </trusted-key>
          <trusted-key id="A31DDE881C3E3C4C985BD0D02C7F998F4272C851" group="com.diffplug.spotless"/>
          <trusted-key id="A33A0B49A4C1AB590B0A4DDC1364C5E2DF3E99C5" group="org.reactivestreams" name="reactive-streams" version="1.0.3"/>
