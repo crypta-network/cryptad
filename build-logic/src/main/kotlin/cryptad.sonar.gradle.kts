@@ -150,7 +150,7 @@ tasks.register("prepareTestExecutionReport") {
     outputFile.parentFile.mkdirs()
 
     val testSourceSet = sourceSets.named("test").get()
-    val javaTestDirs = testSourceSet.java.srcDirs
+    val testSourceDirs = testSourceSet.allSource.srcDirs
 
     val byFile = linkedMapOf<String, MutableList<TestCase>>()
     val xmlInputFactory = XMLInputFactory.newInstance()
@@ -214,11 +214,23 @@ tasks.register("prepareTestExecutionReport") {
                       }
                     }
 
-                    val relativePath = className.replace('.', '/') + ".java"
+                    val normalizedClassName = className.substringBefore('$')
+                    val relativeBase = normalizedClassName.replace('.', '/')
+                    val relativePaths = mutableListOf("$relativeBase.java", "$relativeBase.kt")
+                    if (normalizedClassName.endsWith("Kt")) {
+                      relativePaths.add(
+                        normalizedClassName.removeSuffix("Kt").replace('.', '/') + ".kt"
+                      )
+                    }
                     val sourceFile =
-                      javaTestDirs
-                        .firstOrNull { srcDir -> File(srcDir, relativePath).isFile }
-                        ?.let { srcDir -> File(srcDir, relativePath) } ?: continue
+                      relativePaths
+                        .asSequence()
+                        .mapNotNull { relativePath ->
+                          testSourceDirs
+                            .firstOrNull { srcDir -> File(srcDir, relativePath).isFile }
+                            ?.let { srcDir -> File(srcDir, relativePath) }
+                        }
+                        .firstOrNull() ?: continue
                     val sonarPath = project.relativePath(sourceFile)
                     byFile
                       .getOrPut(sonarPath) { mutableListOf() }
