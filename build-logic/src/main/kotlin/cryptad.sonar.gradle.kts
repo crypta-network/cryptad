@@ -15,16 +15,13 @@ sonar {
     property("sonar.host.url", "https://sonarcloud.io")
 
     // Point Sonar to the JaCoCo XML report produced by jacocoTestReport
-    val jacocoXml =
-      layout.buildDirectory
-        .file("reports/jacoco/test/jacocoTestReport.xml")
-        .get()
-        .asFile
-        .absolutePath
-    property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml)
-
-    val junitReports = layout.buildDirectory.dir("test-results/test").get().asFile.absolutePath
-    property("sonar.junit.reportPaths", junitReports)
+    property(
+      "sonar.coverage.jacoco.xmlReportPaths",
+      "build/reports/jacoco/test/jacocoTestReport.xml",
+    )
+    property("sonar.junit.reportPaths", "build/test-results/test")
+    property("sonar.tests", "src/test/java,src/test/kotlin")
+    property("sonar.test.inclusions", "src/test/java/**,src/test/kotlin/**")
 
     // Read token from environment if provided to avoid passing on CLI (modern scanners read
     // sonar.token)
