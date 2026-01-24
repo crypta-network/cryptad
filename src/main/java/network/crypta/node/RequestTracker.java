@@ -139,11 +139,12 @@ public class RequestTracker {
    */
   public boolean lockUID(long uid, RequestAdmissionMode mode, UIDTag tag) {
     // If these are switched around, we must remember to remove from both.
+    boolean locked;
     if (mode.isOfferReply()) {
       // local irrelevant for OfferReplyTag's.
       HashMap<Long, OfferReplyTag> map = getOfferTracker(mode.isSSK(), mode.realTimeFlag());
       synchronized (map) {
-        return doLock(map, null, (OfferReplyTag) tag, uid, false);
+        locked = doLock(map, null, (OfferReplyTag) tag, uid, false);
       }
     } else if (mode.isInsert()) {
       HashMap<Long, InsertTag> overallMap =
@@ -151,7 +152,7 @@ public class RequestTracker {
       HashMap<Long, InsertTag> localMap =
           mode.isLocal() ? getInsertTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
-        return doLock(overallMap, localMap, (InsertTag) tag, uid, mode.isLocal());
+        locked = doLock(overallMap, localMap, (InsertTag) tag, uid, mode.isLocal());
       }
     } else {
       HashMap<Long, RequestTag> overallMap =
@@ -159,9 +160,13 @@ public class RequestTracker {
       HashMap<Long, RequestTag> localMap =
           mode.isLocal() ? getRequestTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
-        return doLock(overallMap, localMap, (RequestTag) tag, uid, mode.isLocal());
+        locked = doLock(overallMap, localMap, (RequestTag) tag, uid, mode.isLocal());
       }
     }
+    if (locked) {
+      UIDTraceLogger.log("lock", tag, () -> "mode=" + mode);
+    }
+    return locked;
   }
 
   private <T extends UIDTag> boolean doLock(
@@ -267,6 +272,8 @@ public class RequestTracker {
         doUnlock(overallMap, localMap, (RequestTag) tag, uid, mode.isLocal(), canFail);
       }
     }
+    UIDTraceLogger.log(
+        "unlock", tag, () -> "mode=" + mode + " canFail=" + canFail + " noRecord=" + noRecord);
   }
 
   /**

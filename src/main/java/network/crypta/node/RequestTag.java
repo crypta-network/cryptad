@@ -78,14 +78,20 @@ public class RequestTag extends UIDTag {
    * @throws IllegalArgumentException if {@code status} equals {@link RequestSender#NOT_FINISHED}.
    */
   public void setRequestSenderFinished(int status) {
-    boolean noRecordUnlock;
+    boolean unlockNow;
+    boolean localNoRecordUnlock = false;
     synchronized (this) {
       if (status == RequestSender.NOT_FINISHED) throw new IllegalArgumentException();
       requestSenderFinishedCode = status;
-      if (!mustUnlock()) return;
-      noRecordUnlock = this.noRecordUnlock;
+      unlockNow = mustUnlock();
+      if (unlockNow) {
+        localNoRecordUnlock = this.noRecordUnlock;
+      }
     }
-    innerUnlock(noRecordUnlock);
+    UIDTraceLogger.log(
+        "requestSenderFinished", this, () -> "status=" + status + " unlock=" + unlockNow);
+    if (!unlockNow) return;
+    innerUnlock(localNoRecordUnlock);
   }
 
   /**
@@ -101,6 +107,7 @@ public class RequestTag extends UIDTag {
       sent = true;
     }
     sender = new WeakReference<>(rs);
+    UIDTraceLogger.log("senderSet", this, () -> "coalesced=" + coalesced);
   }
 
   /**
@@ -162,6 +169,7 @@ public class RequestTag extends UIDTag {
     synchronized (this) {
       this.handlerThrew = t;
     }
+    UIDTraceLogger.log("handlerThrew", this, () -> "error=" + t.getClass().getSimpleName());
     // Unlock the handler after recording the throwable; synchronization remains unchanged.
     unlockHandler();
   }
@@ -201,6 +209,8 @@ public class RequestTag extends UIDTag {
         sb.append(" sender=").append(s);
         sb.append(" status=");
         sb.append(s.getStatusString());
+        sb.append(" transferBegun=").append(s.hasSentChkTransferBegins());
+        sb.append(" transferActive=").append(s.isTransferActive());
       }
     }
     if (sent) sb.append(" sent");
@@ -296,6 +306,7 @@ public class RequestTag extends UIDTag {
           this,
           new Exception("error"));
     this.waitingForOpennet = next.myRef;
+    UIDTraceLogger.log("opennetWait", this, () -> "peer=" + next.shortToString());
   }
 
   /**
@@ -304,7 +315,8 @@ public class RequestTag extends UIDTag {
    * @param next The peer previously recorded by {@link #waitingForOpennet(PeerNode)}.
    */
   public void finishedWaitingForOpennet(PeerNode next) {
-    boolean noRecordUnlock;
+    boolean unlockNow;
+    boolean localNoRecordUnlock = false;
     synchronized (this) {
       if (waitingForOpennet == null) {
         if (LOG.isDebugEnabled()) LOG.debug("Not waiting for opennet");
@@ -315,10 +327,15 @@ public class RequestTag extends UIDTag {
         LOG.error("Wait ends on {} but was waiting for {}", next, got);
       }
       waitingForOpennet = null;
-      if (!mustUnlock()) return;
-      noRecordUnlock = this.noRecordUnlock;
+      unlockNow = mustUnlock();
+      if (unlockNow) {
+        localNoRecordUnlock = this.noRecordUnlock;
+      }
     }
-    innerUnlock(noRecordUnlock);
+    UIDTraceLogger.log(
+        "opennetDone", this, () -> "peer=" + next.shortToString() + " unlock=" + unlockNow);
+    if (!unlockNow) return;
+    innerUnlock(localNoRecordUnlock);
   }
 
   /**

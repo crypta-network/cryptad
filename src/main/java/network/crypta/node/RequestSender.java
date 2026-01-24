@@ -2215,6 +2215,20 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     }
   }
 
+  /** Returns whether {@link #fireCHKTransferBegins()} has already notified listeners. */
+  boolean hasSentChkTransferBegins() {
+    synchronized (listeners) {
+      return sentCHKTransferBegins;
+    }
+  }
+
+  /** Returns {@code true} when the transfer is active with a peer. */
+  boolean isTransferActive() {
+    synchronized (this) {
+      return transferringFrom != null;
+    }
+  }
+
   synchronized boolean hasForwarded() {
     return hasForwarded;
   }
@@ -2339,12 +2353,17 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   private void reassignToSelfOnTimeout(boolean fromOfferedKey) {
     RequestSenderListener[] list;
+    boolean transferActive;
+    synchronized (this) {
+      transferActive = transferringFrom != null;
+    }
     synchronized (listeners) {
-      if (sentCHKTransferBegins) {
+      if (sentCHKTransferBegins && transferActive) {
         LOG.error(
             "Transfer started, not dumping listeners when reassigning to self on timeout (race"
                 + " condition?) on {}",
             this);
+        origTag.timedOutToHandlerButContinued();
         return;
       }
       list = listeners.toArray(new RequestSenderListener[0]);

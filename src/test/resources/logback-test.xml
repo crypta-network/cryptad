@@ -35,6 +35,8 @@
     <appender-ref ref="FILE"/>
   </appender>
 
+  <logger name="network.crypta.uidtrace" level="OFF" additivity="false"/>
+
   <root level="TRACE">
     <appender-ref ref="CONSOLE"/>
     <appender-ref ref="ASYNC_FILE"/>
