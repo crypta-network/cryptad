@@ -23,11 +23,11 @@ import org.slf4j.LoggerFactory;
  * constructed from a hostname, the hostname is primary and DNS resolution occurs lazily on first
  * access (or explicitly via handshake). This design helps nodes that use dynamic DNS.
  *
- * <p>Equality propagates the resolved IP between instances when the primary hostname matches (case
- * insensitive). Hostname never propagates. The hash code depends solely on the primary identity:
- * hostname if present, otherwise the IP address. As a result, inserting instances into hashed
- * collections is safe: neither {@link #equals(Object)} nor {@link #getAddress()} will change the
- * hash code of an existing instance.
+ * <p>Equality propagates the resolved IP between instances when the primary hostname matches
+ * (case-insensitive). Hostname never propagates. The hash code depends solely on the primary
+ * identity: hostname if present, otherwise the IP address. As a result, inserting instances into
+ * hashed collections is safe: neither {@link #equals(Object)} nor {@link #getAddress()} will change
+ * the hash code of an existing instance.
  *
  * <p>Important behavior: an instance that has only an IP (no hostname) is not equal to another
  * instance that has a hostname, even when both resolve to the same numeric address. Call {@link
@@ -63,12 +63,12 @@ public class FreenetInetAddress {
     byte[] ba;
     switch (firstByte) {
       case 255 -> {
-        if (LOG.isDebugEnabled()) LOG.debug("New format IPv6 address");
+        if (LOG.isDebugEnabled()) LOG.debug("event=read_stream_ip type=ipv6 format=new");
         ba = new byte[16];
         dis.readFully(ba);
       }
       case 0 -> {
-        if (LOG.isDebugEnabled()) LOG.debug("New format IPv4 address");
+        if (LOG.isDebugEnabled()) LOG.debug("event=read_stream_ip type=ipv4 format=new");
         ba = new byte[4];
         dis.readFully(ba);
       }
@@ -104,12 +104,14 @@ public class FreenetInetAddress {
     byte[] ba;
     switch (firstByte) {
       case 255 -> {
-        if (LOG.isDebugEnabled()) LOG.debug("New format IPv6 address");
+        if (LOG.isDebugEnabled())
+          LOG.debug("event=read_stream_ip_with_validation type=ipv6 format=new");
         ba = new byte[16];
         dis.readFully(ba);
       }
       case 0 -> {
-        if (LOG.isDebugEnabled()) LOG.debug("New format IPv4 address");
+        if (LOG.isDebugEnabled())
+          LOG.debug("event=read_stream_ip_with_validation type=ipv4 format=new");
         ba = new byte[4];
         dis.readFully(ba);
       }
@@ -143,9 +145,9 @@ public class FreenetInetAddress {
   }
 
   /**
-   * Constructs an instance from a textual host which may be a DNS name or a literal IP address.
+   * Constructs an instance from a textual host, which may be a DNS name or a literal IP address.
    *
-   * <p>If {@code host} parses as an IP address, the instance is IP-primary. Otherwise the instance
+   * <p>If {@code host} parses as an IP address, the instance is IP-primary. Otherwise, the instance
    * is hostname-primary and resolution is deferred until required.
    *
    * @param host DNS name or literal IP; leading slashes are trimmed (e.g., {@code "/1.2.3.4"})
@@ -157,7 +159,7 @@ public class FreenetInetAddress {
     this.address = r.addr;
     this.hostname = r.host;
     // we're created with a hostname so delay the lookup of the address
-    // until it's needed to work better with dynamic DNS hostnames
+    // until it's necessary to work better with dynamic DNS hostnames
   }
 
   /**
@@ -178,7 +180,7 @@ public class FreenetInetAddress {
         && this.hostname != null
         && !HostnameUtil.isValidHostname(this.hostname, true)) throw new HostnameSyntaxException();
     // we're created with a hostname so delay the lookup of the address
-    // until it's needed to work better with dynamic DNS hostnames
+    // until it's necessary to work better with dynamic DNS hostnames
   }
 
   private record InitResult(InetAddress addr, String host) {}
@@ -214,9 +216,9 @@ public class FreenetInetAddress {
   /**
    * Compares for equality using relaxed rules.
    *
-   * <p>Behavior: - When this instance is hostname-primary, hostnames must match ignoring case. If
-   * either side has a resolved IP, it is propagated to the other. If both have addresses, they must
-   * match. - When this instance is IP-primary, only the numeric addresses are compared.
+   * <p>Behavior: - When this instance is hostname-primary, hostnames must match the ignoring case.
+   * If either side has a resolved IP, it is propagated to the other. If both have addresses, they
+   * must match. - When this instance is IP-primary, only the numeric addresses are compared.
    *
    * @param other address to compare
    * @return {@code true} when considered equal under the relaxed rules
@@ -260,9 +262,9 @@ public class FreenetInetAddress {
    * Compares for equality consistent with the propagation semantics described in the class
    * documentation.
    *
-   * <p>When hostnames are present on both sides, they must match ignoring case; the resolved IP may
-   * be propagated between instances. When neither side has a hostname, equality falls back to the
-   * numeric IP address.
+   * <p>When hostnames are present on both sides, they must match the ignoring case; the resolved IP
+   * may be propagated between instances. When neither side has a hostname, equality falls back to
+   * the numeric IP address.
    */
   @Override
   public boolean equals(Object o) {
@@ -292,7 +294,7 @@ public class FreenetInetAddress {
    *
    * <p>When hostnames are present on both sides, the behavior matches {@link #equals(Object)}. When
    * neither side has a hostname, strict comparison requires the reverse hostnames derived from the
-   * numeric IPs to match ignoring case (see {@link #getHostName(InetAddress)}).
+   * numeric IPs to match the ignoring case (see {@link #getHostName(InetAddress)}).
    *
    * @param addr address to compare
    * @return {@code true} if equal under strict comparison
@@ -378,12 +380,12 @@ public class FreenetInetAddress {
     /*
      * Peers are constructed from an address once a
      * handshake has been completed, so this lookup
-     * will only be performed during a handshake
-     * (this method should normally only be called
+     * will only be performed during a handshake.
+     * This method should normally only be called
      * from PeerNode.getHandshakeIPs() and once
-     * each connection from this.getAddress()
-     * otherwise) - it doesn't mean we perform a
-     * DNS lookup with every packet we send.
+     * each connection from this.getAddress().
+     * It does not mean we perform a DNS lookup
+     * with every packet we send.
      */
     InetAddress[] addresses = resolveAllByName(hostname);
     if (addresses.length == 0) return null;
@@ -404,7 +406,7 @@ public class FreenetInetAddress {
   private void cacheFirstSortedAddress(InetAddress[] addresses) {
     /* Prefer IPv6 when multiple answers exist to encourage IPv6 connectivity. */
     Arrays.sort(addresses, InetAddressIpv6FirstComparator.COMPARATOR);
-    /* Cache the first answer to avoid immediate re-resolution on subsequent calls. */
+    /* Cache the first answer to avoid immediate re-resolution on later calls. */
     try {
       this.address = InetAddress.getByAddress(addresses[0].getAddress());
       if (LOG.isDebugEnabled()) LOG.debug("Setting address to {}", address);
@@ -419,7 +421,7 @@ public class FreenetInetAddress {
   /**
    * Computes a hash code consistent with the equality contract.
    *
-   * <p>When a hostname is present it is the sole contributor; otherwise the numeric address is
+   * <p>When a hostname is present, it is the sole contributor; otherwise the numeric address is
    * used.
    */
   @Override
@@ -427,7 +429,7 @@ public class FreenetInetAddress {
     if (hostname != null) {
       return hostname.hashCode(); // Was set at creation, so it can safely be used here.
     } else {
-      return address.hashCode(); // Can be null, but if so, hostname will be non-null.
+      return address.hashCode(); // Can be null, but if so, the hostname will be non-null.
     }
   }
 
