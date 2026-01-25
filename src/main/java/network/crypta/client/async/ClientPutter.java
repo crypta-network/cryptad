@@ -68,15 +68,15 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 
   /**
    * The data to insert. Implementations of {@link RandomAccessBucket} must remain readable for the
-   * duration of the insert. The bucket will be freed after completion, regardless of outcome. Wrap
-   * the bucket in {@link network.crypta.support.io.NoFreeBucket} if the underlying storage should
-   * not be freed by the insert pipeline.
+   * duration of the insert. The bucket will be freed after completion, regardless of the outcome.
+   * Wrap the bucket in {@link network.crypta.support.io.NoFreeBucket} if the insert pipeline should
+   * not free the underlying storage.
    */
   @SuppressWarnings("java:S1948")
   final RandomAccessBucket data;
 
   /**
-   * The target URI to insert to. May be a {@code CHK@}, {@code SSK@}, {@code KSK@} or {@code USK@}
+   * The target URI to insert to. Maybe a {@code CHK@}, {@code SSK@}, {@code KSK@} or {@code USK@}
    * form depending on caller configuration; validations occur during start.
    */
   final FreenetURI targetURI;
@@ -89,7 +89,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 
   /**
    * Configuration for the insert, including splitfile policy, priority, compatibility mode, and
-   * other tunables that influence block layout and scheduling behavior.
+   * other tunable that influence block layout and scheduling behavior.
    */
   final InsertContext ctx;
 
@@ -125,8 +125,8 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   private FreenetURI uri;
 
   /**
-   * Optional caller-specified splitfile crypto key. When present it must be exactly 32 bytes and
-   * overrides random key generation. The array reference is not copied by this class.
+   * Optional caller-specified splitfile crypto key. When present, it must be exactly 32 bytes and
+   * overrides random key generation. This class does not copy the array reference.
    */
   private final byte[] overrideSplitfileCrypto;
 
@@ -138,7 +138,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 
   /**
    * When positive, means we will return metadata rather than a URI, once the metadata is under this
-   * length. If it is too short it is still possible to return a URI, but we won't return both.
+   * length. If it is too short, it is still possible to return a URI, but we won't return both.
    */
   private final long metadataThreshold;
 
@@ -201,10 +201,10 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * Starts or restarts the insert depending on the {@code restart} flag.
    *
    * <p>When {@code restart} is {@code true}, internal counters are reset and the insert is
-   * re-scheduled if the previous attempt has finished. The method returns {@code false} when a
-   * start is rejected by guards (e.g., already starting, currently running, or canceled). If an
-   * {@link InsertException} occurs during preparation, the callback is notified and the method
-   * returns {@code true} only when scheduling has successfully begun.
+   * re-scheduled if the previous attempt has finished. The method returns {@code false} when guards
+   * reject a start (e.g., already starting, currently running, or canceled). If an {@link
+   * InsertException} occurs during preparation, the callback is notified and the method returns
+   * {@code true} only when scheduling has successfully begun.
    *
    * @param restart when {@code true}, attempts to restart an insert that has already finished; when
    *     {@code false}, performs a normal first start subject to guard checks.
@@ -216,7 +216,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    *     preparation; the callback is notified with the same exception instance.
    */
   public boolean start(boolean restart, ClientContext context) throws InsertException {
-    if (LOG.isDebugEnabled()) LOG.debug("Starting {} for {}", this, targetURI);
+    if (LOG.isDebugEnabled()) LOG.debug("Insert start requested: {} target={}", this, targetURI);
     final byte cryptoAlgorithm = selectCryptoAlgorithm();
     try {
       targetURI.checkInsertURI();
@@ -254,7 +254,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
       handleStartFailure(
           new InsertException(InsertExceptionMode.BINARY_BLOB_FORMAT_ERROR, e, null));
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Started {}", this);
+    if (LOG.isDebugEnabled()) LOG.debug("Insert start scheduled: {}", this);
     return true;
   }
 
@@ -287,7 +287,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   }
 
   private void scheduleCurrentState(ClientContext context) throws InsertException {
-    if (LOG.isDebugEnabled()) LOG.debug("Starting insert: {}", currentState);
+    if (LOG.isDebugEnabled()) LOG.debug("Scheduling insert state: {}", currentState);
     if (currentState instanceof SingleFileInserter inserter) inserter.start(context);
     else currentState.schedule(context);
   }
@@ -297,7 +297,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
       clearCountersOnRestart();
       if (currentState != null && !finished) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Can't restart, not finished and currentState != null : {}", currentState);
+          LOG.debug("Restart blocked: insert still running with state {}", currentState);
         return false;
       }
       if (finished) startedStarting = false;
@@ -309,14 +309,16 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   private boolean guardStartFlags(boolean restart) {
     if (startedStarting) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Can't {} : startedStarting = true", restart ? "restart" : "start");
+        LOG.debug("Start guard rejected {}: already starting", restart ? "restart" : "start");
       return false;
     }
     startedStarting = true;
     if (currentState != null) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Can't {} : currentState != null : {}", restart ? "restart" : "start", currentState);
+            "Start guard rejected {}: existing state {}",
+            restart ? "restart" : "start",
+            currentState);
       return false;
     }
     return true;
@@ -426,7 +428,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
         && !uri.isUSK()
         && !ctx.isGetCHKOnly())
       // USK auxiliary inserts are allowed to fail.
-      // If only generating the key, splitfile may not have reported the blocks as inserted.
+      // If only generating the key, the splitfile may not have reported the blocks as inserted.
       LOG.error(
           "Failed blocks: {}, Fatally failed blocks: {}, Successful blocks: {}, Total blocks: {}"
               + " but success?! on {} from {}",
@@ -464,7 +466,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     synchronized (this) {
       u = key.getURI();
       if (gotFinalMetadata) {
-        LOG.error("Generated URI *and* sent final metadata??? on {} from {}", this, state);
+        LOG.error("URI generated after metadata already sent: {} from {}", this, state);
       }
       if (targetFilename != null) u = u.pushMetaString(targetFilename);
       if (this.uri != null) {
@@ -491,7 +493,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     boolean freeIt = false;
     synchronized (this) {
       if (uri != null) {
-        LOG.error("Generated URI *and* sent final metadata??? on {} from {}", this, state);
+        LOG.error("Metadata generated after URI already sent: {} from {}", this, state);
       }
       if (gotFinalMetadata) {
         LOG.error("onMetadata called twice - already sent metadata to client for {}", this);
@@ -537,7 +539,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   /**
    * Returns the data bucket used by this inserter.
    *
-   * @return the original {@link Bucket} backing the insert. Ownership remains with the caller but
+   * @return the original {@link Bucket} backing the insert. Ownership remains with the caller, but
    *     the bucket will be freed after completion unless wrapped to prevent freeing.
    */
   public Bucket getData() {
@@ -558,7 +560,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * Returns the final URI of the inserted data, when known.
    *
    * @return a {@link FreenetURI} for the completed insert or {@code null} until encoding has
-   *     produced the top-level key; includes filename segment when applicable.
+   *     produced the top-level key; includes a filename segment when applicable.
    */
   @Override
   public FreenetURI getURI() {
@@ -577,7 +579,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 
   /**
    * Notifies this inserter of a state transition within the put pipeline. If the transition applies
-   * to the current root state it is adopted; subsidiary transitions are ignored.
+   * to the current root state, it is adopted; subsidiary transitions are ignored.
    */
   @Override
   public void onTransition(
@@ -706,8 +708,8 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * Indicates whether the insert can be restarted. Returns {@code false} while an insert is in
    * progress or when no data bucket is available to re-use.
    *
-   * @return {@code true} if a subsequent call to {@link #restart(ClientContext)} may succeed;
-   *     {@code false} otherwise.
+   * @return {@code true} if a further call to {@link #restart(ClientContext)} may succeed; {@code
+   *     false} otherwise.
    */
   public boolean canRestart() {
     if (currentState != null && !finished) {
@@ -736,7 +738,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   public void onTransition(
       ClientGetState oldState, ClientGetState newState, ClientContext context) {
     // Ignore, at the moment
-    // This exists here because e.g. USKInserter does request as well as inserts.
+    // This exists here because e.g., USKInserter does request as well as inserts.
   }
 
   @Override

@@ -51,7 +51,7 @@ import org.slf4j.LoggerFactory;
  * and segment status in a random-access buffer; (2) Java serialization records the set of active
  * requests and their metadata to {@code client.dat}; and (3) a compact binary fallback captures the
  * minimum information required to restart complex requests. For simple splitfile downloads, the
- * splitfile layer alone is sufficient to resume.
+ * splitfile layer alone is enough to resume.
  *
  * <p>The design prioritizes resilience to partial writes and intermittent corruption while keeping
  * disk seeking low during high-throughput operations. Global scheduling structures (selectors,
@@ -79,7 +79,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
   private final PersistentTempBucketFactory persistentTempFactory;
 
   /**
-   * Needed for temporary storage when writing objects. Some of them might be big, e.g. site
+   * Needed for temporary storage when writing objects. Some of them might be big, e.g., site
    * inserts.
    */
   private final TempBucketFactory tempBucketFactory;
@@ -109,7 +109,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    *
    * <p>The instance schedules periodic checkpoints via the provided executor/ticker, reads/writes
    * persistence files, and collaborates with the core and bucket factories to manage temporary
-   * storage. The checksum checker defaults to CRC to validate segments on load and skip corrupt
+   * storage. The checksum checker defaults to CRC to validate segments on the load and skip corrupt
    * entries. The object is inert until {@link #setFilesAndLoad(File, String, boolean, boolean,
    * DatabaseKey, RequestStarterGroup)} assigns target files and triggers the initial load.
    *
@@ -276,7 +276,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    * checkpoints are disabled for the lifetime of the instance.
    *
    * <p>On load, corrupted variants are skipped and backups are probed to maximize recovery. After a
-   * successful load, the method schedules an early checkpoint so subsequent state is captured
+   * successful load, the method schedules an early checkpoint so the later state is captured
    * quickly.
    *
    * <pre>{@code
@@ -327,7 +327,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         }
       } else if (!hasLoaded()) {
         // Some serialization failures cause us to fail only at the point of scheduling the request.
-        // So if that happens we need to retry with serialization turned off.
+        // So if that happens, we need to retry with serialization turned off.
         // The requests that loaded fine already will not be affected as we check for duplicates.
         if (innerSetFilesAndLoad(
             false, dir, baseName, writeEncrypted, encryptionKey, requestStarters)) {
@@ -372,7 +372,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     deleteAfterSuccessfulWrite = makeFilename(dir, baseName, false, !writeEncrypted);
     otherDeleteAfterSuccessfulWrite = makeFilename(dir, baseName, true, !writeEncrypted);
     // Force a checkpoint ASAP; this also avoids any possible locking issues.
-    queueNormalOrDrop(context -> true);
+    queueNormalOrDrop(_ -> true);
   }
 
   private boolean innerSetFilesAndLoad(
@@ -548,7 +548,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     } catch (IOException e) {
       // Mark this variant as failed so callers continue probing other backups/variants.
       loaded.setSomethingFailed();
-      LOG.warn("I/O error while loading persistent requests from {}: {}", bucket, e.toString());
+      LOG.warn("I/O error reading persistence bucket {}: {}", bucket, e.toString());
     }
   }
 
@@ -563,7 +563,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     try {
       innerLoad(loaded, fis, length, latest, requestStarters, noSerialize);
     } catch (Exception t) {
-      LOG.error("Failed to load persistent requests from {} : {}", bucket, t, t);
+      LOG.error("Failed to deserialize persistent requests from {}: {}", bucket, t, t);
       loaded.setSomethingFailed();
     }
   }
@@ -659,10 +659,10 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       }
       return request;
     } catch (ChecksumFailedException _) {
-      LOG.error("Failed to load request (checksum failed)");
+      LOG.error("Failed to load serialized request (checksum failed)");
       return null;
     } catch (Exception t) {
-      LOG.error("Failed to load request: {}", t, t);
+      LOG.error("Failed to decode serialized request: {}", t, t);
       return null;
     }
   }
@@ -686,20 +686,20 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       }
     } catch (ChecksumFailedException _) {
       if (current == null) {
-        LOG.error("Failed to recover a request (checksum failed)");
+        LOG.error("Recovery data checksum mismatch while rebuilding request");
         loaded.addPartiallyLoadedRequest(reqID, null, RequestLoadStatus.FAILED);
       } else {
-        LOG.error("Test recovery failed: Checksum failed for {}", reqID);
+        LOG.error("Test recovery checksum mismatch for {}", reqID);
       }
     } catch (StorageFormatException e) {
       if (current == null) {
-        LOG.error("Failed to recovery a request (storage format): {}", e, e);
+        LOG.error("Recovery data storage format error while rebuilding request: {}", e, e);
         loaded.addPartiallyLoadedRequest(reqID, null, RequestLoadStatus.FAILED);
       } else {
-        LOG.error("Test recovery failed for {} : {}", reqID, e, e);
+        LOG.error("Test recovery storage format error for {}: {}", reqID, e, e);
       }
     } catch (IOException e) {
-      LOG.error("Failed to recover a request (I/O): {}", e, e);
+      LOG.error("I/O error while reading recovery data to rebuild request: {}", e, e);
       if (current == null) loaded.addPartiallyLoadedRequest(reqID, null, RequestLoadStatus.FAILED);
     }
     return current;
@@ -730,11 +730,11 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    * Writes the current persistent request set to the configured file, optionally as part of
    * shutdown.
    *
-   * <p>On entry, if the target file already exists it is first rotated to the backup location. The
+   * <p>On entry, if the target file already exists, it is first rotated to the backup location. The
    * save writes a header (magic, version), the checksum salt, request entries, and ancillary stats
    * and cleanup lists. On success, any queued deletions of now-stale variants are attempted. This
-   * method is idempotent with respect to in-memory state and may be invoked by the checkpointing
-   * infrastructure at any time after files are configured.
+   * method is idempotent with respect to the in-memory state and may be invoked by the
+   * checkpointing infrastructure at any time after files are configured.
    *
    * @param shutdown whether the node is shutting down; when {@code true}, requests are given an
    *     opportunity to flush internal state before serialization to improve resumability.
@@ -750,7 +750,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           Files.deleteIfExists(deleteAfterSuccessfulWrite.toPath());
         } catch (IOException e) {
           LOG.warn(
-              "Failed to delete {} after successful write: {}",
+              "Failed to delete stale variant {} after successful write: {}",
               deleteAfterSuccessfulWrite,
               e.toString());
         }
@@ -761,7 +761,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
           Files.deleteIfExists(otherDeleteAfterSuccessfulWrite.toPath());
         } catch (IOException e) {
           LOG.warn(
-              "Failed to delete {} after successful write: {}",
+              "Failed to delete stale backup variant {} after successful write: {}",
               otherDeleteAfterSuccessfulWrite,
               e.toString());
         }
@@ -792,7 +792,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         // Write the actual request.
         writeChecksummedObject(oos, req, req.toString());
         // Write recovery data. This is just enough to restart the request from scratch,
-        // but may support continuing the request in simple cases e.g. if a fetch is now
+        // but may support continuing the request in simple cases, e.g., if a fetch is now
         // just a single splitfile.
         writeRecoveryData(oos, req);
       }
@@ -826,7 +826,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     try (DataOutputStream dos = new DataOutputStream(new NonClosingOutputStream(oos))) {
       req.getClientDetail(dos, checker);
     } catch (Exception e) {
-      LOG.error("Unable to write recovery data for {} : {}", req, e, e);
+      LOG.error("Unable to write recovery data stream for {}: {}", req, e, e);
       if (oos != null) oos.abort();
     } finally {
       if (oos != null) oos.close();
@@ -842,7 +842,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       tmp = null;
       return request;
     } catch (Exception t) {
-      LOG.error("Serialization failed: {}", t, t);
+      LOG.error("Serialization failed while reading recovery data: {}", t, t);
       return null;
     } finally {
       if (tmp != null) tmp.close();
@@ -855,7 +855,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     try (ObjectOutputStream innerOOS = new ObjectOutputStream(new NonClosingOutputStream(oos))) {
       innerOOS.writeObject(req);
     } catch (Exception e) {
-      LOG.error("Unable to write recovery data for {} : {}", name, e, e);
+      LOG.error("Unable to write check-summed object for {}: {}", name, e, e);
       if (oos != null) oos.abort();
     } finally {
       if (oos != null) oos.close();
@@ -891,7 +891,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
       ois = null;
       return ret;
     } catch (Exception t) {
-      LOG.error("Serialization failed: {}", t, t);
+      LOG.error("Serialization failed while reading check-summed object: {}", t, t);
       return null;
     } finally {
       if (ois != null) ois.close();

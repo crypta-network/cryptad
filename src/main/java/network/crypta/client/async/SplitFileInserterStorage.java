@@ -64,7 +64,7 @@ import org.slf4j.LoggerFactory;
  * The storage is separate from the original content and is designed to support resume, progress
  * reporting, and integrity verification without requiring the inserter runtime to be resident.
  *
- * <p>When used persistently, the file layout is checksummed in bounded sections and includes: (1)
+ * <p>When used persistently, the file layout is check-summed in bounded sections and includes: (1)
  * magic/version and global settings; (2) per-segment fixed settings; (3) optional cross-segment
  * settings; (4) optional padded last data block; (5) overall status; (6) cross-check and check
  * blocks; (7) per-segment and per-cross-segment status; and (8) per-segment keys. The class focuses
@@ -77,7 +77,7 @@ import org.slf4j.LoggerFactory;
  * safe for concurrent reads/writes according to their own contracts.
  *
  * <ul>
- *   <li>Responsibilities: encode per-segment/cross-segment settings; store and read checksummed
+ *   <li>Responsibilities: encode per-segment/cross-segment settings; store and read check-summed
  *       sections; surface progress and failures to the callback; support resume and lazy metadata
  *       writing.
  *   <li>Notable behaviors: non-redundant mode omits check and cross-check data; offsets and lengths
@@ -91,7 +91,7 @@ public class SplitFileInserterStorage {
   /** The original file to upload */
   final LockableRandomAccessBuffer originalData;
 
-  /** The RAF containing check blocks, status etc. */
+  /** The RAF containing check blocks, status, etc. */
   private final LockableRandomAccessBuffer raf;
 
   private final long rafLength;
@@ -114,8 +114,8 @@ public class SplitFileInserterStorage {
   final FECCodec codec;
 
   /**
-   * Length in bytes of the data being uploaded, i.e. the original file, ignoring padding, check
-   * blocks etc.
+   * Length in bytes of the data being uploaded, i.e., the original file, ignoring padding, check
+   * blocks, etc.
    */
   final long dataLength;
 
@@ -246,9 +246,9 @@ public class SplitFileInserterStorage {
    * Constructs a new storage instance for a splitfile insert from live inputs.
    *
    * <p>This constructor computes the segment layout, initializes per-segment and optional
-   * cross-segment structures, and, when persistence is enabled, materializes a checksummed RAF that
-   * can be used to resume the insert after a process restart. No network activity occurs here; the
-   * caller controls lifecycle and scheduling via the associated inserter callback. The instance
+   * cross-segment structures, and, when persistence is enabled, materializes a check-summed RAF
+   * that can be used to resume the insert after a process restart. No network activity occurs here;
+   * the caller controls lifecycle and scheduling via the associated inserter callback. The instance
    * holds references to the provided buffers and helpers, so callers must keep them valid for the
    * lifetime of the insert.
    *
@@ -291,8 +291,8 @@ public class SplitFileInserterStorage {
     this.ticker = runtime.ticker;
     this.random = runtime.random;
 
-    // Work out how many blocks in each segment, crypto keys etc.
-    // Complicated by back compatibility, i.e. the need to be able to
+    // Work out how many blocks in each segment, crypto keys, etc.
+    // Complicated by back compatibility, i.e., the need to be able to
     // reinsert old splitfiles.
     // Consider getting rid of support for very old splitfiles.
 
@@ -355,13 +355,13 @@ public class SplitFileInserterStorage {
 
     // Allocate cross-segment structures only for the actual configured count.
     // In NON_REDUNDANT mode (codec == null), this.crossCheckBlocks is 0 even if
-    // computedCrossCheckBlocks would suggest redundancy for large segment counts.
+    // computedCrossCheckBlocks suggest redundancy for large segment counts.
     crossSegments =
         initCrossSegmentsIfAny(segs, this.crossCheckBlocks, segmentSize, deductBlocksFromSegments);
 
     // Now set up the RAF.
 
-    // Setup offset arrays early so we can compute the length of encodeOffsets().
+    // Set up offset arrays early so we can compute the length of encodeOffsets().
     OffsetArrays oa = createOffsetArrays(persistent);
     offsetCrossSegmentBlocks = oa.offsetCrossSegmentBlocks;
     offsetCrossSegmentStatus = oa.offsetCrossSegmentStatus;
@@ -369,7 +369,7 @@ public class SplitFileInserterStorage {
     offsetSegmentStatus = oa.offsetSegmentStatus;
     offsetSegmentKeys = oa.offsetSegmentKeys;
 
-    // First we have all the fixed stuff ...
+    // First, we have all the fixed stuff ...
 
     byte[] paddedLastBlock = null;
     if (dataLength % CHKBlock.DATA_LENGTH != 0) {
@@ -422,12 +422,12 @@ public class SplitFileInserterStorage {
     writeInitialRafIfPersistent(header, offsetsLength, segmentSettings, crossSegmentSettings);
     writePaddedLastBlockIfAny(paddedLastBlock);
     clearInitialStatusesIfPersistent();
-    // Encrypted RAFs are not initialised with 0's, so we need to clear explicitly (we do store keys
+    // Encrypted RAFs are not initialized with 0's, so we need to clear explicitly (we do store keys
     // even for transient inserts).
     for (SplitFileInserterSegmentStorage segment : segments) {
       segment.clearKeys();
     }
-    // Keys are empty, and invalid.
+    // Keys are empty and invalid.
     status = Status.NOT_STARTED;
 
     // Include the cross-check blocks in the required blocks. The actual number needed may be
@@ -444,7 +444,7 @@ public class SplitFileInserterStorage {
   /**
    * Reconstructs storage state from a previously persisted RAF.
    *
-   * <p>This constructor validates the file format, verifies each checksummed section, restores the
+   * <p>This constructor validates the file format, verifies each check-summed section, restores the
    * original data reference, and rebuilds per-segment and optional cross-segment state. It throws
    * descriptive exceptions when the header is invalid, checksums fail, offsets are out of range, or
    * the original data size does not match the stored header.
@@ -452,11 +452,11 @@ public class SplitFileInserterStorage {
    * <p>Resume restores only the metadata and bookkeeping necessary to continue an interrupted
    * insert; it does not restart encoding or schedule network work. Callers are responsible for
    * resuming dependent buffers before construction and for invoking {@link
-   * #onResume(ClientContext)} afterwards to reconnect runtime scheduling and callbacks. The
+   * #onResume(ClientContext)} afterward to reconnect runtime scheduling and callbacks. The
    * persisted RAF is treated as the source of truth for segment counts, offsets, and status
    * lengths.
    *
-   * @param params resume parameters including buffers, runtime helpers, and decryption material;
+   * @param params resume parameters, including buffers, runtime helpers, and decryption material,
    *     must be non-null and correspond to the persisted format.
    * @throws IOException if reading the RAF fails due to I/O errors while restoring sections.
    * @throws StorageFormatException if the file format is invalid, contains out-of-range values, or
@@ -579,7 +579,7 @@ public class SplitFileInserterStorage {
       if (!segment.isFinishedEncoding()) return;
     }
     status = Status.ENCODED;
-    // Last 3 statuses are only used during completion.
+    // The last 3 statuses are only used during completion.
   }
 
   private long readOffset(DataInputStream dis, long rafLength, String error)
@@ -962,7 +962,7 @@ public class SplitFileInserterStorage {
 
   private void readCrossSegmentsFromDisk(InputStream ois, long maxLength)
       throws IOException, ChecksumFailedException, StorageFormatException {
-    // When there are no cross-check blocks we do not write any cross-segment
+    // When there are no cross-check blocks, we do not write any cross-segment
     // settings section, so skip attempting to read it on resume.
     if (crossSegments.length == 0) return;
     InputStream is = checker.checksumReaderWithLength(ois, new ArrayBucketFactory(), maxLength);
@@ -1302,12 +1302,12 @@ public class SplitFileInserterStorage {
   private void clearInitialStatuses() {
     // Padding is initialized to random already.
     for (SplitFileInserterSegmentStorage segment : segments) {
-      if (LOG.isDebugEnabled()) LOG.debug("Clearing status for {}", segment);
+      if (LOG.isDebugEnabled()) LOG.debug("Clearing segment status for {}", segment);
       segment.storeStatus(true);
     }
     if (crossSegments != null) {
       for (SplitFileInserterCrossSegmentStorage segment : crossSegments) {
-        if (LOG.isDebugEnabled()) LOG.debug("Clearing status for {}", segment);
+        if (LOG.isDebugEnabled()) LOG.debug("Clearing cross-segment status for {}", segment);
         segment.storeStatus();
       }
     }
@@ -1493,7 +1493,7 @@ public class SplitFileInserterStorage {
     if (startSegments) {
       startSegmentEncode();
     } else {
-      // Cross-segment encode must complete before main encode.
+      // Cross-segment encode must complete before the main encoding.
       startCrossSegmentEncode();
     }
   }
@@ -1591,7 +1591,7 @@ public class SplitFileInserterStorage {
    * <p>This callback is invoked by a segment encoder after it has generated and stored check
    * blocks. The storage clears cooldown state, persists per-segment status, and schedules metadata
    * generation only when all segments report completion. The call itself does not block on disk I/O
-   * beyond the status write initiated by the segment.
+   * beyond the status writing initiated by the segment.
    *
    * @param completed the segment that completed encoding; used to persist status and track
    *     aggregate progress.
@@ -1624,7 +1624,7 @@ public class SplitFileInserterStorage {
     synchronized (this) {
       if (status == Status.ENCODED_CROSS_SEGMENTS) return; // Race condition.
       if (status != Status.STARTED) {
-        LOG.error("Wrong state {} for {}", status, this);
+        LOG.error("Cross-segment encode completed in wrong state {} for {}", status, this);
         return;
       }
       status = Status.ENCODED_CROSS_SEGMENTS;
@@ -1637,7 +1637,7 @@ public class SplitFileInserterStorage {
       if (status == Status.ENCODED) return; // Race condition.
       if (!(status == Status.ENCODED_CROSS_SEGMENTS
           || (crossSegments.length == 0 && status == Status.STARTED))) {
-        LOG.error("Wrong state {} for {}", status, this);
+        LOG.error("Segment encode completed in wrong state {} for {}", status, this);
         return;
       }
       status = Status.ENCODED;
@@ -1646,14 +1646,14 @@ public class SplitFileInserterStorage {
   }
 
   /**
-   * Notifies that a segment obtained keys for all of its blocks.
+   * Notifies that a segment got keys for all of its blocks.
    *
    * <p>When every segment reports it has keys, delegates to {@code onHasKeys()} to inform the
    * callback that metadata can be emitted early (depending on configuration).
    *
    * <p>The caller is expected to invoke this after the segment has generated or discovered all keys
    * for its data and check blocks. The method performs a lightweight scan across segments to verify
-   * that all keys are now available before notifying the callback. It does not persist any state
+   * that all keys are now available before notifying the callback. It does not persist in any state
    * and returns immediately if any segment is still missing keys.
    *
    * @param splitFileInserterSegmentStorage the reporting segment instance; used for logging and
@@ -1727,9 +1727,9 @@ public class SplitFileInserterStorage {
   }
 
   /**
-   * Write a cross-check block to disk.
+   * Write a cross-check block to the disk.
    *
-   * @throws IOException if writing the block to the backing RAF fails.
+   * @throws IOException if writing the block to the backing, RAF fails.
    */
   void writeCheckBlock(int segNo, int checkBlockNo, byte[] buf) throws IOException {
     synchronized (this) {
@@ -1797,7 +1797,7 @@ public class SplitFileInserterStorage {
     if (hasPaddedLastBlock
         && segNo == segments.length - 1
         && blockNo == segments[segNo].dataBlockCount - 1) {
-      // Don't need to lock, locking is just an optimisation.
+      // Don't need to lock, locking is just an optimization.
       raf.pread(offsetPaddedLastBlock, buf, 0, buf.length);
       return buf;
     }
@@ -1816,7 +1816,7 @@ public class SplitFileInserterStorage {
    * @param segNo zero-based segment number whose check block is being written.
    * @param checkBlockNo zero-based index of the check block within the segment; must be valid.
    * @param buf byte array containing exactly {@link CHKBlock#DATA_LENGTH} bytes of block data.
-   * @throws IOException if the write to the RAF fails at the target offset.
+   * @throws IOException if the writing to the RAF fails at the target offset.
    */
   public void writeSegmentCheckBlock(int segNo, int checkBlockNo, byte[] buf) throws IOException {
     long offset = offsetSegmentCheckBlocks[segNo] + (long) checkBlockNo * CHKBlock.DATA_LENGTH;
@@ -1844,9 +1844,9 @@ public class SplitFileInserterStorage {
   /**
    * Encode the Metadata. The caller must ensure that all segments have encoded keys first.
    *
-   * @throws MissingKeyException This indicates disk corruption or a bug (e.g. not all segments had
+   * @throws MissingKeyException This indicates disk corruption or a bug (e.g., not all segments had
    *     encoded keys). Since we don't checksum the blocks, there isn't much point in trying to
-   *     recover from losing a key; but at least we can detect that there was a problem.
+   *     recover from losing a key, but at least we can detect that there was a problem.
    *     <p>(Package-visible for unit tests)
    */
   Metadata encodeMetadata() throws IOException, MissingKeyException {
@@ -1905,7 +1905,11 @@ public class SplitFileInserterStorage {
     long fileOffset = this.offsetSegmentKeys[segNo] + (long) keyLength * blockNo;
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Writing key for block {} for segment {} of {} to {}", blockNo, segNo, this, fileOffset);
+          "Writing segment key: block {} segment {} storage {} offset {}",
+          blockNo,
+          segNo,
+          this,
+          fileOffset);
     raf.pwrite(fileOffset, buf, 0, buf.length);
   }
 
@@ -1914,7 +1918,11 @@ public class SplitFileInserterStorage {
     long fileOffset = this.offsetSegmentKeys[segNo] + (long) keyLength * blockNo;
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Reading key for block {} for segment {} of {} to {}", blockNo, segNo, this, fileOffset);
+          "Reading segment key: block {} segment {} storage {} offset {}",
+          blockNo,
+          segNo,
+          this,
+          fileOffset);
     raf.pread(fileOffset, buf, 0, buf.length);
     return buf;
   }
@@ -1947,12 +1955,14 @@ public class SplitFileInserterStorage {
    * @param completedSegment the segment that completed; used for logging and task routing only.
    */
   public void segmentSucceeded(final SplitFileInserterSegmentStorage completedSegment) {
-    if (LOG.isDebugEnabled()) LOG.debug("Succeeded segment {} for {}", completedSegment, callback);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Segment succeeded: {} (callback {})", completedSegment, callback);
     jobRunner.queueNormalOrDrop(_ -> onSegmentSucceededTask(completedSegment));
   }
 
   private boolean onSegmentSucceededTask(SplitFileInserterSegmentStorage completedSegment) {
-    if (LOG.isDebugEnabled()) LOG.debug("Succeeding segment {} for {}", completedSegment, callback);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Processing segment success: {} (callback {})", completedSegment, callback);
     if (maybeFail()) return true;
     if (allSegmentsSucceeded()) {
       return completeAndNotifySuccess();
@@ -1978,7 +1988,7 @@ public class SplitFileInserterStorage {
     } catch (IOException _) {
       failWith(new InsertException(InsertExceptionMode.BUCKET_ERROR));
     } catch (MissingKeyException _) {
-      // Fail here too. If we're getting disk corruption on keys, we're probably
+      // Fail here either. If we're getting disk corruption on keys, we're probably
       // getting it on the original data too.
       failWith(new InsertException(InsertExceptionMode.BUCKET_ERROR, "Missing keys", null));
     }
@@ -2040,10 +2050,11 @@ public class SplitFileInserterStorage {
    * Records a failure mode for later reporting and persists overall status.
    *
    * <p>This method increments the failure counters that are persisted in the overall status
-   * section. It does not immediately fail the insert; instead it updates the aggregated error state
-   * and schedules a lazy metadata write so a future resume can observe the updated counts.
+   * section. It does not immediately fail the insert; instead, it updates the aggregated error
+   * state and schedules a lazy metadata writing so a future resuming can observe the updated
+   * counts.
    *
-   * @param e insert exception whose mode should be counted toward aggregated failure statistics;
+   * @param e insert an exception whose mode should be counted toward aggregated failure statistics;
    *     must be non-null.
    */
   public void addFailure(InsertException e) {
@@ -2102,8 +2113,8 @@ public class SplitFileInserterStorage {
       failing = e;
     }
     if (e.mode == InsertExceptionMode.BUCKET_ERROR || e.mode == InsertExceptionMode.INTERNAL_ERROR)
-      LOG.error("Failing: {} for {}", e, this, e);
-    else LOG.info("Failing: {} for {}", e, this, e);
+      LOG.error("Failing insert (io/internal): {} for {}", e, this, e);
+    else LOG.info("Failing insert (retry/fatal): {} for {}", e, this, e);
     jobRunner.queueNormalOrDrop(_ -> onFailTask(e));
   }
 
@@ -2163,10 +2174,10 @@ public class SplitFileInserterStorage {
   private final Runnable wrapLazyWriteMetadata;
 
   /**
-   * Schedules a deferred metadata write for persistent inserts.
+   * Schedules a deferred metadata writing for persistent inserts.
    *
-   * <p>When enabled, the write is queued on the ticker with a delay to coalesce frequent updates.
-   * If the delay is zero, the write job is queued immediately on the persistent runner.
+   * <p>When enabled, the writing is queued on the ticker with a delay to coalesce frequent updates.
+   * If the delay is zero, the writing job is queued immediately on the persistent runner.
    *
    * <p>This method is a no-op for transient inserts because no persistent RAF exists. It does not
    * block on I/O; it only schedules a job that will write metadata when the job runner executes.
@@ -2174,7 +2185,7 @@ public class SplitFileInserterStorage {
   public synchronized void lazyWriteMetadata() {
     if (!persistent) return;
     if (LAZY_WRITE_METADATA_DELAY != 0) {
-      // The Runnable must be the same object for de-duplication.
+      // The Runnable must be the same object for deduplication.
       ticker.queueTimedJob(
           wrapLazyWriteMetadata,
           "Write metadata for splitfile",
@@ -2279,7 +2290,7 @@ public class SplitFileInserterStorage {
   /**
    * Returns the file offset of the persisted status section for a segment.
    *
-   * <p>The offset points to the checksummed status record for the given segment within the RAF.
+   * <p>The offset points to the check-summed status record for the given segment within the RAF.
    * Callers can use this to correlate RAF layout with segment indices or to perform low-level
    * diagnostics and validation of persisted state.
    *
@@ -2300,9 +2311,9 @@ public class SplitFileInserterStorage {
    * <p>Cross-segment encoding is resumed first when required; otherwise, per-segment encoding is
    * resumed directly.
    *
-   * <p>This method does not restore persisted state; it assumes the instance was constructed from a
-   * valid RAF and only reconnects runtime scheduling with the provided context. It does not block;
-   * it merely triggers the appropriate encoding phase and returns.
+   * <p>This method does not restore the persisted state; it assumes the instance was constructed
+   * from a valid RAF and only reconnects runtime scheduling with the provided context. It does not
+   * block; it merely triggers the appropriate encoding phase and returns.
    *
    * @param context active client context providing executors and services for resume; must be
    *     non-null and configured for persistent operation.
@@ -2323,7 +2334,7 @@ public class SplitFileInserterStorage {
   BlockInsert chooseBlock() {
     // This should probably use SimpleBlockChooser and hence use lowest-retry-count from
     // each segment?
-    // Less important for inserts than for requests though...
+    // Less important for inserts than for requests, though...
     synchronized (cooldownLock) {
       synchronized (this) {
         if (status == Status.FAILED
@@ -2412,7 +2423,7 @@ public class SplitFileInserterStorage {
   /**
    * Clears the internal cooldown indicator and notifies the callback.
    *
-   * <p>After clearing, the scheduler may attempt new work selection immediately. This method is
+   * <p>After clearing, the scheduler may attempt a new work selection immediately. This method is
    * thread-safe and performs only a lightweight state update.
    */
   public void clearCooldown() {

@@ -96,7 +96,6 @@ public class ClientGetter extends BaseClientGetter
   private static final String BLOB_STREAM_ALREADY_CLOSED_PREFIX =
       "Failed to close binary blob stream, already closed: ";
   private static final String BLOB_STREAM_FAIL_PREFIX = "Failed to close binary blob stream: ";
-  private static final String CAUGHT_MESSAGE = "Caught {}";
   private static final String DEBUG_EXCEPTION_MESSAGE = "debug";
   private static final String RESTORE_FROM_SPLITFILE_FAILED_MSG =
       "Failed to restore from splitfile, restarting: {}";
@@ -110,7 +109,7 @@ public class ClientGetter extends BaseClientGetter
   /** The initial Freenet URI being fetched. */
   FreenetURI uri;
 
-  /** Settings for the fetch - max size etc */
+  /** Settings for the fetch - max size etc. */
   final FetchContext ctx;
 
   /** Checks for container loops. */
@@ -130,7 +129,7 @@ public class ClientGetter extends BaseClientGetter
   private int archiveRestarts;
 
   /**
-   * If not null, Bucket to return the data in, otherwise we create one. If non-null, it is the
+   * If not null, Bucket to return the data in; otherwise we create one. If non-null, it is the
    * responsibility of the callback to create and resume this bucket.
    */
   @SuppressWarnings("java:S1948")
@@ -139,7 +138,7 @@ public class ClientGetter extends BaseClientGetter
   /** If not null, BucketWrapper to return a binary blob in */
   private final transient BinaryBlobWriter binaryBlobWriter;
 
-  /** If true, someone else is responsible for this BlobWriter, usually it's a shared one */
+  /** If true, someone else is responsible for this BlobWriter; usually it's shared */
   private final boolean dontFinalizeBlobWriter;
 
   /** The expected MIME type, if we know it. Should not change. */
@@ -265,7 +264,7 @@ public class ClientGetter extends BaseClientGetter
    * @param priorityClass scheduling priority; smaller values represent higher priority
    * @param returnBucket optional destination bucket for the final data
    * @param binaryBlobWriter writer that collects referenced keys during the fetch; may be {@code
-   *     null} to disable collection
+   *     null} to disable the collection
    */
   public ClientGetter(
       ClientGetCallback client,
@@ -316,7 +315,7 @@ public class ClientGetter extends BaseClientGetter
    * @param ctx The config settings for the fetch.
    * @param priorityClass The priority at which to schedule the request.
    * @param returnBucket The bucket to return the data in. Can be null. If not null, the
-   *     ClientGetter must either write the data directly to the bucket, or copy it and free the
+   *     ClientGetter must either write the data directly to the bucket or copy it and free the
    *     original temporary bucket. Preferably the former, obviously!
    * @param binaryBlobWriter If non-null, we will write all the keys accessed (or that could have
    *     been accessed in the case of redundant structures such as splitfiles) to this binary blob
@@ -379,7 +378,7 @@ public class ClientGetter extends BaseClientGetter
    *
    * @param restart If true, restart a finished request.
    * @param overrideURI If non-null, change the URI we are fetching (usually when restarting).
-   * @param context The client context, contains important mostly non-persistent global objects.
+   * @param context The client context contains important mostly non-persistent global objects.
    * @return True if we restarted, false if we didn't (but only in a few cases).
    * @throws FetchException If we were unable to restart.
    */
@@ -464,7 +463,7 @@ public class ClientGetter extends BaseClientGetter
   /**
    * Called when the request succeeds.
    *
-   * @param state The ClientGetState which retrieved the data.
+   * @param state The ClientGetState, which retrieved the data.
    */
   @Override
   public void onSuccess(
@@ -653,7 +652,7 @@ public class ClientGetter extends BaseClientGetter
         throw e;
       }
 
-      if (LOG.isDebugEnabled()) LOG.debug("Waiting for hashing, filtration, and writing to finish");
+      if (LOG.isDebugEnabled()) LOG.debug("Waiting for stream worker hashing/filtration to finish");
       worker.waitFinished();
 
       if (decompressorManager != null) {
@@ -689,22 +688,22 @@ public class ClientGetter extends BaseClientGetter
         return new FetchException(FetchExceptionMode.INTERNAL_ERROR, e);
       }
       case CompressionOutputSizeException e -> {
-        LOG.error(CAUGHT_MESSAGE, e, e);
+        LOG.error("Compression output too large while mapping fetch exception: {}", e, e);
         return new FetchException(FetchExceptionMode.TOO_BIG, e);
       }
       case InsufficientDiskSpaceException _ -> {
         return new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
       }
       case FetchException e -> {
-        LOG.error(CAUGHT_MESSAGE, e, e);
+        LOG.error("Fetch exception while mapping failure: {}", e, e);
         return e;
       }
       case IOException e -> {
-        LOG.error(CAUGHT_MESSAGE, e, e);
+        LOG.error("I/O error while mapping fetch exception: {}", e, e);
         return new FetchException(FetchExceptionMode.BUCKET_ERROR, e);
       }
       default -> {
-        LOG.error(CAUGHT_MESSAGE, t, t);
+        LOG.error("Unexpected throwable while mapping fetch exception: {}", t, t);
         return new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
       }
     }
@@ -768,7 +767,8 @@ public class ClientGetter extends BaseClientGetter
                   ctx.getTagReplacer(),
                   context.linkFilterExceptionProvider));
       worker.start();
-      if (LOG.isDebugEnabled()) LOG.debug("Waiting for hashing, filtration, and writing to finish");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Waiting for truncation worker hashing/filtration to finish");
       worker.waitFinished();
     }
 
@@ -787,7 +787,7 @@ public class ClientGetter extends BaseClientGetter
 
   /**
    * Called when the request fails. Retrying will have already been attempted by the calling state,
-   * if appropriate; we have tried to get the data, and given up.
+   * if appropriate; we have tried to get the data and given up.
    *
    * @param e The reason for failure, in the form of a FetchException.
    * @param state The failing state.
@@ -801,7 +801,7 @@ public class ClientGetter extends BaseClientGetter
    * Handle a terminal failure for this request.
    *
    * <p>This internal variant allows callers to force completion semantics even when {@link
-   * #finished} may already be true (for example when invoked from a success path that finalizes
+   * #finished} may already be true (for example, when invoked from a success path that finalizes
    * state). It normalizes the supplied {@link FetchException}, updates persisted state, and
    * notifies the client callback exactly once per logical failure.
    *
@@ -908,8 +908,8 @@ public class ClientGetter extends BaseClientGetter
   }
 
   /**
-   * Cancel the request. This must result in onFailure() being called in order to send the client a
-   * cancel FetchException, and to removeFrom() the state.
+   * Cancel the request. This must result in onFailure() being called to send the client a cancel
+   * FetchException, and to removeFrom() the state.
    */
   @Override
   public void cancel(ClientContext context) {
@@ -975,9 +975,9 @@ public class ClientGetter extends BaseClientGetter
   }
 
   /**
-   * Notify clients that some part of the request has been sent to the network i.e. we have finished
-   * checking the datastore for at least some part of the request. Sent once only for any given
-   * request.
+   * Notify clients that some part of the request has been sent to the network, i.e., we have
+   * finished checking the datastore for at least some part of the request. Sent once only for any
+   * given request.
    */
   @Override
   protected void innerToNetwork(ClientContext context) {
@@ -1003,8 +1003,8 @@ public class ClientGetter extends BaseClientGetter
   /**
    * Called when the current state creates a new state, and we switch to that. For example, a
    * SingleFileFetcher might switch to a SplitFileFetcher. Sometimes this will be called with
-   * oldState not equal to our currentState; this means that a subsidiary request has changed state,
-   * so we ignore it.
+   * oldState not equal to our currentState; this means that a subsidiary request has changed the
+   * state, so we ignore it.
    */
   @Override
   public void onTransition(
@@ -1110,14 +1110,14 @@ public class ClientGetter extends BaseClientGetter
     try {
       binaryBlobWriter.addKey(block, context);
     } catch (IOException e) {
-      LOG.error("Failed to write key to binary blob stream: {}", e, e);
+      LOG.error("Binary blob write failed while adding key: {}", e, e);
       onFailure(
           new FetchException(
               FetchExceptionMode.BUCKET_ERROR, "Failed to write key to binary blob stream: " + e),
           null,
           context);
     } catch (BinaryBlobAlreadyClosedException e) {
-      LOG.error("Failed to write key to binary blob stream (already closed??): {}", e, e);
+      LOG.error("Binary blob write failed: writer already closed: {}", e, e);
       onFailure(
           new FetchException(
               FetchExceptionMode.BUCKET_ERROR,
@@ -1128,7 +1128,7 @@ public class ClientGetter extends BaseClientGetter
   }
 
   /**
-   * Whether key collection into a binary blob is currently active.
+   * Whether the key collection into a binary blob is currently active.
    *
    * @return {@code true} when a {@link BinaryBlobWriter} is configured and open; {@code false}
    *     otherwise
@@ -1187,7 +1187,7 @@ public class ClientGetter extends BaseClientGetter
   private void checkCompatibleExtension(String mimeType) throws FetchException {
     FilterMIMEType type = ContentFilter.getMIMEType(mimeType);
     if (type == null)
-      // Not our problem, will be picked up elsewhere.
+      // Not our problem will be picked up elsewhere.
       return;
     if (!DefaultMIMETypes.isValidExt(mimeType, forceCompatibleExtension))
       throw new FetchException(FetchExceptionMode.MIME_INCOMPATIBLE_WITH_EXTENSION);
@@ -1432,7 +1432,7 @@ public class ClientGetter extends BaseClientGetter
         // Severe serialization problems, lost a class silently etc.
         throw new ResumeFailedException(e);
       }
-    // returnBucket is responsibility of the callback.
+    // returnBucket is the responsibility of the callback.
     notifyClients(context);
   }
 
@@ -1445,13 +1445,13 @@ public class ClientGetter extends BaseClientGetter
    * Persist minimal progress information for simple requests.
    *
    * <p>When the fetch is a single, final splitfile operation, this writes enough information to
-   * resume. Otherwise, a marker is written indicating that a trivial resume is not possible. The
+   * resume. Otherwise, a marker is written indicating that a trivial resuming is not possible. The
    * caller remains responsible for writing other metadata such as expected MIME and hashes.
    *
    * @param dos output stream used to persist the progress marker and any required resume data; the
    *     caller is responsible for closing the stream
    * @return {@code true} when trivial progress data was written and the request can be trivially
-   *     resumed; {@code false} when a trivial resume is not applicable for the current state
+   *     resumed; {@code false} when a trivial resuming is not applicable for the current state
    * @throws IOException if the stream cannot be written or the underlying destination fails
    */
   public boolean writeTrivialProgress(DataOutputStream dos) throws IOException {
@@ -1482,11 +1482,11 @@ public class ClientGetter extends BaseClientGetter
    *
    * <p>If a trivial progress marker is present, reconstructs the {@code SplitFileFetcher} state and
    * marks this getter as resumed. If the marker is absent or the stored data cannot be parsed, the
-   * method returns {@code false} and the caller should fall back to a full resume or restart.
+   * method returns {@code false} and the caller should fall back to a full resuming or restart.
    *
    * @param dis input stream positioned at the trivial progress marker and data
    * @param context client context used to rebuild the necessary state
-   * @return {@code true} when the trivial resume succeeds; {@code false} when no marker exists or
+   * @return {@code true} when the trivial resuming succeeds; {@code false} when no marker exists or
    *     the stored data is invalid
    * @throws IOException if reading from the input stream fails
    */

@@ -114,41 +114,7 @@ public class ClientRequestScheduler implements RequestScheduler {
    * inserts or GETs, which key family it targets (SSK vs. CHK), and whether it enforces real-time
    * behavior.
    */
-  public static final class SchedulerMode {
-    /** True when this scheduler instance manages inserts rather than GET requests. */
-    final boolean forInserts;
-
-    /** True when this scheduler instance manages SSK keys; otherwise handles CHKs. */
-    final boolean forSSKs;
-
-    /** True when this scheduler instance manages real-time work. */
-    final boolean forRT;
-
-    /**
-     * Describes the specialization of a {@link ClientRequestScheduler} instance.
-     *
-     * @param forInserts set {@code true} to schedule inserts; {@code false} for GETs
-     * @param forSSKs set {@code true} when the scheduler targets SSK operations
-     * @param forRT set {@code true} when requests are real-time sensitive
-     */
-    public SchedulerMode(boolean forInserts, boolean forSSKs, boolean forRT) {
-      this.forInserts = forInserts;
-      this.forSSKs = forSSKs;
-      this.forRT = forRT;
-    }
-
-    public boolean forInserts() {
-      return forInserts;
-    }
-
-    public boolean forSSKs() {
-      return forSSKs;
-    }
-
-    public boolean forRT() {
-      return forRT;
-    }
-  }
+  public record SchedulerMode(boolean forInserts, boolean forSSKs, boolean forRT) {}
 
   /**
    * Creates a new scheduler instance for the given mode (inserts vs. GETs), key type, and real-time
@@ -175,24 +141,24 @@ public class ClientRequestScheduler implements RequestScheduler {
       NodeClientCore core,
       String name,
       ClientContext context) {
-    this.isInsertScheduler = mode.forInserts;
-    this.isSSKScheduler = mode.forSSKs;
-    this.isRTScheduler = mode.forRT;
+    this.isInsertScheduler = mode.forInserts();
+    this.isSSKScheduler = mode.forSSKs();
+    this.isRTScheduler = mode.forRT();
     schedTransient =
         new KeyListenerTracker(
-            mode.forInserts, mode.forSSKs, mode.forRT, random, this, null, false);
+            mode.forInserts(), mode.forSSKs(), mode.forRT(), random, this, null, false);
     this.datastoreChecker = core.getStoreChecker();
     this.starter = starter;
     this.random = random;
     this.node = node;
     this.clientContext = context;
-    selector = new ClientRequestSelector(mode.forInserts, mode.forSSKs, mode.forRT, this);
+    selector = new ClientRequestSelector(mode.forInserts(), mode.forSSKs(), mode.forRT(), this);
 
     this.name = name;
 
     this.choosenPriorityScheduler = PRIORITY_HARD; // Will be reset later.
-    if (!mode.forInserts) {
-      offeredKeys = new OfferedKeysList(random, (short) 0, mode.forSSKs, mode.forRT);
+    if (!mode.forInserts()) {
+      offeredKeys = new OfferedKeysList(random, (short) 0, mode.forSSKs(), mode.forRT());
     } else {
       offeredKeys = null;
     }
@@ -327,7 +293,7 @@ public class ClientRequestScheduler implements RequestScheduler {
     if (l != null) {
       (persistent ? schedCore : schedTransient).addPendingKeys(l);
     } else {
-      LOG.info("No KeyListener for {}", hasListener);
+      LOG.info("registerListener: no KeyListener for {}", hasListener);
     }
   }
 
@@ -354,7 +320,9 @@ public class ClientRequestScheduler implements RequestScheduler {
 
   private void finishRegisterPersistent(final SendableGet[] getters, final boolean anyValid) {
     // Add to the persistent registration queue
-    if (LOG.isDebugEnabled()) LOG.debug("finishRegister() for {}", Fields.commaList(getters));
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("finishRegisterPersistent: queued getters {}", Fields.commaList(getters));
+    }
     if (anyValid) {
       boolean wereAnyValid = false;
       for (SendableGet getter : getters) {
@@ -369,10 +337,10 @@ public class ClientRequestScheduler implements RequestScheduler {
         }
       }
       if (!wereAnyValid) {
-        LOG.info("No requests valid");
+        LOG.info("finishRegisterPersistent: no valid requests after filter");
       }
     } else {
-      LOG.info("No valid requests passed in");
+      LOG.info("finishRegisterPersistent: no valid requests provided");
     }
   }
 
@@ -409,7 +377,9 @@ public class ClientRequestScheduler implements RequestScheduler {
       runningPersistentRequests.add(request);
       if (runningPersistentRequests.remove(request) && LOG.isDebugEnabled()) {
         LOG.debug(
-            "Removed running request {} size now {}", request, runningPersistentRequests.size());
+            "removeRunningRequest: removed {} size now {}",
+            request,
+            runningPersistentRequests.size());
       }
     }
     // We *DO* need to call clearCooldown here because it only becomes runnable for persistent
@@ -459,7 +429,9 @@ public class ClientRequestScheduler implements RequestScheduler {
   public void removePendingKeys(KeyListener getter, boolean complain) {
     boolean found = schedTransient.removePendingKeys(getter);
     if (schedCore != null) found |= schedCore.removePendingKeys(getter);
-    if (complain && !found) LOG.error("Listener not found when removing: {}", getter);
+    if (complain && !found) {
+      LOG.error("removePendingKeys(KeyListener): listener not found: {}", getter);
+    }
   }
 
   /**
@@ -471,7 +443,9 @@ public class ClientRequestScheduler implements RequestScheduler {
   public void removePendingKeys(HasKeyListener getter, boolean complain) {
     boolean found = schedTransient.removePendingKeys(getter);
     if (schedCore != null) found |= schedCore.removePendingKeys(getter);
-    if (complain && !found) LOG.error("Listener not found when removing: {}", getter);
+    if (complain && !found) {
+      LOG.error("removePendingKeys(HasKeyListener): listener not found: {}", getter);
+    }
   }
 
   /**
@@ -510,7 +484,7 @@ public class ClientRequestScheduler implements RequestScheduler {
    *     is used to identify interested listeners
    */
   public void tripPendingKey(final KeyBlock block) {
-    if (LOG.isDebugEnabled()) LOG.debug("tripPendingKey({})", block.getKey());
+    if (LOG.isDebugEnabled()) LOG.debug("tripPendingKey: block key={}", block.getKey());
 
     if (offeredKeys != null) {
       offeredKeys.remove(block.getKey());
@@ -544,7 +518,9 @@ public class ClientRequestScheduler implements RequestScheduler {
 
               @Override
               public boolean run(ClientContext context) {
-                if (LOG.isDebugEnabled()) LOG.debug("tripPendingKey for {}", key);
+                if (LOG.isDebugEnabled()) {
+                  LOG.debug("tripPendingKey(persistent): key={}", key);
+                }
                 schedCore.tripPendingKey(key, block, clientContext);
                 return false;
               }
@@ -690,7 +666,7 @@ public class ClientRequestScheduler implements RequestScheduler {
             prio);
       } catch (PersistenceDisabledException _) {
         LOG.error(
-            "callFailure() on a persistent request but database disabled", new Exception("error"));
+            "callFailure(get): persistent request but database disabled", new Exception("error"));
       }
     }
   }
@@ -730,7 +706,8 @@ public class ClientRequestScheduler implements RequestScheduler {
             prio);
       } catch (PersistenceDisabledException _) {
         LOG.error(
-            "callFailure() on a persistent request but database disabled", new Exception("error"));
+            "callFailure(insert): persistent request but database disabled",
+            new Exception("error"));
       }
     }
   }

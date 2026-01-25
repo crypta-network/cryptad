@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
  * <p>The lifecycle is:
  *
  * <ol>
- *   <li>{@link #onLoading()} to indicate state load is in progress.
+ *   <li>{@link #onLoading()} to indicate a state load is in progress.
  *   <li>{@link #onStarted(boolean)} to start accepting work and optionally enable writing.
  *   <li>Jobs are queued via {@link #queue(PersistentJob, int)} and {@link
  *       #queueInternal(PersistentJob)} while the runner schedules checkpointing in the background.
@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Checkpoint urgency can be escalated with {@link #setCheckpointASAP()} or by returning a
  *       checkpoint request from the job.
  *   <li>Shutdown waits for running jobs and any in‑flight checkpoint to complete before performing
- *       a final write, unless writes are disabled.
+ *       a final writing, unless writes are disabled.
  * </ul>
  *
  * @see PersistentJobRunner
@@ -63,7 +63,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   /** If true, we must suspend and write to disk. */
   private boolean mustCheckpoint;
 
-  /** Jobs queued to run after the write finishes. */
+  /** Jobs queued to run after the writing finishes. */
   private final List<QueuedJob> queuedJobs;
 
   private ClientContext context;
@@ -92,7 +92,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   /** Have we loaded from disk at least once, regardless of enableCheckpointing? */
   private boolean loaded = false;
 
-  /** True if checkpoint is in progress */
+  /** True if a checkpoint is in progress */
   private boolean writing = false;
 
   /** True if we should reject all new jobs */
@@ -141,7 +141,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
         if (LOG.isTraceEnabled()) LOG.trace("Queueing job {}", job);
         queuedJobs.add(new QueuedJob(job, threadPriority));
       } else {
-        if (LOG.isTraceEnabled()) LOG.trace("Running job {}", job);
+        if (LOG.isTraceEnabled()) LOG.trace("Dispatching queued job {}", job);
         executor.execute(new JobRunnable(job, threadPriority, context));
         runningJobs++;
       }
@@ -163,9 +163,9 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
             new Exception("error"));
         queuedJobs.add(new QueuedJob(job, threadPriority));
       } else {
-        if (mustCheckpoint && LOG.isDebugEnabled()) LOG.debug("Delaying checkpoint...");
+        if (mustCheckpoint && LOG.isDebugEnabled()) LOG.debug("Deferring checkpoint until idle");
         runningJobs++;
-        if (LOG.isTraceEnabled()) LOG.trace("Running job {}", job);
+        if (LOG.isTraceEnabled()) LOG.trace("Dispatching internal job {}", job);
         executor.execute(new JobRunnable(job, threadPriority, context));
       }
     }
@@ -178,7 +178,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       queueInternal(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } catch (PersistenceDisabledException e) {
       // Maybe this could happen ... panic button maybe?
-      LOG.error("Dropping internal job because persistence has been turned off!: {}", e, e);
+      LOG.error("Dropping internal job; persistence disabled: {}", e, e);
     }
   }
 
@@ -189,7 +189,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
       queue(job, NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } catch (PersistenceDisabledException _) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Dropping job {} because persistence is disabled", job);
+        LOG.debug("Dropping queued job; persistence disabled: {}", job);
       }
     }
   }
@@ -232,7 +232,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
    *
    * <p>Decrements the count of running jobs, evaluates whether a checkpoint is due based on the
    * job's return value and elapsed time, and either triggers a checkpoint immediately or schedules
-   * a delayed attempt. When a checkpoint is needed, new jobs are deferred until after the write.
+   * a delayed attempt. When a checkpoint is needed, new jobs are deferred until after the writing.
    *
    * @param ret {@code true} when the completed job requests a checkpoint; {@code false} otherwise.
    * @param threadPriority the priority of the thread that executed the job. Higher values indicate
@@ -242,7 +242,8 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
     synchronized (sync) {
       runningJobs--;
       if (runningJobs == 0)
-        // Even if not going to checkpoint indirectly, somebody might be waiting, need to notify.
+        // Even if not going to the checkpoint indirectly, somebody might be waiting, need to
+        // notify.
         sync.notifyAll();
       if (!enableCheckpointing) {
         if (LOG.isDebugEnabled()) LOG.debug("Not enableCheckpointing yet");
@@ -271,11 +272,11 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   private void maybeSetCheckpointFlag(boolean jobRequestedCheckpoint) {
     if (jobRequestedCheckpoint) {
       mustCheckpoint = true;
-      if (LOG.isDebugEnabled()) LOG.debug("Writing because asked to");
+      if (LOG.isDebugEnabled()) LOG.debug("Scheduling checkpoint; job requested");
     }
     if (!mustCheckpoint && (System.currentTimeMillis() - lastCheckpointed > checkpointInterval)) {
       mustCheckpoint = true;
-      if (LOG.isDebugEnabled()) LOG.debug("Writing at interval");
+      if (LOG.isDebugEnabled()) LOG.debug("Scheduling checkpoint; interval elapsed");
     }
   }
 
@@ -434,7 +435,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
    * Transitions the runner to the started state.
    *
    * @param noWrite when {@code true}, starts without enabling checkpointing; when {@code false},
-   *     enables checkpointing and schedules an initial background write.
+   *     enables checkpointing and schedules an initial background writing.
    */
   protected void onStarted(boolean noWrite) {
     synchronized (sync) {
@@ -499,7 +500,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   public void waitAndCheckpoint() throws PersistenceDisabledException {
     synchronized (sync) {
       if (!enableCheckpointing) return;
-      // Set flag to ensure further jobs are queued, we want to write soon!
+      // Set a flag to ensure further jobs are queued, we want to write soon!
       mustCheckpoint = true;
       waitForRunningJobs();
       if (writing) {
@@ -545,7 +546,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   /**
    * Sets the killed flag and blocks until no checkpoint is in progress.
    *
-   * <p>Callers use this during shutdown to ensure that any ongoing write completes before
+   * <p>Callers use this during shutdown to ensure that any ongoing writing completes before
    * continuing with teardown logic. This method does not perform a new checkpoint.
    */
   protected void killAndWaitForNotWriting() {

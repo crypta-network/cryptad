@@ -67,9 +67,9 @@ import org.slf4j.LoggerFactory;
  * FreenetURI, FetchContext, ArchiveContext, CreationPolicy, CreationRuntime)} and then schedule it.
  *
  * <p>State and invariants: instances are created for one logical request; after a terminal callback
- * (success or failure) the instance is considered finished. The object is not intended to be reused
- * or shared across concurrent fetches. Some fields are persisted for long‑lived requests; changing
- * non‑transient members of serializable classes can cause restarts of queued work.
+ * (success or failure), the instance is considered finished. The object is not intended to be
+ * reused or shared across concurrent fetches. Some fields are persisted for long‑lived requests;
+ * changing non‑transient members of serializable classes can cause restarts of queued work.
  *
  * <p>Concurrency: callbacks can execute on worker threads, and archive extraction may use helper
  * threads. The class coordinates transitions carefully, but callers should treat it as not
@@ -96,7 +96,6 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   private static final Logger LOG = LoggerFactory.getLogger(SingleFileFetcher.class);
   private static final String LOG_META_LABEL = " meta=";
   private static final String LOG_FOR_LABEL = " for ";
-  private static final String LOG_RETURNING_DATA = "Returning data";
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -126,7 +125,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   /**
    * Metadata for the enclosing archive when the requested item lives inside a container. Populated
-   * when entering archive flows so subsequent steps can proceed without re-fetching.
+   * when entering archive flows so later steps can proceed without re-fetching.
    */
   private Metadata archiveMetadata;
 
@@ -141,7 +140,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   /**
    * Guard against unbounded traversal through redirects/containers. Each transition increases the
-   * recursion level and failures occur once the configured maximum is exceeded.
+   * recursion level, and failures occur once the configured maximum is exceeded.
    */
   private final int recursionLevel;
 
@@ -197,7 +196,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   /**
    * Create a new SingleFileFetcher and register self. Called when following a redirect, or direct
-   * from ClientGet. Note: Many times when this is called internally we might be better off using a
+   * from ClientGet. Note: Many times when this is called internally, we might be better off using a
    * copy constructor?
    *
    * @param params initialization bundle containing request inputs, policy, and runtime values
@@ -220,7 +219,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     params.parent.notifyClients(params.runtime.context);
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Creating SingleFileFetcher"
+          "Creating SingleFileFetcher (init)"
               + LOG_FOR_LABEL
               + "{} from {}"
               + LOG_META_LABEL
@@ -375,7 +374,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    * Decode the provided client key block into a {@link Bucket} for downstream processing.
    *
    * <p>The returned bucket contains either plaintext data or metadata depending on the block type.
-   * If any decode or resource error occurs, this method reports the failure via {@link
+   * If any decoding or resource error occurs, this method reports the failure via {@link
    * #onFailure(FetchException, boolean, ClientContext)} and returns {@code null}. Callers must free
    * the bucket when no longer needed.
    *
@@ -449,7 +448,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     this.token = fetcher.token;
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Creating SingleFileFetcher" + LOG_FOR_LABEL + "{}" + LOG_META_LABEL + "{}",
+          "Creating SingleFileFetcher (copy)" + LOG_FOR_LABEL + "{}" + LOG_META_LABEL + "{}",
           fetcher.key,
           fetcher.metaStrings.toString(),
           new Exception("debug"));
@@ -472,7 +471,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       throw new FetchException(FetchExceptionMode.TOO_MUCH_RECURSION);
     this.thisKey = fetcher.thisKey;
     // Do not copy the decompressors. Whether the metadata/container is compressed
-    // is independent of whether the final data is; when we find the data we will
+    // is independent of whether the final data is; when we find the data, we will
     // call back into the original fetcher.
     this.decompressors = new LinkedList<>();
     if (fetcher.uri == null) throw new NullPointerException();
@@ -582,8 +581,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    * Finalize a successful fetch by enforcing policy and delivering the data to the callback.
    *
    * <p>This method validates path component rules and size limits, converts any violations into a
-   * {@link FetchException}, and otherwise streams the data to the requester. The underlying bucket
-   * is always closed by this method regardless of outcome to prevent resource leaks.
+   * {@link FetchException}, and otherwise streams the data to the requester. This method always
+   * closes the underlying bucket regardless of the outcome to prevent resource leaks.
    *
    * @param result the completed result bundle containing client metadata and a data bucket
    * @param context client context used for scheduling and follow‑up transitions
@@ -659,7 +658,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   private void copyToJobRunnerAndFree(FetchResult result, ClientContext context) {
     // Break locks, don't run filtering on FEC thread etc.
-    // Create a defensive copy of the bucket to prevent "Already freed" race condition
+    // Create a defensive copy of the bucket to prevent the "Already freed" race condition
     Bucket originalBucket = result.asBucket();
     Bucket bucketCopy;
     try {
@@ -737,15 +736,15 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   private short topCompatibilityMode;
 
   /**
-   * Handle the current metadata. I.e. do something with it: transition to a splitfile, look up a
+   * Handle the current metadata. I.e., do something with it: transition to a splitfile, look up a
    * manifest, etc. LOCKING: Synchronized as it changes so many variables; if we want to write the
-   * structure to disk, we don't want this running at the same time. LOCKING: Therefore it should
-   * not directly call e.g. onFailed, innerWrapHandleMetadata, other stuff that might cause lots of
+   * structure to disk, we don't want this running at the same time. LOCKING: Therefore, it should
+   * not directly call e.g., onFailed, innerWrapHandleMetadata, other stuff that might cause lots of
    * stuff to happen on other objects, eventually ClientRequestScheduler gets locked -> deadlock.
-   * This is irrelevant for persistent requests however, as they are single thread.
+   * This is irrelevant for persistent requests, however, as they are single thread.
    *
-   * @throws FetchException if policy or size checks fail, resources are insufficient, or decoding
-   *     and I/O produce a non‑recoverable fetch error during planning.
+   * @throws FetchException if policy or size checks fail, resources are not enough, or decoding and
+   *     I/O produce a non‑recoverable fetch error during planning.
    * @throws MetadataParseException if metadata bytes cannot be parsed into a valid structure.
    * @throws ArchiveFailureException if container access or extraction fails with a permanent,
    *     non‑retryable error.
@@ -1015,7 +1014,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       throw new FetchException(
           FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
     String filename = metadata.getArchiveInternalName();
-    if (LOG.isDebugEnabled()) LOG.debug("Fetching {}", filename);
+    if (LOG.isDebugEnabled()) LOG.debug("Fetching archive-metadata entry {}", filename);
     Bucket dataBucket;
     try {
       dataBucket = ah.get(filename, actx, context.archiveManager);
@@ -1031,7 +1030,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private void handleArchiveMetadataBucket(Bucket dataBucket) throws FetchException {
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_RETURNING_DATA);
+    if (LOG.isDebugEnabled()) LOG.debug("Archive metadata bucket ready; returning data");
     try {
       Metadata newMetadata = Metadata.construct(dataBucket);
       synchronized (this) {
@@ -1050,7 +1049,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   private void scheduleFetchArchiveForMetadata(String filename, final ClientContext context)
       throws FetchException {
-    if (LOG.isDebugEnabled()) LOG.debug("Fetching archive (thisKey={})", thisKey);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Scheduling archive fetch for metadata (thisKey={})", thisKey);
     fetchArchive(
         true,
         archiveMetadata,
@@ -1060,7 +1060,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
           @Override
           public void gotBucket(Bucket data, ClientContext ctx1) {
-            if (LOG.isDebugEnabled()) LOG.debug(LOG_RETURNING_DATA);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Archive metadata fetch returned bucket; returning data");
             try {
               Metadata newMetadata = Metadata.construct(data);
               synchronized (SingleFileFetcher.this) {
@@ -1105,7 +1106,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       throw new FetchException(
           FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
     String filename = metadata.getArchiveInternalName();
-    if (LOG.isDebugEnabled()) LOG.debug("Fetching {}", filename);
+    if (LOG.isDebugEnabled()) LOG.debug("Fetching archive-internal entry {}", filename);
     Bucket dataBucket;
     try {
       dataBucket = ah.get(filename, actx, context.archiveManager);
@@ -1113,12 +1114,13 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       throw wrapToFetchException(e);
     }
     if (dataBucket != null) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOG_RETURNING_DATA);
+      if (LOG.isDebugEnabled()) LOG.debug("Archive internal entry ready; returning data");
       final Bucket out = copyOrAdoptBucketForReturn(dataBucket, context);
       onSuccess(new FetchResult(clientMetadata, out), context);
       return; // returned data, method should return
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Fetching archive (thisKey={})", thisKey);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Scheduling archive fetch for internal entry (thisKey={})", thisKey);
     fetchArchive(
         true,
         archiveMetadata,
@@ -1128,7 +1130,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
           @Override
           public void gotBucket(Bucket data, ClientContext ctx1) {
-            if (LOG.isDebugEnabled()) LOG.debug(LOG_RETURNING_DATA);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Archive internal fetch returned bucket; returning data");
             onSuccess(new FetchResult(clientMetadata, data), ctx1);
           }
 
@@ -1511,12 +1514,12 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             new ArchiveFetcherCallback(forData, element, callback),
             new FetchContext(ctx, FetchContext.SET_RETURN_ARCHIVES, true, null));
     if (LOG.isDebugEnabled()) LOG.debug("fetchArchive(): {}", f);
-    // Fetch the archive. The archive fetcher callback will unpack it, and either call the element
-    // callback, or just go back around handleMetadata() on this, which will see that the data is
+    // Fetch the archive. The archive fetcher callback will unpack it and either call the element
+    // callback or just go back around handleMetadata() on this, which will see that the data is
     // now
     // available.
 
-    // We need to transition here, so that everything gets deleted if we are canceled during the
+    // We need to transition here so that everything gets deleted if we are canceled during the
     // archive fetch phase.
     parent.onTransition(this, f, context);
 
@@ -1601,7 +1604,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             OutputStream output = data.getOutputStream()) {
 
           if (decompressors != null) {
-            if (LOG.isDebugEnabled()) LOG.debug("decompressing...");
+            if (LOG.isDebugEnabled()) LOG.debug("Decompressing archive payload...");
             pipeOut.connect(pipeIn);
             DecompressorThreadManager decompressorManager =
                 new DecompressorThreadManager(pipeIn, decompressors, maxLen);
@@ -1616,7 +1619,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
           }
         }
       } catch (Exception t) {
-        LOG.error("Caught {}", t, t);
+        LOG.error("Archive fetcher caught {}", t, t);
         onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
         return;
       }
@@ -1771,7 +1774,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             OutputStream output = finalData.getOutputStream()) {
 
           if (decompressors != null) {
-            if (LOG.isDebugEnabled()) LOG.debug("decompressing...");
+            if (LOG.isDebugEnabled()) LOG.debug("Decompressing multilevel metadata...");
             pipeIn.connect(pipeOut);
             DecompressorThreadManager decompressorManager =
                 new DecompressorThreadManager(pipeIn, decompressors, maxLen);
@@ -1780,21 +1783,21 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
               streamGenerator.writeTo(pipeOut, context);
               decompressorManager.waitFinished();
               worker.waitFinished();
-              // ClientGetWorkerThread will close output.
+              // ClientGetWorkerThread will close the output.
             }
           } else {
             streamGenerator.writeTo(output, context);
           }
         }
       } catch (Exception t) {
-        LOG.error("Caught {}", t, t);
+        LOG.error("Multi-level metadata fetcher caught {}", t, t);
         onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t), state, context);
         return;
       }
 
       try {
         parent.onTransition(state, SingleFileFetcher.this, context);
-        // Note: Pass an InputStream here, and save ourselves a Bucket
+        // Note: Pass an InputStream here and save ourselves a Bucket
         Metadata meta = Metadata.construct(finalData);
         synchronized (SingleFileFetcher.this) {
           metadata = meta;
@@ -1885,7 +1888,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     final boolean hasInitialMetadata;
 
     /**
-     * Create a new {@code CreationPolicy} describing retry, recursion and reporting behavior.
+     * Create a new {@code CreationPolicy} describing retry, recursion, and reporting behavior.
      *
      * @param maxRetries maximum number of retries permitted before surfacing failure
      * @param recursionLevel current recursion depth used to guard against cycles
@@ -1955,7 +1958,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    * @param uri the original request URI including any meta‑strings
    * @param ctx fetch context governing limits, policy, and allowed MIME types
    * @param actx archive context used when the target lives inside a container
-   * @param policy creation policy including retries, recursion and notifications
+   * @param policy creation policy including retries, recursion, and notifications
    * @param runtime runtime parameters such as real‑time flag and opaque token
    * @return a new {@link ClientGetState} appropriate for the URI and policy
    * @throws MalformedURLException if {@code uri} cannot be parsed into a client key
@@ -2028,7 +2031,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   private static ClientGetState uskCreateKnownGood(UskCreateArgs a) throws FetchException {
     long edition = a.runtime.context.uskManager.lookupKnownGood(a.usk);
     if (edition > a.usk.suggestedEdition) {
-      if (LOG.isDebugEnabled()) LOG.debug("Redirecting to edition {}", edition);
+      if (LOG.isDebugEnabled()) LOG.debug("USK known-good redirect to edition {}", edition);
       a.cb.onFailure(
           new FetchException(
               FetchExceptionMode.PERMANENT_REDIRECT,
@@ -2046,7 +2049,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   private static ClientGetState decideAfterBackgroundFetcher(UskCreateArgs a, long edition)
       throws FetchException {
     if (edition > a.usk.suggestedEdition) {
-      if (LOG.isDebugEnabled()) LOG.debug("Redirecting to edition {}", edition);
+      if (LOG.isDebugEnabled()) LOG.debug("USK background redirect to edition {}", edition);
       a.cb.onFailure(
           new FetchException(
               FetchExceptionMode.PERMANENT_REDIRECT,

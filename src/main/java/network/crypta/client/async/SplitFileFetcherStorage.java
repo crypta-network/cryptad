@@ -933,7 +933,7 @@ public class SplitFileFetcherStorage {
    */
   void finishedEncoding(SplitFileFetcherSegmentStorage segment) {
     if (LOG.isDebugEnabled())
-      LOG.debug("Successfully decoded {} for {} for {}", segment, this, fetcher);
+      LOG.debug("Segment decode completed {} for {} for {}", segment, this, fetcher);
     if (!allFinished()) return;
     finishedEncoding();
   }
@@ -944,7 +944,7 @@ public class SplitFileFetcherStorage {
    */
   void finishedEncoding(SplitFileFetcherCrossSegmentStorage segment) {
     if (LOG.isDebugEnabled())
-      LOG.debug("Successfully decoded {} for {} for {}", segment, this, fetcher);
+      LOG.debug("Cross-segment decode completed {} for {} for {}", segment, this, fetcher);
     if (!allFinished()) return;
     finishedEncoding();
   }

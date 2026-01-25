@@ -44,14 +44,14 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Wakeup and cooldowns: Each node in the tree (priority, client, request) maintains a per-node
  * wakeup time. A positive value indicates the earliest time when it is worthwhile to revisit the
- * subtree. Values may be {@code Long.MAX_VALUE} while a key is actively fetching or when a request
- * is throttled by a cooldown (e.g., due to repeated fetches of the same key).
+ * subtree. Values may be {@code Long.MAX_VALUE} while a key is actively fetching or when a cooldown
+ * throttles a request (e.g., due to repeated fetches of the same key).
  *
  * <p>Locking and concurrency: All access to the tree—including the cooldown tracker—is guarded by
- * synchronization on the {@code ClientRequestSelector} instance. When a request completes we update
- * wakeup times bottom-up. When selecting a request we traverse top-down and may update wakeups
- * while backtracking. This ensures consistent views for competing scheduler threads at the cost of
- * coarse-grained locking.
+ * synchronization on the {@code ClientRequestSelector} instance. When a request completes, we
+ * update wakeup times bottom-up. When selecting a request, we traverse top-down and may update
+ * wakeup while backtracking. This ensures consistent views for competing scheduler threads at the
+ * cost of coarse-grained locking.
  *
  * <ul>
  *   <li>Responsibilities: request registration, reclassification across priorities, selection, and
@@ -68,8 +68,6 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequestSelector.class);
   private static final String PRIORITY = "Priority ";
   private static final String FOR = " for ";
-  private static final String CHANGING_PRIORITY_NOT_RUNNING =
-      "Changing priority but request not running {}";
   private static final String RECENT_SUCCESSES = "recentSuccesses";
   private static final String RUNNING_INSERTS = "runningInserts";
   private static final String KEYS_FETCHING = "keysFetching";
@@ -126,10 +124,10 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   /**
    * Ring buffer of recently successful {@link BaseSendableGet} operations.
    *
-   * <p>The selector occasionally prefers a request that has succeeded very recently as a cheap
-   * locality heuristic. This deque stores a bounded, most-recent-first history (currently up to 8
-   * entries). It is only populated for fetch schedulers (not for insert schedulers) and is accessed
-   * under internal synchronization on the deque instance.
+   * <p>The selector occasionally prefers a request that has succeeded very recently as an
+   * inexpensive locality heuristic. This deque stores a bounded, most-recent-first history
+   * (currently up to 8 entries). It is only populated for fetch schedulers (not for insert
+   * schedulers) and is accessed under internal synchronization on the deque instance.
    */
   protected final Deque<BaseSendableGet> recentSuccesses;
 
@@ -158,11 +156,11 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   // Static initializer intentionally omitted; placeholder removed.
 
   /**
-   * All Key's we are currently fetching. Locally originated requests only, avoids some
-   * complications with HTL, and also has the benefit that we can see stuff that's been scheduled on
-   * a SenderThread but that thread hasn't started yet. Note: Both issues can be avoided: first we'd
-   * get rid of the SenderThread and start the requests directly and asynchronously, secondly we'd
-   * move this to node but only track keys we are fetching at max HTL. LOCKING: Always lock this
+   * All Key's we are currently fetching. Locally originated requests only avoid some complications
+   * with HTL and also have the benefit that we can see stuff that's been scheduled on a
+   * SenderThread but that thread hasn't started yet. Note: Both issues can be avoided: first, we'd
+   * get rid of the SenderThread and start the requests directly and asynchronously, secondly, we'd
+   * move this to the node but only track keys we are fetching at max HTL. LOCKING: Always lock this
    * LAST.
    */
   private final HashSet<Key> keysFetching;
@@ -205,7 +203,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
         if (LOG.isDebugEnabled()) LOG.debug(PRIORITY + "{} is null (fuzz = {})", priority, fuzz);
       }
 
-      // Don't return because first round may be higher with soft scheduling
+      // Don't return because the first round may be higher with soft scheduling
       fuzz++;
     }
 
@@ -222,10 +220,10 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   private static void logPriorityCooldown(short priority, long cooldownTime, long now) {
     if (!LOG.isDebugEnabled()) return;
     if (cooldownTime == Long.MAX_VALUE) {
-      LOG.debug(PRIORITY + "{} is waiting until a request finishes or is empty", priority);
+      LOG.debug(PRIORITY + "{} waiting for in-flight request or empty", priority);
     } else {
       LOG.debug(
-          PRIORITY + "{} is in cooldown for another {} {}",
+          PRIORITY + "{} cooldown active for another {} {}",
           priority,
           (cooldownTime - now),
           TimeUtil.formatTime(cooldownTime - now));
@@ -236,7 +234,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * Choose a request to run and create the ChosenBlock for it. A request chosen by
    * chooseRequestInner() may not be runnable (it may return null if the request is already
    * running), so we may need to try repeatedly. This is only necessary because many classes only
-   * update their cooldown status when choosing a block to send, e.g. SplitFileInserter.
+   * update their cooldown status when choosing a block to send, e.g., SplitFileInserter.
    */
   ChosenBlock chooseRequest(
       int fuzz,
@@ -273,19 +271,19 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   /**
    * Build a {@code ChosenBlock} for a request if it is presently runnable.
    *
-   * <p>This method validates that the provided {@link SendableRequest} is not cancelled, not in a
+   * <p>This method validates that the provided {@link SendableRequest} is not canceled, not in a
    * cooldown period, and currently eligible to choose a concrete token/key. When eligible, it asks
    * the request to select a {@link SendableRequestItem}, resolves the corresponding network {@link
    * Key} and optional {@link ClientKey}, and constructs a {@code ChosenBlock} carrying all flags
    * needed by the scheduler. No network I/O is performed here; selection is purely in-memory and
-   * side‑effect free beyond reading request state.
+   * side‑effect free beyond the reading request state.
    *
-   * <p>Preconditions: {@code req} must belong to this selector kind (fetch vs insert). The caller
+   * <p>Preconditions: {@code req} must belong to this selector kind (fetch vs. insert). The caller
    * should pass a consistent {@link ClientContext} and the current wall clock {@code now} in
    * milliseconds. If selection races with a request transitioning into cooldown, the method may
    * return {@code null} to signal the caller to try another candidate.
    *
-   * @param req the request to consider; ignored if {@code null} or cancelled
+   * @param req the request to consider; ignored if {@code null} or canceled
    * @param context execution context providing runtime collaborators; must not be {@code null}
    * @param now current time in milliseconds since the epoch used for cooldown checks
    * @return a fully populated {@code ChosenBlock} ready for dispatch, or {@code null} if the
@@ -404,7 +402,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       ClientContext context,
       long now) {
     // Priorities start at 0
-    if (LOG.isDebugEnabled()) LOG.debug("removeFirst()");
+    if (LOG.isDebugEnabled()) LOG.debug("Selecting next request from queues");
     boolean tryOfferedKeys = offeredKeys != null && random.nextBoolean();
     SelectorReturn offeredFirst =
         maybeUseOfferedKeysFirst(tryOfferedKeys, offeredKeys, context, now);
@@ -451,7 +449,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       if (res.nextWakeupTime > 0 && res.nextWakeupTime < wakeupTime)
         wakeupTime = res.nextWakeupTime;
     }
-    if (LOG.isDebugEnabled()) LOG.debug("No requests to run");
+    if (LOG.isDebugEnabled()) LOG.debug("Selection scan complete: no runnable requests");
     return new SelectorReturn(wakeupTime);
   }
 
@@ -500,7 +498,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
 
       SendableRequest req = (SendableRequest) val.item;
       if (req == null) {
-        // Defensive: handleNullItem should have returned early when item is null
+        // Defensive: handleNullItem should have returned early when the item is null
         return PriorityScanResult.none(Long.MAX_VALUE);
       }
       if (handlePriorityMismatchAndReclassify(chosenTracker, req, choosenPriorityClass, context))
@@ -512,13 +510,13 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       // Now we have chosen a request.
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "removeFirst() returning {} (prio {}, client {}, client-req {})",
+            "Selection result: {} (prio {}, client {}, client-req {})",
             req,
             req.getPriorityClass(),
             req.getClient(),
             req.getClientRequest());
       if (LOG.isDebugEnabled())
-        LOG.debug("removeFirst() returning {} of {}", req, req.getClientRequest());
+        LOG.debug("Selection result for client-request: {} of {}", req, req.getClientRequest());
       assert (req.realTimeFlag() == realTime);
       return PriorityScanResult.found(req);
     }
@@ -678,7 +676,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
             altReq.getPriorityClass(),
             req,
             req.getPriorityClass());
-      // Don't need to reregister, because removeRandom doesn't actually remove!
+      // Don't need to reregister, because removeRandom doesn't remove!
       return altReq;
     } else {
       if (LOG.isDebugEnabled())
@@ -733,7 +731,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * Mark a key as actively being fetched by this node.
    *
    * <p>This tracks locally originated fetches only, enabling fast duplicate suppression and
-   * efficient wakeups for transient requests waiting on the same key. Callers must only add keys
+   * efficient wakeup for transient requests waiting on the same key. Callers must only add keys
    * that are about to be scheduled; removal is handled via {@link #removeFetchingKey(Key)} when the
    * fetch completes or is abandoned.
    *
@@ -757,7 +755,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * Returns whether {@code key} is currently being fetched by a locally originated request and, if
    * so, optionally registers a transient waiter to be woken when the fetch completes.
    *
-   * <p>Synchronization: This implementation synchronizes on an internal set that tracks in-flight
+   * <p>Synchronization: This implementation synchronizes with an internal set that tracks in-flight
    * keys. If {@code getterWaiting} is non-{@code null} and the key is already in flight, a weak
    * reference to the getter is recorded so the request can be woken when the key finishes.
    *
@@ -809,7 +807,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    */
   public void removeFetchingKey(final Key key) {
     WeakReference<BaseSendableGet>[] transientWaiting;
-    if (LOG.isDebugEnabled()) LOG.debug("Removing from keysFetching: {}", key);
+    if (LOG.isDebugEnabled()) LOG.debug("Key fetch tracking cleared: {}", key);
     if (key != null) {
       HashSet<Key> kf = Objects.requireNonNull(keysFetching, KEYS_FETCHING);
       synchronized (kf) {
@@ -874,7 +872,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * @param token identifier previously passed to {@link #addRunningInsert(SendableRequestItemKey)}
    */
   public void removeRunningInsert(SendableRequestItemKey token) {
-    if (LOG.isDebugEnabled()) LOG.debug("Removing from runningInserts: {}", token);
+    if (LOG.isDebugEnabled()) LOG.debug("Insert token removed from running set: {}", token);
     HashSet<SendableRequestItemKey> ri = Objects.requireNonNull(runningInserts, RUNNING_INSERTS);
     synchronized (ri) {
       ri.remove(token);
@@ -903,16 +901,16 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * Add a request (or insert) to the request selection tree.
    *
    * @param priorityClass The priority of the request.
-   * @param client Label object indicating which larger group of requests this request belongs to
-   *     (e.g. the global queue, or an FCP client), and whether it is persistent.
-   * @param cr The high-level request that this single block request is part of. E.g. a fetch for a
+   * @param client Label the object indicating which larger group of requests this request belongs
+   *     to (e.g., the global queue, or an FCP client), and whether it is persistent.
+   * @param cr The high-level request that this single block request is part of. E.g., a fetch for a
    *     single key may download many blocks in a splitfile; an insert for a large freesite is
    *     considered a single {@link ClientRequester}.
-   * @param req A single SendableRequest object which is one or more low-level requests. E.g. it can
-   *     be an insert of a single block, or it can be a request or insert for a single segment
+   * @param req A single SendableRequest object which is one or more low-level requests. E.g., it
+   *     can be an insert of a single block, or it can be a request or insert for a single segment
    *     within a splitfile.
    * @param context The client context object, which contains links to all the important objects
-   *     that are not persisted in the database, e.g. executors, temporary filename generator, etc.
+   *     that are not persisted in the database, e.g., executors, temporary filename generator, etc.
    */
   void addToGrabArray(
       short priorityClass,
@@ -997,18 +995,21 @@ public class ClientRequestSelector implements KeysFetchingLocally {
       RequestClientRGANode clientGrabber = priorities[oldPrio];
       if (clientGrabber == null) {
         // Normal as most of the schedulers aren't relevant to any given insert/request.
-        if (LOG.isDebugEnabled()) LOG.debug(CHANGING_PRIORITY_NOT_RUNNING, request);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Changing priority skipped: no tracker for old priority {}", request);
         return;
       }
       // Then by RequestClient
       ClientRequestRGANode requestGrabber = clientGrabber.getGrabber(client);
       if (requestGrabber == null) {
-        if (LOG.isDebugEnabled()) LOG.debug(CHANGING_PRIORITY_NOT_RUNNING, request);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Changing priority skipped: no client grabber for request {}", request);
         return;
       }
       RandomGrabArrayWithObject<ClientRequestSchedulerGroup> rga = requestGrabber.getGrabber(group);
       if (rga == null) {
-        if (LOG.isDebugEnabled()) LOG.debug(CHANGING_PRIORITY_NOT_RUNNING, request);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Changing priority skipped: no group grabber for request {}", request);
         return;
       }
       requestGrabber.maybeRemove(rga, context);
@@ -1094,7 +1095,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   /**
    * Register a {@link SendableRequest} with this selector at its current priority.
    *
-   * <p>The request must match the selector type (fetch vs insert). After validation, the method
+   * <p>The request must match the selector type (fetch vs. insert). After validation, the method
    * inserts the request into the per-priority, per-client hierarchy and wakes the starter.
    *
    * @param req the request to register; must not be {@code null}
@@ -1128,7 +1129,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   /**
    * Record that a fetch request succeeded, updating recent-success heuristics.
    *
-   * <p>No-op for insert schedulers or cancelled requests. Maintains a bounded history used to
+   * <p>No-op for insert schedulers or canceled requests. Maintains a bounded history used to
    * occasionally prioritize requests that recently fetched successfully.
    *
    * @param succeeded the successful {@link BaseSendableGet}; ignored if cancelled
