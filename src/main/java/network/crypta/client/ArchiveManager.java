@@ -36,9 +36,9 @@ import org.slf4j.LoggerFactory;
  * Manages extraction and caching for supported archive containers (ZIP and TAR).
  *
  * <p>This manager maintains a bounded in-memory index of recently opened containers and a
- * size-limited on-disk cache of extracted members. Typical usage is: obtain a handler for a key and
+ * size-limited on-disk cache of extracted members. Typical usage is: get a handler for a key and
  * archive type, request specific entries by name, and read the resulting buckets. Frequently
- * requested members remain available through an LRU-managed cache so repeated calls avoid
+ * requested members remain available through an LRU-managed cache, so repeated calls avoid
  * re-processing the full container.
  *
  * <p>Core responsibilities include streaming decompression, validating entry names to prevent path
@@ -77,7 +77,7 @@ public class ArchiveManager {
         new String[] {
           "application/zip", "application/x-zip"
         }), /* eventually get rid of ZIP support at some point */
-    /** TAR archives; standard TAR MIME type is supported. */
+    /** TAR archives; a standard TAR MIME type is supported. */
     TAR((short) 1, new String[] {"application/x-tar"});
 
     /** Stable numeric identifier for this type used in serialized metadata and messages. */
@@ -85,7 +85,7 @@ public class ArchiveManager {
 
     private final String[] mimeTypes;
 
-    /** cached values(). Never modify or pass this array to outside code! */
+    /** Cached values(). Never modify or pass this array to outside code! */
     private static final ARCHIVE_TYPE[] values = values();
 
     /**
@@ -218,14 +218,14 @@ public class ArchiveManager {
 
   /** Add an ArchiveHandler by key */
   private synchronized void putCached(FreenetURI key, ArchiveStoreContext zip) {
-    if (LOG.isDebugEnabled()) LOG.debug("Put cached AH for {} : {}", key, zip);
+    if (LOG.isDebugEnabled()) LOG.debug("Archive handler cached: key={} handler={}", key, zip);
     archiveHandlers.push(key, zip);
     while (archiveHandlers.size() > maxArchiveHandlers) archiveHandlers.popKey(); // dump it
   }
 
   /** Get an ArchiveHandler by key */
   ArchiveStoreContext getCached(FreenetURI key) {
-    if (LOG.isDebugEnabled()) LOG.debug("Get cached AH for {}", key);
+    if (LOG.isDebugEnabled()) LOG.debug("Archive handler lookup: key={}", key);
     ArchiveStoreContext handler = archiveHandlers.get(key);
     if (handler == null) return null;
     archiveHandlers.push(key, handler);
@@ -234,7 +234,7 @@ public class ArchiveManager {
 
   /**
    * Create an archive handler. This does not need to know how to fetch the key, because the methods
-   * called later will ask. It will try to serve from cache, but if that fails, will re-fetch.
+   * called later will ask. It will try to serve from a cache, but if that fails, it will re-fetch.
    *
    * @param key The key of the archive that we are extracting data from.
    * @param archiveType The archive type, defined in Metadata.
@@ -260,15 +260,16 @@ public class ArchiveManager {
   /**
    * Creates a handler for interacting with a specific archive.
    *
-   * <p>The returned handler consults cache state when possible and performs extraction on demand.
-   * The {@code persistent} flag may influence higher-level workflows but is not enforced here.
+   * <p>The returned handler consults the cache state when possible and performs extraction on
+   * demand. The {@code persistent} flag may influence higher-level workflows but is not enforced
+   * here.
    *
    * @param key archive key identifying the container to open; must not be {@code null}
    * @param archiveType archive format to expect when processing the stream
    * @param ctype optional compressor type for compressed containers; {@code null} for none
-   * @param forceRefetch whether to bypass cached handler state and rebuild a fresh view
+   * @param forceRefetch whether to bypass the cached handler state and rebuild a fresh view
    * @param persistent whether the resulting workflow participates in persistent client flows
-   * @return a non-null handler for subsequent archive operations
+   * @return a non-null handler for later archive operations
    */
   public ArchiveHandler makeHandler(
       FreenetURI key,
@@ -285,8 +286,9 @@ public class ArchiveManager {
   /**
    * Returns a cached, previously extracted file from an archive if available.
    *
-   * <p>This does not trigger new extraction. When present, the returned {@link Bucket} is readable
-   * and owned by the cache; callers should read or copy its contents and free resources when done.
+   * <p>This does not trigger a new extraction. When present, the returned {@link Bucket} is
+   * readable and owned by the cache; callers should read or copy its contents and free resources
+   * when done.
    *
    * @param key the archive key used at extraction time; must match the cached record
    * @param filename the exact member name within the archive, using normalized separators
@@ -294,7 +296,8 @@ public class ArchiveManager {
    * @throws ArchiveFailureException if a cached record exists but cannot be opened for reading
    */
   public Bucket getCached(FreenetURI key, String filename) throws ArchiveFailureException {
-    if (LOG.isDebugEnabled()) LOG.debug("Fetch cached: {} {}", key, filename);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Archive entry cache lookup: key={} name={}", key, filename);
     ArchiveKey k = new ArchiveKey(key, filename);
     ArchiveStoreItem asi;
     synchronized (this) {
@@ -303,7 +306,7 @@ public class ArchiveManager {
       // Promote to top of LRU
       storedData.push(k, asi);
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Found data");
+    if (LOG.isDebugEnabled()) LOG.debug("Archive entry cache hit");
     return asi.getReaderBucket();
   }
 
@@ -320,7 +323,7 @@ public class ArchiveManager {
     // Soft disk space limit = we go over the limit significantly when we
     // are overloaded.
     cachedData -= size;
-    if (LOG.isDebugEnabled()) LOG.debug("removeCachedItem: {}", item);
+    if (LOG.isDebugEnabled()) LOG.debug("Archive cache remove item: {}", item);
     item.close();
   }
 
@@ -328,7 +331,7 @@ public class ArchiveManager {
    * Extract data to cache. Call synchronized on ctx.
    *
    * @param input source inputs describing the archive bytes and associated contexts
-   * @param elementRequest requested element and callback details; element may be {@code null}
+   * @param elementRequest requested element and callback details; the element may be {@code null}
    * @throws ArchiveFailureException If we could not extract the data, or it was too big, etc.
    * @throws ArchiveRestartException If the request needs to be restarted because the archive
    *     changed.
@@ -344,7 +347,7 @@ public class ArchiveManager {
 
     MutableBoolean gotElement = element != null ? new MutableBoolean() : null;
 
-    if (LOG.isDebugEnabled()) LOG.debug("Extracting {}", key);
+    if (LOG.isDebugEnabled()) LOG.debug("Extracting archive: key={}", key);
     ctx.removeAllCachedItems(this); // flush cache anyway
     final long expectedSize = ctx.getLastSize();
     final long archiveSize = data.size();
@@ -375,7 +378,8 @@ public class ArchiveManager {
     else if (archiveSize <= 0)
       throw new ArchiveFailureException("Archive too small! (" + archiveSize + ')');
     else if (LOG.isDebugEnabled())
-      LOG.debug("Container size (possibly compressed): {} for {}", archiveSize, data);
+      LOG.debug(
+          "Archive container size (possibly compressed): bytes={} bucket={}", archiveSize, data);
 
     try {
       ArchiveExtractionState state =
@@ -383,7 +387,7 @@ public class ArchiveManager {
       ExceptionWrapper wrapper = processByCompressor(state);
       checkWrapperException(wrapper);
     } catch (IOException ioe) {
-      throw new ArchiveFailureException("An IOE occured: " + ioe.getMessage(), ioe);
+      throw new ArchiveFailureException("An IOE occurred: " + ioe.getMessage(), ioe);
     }
   }
 
@@ -391,7 +395,8 @@ public class ArchiveManager {
     if (wrapper == null) return;
     Exception e = wrapper.get();
     if (e != null)
-      throw new ArchiveFailureException("An exception occured decompressing: " + e.getMessage(), e);
+      throw new ArchiveFailureException(
+          "An exception occurred decompressing: " + e.getMessage(), e);
   }
 
   private ExceptionWrapper processByCompressor(ArchiveExtractionState state)
@@ -419,7 +424,7 @@ public class ArchiveManager {
 
   private ExceptionWrapper handleNoCompressionOrZip(ArchiveExtractionState state)
       throws IOException, ArchiveFailureException, ArchiveRestartException {
-    if (LOG.isDebugEnabled()) LOG.debug("No compression");
+    if (LOG.isDebugEnabled()) LOG.debug("Archive stream: no compression");
     try (InputStream is = state.input.data.getInputStream()) {
       handleArchiveWithStream(state, is);
     }
@@ -428,7 +433,7 @@ public class ArchiveManager {
 
   private ExceptionWrapper handleBzip2(ArchiveExtractionState state)
       throws IOException, ArchiveFailureException, ArchiveRestartException {
-    if (LOG.isDebugEnabled()) LOG.debug("dealing with BZIP2");
+    if (LOG.isDebugEnabled()) LOG.debug("Archive stream: BZIP2 decompression");
     try (InputStream baseIs = state.input.data.getInputStream();
         InputStream is = new BZip2CompressorInputStream(baseIs)) {
       handleArchiveWithStream(state, is);
@@ -438,7 +443,7 @@ public class ArchiveManager {
 
   private ExceptionWrapper handleGzip(ArchiveExtractionState state)
       throws IOException, ArchiveFailureException, ArchiveRestartException {
-    if (LOG.isDebugEnabled()) LOG.debug("dealing with GZIP");
+    if (LOG.isDebugEnabled()) LOG.debug("Archive stream: GZIP decompression");
     try (InputStream baseIs = state.input.data.getInputStream();
         InputStream is = new GZIPInputStream(baseIs)) {
       handleArchiveWithStream(state, is);
@@ -475,7 +480,7 @@ public class ArchiveManager {
 
   private ExceptionWrapper handleLzma(ArchiveExtractionState state)
       throws IOException, ArchiveFailureException, ArchiveRestartException {
-    if (LOG.isDebugEnabled()) LOG.debug("dealing with LZMA");
+    if (LOG.isDebugEnabled()) LOG.debug("Archive stream: LZMA decompression");
     try (InputStream baseIs = state.input.data.getInputStream();
         InputStream is = new LzmaInputStream(baseIs)) {
       handleArchiveWithStream(state, is);
@@ -498,7 +503,7 @@ public class ArchiveManager {
 
   private void handleTARArchive(ArchiveExtractionState state, InputStream data)
       throws ArchiveFailureException, ArchiveRestartException {
-    if (LOG.isDebugEnabled()) LOG.debug("Handling a TAR Archive");
+    if (LOG.isDebugEnabled()) LOG.debug("Scanning TAR archive entries");
     ArchiveExtractionInput input = state.input;
     ArchiveElementRequest elementRequest = state.elementRequest;
     FreenetURI key = input.key;
@@ -517,9 +522,9 @@ public class ArchiveManager {
         if (!entry.isDirectory()) {
           String name = stripLeadingSlashes(entry.getName());
           if (isUnsafeEntryName(name)) {
-            LOG.error("Unsafe archive entry {} in archive {}", name, key);
+            LOG.error("TAR: unsafe archive entry {} in archive {}", name, key);
           } else if (names.contains(name)) {
-            LOG.error("Duplicate key {} in archive {}", name, key);
+            LOG.error("TAR: duplicate archive entry {} in archive {}", name, key);
           } else {
             long size = entry.getSize();
             gotMetadata |= processArchiveEntry(name, size, tarIS, state, names, buf);
@@ -543,7 +548,7 @@ public class ArchiveManager {
 
   private void handleZIPArchive(ArchiveExtractionState state, InputStream data)
       throws ArchiveFailureException, ArchiveRestartException {
-    if (LOG.isDebugEnabled()) LOG.debug("Handling a ZIP Archive");
+    if (LOG.isDebugEnabled()) LOG.debug("Scanning ZIP archive entries");
     ArchiveElementRequest elementRequest = state.elementRequest;
     ArchiveExtractCallback callback = elementRequest.callback;
     String element = elementRequest.element;
@@ -586,10 +591,10 @@ public class ArchiveManager {
     }
     String name = stripLeadingSlashes(entry.getName());
     if (isUnsafeEntryName(name)) {
-      LOG.error("Unsafe archive entry {} in archive {}", name, key);
+      LOG.error("ZIP: unsafe archive entry {} in archive {}", name, key);
       return false;
     } else if (names.contains(name)) {
-      LOG.error("Duplicate key {} in archive {}", name, key);
+      LOG.error("ZIP: duplicate archive entry {} in archive {}", name, key);
       return false;
     } else {
       long size = getSize(entry);
@@ -798,7 +803,7 @@ public class ArchiveManager {
    *
    * @param state extraction state carrying the cache context
    * @param name The name of the file within the archive.
-   * @param error The error message to be included on the eventual exception thrown, if anyone tries
+   * @param error The error message to be included on the eventual exception thrown if anyone tries
    *     to extract the data for this element.
    */
   private void addErrorElement(ArchiveExtractionState state, String name, String error) {
@@ -807,7 +812,8 @@ public class ArchiveManager {
     FreenetURI key = input.key;
     ErrorArchiveStoreItem element = new ErrorArchiveStoreItem(ctx, key, name, error, true);
     element.addToContext();
-    if (LOG.isDebugEnabled()) LOG.debug("Adding error element: {} for {} {}", element, key, name);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Archive cache error item added: {} for {} {}", element, key, name);
     ArchiveStoreItem oldItem;
     synchronized (this) {
       oldItem = storedData.get(element.key);
@@ -815,8 +821,7 @@ public class ArchiveManager {
       if (oldItem != null) {
         oldItem.close();
         cachedData -= oldItem.spaceUsed();
-        if (LOG.isDebugEnabled())
-          LOG.debug("Dropping old store element from archive cache: {}", oldItem);
+        if (LOG.isDebugEnabled()) LOG.debug("Archive cache evict after error insert: {}", oldItem);
       }
     }
   }
@@ -841,7 +846,11 @@ public class ArchiveManager {
     element.addToContext();
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Adding store element: {} ( {} {} size {} )", element, key, name, element.spaceUsed());
+          "Archive cache store item added: {} ( {} {} size {} )",
+          element,
+          key,
+          name,
+          element.spaceUsed());
     ArchiveStoreItem oldItem;
     // Let it throw, if it does something is drastically wrong
     Bucket matchBucket = null;
@@ -854,8 +863,7 @@ public class ArchiveManager {
       cachedData += element.spaceUsed();
       if (oldItem != null) {
         cachedData -= oldItem.spaceUsed();
-        if (LOG.isDebugEnabled())
-          LOG.debug("Dropping old store element from archive cache: {}", oldItem);
+        if (LOG.isDebugEnabled()) LOG.debug("Archive cache evict after store insert: {}", oldItem);
         oldItem.close();
       }
     }
@@ -887,7 +895,7 @@ public class ArchiveManager {
         }
         long space = item.spaceUsed();
         cachedData -= space;
-        // Hard limits = delete file within lock, soft limits = delete outside of lock
+        // Hard limits = delete the file within lock, soft limits = delete outside of lock
         // Here we use a hard limit
         if (LOG.isDebugEnabled())
           LOG.debug(

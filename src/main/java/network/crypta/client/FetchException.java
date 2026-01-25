@@ -43,8 +43,6 @@ import org.slf4j.LoggerFactory;
  */
 public class FetchException extends Exception {
   private static final Logger LOG = LoggerFactory.getLogger(FetchException.class);
-  private static final String LOG_INTERNAL_ERROR = "Internal error";
-  private static final String LOG_DEBUG_PATTERN = "FetchException({})";
 
   @Serial private static final long serialVersionUID = -1106716067841151962L;
 
@@ -52,9 +50,9 @@ public class FetchException extends Exception {
   public final FetchExceptionMode mode;
 
   /**
-   * Try this URI instead. If we fetch a USK and there is a more recent version, for example, we
-   * will get a FetchException, but it will give a new URI to try so we can update our links,
-   * bookmarks, or convert it to an HTTP Permanent Redirect.
+   * Try this URI instead. If we fetch a USK and there is a more recent version, we will get a
+   * FetchException. It will provide a new URI to try so we can update our links, bookmarks, or
+   * convert it to an HTTP Permanent Redirect.
    */
   public final FreenetURI newURI;
 
@@ -160,8 +158,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode only)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created (mode only): {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -183,8 +184,11 @@ public class FetchException extends Exception {
     newURI = null;
     this.expectedSize = expectedSize;
     this.expectedMimeType = expectedMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+size/mime)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created (mode+size/mime): {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -211,8 +215,11 @@ public class FetchException extends Exception {
     newURI = uri;
     this.expectedSize = expectedSize;
     this.expectedMimeType = expectedMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+size/mime+uri)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created (mode+size/mime+uri): {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -231,7 +238,9 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from metadata parse: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -250,7 +259,9 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from archive failure: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -269,7 +280,9 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from archive restart: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -288,8 +301,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+cause)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from cause: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -309,8 +325,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+reason+cause)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created with reason+cause: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -337,8 +356,11 @@ public class FetchException extends Exception {
     errorCodes = null;
     initCause(t);
     newURI = null;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+size+reason+cause)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created with size+reason+cause: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -364,7 +386,9 @@ public class FetchException extends Exception {
     errorCodes = null;
     initCause(t);
     newURI = null;
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from content filter: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -390,7 +414,9 @@ public class FetchException extends Exception {
     errorCodes = null;
     initCause(t);
     newURI = null;
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from unsafe content type: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -412,8 +438,11 @@ public class FetchException extends Exception {
     errorCodes = null;
     initCause(t);
     newURI = null;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+size+cause)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created with size+cause: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -425,7 +454,7 @@ public class FetchException extends Exception {
   public FetchException(FetchExceptionMode mode, FailureCodeTracker errorCodes) {
     super(getMessage(mode));
     if (errorCodes.isEmpty()) {
-      LOG.error("Failing with no error codes?!");
+      LOG.error("Failure code tracker empty for FetchException (mode+codes)");
     }
     extraMessage = null;
     this.mode = mode;
@@ -434,8 +463,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+codes)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from error codes: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -448,7 +480,7 @@ public class FetchException extends Exception {
   public FetchException(FetchExceptionMode mode, FailureCodeTracker errorCodes, String msg) {
     super(getMessage(mode) + ": " + msg);
     if (errorCodes.isEmpty()) {
-      LOG.error("Failing with no error codes?!");
+      LOG.error("Failure code tracker empty for FetchException (mode+codes+message)");
     }
     extraMessage = msg;
     this.mode = mode;
@@ -457,8 +489,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+codes+message)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created from error codes+message: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -476,8 +511,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+message)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created with message: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -495,8 +533,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+redirect uri)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created with redirect uri: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -515,8 +556,11 @@ public class FetchException extends Exception {
     expectedSize = -1;
     expectedMimeType = null;
     finalizedSizeAndMimeType = false;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error creating FetchException (mode+message+uri)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException created with message+uri: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -536,8 +580,11 @@ public class FetchException extends Exception {
     this.expectedSize = e.getExpectedSize();
     this.extraMessage = e.extraMessage;
     this.finalizedSizeAndMimeType = e.finalizedSizeAndMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error copying FetchException (new mode)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException copied with new mode: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -558,8 +605,11 @@ public class FetchException extends Exception {
     this.expectedSize = e.getExpectedSize();
     this.extraMessage = e.extraMessage;
     this.finalizedSizeAndMimeType = e.finalizedSizeAndMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error copying FetchException (new uri)", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException copied with new uri: {}", getMessage(mode), this);
+    }
   }
 
   /**
@@ -579,8 +629,11 @@ public class FetchException extends Exception {
     this.expectedSize = e.getExpectedSize();
     this.extraMessage = e.extraMessage;
     this.finalizedSizeAndMimeType = e.finalizedSizeAndMimeType;
-    if (mode == FetchExceptionMode.INTERNAL_ERROR) LOG.error(LOG_INTERNAL_ERROR, this);
-    else if (LOG.isDebugEnabled()) LOG.debug(LOG_DEBUG_PATTERN, getMessage(mode), this);
+    if (mode == FetchExceptionMode.INTERNAL_ERROR) {
+      LOG.error("Internal error copying FetchException", this);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("FetchException copied: {}", getMessage(mode), this);
+    }
   }
 
   /**

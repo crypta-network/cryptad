@@ -52,8 +52,13 @@ public class ClientPut extends ClientPutBase {
   /** Logger for lifecycle and diagnostic messages. */
   private static final Logger LOG = LoggerFactory.getLogger(ClientPut.class);
 
-  /** Debugging template that logs bucket identity and upload source. */
-  private static final String DATA_UPLOAD_LOG_TEMPLATE = "data = {}, uploadFrom = {}";
+  /** Debugging template for persistent uploads to log bucket identity and source. */
+  private static final String PERSISTENT_UPLOAD_LOG_TEMPLATE =
+      "Prepared persistent upload data: data = {}, uploadFrom = {}";
+
+  /** Debugging template for message-based uploads to log bucket identity and source. */
+  private static final String MESSAGE_UPLOAD_LOG_TEMPLATE =
+      "Prepared message upload data: data = {}, uploadFrom = {}";
 
   /** Serialization version for persistent request snapshots. */
   @Serial private static final long serialVersionUID = 1L;
@@ -157,7 +162,7 @@ public class ClientPut extends ClientPutBase {
     String mimeType = contentType;
     this.clientToken = request.clientToken();
     ClientMetadata cm = new ClientMetadata(mimeType);
-    if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
+    if (LOG.isDebugEnabled()) LOG.debug(PERSISTENT_UPLOAD_LOG_TEMPLATE, tempData, uploadFrom);
     PreparedData preparedData =
         ClientPutPreparedDataFactory.prepareForPersistentUpload(
             uploadFrom, cm, tempData, upload.redirectTarget(), core, isPersistentForever());
@@ -259,7 +264,7 @@ public class ClientPut extends ClientPutBase {
 
     ClientPutDiskUploadValidator.verifySaltedHash(diskContext, data, identifier, global);
 
-    if (LOG.isDebugEnabled()) LOG.debug(DATA_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
+    if (LOG.isDebugEnabled()) LOG.debug(MESSAGE_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
     ClientPutterRequest putterRequest =
         new ClientPutterRequest(
             this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata());

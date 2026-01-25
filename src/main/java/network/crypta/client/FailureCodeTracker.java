@@ -1,6 +1,10 @@
 package network.crypta.client;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -36,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * callbacks that may re-enter these APIs.
  *
  * <p>Typical usage is to create a tracker per higher-level request, increment codes as failures are
- * observed, and persist or serialize the snapshot (for example into a {@link
+ * observed, and persist or serialize the snapshot (for example, into a {@link
  * network.crypta.support.SimpleFieldSet}) so that progress and diagnostics survive restarts.
  *
  * <p>WARNING: Changing non-transient members on classes that are {@link Serializable} can result in
@@ -94,7 +98,7 @@ public class FailureCodeTracker implements Serializable {
     while (i.hasNext()) {
       String name = i.next();
       SimpleFieldSet f = fs.subset(name);
-      // We ignore the Description, if there is one; we just want the count
+      // We ignore the Description if there is one; we just want the count
       int num = Integer.parseInt(name);
       int count = Integer.parseInt(f.get("Count"));
       if (count < 0) throw new IllegalArgumentException("Count < 0");
@@ -158,7 +162,7 @@ public class FailureCodeTracker implements Serializable {
    */
   public synchronized void inc(int k) {
     if (k == 0) {
-      LOG.warn("Can't increment 0, not a valid failure mode");
+      LOG.warn("FailureCodeTracker.inc(int): zero failure code increment requested");
     }
     if (map == null) map = new HashMap<>();
     Integer key = k;
@@ -206,7 +210,7 @@ public class FailureCodeTracker implements Serializable {
    */
   public synchronized void inc(Integer k, int val) {
     if (k == 0) {
-      LOG.warn("Can't increment 0, not a valid failure mode");
+      LOG.warn("FailureCodeTracker.inc(Integer,int): zero failure code delta requested");
     }
     if (map == null) map = new HashMap<>();
     Integer i = map.get(k);
@@ -513,7 +517,7 @@ public class FailureCodeTracker implements Serializable {
    *
    * <p>The binary format starts with a magic value and version, followed by the mode’s upper limit
    * and then a dense array of four-byte counters from {@code 0} to {@code upperLimit-1}. This form
-   * is designed for layouts that must reserve a fixed region on disk such as splitfiles.
+   * is designed for layouts that must reserve a fixed region on the disk such as splitfiles.
    *
    * @param dos the destination stream; the method writes exactly {@link #getFixedLength(boolean)}
    *     bytes for the current mode
