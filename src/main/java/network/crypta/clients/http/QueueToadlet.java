@@ -254,8 +254,6 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String GROUPED_DOWNLOADS = "grouped-downloads";
   private static final String FILENAME = "filename";
   private static final String FRED_SUFFIX = "-fred-";
-  private static final String ERROR_SAME_FILE_MESSAGE =
-      "Cannot put same file twice in same millisecond";
   private static final String ERROR_ACCESS_DENIED_FILE_KEY = "errorAccessDeniedFile";
   private static final String ERROR_NO_FILE_OR_CANNOT_READ = "errorNoFileOrCannotRead";
   private static final String COMPRESS_LABEL = ", compress=";
@@ -315,8 +313,6 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final String INSERT_CONTEXT_COMPATIBILITY_MODE_PREFIX =
       "InsertContext.CompatibilityMode.";
   private static final String COMPLETED_LIST_PREFIX = "completed.list.";
-  private static final String NO_URI_FOR_FINISHED_REQUEST =
-      "No URI for supposedly finished request {}";
   private static final String QUEUE_TOADLET_PREFIX = "QueueToadlet.";
   private static final String USER_ALERT_HIDE = "UserAlert.hide";
 
@@ -453,7 +449,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
           try {
             String u = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
             insertURI = new FreenetURI(u);
-            if (LOG.isDebugEnabled()) LOG.debug("Inserting key: {} ({})", insertURI, u);
+            if (LOG.isDebugEnabled())
+              LOG.debug("Insert-local key specified: {} ({})", insertURI, u);
           } catch (MalformedURLException _) {
             writeError(l10n(ERROR_INVALID_URI), l10n(ERROR_INVALID_URI_TO_U), ctx, false, true);
             return true;
@@ -718,7 +715,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return false;
       }
       String identifier = request.getPartAsStringFailsafe(part, MAX_IDENTIFIER_LENGTH);
-      if (LOG.isDebugEnabled()) LOG.debug("Restarting {}", identifier);
+      if (LOG.isDebugEnabled()) LOG.debug("Restarting request {}", identifier);
       try {
         fcp.restartBlocking(identifier, disableFilterData);
       } catch (PersistenceDisabledException _) {
@@ -1227,7 +1224,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         if ("specify".equals(keyType)) {
           String uri = request.getPartAsStringFailsafe("key", MAX_KEY_LENGTH);
           FreenetURI insertURI = new FreenetURI(uri);
-          if (LOG.isDebugEnabled()) LOG.debug("Inserting key: {} ({})", insertURI, uri);
+          if (LOG.isDebugEnabled())
+            LOG.debug("Insert upload key specified: {} ({})", insertURI, uri);
           return insertURI;
         }
         writeError(
@@ -1333,7 +1331,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         writePermanentRedirect(ctx, "Done", path());
         return true;
       } catch (IdentifierCollisionException _) {
-        LOG.error(ERROR_SAME_FILE_MESSAGE);
+        LOG.error(
+            "Upload insert request collision: cannot put same file twice in same millisecond");
         writePermanentRedirect(ctx, "Done", path());
         return false;
       } catch (NotAllowedException _) {
@@ -1414,7 +1413,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         fcp.startBlocking(clientPut);
         return true;
       } catch (IdentifierCollisionException _) {
-        LOG.error(ERROR_SAME_FILE_MESSAGE);
+        LOG.error("Upload insert start collision: cannot put same file twice in same millisecond");
         writePermanentRedirect(ctx, "Done", path());
         return false;
       } catch (PersistenceDisabledException _) {
@@ -1457,7 +1456,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     private LocalFileInsertParams parseLocalFileParams(HTTPRequest request, ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
       String filename = request.getPartAsStringFailsafe(FILENAME, MAX_FILENAME_LENGTH);
-      if (LOG.isDebugEnabled()) LOG.debug("Inserting local file: {}", filename);
+      if (LOG.isDebugEnabled()) LOG.debug("Insert local file selection: {}", filename);
 
       File file = new File(filename);
       String identifier = file.getName() + FRED_SUFFIX + System.currentTimeMillis();
@@ -1536,7 +1535,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         writePermanentRedirect(ctx, "Done", path());
         return true;
       } catch (IdentifierCollisionException _) {
-        LOG.error(ERROR_SAME_FILE_MESSAGE);
+        LOG.error("Local file insert collision: cannot put same file twice in same millisecond");
         writePermanentRedirect(ctx, "Done", path());
         return false;
       } catch (MalformedURLException _) {
@@ -1636,7 +1635,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     private LocalDirInsertParams parseLocalDirParams(HTTPRequest request, ToadletContext ctx)
         throws ToadletContextClosedException, IOException {
       String filename = request.getPartAsStringFailsafe(FILENAME, MAX_FILENAME_LENGTH);
-      if (LOG.isDebugEnabled()) LOG.debug("Inserting local directory: {}", filename);
+      if (LOG.isDebugEnabled()) LOG.debug("Insert local directory selection: {}", filename);
 
       File file = new File(filename);
       String identifier = file.getName() + FRED_SUFFIX + System.currentTimeMillis();
@@ -1712,7 +1711,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         writePermanentRedirect(ctx, "Done", path());
         return true;
       } catch (IdentifierCollisionException _) {
-        LOG.error(ERROR_SAME_FILE_MESSAGE);
+        LOG.error(
+            "Local directory insert collision: cannot put same file twice in same millisecond");
         writePermanentRedirect(ctx, "Done", path());
         return false;
       } catch (MalformedURLException _) {
@@ -4685,7 +4685,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return temp;
       } catch (IOException e) {
         LOG.error(
-            "Unable to save completed requests list (can't find node directory?!!?): {}", e, e);
+            "Unable to create temporary completed requests list (node dir missing?): {}", e, e);
         return null;
       }
     }
@@ -4705,7 +4705,9 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return true;
       } catch (FileNotFoundException e) {
         LOG.error(
-            "Unable to save completed requests list (can't find node directory?!!?): {}", e, e);
+            "Unable to open completed requests temp list for writing (node dir missing?): {}",
+            e,
+            e);
         return false;
       } catch (IOException e) {
         LOG.error("Unable to save completed requests list: {}", e, e);
@@ -4721,7 +4723,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       boolean renamedToBackup = temp.renameTo(completedIdentifiersListNew);
       if (!renamedToBackup) {
         LOG.error(
-            "Unable to store completed identifiers list because unable to rename {} to {}",
+            "Unable to move completed identifiers list temp {} to backup {}",
             temp,
             completedIdentifiersListNew);
         return;
@@ -4732,7 +4734,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
             "existing completed identifiers list " + completedIdentifiersList);
         if (!completedIdentifiersListNew.renameTo(completedIdentifiersList)) {
           LOG.error(
-              "Unable to store completed identifiers list because unable to rename {} to {}",
+              "Unable to move completed identifiers list backup {} to final {}",
               completedIdentifiersListNew,
               completedIdentifiersList);
         }
@@ -4760,7 +4762,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         case ClientGet get -> {
           FreenetURI uri = get.getURI();
           if (uri == null) {
-            LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
+            LOG.error("No URI for finished GET request {}", req);
             return;
           }
           long size = get.getDataSize();
@@ -4773,7 +4775,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         case ClientPut put -> {
           FreenetURI uri = put.getFinalURI();
           if (uri == null) {
-            LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
+            LOG.error("No URI for finished PUT request {}", req);
             return;
           }
           long size = put.getDataSize();
@@ -4786,7 +4788,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         case ClientPutDir dir -> {
           FreenetURI uri = dir.getFinalURI();
           if (uri == null) {
-            LOG.error(NO_URI_FOR_FINISHED_REQUEST, req);
+            LOG.error("No URI for finished PUTDIR request {}", req);
             return;
           }
           long size = dir.getTotalDataSize();
