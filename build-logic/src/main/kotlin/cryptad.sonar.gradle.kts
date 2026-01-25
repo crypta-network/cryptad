@@ -1,4 +1,3 @@
-import java.io.File
 import javax.xml.stream.XMLInputFactory
 import javax.xml.stream.XMLOutputFactory
 import javax.xml.stream.XMLStreamConstants
@@ -78,9 +77,11 @@ extensions.configure<SonarLintSettings>("sonarLint") {
 //   ./gradlew sonarlintFile -Psonarlint.file=src/main/java/SevenZip/LzmaAlone.java
 //   (aliases: -Pfile=..., -Psonarlint.sources=...)
 val sourceSets: SourceSetContainer = extensions.getByType(SourceSetContainer::class.java)
-val kotlinTestReportDir = layout.buildDirectory.dir("sonar-test-results/kotlin")
-val testExecutionReportFile = layout.buildDirectory.file("sonar-test-results/test-execution.xml")
-val testResultsDir = layout.buildDirectory.dir("test-results/test")
+val kotlinTestReportDir: Provider<Directory> =
+  layout.buildDirectory.dir("sonar-test-results/kotlin")
+val testExecutionReportFile: Provider<RegularFile> =
+  layout.buildDirectory.file("sonar-test-results/test-execution.xml")
+val testResultsDir: Provider<Directory> = layout.buildDirectory.dir("test-results/test")
 
 tasks.register("prepareKotlinTestReports") {
   group = "verification"
@@ -223,14 +224,11 @@ tasks.register("prepareTestExecutionReport") {
                       )
                     }
                     val sourceFile =
-                      relativePaths
-                        .asSequence()
-                        .mapNotNull { relativePath ->
-                          testSourceDirs
-                            .firstOrNull { srcDir -> File(srcDir, relativePath).isFile }
-                            ?.let { srcDir -> File(srcDir, relativePath) }
-                        }
-                        .firstOrNull() ?: continue
+                      relativePaths.firstNotNullOfOrNull { relativePath ->
+                        testSourceDirs
+                          .firstOrNull { srcDir -> File(srcDir, relativePath).isFile }
+                          ?.let { srcDir -> File(srcDir, relativePath) }
+                      } ?: continue
                     val sonarPath = project.relativePath(sourceFile)
                     byFile
                       .getOrPut(sonarPath) { mutableListOf() }

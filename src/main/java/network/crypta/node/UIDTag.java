@@ -27,6 +27,8 @@ import org.slf4j.LoggerFactory;
 public abstract class UIDTag {
   private static final Logger LOG = LoggerFactory.getLogger(UIDTag.class);
   private static final String DEBUG_EXCEPTION_MESSAGE = "debug";
+  private static final String PEER_LOG_PREFIX = "peer=";
+  private static final String REMOVED_LOG_FRAGMENT = " removed=";
 
   // No static initialization required.
 
@@ -105,7 +107,7 @@ public abstract class UIDTag {
   public synchronized boolean addRoutedTo(PeerNode peer, boolean offeredKey) {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Route to {} on {}{}",
+          "event=route-add peer={} tag={}{}",
           peer,
           this,
           offeredKey ? " (offered)" : "",
@@ -123,7 +125,8 @@ public abstract class UIDTag {
     UIDTraceLogger.log(
         "routeAdd",
         this,
-        () -> "peer=" + peer.shortToString() + " offered=" + offeredKey + " added=" + added);
+        () ->
+            PEER_LOG_PREFIX + peer.shortToString() + " offered=" + offeredKey + " added=" + added);
     return added;
   }
 
@@ -176,7 +179,6 @@ public abstract class UIDTag {
    */
   public void removeFetchingOfferedKeyFrom(PeerNode next) {
     boolean removed;
-    boolean unlockNow;
     boolean localNoRecordUnlock;
     synchronized (this) {
       if (fetchingOfferedKeyFrom == null) return;
@@ -188,17 +190,27 @@ public abstract class UIDTag {
         UIDTraceLogger.log(
             "offerRemove",
             this,
-            () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=false");
+            () ->
+                PEER_LOG_PREFIX
+                    + next.shortToString()
+                    + REMOVED_LOG_FRAGMENT
+                    + removed
+                    + " unlock=false");
         return;
       }
-      unlockNow = true;
       localNoRecordUnlock = this.noRecordUnlock;
     }
     UIDTraceLogger.log(
         "offerRemove",
         this,
-        () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=" + unlockNow);
-    if (LOG.isDebugEnabled()) LOG.debug("Unlock tag {}", this);
+        () ->
+            PEER_LOG_PREFIX
+                + next.shortToString()
+                + REMOVED_LOG_FRAGMENT
+                + removed
+                + " unlock="
+                + true);
+    if (LOG.isDebugEnabled()) LOG.debug("event=unlock-tag-after-offer-remove tag={}", this);
     innerUnlock(localNoRecordUnlock);
   }
 
@@ -208,18 +220,17 @@ public abstract class UIDTag {
    * incoming requests; outgoing requests only consider outbound routing.
    *
    * <p>Do not call until the peer is reasonably certain we stopped routing to it. We unlock the
-   * handler as early as possible, without waiting for acknowledgement of our completion notice.
-   * Late on sending and early on accepting avoids the peer thinking we finished when we did not, or
-   * us thinking the next peer finished when it did not.
+   * handler as early as possible, without waiting to acknowledge our completion notice. Late on
+   * sending and early on accepting avoids the peer thinking we finished when we did not, or us
+   * thinking the next peer finished when it did not.
    *
    * @param next Peer we are no longer routing to.
    */
   public void removeRoutingTo(PeerNode next) {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Stop routing to {} on {}", next, this);
+      LOG.debug("event=route-remove peer={} tag={}", next, this);
     }
     boolean removed;
-    boolean unlockNow;
     boolean localNoRecordUnlock;
     synchronized (this) {
       if (currentlyRoutingTo == null) {
@@ -236,18 +247,28 @@ public abstract class UIDTag {
         UIDTraceLogger.log(
             "routeRemove",
             this,
-            () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=false");
+            () ->
+                PEER_LOG_PREFIX
+                    + next.shortToString()
+                    + REMOVED_LOG_FRAGMENT
+                    + removed
+                    + " unlock=false");
         return;
       }
-      unlockNow = true;
       localNoRecordUnlock = this.noRecordUnlock;
     }
     UIDTraceLogger.log(
         "routeRemove",
         this,
-        () -> "peer=" + next.shortToString() + " removed=" + removed + " unlock=" + unlockNow);
+        () ->
+            PEER_LOG_PREFIX
+                + next.shortToString()
+                + REMOVED_LOG_FRAGMENT
+                + removed
+                + " unlock="
+                + true);
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Unlock tag {}", this);
+      LOG.debug("event=unlock-tag-after-route-remove tag={}", this);
     }
     innerUnlock(localNoRecordUnlock);
   }
@@ -259,7 +280,7 @@ public abstract class UIDTag {
   /**
    * Called after {@link #innerUnlock(boolean)} to notify peers that tracked this tag.
    *
-   * <p>Best‑effort; missing peers are ignored.
+   * <p>The best‑effort; missing peers are ignored.
    */
   @SuppressWarnings("unused")
   public void postUnlock() {
@@ -351,7 +372,7 @@ public abstract class UIDTag {
 
   /**
    * Caller must call innerUnlock(noRecordUnlock) immediately if this returns true. Hence, derived
-   * versions should call mustUnlock() only after they have checked their own unlock blockers.
+   * versions should call mustUnlock() only after they have checked their own unlocking blockers.
    */
   protected synchronized boolean mustUnlock() {
     if (hasUnlocked || !unlockedHandler) {
@@ -367,7 +388,7 @@ public abstract class UIDTag {
     return true;
   }
 
-  // Helper assumes the monitor on this tag is already held by the caller.
+  // Helper assumes the caller already holds the monitor on this tag.
   private boolean hasOutstandingRoutingTo() {
     if (currentlyRoutingTo == null || currentlyRoutingTo.isEmpty()) {
       return false;
@@ -377,12 +398,12 @@ public abstract class UIDTag {
       if (!expected) {
         if (handlingTimeouts != null) {
           LOG.info(
-              "Unlock handler but still routing to {} - expected due to timeout; fork may succeed"
-                  + " while waiting for original",
+              "event=unlock-handler-routing-timeout peers={} (fork may succeed while waiting for"
+                  + " original)",
               currentlyRoutingTo);
         } else {
           LOG.error(
-              "Unlock handler but still routing to {} without reassignment on {}",
+              "event=unlock-handler-routing-blocked peers={} tag={} (no reassignment)",
               currentlyRoutingTo,
               this,
               new Exception(DEBUG_EXCEPTION_MESSAGE));
@@ -394,7 +415,7 @@ public abstract class UIDTag {
     return true;
   }
 
-  // Helper assumes the monitor on this tag is already held by the caller.
+  // Helper assumes the caller already holds the monitor on this tag.
   private boolean hasOutstandingOfferedKeyFetches() {
     if (fetchingOfferedKeyFrom == null || fetchingOfferedKeyFrom.isEmpty()) {
       return false;
@@ -404,7 +425,7 @@ public abstract class UIDTag {
       if (!expected) {
         // Fork succeeds can't happen for fetch-offered-keys.
         LOG.error(
-            "Unlock handler but still fetching offered keys from {} without reassignment on {}",
+            "event=unlock-handler-offer-fetch-blocked peers={} tag={} (no reassignment)",
             fetchingOfferedKeyFrom,
             this,
             new Exception(DEBUG_EXCEPTION_MESSAGE));
@@ -436,8 +457,8 @@ public abstract class UIDTag {
   /**
    * Unlock the handler. That is, the incoming request has finished. This method should be called
    * before the acknowledgement that the request has finished is sent downstream. Therefore, we will
-   * never be waiting for an acknowledgement from downstream in order to release the slot it is
-   * using, during which time it might think we are rejecting wrongly.
+   * never be waiting for an acknowledgement from downstream to release the slot it is using, during
+   * which time it might think we are rejecting wrongly.
    *
    * <p>Once both the incoming and outgoing requests are unlocked, the whole tag is unlocked.
    */
@@ -498,7 +519,7 @@ public abstract class UIDTag {
   public synchronized void handlingTimeout(PeerNode next) {
     if (handlingTimeouts == null) handlingTimeouts = new HashSet<>();
     handlingTimeouts.add(next);
-    UIDTraceLogger.log("handlingTimeout", this, () -> "peer=" + next.shortToString());
+    UIDTraceLogger.log("handlingTimeout", this, () -> PEER_LOG_PREFIX + next.shortToString());
   }
 
   private long loggedStillPresent;
@@ -543,11 +564,11 @@ public abstract class UIDTag {
   }
 
   // The third option is reassignToSelf(). We only use that when we actually
-  // want the data, and mean to continue. In that case, none of the next three
+  // want the data and mean to continue. In that case, none of the next three
   // are appropriate.
 
   /**
-   * Should we deduct this request from the source's limit, instead of counting it towards it? A
+   * Should we deduct this request from the source's limit instead of counting it towards it? A
    * normal request is counted towards it. A hidden request is deducted from it. This is used when
    * the source has restarted but also in some other cases.
    */
@@ -596,7 +617,7 @@ public abstract class UIDTag {
     // Consider using a counter on Node.
     // We must ensure it ALWAYS gets unset when some weird
     // error happens.
-    // Clearing on unlock may suffice depending on call paths.
+    // Clearing on unlocking may suffice depending on call paths.
     if (!waitingForSlot) return;
     waitingForSlot = false;
   }
