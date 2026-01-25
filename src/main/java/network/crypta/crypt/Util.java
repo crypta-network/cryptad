@@ -86,18 +86,26 @@ public class Util {
       if (md.getProvider() != sunMd.getProvider()) {
         long timeDef = benchmark(md);
         long timeSun = benchmark(sunMd);
-        LOG.debug("{} ({}): {}ns", algo, md.getProvider(), timeDef);
-        LOG.debug("{} ({}): {}ns", algo, sunMd.getProvider(), timeSun);
+        LOG.debug(
+            "event=digest.benchmark.default algo={} provider={} timeNs={}",
+            algo,
+            md.getProvider(),
+            timeDef);
+        LOG.debug(
+            "event=digest.benchmark.sun algo={} provider={} timeNs={}",
+            algo,
+            sunMd.getProvider(),
+            timeSun);
         if (timeSun < timeDef) {
           return sunMd;
         }
       }
     } catch (GeneralSecurityException e) {
       // ignore
-      LOG.warn("{}@{} benchmark failed", algo, sun, e);
+      LOG.warn("event=digest.benchmark.warn algo={} provider={}", algo, sun, e);
     } catch (Throwable e) {
       // ignore
-      LOG.error("{}@{} benchmark failed", algo, sun, e);
+      LOG.error("event=digest.benchmark.error algo={} provider={}", algo, sun, e);
     }
     return md;
   }
@@ -168,7 +176,7 @@ public class Util {
    *
    * @param num integer to encode (interpreted as non-negative)
    * @param out destination stream
-   * @throws IOException if the stream write fails
+   * @throws IOException if the stream writing fails
    */
   public static void writeMPI(BigInteger num, OutputStream out) throws IOException {
     out.write(mpiBytes(num));
@@ -177,9 +185,8 @@ public class Util {
   /**
    * Reads an MPI-encoded integer from {@code in}.
    *
-   * <p>Expects a two-byte big-endian bit-length header followed by that many bits of magnitude
-   * rounded up to a whole number of bytes. The returned value is constructed with a positive
-   * signum.
+   * <p>Expects a two-byte big-endian bit-length header followed by that many bits of size rounded
+   * up to a whole number of bytes. The returned value is constructed with a positive signum.
    *
    * @param in source stream
    * @return decoded non-negative {@link BigInteger}
@@ -278,7 +285,7 @@ public class Util {
     randomBytesSlowNextInt(r, buf, from, len);
   }
 
-  /** Fill specified range of byte array with random data. */
+  /** Fill a specified range of byte arrays with random data. */
   private static void randomBytesSlowNextInt(Random r, byte[] buf, int from, int len) {
     if (from == 0 && len == buf.length) {
       r.nextBytes(buf);

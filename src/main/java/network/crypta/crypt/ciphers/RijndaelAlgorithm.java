@@ -59,10 +59,6 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   private static final String TRACE_BLOCK_ENCRYPT = "blockEncrypt()";
   private static final String TRACE_BLOCK_DECRYPT = "blockDecrypt()";
   private static final String TRACE_BLOCK_DECRYPT_OPEN = "blockDecrypt(";
-  private static final String LOG_FMT_CT_WITH_ROUND = "CT{}={}";
-  private static final String LOG_FMT_CT = "CT={}";
-  private static final String LOG_FMT_PT_WITH_ROUND = "PT{}={}";
-  private static final String LOG_FMT_PT = "PT={}";
 
   private static void debug(String s) {
     if (LOG.isTraceEnabled()) LOG.trace(">>> " + NAME + ": {}", s);
@@ -118,7 +114,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("Algorithm Name: {}", FULL_NAME);
       LOG.debug("Electronic Codebook (ECB) Mode");
-      LOG.debug("");
+      LOG.debug("init.section=ecb-mode.end");
     }
     int root = 0x11B;
     int i;
@@ -157,17 +153,17 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     time = System.currentTimeMillis() - time;
 
     if (RDEBUG && LOG.isDebugEnabled()) {
-      LOG.debug("==========");
-      LOG.debug("");
+      LOG.debug("init.banner=begin");
+      LOG.debug("init.section=static-data.start");
       LOG.debug("Static Data");
-      LOG.debug("");
+      LOG.debug("init.section=static-data.header.end");
       LOG.debug("S[]:");
       for (i = 0; i < 16; i++) {
         StringBuilder sb = new StringBuilder();
         for (j = 0; j < 16; j++) sb.append("0x").append(byteToString(S[i * 16 + j])).append(", ");
         LOG.debug(sb.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=sbox.end");
       LOG.debug("Si[]:");
       for (i = 0; i < 16; i++) {
         StringBuilder sb2 = new StringBuilder();
@@ -175,7 +171,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
         LOG.debug(sb2.toString());
       }
 
-      LOG.debug("");
+      LOG.debug("init.section=inv-sbox.end");
       LOG.debug("iG[]:");
       for (i = 0; i < 4; i++) {
         StringBuilder sb3 = new StringBuilder();
@@ -183,56 +179,56 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
         LOG.debug(sb3.toString());
       }
 
-      LOG.debug("");
+      LOG.debug("init.section=ig.end");
       LOG.debug("T1[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT1 = new StringBuilder();
         for (j = 0; j < 4; j++) sbT1.append("0x").append(intToString(T1[i * 4 + j])).append(", ");
         LOG.debug(sbT1.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=t1.end");
       LOG.debug("T2[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT2 = new StringBuilder();
         for (j = 0; j < 4; j++) sbT2.append("0x").append(intToString(T2[i * 4 + j])).append(", ");
         LOG.debug(sbT2.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=t2.end");
       LOG.debug("T3[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT3 = new StringBuilder();
         for (j = 0; j < 4; j++) sbT3.append("0x").append(intToString(T3[i * 4 + j])).append(", ");
         LOG.debug(sbT3.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=t3.end");
       LOG.debug("T4[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT4 = new StringBuilder();
         for (j = 0; j < 4; j++) sbT4.append("0x").append(intToString(T4[i * 4 + j])).append(", ");
         LOG.debug(sbT4.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=t4.end");
       LOG.debug("T5[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT5 = new StringBuilder();
         for (j = 0; j < 4; j++) sbT5.append("0x").append(intToString(T5[i * 4 + j])).append(", ");
         LOG.debug(sbT5.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=t5.end");
       LOG.debug("T6[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT6 = new StringBuilder();
         for (j = 0; j < 4; j++) sbT6.append("0x").append(intToString(T6[i * 4 + j])).append(", ");
         LOG.debug(sbT6.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=t6.end");
       LOG.debug("T7[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT7 = new StringBuilder();
         for (j = 0; j < 4; j++) sbT7.append("0x").append(intToString(T7[i * 4 + j])).append(", ");
         LOG.debug(sbT7.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=t7.end");
       LOG.debug("T8[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbT8 = new StringBuilder();
@@ -240,28 +236,28 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
         LOG.debug(sbT8.toString());
       }
 
-      LOG.debug("");
+      LOG.debug("init.section=t8.end");
       LOG.debug("U1[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbU1 = new StringBuilder();
         for (j = 0; j < 4; j++) sbU1.append("0x").append(intToString(U1[i * 4 + j])).append(", ");
         LOG.debug(sbU1.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=u1.end");
       LOG.debug("U2[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbU2 = new StringBuilder();
         for (j = 0; j < 4; j++) sbU2.append("0x").append(intToString(U2[i * 4 + j])).append(", ");
         LOG.debug(sbU2.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=u2.end");
       LOG.debug("U3[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbU3 = new StringBuilder();
         for (j = 0; j < 4; j++) sbU3.append("0x").append(intToString(U3[i * 4 + j])).append(", ");
         LOG.debug(sbU3.toString());
       }
-      LOG.debug("");
+      LOG.debug("init.section=u3.end");
       LOG.debug("U4[]:");
       for (i = 0; i < 64; i++) {
         StringBuilder sbU4 = new StringBuilder();
@@ -269,7 +265,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
         LOG.debug(sbU4.toString());
       }
 
-      LOG.debug("");
+      LOG.debug("init.section=u4.end");
       LOG.debug("rcon[]:");
       for (i = 0; i < 5; i++) {
         StringBuilder sbR = new StringBuilder();
@@ -277,9 +273,9 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
         LOG.debug(sbR.toString());
       }
 
-      LOG.debug("");
+      LOG.debug("init.section=rcon.end");
       LOG.debug("Total initialization time: {} ms.", time);
-      LOG.debug("");
+      LOG.debug("init.section=complete");
     }
   }
 
@@ -536,7 +532,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       t3 = a3;
       if (RDEBUG && LOG.isDebugEnabled()) {
         LOG.debug(
-            LOG_FMT_CT_WITH_ROUND,
+            "event=blockEncrypt.round.ct round={} ct={}",
             r,
             intToString(t0) + intToString(t1) + intToString(t2) + intToString(t3));
       }
@@ -565,8 +561,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     result[14] = (byte) (S[t1 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
     result[15] = (byte) (S[t2 & 0xFF] ^ tt & 0xFF);
     if (RDEBUG && LOG.isDebugEnabled()) {
-      LOG.debug(LOG_FMT_CT, toString(result));
-      LOG.debug("");
+      LOG.debug("event=blockEncrypt.final.ct ct={}", toString(result));
+      LOG.debug("event=blockEncrypt.final.ct end");
     }
     if (RDEBUG) trace(OUT, TRACE_BLOCK_ENCRYPT);
   }
@@ -712,7 +708,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       t7 = a7;
       if (RDEBUG && LOG.isDebugEnabled()) {
         LOG.debug(
-            LOG_FMT_CT_WITH_ROUND,
+            "event=blockEncrypt256.round.ct round={} ct={}",
             r,
             intToString(t0) + intToString(t1) + intToString(t2) + intToString(t3));
       }
@@ -761,8 +757,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     result[30] = (byte) (S[t2 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
     result[31] = (byte) (S[t3 & 0xFF] ^ tt & 0xFF);
     if (RDEBUG && LOG.isDebugEnabled()) {
-      LOG.debug(LOG_FMT_CT, toString(result));
-      LOG.debug("");
+      LOG.debug("event=blockEncrypt256.final.ct ct={}", toString(result));
+      LOG.debug("event=blockEncrypt256.final.ct end");
     }
     if (RDEBUG) trace(OUT, TRACE_BLOCK_ENCRYPT);
   }
@@ -855,7 +851,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       t3 = a3;
       if (RDEBUG && LOG.isDebugEnabled()) {
         LOG.debug(
-            LOG_FMT_PT_WITH_ROUND,
+            "event=blockDecrypt.round.pt round={} pt={}",
             r,
             intToString(t0) + intToString(t1) + intToString(t2) + intToString(t3));
       }
@@ -884,8 +880,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     result[14] = (byte) (Si[t1 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
     result[15] = (byte) (Si[t0 & 0xFF] ^ tt & 0xFF);
     if (RDEBUG && LOG.isDebugEnabled()) {
-      LOG.debug(LOG_FMT_PT, toString(result));
-      LOG.debug("");
+      LOG.debug("event=blockDecrypt.final.pt pt={}", toString(result));
+      LOG.debug("event=blockDecrypt.final.pt end");
     }
     if (RDEBUG) trace(OUT, TRACE_BLOCK_DECRYPT);
   }
@@ -1038,7 +1034,12 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       t7 = a7;
       if (RDEBUG && LOG.isDebugEnabled()) {
         LOG.debug(
-            "PT{}={}{}{}{}", r, intToString(t0), intToString(t1), intToString(t2), intToString(t3));
+            "event=blockDecrypt256.round.pt round={} pt0={} pt1={} pt2={} pt3={}",
+            r,
+            intToString(t0),
+            intToString(t1),
+            intToString(t2),
+            intToString(t3));
       }
     }
 
@@ -1085,8 +1086,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     result[30] = (byte) (Si[t4 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
     result[31] = (byte) (Si[t3 & 0xFF] ^ tt & 0xFF);
     if (RDEBUG && LOG.isDebugEnabled()) {
-      LOG.debug(LOG_FMT_PT, toString(result));
-      LOG.debug("");
+      LOG.debug("event=blockDecrypt256.final.pt pt={}", toString(result));
+      LOG.debug("event=blockDecrypt256.final.pt end");
     }
     if (RDEBUG) trace(OUT, TRACE_BLOCK_DECRYPT);
   }
@@ -1357,12 +1358,13 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
                 ^ T4[t[(i + s3) % bc] & 0xFF]
                 ^ ke[r][i];
       System.arraycopy(a, 0, t, 0, bc);
-      if (RDEBUG && LOG.isDebugEnabled()) LOG.debug(LOG_FMT_CT_WITH_ROUND, r, toString(t));
+      if (RDEBUG && LOG.isDebugEnabled())
+        LOG.debug("event=blockEncryptGeneric.round.ct round={} ct={}", r, toString(t));
     }
     finalRoundEncryptGeneric(ke, rounds, bc, sEnc, t, result);
     if (RDEBUG && LOG.isDebugEnabled()) {
-      LOG.debug(LOG_FMT_CT, toString(result));
-      LOG.debug("");
+      LOG.debug("event=blockEncryptGeneric.final.ct ct={}", toString(result));
+      LOG.debug("event=blockEncryptGeneric.final.ct end");
     }
     if (RDEBUG) trace(OUT, TRACE_BLOCK_ENCRYPT);
   }
@@ -1440,12 +1442,13 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
                 ^ T8[t[(i + s3) % bc] & 0xFF]
                 ^ kd[r][i];
       System.arraycopy(a, 0, t, 0, bc);
-      if (RDEBUG && LOG.isDebugEnabled()) LOG.debug(LOG_FMT_PT_WITH_ROUND, r, toString(t));
+      if (RDEBUG && LOG.isDebugEnabled())
+        LOG.debug("event=blockDecryptGeneric.round.pt round={} pt={}", r, toString(t));
     }
     finalRoundDecryptGeneric(kd, rounds, bc, sDec, t, result);
     if (RDEBUG && LOG.isDebugEnabled()) {
-      LOG.debug(LOG_FMT_PT, toString(result));
-      LOG.debug("");
+      LOG.debug("event=blockDecryptGeneric.final.pt pt={}", toString(result));
+      LOG.debug("event=blockDecryptGeneric.final.pt end");
     }
     if (RDEBUG) trace(OUT, TRACE_BLOCK_DECRYPT);
   }
@@ -1468,11 +1471,11 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       for (i = 0; i < BLOCK_SIZE; i++) pt[i] = (byte) i;
 
       if (RDEBUG && LOG.isDebugEnabled()) {
-        LOG.debug("==========");
-        LOG.debug("");
-        LOG.debug("KEYSIZE={}", 8 * keysize);
-        LOG.debug("KEY={}", toString(kb));
-        LOG.debug("");
+        LOG.debug("selftest.banner=begin");
+        LOG.debug("selftest.section=header.start");
+        LOG.debug("selftest.keysize.bits={}", 8 * keysize);
+        LOG.debug("selftest.key.material={}", toString(kb));
+        LOG.debug("selftest.section=header.end");
       }
       ok = encryptDecryptAndCompare(kb, pt);
       if (!ok) throw new IllegalStateException("Symmetric operation failed");
@@ -1490,15 +1493,15 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     Object key = makeKey(kb, BLOCK_SIZE);
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("Intermediate Ciphertext Values (Encryption)");
-      LOG.debug("");
-      LOG.debug(LOG_FMT_PT, toString(pt));
+      LOG.debug("selftest.section=encrypt.intermediate.start");
+      LOG.debug("event=selftest.intermediate.pt block=128 pt={}", toString(pt));
     }
     byte[] ct = new byte[BLOCK_SIZE];
     blockEncrypt(pt, ct, 0, key, BLOCK_SIZE);
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("Intermediate Plaintext Values (Decryption)");
-      LOG.debug("");
-      LOG.debug(LOG_FMT_CT, toString(ct));
+      LOG.debug("selftest.section=decrypt.intermediate.start");
+      LOG.debug("event=selftest.intermediate.ct block=128 ct={}", toString(ct));
     }
     byte[] cpt = new byte[BLOCK_SIZE];
     blockDecrypt(ct, cpt, 0, key, BLOCK_SIZE);
