@@ -73,7 +73,7 @@ public class PluginJarUpdater extends NodeUpdater {
       if (deployOnNextNoRevocation) {
         deployOnNoRevocation = true;
         deployOnNextNoRevocation = false;
-        LOG.info("{}{} after next revocation check", DEPLOYING_PREFIX, pluginName);
+        LOG.info("Revocation gate opened for deployment: {}{}", DEPLOYING_PREFIX, pluginName);
         return true;
       }
       if (!deployOnNoRevocation) return false;
@@ -345,10 +345,10 @@ public class PluginJarUpdater extends NodeUpdater {
       try {
         boolean deleted = Files.deleteIfExists(fNew.toPath());
         if (!deleted && fNew.exists()) {
-          LOG.warn("Can't delete {}!", fNew);
+          LOG.warn("Failed to delete existing plugin jar before write: {}", fNew);
         }
       } catch (IOException ex) {
-        LOG.warn("Can't delete {}!", fNew, ex);
+        LOG.warn("Failed to delete existing plugin jar before write (exception): {}", fNew, ex);
       }
 
       try (FileOutputStream fos = new FileOutputStream(fNew)) {
@@ -395,10 +395,13 @@ public class PluginJarUpdater extends NodeUpdater {
   public synchronized void arm(boolean wasRunning) {
     if (wasRunning) {
       deployOnNextNoRevocation = true;
-      LOG.info("{}{} after next but one revocation check", DEPLOYING_PREFIX, pluginName);
+      LOG.info(
+          "Scheduling deployment after next-but-one revocation check: {}{}",
+          DEPLOYING_PREFIX,
+          pluginName);
     } else {
       deployOnNoRevocation = true;
-      LOG.info("{}{} after next revocation check", DEPLOYING_PREFIX, pluginName);
+      LOG.info("Armed deployment for next revocation check: {}{}", DEPLOYING_PREFIX, pluginName);
     }
   }
 
