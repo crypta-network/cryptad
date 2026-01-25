@@ -281,9 +281,9 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       Message msg;
       try {
         msg = node.network().usm().waitFor(mf, this);
-        if (LOG.isDebugEnabled()) LOG.debug("first part got {}", msg);
+        if (LOG.isDebugEnabled()) LOG.debug("Accepted wait received {}", msg);
       } catch (DisconnectedException _) {
-        LOG.info("Disconnected from {} while waiting for Accepted on {}", next, uid);
+        LOG.info("Disconnected from {} while waiting for Accepted (uid={})", next, uid);
         return false;
       }
 
@@ -331,22 +331,22 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
   private AcceptWaitOutcome evaluateAcceptedMessage(Message msg) {
     if (msg == null) {
-      if (LOG.isDebugEnabled()) LOG.debug("Timeout waiting for Accepted");
+      if (LOG.isDebugEnabled()) LOG.debug("Accepted wait timed out");
       return AcceptWaitOutcome.TRY_ANOTHER;
     }
     if (msg.getSpec() == DMT.FNPRejectedLoop) {
-      if (LOG.isDebugEnabled()) LOG.debug("Rejected loop");
+      if (LOG.isDebugEnabled()) LOG.debug("Accepted rejected: loop");
       return AcceptWaitOutcome.TRY_ANOTHER;
     } else if (msg.getSpec() == DMT.FNPRejectedOverload) {
-      if (LOG.isDebugEnabled()) LOG.debug("Rejected: overload");
+      if (LOG.isDebugEnabled()) LOG.debug("Accepted rejected: overload");
       return AcceptWaitOutcome.TRY_ANOTHER;
     } else if (msg.getSpec() == DMT.FNPOpennetDisabled) {
-      if (LOG.isDebugEnabled()) LOG.debug("Opennet disabled");
+      if (LOG.isDebugEnabled()) LOG.debug("Accepted rejected: opennet disabled");
       return AcceptWaitOutcome.TRY_ANOTHER;
     } else if (msg.getSpec() == DMT.FNPAccepted) {
       return AcceptWaitOutcome.ACCEPTED;
     }
-    LOG.error("Unrecognized message: {}", msg);
+    LOG.error("Unrecognized accepted-wait message: {}", msg);
     return AcceptWaitOutcome.KEEP_WAITING;
   }
 
@@ -367,10 +367,10 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       try {
         msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
-        LOG.info("Disconnected from {} while waiting for announcement", next);
+        LOG.info("Disconnected from {} while waiting for final announcement response", next);
         return Flow.CONTINUE;
       }
-      if (LOG.isDebugEnabled()) LOG.debug("second part got {}", msg);
+      if (LOG.isDebugEnabled()) LOG.debug("Final response received {}", msg);
 
       FinalOutcome outcome = evaluateFinalMessage(msg, next);
       switch (outcome) {
@@ -458,7 +458,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       return handler.apply(msg, next);
     }
 
-    LOG.error("Unexpected message: {}", msg);
+    LOG.error("Unexpected final-response message: {}", msg);
     return FinalOutcome.KEEP_WAITING;
   }
 
@@ -497,7 +497,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private FinalOutcome handleOpennetDisabled(Message msg, PeerNode next) {
-    LOG.debug("Opennet disabled");
+    LOG.debug("Final response: opennet disabled");
     return FinalOutcome.CONTINUE;
   }
 
