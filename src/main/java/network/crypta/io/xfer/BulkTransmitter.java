@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>It streams block-sized packets, tracks in-flight packets, and—unless {@code noWait} is
  * true—waits for the final {@code FNPBulkReceivedAll} acknowledgement before reporting success.
- * Local aborts or remote cancellations unblock the send loop promptly.
+ * Local aborts or remote cancellations unblock the sending loop promptly.
  *
  * <p>Threading: state transitions synchronize on {@code this}. Instances are notified by {@link
  * PartiallyReceivedBulk} (new blocks or abort) and by asynchronous message filters registered on
@@ -37,7 +37,7 @@ public class BulkTransmitter {
   private static final Logger LOG = LoggerFactory.getLogger(BulkTransmitter.class);
 
   /**
-   * Callback invoked when all packets have been queued and their send callbacks have fired.
+   * Callback invoked when all packets have been queued and their sending callbacks have fired.
    *
    * <p>The callback is invoked at most once, asynchronously on the message executor.
    */
@@ -321,13 +321,13 @@ public class BulkTransmitter {
   }
 
   /**
-   * Runs the send loop until success, failure, or cancellation.
+   * Runs the sending loop until success, failure, or cancellation.
    *
    * <p>When {@code noWait} is {@code true} and the full file is already present locally, this
    * method completes after enqueueing all packets without waiting for the final acknowledgement.
    *
    * @return {@code true} if the peer acknowledged receipt (or {@code noWait} short-circuited after
-   *     enqueueing); {@code false} if cancelled, aborted, or timed out
+   *     enqueueing); {@code false} if canceled, aborted, or timed out
    * @throws DisconnectedException if the peer disconnects or restarts during the transfer
    */
   public boolean send() throws DisconnectedException {
@@ -382,7 +382,7 @@ public class BulkTransmitter {
     }
 
     long ts = sendPacket(blockNo, max);
-    if (ts < 0) return IterationResult.fail(lastSentPacket); // Already cancelled, quit
+    if (ts < 0) return IterationResult.fail(lastSentPacket); // Already canceled, quit
     return IterationResult.cont(ts);
   }
 
@@ -448,12 +448,12 @@ public class BulkTransmitter {
    * <p>When the transmitter temporarily runs out of locally available blocks, we do not want to
    * stall until every outstanding packet completes. New blocks may arrive (via {@link
    * #blockReceived(int)}) while there are still packets in flight; in that case, we should return
-   * to the outer send loop as soon as we are woken so the new block can be queued the moment the
+   * to the outer sending loop as soon as we are woken so the new block can be queued the moment the
    * congestion window permits.
    *
    * <p>Return semantics: - {@code Outcome.FAILED}: a packet failed while waiting. - {@code
    * Outcome.CONTINUE}: woke before fully draining; re-check availability and possibly send. -
-   * {@code null}: in-flight packets fully drained; caller may proceed to ACK/abort wait path.
+   * {@code null}: in-flight packets fully drained; caller may proceed to ACK/abort the wait path.
    */
   @SuppressWarnings("java:S2142")
   private Outcome waitForInFlightToDrainOrContinue() {
@@ -474,7 +474,7 @@ public class BulkTransmitter {
           wait();
         } catch (InterruptedException _) {
           // Ignore and continue waiting; do not reassert the interrupt flag (see java:S2142).
-          // We must not exit early here, or subsequent waits will spin and bypass throttling.
+          // We must not exit early here, or further waits will spin and bypass throttling.
           interruptedDuringWait = true; // restored by send() finally block
         }
       }
@@ -483,7 +483,7 @@ public class BulkTransmitter {
         cancel("Packet send failed");
         return Outcome.FAILED;
       }
-      if (inFlightPackets == 0) return null; // Fully drained, proceed to ACK wait path.
+      if (inFlightPackets == 0) return null; // Fully drained, proceed to ACK the wait path.
       // A new block is now available; give control back to the outer loop to enqueue it
       // (congestion control still enforced in waitWhileCongested()).
       return Outcome.CONTINUE;
@@ -534,7 +534,7 @@ public class BulkTransmitter {
     if (buf == null) {
       if (LOG.isDebugEnabled())
         LOG.debug("Block {} is null, presumably the send is cancelled: {}", blockNo, this);
-      // Already cancelled, quit
+      // Already canceled, quit
       return -1L;
     }
 
@@ -578,7 +578,8 @@ public class BulkTransmitter {
       synchronized (this) {
         allQueued = true;
         if (unsentPackets == 0 && !calledAllSent) {
-          if (LOG.isDebugEnabled()) LOG.debug("Calling all sent callback on {}", this);
+          if (LOG.isDebugEnabled())
+            LOG.debug("All packets queued; invoking all-sent callback for {}", this);
           callAllSent = true;
           calledAllSent = true;
           anyFailed = failedPacket;
@@ -688,7 +689,8 @@ public class BulkTransmitter {
         calledAllSent = true;
         anyFailed = failedPacket;
       }
-      if (LOG.isDebugEnabled()) LOG.debug("Calling all sent callback on {}", this);
+      if (LOG.isDebugEnabled())
+        LOG.debug("All packets sent; invoking all-sent callback for {}", this);
       callAllSentCallbackInner(anyFailed);
     }
   }
@@ -699,7 +701,7 @@ public class BulkTransmitter {
     return "BulkTransmitter:" + uid + ":" + peer.shortToString();
   }
 
-  /** Returns the cancellation reason, or {@code null} if not cancelled. */
+  /** Returns the cancellation reason, or {@code null} if not canceled. */
   public String getCancelReason() {
     return cancelReason;
   }
