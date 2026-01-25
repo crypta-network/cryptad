@@ -296,7 +296,8 @@ public class SeednodePingTest extends RealNodeTest {
       boolean ping = seednode.transport().ping(pingId);
       if (ping && LOG.isErrorEnabled()) {
         LOG.error(
-            "{} uptime={} ping={} pingTime={} uptime={} timeDelta={}",
+            "Seednode ping result identity={} uptime={} ping={} pingTime={} reportedUptime={}"
+                + " timeDelta={}",
             seednode.getIdentityString(),
             uptime,
             true,
@@ -321,11 +322,14 @@ public class SeednodePingTest extends RealNodeTest {
       FATE fate = seednode.getFate();
       totals.put(fate, totals.getOrDefault(fate, 0) + 1);
       LOG.error(
-          "{} : {} : {}", seednode.getIdentityString(), fate, seednode.getPeerNodeStatusString());
+          "Seednode fate snapshot identity={} fate={} status={}",
+          seednode.getIdentityString(),
+          fate,
+          seednode.getPeerNodeStatusString());
     }
-    LOG.error("TOTALS:");
+    LOG.error("Seednode fate totals:");
     for (Entry<FATE, Integer> fateEntry : totals.entrySet()) {
-      LOG.error("{} : {}", fateEntry.getKey(), fateEntry.getValue());
+      LOG.error("Seednode fate total fate={} count={}", fateEntry.getKey(), fateEntry.getValue());
     }
   }
 
@@ -343,21 +347,24 @@ public class SeednodePingTest extends RealNodeTest {
       FATE fate = seednode.getFate();
       totals.put(fate, totals.getOrDefault(fate, 0) + 1);
       LOG.error(
-          "{} : {} : {}", seednode.getIdentityString(), fate, seednode.getPeerNodeStatusString());
+          "Seednode final fate identity={} fate={} status={}",
+          seednode.getIdentityString(),
+          fate,
+          seednode.getPeerNodeStatusString());
     }
-    LOG.error("RESULT:TOTALS:");
+    LOG.error("Seednode final totals:");
     for (Entry<FATE, Integer> fateEntry : totals.entrySet()) {
-      LOG.error("RESULT:{} : {}", fateEntry.getKey(), fateEntry.getValue());
+      LOG.error("Seednode final total fate={} count={}", fateEntry.getKey(), fateEntry.getValue());
     }
-    LOG.error("Completed seednodes scan.");
+    LOG.error("Seednode scan completed.");
   }
 
   private static void writeFinalStatus(List<SeedServerTestPeerNode> seedNodes, long writeTime)
       throws IOException {
-    LOG.error("FINAL STATUS:");
+    LOG.error("Seednode final status lines:");
     for (SeedServerTestPeerNode peer : seedNodes) {
       String status = writeTime + " : " + peer.getIdentityString() + " : " + peer.getFate();
-      LOG.error("{}", status);
+      LOG.error("Seednode final status line: {}", status);
       File logFile = new File(statusDir, peer.getIdentityString());
       appendStatus(logFile, status);
       SeednodeHistory history = readHistory(logFile, writeTime);
