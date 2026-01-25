@@ -28,13 +28,13 @@ import org.slf4j.LoggerFactory;
  *
  * <p>State is limited to configured menus and the active {@linkplain #setTheme(THEME) theme};
  * rendering itself is stateless and produces fresh node trees on each invocation. The class is safe
- * to use from multiple threads provided callers synchronise mutations to shared navigation
+ * to use from multiple threads provided callers synchronize mutations to shared navigation
  * configuration. Expensive assets are loaded lazily and reused through standard browser caching.
  *
  * <ul>
  *   <li>Composes page heads with optional web-push bootstrap and theme assets.
  *   <li>Renders navigation/status controls that adapt to advanced-mode and access rights.
- *   <li>Provides helpers for localisation-aware CSS identifiers and infobox creation.
+ *   <li>Provides helpers for localization-aware CSS identifiers and infobox creation.
  * </ul>
  *
  * @see PageMaker.RenderParameters
@@ -75,7 +75,7 @@ public final class PageMaker {
    * <p>Each theme bundles a stylesheet, optional JavaScript, and hints that influence how the
    * welcome page is populated. The active theme is chosen through {@link #setTheme(THEME)} and is
    * baked into the generated head section. Themes are discoverable via {@link #possibleValues()} to
-   * assist configuration UIs.
+   * help configuration UIs.
    */
   public enum THEME {
     /**
@@ -177,11 +177,11 @@ public final class PageMaker {
    * <p>The identifier is sanitized via {@link #filterCSSIdentifier(String)} so that it can be used
    * safely as an HTML {@code id} or class name regardless of plugin package naming conventions or
    * translation keys. Callers typically use the result to tag navigation items or infoboxes for
-   * styling while keeping selectors resilient to localisation changes.
+   * styling while keeping selectors resilient to localization changes.
    *
    * @param plugin plugin localization instance supplying the class name namespace; must not be
    *     {@code null}
-   * @param key translation key or other logical identifier to append after the plugin name
+   * @param key translation key or other logical identifiers to append after the plugin name
    * @return sanitized CSS identifier combining plugin and key components
    */
   public static String getPluginL10nCSSIdentifier(FredPluginL10n plugin, String key) {
@@ -264,6 +264,7 @@ public final class PageMaker {
    *
    * @param name category key previously registered via {@code addNavigationCategory}
    */
+  @SuppressWarnings("unused")
   public synchronized void removeNavigationCategory(String name) {
     SubMenu menu = subMenus.remove(name);
     if (menu == null) {
@@ -274,7 +275,7 @@ public final class PageMaker {
   }
 
   /**
-   * Adds a navigation link to an existing sub-menu.
+   * Adds a navigation link to an existing submenu.
    *
    * <p>Links can be marked {@code fullOnly} to hide them from limited-access sessions. When {@code
    * cb} is provided, the link is rendered only if the callback returns {@code true} for the current
@@ -308,13 +309,13 @@ public final class PageMaker {
   }
 
   /**
-   * Removes a navigation link from a sub-menu across all pages.
+   * Removes a navigation link from a submenu across all pages.
    *
-   * <p>This updates the shared menu model; per-request customisation should instead adjust the
+   * <p>This updates the shared menu model; per-request customization should instead adjust the
    * {@link RenderParameters}. Missing links are ignored silently.
    *
    * @param menutext parent menu name
-   * @param name link key within that menu to remove
+   * @param name the link key within that menu to remove
    */
   public synchronized void removeNavigationLink(String menutext, String name) {
     SubMenu menu = subMenus.get(menutext);
@@ -350,11 +351,11 @@ public final class PageMaker {
    *
    * <p>The returned {@link PageNode} contains a head populated with favicons, stylesheets, and
    * scripts, plus a body with navigation, status bar, and a content container. Callers typically
-   * append their own nodes to {@link PageNode#getContentNode()} and then serialise the page through
+   * append their own nodes to {@link PageNode#getContentNode()} and then serialize the page through
    * the standard rendering pipeline.
    *
    * @param title page title shown in the browser and within the header
-   * @param ctx request context; determines access level, theme delivery, and localisation; may be
+   * @param ctx request context; determines access level, theme delivery, and localization; may be
    *     {@code null} for non-request rendering paths
    * @return {@link PageNode} with head and body ready for caller-provided content
    */
@@ -1049,7 +1050,7 @@ public final class PageMaker {
   }
 
   /**
-   * Selects the theme used for subsequent render operations.
+   * Selects the theme used for further render operations.
    *
    * <p>Unknown or {@code null} themes fall back to {@link THEME#getDefault()}. The method validates
    * that corresponding assets exist before accepting a theme to avoid broken references in
@@ -1087,7 +1088,7 @@ public final class PageMaker {
   /**
    * Creates a standard infobox using a pre-built header node.
    *
-   * <p>Use this overload when the header needs inline formatting or localisation markup. The box is
+   * <p>Use this overload when the header needs inline formatting or localization markup. The box is
    * styled with default classes and is not marked as unique.
    *
    * @param header HTML fragment to place in the header area; must not be {@code null}
@@ -1130,7 +1131,7 @@ public final class PageMaker {
    * Creates an infobox with an optional category and rich header node.
    *
    * <p>Choose this overload when the header requires markup while still attaching a category class
-   * for styling purposes. The box is not marked unique.
+   * for styling purposes. The box is not marked as unique.
    *
    * @param category optional CSS category appended to the infobox class list; may be {@code null}
    * @param header header node to render inside the infobox; must not be {@code null}
@@ -1269,7 +1270,7 @@ public final class PageMaker {
    * defaults to the container’s existing preference when the parameter is absent or unparsable.
    *
    * @param req HTTP request whose parameters may toggle advanced mode
-   * @param container owning container that stores the persistent advanced-mode preference
+   * @param container the owning container that stores the persistent advanced-mode preference
    * @return {@code true} when advanced mode is enabled after processing the request
    */
   public boolean advancedMode(HTTPRequest req, ToadletContainer container) {
@@ -1314,9 +1315,9 @@ public final class PageMaker {
   /**
    * Immutable bundle of flags controlling which chrome elements are rendered into a page.
    *
-   * <p>Instances are cheap value objects; mutator-style methods return new instances rather than
-   * altering state. Defaults enable all optional elements so callers start from the fully featured
-   * view before selectively disabling navigation, status, or the mode switch.
+   * <p>Instances are inexpensive value objects; mutator-style methods return new instances rather
+   * than altering state. Defaults enable all optional elements, so callers start from the fully
+   * featured view before selectively disabling navigation, status, or the mode switch.
    *
    * @param renderNavigationLinks {@code true} to include the navigation bar
    * @param renderStatus {@code true} to include the status bar with alerts, language selector, and
@@ -1392,7 +1393,8 @@ public final class PageMaker {
     /**
      * Returns a new instance with the mode-switch flag updated.
      *
-     * <p>Use this to suppress the toggle for embedded pages that inherit mode from surrounding UI.
+     * <p>Use this to suppress the toggle for embedded pages that inherit mode from the surrounding
+     * UI.
      *
      * @param renderModeSwitch {@code true} to render the mode switch, {@code false} otherwise
      * @return new {@link RenderParameters} reflecting the requested toggle visibility
@@ -1435,14 +1437,14 @@ public final class PageMaker {
       }
     }
 
-    /** Remove a link from this sub-menu. */
+    /** Remove a link from this submenu. */
     public void removeNavigationLink(String name) {
       navigationLinkTexts.remove(name);
       navigationLinkTextsNonFull.remove(name);
       navigationLinkTitles.remove(name);
       navigationLinks.remove(name);
       navigationLinkL10n.remove(
-          name); // Should this be here? If so, why not remove from navigationLinkCallbacks too
+          name); // Should this be here? If so, why not remove from navigationLinkCallbacks either
     }
 
     /** Name of the submenu */
