@@ -160,11 +160,11 @@ public class LongTermMHKTest extends LongTermTest {
 
   private static void recordRunStart(List<String> csvLine) {
     String formattedDate = dateFormat.format(today.getTime());
-    LOGGER.info("DATE:{}", formattedDate);
+    LOGGER.info("Run date:{}", formattedDate);
     csvLine.add(formattedDate);
 
     int buildNumber = Version.currentBuildNumber();
-    LOGGER.info("Version:{}", buildNumber);
+    LOGGER.info("Run build version:{}", buildNumber);
     csvLine.add(String.valueOf(buildNumber));
   }
 
@@ -176,7 +176,7 @@ public class LongTermMHKTest extends LongTermTest {
     if (seedTime < 0) {
       return new InsertResult(node, null, EXIT_FAILED_TARGET, true);
     }
-    LOGGER.info("SEED-TIME:{}", seedTime);
+    LOGGER.info("Seed time recorded-ms:{}", seedTime);
     csvLine.add(String.valueOf(seedTime));
 
     try (RandomAccessBucket single = randomData(node);
@@ -231,7 +231,7 @@ public class LongTermMHKTest extends LongTermTest {
     GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("GMT"));
     calendar.setTime(date);
     if (LOGGER.isInfoEnabled()) {
-      LOGGER.info("Date: {}", dateFormat.format(calendar.getTime()));
+      LOGGER.info("Parsed row date: {}", dateFormat.format(calendar.getTime()));
     }
 
     GregorianCalendar target = today.copyCalendar();
@@ -255,11 +255,11 @@ public class LongTermMHKTest extends LongTermTest {
       singleURI = parsed.singleURI;
       mhkURIs = parsed.mhkURIs;
     } catch (NumberFormatException e) {
-      LOGGER.error("Failed to parse row: {}", e.toString());
+      LOGGER.error("Failed to parse row (number format): {}", e.toString());
       counters.linesNoNumber++;
       return LineOutcome.continueLine();
     } catch (MalformedURLException e) {
-      LOGGER.error("Failed to parse row: {}", e.toString());
+      LOGGER.error("Failed to parse row (malformed URL): {}", e.toString());
       counters.linesNoURL++;
       return LineOutcome.continueLine();
     }
@@ -267,10 +267,10 @@ public class LongTermMHKTest extends LongTermTest {
     if (Math.abs(target.getTimeInMillis() - calendar.getTimeInMillis()) < HOURS.toMillis(12)) {
       if (LOGGER.isInfoEnabled()) {
         LOGGER.info(
-            "Found row for target date {} : {}",
+            "Matched target date row {} : {}",
             dateFormat.format(target.getTime()),
             dateFormat.format(calendar.getTime()));
-        LOGGER.info("Version: {}", split[1]);
+        LOGGER.info("Parsed row build version: {}", split[1]);
       }
       return LineOutcome.match(singleURI, mhkURIs);
     }
@@ -347,12 +347,12 @@ public class LongTermMHKTest extends LongTermTest {
 
   private static int insertSingleBlocks(
       HighLevelSimpleClient client, RandomAccessBucket single, List<String> csvLine) {
-    LOGGER.error("Inserting single block 3 times");
+    LOGGER.error("Starting single-block insert sequence (3 attempts)");
     InsertBlock block = new InsertBlock(single, new ClientMetadata(), FreenetURI.EMPTY_CHK_URI);
     FreenetURI uri = null;
     int successes = 0;
     for (int i = 0; i < 3; i++) {
-      LOGGER.error("Inserting single block, try #{}", i);
+      LOGGER.error("Single-block insert attempt #{}", i);
       try {
         long t1 = System.currentTimeMillis();
         FreenetURI thisURI = client.insert(block, false, null);
@@ -363,15 +363,15 @@ public class LongTermMHKTest extends LongTermTest {
         uri = thisURI;
         long t2 = System.currentTimeMillis();
 
-        LOGGER.info("PUSH-TIME-{}:{} for {} for single block", i, t2 - t1, uri);
+        LOGGER.info("single-block insert attempt={} push-time-ms={} uri={}", i, t2 - t1, uri);
         csvLine.add(String.valueOf(t2 - t1));
         csvLine.add(uri.toASCIIString());
         successes++;
       } catch (InsertException e) {
-        LOGGER.error("Insert failed for single block insert {}", i, e);
+        LOGGER.error("Single-block insert failed on attempt {}", i, e);
         csvLine.add(InsertException.getShortMessage(e.getMode()));
         csvLine.add("N/A");
-        LOGGER.info("INSERT FAILED: {} for insert {} for single block", e, i);
+        LOGGER.info("single-block insert outcome=failed error={} attempt={}", e, i);
       }
     }
     return successes;
@@ -383,22 +383,22 @@ public class LongTermMHKTest extends LongTermTest {
       List<String> csvLine,
       int successes) {
     for (int i = 0; i < 3; i++) {
-      LOGGER.error("Inserting MHK #{}", i);
+      LOGGER.error("Starting MHK insert for index #{}", i);
       InsertBlock block = new InsertBlock(mhks[i], new ClientMetadata(), FreenetURI.EMPTY_CHK_URI);
       try {
         long t1 = System.currentTimeMillis();
         FreenetURI uri = client.insert(block, false, null);
         long t2 = System.currentTimeMillis();
 
-        LOGGER.info("PUSH-TIME-{}:{} for {} for MHK #{}", i, t2 - t1, uri, i);
+        LOGGER.info("mhk insert index={} push-time-ms={} uri={} mhk-index={}", i, t2 - t1, uri, i);
         csvLine.add(String.valueOf(t2 - t1));
         csvLine.add(uri.toASCIIString());
         successes++;
       } catch (InsertException e) {
-        LOGGER.error("Insert failed for MHK #{}", i, e);
+        LOGGER.error("MHK insert failed for index {}", i, e);
         csvLine.add(InsertException.getShortMessage(e.getMode()));
         csvLine.add("N/A");
-        LOGGER.info("INSERT FAILED: {} for MHK #{}", e, i);
+        LOGGER.info("mhk insert outcome=failed error={} index={}", e, i);
       }
     }
     return successes;
@@ -421,7 +421,7 @@ public class LongTermMHKTest extends LongTermTest {
       return ParseLineResult.shortLine();
     }
     int seedTime = Integer.parseInt(split[2]);
-    LOGGER.info("Seed time: {}", seedTime);
+    LOGGER.info("Parsed seed time-ms: {}", seedTime);
 
     if (split.length < 4) {
       counters.linesTooShort++;
@@ -434,7 +434,7 @@ public class LongTermMHKTest extends LongTermTest {
 
     for (int i = 0; i < 3; i++) {
       int insertTime = Integer.parseInt(split[token]);
-      LOGGER.info("Single key insert {} : {}", i, insertTime);
+      LOGGER.info("Parsed single-key insert attempt {} time-ms: {}", i, insertTime);
       token++;
       FreenetURI thisURI = new FreenetURI(split[token]);
       if (singleURI == null) {
@@ -447,14 +447,14 @@ public class LongTermMHKTest extends LongTermTest {
       }
       token++;
     }
-    LOGGER.info("Single key URI: {}", singleURI);
+    LOGGER.info("Parsed single-key URI: {}", singleURI);
 
     for (int i = 0; i < 3; i++) {
       int insertTime = Integer.parseInt(split[token]);
       token++;
       mhkURIs[i] = new FreenetURI(split[token]);
       token++;
-      LOGGER.info("MHK #{} URI: {} insert time {}", i, mhkURIs[i], insertTime);
+      LOGGER.info("Parsed MHK URI index={} uri={} insert-time-ms={}", i, mhkURIs[i], insertTime);
     }
 
     return new ParseLineResult(singleURI, mhkURIs, false);
@@ -482,9 +482,9 @@ public class LongTermMHKTest extends LongTermTest {
         try {
           int fetchTime = Integer.parseInt(split[token]);
           singleKeySuccess = true;
-          LOGGER.info("Fetched single key on try {} on {} in {}ms", i, date, fetchTime);
+          LOGGER.info("single-key fetch success attempt={} date={} time-ms={}", i, date, fetchTime);
         } catch (NumberFormatException _) {
-          LOGGER.info("Failed fetch single key on {} try {} : {}", date, i, split[token]);
+          LOGGER.info("single-key fetch failed date={} attempt={} value={}", date, i, split[token]);
         }
       }
       token++;
@@ -501,9 +501,9 @@ public class LongTermMHKTest extends LongTermTest {
         int fetchTime = Integer.parseInt(split[token]);
         mhkSuccess = true;
         counters.totalSingleKeySuccesses++;
-        LOGGER.info("Fetched MHK #{} on {} in {}ms", i, date, fetchTime);
+        LOGGER.info("mhk fetch success index={} date={} time-ms={}", i, date, fetchTime);
       } catch (NumberFormatException _) {
-        LOGGER.info("Failed fetch MHK #{} on {} : {}", i, date, split[token]);
+        LOGGER.info("mhk fetch failed index={} date={} value={}", i, date, split[token]);
       }
       token++;
     }
@@ -557,7 +557,7 @@ public class LongTermMHKTest extends LongTermTest {
         client.fetch(singleURI);
         long t2 = System.currentTimeMillis();
 
-        LOGGER.info("PULL-TIME FOR SINGLE URI:{}", t2 - t1);
+        LOGGER.info("single-fetch time-ms={}", t2 - t1);
         csvLine.add(String.valueOf(t2 - t1));
         fetched = true;
       } catch (FetchException e) {
@@ -566,7 +566,7 @@ public class LongTermMHKTest extends LongTermTest {
           LOGGER.error("Unexpected fetch error for single URI", e);
         }
         csvLine.add(FetchException.getShortMessage(e.getMode()));
-        LOGGER.error("FAILED PULL FOR SINGLE URI: {}", e.toString());
+        LOGGER.error("single-fetch failed error={}", e.toString());
       }
     }
   }
@@ -579,7 +579,7 @@ public class LongTermMHKTest extends LongTermTest {
         client.fetch(mhkURIs[i]);
         long t2 = System.currentTimeMillis();
 
-        LOGGER.info("PULL-TIME FOR MHK #{}:{}", i, t2 - t1);
+        LOGGER.info("mhk-fetch time-ms={} index={}", t2 - t1, i);
         csvLine.add(String.valueOf(t2 - t1));
       } catch (FetchException e) {
         if (e.getMode() != FetchExceptionMode.ALL_DATA_NOT_FOUND
@@ -587,7 +587,7 @@ public class LongTermMHKTest extends LongTermTest {
           LOGGER.error("Unexpected fetch error for MHK #{}", i, e);
         }
         csvLine.add(FetchException.getShortMessage(e.getMode()));
-        LOGGER.error("FAILED PULL FOR MHK #{}: {}", i, e.toString());
+        LOGGER.error("mhk-fetch failed index={} error={}", i, e.toString());
       }
     }
   }
