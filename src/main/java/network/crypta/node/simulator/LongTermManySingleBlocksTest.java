@@ -132,7 +132,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       synchronized (this) {
         inserts.add(bi);
         runningInserts++;
-        LOGGER.info("Starting insert: running {}", runningInserts);
+        LOGGER.info("Insert scheduled; running inserts {}", runningInserts);
       }
       bi.start();
     }
@@ -169,7 +169,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
         } finally {
           synchronized (InsertBatch.this) {
             runningInserts--;
-            LOGGER.info("Completed insert: running {}", runningInserts);
+            LOGGER.info("Insert finished; running inserts {}", runningInserts);
             if (thisURI != null) {
               uri = thisURI;
               insertTime = t2 - t1;
@@ -284,11 +284,11 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
     List<String> csvLine = new ArrayList<>();
     String formattedDate = dateFormat.format(today.getTime());
-    LOGGER.info("DATE:{}", formattedDate);
+    LOGGER.info("Run date: {}", formattedDate);
     csvLine.add(formattedDate);
 
     int buildNumber = Version.currentBuildNumber();
-    LOGGER.info("Version:{}", buildNumber);
+    LOGGER.info("Build version: {}", buildNumber);
     csvLine.add(String.valueOf(buildNumber));
 
     int exitCode = 0;
@@ -308,7 +308,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
         exitCode = EXIT_FAILED_TARGET;
         return;
       }
-      LOGGER.info("SEED-TIME:{}", seedTimeMillis);
+      LOGGER.info("Seed time millis: {}", seedTimeMillis);
       csvLine.add(String.valueOf(seedTimeMillis));
 
       HighLevelSimpleClient client =
@@ -405,7 +405,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     InsertBatch batch = new InsertBatch(client);
 
     for (int i = 0; i < INSERTED_BLOCKS; i++) {
-      LOGGER.info("Inserting block {}", i);
+      LOGGER.info("Insert request for block {}", i);
       RandomAccessBucket single = randomData(node);
       InsertBlock block = new InsertBlock(single, new ClientMetadata(), FreenetURI.EMPTY_CHK_URI);
       batch.startInsert(block);
@@ -421,12 +421,12 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       if (uris[i] != null) {
         csvLine.add(String.valueOf(times[i]));
         csvLine.add(uris[i].toASCIIString());
-        LOGGER.info("Pushed block {} : {} in {}", i, uris[i], times[i]);
+        LOGGER.info("Insert succeeded for block {} : {} in {}", i, uris[i], times[i]);
         successes++;
       } else {
         csvLine.add(InsertException.getShortMessage(errors[i].getMode()));
         csvLine.add("N/A");
-        LOGGER.warn("Failed to push block {}", i, errors[i]);
+        LOGGER.warn("Insert failed for block {}", i, errors[i]);
       }
     }
 
@@ -476,11 +476,11 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     calendar.getTime();
 
     if (LOGGER.isInfoEnabled()) {
-      LOGGER.info("Date: {}", dateFormat.format(calendar.getTime()));
+      LOGGER.info("Status row date: {}", dateFormat.format(calendar.getTime()));
     }
     Integer seedTime = parseIntOrNull(split[2]);
     if (seedTime != null) {
-      LOGGER.info("Seed time: {}", seedTime);
+      LOGGER.info("Status row seed time: {}", seedTime);
     }
 
     int token = 3;
@@ -490,7 +490,8 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
     ParsedInsertedBlocks inserted = parseInsertedBlocks(split, token);
     for (int i = 0; i < INSERTED_BLOCKS; i++) {
-      LOGGER.info("Key insert {} : {} in {}", i, inserted.insertedUris[i], inserted.insertTimes[i]);
+      LOGGER.info(
+          "Recorded insert {} : {} in {}", i, inserted.insertedUris[i], inserted.insertTimes[i]);
     }
 
     int tokenAfterInserts = token + INSERTED_BLOCKS * 2;
@@ -521,8 +522,8 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       if (!isNearTargetDate(targets[i], calendar)) {
         continue;
       }
-      LOGGER.info("Found row for target date {} days ago.", (1 << i) - 1);
-      LOGGER.info("Version: {}", versionToken);
+      LOGGER.info("Matched target date row from {} days ago", (1 << i) - 1);
+      LOGGER.info("Row version token: {}", versionToken);
       runContext.csvLine().add(Integer.toString(i));
       fetchInsertedBlocks(i, insertedURIs, runContext);
     }
@@ -554,7 +555,10 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     }
 
     LOGGER.info(
-        "Pulled {} blocks of {} from {} days ago.", pulled, inserted, (1 << deltaIndex) - 1);
+        "Fetch results: pulled {} of {} blocks from {} days ago",
+        pulled,
+        inserted,
+        (1 << deltaIndex) - 1);
   }
 
   private static FetchResult fetchOneBlock(
@@ -565,7 +569,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       fetchRequestContext.client().fetch(uri, fw, fetchRequestContext.fetchContext());
       fw.waitForCompletion();
       long fetchTime = System.currentTimeMillis() - start;
-      LOGGER.info("PULL-TIME FOR BLOCK {}: {}", blockIndex, fetchTime);
+      LOGGER.info("Fetch duration for block {}: {}", blockIndex, fetchTime);
       return FetchResult.success(String.valueOf(fetchTime));
     } catch (FetchException e) {
       logFetchException(blockIndex, e);
@@ -577,9 +581,9 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     FetchExceptionMode mode = e.getMode();
     if (mode != FetchExceptionMode.ALL_DATA_NOT_FOUND
         && mode != FetchExceptionMode.DATA_NOT_FOUND) {
-      LOGGER.warn("FAILED PULL FOR BLOCK {}", blockIndex, e);
+      LOGGER.warn("Fetch failed for block {}", blockIndex, e);
     } else {
-      LOGGER.warn("FAILED PULL FOR BLOCK {}", blockIndex);
+      LOGGER.warn("Fetch failed for block {}", blockIndex);
     }
   }
 
@@ -589,15 +593,16 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     while (split.length > token + INSERTED_BLOCKS) {
       Integer delta = parseIntOrNull(split[token]);
       if (delta == null) {
-        LOGGER.warn("Unable to parse delta token {} = \"{}\"", token, split[token]);
-        LOGGER.warn("This is supposed to be a delta");
+        LOGGER.warn("Delta token parse failed at index {} = \"{}\"", token, split[token]);
+        LOGGER.warn("Delta token expected but missing");
         if (LOGGER.isWarnEnabled()) {
           LOGGER.warn(
-              "Skipping the rest of the line for date {}", dateFormat.format(calendar.getTime()));
+              "Skipping remainder of status row for date {}",
+              dateFormat.format(calendar.getTime()));
         }
         return;
       }
-      LOGGER.info("Delta: {} days", (1 << delta) - 1);
+      LOGGER.info("Processing delta window: {} days", (1 << delta) - 1);
       token++;
 
       DeltaTotals deltaTotals = parseDeltaTotals(split, token, date);
@@ -614,7 +619,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
               : ((double) deltaTotals.totalFetchTime()) / ((double) deltaTotals.totalSuccesses());
       if (LOGGER.isInfoEnabled()) {
         LOGGER.info(
-            "Succeeded: {} of {} average {}ms for delta {} on {}",
+            "Delta summary: {} of {} succeeded, avg {}ms for delta {} on {}",
             deltaTotals.totalSuccesses(),
             deltaTotals.totalFetches(),
             averageMillis,
@@ -637,11 +642,11 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
 
       Integer fetchTime = parseIntOrNull(split[token]);
       if (fetchTime != null) {
-        LOGGER.info("Fetched block #{} on {} in {}ms", i, date, fetchTime);
+        LOGGER.info("Fetch succeeded for block #{} on {} in {}ms", i, date, fetchTime);
         totalSuccesses++;
         totalFetchTime += fetchTime;
       } else {
-        LOGGER.info("Failed block #{} on {} : {}", i, date, split[token]);
+        LOGGER.info("Fetch failed for block #{} on {} : {}", i, date, split[token]);
       }
       token++;
     }
@@ -671,7 +676,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
       double successRate = fetches == 0 ? Double.NaN : (successes * 100.0) / fetches;
       double averageMillis = successes == 0 ? Double.NaN : (totalTime * 1.0) / successes;
       LOGGER.info(
-          "DELTA: {} days: Total fetches: {} total successes {} = {}% in {}ms",
+          "Delta totals for {} days: fetches {} successes {} = {}% avg {}ms",
           i, fetches, successes, successRate, averageMillis);
     }
   }
