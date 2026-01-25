@@ -888,7 +888,7 @@ public final class PageMaker {
     }
     String result = l10n.getString(key);
     if (result == null) {
-      LOG.error("Plugin '{}' did return null in getString(key)!", l10n);
+      LOG.error("Navigation l10n returned null for getString(key); plugin={}", l10n);
     }
     return result;
   }
@@ -945,7 +945,7 @@ public final class PageMaker {
   private String replaceNullWithLocalization(FredPluginL10n plugin, String key) {
     String localized = plugin.getString(key);
     if (localized == null) {
-      LOG.error("Plugin '{}' did return null in getString(key)!", plugin);
+      LOG.error("Menu label l10n returned null for getString(key); plugin={}", plugin);
       return key;
     }
     return localized;
