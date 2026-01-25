@@ -113,7 +113,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     static final String STR_COMMENT_PREFIX = "<!-- ";
     static final String STR_DELETING_XML_DECLARATION_INVALID_ENCODING =
-        "Deleting xml declaration, invalid encoding";
+        "XML declaration dropped: reason=invalid_encoding";
     static final String STR_ACCENT = "accent";
     static final String STR_ACCENTUNDER = "accentunder";
     static final String STR_ACCESSKEY = "accesskey";
@@ -3133,7 +3133,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       }
       if ("xml:lang".equals(name) || "lang".equals(name)) {
         if (LOG.isTraceEnabled()) {
-          LOG.trace("HTML Filter is putting attribute: {} = {}", name, value);
+          LOG.trace("HTML Filter accepted language attribute: {} = {}", name, value);
         }
         output.put(name, value);
         return true;
@@ -3143,7 +3143,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
             || stringValue.equalsIgnoreCase("rtl")
             || stringValue.equalsIgnoreCase("auto")) {
           if (LOG.isTraceEnabled()) {
-            LOG.trace("HTML Filter is putting attribute: {} = {}", name, value);
+            LOG.trace("HTML Filter accepted direction attribute: {} = {}", name, value);
           }
           output.put(name, value);
         }
@@ -4238,14 +4238,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     @Override
     ParsedTag sanitize(ParsedTag t, HTMLParseContext pc) throws DataFilterException {
       if (!hasValidAttributeLength(t)) {
-        logXmlDebug("Deleting xml declaration, invalid length");
+        logXmlDebug("XML declaration dropped: reason=invalid_attribute_length");
         return null;
       }
       if (!hasValidEndingToken(t)) {
         return null;
       }
       if (!hasValidVersionToken(t)) {
-        logXmlDebug("Deleting xml declaration, invalid version");
+        logXmlDebug("XML declaration dropped: reason=invalid_version");
         return null;
       }
       String charset = extractCharset(t);
@@ -4256,11 +4256,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (!charset.equalsIgnoreCase(pc.charset)) {
         if (pc.charset != null) {
           logXmlDebug(
-              "Deleting xml declaration (invalid charset "
-                  + charset
-                  + " should be "
-                  + pc.charset
-                  + ")");
+              "XML declaration dropped: reason=charset_mismatch declared={} expected={}",
+              charset,
+              pc.charset);
           return null;
         }
         if (pc.detectedCharset != null) {
@@ -4277,11 +4275,11 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     private boolean hasValidEndingToken(ParsedTag tag) {
       if (tag.unparsedAttrs.length == 3 && !"?".equals(tag.unparsedAttrs[2])) {
-        logXmlDebug("Deleting xml declaration, invalid ending (length 2)");
+        logXmlDebug("XML declaration dropped: reason=invalid_ending_token length=2");
         return false;
       }
       if (tag.unparsedAttrs.length == 2 && !tag.unparsedAttrs[1].endsWith("?")) {
-        logXmlDebug("Deleting xml declaration, invalid ending (length 3)");
+        logXmlDebug("XML declaration dropped: reason=invalid_ending_token length=3");
         return false;
       }
       return true;
@@ -4309,9 +4307,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return null;
     }
 
-    private void logXmlDebug(String message) {
+    private void logXmlDebug(String template, Object... args) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug(message);
+        LOG.debug(template, args);
       }
     }
   }

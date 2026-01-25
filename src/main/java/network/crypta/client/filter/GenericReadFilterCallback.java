@@ -54,7 +54,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
   private static final Set<String> allowedProtocols;
 
   // RFC3986
-  //  unreserved    = ALPHA / DIGIT / "-" / "." / "_" / "~"
+  //  unreserved = ALPHA / DIGIT / "-" / "." / "_" / "~"
   /**
    * Pattern for an RFC 3986 "unreserved" character. The value matches ASCII letters, digits and the
    * characters {@code - . _ ~}. It is used as a building block for more complete expressions that
@@ -172,9 +172,9 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
    * URI} suitable for use as a base for resolution.
    *
    * @param uri Base key represented as a {@code FreenetURI}. Must parse into a valid relative
-   *     {@code URI} for subsequent resolution operations.
-   * @param cb Callback notified when URIs are found. May be {@code null} if notifications are not
-   *     required by the caller.
+   *     {@code URI} for later resolution operations.
+   * @param cb Callback notified when URIs are found. May be {@code null} if the caller does not
+   *     require notifications.
    * @param trc Tag replacement callback invoked for each parsed tag. May be {@code null} to disable
    *     tag-level rewrites.
    * @param linkFilterExceptionProvider Provider consulted to decide whether a given link should be
@@ -225,8 +225,8 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
    * protocol and path rules. Relative references are resolved against the current base URI. Use the
    * multi-argument overloads to control base-href handling or inline context.
    *
-   * @param u Raw URI string taken from markup or attribute content. May be absolute or relative,
-   *     and may contain percent-encoded sequences.
+   * @param u Raw URI string taken from markup or attribute content. Maybe absolute or relative, and
+   *     may contain percent-encoded sequences.
    * @param overrideType Optional media-type override used when building internal links. When {@code
    *     null}, no override is applied.
    * @return A sanitized, ASCII-safe URI string suitable for emission back into the filtered
@@ -282,7 +282,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
 
     URI origURI = uri;
 
-    // Convert localhost uri's to relative internal ones.
+    // Convert localhost uri to relative internal ones.
     uri = normalizeLocalhost(uri);
 
     String host = uri.getHost();
@@ -349,7 +349,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       uri = URIPreEncoder.encodeURI(filtered).normalize();
     } catch (URISyntaxException e1) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Failed to parse URI: {}", String.valueOf(e1));
+        LOG.debug("URI parse failed while forcing absolute: {}", String.valueOf(e1));
       }
       throw new CommentException(l10n("couldNotParseURIWithError", ERROR_KEY, e1.getMessage()));
     }
@@ -379,7 +379,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
    * Handles a {@code <base href>} declaration and updates the current base URI when valid.
    *
    * <p>The supplied value is sanitized through the general URI processing routine in {@code
-   * forBaseHref} mode. When accepted, the internal base used for subsequent relative resolution is
+   * forBaseHref} mode. When accepted, the internal base used for later relative resolution is
    * updated and the ASCII representation of the new base is returned.
    *
    * @param baseHref The candidate base-href value from markup.
@@ -414,9 +414,9 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
    *
    * <p>When a {@code FoundURICallback} is configured, this method forwards the text and its type
    * together with the current base URI so callers can perform additional analysis or analytics. The
-   * method does not modify state and performs no rewriting.
+   * method does not modify the state and performs no rewriting.
    *
-   * @param s The text content as extracted from the document. May be empty.
+   * @param s The text content as extracted from the document. Maybe empty.
    * @param type A short classifier supplied by the caller describing the context of the text (for
    *     example, attribute kind or element name). May be {@code null} if unspecified.
    */
@@ -455,7 +455,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       return null; // no irregular form sending methods
     }
     // Note: Access to other internal paths (e.g., /downloads/, /friends/) is not permitted here.
-    // Allow access to Library for searching, form passwords are used for actions such as adding
+    // Allow access to Library for searching; form passwords are used for actions such as adding
     // bookmarks
     if (action.equals("/library/")) {
       return action;
@@ -615,11 +615,11 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
   private ParsedUris parseAndResolve(String u, boolean noRelative) throws CommentException {
     try {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Processing {}", u);
+        LOG.debug("URI input raw: {}", u);
       }
       URI uri = URIPreEncoder.encodeURI(u).normalize();
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Processing {}", uri);
+        LOG.debug("URI normalized: {}", uri);
       }
       if (u.startsWith("/") || u.startsWith("%2f")) {
         // Don't bother with relative URIs if it's obviously absolute.
@@ -629,12 +629,12 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       }
       URI resolved = noRelative ? uri : baseURI.resolve(uri);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Resolved: {}", resolved);
+        LOG.debug("URI resolved against base: {}", resolved);
       }
       return new ParsedUris(uri, resolved, noRelative);
     } catch (URISyntaxException e1) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Failed to parse URI: {}", String.valueOf(e1));
+        LOG.debug("URI parse failed in parseAndResolve: {}", String.valueOf(e1));
       }
       throw new CommentException(l10n("couldNotParseURIWithError", ERROR_KEY, e1.getMessage()));
     }
@@ -676,18 +676,18 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       String rpath, URI uri, String overrideType, boolean inline) {
     if (rpath == null) return null;
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Resolved URI (rpath absolute): \"{}\"", rpath);
+      LOG.debug("Resolved absolute path candidate: \"{}\"", rpath);
     }
     try {
       String p = stripLeadingSlashes(rpath);
       FreenetURI furi = new FreenetURI(p, true);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Parsed: {}", furi);
+        LOG.debug("Parsed Freenet URI from absolute path: {}", furi);
       }
       return processURI(furi, uri, overrideType, true, inline);
     } catch (MalformedURLException e) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Malformed URL (a): {}", e, e);
+        LOG.debug("Freenet URI parse failed for absolute path: {}", e, e);
       }
       return null;
     }
@@ -706,18 +706,18 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       throw new CommentException("No URI");
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Resolved URI (rpath relative): {}", rpath);
+      LOG.debug("Resolved relative path candidate: {}", rpath);
     }
     try {
       String p = stripLeadingSlashes(rpath);
       FreenetURI furi = new FreenetURI(p, true);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Parsed: {}", furi);
+        LOG.debug("Parsed Freenet URI from relative path: {}", furi);
       }
       return processURI(furi, uri, overrideType, false, inline);
     } catch (MalformedURLException e) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Malformed URL (b): {}", e, e);
+        LOG.debug("Freenet URI parse failed for relative path: {}", e, e);
       }
       return null;
     }

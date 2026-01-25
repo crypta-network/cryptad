@@ -600,7 +600,7 @@ public class ContentFilter {
     if (bom == null || bom.charset == null) return null;
     String v = tryGetCharset(extractor, input, length, bom.charset);
     if (v != null) {
-      if (LOG.isDebugEnabled()) LOG.debug("Returning charset: {}", v);
+      if (LOG.isDebugEnabled()) LOG.debug("Detected charset from BOM: {}", v);
       return v;
     }
     if (bom.mustHaveCharset) throw new UndetectableCharsetException(bom.charset);
@@ -612,7 +612,7 @@ public class ContentFilter {
       throws IOException {
     if (defaultCharset == null) return null;
     String v = tryGetCharset(extractor, input, length, defaultCharset);
-    if (v != null && LOG.isDebugEnabled()) LOG.debug("Returning charset: {}", v);
+    if (v != null && LOG.isDebugEnabled()) LOG.debug("Detected charset from default: {}", v);
     return v;
   }
 
@@ -748,9 +748,9 @@ public class ContentFilter {
     return null;
   }
 
-  // Byte Order Mark's - from Wikipedia. We keep all of them because a rare encoding might
-  // be deliberately used by an attacker to confuse the filter, because at present a charset
-  // is not mandatory, and because some browsers may pick these up anyway even if one is present.
+  // Byte Order Mark's - from Wikipedia. We keep all of them because an attacker might
+  // deliberately use a rare encoding to confuse the filter. At present a charset is not
+  // mandatory, and some browsers may pick these up anyway even if one is present.
 
   static byte[] bomUtf8 = new byte[] {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
   static byte[] bomUtf16Be = new byte[] {(byte) 0xFE, (byte) 0xFF};

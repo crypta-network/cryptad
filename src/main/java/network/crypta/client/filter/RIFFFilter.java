@@ -151,7 +151,7 @@ public abstract class RIFFFilter implements ContentDataFilter {
           l10n(KEY_INVALID_TITLE),
           NodeL10n.getBase().getString(KEY_EOF_MESSAGE));
     }
-    // Testing if there is any unprocessed bytes left
+    // Testing if there are any unprocessed bytes left
     if (input.read() != -1) {
       // A byte is after expected EOF
       throw new DataFilterException(
@@ -315,7 +315,7 @@ public abstract class RIFFFilter implements ContentDataFilter {
       throws IOException {
     if (size < 0) {
       if (LOG.isWarnEnabled()) {
-        LOG.warn("RIFF block size {} is less than 0", size);
+        LOG.warn("RIFF passthrough chunk size {} is less than 0", size);
       }
       throw new DataFilterException(
           l10n(KEY_INVALID_TITLE), l10n(KEY_INVALID_TITLE), l10n(KEY_DATA_TOO_BIG));
@@ -340,7 +340,7 @@ public abstract class RIFFFilter implements ContentDataFilter {
    *
    * <p>The method skips the incoming payload (rounded up to an even size per RIFF rules), then
    * writes a matching {@code JUNK} header and zero‑filled body to {@code out}. This is useful for
-   * discarding unsupported or unsafe chunks while preserving container structure.
+   * discarding unsupported or unsafe chunks while preserving the container structure.
    *
    * @param in input stream supplying the bytes to discard; must contain at least {@code size}
    *     bytes, rounded up to an even length
@@ -352,14 +352,14 @@ public abstract class RIFFFilter implements ContentDataFilter {
    */
   protected void writeJunkChunk(DataInputStream in, DataOutputStream out, int size)
       throws IOException {
-    size += size % 2; // Add a padding if necessary
+    size += size % 2; // Add padding if necessary
     if (in.skip(size) < size) {
       // EOFException?
       throw new EOFException();
     }
     if (size < 0) {
       if (LOG.isWarnEnabled()) {
-        LOG.warn("RIFF block size {} is less than 0", size);
+        LOG.warn("RIFF JUNK chunk size {} is less than 0", size);
       }
       throw new DataFilterException(
           l10n(KEY_INVALID_TITLE), l10n(KEY_INVALID_TITLE), l10n(KEY_DATA_TOO_BIG));
@@ -390,8 +390,8 @@ public abstract class RIFFFilter implements ContentDataFilter {
    * the byte order of {@code readInt()} to match RIFF semantics.
    *
    * @param stream data input to read from; the method consumes exactly four bytes
-   * @return the 32‑bit value interpreted as little‑endian; note that RIFF fields may be used as
-   *     unsigned values by callers
+   * @return the 32‑bit value interpreted as little‑endian; note that callers may use RIFF fields as
+   *     unsigned values
    * @throws IOException if the stream ends before four bytes are available or another I/O error
    *     occurs
    */

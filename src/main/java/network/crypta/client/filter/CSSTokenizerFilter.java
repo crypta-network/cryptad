@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * pipeline.
  *
  * <p>This component reads CSS from a {@link Reader}, tokenizes it with a small state machine, and
- * applies a conservative allowlist of properties, values, selectors and at-rules. The primary goal
+ * applies a conservative allowlist of properties, values, selectors, and at-rules. The primary goal
  * is to preserve a wide subset of legitimate stylesheet constructs while reliably rejecting or
  * neutralizing values and selectors that could break layout assumptions or enable content
  * exfiltration when rendered by a browser. The implementation predates a formal grammar; it focuses
@@ -33,8 +33,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Typical usage is to construct a filter with an input {@code Reader}, an output {@code Writer},
  * and a {@link FilterCallback} that validates and possibly rewrites URIs. Call {@link #parse()}
- * once to filter the input stream into the output writer. The filter keeps a small amount of state
- * around quotes, comments, braces and current property context. It does not attempt to preserve
+ * once to filter the input stream into the output writer. The filter keeps a small number of states
+ * around quotes, comments, braces, and current property context. It does not attempt to preserve
  * unreachable or structurally invalid content.
  *
  * <ul>
@@ -107,15 +107,35 @@ class CSSTokenizerFilter {
   private static final String WS_T_R_N = " \t\r\n";
   private static final String WS_T_R_N_F = " \t\r\n\f";
 
-  private static final String MSG_HTML_COMMENT_WS = "<!-- not followed by whitespace!";
-  private static final String MSG_SPLIT = "Split: {}";
-  private static final String MSG_OPEN_BRACES_S3 =
-      "openBraces now {} not moving on because openBracesStartingS3={} in S3";
-  private static final String MSG_PROPERTY_VALUE = "Property value: {}";
-  private static final String MSG_NO_SUCH_PROPERTY_NAME = "No such property name \"{}\"";
-  private static final String MSG_APPEND_WS_AFTER_COLON =
-      "Appending whitespace after colon (}): {}";
-  private static final String MSG_APPEND_WS_STATE2 = "Appending whitespace in state2: \"{}\"";
+  private static final String MSG_HTML_COMMENT_WS_LEADING =
+      "HTML comment marker invalid in leading scan: <!-- not followed by whitespace!";
+  private static final String MSG_HTML_COMMENT_WS_PREFIX =
+      "HTML comment marker invalid in prefix scan: <!-- not followed by whitespace!";
+  private static final String MSG_SPLIT_STATE1_OPEN_BRACE =
+      "Split tokens for STATE1 '{' processing: {}";
+  private static final String MSG_SPLIT_STATE3_SEMI =
+      "Split property value tokens at ';' in STATE3: {}";
+  private static final String MSG_SPLIT_STATE3_RBRACE =
+      "Split property value tokens before '}' in STATE3: {}";
+  private static final String MSG_OPEN_BRACES_S3_COLON =
+      "STATE3 ':' inside nested braces: openBraces={} start={}";
+  private static final String MSG_OPEN_BRACES_S3_SEMI =
+      "STATE3 ';' inside nested braces: openBraces={} start={}";
+  private static final String MSG_OPEN_BRACES_S3_RBRACE =
+      "STATE3 '}' inside nested braces: openBraces={} start={}";
+  private static final String MSG_PROPERTY_VALUE_SEMI =
+      "Parsed property value at ';' in STATE3: {}";
+  private static final String MSG_PROPERTY_VALUE_RBRACE =
+      "Parsed property value before '}' in STATE3: {}";
+  private static final String MSG_NO_SUCH_PROPERTY_NAME_SEMI =
+      "Unknown property name at ';' in STATE3: \"{}\"";
+  private static final String MSG_NO_SUCH_PROPERTY_NAME_RBRACE =
+      "Unknown property name before '}' in STATE3: \"{}\"";
+  private static final String MSG_APPEND_WS_AFTER_COLON_RBRACE =
+      "Captured whitespace after colon before '}' in STATE3: {}";
+  private static final String MSG_APPEND_WS_PREFIX_RBRACE =
+      "Captured prefix whitespace before '}' in STATE3: {}";
+  private static final String MSG_APPEND_WS_STATE2 = "Appending whitespace in STATE2: \"{}\"";
   private static final String TOK_COUNTERS = "counters(";
   private static final String TOK_COUNTER = "counter(";
   private static final Logger LOG = LoggerFactory.getLogger(CSSTokenizerFilter.class);
@@ -141,7 +161,7 @@ class CSSTokenizerFilter {
   // no static init required
 
   /**
-   * Creates a filter with default configuration suitable for basic uses in tests. The input and
+   * Creates a filter with a default configuration suitable for basic uses in tests. The input and
    * callback must be supplied before calling {@link #parse()}.
    */
   CSSTokenizerFilter() {
@@ -151,7 +171,7 @@ class CSSTokenizerFilter {
   }
 
   /**
-   * Creates a filter bound to the given input, output and URI processing callback.
+   * Creates a filter bound to the given input, output, and URI processing callback.
    *
    * <p>The filter reads from {@code r}, emits sanitized CSS to {@code w}, and consults {@code cb}
    * for URI validation and rewriting. The declared charset influences how {@code @charset} handling
@@ -188,7 +208,7 @@ class CSSTokenizerFilter {
    *
    * <p>The method forwards the URI to {@link FilterCallback#processURI(String, String)} with a
    * {@code null} override type. If the callback throws or returns a different value, the URI is
-   * considered invalid for the purpose of acceptance in CSS.
+   * considered invalid for acceptance in CSS.
    *
    * @param uri absolute or relative URI to validate; must be a non-null, non-empty string.
    * @return {@code true} when the callback returns the same value; {@code false} on rewrite,
@@ -205,11 +225,11 @@ class CSSTokenizerFilter {
   // Removed: unused generic array concat helper.
 
   /* To save the memory, only those Verifier objects would be created which are actually present in the CSS document.
-   * allelementVerifiers contains all the CSS property tags as String. All loaded Verifier objects are stored in elementVerifier.
+   * allelementVerifiers contain all the CSS property tags as String. All loaded Verifier objects are stored in elementVerifier.
    * When retrieving a Verifier object, first it is searched in elementVerifiers to see if it is already loaded.
-   * If it is not loaded then allelementVerifiers is checked to see if the property name is valid. If it is valid, then the desired Verifier object is loaded in allelemntVerifiers.
+   * If it is not loaded, then allelementVerifiers are checked to see if the property name is valid. If it is valid, then the desired Verifier object is loaded in allelemntVerifiers.
    */
-  // Note: this is probably overkill, initialising all of them on startup would probably be cleaner
+  // Note: this is probably overkill, initializing all of them on startup would probably be cleaner
   // code, less synchronization, at very little memory cost.
   // Note: check how many bytes we save by lazy init here.
   private static final Map<String, CSSPropertyVerifier> elementVerifiers = new HashMap<>();
@@ -535,7 +555,8 @@ class CSSTokenizerFilter {
   private static final CSSPropertyVerifier[] auxilaryVerifiers = new CSSPropertyVerifier[149];
 
   static {
-    /*CSSPropertyVerifier(String[] allowedValues,String[] possibleValues,String expression,boolean onlyValueVerifier)*/
+    // CSSPropertyVerifier(String[] allowedValues,String[] possibleValues, String expression,
+    // boolean onlyValueVerifier)
     // for background-position
     auxilaryVerifiers[2] =
         new CSSPropertyVerifier(
@@ -823,7 +844,7 @@ class CSSTokenizerFilter {
   private static Map<String, PropertyRule> buildRules() {
     Map<String, PropertyRule> m = new HashMap<>();
 
-    // Example ports to the registry. Remaining properties fall back to legacy handler.
+    // Example ports to the registry. Remaining properties fall back to the legacy handler.
 
     // accent-color
     register(
@@ -3181,7 +3202,7 @@ class CSSTokenizerFilter {
   }
 
   /* This function loads a verifier object in elementVerifiers.
-   * After the object has been loaded, property name is removed from allelementVerifier.
+   * After the object has been loaded, the property name is removed from allelementVerifier.
    */
   private static void addVerifier(String element) {
     PropertyRule rule = RULES.get(element.toLowerCase());
@@ -3227,7 +3248,7 @@ class CSSTokenizerFilter {
     // 3) Class or ID
     if (!extractClassOrId(parts, isIDSelector)) return null;
     if (isIDSelector && parts.id.isEmpty()) return null; // require an ID
-    // 4) Validate element and names
+    // 4) Validate the element and names
     if (!isElementValid(parts)) return null;
     if (!validateNames(parts)) return null;
     // 5) Validate pseudo class semantics
@@ -3414,9 +3435,9 @@ class CSSTokenizerFilter {
 
   /*
    * This function works with different operators, +, >, " " and verifies each HTML element with htmlElementVerifier(String elementString)
-   * e.g. div > p:first-child
+   * e.g., div > p:first-child
    * This would call HTMLelementVerifier with div and p:first-child
-   * Returns null on failure (selector invalid), empty string on banned but otherwise valid selector.
+   * Returns null on failure (selectors invalid), empty string on banned but otherwise valid selector.
    */
   /**
    * Parses and validates a full selector list or a single selector and returns a sanitized form.
@@ -3751,7 +3772,7 @@ class CSSTokenizerFilter {
       return false;
     }
 
-    /** Handles BOM at current character; returns true if the caller should continue loop. */
+    /** Handles BOM at the current character; returns true if the caller should continue loop. */
     private boolean handlePossibleBom() throws IOException {
       if (x != (char) 0xFEFF) return false;
       if (bomPossible) {
@@ -3805,7 +3826,7 @@ class CSSTokenizerFilter {
       }
     }
 
-    // Extracted handlers to reduce complexity/LOC of handleCurrentStateChar()
+    // Extracted handlers to reduce the complexity/LOC of handleCurrentStateChar()
     /**
      * Handle characters in STATE1 by delegating complex branches to focused helpers. This keeps the
      * top-level switch small, reducing cyclomatic and cognitive complexity while preserving
@@ -3893,7 +3914,8 @@ class CSSTokenizerFilter {
       String postSpace = extractTrailingWhitespaceAndTrim();
       String orig = buffer.toString().trim();
       ParsedWord[] parts = split(orig, false);
-      if (LOG.isTraceEnabled()) LOG.trace(MSG_SPLIT, CSSPropertyVerifier.toString(parts));
+      if (LOG.isTraceEnabled())
+        LOG.trace(MSG_SPLIT_STATE1_OPEN_BRACE, CSSPropertyVerifier.toString(parts));
       buffer.setLength(0);
       boolean valid = processState1OpenBraceParts(parts, braceSpace, postSpace, orig);
 
@@ -3969,11 +3991,11 @@ class CSSTokenizerFilter {
       if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
         w.write(buffer.substring(0, 4));
         if (WS_T_R_N.indexOf(buffer.charAt(4)) == -1) {
-          LOG.error(MSG_HTML_COMMENT_WS);
+          LOG.error(MSG_HTML_COMMENT_WS_LEADING);
           return;
         }
         buffer.delete(0, 4);
-        // Restart whitespace scan after the comment from the new buffer start.
+        // Restart the whitespace scan after the comment from the new buffer start.
         i = 0;
         while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
           i++;
@@ -4013,7 +4035,9 @@ class CSSTokenizerFilter {
       w.write("@charset \"" + detectedCharset + "\";");
     }
 
-    /** Returns prefix whitespace plus an optional HTML comment marker; null on invalid pattern. */
+    /**
+     * Returns prefix whitespace plus an optional HTML comment marker; null on an invalid pattern.
+     */
     private String extractLeadingWhitespaceAndOptionalHtmlComment() {
       int i = 0;
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
@@ -4024,11 +4048,11 @@ class CSSTokenizerFilter {
       if (buffer.length() > 4 && buffer.substring(0, 4).equals("<!--")) {
         prefix += buffer.substring(0, 4);
         if (WS_T_R_N.indexOf(buffer.charAt(4)) == -1) {
-          LOG.error(MSG_HTML_COMMENT_WS);
+          LOG.error(MSG_HTML_COMMENT_WS_PREFIX);
           return null;
         }
         buffer.delete(0, 4);
-        // Restart whitespace scan after the comment from the new buffer start.
+        // Restart the whitespace scan after the comment from the new buffer start.
         i = 0;
         while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
           i++;
@@ -4142,7 +4166,7 @@ class CSSTokenizerFilter {
 
     private String extractImportUri(ParsedWord head) {
       if (head instanceof ParsedURL url) return url.getDecoded();
-      // Fallback: head must be a ParsedString per isValidImportHead()
+      // Fallback: the head must be a ParsedString per isValidImportHead()
       if (head instanceof ParsedString string) return string.getDecoded();
       // Defensive: should not happen; return original encoding
       return head == null ? null : head.original;
@@ -4413,7 +4437,8 @@ class CSSTokenizerFilter {
       }
       if (openBraces > openBracesStartingS3) {
         buffer.append(c);
-        if (LOG.isDebugEnabled()) LOG.debug(MSG_OPEN_BRACES_S3, openBraces, openBracesStartingS3);
+        if (LOG.isDebugEnabled())
+          LOG.debug(MSG_OPEN_BRACES_S3_COLON, openBraces, openBracesStartingS3);
         return;
       }
       int i = 0;
@@ -4435,17 +4460,19 @@ class CSSTokenizerFilter {
       }
       if (openBraces > openBracesStartingS3) {
         buffer.append(c);
-        if (LOG.isDebugEnabled()) LOG.debug(MSG_OPEN_BRACES_S3, openBraces, openBracesStartingS3);
+        if (LOG.isDebugEnabled())
+          LOG.debug(MSG_OPEN_BRACES_S3_SEMI, openBraces, openBracesStartingS3);
         return;
       }
       preparePropertyValueFromBuffer();
       CSSPropertyVerifier obj = getVerifier(propertyName);
       if (obj != null) {
         ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
-        if (LOG.isTraceEnabled()) LOG.trace(MSG_SPLIT, CSSPropertyVerifier.toString(words));
+        if (LOG.isTraceEnabled())
+          LOG.trace(MSG_SPLIT_STATE3_SEMI, CSSPropertyVerifier.toString(words));
         appendPropertyIfValid(words, obj, true);
       } else if (LOG.isTraceEnabled()) {
-        LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
+        LOG.trace(MSG_NO_SUCH_PROPERTY_NAME_SEMI, propertyName);
       }
       ignoreElementsS3 = false;
       propertyName = "";
@@ -4458,10 +4485,10 @@ class CSSTokenizerFilter {
         i++;
       }
       if (LOG.isDebugEnabled())
-        LOG.debug("Appending whitespace after colon: \"{}\"", buffer.substring(0, i));
+        LOG.debug("STATE3 after-colon whitespace before ';': \"{}\"", buffer.substring(0, i));
       whitespaceAfterColon = buffer.substring(0, i);
       propertyValue = buffer.delete(0, i).toString().trim();
-      if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
+      if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE_SEMI, propertyValue);
       buffer.setLength(0);
     }
 
@@ -4536,7 +4563,8 @@ class CSSTokenizerFilter {
       openBraces--;
       if (openBraces > openBracesStartingS3 - 1) {
         buffer.append(c);
-        if (LOG.isDebugEnabled()) LOG.debug(MSG_OPEN_BRACES_S3, openBraces, openBracesStartingS3);
+        if (LOG.isDebugEnabled())
+          LOG.debug(MSG_OPEN_BRACES_S3_RBRACE, openBraces, openBracesStartingS3);
         if (openBraces < 0) openBraces = 0;
         return;
       }
@@ -4552,21 +4580,22 @@ class CSSTokenizerFilter {
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
       }
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_AFTER_COLON, buffer.substring(0, i));
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_AFTER_COLON_RBRACE, buffer.substring(0, i));
       whitespaceAfterColon = buffer.substring(0, i);
       buffer.delete(0, i);
       propertyValue = buffer.toString().trim();
-      if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE, propertyValue);
+      if (LOG.isTraceEnabled()) LOG.trace(MSG_PROPERTY_VALUE_RBRACE, propertyValue);
       buffer.setLength(0);
       CSSPropertyVerifier obj = getVerifier(propertyName);
       if (LOG.isDebugEnabled())
         LOG.debug("Found PropertyName:{} propertyValue:{}", propertyName, propertyValue);
       if (obj != null) {
         ParsedWord[] words = split(propertyValue, obj.allowCommaDelimiters);
-        if (LOG.isTraceEnabled()) LOG.trace(MSG_SPLIT, CSSPropertyVerifier.toString(words));
+        if (LOG.isTraceEnabled())
+          LOG.trace(MSG_SPLIT_STATE3_RBRACE, CSSPropertyVerifier.toString(words));
         appendPropertyIfValid(words, obj, false);
       } else {
-        if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME, propertyName);
+        if (LOG.isTraceEnabled()) LOG.trace(MSG_NO_SUCH_PROPERTY_NAME_RBRACE, propertyName);
       }
       propertyName = "";
     }
@@ -4576,7 +4605,7 @@ class CSSTokenizerFilter {
       while (i < buffer.length() && WS_T_R_N_F.indexOf(buffer.charAt(i)) != -1) {
         i++;
       }
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_AFTER_COLON, buffer.substring(0, i));
+      if (LOG.isDebugEnabled()) LOG.debug(MSG_APPEND_WS_PREFIX_RBRACE, buffer.substring(0, i));
       filteredTokens.append(buffer, 0, i);
       buffer.delete(0, i);
     }
@@ -4784,7 +4813,7 @@ class CSSTokenizerFilter {
     /** Original source lexeme preserved for re-encoding when unchanged. */
     final String original;
 
-    /** Has decoded changed? If not we can use the original. */
+    /** Has decoded changed? If not, we can use the original. */
     protected boolean changed;
 
     /** Whether this token immediately follows a comma in the source (affects list parsing). */
@@ -4843,8 +4872,8 @@ class CSSTokenizerFilter {
     /**
      * Creates a token with both the original lexeme and its decoded form.
      *
-     * @param original original source lexeme as it appeared in the stylesheet; retained for reuse
-     *     when no transformation is necessary.
+     * @param original the original source lexeme as it appeared in the stylesheet; retained for
+     *     reuse when no transformation is necessary.
      * @param decoded normalized value used for validation and re-encoding decisions.
      * @param changed set {@code true} when the original encoding was unsuitable and the decoded
      *     value should be used when re-serializing.
@@ -4955,7 +4984,7 @@ class CSSTokenizerFilter {
 
     /**
      * Is the word quoted? If true, the word is completely enclosed by the given string character
-     * (either ' or "), which are not included in the decoded string.
+     * (either ' or "), which is not included in the decoded string.
      */
     final char stringChar;
 
@@ -4966,7 +4995,7 @@ class CSSTokenizerFilter {
       if (c == '\r' || c == '\n' || c == '\f')
         // Except newlines.
         return true;
-      else // And control chars, and anything outside Basic Latin (unless we know the output charset
+      else // And control chars and anything outside Basic Latin (unless we know the output charset
       // is unicode-complete).
       if (c == stringChar)
         // And the quote itself.
@@ -5109,7 +5138,7 @@ class CSSTokenizerFilter {
   }
 
   /**
-   * Stateful splitter to keep the public split(...) method small and focused. Encapsulates
+   * Stateful splitter to keep the public split(...) method small and focused. Encapsulates the
    * tokenization state and mirrors the prior behavior exactly.
    */
   private static final class SplitRunner {
@@ -5123,7 +5152,7 @@ class CSSTokenizerFilter {
     boolean eatLF = false; // eat the next linefeed due to an escape closing
     final StringBuilder origToken;
     final StringBuilder decodedToken;
-    boolean dontLikeOrigToken = false; // original token bends the spec in unacceptable ways
+    boolean dontLikeOrigToken = false; // the original token bends the spec in unacceptable ways
     final StringBuilder escape = new StringBuilder(6);
     boolean couldBeIdentifier = true;
     boolean addComma = false;
@@ -5846,7 +5875,7 @@ class CSSTokenizerFilter {
     }
 
     /**
-     * Full constructor exposing all verifier knobs including expression patterns and value-only
+     * Full constructor exposing all verifier knobs, including expression patterns and value-only
      * mode.
      *
      * @param allowedValues accepted literal keywords; may be {@code null}.
@@ -5914,7 +5943,7 @@ class CSSTokenizerFilter {
       this.isIDSelector = flags.idSelector;
       this.isShape = flags.shape;
       this.isString = flags.string;
-      this.isCounter = flags.counter; // not set by tokens currently, reserved
+      this.isCounter = flags.counter; // not set by tokens currently reserved
       this.isIdentifier = flags.identifier;
       this.isTime = flags.time;
       this.isFrequency = flags.frequency;
@@ -6063,7 +6092,7 @@ class CSSTokenizerFilter {
     /**
      * Convenience overload that validates a single token value.
      *
-     * @param word token to validate according to this property’s rules.
+     * @param word token to validate, according to this property’s rules.
      * @param cb auxiliary callback for URI checks when {@code word} is a URL.
      * @return {@code true} when the token is accepted.
      */
@@ -6091,7 +6120,7 @@ class CSSTokenizerFilter {
       if (!onlyValueVerifier && allowedMedia != null && !isAnyMediaAllowed(media)) {
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "checkValidity Media of the element is not allowed.Media={} allowed Media={}",
+              "checkValidity rejected: media not allowed for element. media={} allowedMedia={}",
               Fields.commaList(media),
               allowedMedia);
         return false;
@@ -6264,7 +6293,7 @@ class CSSTokenizerFilter {
       return false;
     }
 
-    /** Returns the index where the initial 1a2a3... chain ends (position of last digit). */
+    /** Returns the index where the initial 1a2a3... chain ends (position of the last digit). */
     private int findEndOfOrChain(String expression) {
       int endIndex = expression.length();
       for (int j = 0; j < expression.length(); j++) {
@@ -6395,7 +6424,7 @@ class CSSTokenizerFilter {
     /**
      * Takes b-expressions and evaluates them.
      *
-     * <p>{@literal &&} means all of the expressions must occur in any order.<br>
+     * <p>{@literal &&} means all the expressions must occur in any order.<br>
      * CSS Grammar {@code list-item &amp;&amp; [ block | nonsense ] &amp;&amp; [ more ]?}<br>
      * Will accept the following inputs as valid:<br>
      * {@code list-item block}<br>
@@ -6477,9 +6506,6 @@ class CSSTokenizerFilter {
       return false;
     }
 
-    /*
-     * This function takes an array of string and concatenates everything in a " " seperated string.
-     */
     /**
      * Joins a contiguous slice of {@code parts} into a single space-separated string.
      *
@@ -6513,7 +6539,7 @@ class CSSTokenizerFilter {
     }
 
     /**
-     * Creates a new sub-array from {@code array} spanning {@code [lowerIndex, upperIndex)}.
+     * Creates a new subarray from {@code array} spanning {@code [lowerIndex, upperIndex)}.
      *
      * @param array source array; {@code null} yields an empty array.
      * @param lowerIndex inclusive lower bound index into {@code array}.
@@ -6847,7 +6873,7 @@ class CSSTokenizerFilter {
      * Checks whether the supplied {@code content} value is acceptable.
      *
      * <p>Accepts a single keyword from {@code allowedValues}, any string, or a counter/counters
-     * construct with optional list style type.
+     * construct with an optional list style type.
      *
      * @param media unused for {@code content}; may be {@code null}.
      * @param elements unused for {@code content}; may be {@code null}.
@@ -6936,9 +6962,9 @@ class CSSTokenizerFilter {
     }
   }
 
-  // For verifying ’font-size’[ / ’line-height’]? of Font property
   /**
-   * Verifier for font-related shorthand parts such as style, variant, weight, size and line-height.
+   * Verifier for font-related shorthand parts such as style, variant, weight, size, and
+   * line-height.
    */
   static class FontPartPropertyVerifier extends CSSPropertyVerifier {
     /** Creates a verifier for parts used by the {@code font} shorthand. */
@@ -7013,8 +7039,8 @@ class CSSTokenizerFilter {
 
     // We do not change the tokens.
     // We probably should put in quotes around unquoted font family names, put spaces after commas
-    // etc, but
-    // this may be a bit tricky: we'd have to put spaces etc inside some words, and delete some
+    // etc., but this may be a bit tricky: we'd have to put spaces etc. inside some words, and
+    // delete some
     // words...
     // Quite possible, but not a high priority, "verdana,arial,times new roman,sans-serif" is not
     // dangerous, it's just hard to parse.
@@ -7048,7 +7074,7 @@ class CSSTokenizerFilter {
         ProcessResult pr = consumeUnquotedFont(value, i, fontWords);
         if (pr.shouldReturn) return pr.returnValue;
 
-        // Continue outer loop from the consumed index
+        // Continue the outer loop from the consumed index
         i = pr.nextIndex + 1;
       }
       if (LOG.isTraceEnabled()) LOG.trace("font: reached end, valid");
@@ -7072,7 +7098,7 @@ class CSSTokenizerFilter {
       }
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "checkValidity Media of the element is not allowed.Media={} allowed Media={}",
+            "FontPartPropertyVerifier media not allowed. media={} allowedMedia={}",
             Fields.commaList(media),
             allowedMedia);
       return false;

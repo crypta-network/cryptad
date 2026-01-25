@@ -18,8 +18,8 @@ import org.slf4j.LoggerFactory;
  * frames unchanged to the provided output. It recognizes and skips both ID3v2 headers at the
  * beginning of a stream and ID3v1 tags typically found at the end. While scanning, the filter
  * searches for a valid frame sync, validates header fields (MPEG version, layer, sample rate,
- * emphasis), and computes the length of each frame in order to copy it verbatim. Frames marked as
- * protected include a two-byte CRC which is preserved but not recalculated.
+ * emphasis), and computes the length of each frame to copy it verbatim. Frames marked as protected
+ * include a two-byte CRC which is preserved but not recalculated.
  *
  * <p>The implementation rejects uncommon or hard-to-handle cases to remain safe by default. In
  * particular, so-called “free format” bitstreams (non-standard bitrates) are considered invalid for
@@ -252,20 +252,20 @@ public class MP3Filter implements ContentDataFilter {
     size |= (encodedSize[2] & 0x7F) << 7;
     size |= (encodedSize[3] & 0x7F);
     skipFully(in, size);
-    LOG.info("Skipped {} bytes of ID3v2 data", size);
+    LOG.info("ID3v2 header skipped: {} bytes", size);
     st.frameHeader = in.readInt();
     st.foundStream = hasFrameSync(st.frameHeader);
   }
 
   private static void skipID3v1(DataInputStream in, State st) throws IOException {
-    skipFully(in, 124); // fixed length is 128 bytes; 4 already read
-    LOG.info("Skipped an ID3v1 TAG");
+    skipFully(in, 124); // the fixed length is 128 bytes; 4 already read
+    LOG.info("ID3v1 tag skipped");
     st.frameHeader = in.readInt();
     st.foundStream = hasFrameSync(st.frameHeader);
   }
 
   private static void handleOutOfSync(DataInputStream in, State st) throws IOException {
-    if (st.foundFrames != 0) LOG.info("Series of frames: {}", st.foundFrames);
+    if (st.foundFrames != 0) LOG.info("Frame run ended before resync: {} frames", st.foundFrames);
     if (st.foundFrames > st.maxFoundFrames) st.maxFoundFrames = st.foundFrames;
     st.foundFrames = 0;
     st.frameHeader = st.frameHeader << 8;
@@ -321,14 +321,14 @@ public class MP3Filter implements ContentDataFilter {
     final int granularity = bitsPerSlot[layer];
     int frameLength = samples / granularity * bitrate / samplerate;
     frameLength += paddingBit ? 1 : 0;
-    // Avoid integer-division-before-multiplication; multiply first then divide
+    // Avoid integer-division-before-multiplication; multiply first, then divide
     frameLength = (frameLength * granularity) / 8;
 
     short crc = 0;
     if (hasCRC) {
       st.totalCRCs++;
       crc = in.readShort();
-      LOG.info("Found a CRC");
+      LOG.info("Frame CRC present");
       // CRC calculation is not implemented; the value is preserved.
     }
 
@@ -339,14 +339,16 @@ public class MP3Filter implements ContentDataFilter {
     out.write(frame);
     st.totalFrames++;
     st.foundFrames++;
-    if (st.countLostSyncBytes != 0) LOG.info("Lost sync for {} bytes", st.countLostSyncBytes);
+    if (st.countLostSyncBytes != 0)
+      LOG.info("Recovered frame sync after {} bytes", st.countLostSyncBytes);
     st.countLostSyncBytes = 0;
     st.frameHeader = in.readInt();
   }
 
   private void handleEOF(DataOutputStream out, State st) throws IOException {
-    if (st.foundFrames != 0) LOG.info("Series of frames: {}", st.foundFrames);
-    if (st.countLostSyncBytes != 0) LOG.info("Lost sync for {} bytes", st.countLostSyncBytes);
+    if (st.foundFrames != 0) LOG.info("EOF after final frame run: {} frames", st.foundFrames);
+    if (st.countLostSyncBytes != 0)
+      LOG.info("EOF with trailing out-of-sync bytes: {}", st.countLostSyncBytes);
     if (st.totalFrames == 0 || st.maxFoundFrames < 10) {
       if (st.countFreeBitrate > 100)
         throw new DataFilterException(
@@ -361,6 +363,6 @@ public class MP3Filter implements ContentDataFilter {
     }
 
     out.flush();
-    LOG.info("{} frames, of which {} had a CRC", st.totalFrames, st.totalCRCs);
+    LOG.info("MP3 filter completed: {} frames ({} with CRC)", st.totalFrames, st.totalCRCs);
   }
 }
