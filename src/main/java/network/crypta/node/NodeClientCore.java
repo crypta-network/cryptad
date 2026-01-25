@@ -612,19 +612,23 @@ public class NodeClientCore implements Persistable {
   private void deleteOldPersistentBlobIfPresent() {
     File oldBlobFile = new File(persistentTempDir, "persistent-blob.tmp");
     if (oldBlobFile.exists()) {
-      LOG.info("Deleting {}", oldBlobFile);
+      LOG.info("Deleting legacy persistent blob file: {}", oldBlobFile);
       if (persistentTempBucketFactory.isEncrypting()) {
         try {
           FileUtil.secureDelete(oldBlobFile);
         } catch (IOException e) {
-          LOG.warn("Unable to securely delete old blob file {}: {}", oldBlobFile, e.toString());
-          LOG.warn("Please delete {} manually if it remains.", oldBlobFile);
+          LOG.warn(
+              "Secure delete failed for legacy persistent blob file {}: {}",
+              oldBlobFile,
+              e.toString());
+          LOG.warn("Manual cleanup needed for legacy persistent blob file {}.", oldBlobFile);
         }
       } else {
         try {
           NodeClientCoreSupport.deleteFile(oldBlobFile);
         } catch (IOException e) {
-          LOG.warn("Unable to delete old blob file {}: {}", oldBlobFile, e.toString());
+          LOG.warn(
+              "Delete failed for legacy persistent blob file {}: {}", oldBlobFile, e.toString());
         }
       }
     }
