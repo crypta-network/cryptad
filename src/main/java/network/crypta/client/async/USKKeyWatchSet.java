@@ -93,7 +93,7 @@ final class USKKeyWatchSet {
     this.backgroundPoll = backgroundPoll;
     this.pubKeyHash = origUSK.getPubKeyHash();
     this.cryptoAlgorithm = origUSK.cryptoAlgorithm;
-    if (LOG.isDebugEnabled()) LOG.debug("Creating KeyList from last known good: {}", lookedUp);
+    if (LOG.isDebugEnabled()) LOG.debug("init watch list: base slot {}", lookedUp);
     fromLastKnownSlot = new KeyList(lookedUp);
     fromSubscribers = new TreeMap<>();
     if (origUSK.suggestedEdition > lookedUp)
@@ -168,7 +168,7 @@ final class USKKeyWatchSet {
       boolean isFirstLoop) {
 
     if (LOG.isDebugEnabled())
-      LOG.debug("Get editions to fetch, latest slot is {} running is {}", lookedUp, alreadyRunning);
+      LOG.debug("plan fetch list: latest slot {} running lookups {}", lookedUp, alreadyRunning);
 
     List<Lookup> toFetch = new ArrayList<>();
     List<Lookup> toPoll = new ArrayList<>();
@@ -239,7 +239,7 @@ final class USKKeyWatchSet {
     int allowedRandom = 1 + fromSubscribers.size();
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Running random requests: {} total allowed: {} looked up is {} for {}",
+          "random probe budget: running {} allowed {} lookedUp {} for {}",
           runningRandom,
           allowedRandom,
           lookedUp,
@@ -409,7 +409,7 @@ final class USKKeyWatchSet {
     // Check WATCH_KEYS from last known good slot.
     // Note: does not currently take origUSK or subscribers into account.
     if (LOG.isDebugEnabled())
-      LOG.debug("Getting datastore checker from {} for {}", lastSlot, origUSK);
+      LOG.debug("datastore check plan from slot {} for {}", lastSlot, origUSK);
     List<KeyList.StoreSubChecker> checkers = new ArrayList<>();
     KeyList.StoreSubChecker c = fromLastKnownSlot.checkStore(lastSlot + 1);
     if (c != null) checkers.add(c);
@@ -460,7 +460,7 @@ final class USKKeyWatchSet {
    */
   public synchronized long match(NodeSSK key, long lastSlot) {
     if (LOG.isDebugEnabled())
-      LOG.debug("Trying to match {} from slot {} for {}", key, lastSlot, origUSK);
+      LOG.debug("match key against watch list: key {} lastSlot {} for {}", key, lastSlot, origUSK);
     long ret = fromLastKnownSlot.match(key, lastSlot);
     if (ret != -1) return ret;
 
@@ -537,7 +537,7 @@ final class USKKeyWatchSet {
       edition = match((NodeSSK) key, lastSlot);
     }
     if (edition == -1) return null;
-    if (LOG.isDebugEnabled()) LOG.debug("Matched edition {} for {}", edition, origUSK);
+    if (LOG.isDebugEnabled()) LOG.debug("matched block edition {} for {}", edition, origUSK);
 
     ClientSSKBlock data;
     try {
@@ -610,7 +610,12 @@ final class USKKeyWatchSet {
      */
     public KeyList(long slot) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Creating KeyList from {} on {} {}", slot, origUSK, this, new Exception("debug"));
+        LOG.debug(
+            "init key list cache at slot {} for {} {}",
+            slot,
+            origUSK,
+            this,
+            new Exception("debug"));
       firstSlot = slot;
       RemoveRangeArrayList<byte[]> ehDocnames = new RemoveRangeArrayList<>(WATCH_KEYS);
       cache = new WeakReference<>(ehDocnames);
@@ -636,7 +641,7 @@ final class USKKeyWatchSet {
      */
     public synchronized void getNextEditions(
         List<Lookup> toFetch, List<Lookup> toPoll, long lookedUp, List<Lookup> alreadyRunning) {
-      if (LOG.isDebugEnabled()) LOG.debug("Getting next editions from {}", lookedUp);
+      if (LOG.isDebugEnabled()) LOG.debug("schedule next editions after {}", lookedUp);
       if (lookedUp < 0) lookedUp = 0;
       for (int i = 1; i <= origMinFailures; i++) {
         long ed = i + lookedUp;
@@ -667,11 +672,11 @@ final class USKKeyWatchSet {
       l.val = ed;
       l.label = origUSK.toString();
       if (lookupList.contains(l)) {
-        if (LOG.isTraceEnabled()) LOG.trace("Ignoring {}", l);
+        if (LOG.isTraceEnabled()) LOG.trace("skip duplicate lookup in planned list: {}", l);
         return false;
       }
       if (alreadyRunning.remove(l)) {
-        if (LOG.isTraceEnabled()) LOG.trace("Ignoring (2): {}", l);
+        if (LOG.isTraceEnabled()) LOG.trace("skip lookup already running: {}", l);
         return false;
       }
       ClientSSK key;
@@ -681,7 +686,7 @@ final class USKKeyWatchSet {
       l.key = key;
       l.ignoreStore = ignoreStore;
       if (lookupList.contains(l)) {
-        if (LOG.isTraceEnabled()) LOG.trace("Ignoring (3): {}", l);
+        if (LOG.isTraceEnabled()) LOG.trace("skip lookup after key fill: {}", l);
         return false;
       }
       return lookupList.add(l);
@@ -769,8 +774,7 @@ final class USKKeyWatchSet {
     private boolean tryAddRandomEdition(
         List<Lookup> toFetch, long lookedUp, List<Lookup> alreadyRunning, long fetch) {
       if (LOG.isDebugEnabled())
-        LOG.debug(
-            "Trying random future edition {} for {} current edition {}", fetch, origUSK, lookedUp);
+        LOG.debug("random probe candidate {} for {} (lookedUp {})", fetch, origUSK, lookedUp);
       return getEditionIfNotAlreadyRunning(
           toFetch, alreadyRunning, fetch, (fetch - lookedUp) < WATCH_KEYS);
     }
@@ -820,8 +824,7 @@ final class USKKeyWatchSet {
         this.checkedFrom = checkFrom;
         this.checkedTo = checkTo;
         if (LOG.isDebugEnabled())
-          LOG.debug(
-              "Checking datastore from {} to {} for {} on {}", checkFrom, checkTo, origUSK, this);
+          LOG.debug("datastore check range {}..{} for {} on {}", checkFrom, checkTo, origUSK, this);
       }
 
       /**
@@ -841,7 +844,7 @@ final class USKKeyWatchSet {
           checkedDatastoreTo = checkedTo;
           if (LOG.isDebugEnabled())
             LOG.debug(
-                "Checked from {} to {} (now overall is {} to {}) for {}",
+                "datastore check complete {}..{}, overall {}..{} for {}",
                 checkedFrom,
                 checkedTo,
                 checkedDatastoreFrom,
@@ -864,7 +867,7 @@ final class USKKeyWatchSet {
      */
     public synchronized StoreSubChecker checkStore(long lastSlot) {
       if (LOG.isDebugEnabled())
-        LOG.debug("check store from {} current first slot {}", lastSlot, firstSlot);
+        LOG.debug("build store checker from {} (firstSlot {})", lastSlot, firstSlot);
       long checkFrom = lastSlot;
       long checkTo = lastSlot + WATCH_KEYS;
       if (checkedDatastoreTo >= checkFrom) {
@@ -896,7 +899,7 @@ final class USKKeyWatchSet {
      */
     synchronized RemoveRangeArrayList<byte[]> updateCache(long curBaseEdition) {
       if (LOG.isDebugEnabled())
-        LOG.debug("update cache from {} current first slot {}", curBaseEdition, firstSlot);
+        LOG.debug("realign cache to base {} (firstSlot {})", curBaseEdition, firstSlot);
       RemoveRangeArrayList<byte[]> ehDocnames;
       if (cache == null || (ehDocnames = cache.get()) == null) {
         ehDocnames = new RemoveRangeArrayList<>(WATCH_KEYS);
@@ -923,7 +926,7 @@ final class USKKeyWatchSet {
      */
     public synchronized long match(NodeSSK key, long curBaseEdition) {
       if (LOG.isDebugEnabled())
-        LOG.debug("match from {} current first slot {}", curBaseEdition, firstSlot);
+        LOG.debug("match request base {} (firstSlot {})", curBaseEdition, firstSlot);
       RemoveRangeArrayList<byte[]> ehDocnames;
       if (cache == null || (ehDocnames = cache.get()) == null) {
         ehDocnames = new RemoveRangeArrayList<>(WATCH_KEYS);
@@ -953,7 +956,7 @@ final class USKKeyWatchSet {
     private long match(NodeSSK key, long curBaseEdition, RemoveRangeArrayList<byte[]> ehDocnames) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Matching {} cur base edition {} first slot was {} for {} on {}",
+            "match against cache: key {} base {} firstSlot {} for {} on {}",
             key,
             curBaseEdition,
             firstSlot,
@@ -1019,7 +1022,7 @@ final class USKKeyWatchSet {
       // immediately.
       // So ignore it.
       if (LOG.isTraceEnabled())
-        LOG.trace("Ignoring regression in match() from {} to {}", curBaseEdition, firstSlot);
+        LOG.trace("ignore base regression in match: {} -> {}", curBaseEdition, firstSlot);
       return key == null ? -1 : innerMatch(key, ehDocnames, 0, ehDocnames.size(), firstSlot);
     }
 
@@ -1046,7 +1049,8 @@ final class USKKeyWatchSet {
       byte[] data = key.getKeyBytes();
       for (int i = offset; i < (offset + size); i++) {
         if (Arrays.equals(data, ehDocnames.get(i))) {
-          if (LOG.isDebugEnabled()) LOG.debug("Found edition {} for {}", firstSlot + i, origUSK);
+          if (LOG.isDebugEnabled())
+            LOG.debug("match hit edition {} for {}", firstSlot + i, origUSK);
           return firstSlot + i;
         }
       }
@@ -1065,7 +1069,7 @@ final class USKKeyWatchSet {
      * @param ehDocnames cache to append to; must not be null
      */
     private void generate(long baseEdition, int keys, RemoveRangeArrayList<byte[]> ehDocnames) {
-      if (LOG.isDebugEnabled()) LOG.debug("generate() from {} for {}", baseEdition, origUSK);
+      if (LOG.isDebugEnabled()) LOG.debug("populate cache from {} for {}", baseEdition, origUSK);
       assert (baseEdition >= 0);
       for (int i = 0; i < keys; i++) {
         long ed = baseEdition + i;

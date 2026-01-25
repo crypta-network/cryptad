@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>Collisions can optionally be treated as success via the {@code collisionIsOK} flag.
- *   <li>When {@code finishOnFailure} is enabled, remaining children are cancelled after the first
+ *   <li>When {@code finishOnFailure} is enabled, remaining children are canceled after the first
  *       failure.
  *   <li>For persistent operations, failures may be cloned to decouple from internal removal.
  * </ul>
@@ -84,7 +84,7 @@ public class MultiPutCompletionCallback
   @SuppressWarnings("java:S1948")
   private ClientPutState generator;
 
-  /** Owning putter that initiated the multi-put sequence. */
+  /** Owning the putter that initiated the multi-put sequence. */
   private final BaseClientPutter parent;
 
   /** The first failure observed, retained until completion (may be replaced on later failure). */
@@ -112,13 +112,13 @@ public class MultiPutCompletionCallback
   @SuppressWarnings("java:S1948")
   public final Object token;
 
-  /** True when the operation can survive restarts and should preserve error context. */
+  /** True, when the operation can survive restarts and should preserve the error context. */
   private final boolean persistent;
 
   /** Treat {@link InsertExceptionMode#COLLISION} as success when enabled. */
   private final boolean collisionIsOK;
 
-  /** Cancel remaining children after first failure when enabled. */
+  /** Cancel remaining children after the first failure when enabled. */
   private final boolean finishOnFailure;
 
   /** Guards idempotent resume; set after the first {@link #onResume(ClientContext)}. */
@@ -151,7 +151,7 @@ public class MultiPutCompletionCallback
    * Creates a multi-put callback with explicit collision handling.
    *
    * <p>When {@code collisionIsOK} is {@code true}, a child failure with {@link
-   * InsertExceptionMode#COLLISION} is treated as success for the purposes of group completion.
+   * InsertExceptionMode#COLLISION} is treated as success for group completion.
    *
    * @param cb the downstream {@link PutCompletionCallback} for group-level events; never {@code
    *     null}
@@ -172,7 +172,7 @@ public class MultiPutCompletionCallback
   /**
    * Creates a multi-put callback with full control over collision and early-cancel behavior.
    *
-   * <p>When {@code finishOnFailure} is {@code true}, remaining children are cancelled after the
+   * <p>When {@code finishOnFailure} is {@code true}, remaining children are canceled after the
    * first failure is observed (post-{@link #arm(ClientContext)}). This can reduce resource usage
    * and latency at the cost of losing additional error details from later children.
    *
@@ -212,7 +212,7 @@ public class MultiPutCompletionCallback
     boolean complete = true;
     synchronized (this) {
       if (finished) {
-        LOG.error("Already finished but got onSuccess() for {} on {}", state, this);
+        LOG.error("event=multi-put-onSuccess-after-finish state={} callback={}", state, this);
         return;
       }
       ListUtils.removeBySwapLast(waitingFor, state);
@@ -238,7 +238,7 @@ public class MultiPutCompletionCallback
    * the failure is converted into a success for the child and normal aggregation proceeds.
    * Otherwise, the first failure is recorded; if the group has already been {@link
    * #arm(ClientContext) armed} and {@code finishOnFailure} is enabled, remaining children are
-   * cancelled.
+   * canceled.
    *
    * @param e the failure reported by the child; may be cloned internally when persistence requires
    *     decoupling from internal removal
@@ -255,7 +255,7 @@ public class MultiPutCompletionCallback
     boolean doCancel = false;
     synchronized (this) {
       if (finished) {
-        LOG.error("Already finished but got onFailure() for {} on {}", state, this);
+        LOG.error("event=multi-put-onFailure-after-finish state={} callback={}", state, this);
         return;
       }
       ListUtils.removeBySwapLast(waitingFor, state);
@@ -281,7 +281,7 @@ public class MultiPutCompletionCallback
     else if (doCancel) cancel(context);
   }
 
-  /** Completes the group and forwards the final outcome to the downstream callback. */
+  /** Completes the group and forwards the outcome to the downstream callback. */
   private void complete(InsertException e, ClientContext context) {
     synchronized (this) {
       if (finished) return;
@@ -289,7 +289,7 @@ public class MultiPutCompletionCallback
       if (e != null && this.e != null && this.e != e) {
         if (e.getMode()
             == InsertExceptionMode
-                .CANCELLED) { // Cancelled is okay, ignore it, we cancel after failure sometimes.
+                .CANCELLED) { // Canceled is okay, ignore it, we cancel after failure sometimes.
           // Ignore the new failure mode, use the old one
           e = this.e;
           if (persistent) {
@@ -344,10 +344,10 @@ public class MultiPutCompletionCallback
   /**
    * Arms the aggregation, enabling completion and cancellation behavior.
    *
-   * <p>After arming, if there are no remaining children, the final outcome is forwarded
-   * immediately. If a pre-arm cancellation was requested, the method cancels all children. The
-   * method also forwards {@link #onBlockSetFinished(ClientPutState, ClientContext)} when the last
-   * child has finished setting its blocks.
+   * <p>After arming, if there are no remaining children, the outcome is forwarded immediately. If a
+   * pre-arm cancellation was requested, the method cancels all children. The method also forwards
+   * {@link #onBlockSetFinished(ClientPutState, ClientContext)} when the last child has finished
+   * setting its blocks.
    *
    * @param context ambient client context used for forwarding downstream callbacks
    */
@@ -404,8 +404,8 @@ public class MultiPutCompletionCallback
   /**
    * Cancels all outstanding children currently tracked by this aggregation.
    *
-   * <p>Cancellation is best-effort and proceeds child-by-child. Any children added concurrently
-   * after the snapshot is taken will not be cancelled by this invocation.
+   * <p>Cancellation is best-effort and proceeds child-by-child. This invocation will not cancel any
+   * children added concurrently after the snapshot is taken.
    *
    * @param context ambient client context supplied to each child’s {@code cancel}
    */
@@ -425,8 +425,8 @@ public class MultiPutCompletionCallback
   /**
    * Updates internal references when a child transitions to a new state instance.
    *
-   * <p>All lists are updated in-place so subsequent notifications continue to be associated with
-   * the correct child. If the old and new references are identical, the call is ignored.
+   * <p>All lists are updated in-place, so further notifications continue to be associated with the
+   * correct child. If the old and new references are identical, the call is ignored.
    *
    * @param oldState the previous child state reference; must be tracked
    * @param newState the replacement state reference; must not be {@code null}
@@ -469,7 +469,7 @@ public class MultiPutCompletionCallback
     if (generator == state) {
       cb.onMetadata(m, this, context);
     } else {
-      LOG.error("Got metadata for {}", state);
+      LOG.error("event=multi-put-metadata-non-generator state={}", state);
     }
   }
 
@@ -479,7 +479,7 @@ public class MultiPutCompletionCallback
    * <p>This overload is used when metadata is provided in a {@link Bucket}. Only notifications from
    * the generator are forwarded; others are logged.
    *
-   * @param metadata opaque metadata bucket; ownership and lifetime are defined by the caller
+   * @param metadata opaque metadata bucket; the caller defines ownership and lifetime
    * @param state the child reporting metadata; must be the current generator
    * @param context ambient client context used for forwarding downstream callbacks
    */
@@ -489,7 +489,7 @@ public class MultiPutCompletionCallback
     if (generator == state) {
       cb.onMetadata(metadata, this, context);
     } else {
-      LOG.error("Got metadata for {}", state);
+      LOG.error("event=multi-put-metadata-bucket-non-generator state={}", state);
     }
   }
 
@@ -563,11 +563,11 @@ public class MultiPutCompletionCallback
    * Resumes all tracked children and, if needed, resumes the downstream callback.
    *
    * <p>The method is idempotent; only the first invocation performs any work. Children are resumed
-   * sequentially, and any exceptions propagate according to the contract.
+   * sequentially, and any exceptions propagate, according to the contract.
    *
    * @param context ambient client context used for resuming
    * @throws InsertException if a child cannot be resumed due to an insert-related error
-   * @throws ResumeFailedException if resuming previously persisted state fails
+   * @throws ResumeFailedException if resuming the previously persisted state fails
    */
   @Override
   public void onResume(ClientContext context) throws InsertException, ResumeFailedException {

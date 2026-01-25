@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
  * completion back to the inserter. It also serves as a persistence tag in the node database so that
  * in-flight insertions can resume after a restart when persistence is enabled. Instances are
  * scheduled onto the execution infrastructure and may run either on a database-backed persistent
- * thread or on the main executor, depending on configuration.
+ * thread or on the main executor, depending on the configuration.
  *
  * <p>Typical usage: construct the compressor via {@link #start(ClientContext, SingleFileInserter,
  * RandomAccessBucket, int, BucketFactory, boolean, long)} or by direct construction in tests, call
@@ -57,8 +57,8 @@ public class InsertCompressor implements CompressJob {
   private static final Logger LOG = LoggerFactory.getLogger(InsertCompressor.class);
 
   /**
-   * The SingleFileInserter we report to. We were created by it and when we have compressed our data
-   * we will call a method to process it and schedule the data.
+   * The SingleFileInserter we report to. We were created by it, and when we have compressed our
+   * data, we will call a method to process it and schedule the data.
    */
   private final SingleFileInserter inserter;
 
@@ -106,7 +106,9 @@ public class InsertCompressor implements CompressJob {
   private final long generateHashes;
   private final Config config;
 
-  private static final String DB_DISABLED_MSG = "Database disabled compressing data";
+  private static final String DB_DISABLED_COMPRESS_MSG =
+      "Compression queue failed: database disabled";
+  private static final String DB_DISABLED_FAIL_MSG = "Failure callback skipped: database disabled";
 
   InsertCompressor(
       SingleFileInserter inserter,
@@ -177,7 +179,7 @@ public class InsertCompressor implements CompressJob {
     long origSize = origData.size();
     long origNumberOfBlocks = origSize / CHKBlock.DATA_LENGTH;
 
-    if (LOG.isDebugEnabled()) LOG.debug("Attempt to compress the data");
+    if (LOG.isDebugEnabled()) LOG.debug("Starting compression cycle");
     // Try to compress the data.
     // Try each algorithm, starting with the fastest and weakest.
     // Stop when run out of algorithms, or the compressed data fits in a single block.
@@ -191,7 +193,7 @@ public class InsertCompressor implements CompressJob {
 
       if (persistent) {
 
-        // This can wait until after the next checkpoint, because it's still in the
+        // This can wait until after the next checkpoint because it's still in the
         // persistentInsertCompressors list, so will be restarted if necessary.
         context.jobRunner.queue(
             (PersistentJob)
@@ -229,7 +231,7 @@ public class InsertCompressor implements CompressJob {
       if (producedData != null && producedData != origData) {
         producedData.free();
       }
-      LOG.error(DB_DISABLED_MSG);
+      LOG.error(DB_DISABLED_COMPRESS_MSG);
     } catch (InvalidCompressionCodecException e) {
       fail(new InsertException(InsertExceptionMode.INTERNAL_ERROR, e, null), context);
     } catch (final IOException e) {
@@ -264,7 +266,7 @@ public class InsertCompressor implements CompressJob {
       for (final COMPRESSOR_TYPE comp : comps) {
         CompressionAttempt attempt = null;
         try {
-          if (LOG.isDebugEnabled()) LOG.debug("Attempt to compress using {}", comp);
+          if (LOG.isDebugEnabled()) LOG.debug("Compression attempt with codec {}", comp);
           notifyStartCompression(comp, context);
           attempt =
               performCompressionAttempt(
@@ -387,12 +389,12 @@ public class InsertCompressor implements CompressJob {
             drainFully(is);
             attempt.hashes = hasher.getResults();
           }
-          attempt.shouldContinue = true; // try next compressor type
+          attempt.shouldContinue = true; // try the next compressor type
           return attempt;
         } catch (RuntimeException e) {
           // ArithmeticException has been seen in bzip2 codec.
           LOG.error("Compression failed with codec {} : {}", comp, e, e);
-          attempt.shouldContinue = true; // try next compressor type; do not compute hashes
+          attempt.shouldContinue = true; // try the next compressor type; do not compute hashes
           return attempt;
         }
         if (hasher != null) {
@@ -420,7 +422,7 @@ public class InsertCompressor implements CompressJob {
                 },
             NativeThread.PriorityLevel.NORM_PRIORITY.value + 1);
       } catch (PersistenceDisabledException _) {
-        LOG.error(DB_DISABLED_MSG);
+        LOG.error(DB_DISABLED_FAIL_MSG);
       }
     } else {
       inserter.cb.onFailure(ie, inserter, context);

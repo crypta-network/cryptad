@@ -110,7 +110,7 @@ final class USKPriorityPolicy {
 
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Updating priorities: normal={} progress={} for {}",
+          "Computed poll priorities: normal={} progress={} for {}",
           prio.normal,
           prio.progress,
           fetcherName);
@@ -133,7 +133,7 @@ final class USKPriorityPolicy {
     progressPollPriority = DEFAULT_PROGRESS_POLL_PRIORITY;
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Updating priorities: normal = {} progress = {} for {}",
+          "Reset poll priorities to defaults: normal={} progress={} for {}",
           normalPollPriority,
           progressPollPriority,
           fetcherName);
@@ -185,9 +185,9 @@ final class USKPriorityPolicy {
   private static void accumulatePriorities(USKCallback[] cbs, Prio prio) {
     for (USKCallback cb : cbs) {
       short n = cb.getPollingPriorityNormal();
-      if (LOG.isTraceEnabled()) LOG.trace("Normal priority for {} : {}", cb, n);
+      if (LOG.isTraceEnabled()) LOG.trace("Subscriber normal priority: {} -> {}", cb, n);
       if (n < prio.normal) prio.normal = n;
-      if (LOG.isTraceEnabled()) LOG.trace("Progress priority for {} : {}", cb, n);
+      if (LOG.isTraceEnabled()) LOG.trace("Subscriber progress priority: {} -> {}", cb, n);
       short p = cb.getPollingPriorityProgress();
       if (p < prio.progress) prio.progress = p;
     }
@@ -202,9 +202,9 @@ final class USKPriorityPolicy {
   private static void accumulatePriorities(USKFetcherCallback[] cbs, Prio prio) {
     for (USKFetcherCallback cb : cbs) {
       short n = cb.getPollingPriorityNormal();
-      if (LOG.isTraceEnabled()) LOG.trace("Normal priority for {} : {}", cb, n);
+      if (LOG.isTraceEnabled()) LOG.trace("Fetcher callback normal priority: {} -> {}", cb, n);
       if (n < prio.normal) prio.normal = n;
-      if (LOG.isTraceEnabled()) LOG.trace("Progress priority for {} : {}", cb, n);
+      if (LOG.isTraceEnabled()) LOG.trace("Fetcher callback progress priority: {} -> {}", cb, n);
       short p = cb.getPollingPriorityProgress();
       if (p < prio.progress) prio.progress = p;
     }

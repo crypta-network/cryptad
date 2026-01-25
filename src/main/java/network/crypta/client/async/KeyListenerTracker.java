@@ -23,8 +23,8 @@ import org.slf4j.LoggerFactory;
  * Tracks listeners interested in specific keys and coordinates notification when data becomes
  * available. Tracking is intentionally decoupled from the act of scheduling and issuing network
  * requests so that locally observed traffic (e.g., neighbor requests, inserts routed through this
- * node, or late ULPR announcements) can satisfy pending interest even if this scheduler did not
- * originate a fetch for the same key.
+ * node, or late ULPR announcements) can satisfy pending interest. This still works even if this
+ * scheduler did not originate a fetch for the same key.
  *
  * <p>Typical usage is:
  *
@@ -90,19 +90,21 @@ class KeyListenerTracker implements KeySalter {
   final boolean isRTScheduler;
 
   /**
-   * Owning scheduler that decides when and how requests are executed. The tracker does not issue
-   * requests directly; instead, it exposes listener interest and potential requests that the
+   * The owning scheduler that decides when and how requests are executed. The tracker does not
+   * issue requests directly; instead, it exposes listener interest and potential requests that the
    * scheduler can query.
    */
   protected final ClientRequestScheduler sched;
 
-  /** Transient even for persistent scheduler. There is one for each of transient, persistent. */
+  /**
+   * Transient even for a persistent scheduler. There is one for each of the transients, persistent.
+   */
   protected final ArrayList<KeyListener> keyListeners;
 
   /**
-   * Map of salted key to either a single {@code KeyListener} or an array of listeners. Lookups are
-   * by salted key; for SSK schedulers no salting occurs. Values are intentionally stored as either
-   * a single instance or an array to minimize allocation when only one listener exists.
+   * Map of a salted key to either a single {@code KeyListener} or an array of listeners. Lookups
+   * are by salted key; for SSK schedulers no salting occurs. Values are intentionally stored as
+   * either a single instance or an array to minimize allocation when only one listener exists.
    */
   protected final Map<ByteArrayWrapper, Object> singleKeyListeners;
 
@@ -115,7 +117,7 @@ class KeyListenerTracker implements KeySalter {
 
   /**
    * Returns whether the owning scheduler is persistent. This does not imply that the tracker or its
-   * internal state is serialized; tracker instances are recreated on startup and callers are
+   * internal state is serialized; tracker instances are recreated on startup, and callers are
    * expected to re-register their listeners.
    *
    * @return {@code true} when associated with the persistent scheduler, {@code false} otherwise.
@@ -171,7 +173,7 @@ class KeyListenerTracker implements KeySalter {
    *
    * <p>Counts below {@link #MIN_RETRY_COUNT} are treated as zero so that recently started or
    * lightly retried requests do not dominate scheduling decisions. Only once a request has reached
-   * the threshold do additional retries make it more urgent relative to other clients' work.
+   * the threshold, do additional retries make it more urgent relative to other clients' work.
    *
    * @param retryCount the raw number of attempts already made; negative values are treated as zero.
    * @return a non-negative normalized count suitable for comparing request urgency.
@@ -209,7 +211,7 @@ class KeyListenerTracker implements KeySalter {
     registerListener(wantedKey, wrapper, listener);
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Added pending keys to {} : size now {}/{} : {}",
+          "Registered pending keys on {} : size now {}/{} : {}",
           this,
           this.keyListeners.size(),
           singleKeyListeners.size(),
@@ -240,7 +242,7 @@ class KeyListenerTracker implements KeySalter {
     listener.onRemove();
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Removed pending keys from {} : size now {}/{} : {}",
+          "Removed listener pending keys from {} : size now {}/{} : {}",
           this,
           this.keyListeners.size(),
           singleKeyListeners.size(),
@@ -303,7 +305,7 @@ class KeyListenerTracker implements KeySalter {
       try {
         prio = listener.definitelyWantKey(key, saltedKey, context);
       } catch (Exception t) {
-        LOG.error("Error in definitelyWantKey callback for {}", listener, t);
+        LOG.error("Error in definitelyWantKey callback during getKeyPrio for {}", listener, t);
         prio = -1;
       }
       if (prio != -1 && prio < priority) priority = prio;
@@ -332,7 +334,7 @@ class KeyListenerTracker implements KeySalter {
       try {
         count += listener.countKeys();
       } catch (Exception t) {
-        LOG.error("Error in countKeys callback for {}", listener, t);
+        LOG.error("Error in countKeys callback during countWaitingKeys for {}", listener, t);
       }
     }
     return count;
@@ -363,7 +365,7 @@ class KeyListenerTracker implements KeySalter {
             return true;
           }
         } catch (Exception t) {
-          LOG.error("Error in definitelyWantKey callback for {}", listener, t);
+          LOG.error("Error in definitelyWantKey callback during anyWantKey for {}", listener, t);
         }
       }
     }
@@ -438,7 +440,7 @@ class KeyListenerTracker implements KeySalter {
       try {
         reqs = listener.getRequestsForKey(key, saltedKey, context);
       } catch (Exception t) {
-        LOG.error("Error in getRequestsForKey callback for {}", listener, t);
+        LOG.error("Error in getRequestsForKey callback during requestsForKey for {}", listener, t);
       }
       if (reqs != null) {
         Collections.addAll(list, reqs);
@@ -494,7 +496,8 @@ class KeyListenerTracker implements KeySalter {
             matches.add(listener);
           }
         } catch (Exception t) {
-          LOG.error("Error in probablyWantKey callback for {}", listener, t);
+          LOG.error(
+              "Error in probablyWantKey callback during probablyWantKey scan for {}", listener, t);
         }
       }
     }
@@ -568,7 +571,7 @@ class KeyListenerTracker implements KeySalter {
         listener.onRemove();
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "Removed pending keys from {} : size now {}/{} : {}",
+              "Removed owner pending keys from {} : size now {}/{} : {}",
               this,
               this.keyListeners.size(),
               singleKeyListeners.size(),
@@ -667,7 +670,7 @@ class KeyListenerTracker implements KeySalter {
     }
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Removed pending keys from {} : size now {}/{}{}",
+          "Removed owner pending keys (array cleanup) from {} : size now {}/{}{}",
           this,
           this.keyListeners.size(),
           singleKeyListeners.size(),
@@ -724,7 +727,8 @@ class KeyListenerTracker implements KeySalter {
           return true;
         }
       } catch (Exception t) {
-        LOG.error("Error in probablyWantKey callback for {}", listener, t);
+        LOG.error(
+            "Error in probablyWantKey callback during anyListProbablyWant for {}", listener, t);
       }
     }
     return false;
@@ -739,13 +743,13 @@ class KeyListenerTracker implements KeySalter {
           ret = true;
         }
       } catch (Exception t) {
-        LOG.error("Error in handleBlock callback for {}", listener, t);
+        LOG.error("Error in handleBlock callback during tripPendingKey for {}", listener, t);
       }
       if (listener.isEmpty()) {
         try {
           removePendingKeys(listener);
         } catch (Exception t) {
-          LOG.error("Error while removing {}", listener, t);
+          LOG.error("Error while removing pending listener {}", listener, t);
         }
       }
     }

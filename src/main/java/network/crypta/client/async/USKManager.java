@@ -45,8 +45,8 @@ import org.slf4j.LoggerFactory;
  * stabilizes.
  *
  * <p>Lifecycle and storage: this class is <strong>transient</strong>. It keeps only in-memory
- * state; no subscriptions or fetchers are persisted across restarts. Callers should obtain an
- * instance from the node’s client context rather than constructing it directly.
+ * state; no subscriptions or fetchers are persisted across restarts. Callers should get an instance
+ * from the node’s client context rather than constructing it directly.
  *
  * <p>Concurrency: public methods that return cached state perform minimal synchronization to
  * maintain internal maps. Callbacks may be invoked on executor threads; implementations should be
@@ -58,14 +58,21 @@ import org.slf4j.LoggerFactory;
  */
 public class USKManager {
   private static final Logger LOG = LoggerFactory.getLogger(USKManager.class);
-  private static final String LOG_PUT = "Put {}";
-  private static final String LOG_SUBSCRIBING_TO_FOR = "Subscribing to {} for {}";
+  private static final String LOG_PUT_KNOWN_GOOD = "Updated known-good edition to {}";
+  private static final String LOG_PUT_SLOT_FROM_KNOWN_GOOD =
+      "Updated slot edition after known-good update to {}";
+  private static final String LOG_PUT_SLOT_FROM_SLOT_UPDATE =
+      "Updated slot edition from slot update to {}";
+  private static final String LOG_SUBSCRIBE_UPDATES = "Subscribe USK updates for {} callback={}";
+  private static final String LOG_SUBSCRIBE_CONTENT = "Subscribe USK content for {} callback={}";
+  private static final String LOG_SUBSCRIBE_CONTENT_CUSTOM =
+      "Subscribe USK content (custom context) for {} callback={}";
 
   static RequestClient rcRT = new RequestClientBuilder().realTime().build();
 
   static RequestClient rcBulk = new RequestClientBuilder().build();
 
-  /** Latest version successfully fetched by blanked-edition-number USK */
+  /** The latest version successfully fetched by blanked-edition-number USK */
   final Map<USK, Long> latestKnownGoodByClearUSK;
 
   /** Latest SSK slot known to be by the author by blanked-edition-number USK */
@@ -82,17 +89,17 @@ public class USKManager {
 
   /**
    * Temporary fetchers, started when a USK (with a positive edition number) is fetched. These have
-   * pollForever=false. Keyed by the clear USK, i.e. one per USK, not one per {USK, start edition},
+   * pollForever=false. Keyed by the clear USK, i.e., one per USK, not one per {USK, start edition},
    * unlike fetchersByUSK.
    */
   final LRUMap<USK, USKFetcher> temporaryBackgroundFetchersLRU;
 
   /**
    * Temporary fetchers where we have been asked to prefetch content. We track the time we last had
-   * a new last-slot, so that if there is no new last-slot found in 60 seconds, we start
-   * prefetching. We delete the entry when the fetcher finishes. Note: this could be TreeMap-based
-   * to prevent hash collision DoS'es, but it also needs to be weak; consider an approach that
-   * balances both requirements.
+   * a new last-slot so that if there is no new last-slot found in 60 seconds, we start prefetching.
+   * We delete the entry when the fetcher finishes. Note: this could be TreeMap-based to prevent
+   * hash collision DoS'es, but it also needs to be weak; consider an approach that balances both
+   * requirements.
    */
   final WeakHashMap<USK, Long> temporaryBackgroundFetchersPrefetch;
 
@@ -149,10 +156,10 @@ public class USKManager {
   }
 
   /**
-   * Returns the latest edition that was fetched successfully for the given USK.
+   * Returns the latest edition fetched successfully for the given USK.
    *
-   * <p>The query is performed against in-memory state only; no network requests are issued. When no
-   * successful fetch is known yet, {@code -1} is returned.
+   * <p>The query is performed against the in-memory state only; no network requests are issued.
+   * When no successful fetch is known yet, {@code -1} is returned.
    *
    * @param usk The key to query; only the clear (editionless) identity is considered. The provided
    *     instance is not retained, a cleared copy is used for lookups.
@@ -184,7 +191,7 @@ public class USKManager {
   /**
    * Builds a {@link USKFetcherTag} describing a fetcher with the requested behavior.
    *
-   * <p>The tag encapsulates fetch options such as persistence, real-time scheduling and whether to
+   * <p>The tag encapsulates fetch options such as persistence, real-time scheduling, and whether to
    * keep the last data. It does not schedule any work by itself; callers must submit the tag to the
    * appropriate mechanisms that accept it.
    *
@@ -231,15 +238,15 @@ public class USKManager {
    * Prepares a {@link USKFetcherTag} suitable for insert flows without scheduling it immediately.
    *
    * <p>When {@code persistent} is true, a defensive copy of the background fetch context is used.
-   * The resulting tag can be submitted by the caller at the appropriate time during an insert.
+   * The caller can submit the resulting tag at the appropriate time during an insert.
    *
-   * @param usk Target key to watch for insert coordination; suggested edition may be honored.
+   * @param usk Target key to watch for insert coordination; a suggested edition may be honored.
    * @param prioClass Priority class used for scheduling; higher values are typically lower
    *     priority.
    * @param cb Callback notified of fetcher events during the insert lifecycle; may be {@code null}.
-   * @param client Request client whose persistence/real-time flags are applied to the tag.
+   * @param client Request a client whose persistence/real-time flags are applied to the tag.
    * @param context Client context available to consumers of the tag; may be {@code null}.
-   * @param persistent If true, the fetch context is cloned to isolate subsequent mutations.
+   * @param persistent If true, the fetch context is cloned to isolate further mutations.
    * @param ignoreUSKDatehints If true, ignores date hints when probing for editions.
    * @return A fetcher tag configured for insert-time use; the tag itself performs no work.
    */
@@ -297,7 +304,7 @@ public class USKManager {
 
   /**
    * Issues a best-effort hint for the provided USK/SSK {@link FreenetURI} at the default update
-   * priority. If a USK is supplied it is converted to the corresponding SSK.
+   * priority. If a USK is supplied, it is converted to the corresponding SSK.
    *
    * @param uri A USK or SSK URI; USK inputs are converted to their SSK form for probing.
    * @param context Client context used to start the hint request and schedule callbacks.
@@ -338,7 +345,7 @@ public class USKManager {
       return;
     }
     uri = uri.sskForUSK();
-    if (LOG.isDebugEnabled()) LOG.debug("Doing hint fetch for {}", uri);
+    if (LOG.isDebugEnabled()) LOG.debug("Hint update fetch for {}", uri);
     final ClientGetter get =
         new ClientGetter(
             new NullClientCallback(rcBulk),
@@ -351,7 +358,7 @@ public class USKManager {
     try {
       get.start(context);
     } catch (FetchException e) {
-      if (LOG.isDebugEnabled()) LOG.debug("Cannot start hint fetch for {} : {}", uri, e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("Hint update fetch start failed for {} : {}", uri, e, e);
       // Ignore
     }
   }
@@ -414,7 +421,7 @@ public class USKManager {
       final HintCallback cb) {
     final FreenetURI origURI = uri;
     if (uri.isUSK()) uri = uri.sskForUSK();
-    if (LOG.isDebugEnabled()) LOG.debug("Doing hint fetch for {}", uri);
+    if (LOG.isDebugEnabled()) LOG.debug("Hint check probe fetch for {}", uri);
     final ClientGetter get =
         new ClientGetter(
             new ClientGetCallback() {
@@ -450,7 +457,7 @@ public class USKManager {
     try {
       get.start(context);
     } catch (FetchException e) {
-      if (LOG.isDebugEnabled()) LOG.debug("Cannot start hint fetch for {} : {}", uri, e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("Hint check probe start failed for {} : {}", uri, e, e);
       if (e.isDataFound()) cb.success(origURI, token);
       else if (e.isDNF()) cb.dnf(origURI, token, e);
       else cb.failed(origURI, token, e);
@@ -464,7 +471,7 @@ public class USKManager {
    * prefetchContent} is true, content prefetching is armed and may start after a quiet period if a
    * new slot is not discovered.
    *
-   * @param usk The USK to track temporarily; the clear identity is used to de-duplicate.
+   * @param usk The USK to track temporarily; the clear identity is used to deduplicate.
    * @param context Client context used for scheduling and starting the fetcher.
    * @param fctx Fetch context applied to the fetcher; limits and flags are honored.
    * @param prefetchContent Enables content prefetch after a delay if new slots stop appearing.
@@ -529,7 +536,7 @@ public class USKManager {
   }
 
   private void refreshRecency(USK clear, USKFetcher fetcher) {
-    // Update recency again, matching original behavior
+    // Update recency again, matching the original behavior
     temporaryBackgroundFetchersLRU.push(clear, fetcher);
   }
 
@@ -674,19 +681,19 @@ public class USKManager {
     boolean newSlot = false;
     synchronized (this) {
       Long l = latestKnownGoodByClearUSK.get(clear);
-      if (LOG.isDebugEnabled()) LOG.debug("Old known good: {}", l);
+      if (LOG.isDebugEnabled()) LOG.debug("Previous known-good edition: {}", l);
       if ((l == null) || (number > l)) {
         l = number;
         latestKnownGoodByClearUSK.put(clear, l);
-        if (LOG.isDebugEnabled()) LOG.debug(LOG_PUT, number);
+        if (LOG.isDebugEnabled()) LOG.debug(LOG_PUT_KNOWN_GOOD, number);
       } else return; // If it's in KnownGood, it will also be in Slot
 
       l = latestSlotByClearUSK.get(clear);
-      if (LOG.isDebugEnabled()) LOG.debug("Old slot: {}", l);
+      if (LOG.isDebugEnabled()) LOG.debug("Previous slot before known-good update: {}", l);
       if ((l == null) || (number > l)) {
         l = number;
         latestSlotByClearUSK.put(clear, l);
-        if (LOG.isDebugEnabled()) LOG.debug(LOG_PUT, number);
+        if (LOG.isDebugEnabled()) LOG.debug(LOG_PUT_SLOT_FROM_KNOWN_GOOD, number);
         newSlot = true;
       }
 
@@ -721,11 +728,11 @@ public class USKManager {
     final USKCallback[] callbacks;
     synchronized (this) {
       Long l = latestSlotByClearUSK.get(clear);
-      if (LOG.isDebugEnabled()) LOG.debug("Old slot: {}", l);
+      if (LOG.isDebugEnabled()) LOG.debug("Previous slot before slot update: {}", l);
       if ((l == null) || (number > l)) {
         l = number;
         latestSlotByClearUSK.put(clear, l);
-        if (LOG.isDebugEnabled()) LOG.debug(LOG_PUT, number);
+        if (LOG.isDebugEnabled()) LOG.debug(LOG_PUT_SLOT_FROM_SLOT_UPDATE, number);
       } else return;
 
       callbacks = subscribersByClearUSK.get(clear);
@@ -759,16 +766,16 @@ public class USKManager {
   }
 
   /**
-   * Subscribe to a given USK, and poll it in the background, but only report new editions when
-   * we've been through a round and are confident that we won't find more in the near future. Note
-   * that it will ignore KnownGood, it only cares about latest slot.
+   * Subscribe to a given USK and poll it in the background but only report new editions when we've
+   * been through a round and are confident that we won't find more soon. Note that it will ignore
+   * KnownGood, it only cares about the latest slot.
    *
    * @param origUSK The USK to poll; sparse updates reduce bandwidth by batching notifications.
    * @param cb Callback notified when stable editions are discovered during polling rounds.
    * @param ignoreUSKDatehints If true, ignores date hints while probing for new editions.
    * @param client Request client used for scheduling; must be non-persistent in this context.
    * @return The proxy object which was actually subscribed. The caller MUST record this and pass it
-   *     in to unsubscribe() when unsubscribing.
+   *     on to unsubscribe() when unsubscribing.
    */
   public USKSparseProxyCallback subscribeSparse(
       USK origUSK, USKCallback cb, boolean ignoreUSKDatehints, RequestClient client) {
@@ -802,7 +809,7 @@ public class USKManager {
    * @param cb Callback receiving notifications about discovered editions and slots.
    * @param runBackgroundFetch When true, starts a long-lived background fetcher for the USK.
    * @param ignoreUSKDatehints If true, date hints are ignored by the background fetcher.
-   * @param client Request client used to schedule polling; must not be persistent.
+   * @param client The requesting client used to schedule polling; must not be persistent.
    */
   public void subscribe(
       USK origUSK,
@@ -810,7 +817,7 @@ public class USKManager {
       boolean runBackgroundFetch,
       boolean ignoreUSKDatehints,
       RequestClient client) {
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_SUBSCRIBING_TO_FOR, origUSK, cb);
+    if (LOG.isDebugEnabled()) LOG.debug(LOG_SUBSCRIBE_UPDATES, origUSK, cb);
     if (client.persistent())
       throw new UnsupportedOperationException("USKManager subscriptions cannot be persistent");
     long ed = origUSK.suggestedEdition;
@@ -931,7 +938,7 @@ public class USKManager {
    * @param origUSK The USK to subscribe to.
    * @param cb Callback receiving notifications about discovered editions and slots.
    * @param runBackgroundFetch When true, starts a long-lived background fetcher for the USK.
-   * @param client Request client used to schedule polling; must not be persistent.
+   * @param client The requesting client used to schedule polling; must not be persistent.
    */
   public void subscribe(
       USK origUSK, USKCallback cb, boolean runBackgroundFetch, RequestClient client) {
@@ -941,7 +948,7 @@ public class USKManager {
   /**
    * Unsubscribes the given callback from updates related to the USK.
    *
-   * <p>If a background fetcher remains with no subscribers it is canceled; temporary background
+   * <p>If a background fetcher remains with no subscribers, it is canceled; temporary background
    * fetchers are unaffected because they self-terminate.
    *
    * @param origUSK The USK to unsubscribe from.
@@ -992,7 +999,7 @@ public class USKManager {
 
   /**
    * Subscribe to a USK. When it is updated, the content will be fetched (subject to the limits in
-   * fctx), and returned to the callback. If we are asked to do a background fetch, we will only
+   * fctx) and returned to the callback. If we are asked to do a background fetch, we will only
    * fetch editions when we are fairly confident there are no more to fetch.
    *
    * @param origUSK The USK to poll for content updates.
@@ -1001,7 +1008,7 @@ public class USKManager {
    *     editions are downloaded conservatively using a sparse strategy.
    * @param fctx Fetch context used for content retrieval; polling itself does not use this.
    * @param prio Priority used for content requests; consult {@link RequestStarter} constants.
-   * @param client Request client used to schedule both polling and content retrieval.
+   * @param client The requesting client used to schedule both polling and content retrieval.
    * @return A retriever that represents the subscription and coordinates content downloading.
    */
   public USKRetriever subscribeContent(
@@ -1013,7 +1020,7 @@ public class USKManager {
       RequestClient client) {
     USKRetriever ret = new USKRetriever(fctx, prio, client, cb, origUSK);
     USKCallback toSub = ret;
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_SUBSCRIBING_TO_FOR, origUSK, cb);
+    if (LOG.isDebugEnabled()) LOG.debug(LOG_SUBSCRIBE_CONTENT, origUSK, cb);
     if (runBackgroundFetch) {
       USKSparseProxyCallback proxy = new USKSparseProxyCallback(ret, origUSK);
       ret.setProxy(proxy);
@@ -1034,14 +1041,14 @@ public class USKManager {
    * @param cb Callback invoked when a new edition’s content is downloaded successfully.
    * @param fctx Custom fetch context applied to the internal fetcher.
    * @param prio Priority used for content requests; consult {@link RequestStarter} constants.
-   * @param client Request client used to schedule polling and content retrieval.
+   * @param client The requesting client used to schedule polling and content retrieval.
    * @return A retriever that represents the subscription and coordinates content downloading.
    */
   @SuppressWarnings("unused")
   public USKRetriever subscribeContentCustom(
       USK origUSK, USKRetrieverCallback cb, FetchContext fctx, short prio, RequestClient client) {
     USKRetriever ret = new USKRetriever(fctx, prio, client, cb, origUSK);
-    if (LOG.isDebugEnabled()) LOG.debug(LOG_SUBSCRIBING_TO_FOR, origUSK, cb);
+    if (LOG.isDebugEnabled()) LOG.debug(LOG_SUBSCRIBE_CONTENT_CUSTOM, origUSK, cb);
     USKSparseProxyCallback proxy = new USKSparseProxyCallback(ret, origUSK);
     ret.setProxy(proxy);
     /* runBackgroundFetch=false -> ignoreUSKDatehints unused */
@@ -1137,7 +1144,7 @@ public class USKManager {
   }
 
   /**
-   * Reports whether this manager is persistent across process restarts.
+   * Reports whether this manager is persistent across the process restarts.
    *
    * @return Always {@code false}; all state is in-memory and transient by design.
    */
@@ -1176,13 +1183,14 @@ public class USKManager {
       if (!isMetadata) context.uskManager.updateKnownGood(usk, uu.getSuggestedEdition(), context);
       else
         // We don't know whether the metadata is fetchable.
-        // Consider adding a callback so if the rest of the request completes we updateKnownGood().
+        // Consider adding a callback, so if the rest of the request completes, we
+        // updateKnownGood().
         context.uskManager.updateSlot(usk, uu.getSuggestedEdition(), context);
     } catch (MalformedURLException e) {
-      LOG.error("Caught {}", e, e);
+      LOG.error("checkUSK malformed URI: {}", e, e);
     } catch (Exception t) {
       // Don't let the USK hint cause us to not succeed on the block.
-      LOG.error("Caught {}", t, t);
+      LOG.error("checkUSK unexpected error: {}", t, t);
     }
   }
 }
