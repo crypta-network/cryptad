@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory;
  * <p>The policy is stateful and thread-safe for its own fields: mutations and reads of allowlist
  * arrays are synchronized on {@code this}. Permission checks never create directories or touch the
  * filesystem beyond parent-path comparisons, but download checks also honor the current physical
- * threat level from {@link SecurityLevels}. Changes take effect immediately for subsequent calls.
+ * threat level from {@link SecurityLevels}. Changes take effect immediately for further calls.
  *
  * <ul>
  *   <li>Maintains normalized download and upload allowlists.
@@ -39,7 +39,7 @@ final class NodeClientCoreTransferPolicy {
   /** Logger used for unexpected allowlist state; avoids throwing on anomalies. */
   private static final Logger LOG = LoggerFactory.getLogger(NodeClientCoreTransferPolicy.class);
 
-  /** Token used in configuration to include the configured downloads directory. */
+  /** Token used in configuration to include the configured "downloads" directory. */
   private static final String DOWNLOADS_DIR_NAME = "downloads";
 
   /** Node providing security levels that gate download permissions. */
@@ -67,12 +67,12 @@ final class NodeClientCoreTransferPolicy {
   private boolean uploadAllowedEverywhere;
 
   /**
-   * Creates a transfer policy bound to a node and downloads directory.
+   * Creates a transfer policy bound to a node and "downloads" directory.
    *
    * <p>The instance starts with empty allowlists and no implied permissions until either the
    * registration helpers or the setter methods are invoked. The provided downloads directory is
    * used only for parent-path checks; it is not created or validated here. Callers typically
-   * construct this policy once during client-core initialization and reuse it for subsequent
+   * construct this policy once during client-core initialization and reuse it for further
    * permission checks.
    *
    * @param node owning node used to read security levels; must be non-null.
@@ -101,9 +101,9 @@ final class NodeClientCoreTransferPolicy {
    *
    * <p>This method wires a {@code String[]} option into the node configuration so that changes
    * immediately update this policy. After registration, it applies the current stored value, so
-   * subsequent permission checks reflect persisted settings. Callers typically chain the returned
-   * sort order when registering additional options. Re-registering the same option would attempt to
-   * add a duplicate and is not supported.
+   * further permission checks reflect persisted settings. Callers typically chain the returned sort
+   * order when registering additional options. Re-registering, the same option would attempt to add
+   * a duplicate and is not supported.
    *
    * @param init initialization bundle providing the node configuration to register.
    * @param sortOrder sort order used for UI display; incremented for return.
@@ -150,9 +150,9 @@ final class NodeClientCoreTransferPolicy {
    *
    * <p>This method wires a {@code String[]} option into the node configuration so that changes
    * immediately update this policy. After registration, it applies the current stored value, so
-   * subsequent permission checks reflect persisted settings. Callers typically chain the returned
-   * sort order when registering additional options. Re-registering the same option would attempt to
-   * add a duplicate and is not supported.
+   * further permission checks reflect persisted settings. Callers typically chain the returned sort
+   * order when registering additional options. Re-registering, the same option would attempt to add
+   * a duplicate and is not supported.
    *
    * @param init initialization bundle providing the node configuration to register.
    * @param sortOrder sort order used for UI display; incremented for return.
@@ -196,9 +196,9 @@ final class NodeClientCoreTransferPolicy {
    * Configures directories where downloads may be written.
    *
    * <p>Recognized entries include {@code "all"} to allow any destination and {@code "downloads"} to
-   * allow the configured downloads directory. Any other string is treated as a filesystem path and
-   * stored as a {@link File}. Passing an empty array disables downloads entirely. The update is
-   * applied immediately and affects subsequent permission checks.
+   * allow the configured "downloads" directory. Any other string is treated as a filesystem path
+   * and stored as a {@link File}. Passing an empty array disables downloads entirely. The update is
+   * applied immediately and affects further permission checks.
    *
    * @param val array of directory entries; may include {@code "all"} or {@code "downloads"} tokens.
    * @throws NullPointerException if {@code val} contains a null entry.
@@ -229,7 +229,7 @@ final class NodeClientCoreTransferPolicy {
    *
    * <p>Recognized entries include {@code "all"} to allow any source. Any other string is treated as
    * a filesystem path and stored as a {@link File}. The configuration is applied immediately and
-   * affects subsequent permission checks for upload sources.
+   * affects further permission checks for upload sources.
    *
    * @param val array of directory entries; may include {@code "all"} token.
    * @throws NullPointerException if {@code val} contains a null entry.
@@ -271,7 +271,7 @@ final class NodeClientCoreTransferPolicy {
       for (File dir : downloadAllowedDirs) {
         if (dir == null) {
           // Debug mysterious NPE...
-          LOG.error("Null in upload allowed dirs???");
+          LOG.error("Null entry in download allowlist while checking destination");
           continue;
         }
         if (FileUtil.isParent(dir, filename)) return true;
@@ -296,7 +296,7 @@ final class NodeClientCoreTransferPolicy {
     for (File dir : uploadAllowedDirs) {
       if (dir == null) {
         // Debug mysterious NPE...
-        LOG.error("Null in upload allowed dirs???");
+        LOG.error("Null entry in upload allowlist while checking source");
         continue;
       }
       if (FileUtil.isParent(dir, filename)) return true;
@@ -308,8 +308,8 @@ final class NodeClientCoreTransferPolicy {
    * Returns the current allowlist for download destinations.
    *
    * <p>The returned array contains the configured directories used for permission checks. It is a
-   * direct reference to internal state, so callers should not modify the array or its elements. The
-   * contents may be empty when no explicit directories are configured. Callers should treat the
+   * direct reference to the internal state, so callers should not modify the array or its elements.
+   * The contents may be empty when no explicit directories are configured. Callers should treat the
    * array and its entries as read-only snapshots.
    *
    * @return current allowlist array reference; entries are not defensive copies.
@@ -322,8 +322,8 @@ final class NodeClientCoreTransferPolicy {
    * Returns the current allowlist for upload sources.
    *
    * <p>The returned array contains the configured directories used for permission checks. It is a
-   * direct reference to internal state, so callers should not modify the array or its elements. The
-   * contents may be empty when no explicit directories are configured. Callers should treat the
+   * direct reference to the internal state, so callers should not modify the array or its elements.
+   * The contents may be empty when no explicit directories are configured. Callers should treat the
    * array and its entries as read-only snapshots.
    *
    * @return current allowlist array reference; entries are not defensive copies.
