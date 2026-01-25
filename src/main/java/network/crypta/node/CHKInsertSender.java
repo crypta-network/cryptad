@@ -1177,11 +1177,11 @@ public final class CHKInsertSender extends BaseSender
       }
       noneRoutable = false;
       if (!transfer.completedTransfer) {
-        LOG.debug("Waiting for transfer completion to {} : {}", transfer.pn, transfer);
+        LOG.debug("event=transfer_payload_wait to {} : {}", transfer.pn, transfer);
         return 0; // keep waiting
       }
       if (!transfer.receivedCompletionNotice) {
-        LOG.debug("Waiting for completion notice from {} : {}", transfer.pn, transfer);
+        LOG.debug("event=transfer_notice_wait from {} : {}", transfer.pn, transfer);
         return 0; // keep waiting
       }
       if (!transfer.completionSucceeded) someFailed = true;
@@ -1535,7 +1535,10 @@ public final class CHKInsertSender extends BaseSender
       try {
         msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
-        LOG.info("Disconnected from {} while waiting for InsertReply on {}", next, this);
+        LOG.info(
+            "event=insert_outcome_wait_disconnect from {} while awaiting InsertReply on {}",
+            next,
+            this);
         transfer.onDisconnect(next);
         routeRequests();
         return;
@@ -1625,7 +1628,7 @@ public final class CHKInsertSender extends BaseSender
         msg = node.network().usm().waitFor(mf, CHKInsertSender.this);
       } catch (DisconnectedException _) {
         LOG.info(
-            "Disconnected from {} while waiting for InsertReply on {}",
+            "event=second_timeout_wait_disconnect from {} while awaiting InsertReply on {}",
             waitingFor,
             CHKInsertSender.this);
         transfer.onDisconnect(waitingFor);
@@ -1670,7 +1673,7 @@ public final class CHKInsertSender extends BaseSender
       return true; // Don't try another node.
     }
     if (msg.getSpec() != DMT.FNPInsertReply) {
-      LOG.error("Unknown reply: {}", msg);
+      LOG.error("event=second_timeout_unknown_reply unexpected message: {}", msg);
     }
     transfer.onCompleted();
     return true;
@@ -1704,7 +1707,7 @@ public final class CHKInsertSender extends BaseSender
       return true;
     }
     if (msg.getSpec() != DMT.FNPInsertReply) {
-      LOG.error("Unknown reply: {}", msg);
+      LOG.error("event=insert_outcome_unknown_reply unexpected message: {}", msg);
       transfer.onCompleted();
       finish(INTERNAL_ERROR, next);
     } else {
