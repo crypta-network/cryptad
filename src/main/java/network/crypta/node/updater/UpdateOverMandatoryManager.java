@@ -116,8 +116,6 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
   private static final String SOMEONE_DELETED_PREFIX = "Somebody deleted ";
   private static final String FROM_NODE_LITERAL = " from node ";
-  private static final String PEER_ASKED_BLOB_PREFIX =
-      "Peer {} asked us for the blob file for the ";
 
   final NodeUpdateManager updateManager;
 
@@ -999,9 +997,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       final long uid = m.getLong(DMT.UID);
       sendRevocationBlobToPeer(uid, data, source);
     } else {
-      LOG.info(
-          "Peer {} asked us for the blob file for the revocation key but we don't have it!",
-          source);
+      LOG.info("UOM revocation request: missing local blob for peer {}", source);
       // Probably a race condition on reconnection, hopefully we'll be asked again
     }
 
@@ -1027,11 +1023,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     try {
       return new BulkTransmitter(prb, source, uid, false, updateManager.getByteCounter(), true);
     } catch (DisconnectedException e) {
-      LOG.error(
-          "Peer {} asked us for the blob file for the revocation key, then disconnected: {}",
-          source,
-          e,
-          e);
+      LOG.error("UOM revocation send setup failed: peer {} disconnected: {}", source, e, e);
       data.close();
       return null;
     }
@@ -1080,7 +1072,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
                 @Override
                 public void acknowledged() {
-                  if (LOG.isDebugEnabled()) LOG.debug("Sending data...");
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("UOM revocation send: starting data transfer");
                   updateManager
                       .getNode()
                       .network()
@@ -1097,22 +1090,23 @@ public class UpdateOverMandatoryManager implements RequestClient {
                 @Override
                 public void disconnected() {
                   LOG.error(
-                      "Peer {} asked us for the blob file for the revocation key, then disconnected"
-                          + " when we tried to send the UOMSendingRevocation",
+                      "UOM revocation send aborted: peer {} disconnected before"
+                          + " UOMSendingRevocation",
                       source);
                 }
 
                 @Override
                 public void fatalError() {
                   LOG.error(
-                      "Peer {} asked us for the blob file for the revocation key, then got a fatal"
-                          + " error when we tried to send the UOMSendingRevocation",
+                      "UOM revocation send failed: fatal error before UOMSendingRevocation for peer"
+                          + " {}",
                       source);
                 }
 
                 @Override
                 public void sent() {
-                  if (LOG.isDebugEnabled()) LOG.debug("Message sent, data soon");
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("UOM revocation send: message sent, data follows");
                 }
 
                 @Override
@@ -1123,8 +1117,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
               updateManager.getByteCounter());
     } catch (NotConnectedException e) {
       LOG.error(
-          "Peer {} asked us for the blob file for the revocation key, then disconnected when we"
-              + " tried to send the UOMSendingRevocation: {}",
+          "UOM revocation send failed: peer {} disconnected while sending UOMSendingRevocation: {}",
           source,
           e,
           e);
@@ -1272,12 +1265,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
     try {
       raf = new FileRandomAccessBuffer(temp, length, false);
     } catch (FileNotFoundException e) {
-      LOG.error(
-          "Peer {} asked us for the blob file for the revocation key, we have downloaded it but"
-              + " don't have the file even though we did have it when we checked!: {}",
-          source,
-          e,
-          e);
+      LOG.error("UOM revocation fetch: downloaded blob missing for peer {}: {}", source, e, e);
       updateManager.blow(
           "Internal error after fetching the revocation certificate from our peer, maybe out of"
               + " disk space, file disappeared "
@@ -1288,11 +1276,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       return;
     } catch (IOException e) {
       LOG.error(
-          "Peer {} asked us for the blob file for the revocation key, we have downloaded it but now"
-              + " can't read the file due to a disk I/O error: {}",
-          source,
-          e,
-          e);
+          "UOM revocation fetch: disk I/O reading downloaded blob for peer {}: {}", source, e, e);
       updateManager.blow(
           "Internal error after fetching the revocation certificate from our peer, maybe out of"
               + " disk space or other disk I/O error, file disappeared "
@@ -1335,7 +1319,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       if (br.receive()) {
         processRevocationBlob(temp, source);
       } else {
-        LOG.error("Failed to transfer revocation certificate from {}", source);
+        LOG.error("UOM revocation transfer failed from {}", source);
         source.failedRevocationTransfer();
         int count = source.countFailedRevocationTransfers();
         boolean retry = count < 3;
@@ -1351,7 +1335,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
         if (retry) tryFetchRevocation(source);
       }
     } catch (Exception t) {
-      LOG.error("Caught error while transferring revocation certificate from {}", source, t);
+      LOG.error("UOM revocation transfer exception from {}", source, t);
       updateManager.blow(
           "Internal error while fetching the revocation certificate from our peer "
               + source
@@ -1668,7 +1652,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
     if (source.isOpennet() && updateManager.dontAllowUOM()) {
       LOG.info(
-          "Peer {} asked us for the blob file for {}; We are a seenode, so we ignore it!",
+          "Peer {} asked us for the blob file for {}; We are a seednode, so we ignore it!",
           source,
           name);
       return;
@@ -1693,7 +1677,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
     uri = updateManager.getURI();
 
     if (data == null) {
-      LOG.info(PEER_ASKED_BLOB_PREFIX + "{} jar but we don't have it!", source, name);
+      LOG.info(
+          "UOM main jar request: peer {} requested {} jar but it is missing locally", source, name);
       // Probably a race condition on reconnection, hopefully we'll be asked again
       return;
     }
@@ -1719,7 +1704,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
                 @Override
                 public void acknowledged() {
-                  if (LOG.isDebugEnabled()) LOG.debug("Sending data...");
+                  if (LOG.isDebugEnabled()) LOG.debug("UOM main jar send: starting data transfer");
                   // Send the data
 
                   updateManager
@@ -1733,8 +1718,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                 public void disconnected() {
                   // Argh
                   LOG.error(
-                      PEER_ASKED_BLOB_PREFIX
-                          + "{} jar, then disconnected when we tried to send the UOMSendingMainJar",
+                      "UOM main jar send aborted: peer {} disconnected before UOMSendingMainJar for"
+                          + " {} jar",
                       source,
                       name);
                   source.finishedSendingUOMJar(false);
@@ -1744,9 +1729,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
                 public void fatalError() {
                   // Argh
                   LOG.error(
-                      PEER_ASKED_BLOB_PREFIX
-                          + "{} jar, then got a fatal error when we tried to send the"
-                          + " UOMSendingMainJar",
+                      "UOM main jar send failed: fatal error before UOMSendingMainJar from peer {}"
+                          + " for {} jar",
                       source,
                       name);
                   source.finishedSendingUOMJar(false);
@@ -1754,7 +1738,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
                 @Override
                 public void sent() {
-                  if (LOG.isDebugEnabled()) LOG.debug("Message sent, data soon");
+                  if (LOG.isDebugEnabled())
+                    LOG.debug("UOM main jar send: message sent, data follows");
                 }
 
                 @Override
@@ -1765,8 +1750,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
               updateManager.getByteCounter());
     } catch (NotConnectedException e) {
       LOG.error(
-          "Peer {} asked us for the blob file for the {} jar, then disconnected when we tried to"
-              + " send the UOMSendingMainJar",
+          "UOM main jar send failed: peer {} disconnected while sending UOMSendingMainJar for {}"
+              + " jar",
           source,
           name,
           e);
@@ -1799,20 +1784,12 @@ public class UpdateOverMandatoryManager implements RequestClient {
           }
         }
       } catch (FileNotFoundException e) {
-        LOG.error(
-            "{}{}don't have the file even though we did have it when we checked!",
-            PEER_ASKED_BLOB_PREFIX,
-            "main",
-            e);
+        LOG.error("UOM main jar send failed: missing file after check for {} jar", "main", e);
       } catch (IOException e) {
-        LOG.error(
-            "{}{} jar, we have downloaded it but can't read the file due to a disk I/O error",
-            PEER_ASKED_BLOB_PREFIX,
-            "main",
-            e);
+        LOG.error("UOM main jar send failed: disk I/O reading {} jar after download", "main", e);
       } catch (DisconnectedException e) {
         LOG.error(
-            "Peer {} asked us for the blob file for the {} jar, then disconnected",
+            "UOM main jar send failed: peer {} disconnected during bulk send for {} jar",
             source,
             "main",
             e);
@@ -2152,7 +2129,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
    * Deletes obsolete persistent temporary files related to UoM transfers.
    *
    * <p>The method scans the persistent temp directory for known UoM patterns (revocation and
-   * main‑jar blobs and their temporary variants) and removes files that are clearly safe to delete,
+   * main‑jar blobs and their temporary variants). It removes files that are clearly safe to delete,
    * including old build‑number‑scoped files below the minimum acceptable build. Errors are logged
    * but otherwise ignored.
    */
@@ -2572,7 +2549,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       synchronized (this) {
         if (peersFetching.size() >= MAX_NODES_SENDING_JAR) {
           if (LOG.isDebugEnabled())
-            LOG.debug("Already fetching jar from 2 peers {}", peersFetching);
+            LOG.debug("UOM dependency fetch capacity reached (active peers {} )", peersFetching);
           return true;
         }
         return completed;
@@ -2599,7 +2576,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
         chosen = chooseRandomPeer(uomPeers);
         if (chosen != null) return chosen;
         if (tryEverything) {
-          LOG.debug("Could not find a peer to send request to for {}", saveTo);
+          LOG.debug("No eligible UOM peer found for dependency {}", saveTo);
           return null;
         }
         synchronized (this) {
@@ -2611,7 +2588,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
             peersFailed.clear();
             tryEverything = true;
           } else {
-            LOG.debug("Could not find a peer to send request to for {}", saveTo);
+            LOG.debug("No eligible UOM peer found for dependency {} (no offers)", saveTo);
             return null;
           }
         }
@@ -2737,7 +2714,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
     private synchronized PeerNode chooseRandomPeer(HashSet<PeerNode> uomPeers) {
       if (completed) return null;
       if (peersFetching.size() >= MAX_NODES_SENDING_JAR) {
-        LOG.debug("Already fetching jar from 2 peers {}", peersFetching);
+        LOG.debug(
+            "UOM dependency peer selection blocked by capacity (active peers {} )", peersFetching);
         return null;
       }
       LOG.debug("Trying to choose peer from {}", uomPeers.size());
