@@ -141,7 +141,7 @@ public class FailureTable {
       if (ftTimeout
           > REJECT_TIME_BEFORE_BUILD_1498) { // only log an error if the time is invalid for 1497,
         // too
-        LOG.info("Bogus timeout ftTimeout={} ms; clamping", ftTimeout);
+        LOG.info("onFailed: invalid ftTimeout={} ms; clamping", ftTimeout);
       }
       ftTimeout = Math.clamp(ftTimeout, 0, REJECT_TIME);
     }
@@ -149,7 +149,7 @@ public class FailureTable {
       if (rfTimeout
           > RECENTLY_FAILED_TIME_BEFORE_BUILD_1498) { // only log an error if the time is invalid
         // for 1497, too
-        LOG.info("Bogus timeout rfTimeout={} ms; clamping", rfTimeout);
+        LOG.info("onFailed: invalid rfTimeout={} ms; clamping", rfTimeout);
       }
       rfTimeout = Math.clamp(rfTimeout, 0, RECENTLY_FAILED_TIME);
     }
@@ -199,11 +199,11 @@ public class FailureTable {
       PeerNode requestor) {
     if (ftTimeout < -1 || ftTimeout > REJECT_TIME) {
       // -1 is a valid no-op.
-      LOG.info("Bogus timeout ftTimeout={} ms; clamping", ftTimeout);
+      LOG.info("onFinalFailure: invalid ftTimeout={} ms; clamping", ftTimeout);
       ftTimeout = Math.clamp(ftTimeout, 0, REJECT_TIME);
     }
     if (rfTimeout < 0 || rfTimeout > RECENTLY_FAILED_TIME) {
-      if (rfTimeout > 0) LOG.info("Bogus timeout rfTimeout={} ms; clamping", rfTimeout);
+      if (rfTimeout > 0) LOG.info("onFinalFailure: invalid rfTimeout={} ms; clamping", rfTimeout);
       rfTimeout = Math.clamp(rfTimeout, 0, RECENTLY_FAILED_TIME);
     }
     if (!(node.isEnableULPRDataPropagation() || node.isEnablePerNodeFailureTables())) return;
@@ -410,7 +410,7 @@ public class FailureTable {
     synchronized (this) {
       entry = entriesByKey.get(key);
       if (entry == null) {
-        if (LOG.isDebugEnabled()) LOG.debug("We didn't ask for the key");
+        if (LOG.isDebugEnabled()) LOG.debug("Offer ignored: no matching request for key");
         return; // we haven't asked for it
       }
     }
@@ -447,7 +447,7 @@ public class FailureTable {
     synchronized (this) {
       entry = entriesByKey.get(key);
       if (entry == null) {
-        if (LOG.isDebugEnabled()) LOG.debug("We didn't ask for the key");
+        if (LOG.isDebugEnabled()) LOG.debug("Offer ignored after recheck: no matching request");
         return; // we haven't asked for it
       }
     }
