@@ -48,9 +48,10 @@ import org.slf4j.LoggerFactory;
 public final class NodeClientCoreTransfers {
   private static final Logger LOG = LoggerFactory.getLogger(NodeClientCoreTransfers.class);
   private static final String LOG_BYTES_OPEN = " bytes (";
-  private static final String MSG_CANNOT_LOCK_UID = "Could not lock UID just randomly generated: ";
   private static final String MSG_BROKEN_PRNG = " - probably indicates broken PRNG";
-  private static final String LOG_DOES_NOT_VERIFY = "Does not verify: ";
+  private static final String LOG_INSERT_ROUTE_NOT_FOUND_NOTE =
+      " - this is normal on small networks; the data will still be propagated, but it can't"
+          + " find the 20+ nodes needed for full success";
 
   private final NodeClientCore core;
   private final Node node;
@@ -99,7 +100,7 @@ public final class NodeClientCoreTransfers {
         .tracker()
         .lockUID(
             uid, RequestAdmissionMode.of(true, isSSK, false, false, options.realTimeFlag()), tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
+      LOG.error("asyncGet failed to lock request UID: {}" + MSG_BROKEN_PRNG, uid);
       listener.onFailed(
           new LowLevelGetException(
               LowLevelGetException.INTERNAL_ERROR,
@@ -227,7 +228,7 @@ public final class NodeClientCoreTransfers {
     long startTime = context.startTime();
     Key key = context.key();
     if (status == RequestSender.NOT_FINISHED) {
-      LOG.error("Bogus status in onRequestSenderFinished for {}", rs, new Exception("error"));
+      LOG.error("Async get completed with NOT_FINISHED status for {}", rs, new Exception("error"));
       listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
       return;
     }
@@ -316,7 +317,10 @@ public final class NodeClientCoreTransfers {
       boolean isSSK, RequestCompletionListener listener, RequestSender rs, int status) {
     switch (status) {
       case RequestSender.NOT_FINISHED:
-        LOG.error("RS still running in get{}!: {}", isSSK ? "SSK" : "CHK", rs);
+        LOG.error(
+            "Async get handler saw RequestSender still running for {}: {}",
+            isSSK ? "SSK" : "CHK",
+            rs);
         listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
         return;
       case RequestSender.DATA_NOT_FOUND:
@@ -342,7 +346,10 @@ public final class NodeClientCoreTransfers {
         return;
       default:
         LOG.error(
-            "Unknown RequestSender code in get{}: {} on {}", isSSK ? "SSK" : "CHK", status, rs);
+            "Async get received unknown RequestSender status for {}: {} on {}",
+            isSSK ? "SSK" : "CHK",
+            status,
+            rs);
         listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
     }
   }
@@ -411,7 +418,7 @@ public final class NodeClientCoreTransfers {
     if (!node.routing()
         .tracker()
         .lockUID(uid, RequestAdmissionMode.of(true, false, false, false, realTimeFlag), tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
+      LOG.error("realGetCHK failed to lock request UID: {}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
     }
     tag.setAccepted();
@@ -432,7 +439,7 @@ public final class NodeClientCoreTransfers {
           tag.setServedFromDatastore();
           return NodeClientCoreSupport.buildClientChkBlock(block, key);
         } catch (CHKVerifyException e) {
-          LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
+          LOG.error("CHK block from datastore does not verify: {}", e, e);
           throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
         }
       if (o == null) throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND_IN_STORE);
@@ -508,7 +515,7 @@ public final class NodeClientCoreTransfers {
         return NodeClientCoreSupport.buildClientChkBlock(
             rs.getPRB().getBlock(), rs.getHeaders(), key);
       } catch (CHKVerifyException e) {
-        LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
+        LOG.error("CHK fetch result does not verify: {}", e, e);
         throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
       } catch (AbortedException e) {
         LOG.error("Impossible: {}", e, e);
@@ -520,7 +527,7 @@ public final class NodeClientCoreTransfers {
   private void throwForGetStatus(int status, RequestSender rs) throws LowLevelGetException {
     switch (status) {
       case RequestSender.NOT_FINISHED:
-        LOG.error("RS still running in get!: {}", rs);
+        LOG.error("Blocking get loop still running for RequestSender: {}", rs);
         throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
       case RequestSender.DATA_NOT_FOUND:
         throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND);
@@ -536,7 +543,7 @@ public final class NodeClientCoreTransfers {
         throw new LowLevelGetException(LowLevelGetException.REJECTED_OVERLOAD);
       case RequestSender.INTERNAL_ERROR:
       default:
-        LOG.error("Unknown RequestSender code in get: {} on {}", status, rs);
+        LOG.error("Blocking get received unknown RequestSender status: {} on {}", status, rs);
         throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
     }
   }
@@ -554,7 +561,7 @@ public final class NodeClientCoreTransfers {
     if (!node.routing()
         .tracker()
         .lockUID(uid, RequestAdmissionMode.of(true, true, false, false, realTimeFlag), tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
+      LOG.error("realGetSSK failed to lock request UID: {}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR);
     }
     tag.setAccepted();
@@ -576,7 +583,7 @@ public final class NodeClientCoreTransfers {
           key.setPublicKey(block.getPubKey());
           return NodeClientCoreSupport.buildClientSskBlock(block, key);
         } catch (SSKVerifyException e) {
-          LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
+          LOG.error("SSK block from datastore does not verify: {}", e, e);
           throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
         }
       if (o == null) throw new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND_IN_STORE);
@@ -615,7 +622,7 @@ public final class NodeClientCoreTransfers {
           key.setPublicKey(block.getPubKey());
           return NodeClientCoreSupport.buildClientSskBlock(block, key);
         } catch (SSKVerifyException e) {
-          LOG.error(LOG_DOES_NOT_VERIFY + "{}", e, e);
+          LOG.error("SSK fetch result does not verify: {}", e, e);
           throw new LowLevelGetException(LowLevelGetException.DECODE_FAILED);
         }
       }
@@ -716,7 +723,7 @@ public final class NodeClientCoreTransfers {
     if (!node.routing()
         .tracker()
         .lockUID(uid, RequestAdmissionMode.of(true, false, true, false, realTimeFlag), tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
+      LOG.error("realPutCHK failed to lock insert UID: {}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }
     tag.setAccepted();
@@ -727,7 +734,10 @@ public final class NodeClientCoreTransfers {
 
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Completed {} overload={} {}", uid, hasReceivedRejectedOverload, is.getStatusString());
+            "CHK insert completed uid={} overload={} status={}",
+            uid,
+            hasReceivedRejectedOverload,
+            is.getStatusString());
 
       maybeReportChkCompleted(is, uid, startTime, realTimeFlag, block);
 
@@ -788,15 +798,19 @@ public final class NodeClientCoreTransfers {
 
   private void logChkInsertResult(int status, CHKInsertSender is, CHKBlock block) {
     if (status == CHKInsertSender.SUCCESS) {
-      LOG.info("Succeeded inserting {}", block);
+      LOG.info("CHK insert succeeded for {}", block);
     } else {
-      String msg = "Failed inserting " + block + " : " + is.getStatusString();
-      if (status == CHKInsertSender.ROUTE_NOT_FOUND)
-        msg +=
-            " - this is normal on small networks; the data will still be propagated, but it can't"
-                + " find the 20+ nodes needed for full success";
-      if (is.getStatus() != CHKInsertSender.ROUTE_NOT_FOUND) LOG.error(msg);
-      else LOG.info(msg);
+      boolean routeNotFound = status == CHKInsertSender.ROUTE_NOT_FOUND;
+      if (is.getStatus() != CHKInsertSender.ROUTE_NOT_FOUND) {
+        LOG.error("CHK insert failed for {}: {}", block, is.getStatusString());
+      } else if (routeNotFound) {
+        LOG.info(
+            "CHK insert route not found for {}: {}" + LOG_INSERT_ROUTE_NOT_FOUND_NOTE,
+            block,
+            is.getStatusString());
+      } else {
+        LOG.info("CHK insert reported route not found for {}: {}", block, is.getStatusString());
+      }
     }
   }
 
@@ -835,7 +849,7 @@ public final class NodeClientCoreTransfers {
   private void throwForChkPutStatus(CHKInsertSender is) throws LowLevelPutException {
     switch (is.getStatus()) {
       case CHKInsertSender.NOT_FINISHED:
-        LOG.error("IS still running in putCHK!: {}", is);
+        LOG.error("CHK insert sender still running during putCHK: {}", is);
         throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
       case CHKInsertSender.GENERATED_REJECTED_OVERLOAD, CHKInsertSender.TIMED_OUT:
         throw new LowLevelPutException(LowLevelPutException.REJECTED_OVERLOAD);
@@ -845,7 +859,10 @@ public final class NodeClientCoreTransfers {
         throw new LowLevelPutException(LowLevelPutException.ROUTE_REALLY_NOT_FOUND);
       case CHKInsertSender.INTERNAL_ERROR:
       default:
-        LOG.error("Unknown CHKInsertSender code in putCHK: {} on {}", is.getStatus(), is);
+        LOG.error(
+            "CHK insert sender reported unknown status during putCHK: {} on {}",
+            is.getStatus(),
+            is);
         throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }
   }
@@ -881,7 +898,7 @@ public final class NodeClientCoreTransfers {
     if (!node.routing()
         .tracker()
         .lockUID(uid, RequestAdmissionMode.of(true, true, true, false, realTimeFlag), tag)) {
-      LOG.error(MSG_CANNOT_LOCK_UID + "{}" + MSG_BROKEN_PRNG, uid);
+      LOG.error("realPutSSK failed to lock insert UID: {}" + MSG_BROKEN_PRNG, uid);
       throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }
     tag.setAccepted();
@@ -912,7 +929,10 @@ public final class NodeClientCoreTransfers {
 
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Completed {} overload={} {}", uid, hasReceivedRejectedOverload, is.getStatusString());
+            "SSK insert completed uid={} overload={} status={}",
+            uid,
+            hasReceivedRejectedOverload,
+            is.getStatusString());
 
       // Finished?
       maybeReportSskCompleted(is, uid, startTime, realTimeFlag, block, hasReceivedRejectedOverload);
@@ -961,7 +981,7 @@ public final class NodeClientCoreTransfers {
   private void throwForSskPutStatus(SSKInsertSender is) throws LowLevelPutException {
     switch (is.getStatus()) {
       case SSKInsertSender.NOT_FINISHED:
-        LOG.error("IS still running in putCHK!: {}", is);
+        LOG.error("SSK insert sender still running during putSSK: {}", is);
         throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
       case SSKInsertSender.GENERATED_REJECTED_OVERLOAD, SSKInsertSender.TIMED_OUT:
         throw new LowLevelPutException(LowLevelPutException.REJECTED_OVERLOAD);
@@ -971,7 +991,10 @@ public final class NodeClientCoreTransfers {
         throw new LowLevelPutException(LowLevelPutException.ROUTE_REALLY_NOT_FOUND);
       case SSKInsertSender.INTERNAL_ERROR:
       default:
-        LOG.error("Unknown CHKInsertSender code in putSSK: {} on {}", is.getStatus(), is);
+        LOG.error(
+            "SSK insert sender reported unknown status during putSSK: {} on {}",
+            is.getStatus(),
+            is);
         throw new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
     }
   }
@@ -1049,15 +1072,19 @@ public final class NodeClientCoreTransfers {
 
   private void logSskInsertResult(int status, SSKInsertSender is, SSKBlock block) {
     if (status == SSKInsertSender.SUCCESS) {
-      LOG.info("Succeeded inserting {}", block);
+      LOG.info("SSK insert succeeded for {}", block);
     } else {
-      String msg = "Failed inserting " + block + " : " + is.getStatusString();
-      if (status == CHKInsertSender.ROUTE_NOT_FOUND)
-        msg +=
-            " - this is normal on small networks; the data will still be propagated, but it can't"
-                + " find the 20+ nodes needed for full success";
-      if (is.getStatus() != SSKInsertSender.ROUTE_NOT_FOUND) LOG.error(msg);
-      else LOG.info(msg);
+      boolean routeNotFound = status == CHKInsertSender.ROUTE_NOT_FOUND;
+      if (is.getStatus() != SSKInsertSender.ROUTE_NOT_FOUND) {
+        LOG.error("SSK insert failed for {}: {}", block, is.getStatusString());
+      } else if (routeNotFound) {
+        LOG.info(
+            "SSK insert route not found for {}: {}" + LOG_INSERT_ROUTE_NOT_FOUND_NOTE,
+            block,
+            is.getStatusString());
+      } else {
+        LOG.info("SSK insert reported route not found for {}: {}", block, is.getStatusString());
+      }
     }
   }
 
