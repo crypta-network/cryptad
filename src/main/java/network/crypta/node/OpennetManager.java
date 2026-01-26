@@ -897,7 +897,8 @@ public class OpennetManager {
             ctx.peersLRU.size());
       oldPeers.remove(ctx.nodeToAddNow);
       if (!dropList.isEmpty()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Drop opennet peer: {}", dropList.getFirst());
+        if (LOG.isDebugEnabled())
+          LOG.debug("Drop opennet peer after add; first in drop list: {}", dropList.getFirst());
         timeLastDropped.put(ctx.connectionType, ctx.now);
       }
       connectionAttemptsAdded.put(
@@ -1212,7 +1213,7 @@ public class OpennetManager {
       LOG.debug("Already present in global peers list: {}", nodeToAddNow);
     }
     for (OpennetPeerNode pn : result.dropList) {
-      if (LOG.isDebugEnabled()) LOG.debug("Drop LRU opennet peer: {}", pn);
+      if (LOG.isDebugEnabled()) LOG.debug("Drop LRU peer during global sync: {}", pn);
       pn.setAddedReason(PeerNode.ADDED_REASON_UNKNOWN);
       node.network().peers().messenger().disconnectAndRemove(pn, true, true, true);
     }
@@ -1338,7 +1339,7 @@ public class OpennetManager {
       synchronized (this) {
         peersLRU.remove(toDrop);
       }
-      if (LOG.isDebugEnabled()) LOG.debug("Drop {}", toDrop);
+      if (LOG.isDebugEnabled()) LOG.debug("Drop excess opennet peer: {}", toDrop);
       node.network().peers().messenger().disconnectAndRemove(toDrop, true, true, true);
     }
   }
