@@ -67,10 +67,7 @@ import org.slf4j.LoggerFactory;
  */
 public class SimpleFieldSet {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleFieldSet.class);
-  private static final String TO_STRING_ERR_PREFIX = "WTF?!: ";
-  private static final String TO_STRING_ERR_SUFFIX = " in toString()!";
   private static final String CANNOT_PARSE = "Cannot parse ";
-  private static final String PARSE_ERROR_SUFFIX = "{} : {}";
 
   private final Map<String, String> values;
   private Map<String, SimpleFieldSet> subsets;
@@ -85,7 +82,7 @@ public class SimpleFieldSet {
   /** Separates multiple values stored within a single value field (for example, {@code a;b;c}). */
   public static final char MULTI_VALUE_CHAR = ';';
 
-  /** Separator between a key and its value when writing text form ({@code key=value}). */
+  /** Separator between a key and its value when writing a text form ({@code key=value}). */
   public static final char KEYVALUE_SEPARATOR_CHAR = '=';
 
   private static final String[] EMPTY_STRING_ARRAY = new String[0];
@@ -157,7 +154,7 @@ public class SimpleFieldSet {
    * Copy constructor.
    *
    * <p>Performs a shallow copy of values and subsets; nested {@code SimpleFieldSet} instances are
-   * shared. Header and end marker are copied by reference.
+   * shared. Reference copies header and end marker.
    *
    * @param sfs source to copy from.
    */
@@ -267,7 +264,7 @@ public class SimpleFieldSet {
   }
 
   /**
-   * Read from stream. Format:
+   * Read from the stream. Format:
    *
    * <p># Header1 # Header2 key0=val0 key1=val1 # comment key2=val2 End
    *
@@ -285,7 +282,7 @@ public class SimpleFieldSet {
       throws IOException {
     List<String> headers = new ArrayList<>();
     String firstDataLine =
-        readHeader(br, maxLength, bufferSize, utfOrIso88591, headers); // may be null
+        readHeader(br, maxLength, bufferSize, utfOrIso88591, headers); // maybe null
     if (!headers.isEmpty()) this.header = headers.toArray(new String[0]);
     readBody(br, maxLength, bufferSize, utfOrIso88591, allowMultiple, allowBase64, firstDataLine);
   }
@@ -298,7 +295,7 @@ public class SimpleFieldSet {
       String line = br.readLine(maxLength, bufferSize, utfOrIso88591);
       if (line == null) {
         if (!sawNonEmpty) throw new EOFException();
-        LOG.error("No end marker");
+        LOG.error("Missing end marker while reading header");
         return null;
       }
       if (!line.isEmpty()) {
@@ -325,7 +322,7 @@ public class SimpleFieldSet {
     while (true) {
       if (line == null) {
         // No end marker seen before EOF
-        LOG.error("No end marker");
+        LOG.error("Missing end marker while reading body");
         return;
       }
       if (!line.isEmpty()) {
@@ -379,7 +376,7 @@ public class SimpleFieldSet {
   }
 
   /**
-   * Lookup a value by key, traversing subsets as needed.
+   * Look up a value by key, traversing subsets as needed.
    *
    * <p>The key may be a direct key (no dots) or a hierarchical path such as {@code
    * subset.subsubset.key}. If a subset component does not exist the method returns {@code null}.
@@ -425,7 +422,7 @@ public class SimpleFieldSet {
    *
    * @param key key to resolve.
    * @return decoded elements, or {@code null} if the key is absent.
-   * @throws IllegalBase64Exception if any element is not valid Base64.
+   * @throws IllegalBase64Exception if any element is not valid, Base64.
    */
   public String[] getAllEncoded(String key) throws IllegalBase64Exception {
     String k = get(key);
@@ -489,7 +486,7 @@ public class SimpleFieldSet {
       sb.append(MULTI_VALUE_CHAR);
     }
     // assert(sb.length() > 0) -- always true as strings.length != 0
-    // remove last MULTI_VALUE_CHAR
+    // remove the last MULTI_VALUE_CHAR
     sb.deleteCharAt(sb.length() - 1);
     return sb.toString();
   }
@@ -498,7 +495,7 @@ public class SimpleFieldSet {
    * Merge another field set into this one, overwriting existing keys and recursively merging
    * subsets.
    *
-   * @param fs source to copy from; {@code null} is a no‑op.
+   * @param fs source to copy from; {@code null} is no‑op.
    */
   public void putAllOverwrite(SimpleFieldSet fs) {
     // overwrite old
@@ -566,7 +563,7 @@ public class SimpleFieldSet {
    *
    * @param key The key.
    * @param value The value.
-   * @param allowMultiple If true, if the key already exists then the value will be appended to the
+   * @param allowMultiple If true, if the key already exists, then the value will be appended to the
    *     existing value. If false, we return false to indicate that the old value is unchanged.
    * @return True unless allowMultiple was false and there was a pre-existing value, or value was
    *     null.
@@ -823,7 +820,7 @@ public class SimpleFieldSet {
     try {
       writeTo(sw);
     } catch (IOException e) {
-      LOG.error(TO_STRING_ERR_PREFIX + "{}" + TO_STRING_ERR_SUFFIX, e, e);
+      LOG.error("Failed to render SimpleFieldSet via toString: {}", e, e);
     }
     return sw.toString();
   }
@@ -838,7 +835,7 @@ public class SimpleFieldSet {
     try {
       writeToOrdered(sw);
     } catch (IOException e) {
-      LOG.error(TO_STRING_ERR_PREFIX + "{}" + TO_STRING_ERR_SUFFIX, e, e);
+      LOG.error("Failed to render SimpleFieldSet via toOrderedString: {}", e, e);
     }
     return sw.toString();
   }
@@ -853,7 +850,7 @@ public class SimpleFieldSet {
     try {
       writeToOrdered(sw, "", false, true);
     } catch (IOException e) {
-      LOG.error(TO_STRING_ERR_PREFIX + "{}" + TO_STRING_ERR_SUFFIX, e, e);
+      LOG.error("Failed to render SimpleFieldSet via toOrderedStringWithBase64: {}", e, e);
     }
     return sw.toString();
   }
@@ -898,7 +895,7 @@ public class SimpleFieldSet {
   /**
    * Variant of {@link #subset(String)} that throws if the subset path does not exist.
    *
-   * @param key subset path to resolve.
+   * @param key the subset path to resolve.
    * @return the subset at {@code key}.
    * @throws FSParseException if no such subset exists.
    */
@@ -918,7 +915,7 @@ public class SimpleFieldSet {
    * names.
    *
    * @param prefix string to prepend to each returned key; typically the path of this subset.
-   * @return iterator over fully-qualified keys with the provided prefix.
+   * @return iterator over fully qualified keys with the provided prefix.
    */
   public KeyIterator keyIterator(String prefix) {
     return new KeyIterator(prefix);
@@ -934,7 +931,7 @@ public class SimpleFieldSet {
   }
 
   /**
-   * Iterator over fully-qualified keys in depth-first order.
+   * Iterator over fully qualified keys in depth-first order.
    *
    * <p>The iterator yields direct keys first, then recurses into subsets. Returned keys include the
    * provided prefix, if any. The iteration reflects a snapshot of the map state at iterator
@@ -1109,7 +1106,7 @@ public class SimpleFieldSet {
    */
   public void put(String key, SimpleFieldSet fs) {
     if (fs == null) return; // legal no-op, because used everywhere
-    if (fs.isEmpty()) { // can't just no-op, because caller might add the FS then populate it...
+    if (fs.isEmpty()) { // can't just no-op, because the caller might add the FS then populate it...
       throw new IllegalArgumentException("Empty");
     }
     if (subsets == null) subsets = new HashMap<>();
@@ -1152,7 +1149,7 @@ public class SimpleFieldSet {
    * {@code removeSubset("foo")} removes the latter two entries but not the direct top-level {@code
    * foo=bar} value.
    *
-   * @param key subset path to remove.
+   * @param key the subset path to remove.
    */
   public synchronized void removeSubset(String key) {
     if (subsets == null) return;
@@ -1304,7 +1301,7 @@ public class SimpleFieldSet {
    *
    * @param key The key to fetch.
    * @return The integer value of the key, if it exists and is valid.
-   * @throws FSParseException If the key=value pair does not exist or if the value cannot be parsed
+   * @throws FSParseException If the key=value pair does not exist, or if the value cannot be parsed
    *     as an integer.
    */
   public int getInt(String key) throws FSParseException {
@@ -1341,7 +1338,7 @@ public class SimpleFieldSet {
    *
    * @param key The key to fetch.
    * @return The value of the key as a double, if it exists and is valid.
-   * @throws FSParseException If the key=value pair does not exist or if the value cannot be parsed
+   * @throws FSParseException If the key=value pair does not exist, or if the value cannot be parsed
    *     as a double.
    */
   public double getDouble(String key) throws FSParseException {
@@ -1377,9 +1374,9 @@ public class SimpleFieldSet {
    * just key=value. (Value in decimal)
    *
    * @param key The key to fetch.
-   * @return The value of the key as a long, if it exists and is valid.
-   * @throws FSParseException If the key=value pair does not exist or if the value cannot be parsed
-   *     as a long.
+   * @return The value of the key as a long integer, if it exists and is valid.
+   * @throws FSParseException If the key=value pair does not exist, or if the value cannot be parsed
+   *     as a long integer.
    */
   public long getLong(String key) throws FSParseException {
     String s = get(key);
@@ -1397,7 +1394,7 @@ public class SimpleFieldSet {
    *
    * @param key The key to fetch.
    * @return The value of the key as a short, if it exists and is valid.
-   * @throws FSParseException If the key=value pair does not exist or if the value cannot be parsed
+   * @throws FSParseException If the key=value pair does not exist, or if the value cannot be parsed
    *     as a short.
    */
   public short getShort(String key) throws FSParseException {
@@ -1433,7 +1430,7 @@ public class SimpleFieldSet {
    *
    * @param key The key to fetch.
    * @return The value of the key as a byte, if it exists and is valid.
-   * @throws FSParseException If the key=value pair does not exist or if the value cannot be parsed
+   * @throws FSParseException If the key=value pair does not exist, or if the value cannot be parsed
    *     as a byte.
    */
   public byte getByte(String key) throws FSParseException {
@@ -1595,7 +1592,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Integer.parseInt(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
+          LOG.error("Cannot parse int array element {} : {}", strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1615,7 +1612,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Short.parseShort(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
+          LOG.error("Cannot parse short array element {} : {}", strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1635,7 +1632,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Long.parseLong(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
+          LOG.error("Cannot parse long array element {} : {}", strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1655,7 +1652,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Double.parseDouble(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
+          LOG.error("Cannot parse double array element {} : {}", strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1676,7 +1673,7 @@ public class SimpleFieldSet {
         try {
           ret[i] = Boolean.parseBoolean(strings[i]);
         } catch (NumberFormatException e) {
-          LOG.error(CANNOT_PARSE + PARSE_ERROR_SUFFIX, strings[i], e, e);
+          LOG.error("Cannot parse boolean array element {} : {}", strings[i], e, e);
           parseFailed = true;
           break;
         }
@@ -1719,7 +1716,7 @@ public class SimpleFieldSet {
   }
 
   /**
-   * Set the headers. This is a list of String's that are written before the name=value pairs.
+   * Set the headers. This is a list of String's that is written before the name=value pairs.
    * Usually this is a comment (with each line starting with "#").
    *
    * @param headers The list of lines to precede the SimpleFieldSet by when we write it.
@@ -1730,7 +1727,7 @@ public class SimpleFieldSet {
   }
 
   /**
-   * Get the headers. This is a list of String's that are written before the name=value pairs.
+   * Get the headers. This is a list of String's that is written before the name=value pairs.
    * Usually this is a comment (with each line starting with "#").
    */
   public String[] getHeader() {
