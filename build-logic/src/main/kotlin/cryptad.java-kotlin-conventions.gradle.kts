@@ -130,11 +130,11 @@ tasks.withType<JavaCompile>().configureEach {
 
   val taskPathLabel = path.removePrefix(":").replace(':', '_').ifBlank { "root" }
   val reportFileProvider = layout.buildDirectory.file("reports/errorprone/$taskPathLabel/$name.xml")
-  outputs.file(reportFileProvider)
-
-  outputs.upToDateWhen { !errorproneReportEnabled.get() }
-
-  usesService(errorproneReportService)
+  if (errorproneReportEnabled.get()) {
+    outputs.file(reportFileProvider)
+    outputs.upToDateWhen { false }
+    usesService(errorproneReportService)
+  }
 
   val capturedOutput = StringBuilder()
   val standardOutListener = StandardOutputListener { capturedOutput.append(it) }
