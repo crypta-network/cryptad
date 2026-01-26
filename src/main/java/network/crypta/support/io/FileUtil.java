@@ -151,7 +151,7 @@ public final class FileUtil {
   /**
    * Best‑effort detection of the current CPU architecture at class initialization time.
    *
-   * <p>Caveats: This may not be entirely accurate. The JVM may not expose enough detail to
+   * <p>Warnings: This may not be entirely accurate. The JVM may not expose enough details to
    * distinguish 32‑bit from 64‑bit in all cases, a mismatched JVM may be running (e.g., x86 JVM on
    * IA64 hardware), and the legacy enum does not encode some modern variants (e.g., ARM64 is mapped
    * to {@link CPUArchitecture#ARM}). The value reflects what the JVM reports for the current
@@ -167,7 +167,7 @@ public final class FileUtil {
     detectedArch = detectCPUArchitecture();
 
     /*
-     * There is no reliable cross‑platform API to obtain the filesystem's filename charset,
+     * There is no reliable cross‑platform API to get the filesystem's filename charset,
      * so use the process default encoding as a pragmatic approximation. On Windows and many
      * Linux setups, this tracks the configured locale and is typically suitable.
      *
@@ -239,7 +239,7 @@ public final class FileUtil {
           return OperatingSystem.MAC_OS;
         case LINUX:
           // AppEnv groups all non-Windows/non-macOS here, which includes FreeBSD and other Unix.
-          // Only return LINUX when the JVM reports actual Linux; otherwise fall through so
+          // Only return LINUX when the JVM reports actual Linux; otherwise fall through, so
           // FreeBSD keeps its legacy mapping.
           // Keep the legacy os.name fallback until AppEnv distinguishes BSD variants to avoid
           // misclassifying FreeBSD as Linux.
@@ -445,8 +445,7 @@ public final class FileUtil {
    * renames it into place.
    *
    * <p>An atomic move is attempted via {@link #moveTo(File, File)}; when not supported by the
-   * filesystem, a non‑atomic replacement is performed. The input stream is not closed by this
-   * method.
+   * filesystem, a non‑atomic replacement is performed. This method does not close the input stream.
    *
    * @param input source of bytes (not closed)
    * @param target destination file to create or replace
@@ -510,14 +509,14 @@ public final class FileUtil {
     } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException _) {
       // Fall back to a non-atomic move allowing replacement.
     } catch (IOException e) {
-      LOG.error("Could not move {} to {}: {}", orig, dest, e, e);
+      LOG.error("Atomic move failed for {} -> {}: {}", orig, dest, e, e);
       return false;
     }
     try {
       Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
       return true;
     } catch (IOException e) {
-      LOG.error("Could not move {} to {}: {}", orig, dest, e, e);
+      LOG.error("Replace-existing move failed for {} -> {}: {}", orig, dest, e, e);
       return false;
     }
   }
@@ -529,7 +528,7 @@ public final class FileUtil {
    * listed in {@code extraChars} are replaced with a default substitute (space, underscore, or
    * hyphen). On Windows, trailing spaces and dots are removed. If the basename is a Windows
    * reserved name (e.g., {@code CON}, {@code NUL}), an underscore is prefixed. The result is
-   * trimmed; if it would be empty, a placeholder string is returned.
+   * trimmed; if it is empty, a placeholder string is returned.
    *
    * @param fileName input name to sanitize
    * @param targetOS ruleset to apply; {@link OperatingSystem#UNKNOWN} applies a conservative union
@@ -539,7 +538,7 @@ public final class FileUtil {
    */
   public static String sanitizeFileName(
       final String fileName, OperatingSystem targetOS, String extraChars) {
-    // Filter out any characters which do not exist in the charset.
+    // Filter out any characters that do not exist in the charset.
     final CharBuffer buffer =
         fileNameCharset.decode(fileNameCharset.encode(fileName)); // Charsets are thread‑safe
 
@@ -608,9 +607,9 @@ public final class FileUtil {
   /**
    * Copies bytes from {@code source} to {@code destination}.
    *
-   * <p>If {@code length == -1}, bytes are copied until end‑of‑stream; otherwise exactly {@code
+   * <p>If {@code length == -1}, bytes are copied until the end‑of‑stream; otherwise exactly {@code
    * length} bytes are copied and an {@link EOFException} is thrown if insufficient data is
-   * available. Neither stream is closed by this method.
+   * available. This method closes neither stream.
    *
    * @param source input stream to read from (not closed)
    * @param destination output stream to write to (not closed)
@@ -652,11 +651,11 @@ public final class FileUtil {
   @SuppressWarnings("UnusedReturnValue")
   public static boolean secureDeleteAll(File wd) throws IOException {
     if (!wd.isDirectory()) {
-      LOG.debug("DELETING FILE {}", wd);
+      LOG.debug("secureDeleteAll deleting file {}", wd);
       try {
         secureDelete(wd);
       } catch (IOException e) {
-        LOG.error("Could not delete file: {}", wd, e);
+        LOG.error("secureDeleteAll failed to delete file {}", wd, e);
         return false;
       }
     } else {
@@ -669,7 +668,7 @@ public final class FileUtil {
       try {
         Files.delete(wd.toPath());
       } catch (IOException e) {
-        LOG.error("Could not delete directory: {}", wd, e);
+        LOG.error("secureDeleteAll failed to delete directory {}", wd, e);
       }
     }
     return true;
@@ -690,15 +689,15 @@ public final class FileUtil {
     return deleteDirectoryContentsAndSelf(wd);
   }
 
-  /** Deletes a single file, logging and tolerating non-existent paths after attempt. */
+  /** Deletes a single file, logging and tolerating non-existent paths after an attempt. */
   private static boolean deleteSingleFile(File file) {
-    LOG.debug("DELETING FILE {}", file);
+    LOG.debug("deleteSingleFile deleting file {}", file);
     try {
       Files.delete(file.toPath());
       return true;
     } catch (IOException e) {
       if (Files.exists(file.toPath())) {
-        LOG.error("Could not delete file: {}", file, e);
+        LOG.error("deleteSingleFile failed to delete file {}", file, e);
         return false;
       }
       return true; // already gone
@@ -717,7 +716,7 @@ public final class FileUtil {
       Files.delete(dir.toPath());
       return true;
     } catch (IOException e) {
-      LOG.error("Could not delete directory: {}", dir, e);
+      LOG.error("deleteDirectoryContentsAndSelf failed to delete directory {}", dir, e);
       return false;
     }
   }
@@ -727,7 +726,7 @@ public final class FileUtil {
    *
    * <p>This is the best‑effort mechanism. It may not prevent data recovery on certain storage or
    * filesystems (e.g., wear‑leveling SSDs, COW/journaling filesystems). Consider stronger
-   * mitigations when threat models require them. This method performs a single-pass overwrite of
+   * mitigations when threat models require them. This method performs a single-pass overwriting of
    * file contents and does not attempt metadata scrubbing.
    *
    * @param file non‑directory file to delete; no effect if the file does not exist
@@ -753,7 +752,7 @@ public final class FileUtil {
   }
 
   /**
-   * Sets owner read/write permissions and removes permissions for group and others.
+   * Sets owner read/write permissions and removes permissions for groups and others.
    *
    * @param f target file or directory
    * @return {@code true} if all permission changes succeeded
@@ -764,7 +763,7 @@ public final class FileUtil {
   }
 
   /**
-   * Sets owner read/write/execute permissions and removes permissions for group and others.
+   * Sets owner read/write/execute permissions and removes permissions for groups and others.
    *
    * @param f target file or directory
    * @return {@code true} if all permission changes succeeded
@@ -775,7 +774,7 @@ public final class FileUtil {
   }
 
   /**
-   * Sets owner permissions explicitly and removes permissions for group and others.
+   * Sets owner permissions explicitly and removes permissions for groups and others.
    *
    * <p>Semantics depend on the underlying platform. On non‑POSIX platforms some changes may be
    * ignored. The method returns {@code false} if any change operation fails.
