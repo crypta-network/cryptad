@@ -173,7 +173,7 @@ public class RequestTracker {
       HashMap<Long, T> overallMap, HashMap<Long, T> localMap, T tag, Long uid, boolean local) {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Acquire UID lock uid={} local={} size={}",
+          "UID lock acquire (overall) uid={} local={} size={}",
           uid,
           local,
           overallMap.size(),
@@ -183,11 +183,12 @@ public class RequestTracker {
       return false;
     }
     if (oldTag != null) {
-      LOG.warn("Tag already registered tag={}", tag);
+      LOG.warn("Duplicate tag registration (overall) tag={}", tag);
     }
     overallMap.put(uid, tag);
     if (LOG.isDebugEnabled())
-      LOG.debug("UID locked uid={} local={} size={}", uid, local, overallMap.size());
+      LOG.debug(
+          "UID lock acquired (overall) uid={} local={} size={}", uid, local, overallMap.size());
     return !local || lockLocal(localMap, overallMap, uid, tag);
   }
 
@@ -195,7 +196,7 @@ public class RequestTracker {
       HashMap<Long, T> localMap, HashMap<Long, T> overallMap, Long uid, T tag) {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Acquire UID lock (local) uid={} local={} size={}",
+          "UID lock acquire (local map) uid={} local={} size={}",
           uid,
           true,
           localMap.size(),
@@ -203,7 +204,7 @@ public class RequestTracker {
     T oldTag = localMap.get(uid);
     if (oldTag != null) {
       if (oldTag == tag) {
-        LOG.warn("Tag already registered (local): {}", tag);
+        LOG.warn("Duplicate tag registration (local) tag={}", tag);
       } else {
         // Violates the invariant that local requests are always registered on the main
         // (non-local) map too.
@@ -214,7 +215,8 @@ public class RequestTracker {
     }
     localMap.put(uid, tag);
     if (LOG.isDebugEnabled())
-      LOG.debug("UID locked (local) uid={} local={} size={}", uid, true, localMap.size());
+      LOG.debug(
+          "UID lock acquired (local map) uid={} local={} size={}", uid, true, localMap.size());
     return true;
   }
 
@@ -305,7 +307,7 @@ public class RequestTracker {
   private void debugUnlocking(Long uid, boolean local, int size) {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Release UID lock uid={} local={} size={}",
+          "UID unlock begin uid={} local={} size={}",
           uid,
           local,
           size,
@@ -339,14 +341,16 @@ public class RequestTracker {
             uid);
       return;
     }
-    if (isLocal) LOG.error("Remove expected={} uid={} found (local) {}", tag, uid, current);
-    else LOG.error("Remove expected={} uid={} found {}", tag, uid, current);
+    if (isLocal)
+      LOG.error("Remove mismatch (local map) expected={} uid={} found={}", tag, uid, current);
+    else LOG.error("Remove mismatch (overall) expected={} uid={} found={}", tag, uid, current);
   }
 
   private void debugUnlocked(boolean isLocal, Long uid, boolean local, int size) {
     if (LOG.isDebugEnabled()) {
-      if (isLocal) LOG.debug("UID unlocked (local) uid={} local={} size={}", uid, local, size);
-      else LOG.debug("UID unlocked uid={} local={} size={}", uid, local, size);
+      if (isLocal)
+        LOG.debug("UID unlock complete (local map) uid={} local={} size={}", uid, local, size);
+      else LOG.debug("UID unlock complete (overall) uid={} local={} size={}", uid, local, size);
     }
   }
 
@@ -437,7 +441,8 @@ public class RequestTracker {
         totals.inSR += in;
       }
       if (LOG.isDebugEnabled())
-        LOG.debug("Count uid={} out={} in={}", entry.getKey(), totals.out, totals.in);
+        LOG.debug(
+            "Count totals updated uid={} out={} in={}", entry.getKey(), totals.out, totals.in);
     }
     return totals;
   }
@@ -496,7 +501,8 @@ public class RequestTracker {
             transferOptions.transfersPerInsert(),
             counterSR != null);
     if (LOG.isDebugEnabled())
-      LOG.debug("Count totals count={} in={} out={}", totals.count, totals.in, totals.out);
+      LOG.debug(
+          "Count from source totals count={} in={} out={}", totals.count, totals.in, totals.out);
     counter.total += totals.count;
     counter.expectedTransfersIn += totals.in;
     counter.expectedTransfersOut += totals.out;
@@ -561,7 +567,7 @@ public class RequestTracker {
         }
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "Count from source tag={} uid={} source={} count={} out={} in={}",
+              "Count from source match tag={} uid={} source={} count={} out={} in={}",
               tag,
               entry.getKey(),
               source,
@@ -569,7 +575,7 @@ public class RequestTracker {
               totals.out,
               totals.in);
       } else if (LOG.isTraceEnabled()) {
-        LOG.trace("Skip uid={}", entry.getKey());
+        LOG.trace("Skip uid (source mismatch) uid={}", entry.getKey());
       }
     }
     return totals;
@@ -586,17 +592,19 @@ public class RequestTracker {
       UIDTag tag = entry.getValue();
       if ((!local) && tag.wasLocal) continue;
       if (tag.currentlyFetchingOfferedKeyFrom(source)) {
-        if (LOG.isDebugEnabled()) LOG.debug("Count to peer tag={} uid={}", tag, entry.getKey());
+        if (LOG.isDebugEnabled())
+          LOG.debug("Count to peer (offered key) tag={} uid={}", tag, entry.getKey());
         totals.out += tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, false);
         totals.in += tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, false);
         totals.count++;
       } else if (tag.currentlyRoutingTo(source)) {
-        if (LOG.isDebugEnabled()) LOG.debug("Count to peer tag={} uid={}", tag, entry.getKey());
+        if (LOG.isDebugEnabled())
+          LOG.debug("Count to peer (routing) tag={} uid={}", tag, entry.getKey());
         totals.out += tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, false);
         totals.in += tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, false);
         totals.count++;
       } else if (LOG.isTraceEnabled()) {
-        LOG.trace("Skip uid={}", entry.getKey());
+        LOG.trace("Skip uid (not routed to peer) uid={}", entry.getKey());
       }
     }
     return totals;
