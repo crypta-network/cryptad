@@ -66,11 +66,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private static final String SFS_KEY_DETECTED_UDP = "detected.udp";
   private static final String STR_MS_FOR = "ms for ";
   private static final String STR_FOR = " for ";
-  private static final String STR_MESSAGES_TO_DUMP = "Messages to dump: ";
   private static final String STR_MS_ON = "ms on ";
   static final String STR_ON = ") on ";
   private static final String STR_WORKING_ON = ") working on ";
-  private static final String STR_NOT_ROUTING_TO = "Not routing traffic to ";
   private static final String STR_P_REJECTED = " : pRejected=";
   static final String STR_INVALID_HOST_OR_IP_WHILE_PARSING =
       "Invalid hostname or IP Address syntax error while parsing new peer reference: ";
@@ -1492,24 +1490,28 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       if (isSeed()) {
         routable = false;
         if (LOG.isDebugEnabled())
-          LOG.debug(STR_NOT_ROUTING_TO + "{} it's for announcement.", PeerNode.this);
+          LOG.debug("Routing disabled (announcement-only seed): peer={}", PeerNode.this);
       } else if (bogusNoderef) {
-        LOG.info(STR_NOT_ROUTING_TO + "{} - bogus noderef", PeerNode.this);
+        LOG.info("Routing disabled (bogus noderef): peer={}", PeerNode.this);
         routable = false;
       } else if (reverseInvalidVersion()) {
         LOG.info(
-            STR_NOT_ROUTING_TO + "{} - reverse invalid version {} for peer's lastGoodversion: {}",
+            "Routing disabled (reverse version check): peer={}, localVersion={},"
+                + " peerLastGoodVersion={}",
             PeerNode.this,
             Version.getVersionString(),
             getLastGoodVersion());
         newer = true;
       }
       if (forwardInvalidVersion()) {
-        LOG.info(STR_NOT_ROUTING_TO + "{} - invalid version {}", PeerNode.this, getVersion());
+        LOG.info(
+            "Routing disabled (forward version check): peer={}, peerVersion={}",
+            PeerNode.this,
+            getVersion());
         older = true;
         routable = false;
       } else if (Math.abs(clockDelta) > MAX_CLOCK_DELTA) {
-        LOG.info(STR_NOT_ROUTING_TO + "{} - clock problems", PeerNode.this);
+        LOG.info("Routing disabled (clock skew): peer={}", PeerNode.this);
         routable = false;
       }
       return new RoutabilityDecision(routable, newer, older);
@@ -1566,19 +1568,19 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       if (currentTracker != null
           && Arrays.equals(p.outgoingKey, currentTracker.outgoingKey)
           && Arrays.equals(p.incommingKey, currentTracker.incommingKey)) {
-        LOG.error("completedHandshake() with identical key to current, maybe replayed JFK(4)?");
+        LOG.error("Handshake replay suspected: new keys match current tracker");
         return true;
       }
       if (previousTracker != null
           && Arrays.equals(p.outgoingKey, previousTracker.outgoingKey)
           && Arrays.equals(p.incommingKey, previousTracker.incommingKey)) {
-        LOG.error("completedHandshake() with identical key to previous, maybe replayed JFK(4)?");
+        LOG.error("Handshake replay suspected: new keys match previous tracker");
         return true;
       }
       if (unverifiedTracker != null
           && Arrays.equals(p.outgoingKey, unverifiedTracker.outgoingKey)
           && Arrays.equals(p.incommingKey, unverifiedTracker.incommingKey)) {
-        LOG.error("completedHandshake() with identical key to unverified, maybe replayed JFK(4)?");
+        LOG.error("Handshake replay suspected: new keys match unverified tracker");
         return true;
       }
       return false;
@@ -2203,8 +2205,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
           "Invalid combination: dumpTrackers cannot be true when dumpMessageQueue is false");
     }
     final long now = System.currentTimeMillis();
-    if (isRealConnection()) LOG.info("Disconnected {}", this);
-    else if (LOG.isDebugEnabled()) LOG.debug("Disconnected {}", this);
+    if (isRealConnection()) LOG.info("Disconnect complete (active): peer={}", this);
+    else if (LOG.isDebugEnabled()) LOG.debug("Disconnect complete (transient): peer={}", this);
     node.network().usm().onDisconnect(selfPeerNode());
     if (dumpMessageQueue) node.routing().tracker().onRestartOrDisconnect(selfPeerNode());
     node.routing().failureTable().onDisconnect(selfPeerNode());
@@ -2233,12 +2235,16 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       MessageItem[] messagesTellDisconnected, List<MessageItem> moreMessagesTellDisconnected) {
     if (messagesTellDisconnected != null) {
       if (LOG.isDebugEnabled())
-        LOG.debug(STR_MESSAGES_TO_DUMP + "{}", messagesTellDisconnected.length);
+        LOG.debug(
+            "Disconnect cleanup: queued messages to dump (array)={}",
+            messagesTellDisconnected.length);
       for (MessageItem mi : messagesTellDisconnected) mi.onDisconnect();
     }
     if (moreMessagesTellDisconnected != null) {
       if (LOG.isDebugEnabled())
-        LOG.debug(STR_MESSAGES_TO_DUMP + "{}", moreMessagesTellDisconnected.size());
+        LOG.debug(
+            "Disconnect cleanup: queued messages to dump (list)={}",
+            moreMessagesTellDisconnected.size());
       for (MessageItem mi : moreMessagesTellDisconnected) mi.onDisconnect();
     }
   }
@@ -2832,9 +2838,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         // A race condition involving forceCancelDisconnecting causing a mistaken log message anyway
         // is conceivable but unlikely...
         if ((unverifiedTracker == null) && (currentTracker == null) && !disconnecting)
-          LOG.warn("Received packet while disconnected!: {}", this);
+          LOG.warn("Received packet while disconnected (no trackers) on {}", this);
         else if (LOG.isDebugEnabled())
-          LOG.debug("Received packet while disconnected on {} - recently disconnected() ?", this);
+          LOG.debug("Received packet while disconnected (recent disconnect) on {}", this);
       } else {
         if (LOG.isDebugEnabled()) LOG.debug("Received packet on {}", this);
       }
@@ -4889,7 +4895,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     setPeerNodeStatus(System.currentTimeMillis());
     if (messagesTellDisconnected != null) {
       if (LOG.isDebugEnabled())
-        LOG.debug(STR_MESSAGES_TO_DUMP + "{}", messagesTellDisconnected.length);
+        LOG.debug("Disconnecting: queued messages to dump={}", messagesTellDisconnected.length);
       for (MessageItem mi : messagesTellDisconnected) {
         mi.onDisconnect();
       }
