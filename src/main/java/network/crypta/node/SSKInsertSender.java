@@ -1029,7 +1029,7 @@ public class SSKInsertSender extends BaseSender
       try {
         msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
-        LOG.atInfo().log("Disconnected from {} while waiting for InsertReply on {}", next, this);
+        LOG.atInfo().log("InsertReply wait disconnected (pre-timeout) from {} on {}", next, this);
         next.noLongerRoutingTo(thisTag, false);
         routeRequests();
         return;
@@ -1052,7 +1052,7 @@ public class SSKInsertSender extends BaseSender
   // On the first timeout after Accepted, finalize locally and keep listening a bit longer to
   // surface a late terminal reply or mark a fatal timeout on the peer.
   private void handleFirstTimeoutAndThenWait(PeerNode next, InsertTag thisTag, MessageFilter mf) {
-    LOG.atWarn().log("Timeout waiting for reply after Accepted in {} from {}", this, next);
+    LOG.atWarn().log("InsertReply timeout after Accepted (initial) on {} from {}", this, next);
     next.localRejectedOverload("AfterInsertAcceptedTimeout", realTimeFlag);
     forwardRejectedOverload();
     finish(TIMED_OUT, next);
@@ -1062,14 +1062,13 @@ public class SSKInsertSender extends BaseSender
       try {
         msg = node.network().usm().waitFor(mf, this);
       } catch (DisconnectedException _) {
-        LOG.atInfo().log("Disconnected from {} while waiting for InsertReply on {}", next, this);
+        LOG.atInfo().log("InsertReply wait disconnected (post-timeout) from {} on {}", next, this);
         next.noLongerRoutingTo(thisTag, false);
         return;
       }
 
       if (msg == null) {
-        LOG.atError()
-            .log("Fatal timeout waiting for reply after Accepted on {} from {}", this, next);
+        LOG.atError().log("InsertReply timeout after Accepted (fatal) on {} from {}", this, next);
         next.fatalTimeout(thisTag, false);
         return;
       }

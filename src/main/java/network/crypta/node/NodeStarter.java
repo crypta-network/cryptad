@@ -156,7 +156,7 @@ public class NodeStarter implements WrapperListener {
 
   private static void ensureDirectoryExists(File dir) {
     if (!dir.mkdir() && (!dir.exists() || !dir.isDirectory())) {
-      LOG.error("Cannot create test directory");
+      LOG.error("Test base directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
   }
@@ -174,7 +174,7 @@ public class NodeStarter implements WrapperListener {
               return;
             } catch (Exception t) {
               try {
-                LOG.error("Keep-alive thread caught {}", t, t);
+                LOG.error("Keep-alive plug thread error: {}", t, t);
               } catch (Throwable _) {
                 // Ignore
               }
@@ -204,7 +204,7 @@ public class NodeStarter implements WrapperListener {
     File baseDir = params.getBaseDirectory();
     File portDir = new File(baseDir, Integer.toString(params.getPort()));
     if ((!portDir.mkdir()) && ((!portDir.exists()) || (!portDir.isDirectory()))) {
-      LOG.error("Cannot create test directory");
+      LOG.error("Test port directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
 
@@ -312,7 +312,7 @@ public class NodeStarter implements WrapperListener {
   }
 
   /**
-   * Returns the memory limit in mebibytes.
+   * Returns the memory limit in mebibyte.
    *
    * <p>Special values: {@code -1} when unknown, {@code -2} when unlimited. Values round down to the
    * nearest MiB. Extremely large limits above {@code Integer.MAX_VALUE} MiB are reported as
@@ -626,7 +626,7 @@ public class NodeStarter implements WrapperListener {
               return;
             } catch (Exception t) {
               try {
-                LOG.error("Keep-alive thread caught {}", t, t);
+                LOG.error("Keep-alive native plug thread error: {}", t, t);
               } catch (Throwable _) {
                 // Ignore
               }

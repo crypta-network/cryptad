@@ -61,10 +61,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(CHKInsertHandler.class);
 
   private static final String FOR_STRING = " for ";
-  private static final String LOST_CONNECTION_TO_SOURCE = "Lost connection to source";
   private static final String FROM_STRING = " from ";
-  private static final String TOO_LONG_TO_SEND = "Took too long to send ";
-  private static final String PLACEHOLDER_TO_TO = "{} to {}";
 
   // No explicit static initialization is required for this handler.
 
@@ -174,7 +171,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       source.transport().sendSync(accepted, this, realTimeFlag);
       return true;
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
+      if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source while sending FNPAccepted");
       return false;
     } catch (SyncSendWaitedTooLongException _) {
       LOG.error("Unable to send {} in a reasonable time to {}", accepted, source);
@@ -185,7 +182,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private Message waitForDataInsert() throws DisconnectedException {
     MessageFilter mf = makeDataInsertFilter(DATA_INSERT_TIMEOUT);
     Message msg = node.network().usm().waitFor(mf, this);
-    if (LOG.isDebugEnabled()) LOG.debug("Received {}", msg);
+    if (LOG.isDebugEnabled()) LOG.debug("Received DataInsert message: {}", msg);
     return msg;
   }
 
@@ -269,7 +266,8 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       try {
         source.transport().sendAsync(DMT.createFNPRejectedOverload(uid, false), null, this);
       } catch (NotConnectedException _) {
-        if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Lost connection to source while forwarding non-terminal overload");
         return true; // Treat as forwarded to avoid retrying endlessly.
       }
       return true;
@@ -327,10 +325,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
+      if (LOG.isDebugEnabled()) LOG.debug("Lost connection to source while sending fatal overload");
       return;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
+      LOG.error("Send timeout for fatal overload message: {} to {}", msg, source);
       return;
     }
     if ((status == CHKInsertSender.TIMED_OUT)
@@ -344,10 +342,11 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Lost connection to source while sending route-not-found");
       return;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
+      LOG.error("Send timeout for route-not-found message: {} to {}", msg, source);
       return;
     }
     canCommit = true;
@@ -365,10 +364,10 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      LOG.debug(LOST_CONNECTION_TO_SOURCE);
+      LOG.debug("Lost connection to source while sending insert reply");
       return;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
+      LOG.error("Send timeout for insert reply: {} to {}", msg, source);
       return;
     }
     canCommit = true;
@@ -503,7 +502,8 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
               },
               this);
     } catch (NotConnectedException | DisconnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOST_CONNECTION_TO_SOURCE);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Lost connection to source while handling missing DataInsert");
     }
   }
 
@@ -643,7 +643,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       if (LOG.isDebugEnabled()) LOG.debug("Not connected: {}" + FOR_STRING + "{}", source, this);
       // May need to commit anyway...
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, m, source);
+      LOG.error("Send timeout for completion message: {} to {}", m, source);
       // May need to commit anyway...
     }
   }
@@ -767,7 +767,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   private final class DataReceiveCompletion implements BlockReceiverCompletion {
     @Override
     public void blockReceived(byte[] buf) {
-      if (LOG.isDebugEnabled()) LOG.debug("Received data for {}", CHKInsertHandler.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Received data block for {}", CHKInsertHandler.this);
       synchronized (CHKInsertHandler.this) {
         receiveCompleted = true;
         CHKInsertHandler.this.notifyAll();
@@ -796,7 +796,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
         // If they are not connected, that's probably why the receiving failed!
         if (LOG.isDebugEnabled()) LOG.debug("Can't send {} to {}: {}", msg, source, ex, ex);
       } catch (SyncSendWaitedTooLongException _) {
-        LOG.error(TOO_LONG_TO_SEND + PLACEHOLDER_TO_TO, msg, source);
+        LOG.error("Send timeout for receive-failed rejection: {} to {}", msg, source);
       }
       if (e.getReason() == RetrievalException.SENDER_DISCONNECTED)
         LOG.info(

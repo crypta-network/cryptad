@@ -21,8 +21,8 @@ import org.slf4j.LoggerFactory;
  * <p>Operational notes:
  *
  * <ul>
- *   <li>Linux only: native priority adjustments require sufficient privileges to decrease the
- *       {@code nice} value. Without privileges, calls fail and the class records a disabled state.
+ *   <li>Linux only: native priority adjustments require enough privileges to decrease the {@code
+ *       nice} value. Without privileges, calls fail and the class records a disabled state.
  *   <li>Sandbox detection: Snap, Flatpak, and Docker are detected via {@code AppEnv}; native
  *       renicing is skipped to avoid noisy failures.
  *   <li>Threading: this class extends {@link Thread} and is therefore not thread-safe beyond the
@@ -44,7 +44,7 @@ public class NativeThread extends Thread {
 
   /**
    * True when native renicing has been permanently disabled for this process because an unexpected
-   * external renice was detected. When set, {@link #usingNativeCode()} returns false and subsequent
+   * external renice was detected. When set, {@link #usingNativeCode()} returns false and further
    * native adjustments are skipped.
    */
   private static boolean disabled;
@@ -278,14 +278,14 @@ public class NativeThread extends Thread {
        */
       markDisabled();
       LOG.error(
-          "Crypta has detected it has been reniced : THAT'S BAD, DON'T DO IT! Nice level detected"
-              + " statically: {} actual nice level: {} on {}",
+          "Detected external renice; disabling native priority adjustment. Base nice={}, actual={},"
+              + " thread={}",
           NATIVE_PRIORITY_BASE,
           realPrio,
           this);
       LOG.error(
-          "Crypta has detected it has been reniced : THAT'S BAD, DON'T DO IT! Nice level detected"
-              + " statically: {} actual nice level: {} on {}",
+          "External renice detected; native renice remains disabled. Base nice={}, actual={},"
+              + " thread={}",
           NATIVE_PRIORITY_BASE,
           realPrio,
           this);

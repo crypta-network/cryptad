@@ -219,7 +219,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       lastNode = next;
     }
 
-    if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
+    if (LOG.isDebugEnabled()) LOG.debug("Legacy route: sending request to {}", next);
     nodesRoutedTo.add(next);
 
     Message req = createDataRequest();
@@ -248,12 +248,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
               key.toNormalizedDouble(), source == null, realTimeFlag, source, nodesRoutedTo, htl));
       node.network().peers().incrementSelectionSamples(next);
     } catch (NotConnectedException _) {
-      LOG.debug("Not connected");
+      LOG.debug("Legacy send failed: not connected");
       next.noLongerRoutingTo(origTag, false);
       routeRequests();
       return;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error("Failed to send {} to {} in a reasonable time.", req, next);
+      LOG.error("Legacy send timed out for {} to {}.", req, next);
       next.noLongerRoutingTo(origTag, false);
       // Try another node.
       routeRequests();
@@ -277,7 +277,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       }
     } // loadWaiterLoop
 
-    if (LOG.isDebugEnabled()) LOG.debug("Got Accepted");
+    if (LOG.isDebugEnabled()) LOG.debug("Accepted response received (legacy)");
 
     // Otherwise, we must have received Accepted.
 
@@ -318,7 +318,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
     while (true) {
       updateCanRerouteWhileWaiting(state);
-      LOG.debug("NLM: loop tick");
+      LOG.debug("NLM loop tick");
       state.now = System.currentTimeMillis();
 
       NextStep step = preWaitPhase(state, origTag);
@@ -331,7 +331,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
         logDelta(
             delta, state.tryCount, state.waitedForLoadManagement, state.retriedForLoadManagement);
 
-        LOG.debug("Got Accepted");
+        LOG.debug("Accepted response received (NLM)");
         gotMessages = 0;
         lastMessage = null;
         // We may have widened the waiting window earlier; reset for later iterations.
@@ -363,7 +363,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       lastNode = state.next;
     }
 
-    LOG.debug("Routing request to {} realtime={}", state.next, realTimeFlag);
+    LOG.debug("NLM route: sending request to {} realtime={}", state.next, realTimeFlag);
     nodesRoutedTo.add(state.next);
 
     Message req = createDataRequest();
@@ -428,7 +428,8 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
             .tryRouteTo(origTag, RequestLikelyAcceptedState.LIKELY);
 
     if (state.expectedAcceptState == RequestLikelyAcceptedState.UNKNOWN) {
-      if (LOG.isDebugEnabled()) LOG.debug("No load stats for {}", state.next);
+      if (LOG.isDebugEnabled())
+        LOG.debug("NLM prediction missing: no load stats for {}", state.next);
       return;
     }
 
@@ -496,7 +497,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
   private void prepareWaitingIfNeeded(NlmState state, UIDTag origTag) {
     if (state.expectedAcceptState != null) return;
-    LOG.debug("Cannot send to {} realtime={}", state.next, realTimeFlag);
+    LOG.debug("NLM wait: cannot send to {} realtime={}", state.next, realTimeFlag);
     state.waitedForLoadManagement = true;
     if (state.waiter == null) {
       state.waiter =
@@ -559,7 +560,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
           LOG.debug("Matched {} with {}", matched, state.expectedAcceptState);
       }
     } catch (SlotWaiterFailedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug("Rerouting as slot waiter failed...");
+      if (LOG.isDebugEnabled()) LOG.debug("NLM waiter failed; rerouting");
       state.shouldContinueLoop = true;
     }
   }
@@ -632,12 +633,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       node.network().peers().incrementSelectionSamples(state.next);
       return true;
     } catch (NotConnectedException _) {
-      LOG.debug("Not connected");
+      LOG.debug("NLM send failed: not connected");
       state.next.noLongerRoutingTo(origTag, false);
       routeRequests();
       return false;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error("Failed to send {} to {} in a reasonable time.", req, state.next);
+      LOG.error("NLM send timed out for {} to {}.", req, state.next);
       state.next.noLongerRoutingTo(origTag, false);
       routeRequests();
       return false;
@@ -792,12 +793,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   private WaitResult waitOnceForAccepted(MessageFilter mf, PeerNode next, UIDTag origTag) {
     try {
       Message msg = node.network().usm().waitFor(mf, this);
-      LOG.debug("first part got {}", msg);
+      LOG.debug("Accepted-wait received message {}", msg);
       return (msg == null)
           ? new WaitResult(WaitKind.TIMEOUT, null)
           : new WaitResult(WaitKind.RECEIVED, msg);
     } catch (DisconnectedException _) {
-      LOG.info("Disconnected from {} while waiting for Accepted on {}", next, uid);
+      LOG.info("Accepted-wait disconnected from {} while waiting on {}", next, uid);
       next.noLongerRoutingTo(origTag, false);
       return new WaitResult(WaitKind.DISCONNECTED, null);
     }
@@ -818,12 +819,12 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     if (msg.getSpec() == DMT.FNPRejectedOverload) {
       return onRejectedOverload(msg, expectedAcceptState, next, origTag);
     }
-    LOG.error("Unrecognized message: {}", msg);
+    LOG.error("Accepted-wait received unrecognized message: {}", msg);
     return DO.NEXT_PEER;
   }
 
   private DO onAcceptedTimeout(PeerNode next, UIDTag origTag) {
-    LOG.debug("Timeout waiting for Accepted for {}", this);
+    LOG.debug("Accepted-wait timed out for {}", this);
     next.localRejectedOverload("AcceptedTimeout", realTimeFlag);
     forwardRejectedOverload();
     int t = timeSinceSent();
@@ -836,7 +837,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   }
 
   private DO onRejectedLoop(PeerNode next, UIDTag origTag) {
-    LOG.debug("Rejected loop");
+    LOG.debug("Rejected: loop detected");
     next.successNotOverload(realTimeFlag);
     int t = timeSinceSent();
     node.routing().failureTable().onFailed(key, next, htl, t, t);
@@ -846,14 +847,14 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
   private DO onRejectedOverload(
       Message msg, RequestLikelyAcceptedState expectedAcceptState, PeerNode next, UIDTag origTag) {
-    LOG.debug("Rejected: overload");
+    LOG.debug("Rejected: overload response");
     if (msg.getBoolean(DMT.IS_LOCAL)) {
-      LOG.debug("Is local");
+      LOG.debug("Rejected overload is local");
       boolean isSoft = msg.getSubMessage(DMT.FNPRejectIsSoft) != null;
       if (isSoft && expectedAcceptState != null) {
-        LOG.debug("Soft rejection, waiting to resend");
+        LOG.debug("Soft local overload: waiting to resend");
         if (expectedAcceptState == RequestLikelyAcceptedState.GUARANTEED)
-          LOG.info("Rejected overload yet expected state was {}", expectedAcceptState);
+          LOG.info("Local overload despite expected state {}", expectedAcceptState);
         nodesRoutedTo.remove(next);
         next.noLongerRoutingTo(origTag, false);
         recordSoftReject(next);
@@ -864,7 +865,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       next.localRejectedOverload("ForwardRejectedOverload", realTimeFlag);
       int t = timeSinceSent();
       node.routing().failureTable().onFailed(key, next, htl, t, t);
-      LOG.debug("Local RejectedOverload, moving on to next peer");
+      LOG.debug("Local overload: moving on to next peer");
       next.noLongerRoutingTo(origTag, false);
       return DO.NEXT_PEER;
     }

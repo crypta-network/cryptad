@@ -471,7 +471,7 @@ public class NodeUpdateManager {
   /** Broadcasts UoM announcements to local peers when armed and applicable. */
   void broadcastUOMAnnounces() {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Broadcast UOM announcements");
+      LOG.debug("UOM announce: begin local broadcast prep");
     }
     long size = canAnnounceUOMNew();
     Message msg;
@@ -486,7 +486,7 @@ public class NodeUpdateManager {
       msg = getNewUOMAnnouncement(size);
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Broadcasting UOM announcements");
+      LOG.debug("UOM announce: dispatching local broadcast");
     }
     node.network()
         .peers()
@@ -663,7 +663,7 @@ public class NodeUpdateManager {
     synchronized (this) {
       if (pluginUpdaters == null) {
         if (LOG.isDebugEnabled()) {
-          LOG.debug("Updating not enabled");
+          LOG.debug("Plugin updates disabled; skip start");
         }
         return; // Not enabled
       }
@@ -693,7 +693,7 @@ public class NodeUpdateManager {
     synchronized (this) {
       if (pluginUpdaters == null) {
         if (LOG.isDebugEnabled()) {
-          LOG.debug("Updating not enabled");
+          LOG.debug("Plugin updates disabled; skip stop");
         }
         return; // Not enabled
       }
@@ -1044,7 +1044,7 @@ public class NodeUpdateManager {
    */
   protected void maybeBroadcastUOMAnnounces() {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Maybe broadcast UOM announces");
+      LOG.debug("UOM announce check: begin eligibility scan");
     }
     synchronized (NodeUpdateManager.this) {
       if (hasBeenBlown) {
@@ -1055,7 +1055,7 @@ public class NodeUpdateManager {
       }
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Maybe broadcast UOM announces (2)");
+      LOG.debug("UOM announce check: passed blow/peer gates");
     }
     // If the node has no peers, noRevocationFound will never be called.
     broadcastUOMAnnounces();

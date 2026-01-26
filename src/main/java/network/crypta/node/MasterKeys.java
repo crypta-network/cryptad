@@ -48,7 +48,7 @@ public class MasterKeys {
 
   private static final Logger LOG = LoggerFactory.getLogger(MasterKeys.class);
 
-  // Currently only the client cache uses this key for its legacy persistence.
+  // Currently, only the client cache uses this key for its legacy persistence.
 
   final byte[] clientCacheMasterKey;
   private final byte[] databaseKey;
@@ -60,8 +60,8 @@ public class MasterKeys {
   /**
    * Constructs a new bundle of master secrets.
    *
-   * <p>Inputs are stored by reference; they are not defensively copied here. Callers should clear
-   * or replace their arrays if further mutation is undesired.
+   * <p>Reference stores inputs; they are not defensively copied here. Callers should clear or
+   * replace their arrays if a further mutation is undesired.
    *
    * @param clientCacheKey 32-byte key for the client cache; must not be {@code null}.
    * @param databaseKey 32-byte database key; must not be {@code null}.
@@ -144,7 +144,7 @@ public class MasterKeys {
    */
   public static MasterKeys read(File masterKeysFile, Random hardRandom, String password)
       throws MasterKeysWrongPasswordException, MasterKeysFileSizeException, IOException {
-    LOG.info("Reading master.keys file");
+    LOG.info("Reading master.keys from disk");
     if (masterKeysFile != null && masterKeysFile.exists()) {
       long len = masterKeysFile.length();
       if (len > 1024) throw new MasterKeysFileSizeException(true);
@@ -154,7 +154,7 @@ public class MasterKeys {
           DataInputStream dis = new DataInputStream(fis)) {
         if (len == 140) {
           MasterKeys ret = readOldFormat(dis, length, hardRandom, password);
-          LOG.info("Old-format master.keys detected; writing new format");
+          LOG.info("Detected legacy master.keys; migrating to current format");
           ret.changePassword(masterKeysFile, password, hardRandom);
           return ret;
         }
@@ -165,7 +165,7 @@ public class MasterKeys {
         throw new MasterKeysFileSizeException(false);
       }
     }
-    LOG.info("Creating new master.keys file");
+    LOG.info("No master.keys found; generating new secrets");
     MasterKeys ret = createRandom(hardRandom);
     ret.write(masterKeysFile, password, hardRandom);
     return ret;
@@ -194,7 +194,7 @@ public class MasterKeys {
     Decoded decoded = decodeV1Data(data, hardRandom);
     MasterKeys ret = decoded.keys();
     if (decoded.mustWrite()) {
-      LOG.info("Create new master secret for encrypted tempfiles");
+      LOG.info("Tempfiles secret missing in master.keys; generating new secret");
       ret.changePassword(masterKeysFile, password, hardRandom);
     }
     return ret;
@@ -207,7 +207,7 @@ public class MasterKeys {
     md.update(salt);
     byte[] outerKey = md.digest();
     if (iterations > 0) {
-      LOG.info("Deriving password key with {} iterations", iterations);
+      LOG.info("Deriving outer key from password; iterations={}", iterations);
       for (long i = 0; i < iterations; i++) {
         md.update(salt);
         md.update(outerKey);
@@ -310,7 +310,7 @@ public class MasterKeys {
     byte[] databaseKey = new byte[32];
     dis.readFully(databaseKey);
     byte[] tempfilesMasterSecret = new byte[64];
-    LOG.info("Create new master secret for encrypted tempfiles");
+    LOG.info("Legacy master.keys lacks tempfiles secret; generating new secret");
     hardRandom.nextBytes(tempfilesMasterSecret);
     MasterKeys ret = new MasterKeys(clientCacheKey, databaseKey, tempfilesMasterSecret, flags);
     clear(data);
@@ -340,7 +340,7 @@ public class MasterKeys {
    */
   public void changePassword(File masterKeysFile, String newPassword, Random hardRandom)
       throws IOException {
-    LOG.info("Writing master.keys file");
+    LOG.info("Rewriting master.keys with new password");
     write(masterKeysFile, newPassword, hardRandom);
   }
 
@@ -374,7 +374,7 @@ public class MasterKeys {
           outerKey = md.digest();
         }
       }
-      LOG.info("Derived password key with {} iterations.", iterations);
+      LOG.info("Derived outer key for master.keys; iterations={}", iterations);
     }
 
     DataOutputStream dos = new DataOutputStream(baos);
@@ -432,7 +432,7 @@ public class MasterKeys {
   /**
    * Returns the master secret used to derive keys for persistent encrypted tempfiles.
    *
-   * <p>The returned {@link MasterSecret} receives a clone of the underlying bytes so subsequent
+   * <p>The returned {@link MasterSecret} receives a clone of the underlying bytes so later
    * mutations by the caller do not affect this instance.
    *
    * @return a {@link MasterSecret} for tempfiles encryption.

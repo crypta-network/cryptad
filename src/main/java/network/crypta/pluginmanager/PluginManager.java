@@ -96,7 +96,6 @@ public class PluginManager {
   private static final String HTML_TAG_INPUT = "input";
   private static final String HTML_ATTR_VALUE = "value";
   private static final String CALLBACK_TASK_NAME = "Callback";
-  private static final String CALLBACK_THROWABLE_MESSAGE = "Caught Throwable in Callback";
 
   private final HashMap<String, FredPlugin> toadletList = new HashMap<>();
 
@@ -371,7 +370,7 @@ public class PluginManager {
       LOG.error("Plugins still shutting down at timeout:\n{}", list);
     } catch (ConcurrentModificationException e) {
       LOG.error("Error during shutdown: {}", e, e);
-      LOG.error("Plugins still shutting down at timeout:\n{}", list);
+      LOG.error("Plugins still shutting down at timeout after error:\n{}", list);
     }
   }
 
@@ -605,7 +604,7 @@ public class PluginManager {
       core.getAlerts().register(newAlert);
       core.getAlerts().unregister(oldAlert);
     } catch (UnsupportedClassVersionError e) {
-      LOG.error("Could not load plugin {} : {}", filename, e, e);
+      LOG.error("Failed to load plugin (unsupported class version) {} : {}", filename, e, e);
       LOG.error("Plugin {} appears to require a later JVM", filename);
       PluginLoadFailedUserAlert newAlert =
           new PluginLoadFailedUserAlert(
@@ -620,7 +619,7 @@ public class PluginManager {
       if (t instanceof VirtualMachineError vme) {
         throw vme;
       }
-      LOG.error("Could not load plugin {} : {}", filename, t, t);
+      LOG.error("Failed to load plugin (unexpected error) {} : {}", filename, t, t);
       LOG.error("Plugin {} is broken, but we want to retry after next startup", filename);
       PluginLoadFailedUserAlert newAlert =
           new PluginLoadFailedUserAlert(filename, pdl.isOfficialPluginLoader(), false, t);
@@ -1015,10 +1014,13 @@ public class PluginManager {
 
         for (String target : targets) {
           toadletList.remove(target);
-          LOG.info("Removed HTTP symlink: {} => /plugins/{}/", target, pi.getPluginClassName());
+          LOG.info(
+              "Removed HTTP symlink mapping (legacy): {} => /plugins/{}/",
+              target,
+              pi.getPluginClassName());
         }
       } catch (Exception ex) {
-        LOG.error("removing Toadlet-link", ex);
+        LOG.error("Failed removing Toadlet-link symlink list", ex);
       }
     }
   }
@@ -1043,10 +1045,13 @@ public class PluginManager {
           rm = target;
           toadletList.remove(target);
           pi.removePluginToadletSymlink(target);
-          LOG.info("Removed HTTP symlink: {} => /plugins/{}/", target, pi.getPluginClassName());
+          LOG.info(
+              "Removed HTTP symlink mapping and cleared alias: {} => /plugins/{}/",
+              target,
+              pi.getPluginClassName());
         }
       } catch (Exception ex) {
-        LOG.error("removing Toadlet-link: {}", rm, ex);
+        LOG.error("Failed removing Toadlet-link symlink: {}", rm, ex);
       }
     }
   }
@@ -2042,7 +2047,7 @@ public class PluginManager {
               try {
                 plug.setTheme(cssName);
               } catch (Exception e) {
-                LOG.error(CALLBACK_THROWABLE_MESSAGE, e);
+                LOG.error("Callback failed while applying plugin theme", e);
               }
             },
             CALLBACK_TASK_NAME);
@@ -2072,7 +2077,7 @@ public class PluginManager {
               try {
                 plug.setLanguage(lang);
               } catch (Exception e) {
-                LOG.error(CALLBACK_THROWABLE_MESSAGE, e);
+                LOG.error("Callback failed while setting plugin language", e);
               }
             },
             CALLBACK_TASK_NAME);
@@ -2083,7 +2088,7 @@ public class PluginManager {
               try {
                 plug.setLanguage(lang);
               } catch (Exception e) {
-                LOG.error(CALLBACK_THROWABLE_MESSAGE, e);
+                LOG.error("Callback failed while setting base plugin language", e);
               }
             },
             CALLBACK_TASK_NAME);

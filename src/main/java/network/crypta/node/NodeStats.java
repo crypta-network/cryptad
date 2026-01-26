@@ -1310,14 +1310,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
       if (time < DEFAULT_ONLY_PERIOD) {
         nonOverheadFraction = DEFAULT_OVERHEAD;
         if (LOG.isDebugEnabled())
-          LOG.debug("Adjusted non-overhead fraction: {}", nonOverheadFraction);
+          LOG.debug("Adjusted non-overhead fraction (startup only): {}", nonOverheadFraction);
       } else if (time < DEFAULT_ONLY_PERIOD + DEFAULT_TRANSITION_PERIOD) {
         time -= DEFAULT_ONLY_PERIOD;
         nonOverheadFraction =
             (time * nonOverheadFraction + (DEFAULT_TRANSITION_PERIOD - time) * DEFAULT_OVERHEAD)
                 / DEFAULT_TRANSITION_PERIOD;
         if (LOG.isDebugEnabled())
-          LOG.debug("Adjusted non-overhead fraction: {}", nonOverheadFraction);
+          LOG.debug("Adjusted non-overhead fraction (startup transition): {}", nonOverheadFraction);
       }
     }
     if (nonOverheadFraction < MIN_NON_OVERHEAD) {
@@ -3188,7 +3188,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     if (isLocal) blockTransferPSuccessLocal.report(1.0);
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Successful receives: {} count={} realtime={}",
+          "Block receive success: {} count={} realtime={}",
           blockTransferPSuccess.currentValue(),
           blockTransferPSuccess.countReports(),
           realTimeFlag);
@@ -3217,7 +3217,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     if (isLocal) blockTransferPSuccessLocal.report(0.0);
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "Successful receives: {} count={} realtime={}",
+          "Block receive failure: {} count={} realtime={}",
           blockTransferPSuccess.currentValue(),
           blockTransferPSuccess.countReports(),
           realTimeFlag);

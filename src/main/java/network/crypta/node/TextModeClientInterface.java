@@ -79,7 +79,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Lifecycle and concurrency: instances are designed to be used by a single thread. The class
  * implements {@code Runnable}; typical usage creates an instance and executes it on a background
- * thread while the caller feeds input and consumes output. The object maintains minimal mutable
+ * thread while the caller feeds input and consumes output. The object maintains a minimal mutable
  * state; most operations delegate to existing node services which perform the actual work and I/O.
  * Log statements are emitted for visibility but do not alter behavior.
  *
@@ -87,7 +87,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Responsibilities: parse commands, invoke node/client operations, and format responses.
  *   <li>Notable behaviors: avoids printing large payloads to the terminal and warns on content that
  *       appears to contain terminal control characters.
- *   <li>Typical pattern: prompt → read command → execute → write result → continue until QUIT.
+ *   <li>Typical pattern: prompt → read command → execute → writing result → continue until QUIT.
  * </ul>
  *
  * @author amphibian
@@ -96,10 +96,8 @@ import org.slf4j.LoggerFactory;
 public class TextModeClientInterface implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(TextModeClientInterface.class);
 
-  private static final String LOG_CAUGHT = "Caught {}";
   private static final String PEER_IDENTITY_SUFFIX = " identity\r\n";
   private static final String PEER_IP_NAME_IDENTITY_SUFFIX = " ip+port, name, or identity\r\n";
-  private static final String LOG_KEY_LITERAL = "Key: {}";
   private static final String MALFORMED_URI_LITERAL = "Malformed URI: ";
   private static final String CONTENT_MIME_LITERAL = "Content MIME type: ";
   private static final String ESCAPE_WARNING_SUFFIX =
@@ -115,7 +113,6 @@ public class TextModeClientInterface implements Runnable {
   private static final String PEER_DETAILS_FAIL_PREFIX =
       "n.network().getPeerNode() failed to get peer details for ";
   private static final String CRLF2 = "\r\n\r\n";
-  private static final String DID_NOT_PARSE_LITERAL = "Did not parse: {}";
   private static final String FILTER_BASE_URL = "http://127.0.0.1:8888/";
   private static final String PLUGLOAD_HELP =
       """
@@ -173,11 +170,11 @@ public class TextModeClientInterface implements Runnable {
    * output so that asynchronous client events are visible to the user while commands are processed.
    * The instance reads commands from {@code in} and writes responses to {@code out} using UTF‑8.
    *
-   * @param server the server wrapper providing the node, client core, randomness and download
+   * @param server the server wrapper providing the node, client core, randomness, and download
    *     directory; must be non‑null and fully initialized before invocation.
    * @param in the byte stream to read TMCI commands from; the caller owns its lifecycle and must
    *     provide data in UTF‑8 compatible encoding.
-   * @param out the byte stream to write human‑readable responses to; remains open after method
+   * @param out the byte stream to write human‑readable responses to; remains open after the method
    *     returns and is not closed by the constructor.
    */
   public TextModeClientInterface(
@@ -277,9 +274,9 @@ public class TextModeClientInterface implements Runnable {
     try {
       realRun();
     } catch (IOException e) {
-      if (LOG.isDebugEnabled()) LOG.debug(LOG_CAUGHT, e, e);
+      if (LOG.isDebugEnabled()) LOG.debug("TMCI run loop caught IO exception: {}", e, e);
     } catch (Exception t) {
-      LOG.error(LOG_CAUGHT, t, t);
+      LOG.error("TMCI run loop failed with unexpected exception: {}", t, t);
     }
   }
 
@@ -292,7 +289,7 @@ public class TextModeClientInterface implements Runnable {
    * error occurs on the output stream. The method is blocking and intended to be called on a
    * dedicated thread.
    *
-   * @throws IOException if writing the initial header fails or the prompt cannot be written due to
+   * @throws IOException if writing the initial header fails, or the prompt cannot be written due to
    *     an underlying I/O error on the output stream.
    */
   public void realRun() throws IOException {
@@ -308,16 +305,16 @@ public class TextModeClientInterface implements Runnable {
           return;
         }
       } catch (SocketException e) {
-        LOG.error("Socket error: {}", e, e);
+        LOG.error("TMCI socket error while reading command: {}", e, e);
         return;
       } catch (Exception t) {
-        LOG.error(LOG_CAUGHT, t, t);
+        LOG.error("TMCI command loop threw unexpected exception: {}", t, t);
         StringWriter sw = new StringWriter();
         t.printStackTrace(new PrintWriter(sw));
         try {
           w.write(sw.toString());
         } catch (IOException e) {
-          LOG.error("Socket error: {}", e, e);
+          LOG.error("TMCI socket error while writing exception output: {}", e, e);
           return;
         }
       }
@@ -458,7 +455,7 @@ public class TextModeClientInterface implements Runnable {
       line = reader.readLine();
     } catch (IOException e) {
       outsb.append("Bye... (").append(e).append(')');
-      LOG.warn("Bye... ({})", e, e);
+      LOG.warn("TMCI input closed while reading command: {}", e, e);
       return true;
     }
     if (line == null) return true;
@@ -496,11 +493,11 @@ public class TextModeClientInterface implements Runnable {
   private boolean handleGet(String line, String uline, BufferedReader reader, StringBuilder outsb)
       throws IOException {
     String key = line.substring("GET:".length()).trim();
-    LOG.info(LOG_KEY_LITERAL, key);
+    LOG.info("TMCI GET request key: {}", key);
     FreenetURI uri;
     try {
       uri = new FreenetURI(key);
-      LOG.info(LOG_KEY_LITERAL, uri);
+      LOG.info("TMCI GET parsed URI: {}", uri);
     } catch (MalformedURLException e2) {
       outsb.append(MALFORMED_URI_LITERAL).append(key).append(" : ").append(e2);
       return false;
@@ -511,14 +508,14 @@ public class TextModeClientInterface implements Runnable {
       outsb.append(CONTENT_MIME_LITERAL).append(cm.getMIMEType());
       Bucket data = result.asBucket();
       if (data.size() > 32 * 1024) {
-        LOG.warn("Data is more than 32K: {}", data.size());
+        LOG.warn("TMCI GET response too large (>32K): {}", data.size());
         outsb.append("Data is more than 32K: ").append(data.size());
         return false;
       }
       byte[] dataBytes = BucketTools.toByteArray(data);
       boolean evil = containsTerminalControlChars(dataBytes);
       if (evil) {
-        LOG.warn(ESCAPE_WARNING_PREFIX + ESCAPE_WARNING_SUFFIX);
+        LOG.warn("TMCI GET response contains terminal control bytes; blocking output");
         outsb.append(ESCAPE_WARNING_PREFIX + ESCAPE_WARNING_SUFFIX);
         return false;
       }
@@ -550,14 +547,14 @@ public class TextModeClientInterface implements Runnable {
     outsb.append(CONTENT_MIME_LITERAL).append(cm.getMIMEType());
     Bucket data = result.asBucket();
     if (data.size() > 32 * 1024) {
-      LOG.warn("Data is more than 32K: {}", data.size());
+      LOG.warn("TMCI DUMP response too large (>32K): {}", data.size());
       outsb.append("Data is more than 32K: ").append(data.size());
       return;
     }
     byte[] dataBytes = BucketTools.toByteArray(data);
     boolean evil = containsTerminalControlChars(dataBytes);
     if (evil) {
-      LOG.warn(ESCAPE_WARNING_PREFIX + ESCAPE_WARNING_SUFFIX);
+      LOG.warn("TMCI DUMP response contains terminal control bytes; blocking output");
       outsb.append(ESCAPE_WARNING_PREFIX + ESCAPE_WARNING_SUFFIX);
       return;
     }
@@ -576,11 +573,11 @@ public class TextModeClientInterface implements Runnable {
   private boolean handleDump(String line, String uline, BufferedReader reader, StringBuilder outsb)
       throws IOException {
     String key = line.substring("DUMP:".length()).trim();
-    LOG.info(LOG_KEY_LITERAL, key);
+    LOG.info("TMCI DUMP request key: {}", key);
     FreenetURI uri;
     try {
       uri = new FreenetURI(key);
-      LOG.info(LOG_KEY_LITERAL, uri);
+      LOG.info("TMCI DUMP parsed URI: {}", uri);
     } catch (MalformedURLException e2) {
       outsb.append(MALFORMED_URI_LITERAL).append(key).append(" : ").append(e2);
       return false;
@@ -615,7 +612,7 @@ public class TextModeClientInterface implements Runnable {
   private boolean handleGetFile(
       String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
     String key = line.substring("GETFILE:".length()).trim();
-    LOG.info(LOG_KEY_LITERAL, key);
+    LOG.info("TMCI GETFILE request key: {}", key);
     FreenetURI uri;
     try {
       uri = new FreenetURI(key);
@@ -917,13 +914,14 @@ public class TextModeClientInterface implements Runnable {
         outsb.append("Splitfile errors breakdown:");
         outsb.append(e.getErrorCodes().toVerboseString());
       }
-      LOG.error(LOG_CAUGHT, e, e);
+      LOG.error("TMCI insert manifest failed with exception: {}", e, e);
     }
     return false;
   }
 
   private static String detectDefaultFile(
-      HashMap<String, Object> bucketsByName, String... candidates) {
+      HashMap<String, Object> bucketsByName,
+      @SuppressWarnings("SameParameterValue") String... candidates) {
     for (String file : candidates) {
       if (bucketsByName.containsKey(file)) {
         return file;
@@ -1495,7 +1493,7 @@ public class TextModeClientInterface implements Runnable {
   /**
    * Handle the ANNOUNCE command.
    *
-   * <p>Runs announcement and keeps the session open; intentionally returns {@code false}.
+   * <p>Runs an announcement and keeps the session open; intentionally returns {@code false}.
    */
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handleAnnounce(
@@ -1657,7 +1655,7 @@ public class TextModeClientInterface implements Runnable {
       if (line == null) throw new EOFException();
       return line;
     } catch (IOException e1) {
-      LOG.warn("Bye... ({} )", e1, e1);
+      LOG.warn("TMCI input read failed in multiline block: {}", e1, e1);
       return null;
     }
   }
@@ -1704,7 +1702,7 @@ public class TextModeClientInterface implements Runnable {
     try {
       fs = new SimpleFieldSet(content, false, true, false);
     } catch (IOException e) {
-      LOG.error(DID_NOT_PARSE_LITERAL, e, e);
+      LOG.error("Failed to parse peer reference input: {}", e, e);
       outsb.append("Did not parse: ").append(e).append("\r\n");
       return;
     }
@@ -1715,7 +1713,7 @@ public class TextModeClientInterface implements Runnable {
         | PeerTooOldException
         | ReferenceSignatureVerificationException
         | PeerParseException e1) {
-      LOG.error(DID_NOT_PARSE_LITERAL, e1, e1);
+      LOG.error("Failed to validate peer reference: {}", e1, e1);
       outsb.append("Did not parse: ").append(e1).append("\r\n");
       return;
     }

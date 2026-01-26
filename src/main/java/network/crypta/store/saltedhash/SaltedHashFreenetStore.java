@@ -130,8 +130,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private static final String STR_FROM = " from ";
   private static final String KEY_PROCESSED = "processed";
   private static final String KEY_TOTAL = "total";
-  private static final String DELETE_FAILED_MSG = "Failed to delete {}";
-  private static final String SLOT_FILTER_UPDATE_ERR = "Unable to update slot filter: ";
 
   // Legacy debug gates removed; prefer SLF4J guards directly.
 
@@ -516,7 +514,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       Map<Long, Condition> lockMap = lockDigestedKey(digestedKey, true);
       if (lockMap.isEmpty()) {
         if (LOG.isDebugEnabled())
-          LOG.debug("cannot lock key: {}, shutting down?", HexUtil.bytesToHex(routingKey));
+          LOG.debug(
+              "Fetch lock unavailable for key: {}, shutting down?", HexUtil.bytesToHex(routingKey));
         return null;
       }
       try {
@@ -693,7 +692,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       Map<Long, Condition> lockMap = lockDigestedKey(digestedKey, false);
       if (lockMap.isEmpty()) {
         if (LOG.isDebugEnabled())
-          LOG.debug("cannot lock key: {}, shutting down?", HexUtil.bytesToHex(routingKey));
+          LOG.debug(
+              "Put lock unavailable for key: {}, shutting down?", HexUtil.bytesToHex(routingKey));
         return false;
       }
       try {
@@ -798,7 +798,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       }
       // Currently flagged as an old block; update and persist.
       oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
-      if (LOG.isDebugEnabled()) LOG.debug("Setting old block to new block");
+      if (LOG.isDebugEnabled()) LOG.debug("Updating entry flag from old to new after verify");
       oldEntry.storeSize = storeSize;
       writeEntry(oldEntry, digestedKey, oldOffset);
     }
@@ -810,7 +810,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     if ((oldEntry.flag & Entry.ENTRY_NEW_BLOCK) == 0 && !isOldBlock) {
       // Currently flagged as an old block
       oldEntry.flag |= Entry.ENTRY_NEW_BLOCK;
-      if (LOG.isDebugEnabled()) LOG.debug("Setting old block to new block");
+      if (LOG.isDebugEnabled())
+        LOG.debug("Updating entry flag from old to new on already stored entry");
       oldEntry.storeSize = storeSize;
       writeEntry(oldEntry, digestedKey, oldOffset);
     }
@@ -1295,7 +1296,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       } else if (LOG.isDebugEnabled()
           && cs.valid()
           && !cs.likelyMatch()
-          && slotCacheIsFree(cs.cache())) LOG.debug("True negative!");
+          && slotCacheIsFree(cs.cache())) LOG.debug("Slot filter true negative: free slot");
       return true;
     }
     if (!Arrays.equals(digestedRoutingKey, entry.digestedRoutingKey)) {
@@ -1303,7 +1304,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         LOG.info(
             "False positive from slot cache on slot {}" + CACHE_WAS + "{}", offset, cs.cache());
         bloomFalsePos.incrementAndGet();
-      } else if (LOG.isDebugEnabled() && cs.valid()) LOG.debug("True negative!");
+      } else if (LOG.isDebugEnabled() && cs.valid())
+        LOG.debug("Slot filter true negative: key mismatch");
       return true;
     }
     return false;
@@ -1321,7 +1323,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       try {
         slotFilter.put((int) offset, trueCache);
       } catch (IOException e) {
-        LOG.error(SLOT_FILTER_UPDATE_ERR + "{}", e, e);
+        LOG.error("Slot filter update failed after cache change: {}", e, e);
       }
     }
   }
@@ -1515,14 +1517,14 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       metaFC.force(true);
       metaFC.close();
     } catch (Exception e) {
-      LOG.error("error flusing store", e);
+      LOG.error("error flushing store metadata file", e);
     }
     try {
       releaseLockQuietly(hdLock, "data file");
       hdFC.force(true);
       hdFC.close();
     } catch (Exception e) {
-      LOG.error("error flusing store", e);
+      LOG.error("error flushing store data file", e);
     }
     if (!slotFilterDisabled) {
       if (!abort) slotFilter.shutdown();
@@ -2066,7 +2068,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
                 return true;
               }
             } catch (IOException e) {
-              LOG.trace("IOExcception on resolveOldEntry", e);
+              LOG.trace("IOException while checking existing entry in resolveOldEntry", e);
             }
           }
 
@@ -2080,7 +2082,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
                 return true;
               }
             } catch (IOException e) {
-              LOG.trace("IOExcception on resolveOldEntry", e);
+              LOG.trace("IOException while looking for free slot in resolveOldEntry", e);
             }
           }
           return false;
@@ -2310,7 +2312,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         }
       } catch (IOException ioe) {
         if (shutdown) return;
-        LOG.error("unexpected IOException", ioe);
+        LOG.error("unexpected IOException while reading batch metadata", ioe);
       }
     }
 
@@ -2347,7 +2349,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
         try {
           slotFilter.put((int) (offset + j), SLOT_CHECKED);
         } catch (IOException e) {
-          LOG.error(SLOT_FILTER_UPDATE_ERR + "{}", e, e);
+          LOG.error("Slot filter update failed for freed entry: {}", e, e);
         }
       }
       return true;
@@ -2366,7 +2368,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
           try {
             slotFilter.put((int) (offset + j), newVal);
           } catch (IOException e) {
-            LOG.error(SLOT_FILTER_UPDATE_ERR + "{}", e, e);
+            LOG.error("Slot filter update failed for modified entry: {}", e, e);
           }
         }
       }
@@ -2381,7 +2383,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
           metaFC.write(buf, startFileOffset + buf.position());
         }
       } catch (IOException ioe) {
-        LOG.error("unexpected IOException", ioe);
+        LOG.error("unexpected IOException while writing batch metadata", ioe);
       }
     }
   }
@@ -2857,22 +2859,22 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     try {
       Files.deleteIfExists(metaFile.toPath());
     } catch (IOException ioe) {
-      LOG.warn(DELETE_FAILED_MSG, metaFile, ioe);
+      LOG.warn("Failed to delete metadata file {}", metaFile, ioe);
     }
     try {
       Files.deleteIfExists(hdFile.toPath());
     } catch (IOException ioe) {
-      LOG.warn(DELETE_FAILED_MSG, hdFile, ioe);
+      LOG.warn("Failed to delete data file {}", hdFile, ioe);
     }
     try {
       Files.deleteIfExists(configFile.toPath());
     } catch (IOException ioe) {
-      LOG.warn(DELETE_FAILED_MSG, configFile, ioe);
+      LOG.warn("Failed to delete config file {}", configFile, ioe);
     }
     try {
       Files.deleteIfExists(bloomFile.toPath());
     } catch (IOException ioe) {
-      LOG.warn(DELETE_FAILED_MSG, bloomFile, ioe);
+      LOG.warn("Failed to delete bloom file {}", bloomFile, ioe);
     }
   }
 

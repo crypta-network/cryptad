@@ -87,7 +87,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
    */
   static void main() throws NodeInitException, InterruptedException {
     LOG.info("Routing test using real nodes:");
-    LOG.info("");
+    LOG.info("Routing test initialization begin");
     String dir = "realNodeRequestInsertTest";
     File wd = new File(dir);
     if (!FileUtil.removeAll(wd)) {
@@ -198,7 +198,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
     int newSwaps = LocationManager.getSwaps();
     int totalStarted = LocationManager.getStartedSwaps();
     int noSwaps = LocationManager.getNoSwaps();
-    LOG.info("Swaps: {}", newSwaps - lastSwaps);
+    LOG.info("Cycle swaps delta: {}", newSwaps - lastSwaps);
     LOG.info(
         "Total swaps: Started*2: {}, succeeded: {}, last minute failures: {}, ratio {}, early"
             + " failures: {}",
@@ -208,15 +208,16 @@ public class RealNodeRoutingTest extends RealNodeTest {
         (double) noSwaps / (double) newSwaps,
         (totalStarted * 2) - (noSwaps + newSwaps));
     LOG.info(
-        "This cycle ratio: {}",
+        "Cycle swap success ratio: {}",
         ((double) (noSwaps - lastNoSwaps)) / ((double) (newSwaps - lastSwaps)));
     LOG.info(
-        "Swaps rejected (already locked): {}", LocationManager.getSwapsRejectedAlreadyLocked());
-    LOG.info("Swaps rejected (nowhere to go): {}", LocationManager.getSwapsRejectedNowhereToGo());
-    LOG.info("Swaps rejected (rate limit): {}", LocationManager.getSwapsRejectedRateLimit());
-    LOG.info("Swaps rejected (recognized ID):{}", LocationManager.getSwapsRejectedRecognizedID());
-    LOG.info("Swaps failed:{}", LocationManager.getNoSwaps());
-    LOG.info("Swaps succeeded:{}", LocationManager.getSwaps());
+        "Cycle swap rejects already locked: {}", LocationManager.getSwapsRejectedAlreadyLocked());
+    LOG.info("Cycle swap rejects nowhere to go: {}", LocationManager.getSwapsRejectedNowhereToGo());
+    LOG.info("Cycle swap rejects rate limit: {}", LocationManager.getSwapsRejectedRateLimit());
+    LOG.info(
+        "Cycle swap rejects recognized ID: {}", LocationManager.getSwapsRejectedRecognizedID());
+    LOG.info("Cycle swap failures: {}", LocationManager.getNoSwaps());
+    LOG.info("Cycle swap successes: {}", LocationManager.getSwaps());
 
     logSwapAverages(nodes);
     return new SwapSnapshot(newSwaps, noSwaps);
@@ -229,8 +230,8 @@ public class RealNodeRoutingTest extends RealNodeTest {
       totalSwapInterval += node.network().locationManager().getSendSwapInterval();
       totalSwapTime += node.network().locationManager().getAverageSwapTime();
     }
-    LOG.info("Average swap time: {}", totalSwapTime / nodes.length);
-    LOG.info("Average swap sender interval: {}", totalSwapInterval / nodes.length);
+    LOG.info("Average swap time per node: {}", totalSwapTime / nodes.length);
+    LOG.info("Average swap sender interval per node: {}", totalSwapInterval / nodes.length);
   }
 
   private static void runPingBatch(
@@ -299,7 +300,7 @@ public class RealNodeRoutingTest extends RealNodeTest {
 
   private static void logAveragePathLength(PingCounters counters) {
     LOG.info(
-        "Average path length for successful requests: {}",
+        "Cycle average path length (successful): {}",
         ((double) counters.totalHopsTaken) / counters.successes);
   }
 
@@ -312,25 +313,23 @@ public class RealNodeRoutingTest extends RealNodeTest {
   }
 
   private static void logAccuracySummary(Node[] nodes, double accuracy, PingCounters counters) {
-    LOG.info("");
+    LOG.info("Accuracy summary start");
     LOG.info("Reached {}% accuracy.", accuracy * 100);
-    LOG.info("");
+    LOG.info("Accuracy summary details");
     LOG.info("Network size: {}", nodes.length);
     LOG.info("Maximum HTL: {}", MAX_HTL);
     LOG.info(
-        "Average path length for successful requests: {}",
+        "Overall average path length (successful): {}",
         counters.totalHopsTaken / counters.successes);
-    LOG.info("Total started swaps: {}", LocationManager.getStartedSwaps());
+    LOG.info("Total swap attempts started: {}", LocationManager.getStartedSwaps());
     LOG.info(
-        "Total rejected swaps (already locked): {}",
-        LocationManager.getSwapsRejectedAlreadyLocked());
+        "Total swap rejects already locked: {}", LocationManager.getSwapsRejectedAlreadyLocked());
+    LOG.info("Total swap rejects nowhere to go: {}", LocationManager.getSwapsRejectedNowhereToGo());
+    LOG.info("Total swap rejects rate limit: {}", LocationManager.getSwapsRejectedRateLimit());
     LOG.info(
-        "Total swaps rejected (nowhere to go): {}", LocationManager.getSwapsRejectedNowhereToGo());
-    LOG.info("Total swaps rejected (rate limit): {}", LocationManager.getSwapsRejectedRateLimit());
-    LOG.info(
-        "Total swaps rejected (recognized ID):{}", LocationManager.getSwapsRejectedRecognizedID());
-    LOG.info("Total swaps failed:{}", LocationManager.getNoSwaps());
-    LOG.info("Total swaps succeeded:{}", LocationManager.getSwaps());
+        "Total swap rejects recognized ID: {}", LocationManager.getSwapsRejectedRecognizedID());
+    LOG.info("Total swap failures: {}", LocationManager.getNoSwaps());
+    LOG.info("Total swap successes: {}", LocationManager.getSwaps());
   }
 
   private record SwapSnapshot(int newSwaps, int noSwaps) {}

@@ -29,7 +29,7 @@ import org.slf4j.event.Level;
  * <p>This long-running test harness builds a deterministic network of {@link Node} instances,
  * advances a fake clock to trigger mitigation cycles, and continuously routes pings to measure how
  * the routing layer behaves under disrupted locations. It is intended for manual, repeatable
- * experiments rather than unit-test execution. Configuration lives in the class constants so a run
+ * experiments rather than unit-test execution. Configuration lives in the class constants, so a run
  * can be reproduced by keeping the same node count, degree, random seed, and ping cadence.
  *
  * <p>The class writes detailed metrics to logs; a typical workflow is to parse those logs into
@@ -109,7 +109,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
    * Time between mitigation cycles, in milliseconds, used to advance the fake day counter.
    *
    * <p>The simulation advances the {@link LocationManager} clock by one day for every interval, so
-   * this value governs both mitigation triggering and the apparent passage of time.
+   * this value governs both mitigation triggering and the noticeable passage of time.
    */
   public static final long PITCH_BLACK_MITIGATION_FREQUENCY_ONE_DAY = MINUTES.toMillis(30);
 
@@ -174,7 +174,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
    * @param args command-line arguments; unused but accepted for standard entry-point semantics
    * @throws Exception if node initialization or startup fails before the simulation can begin
    */
-  public static void main(String[] args) throws Exception {
+  public static void main(@SuppressWarnings("unused") String[] args) throws Exception {
     LOG.info("Routing test using real nodes:");
     LOG.info("");
     String dir = "realNodeRequestInsertTest";
@@ -186,7 +186,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     if (!wd.mkdir() && !wd.isDirectory()) {
       LOG.warn("Failed to create working directory {}", wd.getAbsolutePath());
     }
-    // NOTE: globalTestInit returns in ignored random source
+    // NOTE: globalTestInit returns in an ignored random source
     NodeStarter.globalTestInit(wd, false, Level.ERROR, "", true, null);
     // Make the network reproducible so we can easily compare different routing options by
     // specifying a seed.
@@ -234,7 +234,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
     // enable warning logging to see pitch black defense logs
     network.crypta.support.Logging.setRootLevel(org.slf4j.event.Level.WARN);
 
-    // set the time to yesterday to have pitch black information
+    // set the time yesterday to have pitch black information
     LocationManager.setClockForTesting(
         Clock.offset(Clock.systemDefaultZone(), Duration.ofDays(-1)));
     // shift forward one day per 5 minutes
@@ -329,7 +329,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
       lastSwaps = swapStats.newSwaps;
       runPingBatch(nodes, random, sleepTime, stats);
       LOG.warn(
-          "Average path length for successful requests: {}",
+          "Cycle avg path length for successful requests: {}",
           ((double) stats.totalHopsTaken) / stats.successes);
       if (shouldStopPinging(accuracy, stats)) {
         LOG.warn("");
@@ -338,22 +338,22 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
         LOG.warn("Network size: {}", nodes.length);
         LOG.warn("Maximum HTL: {}", MAX_HTL);
         LOG.warn(
-            "Average path length for successful requests: {}",
+            "Final avg path length for successful requests: {}",
             stats.totalHopsTaken / stats.successes);
         LOG.warn("Total started swaps: {}", LocationManager.getStartedSwaps());
         LOG.warn(
-            "Total rejected swaps (already locked): {}",
+            "Final swaps rejected (already locked): {}",
             LocationManager.getSwapsRejectedAlreadyLocked());
         LOG.warn(
-            "Total swaps rejected (nowhere to go): {}",
+            "Final swaps rejected (nowhere to go): {}",
             LocationManager.getSwapsRejectedNowhereToGo());
         LOG.warn(
-            "Total swaps rejected (rate limit): {}", LocationManager.getSwapsRejectedRateLimit());
+            "Final swaps rejected (rate limit): {}", LocationManager.getSwapsRejectedRateLimit());
         LOG.warn(
-            "Total swaps rejected (recognized ID):{}",
+            "Final swaps rejected (recognized ID): {}",
             LocationManager.getSwapsRejectedRecognizedID());
-        LOG.warn("Total swaps failed:{}", LocationManager.getNoSwaps());
-        LOG.warn("Total swaps succeeded:{}", LocationManager.getSwaps());
+        LOG.warn("Final swaps failed: {}", LocationManager.getNoSwaps());
+        LOG.warn("Final swaps succeeded: {}", LocationManager.getSwaps());
         return;
       }
     }
@@ -414,12 +414,15 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
         "This cycle ratio: {}",
         ((double) (noSwaps - lastNoSwaps)) / ((double) (newSwaps - lastSwaps)));
     LOG.warn(
-        "Swaps rejected (already locked): {}", LocationManager.getSwapsRejectedAlreadyLocked());
-    LOG.warn("Swaps rejected (nowhere to go): {}", LocationManager.getSwapsRejectedNowhereToGo());
-    LOG.warn("Swaps rejected (rate limit): {}", LocationManager.getSwapsRejectedRateLimit());
-    LOG.warn("Swaps rejected (recognized ID):{}", LocationManager.getSwapsRejectedRecognizedID());
-    LOG.warn("Swaps failed:{}", LocationManager.getNoSwaps());
-    LOG.warn("Swaps succeeded:{}", LocationManager.getSwaps());
+        "Cycle swaps rejected (already locked): {}",
+        LocationManager.getSwapsRejectedAlreadyLocked());
+    LOG.warn(
+        "Cycle swaps rejected (nowhere to go): {}", LocationManager.getSwapsRejectedNowhereToGo());
+    LOG.warn("Cycle swaps rejected (rate limit): {}", LocationManager.getSwapsRejectedRateLimit());
+    LOG.warn(
+        "Cycle swaps rejected (recognized ID): {}", LocationManager.getSwapsRejectedRecognizedID());
+    LOG.warn("Cycle swaps failed: {}", LocationManager.getNoSwaps());
+    LOG.warn("Cycle swaps succeeded: {}", LocationManager.getSwaps());
     return new SwapStats(newSwaps, noSwaps);
   }
 

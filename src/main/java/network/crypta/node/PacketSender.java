@@ -396,7 +396,7 @@ public class PacketSender implements Runnable {
         LOG.atError()
             .addArgument(afterHandshakeTime - beforeHandshakeTime)
             .addArgument(() -> sel.toSendHandshake.userToString())
-            .log("Handshake duration {} ms exceeds 2000 ms (peer={})");
+            .log("Peer handshake send duration {} ms exceeds 2000 ms (peer={})");
     }
   }
 
@@ -441,7 +441,7 @@ public class PacketSender implements Runnable {
       LOG.atError()
           .addArgument(afterHandshakeTime - beforeHandshakeTime)
           .addArgument(pn::userToString)
-          .log("Handshake duration {} ms exceeds 2000 ms (peer={})");
+          .log("Opennet handshake send duration {} ms exceeds 2000 ms (peer={})");
   }
 
   @SuppressWarnings("java:S2142")

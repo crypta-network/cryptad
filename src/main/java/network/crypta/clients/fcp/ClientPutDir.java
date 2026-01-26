@@ -167,7 +167,8 @@ public class ClientPutDir extends ClientPutBase {
       numberOfFiles = -1;
       totalSize = -1;
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Putting dir {} : {}", identifier, priorityClass);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Init put-dir from FCP message id={} priority={}", identifier, priorityClass);
   }
 
   /**
@@ -254,7 +255,8 @@ public class ClientPutDir extends ClientPutBase {
       numberOfFiles = -1;
       totalSize = -1;
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Putting dir {} : {}", identifier, priorityClass);
+    if (LOG.isDebugEnabled())
+      LOG.debug("Init put-dir from disk scan id={} priority={}", identifier, priorityClass);
   }
 
   /**
@@ -365,7 +367,7 @@ public class ClientPutDir extends ClientPutBase {
 
   private void addFileEntry(Map<String, Object> map, File file, String prefix) {
     FileBucket bucket = new FileBucket(file, true, false, false, false);
-    if (LOG.isDebugEnabled()) LOG.debug("Add file : {}", file.getAbsolutePath());
+    if (LOG.isDebugEnabled()) LOG.debug("Manifest add file path={}", file.getAbsolutePath());
 
     map.put(
         file.getName(),
@@ -384,7 +386,8 @@ public class ClientPutDir extends ClientPutBase {
       boolean allowUnreadableFiles,
       boolean includeHiddenFiles)
       throws FileNotFoundException {
-    if (LOG.isDebugEnabled()) LOG.debug("Add dir : {}", directory.getAbsolutePath());
+    if (LOG.isDebugEnabled())
+      LOG.debug("Manifest add directory path={}", directory.getAbsolutePath());
 
     map.put(
         directory.getName(),
@@ -460,15 +463,16 @@ public class ClientPutDir extends ClientPutBase {
   @Override
   protected void freeData() {
     if (LOG.isDebugEnabled())
-      LOG.debug("freeData() on {} persistence type = {}", this, persistence);
+      LOG.debug("Free-data begin request={} persistence={}", this, persistence);
     synchronized (this) {
       if (manifestElements == null) {
-        if (LOG.isDebugEnabled()) LOG.debug("manifestElements = {}", manifestElements);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Free-data skipped; manifestElements={}", manifestElements);
         return;
       }
     }
     if (LOG.isDebugEnabled())
-      LOG.debug("freeData() more on {} persistence type = {}", this, persistence);
+      LOG.debug("Free-data continue request={} persistence={}", this, persistence);
     // We have to commit everything, so activating everything here costs us little memory...?
     freeData(manifestElements);
     manifestElements = null;
@@ -477,7 +481,7 @@ public class ClientPutDir extends ClientPutBase {
   private void freeData(Map<String, Object> manifestElements) {
     if (LOG.isDebugEnabled())
       LOG.debug(
-          "freeData() inner on {} persistence type = {} size = {}",
+          "Free-data recurse request={} persistence={} size={}",
           this,
           persistence,
           manifestElements.size());
@@ -486,7 +490,7 @@ public class ClientPutDir extends ClientPutBase {
         freeData(Metadata.forceMap(o));
       } else {
         ManifestElement e = (ManifestElement) o;
-        if (LOG.isDebugEnabled()) LOG.debug("Freeing {}", e);
+        if (LOG.isDebugEnabled()) LOG.debug("Free-data release element={}", e);
         e.freeData();
       }
     }
@@ -522,8 +526,8 @@ public class ClientPutDir extends ClientPutBase {
    */
   @Override
   protected FCPMessage persistentTagMessage() {
-    if (lowLevelClient == null) LOG.warn("lowLevelClient == null");
-    if (putter == null) LOG.warn("putter == null");
+    if (lowLevelClient == null) LOG.warn("Persistent snapshot missing low-level client");
+    if (putter == null) LOG.warn("Persistent snapshot missing putter");
     HashMap<String, Object> manifestSnapshot =
         manifestElements != null ? new HashMap<>(manifestElements) : null;
     ClientRequestParams requestParams =
@@ -552,7 +556,7 @@ public class ClientPutDir extends ClientPutBase {
     if (lowLevelClient == null) {
       // This can happen but only due to data corruption - old databases on which various bugs have
       // resulted in it getting deleted and also possibly failed deletions.
-      LOG.warn("lowLevelClient == null");
+      LOG.warn("Realtime flag unavailable: lowLevelClient is null");
       return false;
     }
     return lowLevelClient.realTimeFlag();
@@ -630,11 +634,11 @@ public class ClientPutDir extends ClientPutBase {
   @Override
   public boolean canRestart() {
     if (!finished) {
-      LOG.debug("Cannot restart because not finished for {}", identifier);
+      LOG.debug("Restart blocked: request not finished id={}", identifier);
       return false;
     }
     if (succeeded) {
-      LOG.debug("Cannot restart because succeeded for {}", identifier);
+      LOG.debug("Restart blocked: request already succeeded id={}", identifier);
       return false;
     }
     return true;
@@ -679,7 +683,7 @@ public class ClientPutDir extends ClientPutBase {
    * Handles eviction from the scheduler or request cache by releasing runtime helpers.
    *
    * <p>Persistent FOREVER requests can survive removal events, so this hook nulls out the {@link
-   * ManifestPutter} to avoid holding on to stale channels until a later resume occurs. The
+   * ManifestPutter} to avoid holding on to stale channels until a later resuming occurs. The
    * superclass observes the event as well, ensuring that shared bookkeeping such as rate limiting
    * and identifier mappings stay consistent.
    *
@@ -793,7 +797,7 @@ public class ClientPutDir extends ClientPutBase {
   }
 
   /**
-   * Indicates whether every component of the request has been fully restored after a resume.
+   * Indicates whether every component of the request has been fully restored after resuming.
    *
    * <p>Directory inserts currently resume lazily, rebuilding manifest metadata only when {@link
    * #innerResume(ClientContext)} is invoked later in the lifecycle. Consequently, this method

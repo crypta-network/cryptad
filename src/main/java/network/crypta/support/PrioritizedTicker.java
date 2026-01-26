@@ -121,11 +121,11 @@ public class PrioritizedTicker implements Ticker, Runnable {
         break;
       } catch (VirtualMachineError fatal) {
         // Don't try to keep running on truly fatal JVM conditions.
-        LOG.error(ERR_PREFIX + "{}", fatal, fatal);
+        LOG.error(ERR_PREFIX + "Ticker loop fatal error: {}", fatal, fatal);
         throw fatal;
       } catch (Throwable t) {
         // Keep the ticker alive even on Errors (e.g., AssertionError, LinkageError).
-        LOG.error(ERR_PREFIX + "{}", t, t);
+        LOG.error(ERR_PREFIX + "Ticker loop error: {}", t, t);
       }
     }
   }
@@ -170,7 +170,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
 
   private void executeJobs(List<Job> jobsToRun) {
     for (Job r : jobsToRun) {
-      if (LOG.isDebugEnabled()) LOG.debug("Running {}", r);
+      if (LOG.isDebugEnabled()) LOG.debug("Dispatching scheduled job {}", r);
       runJob(r);
     }
   }
@@ -215,7 +215,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
     } catch (VirtualMachineError fatal) {
       throw fatal;
     } catch (Throwable t) {
-      LOG.error(ERR_PREFIX + "{}", t, t);
+      LOG.error(ERR_PREFIX + "Executor dispatch failed: {}", t, t);
       LOG.warn("Will retry above failed operation...");
       queueTimedJob(r.task, r.name, 200, true, false);
     }
@@ -327,7 +327,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
       boolean noDupes) {
     if (noDupes) runOnTickerAnyway = true;
     if (offset <= 0 && !runOnTickerAnyway) {
-      if (LOG.isDebugEnabled()) LOG.debug("Running directly: {}", runner);
+      if (LOG.isDebugEnabled()) LOG.debug("Dispatching immediate job {}", runner);
       executor.execute(runner, name);
       return;
     }

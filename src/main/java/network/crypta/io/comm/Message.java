@@ -105,7 +105,8 @@ public class Message {
       boolean veryLax) {
     MessageType mspec = readMessageType(bb, veryLax);
     if (mspec == null) {
-      if (LOG.isDebugEnabled()) LOG.debug("Bogus message type");
+      if (LOG.isDebugEnabled())
+        LOG.debug("event=decode-invalid-type message type missing or corrupt");
       return null;
     }
     if (!isAcceptable(mspec)) return null;
@@ -117,7 +118,7 @@ public class Message {
       logPrematureEnd(peer, mspec, inSubMessage, e);
       return null;
     } catch (IOException e) {
-      LOG.error("Unexpected IOException: {} reading from buffer stream", e, e);
+      LOG.error("event=decode-io-error unexpected I/O reading message payload: {}", e, e);
       return null;
     }
     logReturnMessage(m);
@@ -128,18 +129,20 @@ public class Message {
     try {
       return MessageType.getSpec(bb.readInt(), veryLax);
     } catch (IOException e1) {
-      if (LOG.isDebugEnabled()) LOG.debug("Failed to read message type: {}", e1, e1);
+      if (LOG.isDebugEnabled())
+        LOG.debug("event=decode-type-read-failed failed to read message type id: {}", e1, e1);
       return null;
     }
   }
 
   private static boolean isAcceptable(MessageType mspec) {
     if (mspec == null) {
-      if (LOG.isDebugEnabled()) LOG.debug("Bogus message type");
+      if (LOG.isDebugEnabled()) LOG.debug("event=accept-null-type rejected null message type");
       return false;
     }
     if (mspec.isInternalOnly()) {
-      if (LOG.isDebugEnabled()) LOG.debug("Internal only message");
+      if (LOG.isDebugEnabled())
+        LOG.debug("event=accept-internal-only rejected internal-only message");
       return false; // silently discard internal-only messages
     }
     return true;
@@ -162,14 +165,15 @@ public class Message {
             + " sent a message packet that ends prematurely while deserialising "
             + mspec.getName();
     if (inSubMessage) {
-      if (LOG.isDebugEnabled()) LOG.debug("{} in sub-message", msg, e);
+      if (LOG.isDebugEnabled()) LOG.debug("event=submessage-truncated {}", msg, e);
     } else {
       LOG.error(msg, e);
     }
   }
 
   private static void logReturnMessage(Message m) {
-    if (LOG.isDebugEnabled()) LOG.debug("Returning message: {} from {}", m, m.getSource());
+    if (LOG.isDebugEnabled())
+      LOG.debug("event=decode-complete decoded message {} from {}", m, m.getSource());
   }
 
   private static void readMessageFields(MessageType mspec, Message m, ByteBufferInputStream bb)
@@ -198,7 +202,8 @@ public class Message {
       }
       Message subMessage = decodeSubMessage(bb2, peer, veryLax);
       if (subMessage == null) return; // Stop if decoding failed or returned null
-      if (LOG.isDebugEnabled()) LOG.debug("Adding submessage: {}", subMessage);
+      if (LOG.isDebugEnabled())
+        LOG.debug("event=submessage-attach added sub-message: {}", subMessage);
       m.addSubMessage(subMessage);
     }
   }
@@ -209,10 +214,11 @@ public class Message {
       if (bb.remaining() < size) return null;
       return bb.slice(size);
     } catch (EOFException _) {
-      if (LOG.isDebugEnabled()) LOG.debug("No submessages, returning: {}", m);
+      if (LOG.isDebugEnabled())
+        LOG.debug("event=submessage-none no sub-messages to read; stop at {}", m);
       return null;
     } catch (IOException e) {
-      LOG.error("I/O error while reading sub-message slice: {}", e, e);
+      LOG.error("event=submessage-slice-io I/O error while reading sub-message slice: {}", e, e);
       return null;
     }
   }
@@ -222,7 +228,7 @@ public class Message {
     try {
       return decodeMessage(bb2, peer, 0, false, true, veryLax);
     } catch (Exception e) {
-      LOG.error("Failed to read sub-message: {}", e, e);
+      LOG.error("event=submessage-decode-failed failed to decode sub-message: {}", e, e);
       return null;
     }
   }
@@ -526,7 +532,10 @@ public class Message {
   private byte[] encodeToPacket(boolean includeSubMessages) {
 
     if (LOG.isTraceEnabled())
-      LOG.trace("My spec code: {} for {}", spec.getName().hashCode(), spec.getName());
+      LOG.trace(
+          "event=encode-spec-id message type id hash: {} for {}",
+          spec.getName().hashCode(),
+          spec.getName());
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
     try {
@@ -553,7 +562,8 @@ public class Message {
     }
 
     byte[] buf = baos.toByteArray();
-    if (LOG.isTraceEnabled()) LOG.trace("Length: {}, hash: {}", buf.length, Fields.hashCode(buf));
+    if (LOG.isTraceEnabled())
+      LOG.trace("event=encode-complete length: {}, hash: {}", buf.length, Fields.hashCode(buf));
     return buf;
   }
 

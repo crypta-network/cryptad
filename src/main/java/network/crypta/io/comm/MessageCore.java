@@ -30,8 +30,18 @@ import org.slf4j.LoggerFactory;
 public class MessageCore {
   private static final Logger LOG = LoggerFactory.getLogger(MessageCore.class);
   private static final String UNCLAIMED_FIFO_MSG_PREFIX = "ms with unclaimedFIFOSize of ";
-  private static final String DROP_UNCLAIMED_FROM = "Dropping unclaimed from ";
-  private static final String DROP_UNCLAIMED_LIVED = "Dropping unclaimed, lived ";
+  private static final String DROP_UNCLAIMED_OVERFLOW_FROM =
+      "Dropping unclaimed (fifo overflow) from ";
+  private static final String DROP_UNCLAIMED_OVERFLOW_LIVED =
+      "Dropping unclaimed (fifo overflow), lived ";
+  private static final String DROP_UNCLAIMED_EXPIRED_ASYNC_FROM =
+      "Dropping expired unclaimed (async scan) from ";
+  private static final String DROP_UNCLAIMED_EXPIRED_ASYNC_LIVED =
+      "Dropping expired unclaimed (async scan), lived ";
+  private static final String DROP_UNCLAIMED_EXPIRED_WAITFOR_FROM =
+      "Dropping expired unclaimed (waitFor scan) from ";
+  private static final String DROP_UNCLAIMED_EXPIRED_WAITFOR_LIVED =
+      "Dropping expired unclaimed (waitFor scan), lived ";
   private static final String LIVED = ", lived ";
   private static final String AGE_SUFFIX = "{} (age): {}";
 
@@ -71,7 +81,7 @@ public class MessageCore {
   /**
    * Creates a new core bound to the given executor for running callbacks.
    *
-   * @param executor executor used for filter callbacks and related tasks
+   * @param executor executor used for the filter callbacks and related tasks
    */
   public MessageCore(PriorityAwareExecutor executor) {
     this.executor = executor;
@@ -342,7 +352,7 @@ public class MessageCore {
         // Set the message while holding the monitor so a concurrent waitFor() that is about to
         // time out can still observe the match.
         f.setMessage(m);
-        if (LOG.isDebugEnabled()) LOG.debug("Matched (1): {}", f);
+        if (LOG.isDebugEnabled()) LOG.debug("scanFilters: matched filter {}", f);
         return f;
       }
       case null, default -> {
@@ -377,7 +387,7 @@ public class MessageCore {
         matched = true;
         match = f;
         i.remove();
-        if (LOG.isDebugEnabled()) LOG.debug("Matched (2): {}", f);
+        if (LOG.isDebugEnabled()) LOG.debug("recheckFilters: matched filter {}", f);
         match.setMessage(m);
         break; // Only one match permitted per message
       } else if (status == MATCHED.TIMED_OUT || status == MATCHED.TIMED_OUT_AND_MATCHED) {
@@ -397,12 +407,12 @@ public class MessageCore {
         String lived = TimeUtil.formatTime(messageLifeTime, 2, true);
         if ((removed.getSource()) instanceof PeerNode) {
           LOG.info(
-              DROP_UNCLAIMED_FROM + "{}" + LIVED + "{} (quantity): {}",
+              DROP_UNCLAIMED_OVERFLOW_FROM + "{}" + LIVED + "{} (quantity): {}",
               removed.getSource().getPeer(),
               lived,
               removed);
         } else {
-          LOG.info(DROP_UNCLAIMED_LIVED + "{} (quantity): {}", lived, removed);
+          LOG.info(DROP_UNCLAIMED_OVERFLOW_LIVED + "{} (quantity): {}", lived, removed);
         }
       }
     }
@@ -420,7 +430,7 @@ public class MessageCore {
    */
   public void onDisconnect(PeerContext ctx) {
     ArrayList<MessageFilter> droppedFilters =
-        null; // rare operation, we can waste objects for better locking
+        null; // A rare operation, we can waste objects for better locking
     synchronized (filters) {
       ListIterator<MessageFilter> i = filters.listIterator();
       while (i.hasNext()) {
@@ -449,7 +459,7 @@ public class MessageCore {
    */
   public void onRestart(PeerContext ctx) {
     ArrayList<MessageFilter> droppedFilters =
-        null; // rare operation, we can waste objects for better locking
+        null; // A rare operation, we can waste objects for better locking
     synchronized (filters) {
       ListIterator<MessageFilter> i = filters.listIterator();
       while (i.hasNext()) {
@@ -508,10 +518,10 @@ public class MessageCore {
       if (filter.anyConnectionsDropped()) {
         throw new DisconnectedException();
       }
-      if (LOG.isDebugEnabled()) LOG.debug("Checking _unclaimed");
+      if (LOG.isDebugEnabled()) LOG.debug("addAsyncFilter: checking unclaimed queue");
       ret = tryMatchUnclaimedForAsync(filter, now, messageDropTime);
       if (ret == null && timeout >= System.currentTimeMillis()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Not in _unclaimed");
+        if (LOG.isDebugEnabled()) LOG.debug("addAsyncFilter: no match in unclaimed queue");
         insertFilterOrdered(filter, timeout);
         return;
       }
@@ -532,7 +542,7 @@ public class MessageCore {
       MATCHED status = filter.match(m, true, now);
       if (status == MATCHED.MATCHED) {
         i.remove();
-        if (LOG.isDebugEnabled()) LOG.debug("Matching from _unclaimed");
+        if (LOG.isDebugEnabled()) LOG.debug("addAsyncFilter: matched in unclaimed queue");
         return m;
       } else if (m.localInstantiationTime < messageDropTime) {
         i.remove();
@@ -541,9 +551,12 @@ public class MessageCore {
           String lived = TimeUtil.formatTime(messageLifeTime, 2, true);
           if ((m.getSource()) instanceof PeerNode) {
             LOG.info(
-                DROP_UNCLAIMED_FROM + "{}" + LIVED + AGE_SUFFIX, m.getSource().getPeer(), lived, m);
+                DROP_UNCLAIMED_EXPIRED_ASYNC_FROM + "{}" + LIVED + AGE_SUFFIX,
+                m.getSource().getPeer(),
+                lived,
+                m);
           } else {
-            LOG.info(DROP_UNCLAIMED_LIVED + AGE_SUFFIX, lived, m);
+            LOG.info(DROP_UNCLAIMED_EXPIRED_ASYNC_LIVED + AGE_SUFFIX, lived, m);
           }
         }
       }
@@ -632,7 +645,7 @@ public class MessageCore {
   private Message scanUnclaimedAndMaybeInsert(MessageFilter filter, long startTime) {
     Message ret = null;
     synchronized (filters) {
-      if (LOG.isDebugEnabled()) LOG.debug("Checking _unclaimed");
+      if (LOG.isDebugEnabled()) LOG.debug("waitFor: checking unclaimed queue");
       long now = System.currentTimeMillis();
       long messageDropTime = now - MAX_UNCLAIMED_FIFO_ITEM_LIFETIME;
       for (ListIterator<Message> i = unclaimed.listIterator(); i.hasNext(); ) {
@@ -641,7 +654,7 @@ public class MessageCore {
         if (ret != null) break;
       }
       if (ret == null) {
-        if (LOG.isDebugEnabled()) LOG.debug("Not in _unclaimed");
+        if (LOG.isDebugEnabled()) LOG.debug("waitFor: no match in unclaimed queue");
         insertFilterOrdered(filter, filter.getTimeout());
       }
     }
@@ -658,7 +671,7 @@ public class MessageCore {
     MATCHED status = filter.match(message, true, startTime);
     if (status == MATCHED.MATCHED) {
       iterator.remove();
-      if (LOG.isDebugEnabled()) LOG.debug("Matching from _unclaimed");
+      if (LOG.isDebugEnabled()) LOG.debug("waitFor: matched in unclaimed queue");
       return message;
     }
     if (isExpired(message, messageDropTime)) {
@@ -678,9 +691,12 @@ public class MessageCore {
       String lived = TimeUtil.formatTime(messageLifeTime, 2, true);
       if ((m.getSource()) instanceof PeerNode) {
         LOG.info(
-            DROP_UNCLAIMED_FROM + "{}" + LIVED + AGE_SUFFIX, m.getSource().getPeer(), lived, m);
+            DROP_UNCLAIMED_EXPIRED_WAITFOR_FROM + "{}" + LIVED + AGE_SUFFIX,
+            m.getSource().getPeer(),
+            lived,
+            m);
       } else {
-        LOG.info(DROP_UNCLAIMED_LIVED + AGE_SUFFIX, lived, m);
+        LOG.info(DROP_UNCLAIMED_EXPIRED_WAITFOR_LIVED + AGE_SUFFIX, lived, m);
       }
     }
   }
@@ -710,10 +726,10 @@ public class MessageCore {
   private Message finalizeWaitAndRemoveFilter(MessageFilter filter, Message ret) {
     synchronized (filters) {
       // Some nasty race conditions can happen here.
-      // E.g. the filter can be matched, and yet we time out at the same time.
-      // Hence, we need to be absolutely sure that when we remove it, it hasn't been matched.
+      // E.g., the filter can be matched, and yet we time out at the same time.
+      // Hence, we need to be sure that when we remove it, it hasn't been matched.
       // Note also that the locking does work here - the filter lock is taken last, and
-      // filters protects both the unwanted messages, the filter list, and is taken when a match is
+      // filters protect both the unwanted messages, the filter list, and are taken when a match is
       // found too.
       if (ret == null && filter.matched()) {
         ret = filter.getMessage();

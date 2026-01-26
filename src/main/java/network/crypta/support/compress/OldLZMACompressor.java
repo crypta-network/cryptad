@@ -69,8 +69,7 @@ public class OldLZMACompressor implements Compressor {
   public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
       throws IOException {
     LOG.warn(
-        "OldLZMA compression is buggy and no longer supported. It only exists to allow reinserting"
-            + " keys.");
+        "Legacy LZMA bucket compression is deprecated and buggy; reinsertion-only compatibility");
     Bucket output = bf.makeBucket(maxWriteLength);
     try (InputStream is = data.getInputStream();
         OutputStream os = output.getOutputStream()) {
@@ -101,8 +100,7 @@ public class OldLZMACompressor implements Compressor {
   public long compress(InputStream is, OutputStream os, long maxReadLength, long maxWriteLength)
       throws IOException {
     LOG.warn(
-        "OldLZMA compression is buggy and no longer supported. It only exists to allow reinserting"
-            + " keys.");
+        "Legacy LZMA stream compression is deprecated and buggy; reinsertion-only compatibility");
     CountedInputStream cis;
     CountedOutputStream cos;
     cis = new CountedInputStream(is);

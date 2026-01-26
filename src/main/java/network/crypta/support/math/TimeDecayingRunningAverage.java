@@ -44,7 +44,10 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
   static final int MAGIC = 0x5ff4ac94;
 
   // Reused literals
-  private static final String LOG_MSG_CREATED = "Created {}";
+  private static final String LOG_MSG_CREATED_SYSTEM = "Created average (system time) {}";
+  private static final String LOG_MSG_CREATED_FIELD_SET = "Created average (field set) {}";
+  private static final String LOG_MSG_CREATED_TEST_SOURCES =
+      "Created average (test time sources) {}";
   private static final String FS_KEY_STARTED = "Started";
   private static final String FS_KEY_CURRENT_VALUE = "CurrentValue";
   private static final String FS_KEY_TOTAL_REPORTS = "TotalReports";
@@ -206,7 +209,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     this.maxReport = bounds.max();
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
+    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED_SYSTEM, this);
     this.timeSkewCallback = callback;
   }
 
@@ -244,7 +247,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     this.maxReport = bounds.max();
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
+    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED_FIELD_SET, this);
     if (fs != null) {
       started = fs.getBoolean(FS_KEY_STARTED, false);
       if (started) {
@@ -300,7 +303,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     this.maxReport = bounds.max();
     totalReports = 0;
 
-    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED, this);
+    if (LOG.isTraceEnabled()) LOG.trace(LOG_MSG_CREATED_TEST_SOURCES, this);
     if (fs != null) {
       started = fs.getBoolean(FS_KEY_STARTED, false);
       if (started) {
@@ -471,15 +474,15 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
       long wall = wallClockTimeSourceMillis.getAsLong();
       long monoNanos = monotonicTimeSourceNanos.getAsLong();
       if (d < minReport) {
-        LOG.error("Impossible: {} on {}", d, this);
+        LOG.error("Rejected report below min: {} on {}", d, this);
         return;
       }
       if (d > maxReport) {
-        LOG.error("Impossible: {} on {}", d, this);
+        LOG.error("Rejected report above max: {} on {}", d, this);
         return;
       }
       if (Double.isInfinite(d) || Double.isNaN(d)) {
-        LOG.error("Reported infinity or NaN to {} : {}", this, d);
+        LOG.error("Rejected non-finite report on {}: {}", this, d);
         return;
       }
       totalReports++;
@@ -498,16 +501,14 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     started = true;
     lastReportTime = wall;
     lastMonotonicNanos = monoNanos;
-    if (LOG.isTraceEnabled()) LOG.trace("Reported {} on {} when just started", d, this);
+    if (LOG.isTraceEnabled()) LOG.trace("Started average with report {} on {}", d, this);
   }
 
   private void handleSubsequentReport(double d, long wall, long monoNanos) {
     long clockDelta = wall - lastReportTime;
     if (clockDelta < 0) {
       LOG.error(
-          "Clock (reporting) went back in time, ignoring report: {}"
-              + LOG_LIT_WAS
-              + "{} (back {}ms)",
+          "Wall-clock regression during report: {}" + LOG_LIT_WAS + "{} (back {}ms)",
           wall,
           lastReportTime,
           -clockDelta);
@@ -521,7 +522,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     double thisHalfLife = halfLife;
     if (uptime < 0) {
       LOG.error(
-          "Clock (uptime) went back in time, ignoring report: {}" + LOG_LIT_WAS + "{} (back {}ms)",
+          "Uptime regression during report: {}" + LOG_LIT_WAS + "{} (back {}ms)",
           wall,
           createdTime,
           -uptime);
@@ -549,7 +550,8 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
             + (1.0 - changeFactor) * d;
     // Keep bounds check to guard against sporadic invalid values.
     if (curValue < minReport || curValue > maxReport) {
-      LOG.error("curValue={}" + LOG_LIT_WAS + "{} - out of range", curValue, oldCurValue);
+      LOG.error(
+          "Computed average out of range: curValue={}" + LOG_LIT_WAS + "{}", curValue, oldCurValue);
       curValue = oldCurValue;
     }
     if (LOG.isDebugEnabled())

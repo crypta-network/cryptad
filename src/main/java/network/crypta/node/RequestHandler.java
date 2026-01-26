@@ -44,9 +44,6 @@ public class RequestHandler
 
   private static final Logger LOG = LoggerFactory.getLogger(RequestHandler.class);
 
-  private static final String REQUESTOR_GONE_CANT_SEND_TERMINAL =
-      "Requestor disconnected; cannot send terminal message";
-
   /**
    * Handles abort decisions during CHK transfer. Extracted to reduce complexity in {@link
    * #onCHKTransferBegins()}.
@@ -189,7 +186,9 @@ public class RequestHandler
       // The last thing that realRun() does is register as a request-sender listener, so any
       // exception here is the end.
     } catch (NotConnectedException e) {
-      LOG.info("Requestor disconnected; cannot start handler wait");
+      LOG.info(
+          "event=handler_wait_setup_disconnected Request source disconnected; handler wait setup"
+              + " aborted");
       tag.handlerThrew(e);
     } catch (Throwable t) {
       LOG.error("Caught throwable {}", t, t);
@@ -331,7 +330,9 @@ public class RequestHandler
         sentRejectedOverload = true;
       }
     } catch (NotConnectedException _) {
-      LOG.info("Requestor disconnected; cannot forward reject overload");
+      LOG.info(
+          "event=reject_overload_forward_disconnected Request source disconnected;"
+              + " rejected-overload not forwarded");
     }
   }
 
@@ -347,7 +348,9 @@ public class RequestHandler
   @Override
   public void onCHKTransferBegins() {
     if (tag.hasSourceReallyRestarted()) {
-      LOG.info(REQUESTOR_GONE_CANT_SEND_TERMINAL);
+      LOG.info(
+          "event=chk_transfer_skip_terminal_restart Request source restarted; skip terminal reply"
+              + " before CHK transfer");
       applyByteCounts();
       unregisterRequestHandlerWithNode();
       return;
@@ -379,7 +382,9 @@ public class RequestHandler
         disconnected = true;
       }
       tag.handlerDisconnected();
-      LOG.info("Requestor disconnected; cannot begin CHK transfer");
+      LOG.info(
+          "event=chk_transfer_start_disconnected Request source disconnected; CHK transfer start"
+              + " aborted");
     }
   }
 
@@ -461,7 +466,9 @@ public class RequestHandler
   @Override
   public void onRequestSenderFinished(int status, boolean fromOfferedKey, RequestSender rs) {
     if (tag.hasSourceReallyRestarted()) {
-      LOG.info(REQUESTOR_GONE_CANT_SEND_TERMINAL);
+      LOG.info(
+          "event=terminal_skip_sender_restart Request source restarted; skip terminal reply after"
+              + " sender finish");
       applyByteCounts();
       unregisterRequestHandlerWithNode();
       return;
@@ -499,7 +506,9 @@ public class RequestHandler
     try {
       processFinishedStatus(status, rs);
     } catch (NotConnectedException _) {
-      LOG.info(REQUESTOR_GONE_CANT_SEND_TERMINAL);
+      LOG.info(
+          "event=terminal_send_disconnected Request source disconnected while sending terminal"
+              + " reply");
       applyByteCounts();
       unregisterRequestHandlerWithNode();
     }
@@ -618,10 +627,10 @@ public class RequestHandler
   }
 
   /**
-   * After we have reached a terminal status that might involve a transfer - success, transfer fail
-   * or verify failure - check for disconnection, check that we actually started the transfer,
-   * complete if we have already completed the transfer, or set a flag so that we will complete when
-   * we do.
+   * After reaching a terminal status that might involve a transfer (success, transfer failure, or
+   * verify failure), check for disconnection and confirm the transfer was started. If the transfer
+   * is already completed, finish immediately; otherwise set a flag so completion happens when it
+   * does.
    */
   private void maybeCompleteTransfer() {
     Message reject = null;
@@ -860,9 +869,9 @@ public class RequestHandler
   }
 
   /**
-   * Either send an ack, indicating we've finished and aren't interested in opennet, or wait for a
-   * noderef and relay it and wait for a response and relay that, or send our own noderef and wait
-   * for a response and add that.
+   * Either send an ack indicating we've finished and aren't interested in opennet, or wait for a
+   * noderef and relay it along with the response. If no relay happens, send our own noderef, wait
+   * for a response, and add it.
    *
    * <p>One way or another this method must call applyByteCounts; unregisterRequestHandlerWithNode.
    * This happens asynchronously via ackOpennet() if we are unable to send a noderef. It happens

@@ -146,7 +146,7 @@ public class HTTPRequestImpl implements HTTPRequest {
    * #freeParts()} is called. Errors during multipart parsing are logged but do not abort
    * construction so that callers can fall back to alternative handling.
    *
-   * @param uri the target URI as received over HTTP; must be syntactically valid
+   * @param uri the target URI as received over HTTP, must be syntactically valid
    * @param d bucket containing the raw request body; may be {@code null} when no payload is present
    * @param ctx toadlet context supplying request headers and a {@link BucketFactory} for allocating
    *     part buckets
@@ -164,7 +164,7 @@ public class HTTPRequestImpl implements HTTPRequest {
       try {
         this.parseMultiPartData();
       } catch (IOException ioe) {
-        LOG.error("Temporary files error ? Could not parse: {}", ioe, ioe);
+        LOG.error("Multipart parse failed (temp files): {}", ioe, ioe);
       }
     }
   }
@@ -173,9 +173,9 @@ public class HTTPRequestImpl implements HTTPRequest {
    * Returns the decoded request path component without query or fragment parts.
    *
    * <p>The value is derived directly from the stored {@link URI} and therefore reflects any
-   * normalization or encoding that occurred upstream. Callers can rely on this method to be side
-   * effect free; it does not mutate internal state and can be invoked multiple times during request
-   * processing.
+   * normalization or encoding that occurred upstream. Callers can rely on this method to be
+   * side-effect-free; it does not mutate internal state and can be invoked multiple times during
+   * request processing.
    *
    * @return absolute or relative path portion of the request URI, never {@code null} but possibly
    *     empty for edge-case URIs
@@ -202,10 +202,10 @@ public class HTTPRequestImpl implements HTTPRequest {
   /**
    * Returns a live view of all parameter names currently stored on the request.
    *
-   * <p>The returned collection reflects both query parameters and URL-encoded form fields that were
-   * parsed at construction time. The collection is backed by the internal map, so later additions
-   * or removals to that map are observable. Callers should not mutate the map itself, but iterating
-   * the key set is safe for typical read scenarios.
+   * <p>The returned collection reflects both query parameters and URL-encoded form fields parsed at
+   * construction time. The collection is backed by the internal map, so later additions or removals
+   * to that map are observable. Callers should not mutate the map itself, but iterating the key set
+   * is safe for typical read scenarios.
    *
    * @return collection of parameter names; iteration order follows insertion order from the parser
    */
@@ -223,7 +223,10 @@ public class HTTPRequestImpl implements HTTPRequest {
    */
   private void parseRequestParameters(String queryString, boolean asParts) {
 
-    if (LOG.isDebugEnabled()) LOG.debug("queryString is {} , doUrlDecoding=true", queryString);
+    if (LOG.isDebugEnabled()) {
+      int queryLength = queryString == null ? 0 : queryString.length();
+      LOG.debug("Parse request parameters (urlDecode=true queryLength={})", queryLength);
+    }
 
     Map<String, List<String>> parameters = parseUriParameters(queryString, true);
 
@@ -235,7 +238,10 @@ public class HTTPRequestImpl implements HTTPRequest {
         RandomAccessBucket b = new SimpleReadOnlyArrayBucket(buf);
         parts.put(parameterValues.getKey(), b);
         if (LOG.isDebugEnabled())
-          LOG.debug("Added as part: name={} value={}", parameterValues.getKey(), value);
+          LOG.debug(
+              "Added url-encoded part field (name={} valueLength={})",
+              parameterValues.getKey(),
+              value.length());
       }
     } else {
       parameterNameValuesMap.clear();
@@ -282,13 +288,15 @@ public class HTTPRequestImpl implements HTTPRequest {
    *
    * @param queryString raw query portion as received on the wire; may be {@code null} or empty
    * @param doUrlDecoding whether to URL-decode names and values using UTF-8 before storing them
-   * @return mutable map from parameter name to list of values in encounter order; the caller owns
+   * @return mutable map from parameter name to a list of values in encounter order; the caller owns
    *     the returned structure
    */
   public static Map<String, List<String>> parseUriParameters(
       String queryString, boolean doUrlDecoding) {
-    if (LOG.isDebugEnabled())
-      LOG.debug("queryString is {} , doUrlDecoding={}", queryString, doUrlDecoding);
+    if (LOG.isDebugEnabled()) {
+      int queryLength = queryString == null ? 0 : queryString.length();
+      LOG.debug("Parse URI parameters (queryLength={} urlDecode={})", queryLength, doUrlDecoding);
+    }
 
     Map<String, List<String>> parameters = new HashMap<>();
     if ((queryString == null) || queryString.isEmpty()) {
@@ -298,7 +306,8 @@ public class HTTPRequestImpl implements HTTPRequest {
     StringTokenizer tokenizer = new StringTokenizer(queryString, "&");
     while (tokenizer.hasMoreTokens()) {
       String nameValueToken = tokenizer.nextToken();
-      if (LOG.isDebugEnabled()) LOG.debug("Token: {}", nameValueToken);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Parse query token (tokenLength={})", nameValueToken.length());
       ParameterNameValue parsedToken = parseNameValueToken(nameValueToken, doUrlDecoding);
       parameters
           .computeIfAbsent(parsedToken.name(), ignored -> new ArrayList<>())
@@ -315,22 +324,23 @@ public class HTTPRequestImpl implements HTTPRequest {
     int indexOfEqualsChar = nameValueToken.indexOf('=');
     if (indexOfEqualsChar < 0) {
       name = nameValueToken;
-      if (LOG.isDebugEnabled()) LOG.debug("Name: {}", name);
+      if (LOG.isDebugEnabled()) LOG.debug("Parsed token without value (name={})", name);
     } else if (indexOfEqualsChar == nameValueToken.length() - 1) {
       name = nameValueToken.substring(0, indexOfEqualsChar);
-      if (LOG.isDebugEnabled()) LOG.debug("Name: {}", name);
+      if (LOG.isDebugEnabled()) LOG.debug("Parsed token with empty value (name={})", name);
     } else {
       name = nameValueToken.substring(0, indexOfEqualsChar);
       value = nameValueToken.substring(indexOfEqualsChar + 1);
-      if (LOG.isDebugEnabled()) LOG.debug("Name: {} Value: {}", name, value);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Parsed token with value (name={} valueLength={})", name, value.length());
     }
 
     if (doUrlDecoding) {
       name = URLDecoder.decode(name, StandardCharsets.UTF_8);
       value = URLDecoder.decode(value, StandardCharsets.UTF_8);
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Decoded name: {}", name);
-        LOG.debug("Decoded value: {}", value);
+        LOG.debug("Decoded parameter name (name={})", name);
+        LOG.debug("Decoded parameter value length (valueLength={})", value.length());
       }
     }
     return new ParameterNameValue(name, value);
@@ -425,7 +435,7 @@ public class HTTPRequestImpl implements HTTPRequest {
    * Parses the named parameter as an integer, returning {@code 0} on failure.
    *
    * <p>The method delegates to {@link #getIntParam(String, int)} with a default of {@code 0}. It is
-   * resilient to missing parameters and {@link NumberFormatException}s, making it useful for
+   * resilient to the missing parameters and {@link NumberFormatException}s, making it useful for
    * optional numeric inputs such as pagination offsets.
    *
    * @param name parameter name to parse
@@ -546,7 +556,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 
   /**
    * Parse submitted data from a bucket. Note that if this is application/x-www-form-urlencoded, it
-   * will come out as params, whereas if it is multipart/form-data it will be separated into
+   * will come out as params, whereas if it is multipart/form-data, it will be separated into
    * buckets.
    */
   private void parseMultiPartData() throws IOException {
@@ -559,7 +569,7 @@ public class HTTPRequestImpl implements HTTPRequest {
       return;
     }
 
-    if (LOG.isDebugEnabled()) LOG.debug("Uploaded content-type: {}", contentTypeHeader);
+    if (LOG.isDebugEnabled()) LOG.debug("Uploaded content-type header: {}", contentTypeHeader);
 
     String[] contentTypeParts = contentTypeHeader.split(";");
     if (isUrlEncoded(contentTypeParts)) {
@@ -610,7 +620,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   private void processMultipartBody(String rawBoundary) throws IOException {
     String boundary = normalizeBoundary(rawBoundary);
 
-    if (LOG.isDebugEnabled()) LOG.debug("Boundary is: {}", boundary);
+    if (LOG.isDebugEnabled()) LOG.debug("Multipart boundary: {}", boundary);
 
     try (InputStream is = this.data.getInputStream();
         LineReadingInputStream lis = new LineReadingInputStream(is)) {
@@ -655,7 +665,7 @@ public class HTTPRequestImpl implements HTTPRequest {
         parts.put(metadata.name(), filedata);
         if (LOG.isDebugEnabled()) {
           LOG.debug(
-              "Name = {} length = {} filename = {}",
+              "Parsed multipart part (name={} size={} filename={})",
               metadata.name(),
               filedata.size(),
               metadata.filename());
@@ -691,7 +701,8 @@ public class HTTPRequestImpl implements HTTPRequest {
           parseContentDisposition(header.value(), metadata);
         } else if (header.name().equalsIgnoreCase("Content-Type")) {
           metadata.contentType = header.value();
-          if (LOG.isDebugEnabled()) LOG.debug("Parsed type: {}", metadata.contentType);
+          if (LOG.isDebugEnabled())
+            LOG.debug("Parsed multipart content-type: {}", metadata.contentType);
         }
       }
     }
@@ -927,7 +938,7 @@ public class HTTPRequestImpl implements HTTPRequest {
       dis.readFully(buf, 0, buf.length);
       return buf;
     } catch (IOException ioe) {
-      LOG.error("Caught IOE:{}", ioe.getMessage());
+      LOG.error("Failed to read part bytes: {}", ioe.getMessage());
       return new byte[0];
     }
   }
@@ -1099,7 +1110,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   public int getContentLength() {
     String slen = headers.getFirst("content-length");
     if (slen == null) return -1;
-    // it is already parsed, so NumberFormatException can not happen here
+    // it is already parsed, so NumberFormatException cannot happen here
     return Integer.parseInt(slen);
   }
 

@@ -49,8 +49,6 @@ import org.slf4j.LoggerFactory;
 public class BlockReceiver implements AsyncMessageFilterCallback {
   private static final Logger LOG = LoggerFactory.getLogger(BlockReceiver.class);
   private static final String LOG_FROM = " from ";
-  private static final String LOG_CAUGHT_IN_RECEIVE =
-      "Caught in receive - probably a bug as receive sets it: ";
   private static final String LOG_ABORTED_QUESTION = "Aborted?";
 
   //
@@ -270,7 +268,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
             if (LOG.isDebugEnabled()) logMissingSentButNotReceived(sent);
             return Boolean.FALSE;
           } catch (AbortedException e) {
-            LOG.error(LOG_CAUGHT_IN_RECEIVE + "{}", e, e);
+            LOG.error("Receiver aborted while handling packet transmit: {}", e, e);
             complete(RetrievalException.UNKNOWN, LOG_ABORTED_QUESTION);
             return null; // stop further processing
           }
@@ -303,7 +301,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
             completeBytes(prb.getBlock());
             return true;
           } catch (AbortedException e) {
-            LOG.error(LOG_CAUGHT_IN_RECEIVE + "{}", e, e);
+            LOG.error("Receiver aborted while finalizing block receipt: {}", e, e);
             complete(RetrievalException.UNKNOWN, LOG_ABORTED_QUESTION);
             return true;
           }
@@ -365,7 +363,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
           } catch (AbortedException e) {
             // Unexpected: PRB aborted elsewhere during timeout processing.
-            LOG.error(LOG_CAUGHT_IN_RECEIVE + "{}", e, e);
+            LOG.error("Receiver aborted during timeout handling: {}", e, e);
             complete(RetrievalException.UNKNOWN, LOG_ABORTED_QUESTION);
           }
         }
@@ -460,7 +458,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
         private void completeBytes(byte[] ret) {
           synchronized (BlockReceiver.this) {
             if (completed) {
-              if (LOG.isDebugEnabled()) LOG.debug("Already completed");
+              if (LOG.isDebugEnabled()) LOG.debug("Block receive already completed (success path)");
               return;
             }
             completed = true;
@@ -476,7 +474,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
   private void complete(int reason, String description) {
     synchronized (this) {
       if (completed) {
-        if (LOG.isDebugEnabled()) LOG.debug("Already completed");
+        if (LOG.isDebugEnabled()) LOG.debug("Block receive already completed (failure path)");
         return;
       }
       completed = true;

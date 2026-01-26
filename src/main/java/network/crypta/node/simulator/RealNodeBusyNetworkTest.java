@@ -96,12 +96,13 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
    * @param args command-line arguments that are currently ignored by this test harness
    * @throws Exception if node initialization, startup, or waiting is interrupted or fails
    */
-  public static void main(String[] args) throws Exception {
+  public static void main(@SuppressWarnings("unused") String[] args) throws Exception {
     String name = "realNodeRequestInsertTest";
     File wd = new File(name);
     prepareWorkingDirectory(wd);
     NodeStarter.globalTestInit(new File(name), false, Level.ERROR, "", true, null);
-    LOG.info("Busy network test (inserts/retrieves in quantity/stress test)");
+    LOG.info(
+        "event=busy-network.start Busy network test (inserts/retrieves in quantity/stress test)");
     DummyRandomSource random = new DummyRandomSource();
     Node[] nodes = createNodes(wd, random);
 
@@ -109,7 +110,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     makeKleinbergNetwork(
         nodes, START_WITH_IDEAL_LOCATIONS, DEGREE, FORCE_NEIGHBOUR_CONNECTIONS, random);
 
-    LOG.info("Added random links");
+    LOG.info("event=topology.links Added random links");
 
     startNodes(nodes);
 
@@ -117,7 +118,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
 
     waitForPingAverage(0.95, nodes, random, MAX_PINGS, 1000);
 
-    LOG.info("Ping average > 95%, lets do some inserts/requests");
+    LOG.info("event=ping.threshold Ping average > 95%, lets do some inserts/requests");
 
     HighLevelSimpleClient[] clients = createClients(nodes);
 
@@ -141,11 +142,13 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
    */
   private static void prepareWorkingDirectory(File workingDirectory) {
     if (!FileUtil.removeAll(workingDirectory)) {
-      LOG.warn("Mass delete failed, test may not be accurate.");
+      LOG.warn("event=workspace.delete-failed Mass delete failed, test may not be accurate.");
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
     if (!workingDirectory.mkdir() && !workingDirectory.isDirectory()) {
-      LOG.warn("Failed to create working directory: {}", workingDirectory.getAbsolutePath());
+      LOG.warn(
+          "event=workspace.mkdir-failed Failed to create working directory: {}",
+          workingDirectory.getAbsolutePath());
       System.exit(EXIT_CANNOT_DELETE_OLD_DATA);
     }
   }
@@ -161,7 +164,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
   private static Node[] createNodes(File workingDirectory, DummyRandomSource random)
       throws NodeInitException {
     Node[] nodes = new Node[NUMBER_OF_NODES];
-    LOG.info("Creating nodes...");
+    LOG.info("event=nodes.create Creating nodes...");
     PriorityAwareExecutor executor = new PooledExecutor();
     for (int i = 0; i < NUMBER_OF_NODES; i++) {
       NodeStarter.TestNodeParameters params = new NodeStarter.TestNodeParameters();
@@ -185,7 +188,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       params.setEnableFOAF(ENABLE_FOAF);
       params.setLongPingTimes(true);
       nodes[i] = NodeStarter.createTestNode(params);
-      LOG.info("Created node {}", i);
+      LOG.info("event=nodes.created Created node {}", i);
     }
     return nodes;
   }
@@ -199,7 +202,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
   private static void startNodes(Node[] nodes) throws NodeInitException {
     for (int i = 0; i < nodes.length; i++) {
       nodes[i].start(false);
-      LOG.info("Started node {}/{}", i, nodes.length);
+      LOG.info("event=nodes.started Started node {}/{}", i, nodes.length);
     }
   }
 
@@ -235,7 +238,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     ClientCHK[] keys = new ClientCHK[INSERT_KEYS];
     String baseString = System.currentTimeMillis() + " ";
     for (int i = 0; i < INSERT_KEYS; i++) {
-      LOG.info("Inserting {} of {}", i, INSERT_KEYS);
+      LOG.info("event=insert.progress Inserting {} of {}", i, INSERT_KEYS);
       int nodeIndex = random.nextInt(NUMBER_OF_NODES);
       Node randomNode = nodes[nodeIndex];
       ClientCHKBlock block = createBlock(baseString, i);
@@ -249,10 +252,10 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
             .clientCore()
             .getTransfers()
             .realPut(chkBlock, false, FORK_ON_CACHEABLE, false, false, REAL_TIME_FLAG);
-        LOG.error("Inserted to {}", nodeIndex);
+        LOG.error("event=insert.complete Inserted to {}", nodeIndex);
         logBlockPayloadDetails(chkBlock);
       } catch (LowLevelPutException putEx) {
-        LOG.error("Insert failed: {}", String.valueOf(putEx));
+        LOG.error("event=insert.failed Insert failed: {}", String.valueOf(putEx));
         System.exit(EXIT_INSERT_FAILED);
       }
     }
@@ -285,10 +288,12 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
   private static void logBlockDetails(ClientCHKBlock block, CHKBlock chkBlock)
       throws CHKDecodeException {
     if (LOG.isDebugEnabled()) {
-      LOG.debug("Decoded: {}", new String(block.memoryDecode(), StandardCharsets.UTF_8));
-      LOG.debug("Headers: {}", HexUtil.bytesToHex(chkBlock.getHeaders()));
+      LOG.debug(
+          "event=block.decoded Decoded: {}",
+          new String(block.memoryDecode(), StandardCharsets.UTF_8));
+      LOG.debug("event=block.headers Headers: {}", HexUtil.bytesToHex(chkBlock.getHeaders()));
     }
-    LOG.info("CHK: {}", block.getClientKey().getURI());
+    LOG.info("event=block.key CHK: {}", block.getClientKey().getURI());
   }
 
   /**
@@ -300,7 +305,10 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
     if (LOG.isDebugEnabled()) {
       byte[] encData = chkBlock.getData();
       byte[] encHeaders = chkBlock.getHeaders();
-      LOG.debug("Data: {}, Headers: {}", Fields.hashCode(encData), Fields.hashCode(encHeaders));
+      LOG.debug(
+          "event=block.payload Data: {}, Headers: {}",
+          Fields.hashCode(encData),
+          Fields.hashCode(encHeaders));
     }
   }
 
@@ -315,11 +323,11 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
       HighLevelSimpleClient[] clients, Node[] nodes, ClientCHK[] keys) {
     for (int i = 0; i < keys.length; i++) {
       ClientCHK key = keys[i];
-      LOG.info("Queueing requests for {} of {}", i, keys.length);
+      LOG.info("event=prefetch.queue Progress {} of {}", i, keys.length);
       for (HighLevelSimpleClient client : clients) {
         client.prefetch(key.getURI(), DAYS.toMillis(1), 32768, null);
       }
-      LOG.info("Running requests: {}", countRunningRequests(nodes));
+      LOG.info("event=prefetch.queue-depth Running requests: {}", countRunningRequests(nodes));
     }
   }
 
@@ -332,7 +340,7 @@ public class RealNodeBusyNetworkTest extends RealNodeRoutingTest {
   private static void waitForCompletion(Node[] nodes) throws InterruptedException {
     while (true) {
       long totalRunningRequests = countRunningRequests(nodes);
-      LOG.info("Running requests: {}", totalRunningRequests);
+      LOG.info("event=prefetch.await Running requests: {}", totalRunningRequests);
       if (totalRunningRequests == 0) {
         break;
       }

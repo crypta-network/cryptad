@@ -55,11 +55,8 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   private static final String KEY_SUFFIX_NOT_FORWARDED = "NotForwarded";
   private static final String L10N_PORT1 = "port1";
   private static final String L10N_PORT2 = "port2";
-  private static final String ERR_UNKNOWN_PORTS = "Unknown number of ports to forward: ";
-  private static final String CAUGHT = "Unhandled error: ";
   private static final String LOG_DETECTED_IP_PREFIX = "Detected IP: ";
   private static final String FOR_WORD = " for ";
-  private static final String PORT_WORD = " port ";
   // Shared tail used by several port-forwarding result logs: protocol and reason string.
   private static final String PROTOCOL_AND_REASON = "{} ({})";
 
@@ -119,7 +116,9 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                   HTMLNode.link(ConnectivityToadlet.CONNECTIVITY_PATH)
                 });
       } else {
-        LOG.error(ERR_UNKNOWN_PORTS + "{}", portsNotForwarded.length);
+        LOG.error(
+            "Port forward alert HTML skipped; unknown port count to forward ({})",
+            portsNotForwarded.length);
       }
       if (innerGetPriorityClass() == UserAlert.ERROR) {
         div.addChild("#", " " + l10n("symmetricPS"));
@@ -175,7 +174,9 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
                   Integer.toString(Math.abs(portsNotForwarded[1]))
                 });
       } else {
-        LOG.error(ERR_UNKNOWN_PORTS + "{}", portsNotForwarded.length);
+        LOG.error(
+            "Port forward alert short text skipped; unknown port count to forward ({})",
+            portsNotForwarded.length);
         return "";
       }
     }
@@ -207,7 +208,9 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
               " (" + url + ")"
             });
       } else {
-        LOG.error(ERR_UNKNOWN_PORTS + "{}", portsNotForwarded.length);
+        LOG.error(
+            "Port forward alert text skipped; unknown port count to forward ({})",
+            portsNotForwarded.length);
         return "";
       }
     }
@@ -490,7 +493,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     try {
       maybeRun();
     } catch (Throwable t) {
-      LOG.error(CAUGHT + "{}", t, t);
+      LOG.error("Unhandled error during IP detection scheduling: {}", t, t);
     }
     node.network().ticker().queueTimedJob(this::tryMaybeRun, MINUTES.toMillis(1));
   }
@@ -900,7 +903,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       try {
         realRun();
       } catch (Throwable t) {
-        LOG.error(CAUGHT + "{}", t, t);
+        LOG.error("Unhandled error during detector runner execution: {}", t, t);
       }
     }
 
@@ -944,7 +947,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
         DetectedIP[] detected = plugin.getAddress();
         if (detected != null) Collections.addAll(result, detected);
       } catch (Throwable t) {
-        LOG.error(CAUGHT + "{}", t, t);
+        LOG.error("Unhandled error while collecting detected IPs: {}", t, t);
       }
       return result;
     }
@@ -1127,55 +1130,36 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       if (status == null) continue;
       if (status.status == ForwardPortStatus.DEFINITE_SUCCESS) {
         LOG.info(
-            "Port forward success (definite): {}"
-                + PORT_WORD
-                + "{}"
-                + FOR_WORD
-                + PROTOCOL_AND_REASON,
+            "event=port_forward_definite_success name={} port={} for " + PROTOCOL_AND_REASON,
             p.name,
             p.portNumber,
             p.protocol,
             status.reasonString);
       } else if (status.status == ForwardPortStatus.PROBABLE_SUCCESS) {
         LOG.info(
-            "Port forward success (probable): {}"
-                + PORT_WORD
-                + "{}"
-                + FOR_WORD
-                + PROTOCOL_AND_REASON,
+            "event=port_forward_probable_success name={} port={} for " + PROTOCOL_AND_REASON,
             p.name,
             p.portNumber,
             p.protocol,
             status.reasonString);
       } else if (status.status == ForwardPortStatus.MAYBE_SUCCESS) {
         LOG.info(
-            "Port forward success (maybe): {}"
-                + PORT_WORD
-                + "{}"
-                + FOR_WORD
-                + "{}; recommend out-of-band verification ({})",
+            "event=port_forward_maybe_success name={} port={} for {}; recommend out-of-band"
+                + " verification ({})",
             p.name,
             p.portNumber,
             p.protocol,
             status.reasonString);
       } else if (status.status == ForwardPortStatus.DEFINITE_FAILURE) {
         LOG.error(
-            "Port forward failure (definite): {}"
-                + PORT_WORD
-                + "{}"
-                + FOR_WORD
-                + PROTOCOL_AND_REASON,
+            "event=port_forward_definite_failure name={} port={} for " + PROTOCOL_AND_REASON,
             p.name,
             p.portNumber,
             p.protocol,
             status.reasonString);
       } else if (status.status == ForwardPortStatus.PROBABLE_FAILURE) {
         LOG.error(
-            "Port forward failure (probable): {}"
-                + PORT_WORD
-                + "{}"
-                + FOR_WORD
-                + PROTOCOL_AND_REASON,
+            "event=port_forward_probable_failure name={} port={} for " + PROTOCOL_AND_REASON,
             p.name,
             p.portNumber,
             p.protocol,

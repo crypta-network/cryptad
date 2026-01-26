@@ -42,7 +42,6 @@ public final class PeerNodeLoadTracker {
   private static final Logger LOG = LoggerFactory.getLogger(PeerNodeLoadTracker.class);
   private static final String STR_FOR = " for ";
   private static final String STR_REALTIME_EQ = " realtime=";
-  private static final String STR_ACCEPT_STATE_IS = "Accept state is ";
   private static final String STR_WAITED = "Waited ";
   private static final String STR_MS_FOR = "ms for ";
   private static final RequestType[] RequestType_values = RequestType.values();
@@ -120,7 +119,7 @@ public final class PeerNodeLoadTracker {
      * Aggregate output capacity limit in bytes per second.
      *
      * <p>This represents total outbound capacity across peers, used for "likely" acceptance when
-     * per-peer limits are exceeded but global capacity remains.
+     * per-peer limits are exceeded, but global capacity remains.
      */
     public final int totalCapacityOutputBytes;
 
@@ -277,7 +276,7 @@ public final class PeerNodeLoadTracker {
     private PeerNode acceptedBy;
     private RequestLikelyAcceptedState acceptedState;
     final UIDTag tag;
-    // Offered-key path not used in this SlotWaiter creation flow; always handles normal routing.
+    // Offered-key path isn't used in this SlotWaiter creation flow; always handles normal routing.
     final RequestType requestType;
     private boolean failed;
     private SlotWaiterFailedException fe;
@@ -348,10 +347,10 @@ public final class PeerNodeLoadTracker {
      * unregister() with the returned data.
      *
      * @param peer The peer waking up the SlotWaiter.
-     * @param state The accept state we are waking up with.
-     * @return Null if already woken up or not waiting for this peer, otherwise an array of all the
-     *     PeerNode's the slot was registered on, which *must* be passed to unregister() as soon as
-     *     the caller has unlocked everything that reasonably can be unlocked.
+     * @param state The accepting state we are waking up with.
+     * @return Null if already woken up or not waiting for this peer. Otherwise, returns an array of
+     *     all the PeerNode's the slot was registered on. This must be passed to unregister() as
+     *     soon as the caller has unlocked everything that reasonably can be unlocked.
      */
     synchronized PeerNode[] innerOnWaited(PeerNode peer, RequestLikelyAcceptedState state) {
       if (LOG.isDebugEnabled()) LOG.debug("Waking slot waiter {} on {}", this, peer);
@@ -371,8 +370,8 @@ public final class PeerNodeLoadTracker {
         LOG.info("onWaited for {} added on {} but already added - race condition?", this, tag);
       }
       notifyAll();
-      // Because we are no longer in the slot queue we must remove it.
-      // If we want to wait for it again it must be re-queued.
+      // Because we are no longer in the slot queue, we must remove it.
+      // If we want to wait for it again, it must be re-queued.
       PeerNode[] toUnreg = waitingFor.toArray(new PeerNode[0]);
       waitingFor.clear();
       tag.clearWaitingForSlot();
@@ -406,7 +405,8 @@ public final class PeerNodeLoadTracker {
       if (LOG.isDebugEnabled()) LOG.debug("onFailed() on {}", this);
       synchronized (this) {
         if (acceptedBy != null) {
-          if (LOG.isDebugEnabled()) LOG.debug("Already matched on {}", this);
+          if (LOG.isDebugEnabled())
+            LOG.debug("event=slotwaiter-failed-already-matched waiter={}", this);
           return;
         }
         // Always wake up.
@@ -435,10 +435,10 @@ public final class PeerNodeLoadTracker {
     }
 
     /**
-     * Wait for any of the PeerNode's we have queued on to accept (locally i.e. to allocate a local
+     * Wait for any of the PeerNode's we have queued on to accept (locally i.e., to allocate a local
      * slot to) this request.
      *
-     * @param maxWait The time to wait for. Can be 0, but if it is 0, this is a "peek", i.e. if we
+     * @param maxWait The time to wait for. Can be 0, but if it is 0, this is a "peek", i.e., if we
      *     return null, the queued slots remain live. Whereas if maxWait is not 0, we will
      *     unregister when we time out.
      * @param timeOutIsFatal If true, if we time out, count it for each node involved as a fatal
@@ -479,7 +479,8 @@ public final class PeerNodeLoadTracker {
       SlotWaiterFailedException f = null;
       synchronized (this) {
         if (shouldGrab()) {
-          if (LOG.isDebugEnabled()) LOG.debug("Already matched on {}", this);
+          if (LOG.isDebugEnabled())
+            LOG.debug("event=slotwaiter-pregrab-already-matched waiter={}", this);
           ret = grab();
           grabbed = true;
         }
@@ -491,7 +492,7 @@ public final class PeerNodeLoadTracker {
         all = waitingFor.toArray(new PeerNode[0]);
         // Clear waiter registrations regardless of whether a peer was actually returned.
         // This ensures that after a failure (grab() returns null but we were marked as grabbed),
-        // we do not keep stale entries that prevent re-queuing on subsequent attempts.
+        // we do not keep stale entries that prevent re-queuing on later attempts.
         if (grabbed) waitingFor.clear();
         if (grabbed || all.length == 0) tag.clearWaitingForSlot();
       }
@@ -629,7 +630,8 @@ public final class PeerNodeLoadTracker {
           }
           int millis = (int) Math.min(Integer.MAX_VALUE, remaining);
           wait(millis);
-          if (LOG.isDebugEnabled()) LOG.debug("Maximum wait time exceeded on {}", this);
+          if (LOG.isDebugEnabled())
+            LOG.debug("event=slotwaiter-wait-timeout-check waiter={}", this);
         } catch (InterruptedException _) {
           Thread.currentThread().interrupt();
         }
@@ -844,7 +846,7 @@ public final class PeerNodeLoadTracker {
 
     // These only count remote timeouts.
     // Strictly local and remote should be the same in new load management, but
-    // local often produces more load than can be handled by our peers.
+    // local often produces more loads than can be handled by our peers.
     // Fair sharing in SlotWaiterList ensures that this doesn't cause excessive
     // timeouts for others, but we want the stats that determine their RecentlyFailed
     // times to be based on remote requests only. Also, local requests by definition
@@ -917,12 +919,12 @@ public final class PeerNodeLoadTracker {
 
     /**
      * Can we route the tag to this peer? If so (including if we are accepting because we don't have
-     * any load stats), and we haven't already, addRoutedTo() and return the accepted state.
-     * Otherwise, return null.
+     * any load stats), and we haven't yet, addRoutedTo() and return the accepted state. Otherwise,
+     * return null.
      *
      * @param tag request identifier
-     * @param worstAcceptable lowest acceptable state to consider a route viable
-     * @return the decided accept state, or {@code null} if routing is not viable
+     * @param worstAcceptable the lowest acceptable state to consider a route viable
+     * @return the decided acceptance state, or {@code null} if routing is not viable
      */
     public RequestLikelyAcceptedState tryRouteTo(
         UIDTag tag, RequestLikelyAcceptedState worstAcceptable) {
@@ -1117,14 +1119,13 @@ public final class PeerNodeLoadTracker {
       int typeNum = typeNumStart;
       for (int i = 0; i < RequestType_values.length; i++) {
         RequestType type = RequestType_values[typeNum];
-        if (LOG.isDebugEnabled()) LOG.debug("Checking slot waiter list for {}", type);
+        if (LOG.isDebugEnabled()) LOG.debug("event=slotwaiter-cycle-check type={}", type);
         Decision d = evaluateForType(type, loadStats, ignoreLocalVsRemote, typeNum);
         if (d == null) return false; // early-exit conditions inside evaluator
         if (d.slot != null) {
           d.slot.unregister(peer, d.peersForSuccessfulSlot);
           if (LOG.isDebugEnabled())
-            LOG.debug(
-                STR_ACCEPT_STATE_IS + "{}" + STR_FOR + "{} - waking up", d.acceptState, d.slot);
+            LOG.debug("event=slotwake-ready acceptState={} slot={}", d.acceptState, d.slot);
         }
         foundAny = foundAny || d.foundOne;
         typeNum = nextTypeIndex(typeNum);
@@ -1205,7 +1206,7 @@ public final class PeerNodeLoadTracker {
           if (LOG.isDebugEnabled()) LOG.debug(list == null ? "No list" : "List empty");
           return new Decision(null, null, null, false);
         }
-        if (LOG.isDebugEnabled()) LOG.debug("Checking slot waiters for {}", type);
+        if (LOG.isDebugEnabled()) LOG.debug("event=slotwaiter-evaluate-check type={}", type);
         RunningRequestsSnapshot runningRequests =
             peer.node.network().stats().getRunningRequestsTo(peer, realTime);
         runningRequests.log(peer);
@@ -1235,7 +1236,7 @@ public final class PeerNodeLoadTracker {
     private boolean shouldEarlyExit(RequestLikelyAcceptedState acceptState, RequestType type) {
       if (acceptState == RequestLikelyAcceptedState.UNLIKELY) {
         if (LOG.isDebugEnabled())
-          LOG.debug(STR_ACCEPT_STATE_IS + "{} - not waking up - type is {}", acceptState, type);
+          LOG.debug("event=slotwake-skipped acceptState={} type={}", acceptState, type);
         return true;
       }
       if (dontSendUnlessGuaranteed && acceptState != RequestLikelyAcceptedState.GUARANTEED) {
@@ -1278,7 +1279,7 @@ public final class PeerNodeLoadTracker {
       SlotWaiter slot = list.removeFirst();
       if (LOG.isDebugEnabled())
         LOG.debug(
-            STR_ACCEPT_STATE_IS + "{}" + STR_FOR + "{} - waking up on {}", acceptState, slot, this);
+            "event=slotwake-dispatch acceptState={} slot={} tracker={}", acceptState, slot, this);
       PeerNode[] peersForSuccessfulSlot = slot.innerOnWaited(peer, acceptState);
       if (peersForSuccessfulSlot.length > 0) {
         reportAllocated(slot.isLocal());
@@ -1293,7 +1294,7 @@ public final class PeerNodeLoadTracker {
      *
      * @param runningRequests snapshot of this peer's running requests
      * @param otherRunningRequests snapshot of other peers' running requests
-     * @param ignoreLocalVsRemote whether to ignore local vs remote origin when evaluating
+     * @param ignoreLocalVsRemote whether to ignore local vs. remote origin when evaluating
      * @param stats most recent load statistics for this peer
      */
     private RequestLikelyAcceptedState getRequestLikelyAcceptedState(
@@ -1325,7 +1326,7 @@ public final class PeerNodeLoadTracker {
       double ourUsage = runningRequests.calculate(ignoreLocalVsRemote, input);
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Our usage is {} peer limit is {} lower limit is {} realtime {} input {}",
+            "event=bandwidth-our-usage usage={} peerLimit={} lowerLimit={} realtime={} input={}",
             ourUsage,
             stats.peerLimit(input),
             stats.lowerLimit(input),
@@ -1334,7 +1335,7 @@ public final class PeerNodeLoadTracker {
       if (ourUsage < stats.peerLimit(input)) return RequestLikelyAcceptedState.GUARANTEED;
       otherRunningRequests.log(peer);
       double theirUsage = otherRunningRequests.calculate(ignoreLocalVsRemote, input);
-      if (LOG.isDebugEnabled()) LOG.debug("Their usage is {}", theirUsage);
+      if (LOG.isDebugEnabled()) LOG.debug("event=bandwidth-other-usage usage={}", theirUsage);
       if (ourUsage + theirUsage < stats.lowerLimit(input)) return RequestLikelyAcceptedState.LIKELY;
       else return RequestLikelyAcceptedState.UNLIKELY;
     }
@@ -1349,7 +1350,7 @@ public final class PeerNodeLoadTracker {
           Math.min(stats.maxTransfersOutPeerLimit, stats.maxTransfersOut);
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "Our usage is {} peer limit is {} lower limit is {} realtime {}",
+            "event=transfer-our-usage usage={} peerLimit={} lowerLimit={} realtime={}",
             ourUsage,
             maxTransfersOutPeerLimit,
             stats.maxTransfersOutLowerLimit,
@@ -1357,7 +1358,7 @@ public final class PeerNodeLoadTracker {
       if (ourUsage < maxTransfersOutPeerLimit) return RequestLikelyAcceptedState.GUARANTEED;
       otherRunningRequests.log(peer);
       int theirUsage = otherRunningRequests.totalOutTransfers();
-      if (LOG.isDebugEnabled()) LOG.debug("Their usage is {}", theirUsage);
+      if (LOG.isDebugEnabled()) LOG.debug("event=transfer-other-usage usage={}", theirUsage);
       if (ourUsage + theirUsage < stats.maxTransfersOutLowerLimit)
         return RequestLikelyAcceptedState.LIKELY;
       else return RequestLikelyAcceptedState.UNLIKELY;
