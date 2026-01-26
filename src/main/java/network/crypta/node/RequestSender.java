@@ -72,11 +72,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   private static final Logger LOG = LoggerFactory.getLogger(RequestSender.class);
   private static final String FOR_SEP = " for ";
   private static final String FROM_SEP = " from ";
-  private static final String FAILED_ON = "Failed on ";
-  private static final String DISCONNECTED = "Disconnected: ";
-  private static final String GETTING_OFFER_FOR = " getting offer for ";
   private static final String NODE_PREFIX = "Node ";
-  private static final String CAUGHT = "Caught: {}";
   private static final byte[] NO_REF = new byte[0];
 
   // Constants
@@ -233,7 +229,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     try {
       realRun();
     } catch (Throwable t) {
-      LOG.error(CAUGHT, t, t);
+      LOG.error("RequestSender.run caught throwable: {}", t, t);
       finish(INTERNAL_ERROR, null, false);
     } finally {
       // LOCKING: Normally receivingAsync is set by this thread, so there is no need to synchronize.
@@ -547,7 +543,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         handleCHKDataFound(msg, wasFork, source, waiter);
         return DO.FINISHED;
       }
-      LOG.error("Unexpected message: {}", msg);
+      LOG.error("Unexpected CHK control message: {}", msg);
       int t = timeSinceSent();
       node.routing().failureTable().onFailed(key, source, htl, t, t);
       source.noLongerRoutingTo(origTag, false);
@@ -561,7 +557,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         return onSskDataFoundData(msg, wasFork, source, waiter);
       if (msg.getSpec() == DMT.FNPSSKDataFoundHeaders)
         return onSskDataFoundHeaders(msg, wasFork, source, waiter);
-      LOG.error("Unexpected message: {}", msg);
+      LOG.error("Unexpected SSK control message: {}", msg);
       int t = timeSinceSent();
       node.routing().failureTable().onFailed(key, source, htl, t, t);
       source.noLongerRoutingTo(origTag, false);
@@ -608,13 +604,13 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         return true;
       } catch (SSKVerifyException e) {
         pubKey = null;
-        LOG.error("Invalid pubkey from {} on {} ({})", next, uid, e.getMessage(), e);
+        LOG.error("Invalid pubkey signature from {} on {} ({})", next, uid, e.getMessage(), e);
         int t = timeSinceSent();
         node.routing().failureTable().onFailed(key, next, htl, t, t);
         next.noLongerRoutingTo(origTag, false);
         return false; // try the next node
       } catch (CryptFormatException e) {
-        LOG.error("Invalid pubkey from {} on {} ({})", next, uid, e.getMessage(), e);
+        LOG.error("Invalid pubkey format from {} on {} ({})", next, uid, e.getMessage(), e);
         int t = timeSinceSent();
         node.routing().failureTable().onFailed(key, next, htl, t, t);
         next.noLongerRoutingTo(origTag, false);
@@ -928,7 +924,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         if (LOG.isDebugEnabled()) LOG.debug("Written to store");
         return true;
       } catch (KeyVerifyException e1) {
-        LOG.info("Got data but verify failed: {}", e1, e1);
+        LOG.info("Got data but verify failed during store: {}", e1, e1);
         node.routing()
             .failureTable()
             .onFinalFailure(
@@ -974,7 +970,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         if (haveSetPRB) fireCHKTransferBegins();
         finish(SUCCESS, next, false);
       } catch (Throwable t) {
-        LOG.error(FAILED_ON + "{}", RequestSender.this, t);
+        LOG.error("CHK block receive failed on {}", RequestSender.this, t);
         if (!wasFork) finish(INTERNAL_ERROR, next, true);
       } finally {
         if (wasFork) next.noLongerRoutingTo(origTag, false);
@@ -994,7 +990,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         }
         origTag.senderTransferEnds((NodeCHK) key, RequestSender.this);
         if (e.getReason() == RetrievalException.SENDER_DISCONNECTED)
-          LOG.info("Transfer failed (disconnect): {}", e, e);
+          LOG.info("Transfer failed (disconnect) during fetch: {}", e, e);
         else
           LOG.atInfo()
               .addArgument(e.getReason())
@@ -1048,7 +1044,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         if (!prb.abortedLocally())
           node.network().stats().failedBlockReceive(true, timeout, realTimeFlag, source == null);
       } catch (Throwable t) {
-        LOG.error(FAILED_ON + "{}", RequestSender.this, t);
+        LOG.error("CHK block receive handling failed on {}", RequestSender.this, t);
         if (!wasFork) finish(INTERNAL_ERROR, next, true);
       } finally {
         if (wasFork) next.noLongerRoutingTo(origTag, false);
@@ -1071,7 +1067,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         if (!wasFork) finish(VERIFY_FAILURE, next, false);
         else next.noLongerRoutingTo(origTag, false);
       } catch (KeyCollisionException _) {
-        LOG.info("Collision on {}", RequestSender.this);
+        LOG.info("SSK collision during finish on {}", RequestSender.this);
         block =
             node.storage()
                 .fetch(
@@ -1161,11 +1157,12 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     try {
       pn.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(DISCONNECTED + "{}" + GETTING_OFFER_FOR + "{}", pn, key);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Offer request send disconnected: {} getting offer for {}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
     } catch (SyncSendWaitedTooLongException _) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Took too long sending offer get to {}" + FOR_SEP + "{}", pn, key);
+        LOG.debug("Offer request send timed out: {}" + FOR_SEP + "{}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
     }
     // Wait asynchronously for a response.
@@ -1181,7 +1178,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
               this);
       return OFFER_STATUS.FETCHING;
     } catch (DisconnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(DISCONNECTED + "{}" + GETTING_OFFER_FOR + "{}", pn, key);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Offer request send disconnected (async): {} getting offer for {}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
     }
   }
@@ -1211,7 +1209,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       @Override
       public void onDisconnect(PeerContext ctx) {
         if (LOG.isDebugEnabled())
-          LOG.debug(DISCONNECTED + "{}" + GETTING_OFFER_FOR + "{}", pn, key);
+          LOG.debug("Offer reply wait disconnected: {} getting offer for {}", pn, key);
         tryOffers(offers, pn, OFFER_STATUS.TRY_ANOTHER);
       }
 
@@ -1325,7 +1323,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     } catch (DisconnectedException _) {
       // Okay.
       if (LOG.isDebugEnabled())
-        LOG.debug("Disconnected (2): {}" + GETTING_OFFER_FOR + "{}", pn, key);
+        LOG.debug("Offer reply wait disconnected (second stage): {} getting offer for {}", pn, key);
       return OFFER_STATUS.TRY_ANOTHER;
     }
   }
@@ -1334,7 +1332,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (reply.getSpec() == DMT.FNPRejectedOverload) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            NODE_PREFIX + "{} rejected FNPGetOfferedKey for {} (expired={}",
+            "SSK offer reply: " + NODE_PREFIX + "{} rejected FNPGetOfferedKey for {} (expired={}",
             pn,
             key,
             offer.isExpired());
@@ -1343,7 +1341,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (reply.getSpec() == DMT.FNPGetOfferedKeyInvalid) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            NODE_PREFIX + "{} rejected FNPGetOfferedKey as invalid with reason {}",
+            "SSK offer reply invalid: "
+                + NODE_PREFIX
+                + "{} rejected FNPGetOfferedKey as invalid with reason {}",
             pn,
             reply.getShort(DMT.REASON));
       return OFFER_STATUS.TRY_ANOTHER;
@@ -1352,7 +1352,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       return processSskHeadersReply(
           pn, ((ShortBuffer) reply.getObject(DMT.BLOCK_HEADERS)).getData());
     }
-    LOG.error("Unexpected reply to get offered key: {}", reply);
+    LOG.error("Unexpected SSK offer reply: {}", reply);
     return OFFER_STATUS.TRY_ANOTHER;
   }
 
@@ -1379,12 +1379,13 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     try {
       Message dataMessage = node.network().usm().waitFor(mfData, this);
       if (dataMessage == null) {
-        LOG.error("Got headers but not data from {} for offer for {} on {}", pn, key, this);
+        LOG.error(
+            "Offer headers arrived without data from {} for offer for {} on {}", pn, key, this);
       }
       return dataMessage;
     } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled())
-        LOG.debug(DISCONNECTED + "{} getting data for offer for {}", pn, key);
+        LOG.debug("Disconnected while fetching offer data from {} for {}", pn, key);
       return null;
     }
   }
@@ -1402,11 +1403,11 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       pk = node.network().usm().waitFor(mfPK, this);
     } catch (DisconnectedException _) {
       if (LOG.isDebugEnabled())
-        LOG.debug(DISCONNECTED + "{} getting pubkey for offer for {}", pn, key);
+        LOG.debug("Disconnected while fetching offer pubkey from {} for {}", pn, key);
       return false;
     }
     if (pk == null) {
-      LOG.error("Got data but not pubkey from {} for offer for {} on {}", pn, key, this);
+      LOG.error("Offer data arrived without pubkey from {} for offer for {} on {}", pn, key, this);
       return false;
     }
     try {
@@ -1414,10 +1415,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       ((NodeSSK) key).setPubKey(pubKey);
       return true;
     } catch (CryptFormatException e) {
-      LOG.error("Bogus pubkey from {} for offer for {} : {}", pn, key, e, e);
+      LOG.error("Invalid pubkey for offer from {} for {} : {}", pn, key, e, e);
       return false;
     } catch (SSKVerifyException e) {
-      LOG.error("Bogus SSK data from {} for offer for {} : {}", pn, key, e, e);
+      LOG.error("Invalid SSK data for offer from {} for {} : {}", pn, key, e, e);
       return false;
     }
   }
@@ -1434,7 +1435,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (reply.getSpec() == DMT.FNPRejectedOverload) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            NODE_PREFIX + "{} rejected FNPGetOfferedKey for {} (expired={}",
+            "CHK offer reply: " + NODE_PREFIX + "{} rejected FNPGetOfferedKey for {} (expired={}",
             pn,
             key,
             offer.isExpired());
@@ -1443,7 +1444,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (reply.getSpec() == DMT.FNPGetOfferedKeyInvalid) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            NODE_PREFIX + "{} rejected FNPGetOfferedKey as invalid with reason {}",
+            "CHK offer reply invalid: "
+                + NODE_PREFIX
+                + "{} rejected FNPGetOfferedKey as invalid with reason {}",
             pn,
             reply.getShort(DMT.REASON));
       return OFFER_STATUS.TRY_ANOTHER;
@@ -1452,7 +1455,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       return processChkOfferReply(
           pn, offers, ((ShortBuffer) reply.getObject(DMT.BLOCK_HEADERS)).getData());
     }
-    LOG.error("Unexpected reply to get offered key: {}", reply);
+    LOG.error("Unexpected CHK offer reply: {}", reply);
     return OFFER_STATUS.TRY_ANOTHER;
   }
 
@@ -1506,13 +1509,13 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       finish(SUCCESS, pn, true);
       node.network().stats().successfulBlockReceive(realTimeFlag, source == null);
     } catch (KeyVerifyException e1) {
-      LOG.info("Got data but verify failed: {}", e1, e1);
+      LOG.info("Got data but verify failed during offer verify: {}", e1, e1);
       if (offers != null) {
         finish(GET_OFFER_VERIFY_FAILURE, pn, true);
         offers.deleteLastOffer();
       }
     } catch (Throwable t) {
-      LOG.error(FAILED_ON + "{}", this, t);
+      LOG.error("CHK offer block handling failed on {}", this, t);
       if (offers != null) finish(INTERNAL_ERROR, pn, true);
     } finally {
       pn.noLongerRoutingTo(origTag, true);
@@ -1527,7 +1530,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     origTag.senderTransferEnds((NodeCHK) key, RequestSender.this);
     try {
       if (e.getReason() == RetrievalException.SENDER_DISCONNECTED)
-        LOG.info("Transfer failed (disconnect): {}", e, e);
+        LOG.info("Transfer failed (disconnect) during offer fetch: {}", e, e);
       else
         LOG.atInfo()
             .addArgument(e.getReason())
@@ -1542,7 +1545,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       if (!prb.abortedLocally())
         node.network().stats().failedBlockReceive(false, false, realTimeFlag, source == null);
     } catch (Throwable t) {
-      LOG.error(FAILED_ON + "{}", this, t);
+      LOG.error("CHK offer block receive failed on {}", this, t);
       if (offers != null) finish(INTERNAL_ERROR, pn, true);
     } finally {
       pn.noLongerRoutingTo(origTag, true);
@@ -1664,7 +1667,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         node.storage()
             .storeShallow(sskBlock, canWriteClientCache, canWriteDatastore, tryOffersOnly);
       } catch (KeyCollisionException _) {
-        LOG.info("Collision on {}", this);
+        LOG.info("SSK collision during verify on {}", this);
       }
     }
   }
@@ -1967,7 +1970,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       return handleNoderefResult(next, noderef);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Not connected sending ConnectReply on {} to {}", this, next);
+        LOG.debug("Not connected sending ConnectReply (finish) on {} to {}", this, next);
       origTag.finishedWaitingForOpennet(next);
     } catch (WaitedTooLongForOpennetNoderefException _) {
       return onOpennetTimeout(next);
@@ -2031,9 +2034,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   }
 
   private boolean onOpennetTimeout(PeerNode next) {
-    LOG.error("RequestSender timed out waiting for noderef from {}" + FOR_SEP + "{}", next, this);
+    LOG.error("Opennet noderef wait timed out (error) from {}" + FOR_SEP + "{}", next, this);
     origTag.timedOutToHandlerButContinued();
-    LOG.warn("RequestSender timed out waiting for noderef from {}" + FOR_SEP + "{}", next, this);
+    LOG.warn("Opennet noderef wait timed out (warn) from {}" + FOR_SEP + "{}", next, this);
     synchronized (this) {
       opennetTimedOut = true;
       opennetFinished = true;
@@ -2042,7 +2045,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             .sendAsync(DMT.createFNPOpennetCompletedTimeout(uid), finishOpennetOnAck(next), this);
       } catch (NotConnectedException _) {
         if (LOG.isDebugEnabled()) {
-          LOG.debug("Not connected sending ConnectReply on {} to {}", this, next);
+          LOG.debug("Not connected sending ConnectReply (timeout) on {} to {}", this, next);
         }
         origTag.finishedWaitingForOpennet(next);
       }
@@ -2051,10 +2054,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     try {
       OpennetNoderefWaiter.waitForOpennetNoderef(false, next, uid, this, node);
     } catch (WaitedTooLongForOpennetNoderefException _) {
-      LOG.error(
-          "RequestSender FATAL TIMEOUT out waiting for noderef from {}" + FOR_SEP + "{}",
-          next,
-          this);
+      LOG.error("Opennet noderef wait fatal timeout from {}" + FOR_SEP + "{}", next, this);
       next.fatalTimeout(origTag, false);
       ackOpennet(next);
       return true;
@@ -2301,7 +2301,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         try {
           l.onReceivedRejectOverload();
         } catch (Throwable t) {
-          LOG.error(CAUGHT, t, t);
+          LOG.error("RejectOverload listener threw: {}", t, t);
         }
       }
     }
@@ -2318,7 +2318,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         try {
           l.onCHKTransferBegins();
         } catch (Throwable t) {
-          LOG.error(CAUGHT, t, t);
+          LOG.error("CHK transfer begin listener threw: {}", t, t);
         }
       }
     }
@@ -2343,7 +2343,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         try {
           l.onRequestSenderFinished(status, fromOfferedKey, this);
         } catch (Throwable t) {
-          LOG.error(CAUGHT, t, t);
+          LOG.error("RequestSender finished listener threw: {}", t, t);
         }
       }
     }
