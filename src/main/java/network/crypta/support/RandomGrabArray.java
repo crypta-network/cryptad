@@ -8,13 +8,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * An array which supports very fast remove-and-return-a-random-element.
+ * An array which supports remove-and-return-a-random-element very fast.
  *
  * <p>This is *NOT* persistent. The request selection structures are reconstructed on restart.
  * However, it used to be, and probably has a lot of cruft and inefficiency as a result.
  *
  * <p>LOCKING: There is a single lock for the entire tree, the ClientRequestSelector. This must be
- * taken before calling any methods on RGA or SRGA. See the javadocs there for deeper explanation.
+ * taken before calling any methods on RGA or SRGA. See the Javadocs there for a deeper explanation.
  *
  * <p>Note: This implementation could be simplified and optimized. Many operations are O(n). Memory
  * usage was historically a concern but is mitigated by large item sizes (entire splitfiles or at
@@ -37,7 +37,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
    */
   private Block[] blocks;
 
-  /** Index of first null item. */
+  /** Index of the first null item. */
   private int index;
 
   private static final int MIN_SIZE = 32;
@@ -72,20 +72,20 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
    * <ul>
    *   <li>If {@code context != null} and {@code req.getWakeupTime(context, now) < 0}, the item is
    *       considered finished and is ignored.
-   *   <li>Otherwise the item is appended to the dense prefix and its parent pointer is set to this
+   *   <li>Otherwise the item is appended to the dense prefix, and its parent pointer is set to this
    *       array.
    *   <li>Duplicates are ignored using identity comparison.
    * </ul>
    *
    * <p>Threading: Synchronizes on {@link #root}. May clear this node's stored wakeup time to force
-   * re-evaluation on subsequent selections.
+   * re-evaluation on later selections.
    *
    * @param req the item to add; must be non-null
    * @param context client context; may be {@code null}
    */
   public void add(RandomGrabArrayItem req, ClientContext context) {
     if (context != null && req.getWakeupTime(context, System.currentTimeMillis()) < 0) {
-      if (LOG.isDebugEnabled()) LOG.debug("Is finished already: {}", req);
+      if (LOG.isDebugEnabled()) LOG.debug("add: skipping finished item {}", req);
       return;
     }
     req.setParentGrabArray(this); // will store() self
@@ -118,7 +118,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
    *
    * <ul>
    *   <li>Item: {@code getWakeupTime(context, now) == 0} → candidate; {@code > 0} → excluded until
-   *       that time; {@code -1} → cancelled and removed.
+   *       that time; {@code -1} → canceled and removed.
    *   <li>Scheduler: {@code excluding.exclude(item, context, now) <= 0} → candidate; {@code > 0} →
    *       excluded until that time.
    * </ul>
@@ -139,7 +139,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
     if (LOG.isDebugEnabled()) LOG.debug("removeRandom() on {} index={}", this, index);
     synchronized (root) {
       if (index == 0) {
-        if (LOG.isDebugEnabled()) LOG.debug("All null on {}", this);
+        if (LOG.isDebugEnabled()) LOG.debug("removeRandom: empty array on {}", this);
         return null;
       }
       if (index < MAX_EXCLUDED) {
@@ -148,7 +148,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
       RandomGrabArrayItem ret = removeRandomLimited(excluding, context, now);
       if (ret != null) return new RemoveRandomReturn(ret);
       if (index == 0) {
-        if (LOG.isDebugEnabled()) LOG.debug("All null on {}", this);
+        if (LOG.isDebugEnabled()) LOG.debug("removeRandom: empty after limited search on {}", this);
         return null;
       }
       return removeRandomExhaustiveSearch(excluding, context, now);
@@ -177,29 +177,29 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
 
   private RemoveRandomReturn removeRandomExhaustiveSearch(
       RandomGrabArrayItemExclusionList excluding, ClientContext context, long now) {
-    if (LOG.isDebugEnabled()) LOG.debug("Doing exhaustive search and compaction on {}", this);
+    if (LOG.isDebugEnabled()) LOG.debug("removeRandom: exhaustive search+compaction on {}", this);
     CompactResult r = compactAndCount(excluding, context, now);
     if (index != r.newIndex) index = r.newIndex;
 
     if (r.valid == 0 && r.exclude == 0) {
-      if (LOG.isDebugEnabled()) LOG.debug("No valid or excluded items total {}", index);
+      if (LOG.isDebugEnabled()) LOG.debug("removeRandom: no valid/excluded items size={}", index);
       return null;
     }
     if (r.valid == 0) {
       if (LOG.isDebugEnabled())
-        LOG.debug("No valid items, {} excluded items total {}", r.exclude, index);
+        LOG.debug("removeRandom: no valid items excluded={} size={}", r.exclude, index);
       setWakeupTime(r.minWakeupTime, context);
       return new RemoveRandomReturn(r.minWakeupTime);
     }
     if (r.valid == 1) {
       if (LOG.isDebugEnabled())
-        LOG.debug("No valid or excluded items apart from {} total {}", r.firstValidItem, index);
+        LOG.debug("removeRandom: single valid item {} size={}", r.firstValidItem, index);
       return new RemoveRandomReturn(r.firstValidItem);
     }
 
     int rnd = context.fastWeakRandom.nextInt(r.valid);
     if (LOG.isDebugEnabled())
-      LOG.debug("Choosing valid item {} of {} (excluded {})", rnd, r.valid, r.exclude);
+      LOG.debug("removeRandom: choose nth={} of valid={} excluded={}", rnd, r.valid, r.exclude);
     RandomGrabArrayItem chosen = findNthValid(rnd, excluding, context, now);
     return new RemoveRandomReturn(chosen);
   }
@@ -282,7 +282,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
       if (item == null) {
         if (LOG.isDebugEnabled())
           LOG.debug(
-              "Found null item at offset {} i={} block = {} on {}",
+              "compaction: null slot offset={} i={} block={} in {}",
               offset,
               i,
               blockNumReading,
@@ -359,7 +359,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
     }
     if (decision.cancelled) {
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Removing {} on {}", item, this);
+        LOG.debug("compaction: drop cancelled item {} from {}", item, this);
       }
       reqsReading[offset] = null;
       item.setParentGrabArray(null);
@@ -386,7 +386,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
   }
 
   private void handleNullPickedSlot(int blockNo, int i) {
-    LOG.error("reqs[{}] = null", i);
+    LOG.error("selection: null slot at index {}", i);
     remove(blockNo, i);
   }
 
@@ -395,7 +395,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
     do {
       remove(blockNo, i);
       oret = blocks[blockNo].reqs[i % BLOCK_SIZE];
-      // Check for nulls, but don't check for cancelled, since we'd have to activate.
+      // Check for nulls, but don't check for canceled, since we'd have to activate.
     } while (index > i && oret == null);
   }
 
@@ -407,7 +407,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
       blocks[0].reqs = Arrays.copyOf(blocks[0].reqs, Math.max(index * 2, MIN_SIZE));
     } else if (blocks.length > 1
         && (newBlockCount = (((index + (BLOCK_SIZE / 2)) / BLOCK_SIZE) + 1)) < blocks.length) {
-      if (LOG.isDebugEnabled()) LOG.debug("Shrinking blocks on {}", this);
+      if (LOG.isDebugEnabled()) LOG.debug("shrink: reducing blocks for {}", this);
       blocks = Arrays.copyOf(blocks, newBlockCount);
     }
   }
@@ -455,7 +455,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
     }
 
     if (itemWakeTime == -1) {
-      if (LOG.isDebugEnabled()) LOG.debug("Not returning because cancelled: {}", ret);
+      if (LOG.isDebugEnabled()) LOG.debug("limited-pick: cancelled item {}", ret);
       ret.setParentGrabArray(null);
       removeCancelledAndSkipNulls(blockNo, i);
       shrinkBlocksIfNeeded();
@@ -467,7 +467,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
       return AttemptOutcome.excluded();
     }
 
-    if (LOG.isDebugEnabled()) LOG.debug("Returning (cannot remove): {} of {}", ret, index);
+    if (LOG.isDebugEnabled()) LOG.debug("limited-pick: returning item {} size={}", ret, index);
     return AttemptOutcome.returnItem(ret);
   }
 
@@ -475,7 +475,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
    * Removes the logical element at {@code i} by swapping in the last logical element.
    *
    * <p>Preconditions: {@code blockNo} refers to an allocated block that contains logical index
-   * {@code i}. The final block beyond the last logical index is not yet active for appends.
+   * {@code i}. The final block beyond the last logical index is not yet active for appending.
    */
   private void remove(int blockNo, int i) {
     index--;
@@ -503,7 +503,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
    * @param context client context used for parent notifications
    */
   public void remove(RandomGrabArrayItem it, ClientContext context) {
-    if (LOG.isDebugEnabled()) LOG.debug("Removing {} from {}", it, this);
+    if (LOG.isDebugEnabled()) LOG.debug("remove: request removal of {} from {}", it, this);
 
     boolean matched;
     boolean empty = false;
@@ -520,13 +520,13 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
     if (oldArray == this) it.setParentGrabArray(null);
     else if (oldArray != null)
       LOG.error(
-          "Removing item {} from {} but RGA is {}",
+          "remove: parent mismatch for item {} in {} actual {}",
           it,
           this,
           it.getParentGrabArray(),
           new Exception("debug"));
     if (!matched) {
-      if (LOG.isDebugEnabled()) LOG.debug("Not found: {} on {}", it, this);
+      if (LOG.isDebugEnabled()) LOG.debug("remove: item not found {} in {}", it, this);
       return;
     }
     if (empty && parent != null) {
@@ -630,7 +630,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
             Arrays.copyOf(blocks[0].reqs, Math.min(BLOCK_SIZE, blocks[0].reqs.length * 2));
       }
       blocks[0].reqs[index++] = req;
-      if (LOG.isDebugEnabled()) LOG.debug("Added {} before index {}", req, index);
+      if (LOG.isDebugEnabled()) LOG.debug("add-fastpath: appended {} newIndex={}", req, index);
       return true;
     }
     return false;
@@ -662,21 +662,23 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
       for (int j = 0; j < block.reqs.length && x < index; j++, x++) {
         if (block.reqs[j] == req) {
           if (LOG.isDebugEnabled())
-            LOG.debug("Already contains {} : {} size now {}", req, this, index);
+            LOG.debug("add: duplicate item {} in {} size={}", req, this, index);
           return true;
         }
         if (block.reqs[j] == null) {
-          LOG.error("reqs[{}.{}] = null on {}", i, j, this);
+          LOG.error("contains: null slot at block {} index {} in {}", i, j, this);
         }
       }
     }
     return false;
   }
 
-  /** Ensure backing block array can address {@code targetBlock}; requires caller to hold lock. */
+  /**
+   * Ensure the backing block array can address {@code targetBlock}; requires caller to hold lock.
+   */
   private void ensureBlocksCapacity(int targetBlock) {
     if (blocks.length <= targetBlock) {
-      if (LOG.isDebugEnabled()) LOG.debug("Adding blocks on {}", this);
+      if (LOG.isDebugEnabled()) LOG.debug("add: expanding blocks for {}", this);
       Block[] newBlocks = Arrays.copyOf(blocks, targetBlock + 1);
       for (int i = blocks.length; i < newBlocks.length; i++) {
         newBlocks[i] = new Block();
@@ -690,7 +692,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
   private void appendToTargetBlock(int targetBlock, RandomGrabArrayItem req) {
     Block target = blocks[targetBlock];
     target.reqs[index++ % BLOCK_SIZE] = req;
-    if (LOG.isDebugEnabled()) LOG.debug("Added: {} to {} size now {}", req, this, index);
+    if (LOG.isDebugEnabled()) LOG.debug("add: appended {} to {} size={}", req, this, index);
   }
 
   /**
