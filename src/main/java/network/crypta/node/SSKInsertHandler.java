@@ -37,9 +37,6 @@ import org.slf4j.LoggerFactory;
  */
 public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(SSKInsertHandler.class);
-  private static final String MSG_CONN_CLOSED = "Connection to source closed";
-  private static final String MSG_LOST_CONN_UID = "Lost connection to source on {}";
-  private static final String MSG_SEND_TIMEOUT_TO = "Send timeout for {} to {}";
 
   static final int DATA_INSERT_TIMEOUT = 30000;
 
@@ -137,7 +134,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       source.transport().sendAsync(accepted, null, this);
       return true;
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      if (LOG.isDebugEnabled()) LOG.debug("SSK insert accept failed: source disconnected");
       return false;
     }
   }
@@ -148,7 +145,8 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       try {
         msg = node.network().usm().waitFor(buildWaitFilter(), this);
       } catch (DisconnectedException _) {
-        if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Lost connection while awaiting insert parts (uid={})", uid);
         return false;
       }
       if (!processIncomingMessage(msg)) return false;
@@ -267,7 +265,8 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       sendPubKeyAccepted();
       return true;
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Lost connection while acknowledging pubkey (uid={})", uid);
       return false;
     }
   }
@@ -297,7 +296,8 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
         RequestHandler.sendSSK(
             storedBlock.getRawHeaders(), storedBlock.getRawData(), source, uid, this, realTimeFlag);
       } catch (NotConnectedException _) {
-        if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
+        if (LOG.isDebugEnabled())
+          LOG.debug("Lost connection while resending stored SSK block (uid={})", uid);
         // Preserve historical behavior: abort the handler when the source disconnects while
         // resending an existing stored block back to the originator.
         return false;
@@ -352,7 +352,8 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       source.transport().sendAsync(m, null, this);
       return true;
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      if (LOG.isDebugEnabled())
+        LOG.debug("SSK insert overload forward failed: source disconnected");
       return true; // treat as forwarded to break loop on connection loss
     }
   }
@@ -369,7 +370,8 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       RequestHandler.sendSSK(headers, data, source, uid, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_LOST_CONN_UID, uid);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Lost connection while resending collided SSK block (uid={})", uid);
     }
   }
 
@@ -406,10 +408,10 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      if (LOG.isDebugEnabled()) LOG.debug("SSK insert overload reply failed: source disconnected");
       return;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
+      LOG.error("Overload reply send timeout for {} to {}", msg, source);
       return;
     }
     if ((status == SSKInsertSender.TIMED_OUT)
@@ -423,10 +425,11 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      if (LOG.isDebugEnabled())
+        LOG.debug("SSK insert route-not-found reply failed: source disconnected");
       return;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error("Send timeout for {} to source", msg);
+      LOG.error("Route-not-found reply send timeout for {} to source", msg);
     }
     canCommit = true;
     finish(status);
@@ -438,10 +441,10 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     try {
       source.transport().sendSync(msg, this, realTimeFlag);
     } catch (NotConnectedException _) {
-      if (LOG.isDebugEnabled()) LOG.debug(MSG_CONN_CLOSED);
+      if (LOG.isDebugEnabled()) LOG.debug("SSK insert success reply failed: source disconnected");
       return;
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
+      LOG.error("Insert reply send timeout for {} to {}", msg, source);
     }
     canCommit = true;
     finish(status);
@@ -456,7 +459,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
     } catch (NotConnectedException _) {
       // Ignore
     } catch (SyncSendWaitedTooLongException _) {
-      LOG.error(MSG_SEND_TIMEOUT_TO, msg, source);
+      LOG.error("Unexpected-status reply send timeout for {} to {}", msg, source);
     }
     finish(status);
   }
