@@ -850,7 +850,7 @@ public class OpennetManager {
     if (toDrop == null) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "No droppable peers; current={} cannot accept peer{}",
+            "No droppable peers at capacity; current={} cannot accept peer{}",
             ctx.peersLRU.size(),
             ctx.nodeToAddNow == null ? "" : ctx.nodeToAddNow.toString());
       if (ctx.nodeToAddNow != null)
@@ -963,7 +963,7 @@ public class OpennetManager {
     if (toDrop == null) {
       if (LOG.isDebugEnabled())
         LOG.debug(
-            "No droppable peers; current={} cannot accept peer{}",
+            "No droppable peers while dropping; current={} cannot accept peer{}",
             ctx.peersLRU.size(),
             ctx.nodeToAddNow == null ? "" : ctx.nodeToAddNow.toString());
       if (ctx.nodeToAddNow != null)
@@ -1003,7 +1003,7 @@ public class OpennetManager {
           new OpennetPeerNode(fs, node, crypto, this, false, node.network().peers());
       if (lruQueue(pn).contains(pn)) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Skip add; {} already in opennet list", pn.userToString());
+          LOG.debug("Opennet ref already known; {} already in opennet list", pn.userToString());
         return true;
       }
       // Don't check for self. That should be passed through too.
@@ -1043,7 +1043,7 @@ public class OpennetManager {
       LRUQueue<OpennetPeerNode> peersLRU = lruQueue(distance);
       if (peersLRU.contains(pn)) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Skip add; {} already in opennet list", pn.userToString());
+          LOG.debug("Opennet add skipped; {} already in opennet list", pn.userToString());
         if (allowExisting) {
           // However, we can reconnect.
           return peersLRU.get(pn);
@@ -1758,7 +1758,7 @@ public class OpennetManager {
       throws NotConnectedException {
     byte[] padded = new byte[paddedSize(noderef.length)];
     if (noderef.length > padded.length) {
-      LOG.error("Noderef too big: {} bytes", noderef.length);
+      LOG.error("Opennet ref send rejected; noderef too big: {} bytes", noderef.length);
       return false;
     }
     System.arraycopy(noderef, 0, padded, 0, noderef.length);
@@ -1881,7 +1881,7 @@ public class OpennetManager {
       throws NotConnectedException {
     byte[] padded = new byte[PADDED_NODEREF_SIZE];
     if (noderef.length > padded.length) {
-      LOG.error("Noderef too big: {} bytes", noderef.length);
+      LOG.error("Announcement reply noderef too big: {} bytes", noderef.length);
       return;
     }
     System.arraycopy(noderef, 0, padded, 0, noderef.length);
@@ -1949,12 +1949,14 @@ public class OpennetManager {
     long now = System.currentTimeMillis();
 
     synchronized (knownIds) {
-      if (LOG.isDebugEnabled()) LOG.debug("Add identity {} knownIds size {}", d, knownIds.size());
+      if (LOG.isDebugEnabled())
+        LOG.debug("knownIds add start; identity={} size={}", d, knownIds.size());
       knownIds.push(d, now);
-      if (LOG.isDebugEnabled()) LOG.debug("Added identity {} knownIds size {}", d, knownIds.size());
+      if (LOG.isDebugEnabled())
+        LOG.debug("knownIds add done; identity={} size={}", d, knownIds.size());
       knownIds.removeBefore(now - MAX_AGE);
       if (LOG.isDebugEnabled())
-        LOG.debug("Add and prune identity {} knownIds size {}", d, knownIds.size());
+        LOG.debug("knownIds add+prune; identity={} size={}", d, knownIds.size());
     }
     if (LOG.isDebugEnabled()) LOG.debug("Estimated opennet size (session)={}", knownIds.size());
   }
