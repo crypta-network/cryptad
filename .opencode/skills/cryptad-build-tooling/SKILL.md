@@ -86,6 +86,35 @@ If strict verification blocks resolution:
 Gradle daemon heap was increased to reduce OOM during SonarLint indexing:
 - `gradle.properties`: `org.gradle.jvmargs=-Xmx8g -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8`
 
+## Error Prone
+### Key behaviors
+- Enabled via `net.ltgt.errorprone` in the Java/Kotlin convention plugin.
+- Errors are downgraded to warnings by default (`options.errorprone.allErrorsAsWarnings = true`).
+
+### Report task
+- Generate XML reports:
+  - `./gradlew errorproneReport`
+- Output:
+  - `build/reports/errorprone/<task>/<task>.xml` (e.g., `compileJava/compileJava.xml`, `compileTestJava/compileTestJava.xml`)
+
+### Report schema (custom)
+- Root element: `<errorproneReport>`
+- Per warning: `<diagnostic>` with attributes `severity`, `check`, `file`, `line`, plus `<message>` and optional `<details>`.
+
+### Enforcing errors
+- To fail the build on Error Prone errors, set `allErrorsAsWarnings` to `false` in:
+  - `build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts`
+
+### Verification refresh on Error Prone bumps
+If strict verification blocks resolution:
+1) Set `org.gradle.dependency.verification=lenient`
+2) Run:
+```bash
+./gradlew --write-verification-metadata sha256,pgp :build-logic:compileKotlin
+```
+3) Restore `org.gradle.dependency.verification=strict`
+4) Optionally `./gradlew --export-keys`
+
 ## JaCoCo + SonarCloud coverage
 - JaCoCo toolVersion: `0.8.14`
 - XML/HTML reports are enabled:

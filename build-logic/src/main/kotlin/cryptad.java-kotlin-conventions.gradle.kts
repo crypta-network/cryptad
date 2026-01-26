@@ -1,10 +1,87 @@
+import java.time.Instant
+import javax.xml.stream.XMLOutputFactory
+import net.ltgt.gradle.errorprone.errorprone
+import org.gradle.api.logging.StandardOutputListener
+import org.gradle.api.services.BuildService
+import org.gradle.api.services.BuildServiceParameters
+import org.gradle.api.tasks.compile.JavaCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
   java
   kotlin("jvm")
   jacoco
+  id("net.ltgt.errorprone")
 }
+
+abstract class ErrorProneReportService : BuildService<BuildServiceParameters.None>
+
+data class ErrorProneDiagnostic(
+  val file: String,
+  val line: Int,
+  val severity: String,
+  val check: String,
+  val message: String,
+  val details: String,
+)
+
+fun parseErrorProneDiagnostics(output: String): List<ErrorProneDiagnostic> {
+  val pattern = Regex("^(.+):(\\d+): (warning|error): \\[(.+)] (.+)$")
+  val diagnostics = mutableListOf<ErrorProneDiagnostic>()
+  var current: ErrorProneDiagnostic? = null
+  val detailsBuffer = StringBuilder()
+
+  fun flush() {
+    val diag = current ?: return
+    diagnostics.add(diag.copy(details = detailsBuffer.toString().trimEnd()))
+    current = null
+    detailsBuffer.setLength(0)
+  }
+
+  output.lineSequence().forEach { line ->
+    val match = pattern.matchEntire(line)
+    if (match != null) {
+      flush()
+      val file = match.groupValues[1]
+      val lineNumber = match.groupValues[2].toInt()
+      val severity = match.groupValues[3]
+      val check = match.groupValues[4]
+      val message = match.groupValues[5]
+      current = ErrorProneDiagnostic(file, lineNumber, severity, check, message, "")
+    } else if (current != null) {
+      if (line.isNotBlank()) {
+        detailsBuffer.append(line).append('\n')
+      }
+    }
+  }
+  flush()
+  return diagnostics
+}
+
+val libs: VersionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
+
+val errorproneReportService =
+  gradle.sharedServices.registerIfAbsent(
+    "errorproneReportService",
+    ErrorProneReportService::class,
+  ) {
+    maxParallelUsages.set(1)
+  }
+
+val errorproneReportTask =
+  tasks.register("errorproneReport") {
+    group = "verification"
+    description = "Generates Error Prone XML reports for Java compile tasks."
+  }
+
+errorproneReportTask.configure { dependsOn(tasks.withType<JavaCompile>()) }
+
+val errorproneReportEnabled =
+  providers.provider {
+    gradle.startParameter.taskNames.any { taskName ->
+      taskName == "errorproneReport" || taskName.endsWith(":errorproneReport")
+    }
+  }
 
 java {
   toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
@@ -43,10 +120,71 @@ sourceSets.named("main") {
   java.exclude("network/crypta/node/Version.kt")
 }
 
+dependencies { add("errorprone", libs.findLibrary("errorproneCore").get()) }
+
 tasks.withType<JavaCompile>().configureEach {
   options.encoding = "UTF-8"
   // Surface deprecation/unchecked sites explicitly during compilation.
   options.compilerArgs.addAll(listOf("-Xlint:deprecation", "-Xlint:unchecked"))
+  options.errorprone.allErrorsAsWarnings.set(true)
+
+  val taskPathLabel = path.removePrefix(":").replace(':', '_').ifBlank { "root" }
+  val reportFileProvider = layout.buildDirectory.file("reports/errorprone/$taskPathLabel/$name.xml")
+  if (errorproneReportEnabled.get()) {
+    outputs.file(reportFileProvider)
+    outputs.upToDateWhen { false }
+    usesService(errorproneReportService)
+  }
+
+  val capturedOutput = StringBuilder()
+  val standardOutListener = StandardOutputListener { capturedOutput.append(it) }
+  val standardErrListener = StandardOutputListener { capturedOutput.append(it) }
+
+  doFirst {
+    if (!errorproneReportEnabled.get()) return@doFirst
+    logging.addStandardOutputListener(standardOutListener)
+    logging.addStandardErrorListener(standardErrListener)
+  }
+
+  doLast {
+    if (!errorproneReportEnabled.get()) return@doLast
+    logging.removeStandardOutputListener(standardOutListener)
+    logging.removeStandardErrorListener(standardErrListener)
+
+    val diagnostics = parseErrorProneDiagnostics(capturedOutput.toString())
+    val reportFile = reportFileProvider.get().asFile
+    reportFile.parentFile.mkdirs()
+
+    val writer =
+      XMLOutputFactory.newInstance().createXMLStreamWriter(reportFile.writer(Charsets.UTF_8))
+    writer.writeStartDocument("UTF-8", "1.0")
+    writer.writeStartElement("errorproneReport")
+    writer.writeAttribute("project", project.path)
+    writer.writeAttribute("task", name)
+    writer.writeAttribute("generatedAt", Instant.now().toString())
+    diagnostics.forEach { diagnostic ->
+      writer.writeStartElement("diagnostic")
+      writer.writeAttribute("severity", diagnostic.severity)
+      writer.writeAttribute("check", diagnostic.check)
+      writer.writeAttribute("file", diagnostic.file)
+      writer.writeAttribute("line", diagnostic.line.toString())
+
+      writer.writeStartElement("message")
+      writer.writeCharacters(diagnostic.message)
+      writer.writeEndElement()
+
+      if (diagnostic.details.isNotBlank()) {
+        writer.writeStartElement("details")
+        writer.writeCharacters(diagnostic.details)
+        writer.writeEndElement()
+      }
+      writer.writeEndElement()
+    }
+    writer.writeEndElement()
+    writer.writeEndDocument()
+    writer.flush()
+    writer.close()
+  }
 }
 
 tasks.withType<Javadoc>().configureEach {
@@ -99,9 +237,6 @@ tasks.withType<Test>().configureEach {
 tasks.withType<Test>().configureEach { enableAssertions = false }
 
 // JaCoCo setup: use a recent agent and produce XML for Sonar
-// Version is sourced from the version catalog (gradle/libs.versions.toml: [versions].jacoco)
-val libs: VersionCatalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
-
 extensions.configure<JacocoPluginExtension>("jacoco") {
   toolVersion = libs.findVersion("jacoco").get().requiredVersion
 }

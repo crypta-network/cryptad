@@ -35,9 +35,11 @@
             <trusting group="org.mockito" name="mockito-junit-jupiter" version="5.19.0"/>
          </trusted-key>
          <trusted-key id="19BEAB2D799C020F17C69126B16698A4ADF4D638">
+            <trusting group="org.checkerframework" name="checker-qual" version="3.19.0"/>
             <trusting group="org.checkerframework" name="checker-qual" version="3.37.0"/>
             <trusting group="org.checkerframework" name="checker-qual" version="3.43.0"/>
          </trusted-key>
+         <trusted-key id="1A55F091AD28C07F831FA44D7905DE25C78AD456" group="com.google.protobuf"/>
          <trusted-key id="1BD97A6A154E7810EE0BC832E2F38302C8075E3D">
             <trusting group="org.gradle.kotlin" name="gradle-kotlin-dsl-plugins" version="6.2.0"/>
             <trusting group="org.gradle.kotlin" name="gradle-kotlin-dsl-plugins" version="6.4.1"/>
@@ -82,11 +84,15 @@
             <trusting group="ch.qos.logback"/>
             <trusting group="org.slf4j"/>
          </trusted-key>
-         <trusted-key id="635EE627345F3C1DD422B2E207D3516820BCF6B1" group="com.github.ben-manes.caffeine" name="caffeine" version="2.9.3"/>
+         <trusted-key id="635EE627345F3C1DD422B2E207D3516820BCF6B1">
+            <trusting group="com.github.ben-manes.caffeine" name="caffeine" version="2.9.3"/>
+            <trusting group="com.github.ben-manes.caffeine" name="caffeine" version="3.0.5"/>
+         </trusted-key>
          <trusted-key id="648190996EC0930A6D7D49A978178478013521D0" group="com.facebook"/>
          <trusted-key id="6658DD7F76FCDF7812114F85DC032628E927D006" group="com.android.tools.external.lombok" name="lombok-ast" version="0.2.2"/>
          <trusted-key id="694621A7227D8D5289699830ABE9F3126BB741C1" group="com.google.guava"/>
          <trusted-key id="6F538074CCEBF35F28AF9B066A0975F8B1127B83" group="^org[.]jetbrains[.]kotlin($|([.].*))" regex="true"/>
+         <trusted-key id="7186BBF993566D8C2F4F7ED7D945E643368FEF62" group="io.github.eisop" name="dataflow-errorprone" version="3.41.0-eisop1"/>
          <trusted-key id="7616EB882DAF57A11477AAF559A252FB1199D873" group="com.google.code.findbugs" name="jsr305" version="3.0.2"/>
          <trusted-key id="7744B88EDD98A7402C0C341D9291F17036AEE155" group="com.github.hypfvieh"/>
          <trusted-key id="78DA3333F653B1C54A938BE24DB7BC57DFDBCEA4" group="net.java.dev.jna" name="jna" version="4.2.2"/>
@@ -111,6 +117,7 @@
          <trusted-key id="A33A0B49A4C1AB590B0A4DDC1364C5E2DF3E99C5" group="org.reactivestreams" name="reactive-streams" version="1.0.3"/>
          <trusted-key id="A413F67D71BEEC23ADD0CE0ACB43338E060CF9FA" group="org.jacoco"/>
          <trusted-key id="A4FACCFE5AFA1EB5FA3F4155A41774F54142A24C" group="de.jangassen" name="jfa" version="1.2.0"/>
+         <trusted-key id="A4FD709CC4B0515F2E6AF04E218FA0F6A941A037" group="com.github.kevinstern" name="software-and-algorithms" version="1.0"/>
          <trusted-key id="A58D5AF54809A8A63F458BBD56CD8D5D24452160" group="org.codehaus.sonar"/>
          <trusted-key id="A5BD02B93E7A40482EB1D66A5F69AD087600B22C" group="org.ow2.asm"/>
          <trusted-key id="A7892505CF1A58076453E52D7999BEFBA1039E8B" group="net.bytebuddy"/>
@@ -118,8 +125,14 @@
          <trusted-key id="AA417737BD805456DB3CBDDE6601E5C08DCCBB96" group="info.picocli" name="picocli" version="4.7.7"/>
          <trusted-key id="B0255B26003EF6F82491ACD7254E9C64C264C176" group="com.github.weisj"/>
          <trusted-key id="B920D295BF0E61CB4CF0896C33CD6733AF5EC452" group="commons-logging"/>
-         <trusted-key id="BDB5FA4FE719D787FB3D3197F6D4A1D411E9D1AE" group="com.google.guava"/>
-         <trusted-key id="C7BE5BCC9FEC15518CFDA882B0F3710FA64900E7" group="com.google.code.gson"/>
+         <trusted-key id="BDB5FA4FE719D787FB3D3197F6D4A1D411E9D1AE">
+            <trusting group="com.google.guava"/>
+            <trusting group="com.google.j2objc" name="j2objc-annotations" version="3.0.0"/>
+         </trusted-key>
+         <trusted-key id="C7BE5BCC9FEC15518CFDA882B0F3710FA64900E7">
+            <trusting group="com.google.code.gson"/>
+            <trusting group="^com[.]google[.]auto($|([.].*))" regex="true"/>
+         </trusted-key>
          <trusted-key id="CACFBD4755A2FC78709BDD92BE096E29EDB8D141" group="net.sf.proguard"/>
          <trusted-key id="CB9A3ECF68EFC2235510789F88C36BE872C7E1B0" group="io.sentry" name="sentry" version="8.20.0"/>
          <trusted-key id="CC4483CD6A3EB2939B948667A1B4460D8BA7B9AF" group="org.mockito" name="mockito-core" version="1.9.5"/>
@@ -130,12 +143,14 @@
          <trusted-key id="D84B2A55CBE37E731816F18138DC6A61B99534FF" group="io.github.g00fy2" name="versioncompare" version="1.4.1"/>
          <trusted-key id="D9E6E4CC8F66B2034995C7192189CA6247F3DEE5" group="^com[.]android[.]tools($|([.].*))" regex="true"/>
          <trusted-key id="DBD744ACE7ADE6AA50DD591F66B50994442D2D40" group="^com[.]squareup($|([.].*))" regex="true"/>
+         <trusted-key id="E0D98C5FD55A8AF232290E58DEE12B9896F97E34" group="org.pcollections" name="pcollections" version="4.0.1"/>
          <trusted-key id="E3A9F95079E84CE201F7CF60BEDE11EAF1164480">
             <trusting group="org.hamcrest"/>
             <trusting group="org.hamcrest" name="hamcrest" version="3.0"/>
          </trusted-key>
          <trusted-key id="E46653B20B6E2D5F61D040BB55E69DA20203C59E" group="^name[.]remal[.]gradle-plugins($|([.].*))" regex="true"/>
          <trusted-key id="E5138A8E9F2E7E42D38B14D99AEE152CDCCEBFCB" group="io.github.hakky54"/>
+         <trusted-key id="E77417AC194160A3FABD04969A259C7EE636C5ED" group="com.google.errorprone" name="javac" version="9+181-r4173-1"/>
          <trusted-key id="E7DC75FC24FB3C8DFE8086AD3D5839A2262CBBFB" group="org.jetbrains.kotlinx"/>
          <trusted-key id="E85AED155021AF8A6C6B7A4A7C7D8456294423BA" group="org.objenesis"/>
          <trusted-key id="EB1B3DE71713C9EC2E87CC26EE92349AD86DE446" group="com.google.j2objc" name="j2objc-annotations" version="2.8"/>
@@ -649,6 +664,11 @@
             <sha256 value="fa81829d049559df6927f9c9a6fd6bbd09f8b50e6d4736ae72c8300b6c3d7654" origin="Generated by Gradle" reason="A key couldn't be downloaded"/>
          </artifact>
       </component>
+      <component group="com.google.errorprone" name="error_prone_parent" version="2.38.0">
+         <artifact name="error_prone_parent-2.38.0.pom">
+            <sha256 value="e62458a6a3e63081bc7c57b3c0fac9f04f76ce32f606532db69fe2b3d47b934c" origin="Generated by Gradle"/>
+         </artifact>
+      </component>
       <component group="com.google.googlejavaformat" name="google-java-format" version="1.19.2">
          <artifact name="google-java-format-1.19.2.jar">
             <sha256 value="bac84458eb12499585f2fabb1ac13bbe5b455c120bf3d19db21597814a27c863" origin="Generated by Gradle"/>
@@ -1026,6 +1046,14 @@
             <sha256 value="e7fd7232e96307a575b2494c9367d68cf43ec98244aace3ccc23e1773ffa6fda" origin="Generated by Gradle"/>
          </artifact>
       </component>
+      <component group="javax.inject" name="javax.inject" version="1">
+         <artifact name="javax.inject-1.jar">
+            <sha256 value="91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+         <artifact name="javax.inject-1.pom">
+            <sha256 value="943e12b100627804638fa285805a0ab788a680266531e650921ebfe4621a8bfa" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
       <component group="junit" name="junit" version="4.13">
          <artifact name="junit-4.13.jar">
             <sha256 value="4b8532f63bdc0e0661507f947eb324a954d1dbac631ad19c8aa9a00feed1d863" origin="Generated by Gradle"/>
@@ -1160,6 +1188,32 @@
          </artifact>
          <artifact name="jna-platform-5.18.1.pom">
             <sha256 value="39d538a9599a4474770838865ed42cfa3e6b3d13086cb1e577b8bb43148d1a65" origin="Generated by Gradle"/>
+         </artifact>
+      </component>
+      <component group="net.ltgt.errorprone" name="net.ltgt.errorprone.gradle.plugin" version="4.3.0">
+         <artifact name="net.ltgt.errorprone.gradle.plugin-4.3.0.pom">
+            <sha256 value="3370e20ef3213ffce47f7fda31266c33e9cca3b1b7f4d54169b482277042654b" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
+      <component group="net.ltgt.errorprone" name="net.ltgt.errorprone.gradle.plugin" version="4.4.0">
+         <artifact name="net.ltgt.errorprone.gradle.plugin-4.4.0.pom">
+            <sha256 value="31585b3845a8aa0bee8d554306bf12508a253be535930204a89c3b5a842102c4" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
+      <component group="net.ltgt.gradle" name="gradle-errorprone-plugin" version="4.3.0">
+         <artifact name="gradle-errorprone-plugin-4.3.0.jar">
+            <sha256 value="42f89c1f582ecd09459586d3d19c0fa92a332035e4a70b5699a8ec6a81aec32c" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+         <artifact name="gradle-errorprone-plugin-4.3.0.module">
+            <sha256 value="6d2b0a7809ffde227ec15a4cf28e68929be22a1a12a0f56ad5e795d5058f2f6e" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+      </component>
+      <component group="net.ltgt.gradle" name="gradle-errorprone-plugin" version="4.4.0">
+         <artifact name="gradle-errorprone-plugin-4.4.0.jar">
+            <sha256 value="e418ed0338b13fe7026d90b96c60e407f27d349076b33d36962d9c0a829a7a6f" origin="Generated by Gradle" reason="Artifact is not signed"/>
+         </artifact>
+         <artifact name="gradle-errorprone-plugin-4.4.0.module">
+            <sha256 value="b35b0829b52a1588abb7846808aa53d10faa1ad76a2320adc1457f32175ffa3d" origin="Generated by Gradle" reason="Artifact is not signed"/>
          </artifact>
       </component>
       <component group="net.sf.kxml" name="kxml2" version="2.3.0">
