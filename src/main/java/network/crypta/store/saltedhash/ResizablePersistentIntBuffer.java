@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * A resizable, integer-indexed buffer backed by a flat on-disk file.
  *
  * <p>The buffer persists changes according to a global persistence policy: write immediately on
- * each put, write only on shutdown, or write after a configurable delay. The policy is controlled
+ * each put, write-only on shutdown, or write after a configurable delay. The policy is controlled
  * via {@link #setPersistenceTime(int)} and read via {@link #getPersistenceTime()}.
  *
  * <p>Concurrency and persistence:
@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  *   <li>When the policy is {@code -1}, {@link #put(int, int)} writes the single changed integer to
  *       disk synchronously. When {@code 0}, modified values are kept in memory and the whole buffer
  *       is flushed only during {@link #shutdown()}. When {@code > 0}, the first change marks the
- *       buffer dirty and schedules a background write after the given delay in milliseconds using
+ *       buffer dirty and schedules a background writing after the given delay in milliseconds using
  *       the provided {@link Ticker}.
  *   <li>{@link #shutdown()} blocks, flushes if dirty, and closes the file while preserving the
  *       thread interrupt status. {@link #abort()} closes the file without flushing in-memory
@@ -43,7 +43,11 @@ import org.slf4j.LoggerFactory;
  */
 public class ResizablePersistentIntBuffer {
   private static final Logger LOG = LoggerFactory.getLogger(ResizablePersistentIntBuffer.class);
-  private static final String WRITE_FAILED_MSG = "Write failed during shutdown on {}";
+  private static final String WRITE_FAILED_SCHEDULED_MSG =
+      "Write failed during scheduled flush on {}";
+  private static final String WRITE_FAILED_SHUTDOWN_MSG =
+      "Write failed during shutdown flush on {}";
+  private static final String WRITE_FAILED_FORCED_MSG = "Write failed during forced flush on {}";
 
   private final File filename;
   private final RandomAccessFile raf;
@@ -61,7 +65,6 @@ public class ResizablePersistentIntBuffer {
   // A non‑immediate policy may also trigger a Bloom filter rebuild after an unclean shutdown.
   public static final int DEFAULT_PERSISTENCE_TIME = 300000;
 
-  // Using a static for simplicity at present.
   /**
    * Global persistence policy in milliseconds.
    *
@@ -95,9 +98,9 @@ public class ResizablePersistentIntBuffer {
    * Sets the global persistence policy.
    *
    * <p>Values have the following meaning: {@code -1} = immediate per-entry writes, {@code 0} =
-   * write only on shutdown, {@code > 0} = schedule a write after the specified delay in
-   * milliseconds. The new value affects subsequent updates and scheduling; it does not cancel a run
-   * that is already scheduled.
+   * write-only on shutdown, {@code > 0} = schedule a writing after the specified delay in
+   * milliseconds. The new value affects later updates and scheduling; it does not cancel a run that
+   * is already scheduled.
    *
    * @param val policy value in milliseconds; see semantics above
    */
@@ -117,8 +120,8 @@ public class ResizablePersistentIntBuffer {
   /**
    * Creates a buffer over {@code f} with the given logical size.
    *
-   * <p>If the file does not exist it is created. If it is larger than {@code size * 4} bytes, it is
-   * truncated. If smaller, it is extended to exactly {@code size * 4} bytes after reading the
+   * <p>If the file does not exist, it is created. If it is larger than {@code size * 4} bytes, it
+   * is truncated. If smaller, it is extended to exactly {@code size * 4} bytes after reading the
    * existing contents. The in-memory array is initialized from the file up to the available data
    * and zero-filled for any remaining tail.
    *
@@ -139,10 +142,10 @@ public class ResizablePersistentIntBuffer {
     readBuffer((int) Math.min(size, realLength / 4));
     if (realLength < expectedLength) raf.setLength(expectedLength);
     channel = raf.getChannel();
-    // Initialize writer after fields are set so captured members are initialized
+    // Initialize the writer after fields are set so captured members are initialized
     this.writer =
         () -> {
-          LOG.info("Writing slot cache {}", ResizablePersistentIntBuffer.this);
+          LOG.info("Starting scheduled flush for slot cache {}", ResizablePersistentIntBuffer.this);
           lock.readLock().lock(); // Protect buffer.
           try {
             synchronized (ResizablePersistentIntBuffer.this) {
@@ -157,7 +160,7 @@ public class ResizablePersistentIntBuffer {
             try {
               writeBuffer();
             } catch (IOException e) {
-              LOG.error(WRITE_FAILED_MSG, filename, e);
+              LOG.error(WRITE_FAILED_SCHEDULED_MSG, filename, e);
             }
           } finally {
             synchronized (ResizablePersistentIntBuffer.this) {
@@ -200,8 +203,8 @@ public class ResizablePersistentIntBuffer {
    * Attaches a scheduler used to run delayed writes and schedules one if the buffer is already
    * dirty and the policy is a positive delay.
    *
-   * <p>Idempotent: subsequent calls replace the scheduler reference and may schedule a run if none
-   * is pending.
+   * <p>Idempotent: further calls replace the scheduler reference and may schedule a run if none is
+   * pending.
    *
    * @param ticker scheduler for timed jobs; must remain live while this buffer is in use
    */
@@ -210,7 +213,7 @@ public class ResizablePersistentIntBuffer {
       this.ticker = ticker;
       if (dirty) {
         int persistenceTime = getPersistenceTime();
-        LOG.info("Scheduling write of slot cache {} in {}", this, persistenceTime);
+        LOG.info("Scheduling startup write of slot cache {} in {}", this, persistenceTime);
         ticker.queueTimedJob(writer, persistenceTime);
         scheduled = true;
       }
@@ -241,11 +244,11 @@ public class ResizablePersistentIntBuffer {
    * Stores {@code value} at {@code offset} honoring the current persistence policy.
    *
    * <p>When the policy is immediate ({@code -1}), the single updated integer is written to disk
-   * synchronously. For other policies the buffer is marked dirty and a write may be scheduled.
+   * synchronously. For other policies the buffer is marked dirty and a writing may be scheduled.
    *
    * @param offset zero-based index in the range {@code [0, size())}
    * @param value value to store
-   * @throws IOException if an immediate write fails
+   * @throws IOException if an immediate writing fails
    * @throws IllegalStateException if the buffer is closed
    * @throws ArrayIndexOutOfBoundsException if {@code offset} is out of bounds
    */
@@ -254,23 +257,23 @@ public class ResizablePersistentIntBuffer {
   }
 
   /**
-   * Variant of {@link #put(int, int)} that can suppress the immediate write when the policy is
+   * Variant of {@link #put(int, int)} that can suppress the immediate writing when the policy is
    * {@code -1}.
    *
    * <p>When {@code noWrite} is {@code true} and the policy is immediate, the value is updated only
-   * in memory and the buffer is marked dirty; the caller is responsible for ensuring a later flush
+   * in memory, and the buffer is marked dirty; the caller is responsible for ensuring a later flush
    * (e.g., via {@link #forceWrite()} or shutdown). For non-immediate policies {@code noWrite} has
    * no effect beyond the regular scheduling.
    *
    * @param offset zero-based index in the range {@code [0, size())}
    * @param value value to store
-   * @param noWrite suppresses the per-entry write when the policy is {@code -1}
-   * @throws IOException if an immediate write fails
+   * @param noWrite suppresses the per-entry writing when the policy is {@code -1}
+   * @throws IOException if an immediate writing fails
    * @throws IllegalStateException if the buffer is closed
    * @throws ArrayIndexOutOfBoundsException if {@code offset} is out of bounds
    */
   public void put(int offset, int value, boolean noWrite) throws IOException {
-    lock.readLock().lock(); // Only resize needs write lock because it creates a new buffer.
+    lock.readLock().lock(); // Only resize needs a write lock because it creates a new buffer.
     if (closed) throw new IllegalStateException("Already shut down");
     try {
       int persistenceTime = getPersistenceTime();
@@ -304,7 +307,7 @@ public class ResizablePersistentIntBuffer {
       if (persistenceTime > 0) {
         if (ticker != null) {
           if (!scheduled) {
-            LOG.info("Scheduling write of slot cache {} in {}", this, persistenceTime);
+            LOG.info("Scheduling delayed write of slot cache {} in {}", this, persistenceTime);
             ticker.queueTimedJob(writer, persistenceTime);
             scheduled = true;
           }
@@ -352,11 +355,11 @@ public class ResizablePersistentIntBuffer {
       }
       try {
         if (doWrite) {
-          LOG.info("Writing slot cache on shutdown: {}", this);
+          LOG.info("Starting shutdown flush for slot cache {}", this);
           writeBuffer();
         }
       } catch (IOException e) {
-        LOG.error(WRITE_FAILED_MSG, filename, e);
+        LOG.error(WRITE_FAILED_SHUTDOWN_MSG, filename, e);
       }
       synchronized (this) {
         if (writing) {
@@ -367,7 +370,7 @@ public class ResizablePersistentIntBuffer {
       try {
         raf.close();
       } catch (IOException e) {
-        LOG.error("Close failed during shutdown on {}", filename, e);
+        LOG.error("Close failed while closing on shutdown for {}", filename, e);
       }
     } finally {
       lock.writeLock().unlock();
@@ -390,7 +393,7 @@ public class ResizablePersistentIntBuffer {
       try {
         raf.close();
       } catch (IOException e) {
-        LOG.error("Close failed during shutdown: {} on {}", e, filename, e);
+        LOG.error("Close failed while aborting (reason={} file={})", e, filename, e);
       }
     } finally {
       lock.writeLock().unlock();
@@ -437,7 +440,7 @@ public class ResizablePersistentIntBuffer {
   }
 
   /**
-   * Forces an immediate write of the entire buffer if dirty.
+   * Forces an immediate writing of the entire buffer if dirty.
    *
    * <p>Waits for any in-flight write, clears the scheduled flag to avoid a redundant run, and then
    * writes under the read lock.
@@ -458,15 +461,15 @@ public class ResizablePersistentIntBuffer {
           }
         }
         if (!dirty) return; // Nothing to write.
-        // Take ownership of the write, and clear the dirty flag under the write guard.
+        // Take ownership of the writing and clear the dirty flag under the writing guard.
         writing = true;
-        scheduled = false; // avoid a no-op scheduled run after this forced write
+        scheduled = false; // avoid a no-op scheduled run after this forced writing
         dirty = false;
       }
       try {
         writeBuffer();
       } catch (IOException e) {
-        LOG.error(WRITE_FAILED_MSG, filename, e);
+        LOG.error(WRITE_FAILED_FORCED_MSG, filename, e);
       }
     } finally {
       synchronized (this) {
