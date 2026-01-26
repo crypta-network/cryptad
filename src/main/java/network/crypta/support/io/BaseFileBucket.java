@@ -44,7 +44,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
 
   /**
    * Monotonic counter incremented each time a new output stream is obtained. Used to detect and
-   * prevent writes from stale streams after a reopen.
+   * prevent writes from stale streams after a reopening.
    */
   protected long fileRestartCounter;
 
@@ -152,7 +152,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
       if (isReadOnly()) throw new IOException("Bucket is read-only: " + this);
 
       if (createFileOnly()
-          && // Fail if file already exists
+          && // Fail if the file already exists
           fileRestartCounter == 0
           && // Ignore if we're just clobbering our own file after a previous getOutputStream()
           !file.createNewFile()) {
@@ -171,7 +171,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
 
       FileBucketOutputStream os = new FileBucketOutputStream(tempfile, streamNumber);
 
-      if (LOG.isTraceEnabled()) LOG.trace("Creating {}", os);
+      if (LOG.isTraceEnabled()) LOG.trace("Creating output stream {}", os);
 
       addStream(os);
       return os;
@@ -319,18 +319,19 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
       }
       boolean renaming = !tempFileAlreadyExists();
       removeStream(this);
-      if (LOG.isDebugEnabled()) LOG.debug("Closing {}", BaseFileBucket.this);
+      if (LOG.isDebugEnabled()) LOG.debug("Closing output stream for {}", BaseFileBucket.this);
       try {
         super.close();
       } catch (IOException e) {
         handleCloseFailure(renaming, e);
-        return; // Unreachable, but keeps static analyzers happy
+        return; // Unreachable but keeps static analyzers happy
       }
       finalizeRenameIfRequired(file, renaming);
     }
 
     private void handleCloseFailure(boolean renaming, IOException e) throws IOException {
-      if (LOG.isDebugEnabled()) LOG.debug("Failed closing {} : {}", BaseFileBucket.this, e, e);
+      if (LOG.isDebugEnabled())
+        LOG.debug("Output stream close failed for {}: {}", BaseFileBucket.this, e, e);
       if (renaming) deleteTempFileQuietly();
       throw e;
     }
@@ -340,7 +341,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
       // even if createFileOnly() is true.
       if (renaming && !FileUtil.moveTo(tempfile, file)) {
         deleteTempFileQuietly();
-        if (LOG.isDebugEnabled()) LOG.debug("Deleted, cannot rename file for {}", this);
+        if (LOG.isDebugEnabled()) LOG.debug("Rename failed after delete for {}", this);
         throw new IOException("Cannot rename file");
       }
     }
@@ -350,7 +351,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
         Files.deleteIfExists(tempfile.toPath());
       } catch (IOException ioe1) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Failed deleting temp file {}: {}", tempfile, ioe1.toString());
+          LOG.debug("Temp file delete failed {}: {}", tempfile, ioe1.toString());
       }
     }
 
@@ -400,7 +401,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
     } else {
       FileBucketInputStream is = new FileBucketInputStream(file);
       addStream(is);
-      if (LOG.isTraceEnabled()) LOG.trace("Creating {}", is);
+      if (LOG.isTraceEnabled()) LOG.trace("Creating input stream {}", is);
       return is;
     }
   }
@@ -427,12 +428,12 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    * logs a warning instead. Callers should verify existence separately when required.
    */
   protected synchronized void deleteFile() {
-    if (LOG.isDebugEnabled()) LOG.debug("Deleting {} for {}", getFile(), this);
+    if (LOG.isDebugEnabled()) LOG.debug("Deleting bucket file {} for {}", getFile(), this);
     try {
       Files.delete(getFile().toPath());
     } catch (IOException e) {
       // Preserve existing behavior: do not throw, but provide clearer context.
-      LOG.warn("Failed to delete {}: {}", getFile(), e.toString());
+      LOG.warn("Bucket file delete failed {}: {}", getFile(), e.toString());
     }
   }
 
@@ -472,11 +473,10 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
       }
     }
 
-    // last resort -- use current working directory
+    // last resort -- use the current working directory
 
     if (tempDir == null) {
-      // This can be null -- but that's OK, null => cwd for File
-      // constructor, anyways.
+      // This can be null -- but that's OK, null => cwd for File constructor, anyway.
       tempDir = System.getProperty("user.dir");
     }
   }
@@ -488,7 +488,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    * <p>Ownership: the caller is responsible for closing/freeing the returned buckets. Slices are
    * independent views over the same file; deleting the underlying file invalidates all slices.
    *
-   * @param splitSize requested size in bytes for each slice; last slice may be smaller
+   * @param splitSize requested size in bytes for each slice; the last slice may be smaller
    * @return an array of read-only buckets covering the full file content; never {@code null}
    * @throws IllegalArgumentException if the file is excessively large for the requested slice size
    */
@@ -538,7 +538,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    *     false}
    */
   public void free(boolean forceFree) {
-    if (LOG.isDebugEnabled()) LOG.debug("Freeing {}", this);
+    if (LOG.isDebugEnabled()) LOG.debug("Freeing bucket {}", this);
     Closeable[] toClose = markFreedAndDetachStreams();
     if (toClose == ALREADY_FREED) return;
     if (toClose.length > 0) closeStreams(toClose);
@@ -553,10 +553,10 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
     return result;
   }
 
-  /** Logs and closes any streams that were left open at free-time. */
+  /** Logs and closes any streams left open at free-time. */
   private void closeStreams(Closeable[] toClose) {
     if (LOG.isErrorEnabled()) {
-      LOG.error("Streams open free()ing {} : {}", this, Arrays.toString(toClose));
+      LOG.error("Streams still open during free {}: {}", this, Arrays.toString(toClose));
     }
     for (Closeable strm : toClose) {
       try {
@@ -571,9 +571,9 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
   private void deleteIfRequested(boolean forceFree) {
     File file = getFile();
     if ((deleteOnFree() || forceFree) && file.exists()) {
-      LOG.trace("Deleting bucket {}", file);
+      LOG.trace("Deleting bucket file on free {}", file);
       deleteFile();
-      if (file.exists()) LOG.error("Delete failed on bucket {}", file);
+      if (file.exists()) LOG.error("Bucket file still exists after delete {}", file);
     }
   }
 
@@ -628,7 +628,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    * @throws StorageFormatException when the data is malformed or uses an unknown version
    */
   protected BaseFileBucket(DataInputStream dis) throws IOException, StorageFormatException {
-    // Read and validate header
+    // Read and validate the header
     int magic = dis.readInt();
     if (magic != MAGIC) throw new StorageFormatException("Bad magic");
     int version = dis.readInt();
