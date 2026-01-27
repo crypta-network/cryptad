@@ -563,7 +563,7 @@ public class Submission {
   private AnalysisInputs resolveInputs(String fileName) {
     AnalysisInputs inputs = new AnalysisInputs();
     String ext = extractExt(fileName);
-    inputs.mp3Check = (null == checkAsExt) && ("mp3".equalsIgnoreCase(ext));
+    inputs.mp3Check = (null == checkAsExt) && "mp3".equalsIgnoreCase(ext);
     ext = null == checkAsExt ? ext : checkAsExt;
     inputs.fmtHandler = bc.getFormatHandler(ext);
     return inputs;
@@ -594,7 +594,7 @@ public class Submission {
   private void addCoreAttributes(String fileName, Hashes hashes) {
     addAttribute("bitprint", hashes.bitprint);
 
-    addAttribute("tag.file.length", "" + (new File(fileName).length()));
+    addAttribute("tag.file.length", "" + new File(fileName).length());
     addAttribute("tag.file.first20", hashes.firstHex);
     addAttribute("tag.filename.filename", extractName(fileName));
 
@@ -754,14 +754,14 @@ public class Submission {
     for (Map.Entry<?, ?> e : raw.entrySet()) {
       Object k = e.getKey();
       Object v = e.getValue();
-      if (!(k instanceof String) || !(v instanceof String)) {
+      if (!(k instanceof String key) || !(v instanceof String value)) {
         throw new ClassCastException(
             "Expected Map<String,String>, found entry key="
                 + (k == null ? "null" : k.getClass().getName())
                 + ", value="
                 + (v == null ? "null" : v.getClass().getName()));
       }
-      out.put((String) k, (String) v);
+      out.put(key, value);
     }
     return out;
   }

@@ -65,19 +65,19 @@ public class Md4Handler {
   private byte[] buffer;
 
   private static int f(int x, int y, int z) {
-    return (((x) & (y)) | ((~x) & (z)));
+    return (x & y) | (~x & z);
   }
 
   private static int g(int x, int y, int z) {
-    return (((x) & (y)) | ((x) & (z)) | ((y) & (z)));
+    return (x & y) | (x & z) | (y & z);
   }
 
   private static int h(int x, int y, int z) {
-    return ((x) ^ (y) ^ (z));
+    return x ^ y ^ z;
   }
 
   private static int rotateLeft(int x, int n) {
-    return (((x) << (n)) | ((x) >>> (32 - (n))));
+    return (x << n) | (x >>> (32 - n));
   }
 
   private static int ff(int a, int b, int c, int d, int x, int s) {

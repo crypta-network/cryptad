@@ -525,7 +525,7 @@ public class Id3Handler {
 
     try (RandomAccessFile f = new RandomAccessFile(fileName, "r")) {
       Id3v1 id3 = Id3v1.readFromFile(f);
-      if ((null == id3) || (!"TAG".equals(id3.id))) {
+      if ((null == id3) || !"TAG".equals(id3.id)) {
         return info;
       }
 
