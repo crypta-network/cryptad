@@ -489,6 +489,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * Called when {@link #metadataThreshold} is set and the final compact metadata is returned
    * instead of a URI because its length falls below the threshold.
    */
+  @Override
   public void onMetadata(Bucket finalMetadata, ClientPutState state, ClientContext context) {
     boolean freeIt = false;
     synchronized (this) {

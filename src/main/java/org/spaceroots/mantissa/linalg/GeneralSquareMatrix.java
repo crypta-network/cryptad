@@ -219,6 +219,7 @@ public class GeneralSquareMatrix extends SquareMatrix {
    * @return determinant value; {@code 0.0} when the matrix is detected as singular or
    *     ill-conditioned
    */
+  @Override
   public double getDeterminant(double epsilon) {
     try {
       if (permutations == null) computeLUFactorization(epsilon);
@@ -253,6 +254,7 @@ public class GeneralSquareMatrix extends SquareMatrix {
    *     epsilon}
    * @throws IllegalArgumentException if {@code b} has a different number of rows
    */
+  @Override
   public Matrix solve(Matrix b, double epsilon) throws SingularMatrixException {
     // validity check
     if (b.getRows() != rows) {
@@ -292,6 +294,7 @@ public class GeneralSquareMatrix extends SquareMatrix {
    * @param i zero-based row index whose populated column interval is requested
    * @return range object covering {@code [0, columns)} for dense matrices
    */
+  @Override
   protected NonNullRange getRangeForRow(int i) {
     return new NonNullRange(0, columns);
   }
@@ -306,6 +309,7 @@ public class GeneralSquareMatrix extends SquareMatrix {
    * @param j zero-based column index for which populated row bounds are requested
    * @return range object covering {@code [0, rows)} for dense matrices
    */
+  @Override
   protected NonNullRange getRangeForColumn(int j) {
     return new NonNullRange(0, rows);
   }

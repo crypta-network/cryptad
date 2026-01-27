@@ -154,7 +154,7 @@ public class RealCompressor {
     int maxRunningThreads;
 
     AppEnv env = new AppEnv();
-    if (env.isMac() || (!NativeThread.usingNativeCode()))
+    if (env.isMac() || !NativeThread.usingNativeCode())
       // On macOS, niceness is weak; keep background load minimal. Also, when native prioritization
       // is unusable on non-Windows, prefer a single worker to avoid interference.
       maxRunningThreads = 1;
@@ -167,7 +167,7 @@ public class RealCompressor {
       if (maxMemory < 128 * 1024 * 1024) max = 1;
       else
         // one compressor thread per (128MB of ram + available core)
-        max = Math.min(max, (int) (Math.min(Integer.MAX_VALUE, maxMemory / (128 * 1024 * 1024))));
+        max = Math.min(max, (int) Math.min(Integer.MAX_VALUE, maxMemory / (128 * 1024 * 1024)));
       maxRunningThreads = max;
     }
     LOG.debug("Maximum Compressor threads: {}", maxRunningThreads);

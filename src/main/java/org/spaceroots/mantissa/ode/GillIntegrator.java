@@ -80,6 +80,7 @@ public class GillIntegrator extends RungeKuttaIntegrator {
    *
    * @return method name string, always {@code "Gill"} for this integrator.
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }

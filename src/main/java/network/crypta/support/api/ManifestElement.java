@@ -43,6 +43,7 @@ public class ManifestElement implements Serializable {
   // required for the common case; readObject(ObjectInputStream) tolerates a trailing object for
   // compatibility with streams that may include it.
   @Serial
+  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField("name", String.class),
     new ObjectStreamField("fullName", String.class),
@@ -111,7 +112,7 @@ public class ManifestElement implements Serializable {
   }
 
   /**
-   * Creates a file entry using the same value for {@code name} and {@code fullName}.
+   * Creates a file entry using the same value for the manifest name and full path.
    *
    * @param name2 file name as it appears in the manifest
    * @param data2 payload bucket; expected to be non-{@code null}
@@ -164,7 +165,7 @@ public class ManifestElement implements Serializable {
   }
 
   /**
-   * Creates a redirect entry using the same value for {@code name} and {@code fullName}.
+   * Creates a redirect entry using the same value for the manifest name and full path.
    *
    * @param name2 entry name within the manifest
    * @param targetURI2 redirect target; must be non-{@code null}
@@ -181,7 +182,7 @@ public class ManifestElement implements Serializable {
   }
 
   /**
-   * Creates a redirect entry with distinct {@code name} and {@code fullName} values.
+   * Creates a redirect entry with distinct name and full path values.
    *
    * @param name2 entry name within the manifest
    * @param fullName2 full path within the container

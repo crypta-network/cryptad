@@ -11,8 +11,8 @@ import java.io.OutputStream;
 import java.lang.ref.Cleaner;
 import java.lang.ref.WeakReference;
 import java.security.GeneralSecurityException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -240,6 +240,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
      * @return {@code true} if migration happened; {@code false} if already disk-backed or freed
      * @throws IOException if migration fails or I/O operations during copy fail
      */
+    @Override
     public final boolean migrateToDisk() throws IOException {
       Bucket toMigrate;
       long size;
@@ -1038,7 +1039,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
                         tmpBucket,
                         TimeUtil.formatTime(now - tmpBucket.creationTime()));
                   ramBucketQueue.remove(tmpBucketRef);
-                  if (toMigrate == null) toMigrate = new LinkedList<>();
+                  if (toMigrate == null) toMigrate = new ArrayDeque<>();
                   toMigrate.add(tmpBucket);
                   force = false;
                 }

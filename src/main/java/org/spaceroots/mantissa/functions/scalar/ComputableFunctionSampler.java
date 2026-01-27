@@ -128,6 +128,7 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
    *
    * @return total number of sample points available from this sampler instance.
    */
+  @Override
   public int size() {
     return n;
   }
@@ -156,6 +157,7 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
    *     {@link #size()}.
    * @throws FunctionException if the wrapped function cannot compute the ordinate for the abscissa.
    */
+  @Override
   public ScalarValuedPair samplePointAt(int index)
       throws ArrayIndexOutOfBoundsException, FunctionException {
 

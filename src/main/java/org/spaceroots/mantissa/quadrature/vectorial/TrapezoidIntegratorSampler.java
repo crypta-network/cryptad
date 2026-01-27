@@ -94,6 +94,7 @@ public class TrapezoidIntegratorSampler implements SampledFunctionIterator {
    * @return {@code true} if the wrapped iterator reports a remaining sample, {@code false} once
    *     exhausted
    */
+  @Override
   public boolean hasNext() {
     return iter.hasNext();
   }
@@ -107,6 +108,7 @@ public class TrapezoidIntegratorSampler implements SampledFunctionIterator {
    *
    * @return number of components in each integral vector produced by this sampler
    */
+  @Override
   public int getDimension() {
     return iter.getDimension();
   }
@@ -126,6 +128,7 @@ public class TrapezoidIntegratorSampler implements SampledFunctionIterator {
    * @throws ExhaustedSampleException if the wrapped iterator has no more base samples to consume
    * @throws FunctionException if evaluating the next base sample fails in the wrapped iterator
    */
+  @Override
   public VectorialValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
 
     // performs one step of a trapezoid scheme

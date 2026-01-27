@@ -42,6 +42,7 @@ public class Laguerre extends OrthogonalPolynomial {
   private static final CoefficientsGenerator generator =
       new CoefficientsGenerator(
           new RationalNumber(1L), new RationalNumber(1L), new RationalNumber(-1L)) {
+        @Override
         public void setRecurrenceCoefficients(int k) {
           // the recurrence relation is
           // (k+1) Lk+1(X) = (2k + 1 - X) Lk(X) - k Lk-1(X)

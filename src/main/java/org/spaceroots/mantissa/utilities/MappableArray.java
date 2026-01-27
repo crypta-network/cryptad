@@ -88,6 +88,7 @@ public class MappableArray implements ArraySliceMappable {
    *
    * @return the number of {@code double} values in the state vector
    */
+  @Override
   public int getStateDimension() {
     return internalArray.length;
   }
@@ -108,6 +109,7 @@ public class MappableArray implements ArraySliceMappable {
    * @throws NullPointerException if {@code array} is {@code null}
    * @throws ArrayIndexOutOfBoundsException if the requested slice is outside {@code array}
    */
+  @Override
   public void mapStateFromArray(int start, double[] array) {
     System.arraycopy(array, start, internalArray, 0, internalArray.length);
   }
@@ -128,6 +130,7 @@ public class MappableArray implements ArraySliceMappable {
    * @throws NullPointerException if {@code array} is {@code null}
    * @throws ArrayIndexOutOfBoundsException if the requested slice is outside {@code array}
    */
+  @Override
   public void mapStateToArray(int start, double[] array) {
     System.arraycopy(internalArray, 0, array, start, internalArray.length);
   }

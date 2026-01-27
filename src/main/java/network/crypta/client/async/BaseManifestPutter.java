@@ -580,7 +580,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         failOuter(new IllegalStateException("origSFI is null on start(), impossible"), context);
       }
 
-      if ((!(this instanceof MetaPutHandler)) && (metadata != null)) {
+      if (!(this instanceof MetaPutHandler) && metadata != null) {
         failOuter(
             new IllegalStateException("metdata=" + metadata + " on start(), impossible"), context);
       }
@@ -1237,6 +1237,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    *     scheduler issues). On failure the putter cancels outstanding work and marks itself
    *     finished.
    */
+  @Override
   public void start(ClientContext context) throws InsertException {
     if (LOG.isDebugEnabled())
       LOG.debug("Starting {} persistence={} containermode={}", this, persistent(), containerMode);
@@ -1557,10 +1558,12 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
   // Inherit blockSetFinalized behavior from a parent
 
+  @Override
   public int countFiles() {
     return numberOfFiles;
   }
 
+  @Override
   public long totalSize() {
     return totalSize;
   }
@@ -1789,16 +1792,16 @@ public abstract class BaseManifestPutter extends ManifestPutter {
      * Adds a redirect entry with an optional MIME type override.
      *
      * @param name logical name within the current directory.
-     * @param targetUri target {@link FreenetURI} to redirect to.
+     * @param targetURI target {@link FreenetURI} to redirect to.
      * @param mimeOverride optional MIME type override; when null or blank, type inference may be
      *     applied later.
      * @param isDefaultDoc when {@code true}, also marks this entry as the default document.
      */
     @SuppressWarnings("unused")
     public final void addRedirect(
-        String name, FreenetURI targetUri, String mimeOverride, boolean isDefaultDoc) {
+        String name, FreenetURI targetURI, String mimeOverride, boolean isDefaultDoc) {
       ClientMetadata cm = makeClientMetadata(mimeOverride);
-      addRedirect(name, targetUri, cm, isDefaultDoc);
+      addRedirect(name, targetURI, cm, isDefaultDoc);
     }
 
     /**
@@ -1816,12 +1819,12 @@ public abstract class BaseManifestPutter extends ManifestPutter {
      * Adds a redirect entry to the current directory.
      *
      * @param name logical name within the current directory.
-     * @param targetUri target {@link FreenetURI} to redirect to.
+     * @param targetURI target {@link FreenetURI} to redirect to.
      * @param cm optional {@link ClientMetadata} such as MIME type; may be {@code null}.
      * @param isDefaultDoc when {@code true}, also marks this entry as the default document.
      */
     public abstract void addRedirect(
-        String name, FreenetURI targetUri, ClientMetadata cm, boolean isDefaultDoc);
+        String name, FreenetURI targetURI, ClientMetadata cm, boolean isDefaultDoc);
   }
 
   /**
@@ -1833,7 +1836,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Serial private static final long serialVersionUID = 1L;
 
     /** Creates a new freeform builder with an empty root directory. */
-    protected FreeFormBuilder() {
+    FreeFormBuilder() {
       rootDir = new HashMap<>();
       currentDir = rootDir;
     }
@@ -1985,8 +1988,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public void addRedirect(
-        String name, FreenetURI targetUri, ClientMetadata cm, boolean isDefaultDoc) {
-      Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetUri, cm);
+        String name, FreenetURI targetURI, ClientMetadata cm, boolean isDefaultDoc) {
+      Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI, cm);
       currentDir.put(name, m);
       if (isDefaultDoc) {
         currentDir.put("", m);

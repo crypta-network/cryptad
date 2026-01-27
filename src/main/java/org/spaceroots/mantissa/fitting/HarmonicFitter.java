@@ -169,6 +169,7 @@ public class HarmonicFitter extends AbstractCurveFitter {
    * @param x abscissa at which the theoretical value is requested; any real value is accepted
    * @return computed model value at {@code x} based on the latest coefficient estimates
    */
+  @Override
   public double valueAt(double x) {
     double a = coefficients[0].getEstimate();
     double omega = coefficients[1].getEstimate();
@@ -190,6 +191,7 @@ public class HarmonicFitter extends AbstractCurveFitter {
    * @return partial derivative value for the requested parameter at {@code x}; based on current
    *     estimates
    */
+  @Override
   public double partial(double x, EstimatedParameter p) {
     double a = coefficients[0].getEstimate();
     double omega = coefficients[1].getEstimate();

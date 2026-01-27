@@ -64,6 +64,7 @@ class FFPIterator implements SampledFunctionIterator, Serializable {
    *
    * @return {@code 2}, representing {@code f(x)} and {@code f'(x)} components.
    */
+  @Override
   public int getDimension() {
     return 2;
   }
@@ -77,6 +78,7 @@ class FFPIterator implements SampledFunctionIterator, Serializable {
    *
    * @return {@code true} when a subsequent call to {@link #nextSamplePoint()} will succeed.
    */
+  @Override
   public boolean hasNext() {
     return nextIndex < measurements.length;
   }
@@ -95,6 +97,7 @@ class FFPIterator implements SampledFunctionIterator, Serializable {
    *     returned.
    * @throws FunctionException if the underlying measurement retrieval signals a functional error.
    */
+  @Override
   public VectorialValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
     if (nextIndex >= measurements.length) {
       throw new ExhaustedSampleException(measurements.length);

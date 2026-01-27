@@ -62,6 +62,7 @@ class F2FP2Iterator implements SampledFunctionIterator, Serializable {
    * @return {@code 2}, reflecting the squared function and squared derivative components that are
    *     always emitted together.
    */
+  @Override
   public int getDimension() {
     return 2;
   }
@@ -77,6 +78,7 @@ class F2FP2Iterator implements SampledFunctionIterator, Serializable {
    * @return {@code true} when at least one more sample can be produced; {@code false} once the
    *     measurement sequence has been exhausted.
    */
+  @Override
   public boolean hasNext() {
     return ffpIterator.hasNext();
   }
@@ -97,6 +99,7 @@ class F2FP2Iterator implements SampledFunctionIterator, Serializable {
    * @throws FunctionException if evaluating the function or its derivative for the current sample
    *     fails or produces an inconsistent state.
    */
+  @Override
   public VectorialValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
 
     // get the raw values from the underlying FFPIterator

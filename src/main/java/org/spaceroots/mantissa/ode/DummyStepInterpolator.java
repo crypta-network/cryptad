@@ -107,6 +107,7 @@ public class DummyStepInterpolator extends AbstractStepInterpolator implements S
    * @throws DerivativeException propagated if the base class requires derivative evaluation hooks
    *     that fail during copying or validation
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
     System.arraycopy(currentState, 0, interpolatedState, 0, currentState.length);
@@ -122,6 +123,7 @@ public class DummyStepInterpolator extends AbstractStepInterpolator implements S
    * @param out destination stream that receives the normalized base interpolator fields
    * @throws IOException if the underlying stream rejects the serialized form or closes prematurely
    */
+  @Override
   public void writeExternal(ObjectOutput out) throws IOException {
     // save the state of the base class
     writeBaseExternal(out);
@@ -138,6 +140,7 @@ public class DummyStepInterpolator extends AbstractStepInterpolator implements S
    * @param in source stream positioned at a serialized {@code DummyStepInterpolator} payload
    * @throws IOException if the serialized form is corrupt or derivative recomputation fails
    */
+  @Override
   public void readExternal(ObjectInput in) throws IOException {
 
     // read the base class

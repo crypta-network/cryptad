@@ -130,6 +130,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
     this.safety = safety;
   }
 
+  @Override
   public void integrate(
       FirstOrderDifferentialEquations equations, double t0, double[] y0, double t, double[] y)
       throws DerivativeException, IntegratorException {
@@ -224,7 +225,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
   private AbstractStepInterpolator createInterpolator(
       FirstOrderDifferentialEquations equations, double[] yTmp, double[][] yDotK, boolean forward) {
 
-    if (handler.requiresDenseOutput() || (!switchesHandler.isEmpty())) {
+    if (handler.requiresDenseOutput() || !switchesHandler.isEmpty()) {
       RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.copy();
       rki.reinitialize(equations, yTmp, yDotK, forward);
       return rki;
@@ -303,7 +304,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
   private void adjustStepSizeNearTarget(double t, boolean forward, StepContext context) {
     stepSize = context.hNew;
     boolean beyondTarget =
-        (forward && (stepStart + stepSize > t)) || ((!forward) && (stepStart + stepSize < t));
+        (forward && (stepStart + stepSize > t)) || (!forward && (stepStart + stepSize < t));
     if (beyondTarget) {
       stepSize = t - stepStart;
     }
@@ -409,8 +410,22 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
       }
       yTmp = new double[dimension];
     }
+
+    @Override
+    public String toString() {
+      return "StepContext[stages="
+          + yDotK.length
+          + ", dimension="
+          + yTmp.length
+          + ", hNew="
+          + hNew
+          + ", firstTime="
+          + firstTime
+          + "]";
+    }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record StepAcceptanceContext(
       FirstOrderDifferentialEquations equations,
       double t,

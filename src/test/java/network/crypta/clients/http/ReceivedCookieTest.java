@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.text.ParseException;
-import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +35,7 @@ class ReceivedCookieTest {
 
   @Test
   void parseHeader_multipleCookies_parsesSequentially() throws ParseException {
-    ArrayList<ReceivedCookie> cookies =
+    List<ReceivedCookie> cookies =
         ReceivedCookie.parseHeader("SessionID=abCd12345;$path=/;key2=valUe2;$path=/");
 
     assertEquals(2, cookies.size());

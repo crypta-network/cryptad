@@ -539,7 +539,7 @@ public class ArchiveManager {
       }
       if (throwAtExit) throw new ArchiveRestartException("Archive changed on re-fetch");
 
-      if ((!gotElement.booleanValue()) && element != null) callback.notInArchive(context);
+      if (!gotElement.booleanValue() && element != null) callback.notInArchive(context);
 
     } catch (IOException e) {
       throw new ArchiveFailureException("Error reading archive: " + e.getMessage(), e);
@@ -570,7 +570,7 @@ public class ArchiveManager {
       }
       if (throwAtExit) throw new ArchiveRestartException("Archive changed on re-fetch");
 
-      if ((!gotElement.booleanValue()) && element != null) callback.notInArchive(context);
+      if (!gotElement.booleanValue() && element != null) callback.notInArchive(context);
 
     } catch (IOException e) {
       throw new ArchiveFailureException("Error reading archive: " + e.getMessage(), e);
@@ -730,7 +730,7 @@ public class ArchiveManager {
       throws IOException {
     for (Metadata m : e.mustResolve) {
       try {
-        addStoreElement(state, ".metadata-" + (x++), m.toBucket(tempBucketFactory));
+        addStoreElement(state, ".metadata-" + x++, m.toBucket(tempBucketFactory));
       } catch (MetadataUnresolvedException _) {
         x = resolve(e, x, state);
       }
@@ -854,7 +854,7 @@ public class ArchiveManager {
     ArchiveStoreItem oldItem;
     // Let it throw, if it does something is drastically wrong
     Bucket matchBucket = null;
-    if ((!gotElement.booleanValue()) && name.equals(callbackName)) {
+    if (!gotElement.booleanValue() && name.equals(callbackName)) {
       matchBucket = element.getReaderBucket();
     }
     synchronized (this) {

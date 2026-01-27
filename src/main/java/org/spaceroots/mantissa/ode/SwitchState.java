@@ -316,6 +316,7 @@ class SwitchState implements ComputableFunction, ConvergenceChecker {
    * @exception FunctionException if the interpolator cannot produce a state at the given time or
    *     the switching function signals a computation failure
    */
+  @Override
   public double valueAt(double t) throws FunctionException {
     try {
       interpolator.setInterpolatedTime(t);
@@ -340,6 +341,7 @@ class SwitchState implements ComputableFunction, ConvergenceChecker {
    * @return convergence indicator describing whether the interval is within tolerance and which
    *     endpoint is preferred when both are close to a root
    */
+  @Override
   public int converged(double x0, double y0, double x1, double y1) {
     if (Math.abs(x1 - x0) < convergence) {
       return (Math.abs(y0) < Math.abs(y1)) ? ConvergenceChecker.LOW : ConvergenceChecker.HIGH;

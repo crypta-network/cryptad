@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.WeakHashMap;
@@ -498,7 +499,7 @@ public class USKManager {
     }
   }
 
-  private record FetcherPlan(ArrayList<USKFetcher> toCancel, USKFetcher toSchedule) {}
+  private record FetcherPlan(List<USKFetcher> toCancel, USKFetcher toSchedule) {}
 
   private synchronized FetcherPlan planTemporaryBackgroundFetcher(
       USK usk, FetchContext fctx, boolean prefetchContent, boolean realTimeFlag) {
@@ -506,7 +507,7 @@ public class USKManager {
     FetcherInfo info = ensureTemporaryFetcher(clear, usk, fctx, realTimeFlag);
     if (prefetchContent) updatePrefetchFor(clear);
     refreshRecency(clear, info.fetcher);
-    ArrayList<USKFetcher> toCancel = trimTemporaryFetchers();
+    List<USKFetcher> toCancel = trimTemporaryFetchers();
     return new FetcherPlan(toCancel, info.created ? info.fetcher : null);
   }
 
@@ -540,8 +541,8 @@ public class USKManager {
     temporaryBackgroundFetchersLRU.push(clear, fetcher);
   }
 
-  private ArrayList<USKFetcher> trimTemporaryFetchers() {
-    ArrayList<USKFetcher> toCancel = null;
+  private List<USKFetcher> trimTemporaryFetchers() {
+    List<USKFetcher> toCancel = null;
     while (temporaryBackgroundFetchersLRU.size() > NodeClientCore.getMaxBackgroundUSKFetchers()) {
       USKFetcher fetcher = temporaryBackgroundFetchersLRU.popValue();
       if (fetcher == null) {
@@ -588,7 +589,7 @@ public class USKManager {
     if (LOG.isTraceEnabled()) LOG.trace("Running prefetch checker...");
     long now = System.currentTimeMillis();
     final boolean scheduleAgain;
-    final ArrayList<USK> toFetch;
+    final List<USK> toFetch;
     synchronized (USKManager.this) {
       scheduleAgain = !temporaryBackgroundFetchersPrefetch.isEmpty();
       toFetch = collectPrefetchTargetsLocked(now);
@@ -657,8 +658,8 @@ public class USKManager {
     };
   }
 
-  private ArrayList<USK> collectPrefetchTargetsLocked(long now) {
-    ArrayList<USK> toFetch = null;
+  private List<USK> collectPrefetchTargetsLocked(long now) {
+    List<USK> toFetch = null;
     for (Map.Entry<USK, Long> entry : temporaryBackgroundFetchersPrefetch.entrySet()) {
       Long last = entry.getValue();
       if (last > 0 && now - last >= PREFETCH_DELAY) {

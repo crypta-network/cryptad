@@ -125,7 +125,7 @@ public class PersistentRequestRoot {
    *     instance represents the shared global queue.
    */
   public void maybeUnregisterClient(PersistentRequestClient client) {
-    if ((!client.isGlobalQueue) && !client.hasPersistentRequests()) {
+    if (!client.isGlobalQueue && !client.hasPersistentRequests()) {
       synchronized (this) {
         clients.remove(client.name);
       }

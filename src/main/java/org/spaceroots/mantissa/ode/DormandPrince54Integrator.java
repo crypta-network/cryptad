@@ -116,6 +116,7 @@ public class DormandPrince54Integrator extends RungeKuttaFehlbergIntegrator {
    *
    * @return a stable method name describing the Dormand–Prince 5(4) scheme.
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }
@@ -129,6 +130,7 @@ public class DormandPrince54Integrator extends RungeKuttaFehlbergIntegrator {
    *
    * @return the integer order (five) of the accepted solution estimate.
    */
+  @Override
   public int getOrder() {
     return 5;
   }
@@ -150,6 +152,7 @@ public class DormandPrince54Integrator extends RungeKuttaFehlbergIntegrator {
    * @param h signed step size that was attempted when computing {@code yDotK}.
    * @return error ratio; values greater than one cause step rejection and resizing.
    */
+  @Override
   protected double estimateError(double[][] yDotK, double[] y0, double[] y1, double h) {
 
     double error = 0;

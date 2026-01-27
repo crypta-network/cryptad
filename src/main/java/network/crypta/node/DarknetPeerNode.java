@@ -1682,10 +1682,24 @@ public class DarknetPeerNode extends PeerNode {
     }
 
     protected void addComment(HTMLNode node) {
-      String[] lines = comment.split("\n");
-      for (int i = 0, c = lines.length; i < c; i++) {
-        node.addChild("#", lines[i]);
-        if (i != lines.length - 1) node.addChild("br");
+      List<String> lines = new ArrayList<>();
+      if (comment.isEmpty()) {
+        lines.add("");
+      } else {
+        int start = 0;
+        for (int i = 0; i < comment.length(); i++) {
+          if (comment.charAt(i) == '\n') {
+            lines.add(comment.substring(start, i));
+            start = i + 1;
+          }
+        }
+        if (start < comment.length()) {
+          lines.add(comment.substring(start));
+        }
+      }
+      for (int i = 0, c = lines.size(); i < c; i++) {
+        node.addChild("#", lines.get(i));
+        if (i != c - 1) node.addChild("br");
       }
     }
 
@@ -2100,7 +2114,7 @@ public class DarknetPeerNode extends PeerNode {
     if (LOG.isDebugEnabled()) LOG.debug("Offer accepted for {}", uid);
     FileOffer fo;
     synchronized (this) {
-      fo = (myFileOffersByUID.get(uid));
+      fo = myFileOffersByUID.get(uid);
     }
     if (fo == null) {
       LOG.error("No such offer: {}", uid);

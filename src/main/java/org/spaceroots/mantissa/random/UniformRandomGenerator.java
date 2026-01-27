@@ -97,6 +97,7 @@ public class UniformRandomGenerator implements NormalizedRandomGenerator {
    *
    * @return next pseudo-random value uniformly distributed on {@code [-sqrt(3), sqrt(3)]}
    */
+  @Override
   public double nextDouble() {
     return TWOSQRT3 * generator.nextDouble() - SQRT3;
   }

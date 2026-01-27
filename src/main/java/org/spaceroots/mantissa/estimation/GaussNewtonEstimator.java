@@ -38,8 +38,8 @@ public class GaussNewtonEstimator implements Estimator, Serializable {
    * <p>The constructor captures the stopping rules used by every subsequent estimation run. An
    * iteration stops early when the criterion falls under the {@code convergence} floor or when two
    * consecutive criteria differ by less than {@code steadyStateThreshold} times the current value
-   * ({@code Math.abs(Jn - JnMinus1) &lt; Jn * steadyStateThreshold}). A failure to satisfy either
-   * rule within {@code maxIterations} iterations results in an {@link EstimationException} during
+   * ({@code Math.abs(Jn - JnMinus1) < Jn * steadyStateThreshold}). A failure to satisfy either rule
+   * within {@code maxIterations} iterations results in an {@link EstimationException} during
    * execution. The {@code epsilon} parameter defines the minimal pivot magnitude accepted by the
    * linear solver; values below it are treated as singular to avoid unstable updates. Choose
    * thresholds based on measurement noise level and acceptable runtime.
@@ -77,6 +77,7 @@ public class GaussNewtonEstimator implements Estimator, Serializable {
    * @exception EstimationException if convergence fails or the linear subproblem becomes singular
    * @see EstimationProblem
    */
+  @Override
   public void estimate(EstimationProblem problem) throws EstimationException {
     int iterations = 0;
     double previous = evaluateCriterion(problem);
@@ -183,6 +184,7 @@ public class GaussNewtonEstimator implements Estimator, Serializable {
    *     most recent parameter estimates
    * @return RMS value derived from current residuals; {@code Double.NaN} is never returned
    */
+  @Override
   public double getRMS(EstimationProblem problem) {
     double criterion = evaluateCriterion(problem);
     int n = problem.getMeasurements().length;

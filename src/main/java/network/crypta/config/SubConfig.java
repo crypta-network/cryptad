@@ -516,9 +516,9 @@ public class SubConfig implements Comparable<SubConfig> {
       if (LOG.isDebugEnabled())
         LOG.debug("Key={} value={} default={}", key, o.getValueString(), o.isDefault());
       if (configRequestType == Config.RequestType.CURRENT_SETTINGS
-          && (!withDefaults)
+          && !withDefaults
           && o.isDefault()
-          && (!o.forceWrite)) {
+          && !o.forceWrite) {
         if (LOG.isDebugEnabled()) LOG.debug("Skipping {} - {}", key, o.isDefault());
         continue;
       }

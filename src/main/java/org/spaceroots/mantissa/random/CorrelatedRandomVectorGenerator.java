@@ -274,6 +274,7 @@ public class CorrelatedRandomVectorGenerator implements Serializable, RandomVect
    * @return newly allocated vector whose length equals the covariance order; values honor mean and
    *     covariance shape
    */
+  @Override
   public double[] nextVector() {
 
     // generate uncorrelated vector

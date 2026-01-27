@@ -72,6 +72,7 @@ public class SimpleHelpToadlet extends Toadlet {
    * @throws ToadletContextClosedException if the context is closed before the response is flushed.
    * @throws IOException if writing the generated HTML to the client output stream fails.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
 

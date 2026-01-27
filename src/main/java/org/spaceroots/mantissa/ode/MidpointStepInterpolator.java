@@ -95,6 +95,7 @@ class MidpointStepInterpolator extends RungeKuttaStepInterpolator implements Ste
    * @throws DerivativeException if user-supplied derivative computation signaled an error while
    *     producing the stored stage values used for interpolation.
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 

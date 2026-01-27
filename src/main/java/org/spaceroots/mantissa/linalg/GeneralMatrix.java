@@ -96,6 +96,7 @@ public class GeneralMatrix extends Matrix {
    *
    * @return new {@code GeneralMatrix} with identical dimensions and coefficient values copied
    */
+  @Override
   public Matrix duplicate() {
     return new GeneralMatrix(this);
   }
@@ -185,6 +186,7 @@ public class GeneralMatrix extends Matrix {
    * @param i zero-based row index whose structural non-null span is requested
    * @return range starting at column 0 and ending at the current column count
    */
+  @Override
   protected NonNullRange getRangeForRow(int i) {
     return new NonNullRange(0, columns);
   }
@@ -201,6 +203,7 @@ public class GeneralMatrix extends Matrix {
    * @param j zero-based column index whose structural non-null span is requested
    * @return range starting at row 0 and ending at the current row count
    */
+  @Override
   protected NonNullRange getRangeForColumn(int j) {
     return new NonNullRange(0, rows);
   }

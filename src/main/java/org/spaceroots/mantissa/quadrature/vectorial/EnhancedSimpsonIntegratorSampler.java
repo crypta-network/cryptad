@@ -82,6 +82,7 @@ public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator
    *
    * @return {@code true} when the sampler can compute and return another cumulative value
    */
+  @Override
   public boolean hasNext() {
     return iter.hasNext();
   }
@@ -94,6 +95,7 @@ public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator
    *
    * @return number of components present in each returned ordinate vector
    */
+  @Override
   public int getDimension() {
     return iter.getDimension();
   }
@@ -111,6 +113,7 @@ public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator
    *     integration window
    * @throws FunctionException if the delegate fails to provide the required source samples
    */
+  @Override
   public VectorialValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
     // performs one step of an enhanced Simpson scheme
     VectorialValuedPair previous = next;

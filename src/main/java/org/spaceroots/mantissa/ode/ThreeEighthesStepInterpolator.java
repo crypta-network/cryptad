@@ -103,6 +103,7 @@ class ThreeEighthesStepInterpolator extends RungeKuttaStepInterpolator implement
    * @throws DerivativeException propagated if user-provided derivative computation fails while
    *     evaluating stored slopes for interpolation.
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 

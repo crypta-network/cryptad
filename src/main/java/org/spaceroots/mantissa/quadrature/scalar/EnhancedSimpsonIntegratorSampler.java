@@ -80,6 +80,7 @@ public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator
    * @return {@code true} when at least one more integrated point can be obtained from the
    *     underlying sampler.
    */
+  @Override
   public boolean hasNext() {
     return iter.hasNext();
   }
@@ -101,6 +102,7 @@ public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator
    * @throws FunctionException if the wrapped iterator fails while producing any required sample
    *     point.
    */
+  @Override
   public ScalarValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
     // performs one step of an enhanced Simpson scheme
     ScalarValuedPair previous = next;

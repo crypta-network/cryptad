@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Date;
+import java.util.Locale;
 import java.util.Set;
 import network.crypta.support.TimeUtil;
 
@@ -180,7 +181,7 @@ public class Cookie {
    *     path component.
    */
   public static URI validateDomain(String domainString) throws URISyntaxException {
-    return validateDomain(new URI(domainString.toLowerCase()));
+    return validateDomain(new URI(domainString.toLowerCase(Locale.ROOT)));
   }
 
   /**
@@ -197,7 +198,7 @@ public class Cookie {
    *     segment other than {@code /}.
    */
   public static URI validateDomain(URI domain) {
-    String scheme = domain.getScheme().toLowerCase();
+    String scheme = domain.getScheme().toLowerCase(Locale.ROOT);
 
     if (!"http".equals(scheme) && !"https".equals(scheme))
       throw new IllegalArgumentException("Illegal cookie domain, must be http or https: " + domain);
@@ -277,11 +278,12 @@ public class Cookie {
     if (!isUSASCII(name))
       throw new IllegalArgumentException("Invalid name, contains non-US-ASCII characters: " + name);
 
-    name = name.trim().toLowerCase(); // RFC2965: Name is case-insensitive
+    name = name.trim().toLowerCase(Locale.ROOT); // RFC2965: Name is case-insensitive
 
     // RFC2616 token syntax forbids control characters and separators; this follows that guidance.
 
-    for (Character c : name.toCharArray()) {
+    for (int i = 0; i < name.length(); i++) {
+      char c = name.charAt(i);
       if (Character.isWhitespace(c))
         throw new IllegalArgumentException("Invalid name, contains whitespace: " + name);
 
@@ -341,7 +343,8 @@ public class Cookie {
 
     // RFC2616 allows quoted-string values to include most characters; here we apply a stricter set.
 
-    for (Character c : value.toCharArray()) {
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
       // We allow whitespace in the value because quotation is allowed and supported by the parser
       // in ReceivedCookie
 

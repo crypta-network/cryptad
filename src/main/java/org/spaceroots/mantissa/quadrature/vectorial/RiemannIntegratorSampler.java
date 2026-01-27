@@ -93,6 +93,7 @@ public class RiemannIntegratorSampler implements SampledFunctionIterator {
    * @return {@code true} when the integrator can advance at least one more step; {@code false} once
    *     the wrapped iterator has been fully consumed
    */
+  @Override
   public boolean hasNext() {
     return iter.hasNext();
   }
@@ -106,6 +107,7 @@ public class RiemannIntegratorSampler implements SampledFunctionIterator {
    *
    * @return constant dimensionality of the integrated vector values; never negative
    */
+  @Override
   public int getDimension() {
     return iter.getDimension();
   }
@@ -125,6 +127,7 @@ public class RiemannIntegratorSampler implements SampledFunctionIterator {
    * @throws ExhaustedSampleException if no further sample exists in the wrapped iterator
    * @throws FunctionException if the underlying iterator fails to produce the next sample value
    */
+  @Override
   public VectorialValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
 
     // performs one step of a Riemann scheme

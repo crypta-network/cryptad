@@ -107,6 +107,7 @@ public class UncorrelatedRandomVectorGenerator implements Serializable, RandomVe
    *     underlying normalized generator after scaling and shifting
    * @throws NullPointerException if the underlying generator is {@code null}
    */
+  @Override
   public double[] nextVector() {
 
     double[] random = new double[mean.length];

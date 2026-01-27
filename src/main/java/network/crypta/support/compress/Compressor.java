@@ -3,6 +3,8 @@ package network.crypta.support.compress;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import org.slf4j.Logger;
@@ -206,9 +208,19 @@ public interface Compressor {
         // Return an empty array to comply with SL rule S1168; callers treat empty as default.
         return new COMPRESSOR_TYPE[0];
       }
-      String[] codecs = compressordescriptor.split(",");
+      List<String> codecs = new ArrayList<>();
+      int start = 0;
+      for (int i = 0; i < compressordescriptor.length(); i++) {
+        if (compressordescriptor.charAt(i) == ',') {
+          codecs.add(compressordescriptor.substring(start, i));
+          start = i + 1;
+        }
+      }
+      if (start < compressordescriptor.length()) {
+        codecs.add(compressordescriptor.substring(start));
+      }
       java.util.LinkedHashSet<COMPRESSOR_TYPE> result =
-          java.util.LinkedHashSet.newLinkedHashSet(codecs.length);
+          java.util.LinkedHashSet.newLinkedHashSet(codecs.size());
       for (String raw : codecs) {
         final String codec = raw.trim();
         final COMPRESSOR_TYPE ct = resolveCodec(codec);

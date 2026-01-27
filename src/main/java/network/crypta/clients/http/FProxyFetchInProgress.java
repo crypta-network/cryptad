@@ -413,7 +413,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       String fullMimeType = cachedMimeType;
       String strippedMimeType = ContentFilter.stripMIMEType(cachedMimeType);
       FilterMIMEType type = ContentFilter.getMIMEType(strippedMimeType);
-      if (type == null || ((!type.safeToRead) && type.readFilter == null)) {
+      if (type == null || (!type.safeToRead && type.readFilter == null)) {
         UnknownContentTypeException e = new UnknownContentTypeException(strippedMimeType);
         onFailure(
             new FetchException(e.getFetchErrorCode(), cachedData.size(), e, strippedMimeType));

@@ -388,6 +388,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
    * queued immediately. Otherwise, the request is remembered and honored when the runner becomes
    * idle.
    */
+  @Override
   public void setCheckpointASAP() {
     synchronized (sync) {
       if (!enableCheckpointing) return;
@@ -620,6 +621,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
    * @return {@code true} after {@link #onStarted(boolean)} has been invoked following a load;
    *     {@code false} otherwise.
    */
+  @Override
   public boolean hasLoaded() {
     synchronized (sync) {
       return loaded;
@@ -647,6 +649,7 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
    * @throws PersistenceDisabledException if shutdown has been requested or checkpointing is
    *     disabled while attempting to acquire the lock.
    */
+  @Override
   public CheckpointLock lock() throws PersistenceDisabledException {
     synchronized (sync) {
       if (killed) throw new PersistenceDisabledException();

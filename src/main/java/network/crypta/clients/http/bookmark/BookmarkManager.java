@@ -486,6 +486,7 @@ public class BookmarkManager implements RequestClient {
     }
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private boolean wantUSK(USK u, BookmarkItem ignore) {
     List<BookmarkItem> items = MAIN_CATEGORY.getAllItems();
     for (BookmarkItem item : items) {

@@ -85,6 +85,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
     return fittedCoefficients;
   }
 
+  @Override
   public WeightedMeasurement[] getMeasurements() {
     return measurements.toArray(new FitMeasurement[0]);
   }
@@ -95,6 +96,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    *
    * @return unbound parameters
    */
+  @Override
   public EstimatedParameter[] getUnboundParameters() {
     return coefficients.clone();
   }
@@ -104,6 +106,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
    *
    * @return parameters
    */
+  @Override
   public EstimatedParameter[] getAllParameters() {
     return coefficients.clone();
   }
@@ -179,6 +182,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
      *
      * @return theoretical value at the measurement abscissa
      */
+    @Override
     public double getTheoreticalValue() {
       return valueAt(x);
     }
@@ -189,6 +193,7 @@ public abstract class AbstractCurveFitter implements EstimationProblem, Serializ
      * @param p parameter with respect to which the derivative is requested
      * @return partial derivative
      */
+    @Override
     public double getPartial(EstimatedParameter p) {
       return partial(x, p);
     }

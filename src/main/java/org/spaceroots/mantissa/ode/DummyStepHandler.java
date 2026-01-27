@@ -63,6 +63,7 @@ public class DummyStepHandler implements StepHandler, Serializable {
    *
    * @return {@code false}, indicating dense output can be disabled safely for this handler
    */
+  @Override
   public boolean requiresDenseOutput() {
     return false;
   }
@@ -75,6 +76,7 @@ public class DummyStepHandler implements StepHandler, Serializable {
    * necessary. Calling this method multiple times or between steps has no effect and is safe to do
    * from any thread.
    */
+  @Override
   public void reset() {
     // Intentionally empty: dummy handler keeps no state to reset.
   }
@@ -93,6 +95,7 @@ public class DummyStepHandler implements StepHandler, Serializable {
    *     dummy handler never inspects it or retains references
    * @param isLast {@code true} when the integrator reports the final step; ignored by this handler
    */
+  @Override
   public void handleStep(StepInterpolator interpolator, boolean isLast) {
     // Intentionally empty: dummy handler ignores all steps and produces no output.
   }

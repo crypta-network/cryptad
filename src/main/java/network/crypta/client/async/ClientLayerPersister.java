@@ -908,6 +908,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     return clientCore.getPersistentRequests();
   }
 
+  @Override
   public boolean newSalt() {
     return newSalt;
   }

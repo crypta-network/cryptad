@@ -1,7 +1,7 @@
 package network.crypta.client;
 
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.client.Metadata.DocumentType;
@@ -53,7 +53,7 @@ import org.slf4j.event.Level;
  * <ul>
  *   <li>Fetch content by URI using {@link #fetch(FreenetURI)} or its overloads.
  *   <li>Insert content using one of the {@code insert(...)} overloads or {@link
- *       #insertManifest(FreenetURI, java.util.HashMap, String)} for directory-like structures.
+ *       #insertManifest(FreenetURI, java.util.Map, String)} for directory-like structures.
  *   <li>Adjust size limits with {@link #setMaxLength(long)} and {@link
  *       #setMaxIntermediateLength(long)} prior to building contexts.
  * </ul>
@@ -578,7 +578,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
    */
   @Override
   public FreenetURI insertManifest(
-      FreenetURI insertURI, HashMap<String, Object> bucketsByName, String defaultName)
+      FreenetURI insertURI, Map<String, Object> bucketsByName, String defaultName)
       throws InsertException {
     return insertManifest(insertURI, bucketsByName, defaultName, priorityClass);
   }
@@ -586,7 +586,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
   @Override
   public FreenetURI insertManifest(
       FreenetURI insertURI,
-      HashMap<String, Object> bucketsByName,
+      Map<String, Object> bucketsByName,
       String defaultName,
       short priorityClass)
       throws InsertException {
@@ -596,7 +596,7 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
   @Override
   public FreenetURI insertManifest(
       FreenetURI insertURI,
-      HashMap<String, Object> bucketsByName,
+      Map<String, Object> bucketsByName,
       String defaultName,
       short priorityClass,
       byte[] forceCryptoKey)

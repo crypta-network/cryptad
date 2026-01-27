@@ -76,6 +76,7 @@ public class ThreeEighthesIntegrator extends RungeKuttaIntegrator {
    *
    * @return constant string identifying the 3/8 Runge–Kutta method for user-facing display.
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }

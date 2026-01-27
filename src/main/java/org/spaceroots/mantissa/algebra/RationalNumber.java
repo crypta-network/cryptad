@@ -474,6 +474,7 @@ public class RationalNumber implements Serializable {
    * @return {@code true} when {@code o} is a {@code RationalNumber} with identical numerator and
    *     denominator; {@code false} otherwise.
    */
+  @Override
   public boolean equals(Object o) {
     if (o instanceof RationalNumber r) {
       return (p.compareTo(r.p) == 0) && (q.compareTo(r.q) == 0);
@@ -490,6 +491,7 @@ public class RationalNumber implements Serializable {
    *
    * @return integer hash computed from the canonical numerator and denominator.
    */
+  @Override
   public int hashCode() {
     return p.hashCode() ^ q.hashCode();
   }
@@ -503,6 +505,7 @@ public class RationalNumber implements Serializable {
    *
    * @return human-readable string reflecting the normalized numerator and denominator.
    */
+  @Override
   public String toString() {
     return p + ((q.compareTo(BigInteger.ONE) == 0) ? "" : ("/" + q));
   }

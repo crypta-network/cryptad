@@ -112,6 +112,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
    *
    * @return {@code true}, indicating dense output is required for every accepted step
    */
+  @Override
   public boolean requiresDenseOutput() {
     return true;
   }
@@ -125,6 +126,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
    * during parameter sweeps or optimization loops that perform many short integrations in rapid
    * succession.
    */
+  @Override
   public void reset() {
     initialTime = Double.NaN;
     finalTime = Double.NaN;
@@ -148,6 +150,7 @@ public class ContinuousOutputModel implements StepHandler, Serializable {
    * @throws DerivativeException if finalizing or copying the interpolator requires derivative
    *     evaluations that fail or propagate user exceptions
    */
+  @Override
   public void handleStep(StepInterpolator interpolator, boolean isLast) throws DerivativeException {
 
     AbstractStepInterpolator ai = (AbstractStepInterpolator) interpolator;

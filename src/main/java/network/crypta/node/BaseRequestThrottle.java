@@ -1,6 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 /**
@@ -32,7 +31,7 @@ public interface BaseRequestThrottle {
    * downstream components. Implementations may enforce this bound when computing {@link
    * #getDelay()}.
    */
-  long MIN_DELAY = MILLISECONDS.toMillis(20);
+  long MIN_DELAY = 20L;
 
   /**
    * Returns the current inter-request delay in milliseconds.

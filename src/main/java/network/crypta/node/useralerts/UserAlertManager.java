@@ -347,7 +347,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
   }
 
   private boolean shouldSkipAlert(UserAlert alert, boolean showOnlyErrors) {
-    return (!alert.isValid()) || (showOnlyErrors && alert.getPriorityClass() > UserAlert.ERROR);
+    return !alert.isValid() || (showOnlyErrors && alert.getPriorityClass() > UserAlert.ERROR);
   }
 
   /**

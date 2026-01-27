@@ -897,8 +897,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       loadTracker = new PeerNodeLoadTracker(peerNode);
     }
 
-    byte[] computePeerPublicKeyHash(ECPublicKey peerEcdsaPubKey) {
-      return referenceSupport.computePeerPublicKeyHash(peerEcdsaPubKey);
+    byte[] computePeerPublicKeyHash(ECPublicKey peerECDSAPubKey) {
+      return referenceSupport.computePeerPublicKeyHash(peerECDSAPubKey);
     }
 
     ECPublicKey readPeerEcdsaKeyReturn(SimpleFieldSet fs) throws FSParseException {
@@ -1844,6 +1844,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * @return keyspace location, or {@code -1} if unknown
    */
+  @Override
   public double getLocation() {
     return internals.getLocation();
   }
@@ -1936,7 +1937,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   @Override
   public boolean isRoutable() {
-    if ((!isConnected()) || (!isRoutingCompatible())) return false;
+    if (!isConnected() || !isRoutingCompatible()) return false;
     return internals.isValidLocation();
   }
 
@@ -2125,7 +2126,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
               && isRekeying;
       shouldReturn = isRekeying || !isConnected();
       shouldRekey = (timeWhenRekeyingShouldOccur < now);
-      if ((!shouldRekey)
+      if (!shouldRekey
           && totalBytesExchangedWithCurrentTracker
               > FNPPacketMangler.AMOUNT_OF_BYTES_ALLOWED_BEFORE_WE_REKEY) {
         shouldRekey = true;
@@ -2256,7 +2257,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
             new Runnable() {
               @Override
               public void run() {
-                if ((!selfPeerNode().isConnected()) && timeLastDisconnect == now) {
+                if (!selfPeerNode().isConnected() && timeLastDisconnect == now) {
                   PacketFormat oldPacketFormatLocal;
                   synchronized (this) {
                     if (isConnected()) return;
@@ -2409,7 +2410,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     }
     if (LOG.isDebugEnabled())
       LOG.debug("shouldSendHandshake(): initial = {}", tempShouldSendHandshake);
-    if (tempShouldSendHandshake && (hasLiveHandshake(now))) tempShouldSendHandshake = false;
+    if (tempShouldSendHandshake && hasLiveHandshake(now)) tempShouldSendHandshake = false;
     if (tempShouldSendHandshake) {
       if (isBurstOnly()) {
         synchronized (this) {
@@ -2819,7 +2820,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   @Override
   public String toString() {
     // Note: include object identity hash for quick debugging correlation.
-    return shortToString() + '@' + Integer.toHexString(super.hashCode());
+    return shortToString() + '@' + Integer.toHexString(System.identityHashCode(this));
   }
 
   /**
@@ -2831,7 +2832,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   @Override
   public void receivedPacket(boolean dontLog, boolean dataPacket) {
     synchronized (this) {
-      if ((!isConnected()) && (!dontLog)) {
+      if (!isConnected() && !dontLog) {
         // Don't log if we are disconnecting, because receiving packets during disconnecting is
         // normal.
         // That includes receiving packets after we have technically disconnected already.
@@ -4564,6 +4565,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * @param length number of bytes received, in bytes
    */
+  @Override
   public synchronized void reportIncomingBytes(int length) {
     totalInputSinceStartup += length;
     totalBytesExchangedWithCurrentTracker += length;
@@ -4577,6 +4579,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * @param length number of bytes sent, in bytes
    */
+  @Override
   public synchronized void reportOutgoingBytes(int length) {
     totalOutputSinceStartup += length;
     totalBytesExchangedWithCurrentTracker += length;
@@ -4802,6 +4805,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    *
    * @param key content key to announce
    */
+  @Override
   public void offer(Key key) {
     internals.offer(key);
   }
@@ -4931,7 +4935,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
-   * @return True if we have been removed from the peers list.
+   * Returns true if we have been removed from the peers list.
+   *
+   * @return true if we have been removed from the peers list.
    */
   synchronized boolean cachedRemoved() {
     return removed;
@@ -5776,7 +5782,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   public synchronized void decrementUOMSends() {
     uomCount--;
-    if (uomCount == 0 && (!sendingUOMMainJar) && (!sendingUOMLegacyExtJar))
+    if (uomCount == 0 && !sendingUOMMainJar && !sendingUOMLegacyExtJar)
       lastSentUOM = System.currentTimeMillis();
   }
 

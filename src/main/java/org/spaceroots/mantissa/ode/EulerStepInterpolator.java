@@ -91,6 +91,7 @@ class EulerStepInterpolator extends RungeKuttaStepInterpolator implements StepIn
    * @throws DerivativeException propagated if underlying derivative computations deferred to
    *     finalization fail before interpolation proceeds.
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 

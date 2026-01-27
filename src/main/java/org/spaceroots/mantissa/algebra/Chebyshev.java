@@ -38,6 +38,7 @@ public class Chebyshev extends OrthogonalPolynomial {
   private static final CoefficientsGenerator generator =
       new CoefficientsGenerator(
           new RationalNumber(1L), new RationalNumber(0L), new RationalNumber(1L)) {
+        @Override
         public void setRecurrenceCoefficients(int k) {
           // the recurrence relation is
           // Tk+1(X) = 2X Tk(X) - Tk-1(X)

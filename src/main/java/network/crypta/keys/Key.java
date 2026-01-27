@@ -209,8 +209,8 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof Key)) return false;
-    return Arrays.equals(routingKey, ((Key) o).routingKey);
+    if (!(o instanceof Key key)) return false;
+    return Arrays.equals(routingKey, key.routingKey);
   }
 
   /**
@@ -439,10 +439,10 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
       finalData[0] = (byte) ((sourceLength >> 24) & 0xff);
       finalData[1] = (byte) ((sourceLength >> 16) & 0xff);
       finalData[2] = (byte) ((sourceLength >> 8) & 0xff);
-      finalData[3] = (byte) ((sourceLength) & 0xff);
+      finalData[3] = (byte) (sourceLength & 0xff);
     } else {
       finalData[0] = (byte) ((sourceLength >> 8) & 0xff);
-      finalData[1] = (byte) ((sourceLength) & 0xff);
+      finalData[1] = (byte) (sourceLength & 0xff);
     }
     return finalData;
   }

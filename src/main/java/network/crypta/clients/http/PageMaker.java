@@ -4,6 +4,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import network.crypta.client.filter.PushingTagReplacerCallback;
 import network.crypta.l10n.BaseL10n;
@@ -685,7 +686,11 @@ public final class PageMaker {
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.networkThreatLevelShort"));
     network.addAttribute(
         ATTR_CLASS,
-        node.services().securityLevels().getNetworkThreatLevel().toString().toLowerCase());
+        node.services()
+            .securityLevels()
+            .getNetworkThreatLevel()
+            .toString()
+            .toLowerCase(Locale.ROOT));
 
     HTMLNode physical =
         secLevels.addChild(
@@ -698,7 +703,11 @@ public final class PageMaker {
         ATTR_TITLE, NodeL10n.getBase().getString("SecurityLevels.physicalThreatLevelShort"));
     physical.addAttribute(
         ATTR_CLASS,
-        node.services().securityLevels().getPhysicalThreatLevel().toString().toLowerCase());
+        node.services()
+            .securityLevels()
+            .getPhysicalThreatLevel()
+            .toString()
+            .toLowerCase(Locale.ROOT));
   }
 
   private void addPeerStatus(HTMLNode statusBarDiv) {

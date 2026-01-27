@@ -65,6 +65,7 @@ public class EulerIntegrator extends RungeKuttaIntegrator {
    * @return immutable method identifier string, currently {@code \"Euler\"}, suitable for display
    *     and equality checks.
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }
