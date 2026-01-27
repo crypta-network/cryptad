@@ -274,16 +274,14 @@ class KeyListenerTracker implements KeySalter {
   }
 
   private ArrayList<KeyListener> probablyMatches(Key key, byte[] saltedKey) {
-    Object singleMatch;
-    List<KeyListener> listMatches;
     final ByteArrayWrapper wrapper = new ByteArrayWrapper(saltedKey);
     synchronized (this) {
-      singleMatch = singleKeyListeners.get(wrapper);
-      listMatches =
-          keyListeners.isEmpty() ? Collections.emptyList() : new ArrayList<>(keyListeners);
+      Object singleMatch = singleKeyListeners.get(wrapper);
+      ArrayList<KeyListener> matches = appendSingleMatches(singleMatch, key, saltedKey);
+      if (keyListeners.isEmpty()) return matches;
+      List<KeyListener> listMatches = new ArrayList<>(keyListeners);
+      return appendListMatches(matches, listMatches, key, saltedKey);
     }
-    ArrayList<KeyListener> matches = appendSingleMatches(singleMatch, key, saltedKey);
-    return appendListMatches(matches, listMatches, key, saltedKey);
   }
 
   /**
@@ -401,16 +399,14 @@ class KeyListenerTracker implements KeySalter {
       return false;
     }
     byte[] saltedKey = saltKey(key);
-    Object singleMatch;
-    List<KeyListener> listMatches;
     final ByteArrayWrapper wrapper = new ByteArrayWrapper(saltedKey);
     synchronized (this) {
-      singleMatch = singleKeyListeners.get(wrapper);
-      listMatches =
-          keyListeners.isEmpty() ? Collections.emptyList() : new ArrayList<>(keyListeners);
+      Object singleMatch = singleKeyListeners.get(wrapper);
+      if (anySingleProbablyWant(singleMatch, key, saltedKey)) return true;
+      if (keyListeners.isEmpty()) return false;
+      List<KeyListener> listMatches = new ArrayList<>(keyListeners);
+      return anyListProbablyWant(listMatches, key, saltedKey);
     }
-    if (anySingleProbablyWant(singleMatch, key, saltedKey)) return true;
-    return anyListProbablyWant(listMatches, key, saltedKey);
   }
 
   /**
@@ -509,23 +505,23 @@ class KeyListenerTracker implements KeySalter {
 
   /** Returns all KeyListeners that return true on probablyWantKey(key, saltedKey) */
   private List<KeyListener> probablyWantKey(Key key, byte[] saltedKey) {
-    List<KeyListener> listSnapshot;
+    ArrayList<KeyListener> matches = null;
     synchronized (this) {
       if (keyListeners.isEmpty()) return Collections.emptyList();
-      listSnapshot = new ArrayList<>(keyListeners);
-    }
-    ArrayList<KeyListener> matches = new ArrayList<>();
-    for (KeyListener listener : listSnapshot) {
-      try {
-        if (listener.probablyWantKey(key, saltedKey)) {
-          matches.add(listener);
+      List<KeyListener> listSnapshot = new ArrayList<>(keyListeners);
+      for (KeyListener listener : listSnapshot) {
+        try {
+          if (listener.probablyWantKey(key, saltedKey)) {
+            if (matches == null) matches = new ArrayList<>();
+            matches.add(listener);
+          }
+        } catch (Exception t) {
+          LOG.error(
+              "Error in probablyWantKey callback during probablyWantKey scan for {}", listener, t);
         }
-      } catch (Exception t) {
-        LOG.error(
-            "Error in probablyWantKey callback during probablyWantKey scan for {}", listener, t);
       }
     }
-    return matches;
+    return matches == null ? Collections.emptyList() : matches;
   }
 
   private void registerListener(byte[] wantedKey, ByteArrayWrapper wrapper, KeyListener listener) {
