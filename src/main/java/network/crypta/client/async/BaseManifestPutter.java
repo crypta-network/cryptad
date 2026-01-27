@@ -1111,7 +1111,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     CompatibilityMode mode = ctx.getCompatibilityMode();
     if (!(mode == CompatibilityMode.COMPAT_CURRENT
-        || mode.ordinal() >= CompatibilityMode.COMPAT_1416.ordinal()))
+        || mode.code >= CompatibilityMode.COMPAT_1416.code))
       this.cryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
     else this.cryptoAlgorithm = Key.ALGO_AES_CTR_256_SHA256;
     runningPutHandlers = new HashSet<>();

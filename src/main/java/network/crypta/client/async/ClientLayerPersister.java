@@ -503,7 +503,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         }
       }
       PartiallyLoadedRequest old = partiallyLoadedRequests.get(reqID);
-      if (old == null || old.status.ordinal() > status.ordinal()) {
+      if (old == null || old.status.compareTo(status) > 0) {
         partiallyLoadedRequests.put(reqID, new PartiallyLoadedRequest(request, status));
         if (!(status == RequestLoadStatus.LOADED || status == RequestLoadStatus.RESTORED_FULLY))
           somethingFailed = true;

@@ -546,8 +546,8 @@ public class Metadata implements Serializable {
   private void enforceTopCompatibilityOrThrow() throws MetadataParseException {
     if (topCompatibilityMode != CompatibilityMode.COMPAT_UNKNOWN) {
       if (minCompatMode == CompatibilityMode.COMPAT_UNKNOWN
-          || !(minCompatMode.ordinal() > topCompatibilityMode.ordinal()
-              || maxCompatMode.ordinal() < topCompatibilityMode.ordinal())) {
+          || !(minCompatMode.code > topCompatibilityMode.code
+              || maxCompatMode.code < topCompatibilityMode.code)) {
         minCompatMode = maxCompatMode = topCompatibilityMode;
       } else
         throw new MetadataParseException(
@@ -1455,7 +1455,7 @@ public class Metadata implements Serializable {
     HashResult[] topHashes = topLayer.hashes();
     byte[] splitfileCryptoKeyValue = params.splitfileCryptoKey();
     int deductBlocksFromSegmentsValue = params.deductBlocksFromSegments();
-    if (topCompatibilityModeParam.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
+    if (topCompatibilityModeParam.code < CompatibilityMode.COMPAT_1255.code) {
       if (splitfileCryptoKeyValue != null) throw new IllegalArgumentException();
       if (topHashes != null) throw new IllegalArgumentException();
       if (deductBlocksFromSegmentsValue != 0) throw new IllegalArgumentException();

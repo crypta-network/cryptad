@@ -138,7 +138,7 @@ public class InsertContext implements Serializable {
      */
     COMPAT_CURRENT((short) 1),
     // The below *are* used in Metadata compatibility mode detection. And they are comparable by
-    // ordinal().
+    // code.
     // This means we have to check for COMPAT_CURRENT as a special case.
     /** Exactly as before 1250: Segments of exactly 128 data, 128 check, check = data */
     COMPAT_1250_EXACT((short) 2),
@@ -307,15 +307,15 @@ public class InsertContext implements Serializable {
   /**
    * Returns the numeric code corresponding to the current compatibility mode.
    *
-   * <p>This method exposes the ordinal of {@link #getCompatibilityMode()} and is primarily intended
-   * for persistence and diagnostics. Callers should prefer the enum form where possible to avoid
-   * depending on the numeric representation.
+   * <p>This method exposes the numeric code of {@link #getCompatibilityMode()} and is primarily
+   * intended for persistence and diagnostics. Callers should prefer the enum form where possible to
+   * avoid depending on the numeric representation.
    *
-   * @return the ordinal value of the current compatibility mode, suitable for stable serialized
+   * @return the numeric code of the current compatibility mode, suitable for stable serialized
    *     storage or comparison.
    */
   public long getCompatibilityCode() {
-    return realCompatMode.ordinal();
+    return realCompatMode.code;
   }
 
   /**
@@ -458,7 +458,7 @@ public class InsertContext implements Serializable {
     final int prime = 31;
     int result = 1;
     result = prime * result + (canWriteClientCache ? 1231 : 1237);
-    result = prime * result + realCompatMode.ordinal();
+    result = prime * result + realCompatMode.code;
     result =
         prime * result + ((compressorDescriptor == null) ? 0 : compressorDescriptor.hashCode());
     result = prime * result + consecutiveRNFsCountAsSuccess;
