@@ -2845,20 +2845,20 @@ public class DMT {
   /** Returns {@code true} if the message is one of the peer-load status variants. */
   public static boolean isPeerLoadStatusMessage(Message m) {
     MessageType spec = m.getSpec();
-    return (spec == FNPPeerLoadStatusByte
-        || spec == FNPPeerLoadStatusShort
-        || spec == FNPPeerLoadStatusInt);
+    return FNPPeerLoadStatusByte.equals(spec)
+        || FNPPeerLoadStatusShort.equals(spec)
+        || FNPPeerLoadStatusInt.equals(spec);
   }
 
   /** Returns {@code true} if the message is a request type subject to load limiting. */
   public static boolean isLoadLimitedRequest(Message m) {
     MessageType spec = m.getSpec();
-    return (spec == FNPCHKDataRequest
-        || spec == FNPSSKDataRequest
-        || spec == FNPSSKInsertRequest
-        || spec == FNPInsertRequest
-        || spec == FNPSSKInsertRequestNew
-        || spec == FNPGetOfferedKey);
+    return FNPCHKDataRequest.equals(spec)
+        || FNPSSKDataRequest.equals(spec)
+        || FNPSSKInsertRequest.equals(spec)
+        || FNPInsertRequest.equals(spec)
+        || FNPSSKInsertRequestNew.equals(spec)
+        || FNPGetOfferedKey.equals(spec);
   }
 
   // Extended fatal timeout handling.

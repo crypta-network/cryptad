@@ -975,8 +975,8 @@ public final class NodeStorageSubsystem {
       // Store the pubkey before storing the data, otherwise we can get a race condition and
       // end up deleting the SSK data.
       getPubKey.cacheKey(
-          (block.getKey()).getPubKeyHash(),
-          (block.getKey()).getPubKey(),
+          block.getKey().getPubKeyHash(),
+          block.getKey().getPubKey(),
           deep,
           canWriteClientCache,
           canWriteDatastore,

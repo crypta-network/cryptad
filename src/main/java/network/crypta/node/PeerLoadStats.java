@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
+import network.crypta.io.comm.MessageType;
 
 /**
  * View of a peer's advertised load metrics used for fairness and liability checks.
@@ -181,11 +182,11 @@ public class PeerLoadStats {
   /**
    * Determine structural equality for peer load snapshots.
    *
-   * <p>The comparison checks identity of the {@link #peer} reference and then compares all numeric
-   * fields for exact equality, including bandwidth limits and transfer caps. This method is
-   * deterministic, has no side effects, and treats {@code null} as unequal. Because the peer
-   * reference is compared by identity, two snapshots with equal field values but different peer
-   * instances are treated as unequal.
+   * <p>The comparison checks peer identity via {@link PeerNode#equals(Object)} and then compares
+   * all numeric fields for exact equality, including bandwidth limits and transfer caps. This
+   * method is deterministic, has no side effects, and treats {@code null} as unequal. Because peer
+   * identity is compared, two snapshots with equal field values but different peers are treated as
+   * unequal.
    *
    * @param o candidate object to compare against this snapshot; may be {@code null}
    * @return {@code true} when all fields and peer identity are equal, {@code false} otherwise
@@ -193,7 +194,7 @@ public class PeerLoadStats {
   @Override
   public boolean equals(Object o) {
     if (!(o instanceof PeerLoadStats s)) return false;
-    if (s.peer != peer) return false;
+    if (!peer.equals(s.peer)) return false;
     if (s.expectedTransfersOutCHK != expectedTransfersOutCHK) return false;
     if (s.expectedTransfersInCHK != expectedTransfersInCHK) return false;
     if (s.expectedTransfersOutSSK != expectedTransfersOutSSK) return false;
@@ -216,11 +217,11 @@ public class PeerLoadStats {
    * Return a hash code derived from the peer identity.
    *
    * <p>The hash code is computed solely from {@link #peer}, matching the equality contract that
-   * requires the same peer reference for equality. This keeps the hash stable for the lifetime of
-   * the snapshot and avoids incorporating mutable state. Callers should not assume that different
-   * snapshots with equal field values but distinct peers will share a hash code.
+   * compares peer identity via {@link PeerNode#equals(Object)}. This keeps the hash stable for the
+   * lifetime of the snapshot and avoids incorporating mutable state. Callers should not assume that
+   * different snapshots with equal field values but distinct peers will share a hash code.
    *
-   * @return hash code based on the {@link #peer} reference
+   * @return hash code based on the {@link #peer} identity
    */
   @Override
   public int hashCode() {
@@ -284,13 +285,15 @@ public class PeerLoadStats {
    * <p>This constructor is not idempotent in terms of the message contents; each call captures a
    * new snapshot. It performs no validation beyond ensuring the message type is supported.
    *
-   * @param source peer that supplied the message; must be non-null and stable for identity checks
+   * @param source peer that supplied the message; must be non-null and stable for peer-identity
+   *     checks
    * @param m message holding the peer's load statistics; must match a supported peer-load spec
    * @throws IllegalArgumentException if the message spec is not a supported peer-load variant
    */
   public PeerLoadStats(PeerNode source, Message m) {
     peer = source;
-    if (m.getSpec() == DMT.FNPPeerLoadStatusInt) {
+    MessageType spec = m.getSpec();
+    if (DMT.FNPPeerLoadStatusInt.equals(spec)) {
       expectedTransfersInCHK = m.getInt(DMT.OTHER_TRANSFERS_IN_CHK);
       expectedTransfersInSSK = m.getInt(DMT.OTHER_TRANSFERS_IN_SSK);
       expectedTransfersOutCHK = m.getInt(DMT.OTHER_TRANSFERS_OUT_CHK);
@@ -300,7 +303,7 @@ public class PeerLoadStats {
       maxTransfersOutUpperLimit = m.getInt(DMT.MAX_TRANSFERS_OUT_UPPER_LIMIT);
       maxTransfersOutLowerLimit = m.getInt(DMT.MAX_TRANSFERS_OUT_LOWER_LIMIT);
       maxTransfersOutPeerLimit = m.getInt(DMT.MAX_TRANSFERS_OUT_PEER_LIMIT);
-    } else if (m.getSpec() == DMT.FNPPeerLoadStatusShort) {
+    } else if (DMT.FNPPeerLoadStatusShort.equals(spec)) {
       expectedTransfersInCHK = m.getShort(DMT.OTHER_TRANSFERS_IN_CHK) & 0xFFFF;
       expectedTransfersInSSK = m.getShort(DMT.OTHER_TRANSFERS_IN_SSK) & 0xFFFF;
       expectedTransfersOutCHK = m.getShort(DMT.OTHER_TRANSFERS_OUT_CHK) & 0xFFFF;
@@ -310,7 +313,7 @@ public class PeerLoadStats {
       maxTransfersOutUpperLimit = m.getShort(DMT.MAX_TRANSFERS_OUT_UPPER_LIMIT) & 0xFFFF;
       maxTransfersOutLowerLimit = m.getShort(DMT.MAX_TRANSFERS_OUT_LOWER_LIMIT) & 0xFFFF;
       maxTransfersOutPeerLimit = m.getShort(DMT.MAX_TRANSFERS_OUT_PEER_LIMIT) & 0xFFFF;
-    } else if (m.getSpec() == DMT.FNPPeerLoadStatusByte) {
+    } else if (DMT.FNPPeerLoadStatusByte.equals(spec)) {
       expectedTransfersInCHK = m.getByte(DMT.OTHER_TRANSFERS_IN_CHK) & 0xFF;
       expectedTransfersInSSK = m.getByte(DMT.OTHER_TRANSFERS_IN_SSK) & 0xFF;
       expectedTransfersOutCHK = m.getByte(DMT.OTHER_TRANSFERS_OUT_CHK) & 0xFF;

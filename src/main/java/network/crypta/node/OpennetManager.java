@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.Map;
 import network.crypta.crypt.Util;
 import network.crypta.io.comm.ByteCounter;
@@ -88,10 +89,10 @@ public class OpennetManager {
 
         boolean neverConnected1 = pn1.neverConnected();
         boolean neverConnected2 = pn2.neverConnected();
-        if (neverConnected1 && (!neverConnected2)) {
+        if (neverConnected1 && !neverConnected2) {
           return -1;
         }
-        if ((!neverConnected1) && neverConnected2) {
+        if (!neverConnected1 && neverConnected2) {
           return 1;
         }
         // a-b not the opposite sign to b-a possible in a corner case (a=0 b=Integer.MIN_VALUE).
@@ -819,7 +820,7 @@ public class OpennetManager {
         || ctx.now - timeLastDropped.get(ctx.connectionType) < DROP_CONNECTED_TIME;
   }
 
-  private record DropResult(boolean canAdd, ArrayList<OpennetPeerNode> dropList) {}
+  private record DropResult(boolean canAdd, List<OpennetPeerNode> dropList) {}
 
   private DropResult computeDropAndMaybeAdd(
       WantPeerContext ctx, boolean addAtLRU, boolean justChecking, boolean noDisconnect) {
@@ -885,7 +886,7 @@ public class OpennetManager {
       WantPeerContext ctx,
       int maxPeers,
       boolean noDisconnect,
-      ArrayList<OpennetPeerNode> dropList,
+      List<OpennetPeerNode> dropList,
       int currentSize) {
     if (currentSize == maxPeers && ctx.nodeToAddNow == null) {
       return handleFullSizeNoOffer(ctx, maxPeers, noDisconnect);
@@ -894,7 +895,7 @@ public class OpennetManager {
   }
 
   private void finalizeAddOrOffer(
-      WantPeerContext ctx, boolean addAtLRU, ArrayList<OpennetPeerNode> dropList) {
+      WantPeerContext ctx, boolean addAtLRU, List<OpennetPeerNode> dropList) {
     if (ctx.nodeToAddNow != null) {
       successCount.put(ctx.connectionType, 0L);
       if (addAtLRU) ctx.peersLRU.pushLeast(ctx.nodeToAddNow);
@@ -920,10 +921,7 @@ public class OpennetManager {
   }
 
   private DropDecision dropWhileOverLimit(
-      WantPeerContext ctx,
-      int maxPeers,
-      boolean noDisconnect,
-      ArrayList<OpennetPeerNode> dropList) {
+      WantPeerContext ctx, int maxPeers, boolean noDisconnect, List<OpennetPeerNode> dropList) {
     while (true) {
       int size = getSize(ctx.distance);
       if (!isOverLimitForNextIteration(ctx, maxPeers, size)) {
