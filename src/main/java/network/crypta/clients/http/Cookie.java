@@ -37,6 +37,7 @@ import network.crypta.support.TimeUtil;
  *
  * @author xor (xor@freenetproject.org)
  */
+@SuppressWarnings("JavaUtilDate")
 public class Cookie {
   /** Characters that must not appear unquoted in cookie values (based on RFC2616 separators). */
   private static final Set<Character> INVALID_VALUE_CHARACTERS =

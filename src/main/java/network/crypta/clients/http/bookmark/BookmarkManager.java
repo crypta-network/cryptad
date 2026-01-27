@@ -186,6 +186,7 @@ public class BookmarkManager implements RequestClient {
    *
    * <p>This operation is additive: it does not remove or overwrite existing user bookmarks.
    */
+  @SuppressWarnings("JavaUtilDate")
   public void reAddDefaultBookmarks() {
     BookmarkCategory bc = new BookmarkCategory(l10n("defaultBookmarks") + " - " + new Date());
     addBookmark("/", bc);

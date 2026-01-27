@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
  *
  * @see SendableRequest
  */
+@SuppressWarnings("JavaUtilDate")
 public abstract class ClientRequester implements Serializable, ClientRequestSchedulerGroup {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequester.class);
 
