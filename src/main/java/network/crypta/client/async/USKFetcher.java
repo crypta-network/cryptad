@@ -559,7 +559,10 @@ public class USKFetcher
       shouldFillKeysWatching =
           (!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding();
     }
-    boolean registerNow = shouldFillKeysWatching && !fillKeysWatching(effectiveLatest, context);
+    boolean registerNow = false;
+    if (shouldFillKeysWatching && !isCancelled()) {
+      registerNow = !fillKeysWatching(effectiveLatest, context);
+    }
     return successPlanner.createSuccessPlan(decode, effectiveLatest, registerNow, killAttempts);
   }
 
@@ -1025,7 +1028,10 @@ public class USKFetcher
       shouldFillKeysWatching =
           (!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding();
     }
-    boolean registerNow = shouldFillKeysWatching && !fillKeysWatching(effectiveEd, context);
+    boolean registerNow = false;
+    if (shouldFillKeysWatching && !isCancelled()) {
+      registerNow = !fillKeysWatching(effectiveEd, context);
+    }
     return successPlanner.createFoundPlan(decode, registerNow, killAttempts);
   }
 
