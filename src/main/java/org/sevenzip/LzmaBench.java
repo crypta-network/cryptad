@@ -177,7 +177,7 @@ public class LzmaBench {
 
     private void writeLiteralOrMatch() {
       if (getRndBit() == 0 || pos < 1) {
-        buffer[pos++] = (byte) (rg.getRnd(8));
+        buffer[pos++] = (byte) rg.getRnd(8);
       } else {
         int len = (rg.getRnd(3) == 0) ? 1 + getLen1() : computeCopyLenAfterOffset();
         copyLoop(len);
@@ -295,6 +295,7 @@ public class LzmaBench {
       inSize = 0;
     }
 
+    @Override
     public void setProgress(long inSize, long outSize) {
       if (inSize >= approvedStart && this.inSize == 0) {
         time = System.currentTimeMillis();
@@ -308,7 +309,7 @@ public class LzmaBench {
   static int getLogSize(int size) {
     for (int i = K_SUB_BITS; i < 32; i++)
       for (int j = 0; j < (1 << K_SUB_BITS); j++)
-        if (size <= ((1) << i) + (j << (i - K_SUB_BITS))) return (i << K_SUB_BITS) + j;
+        if (size <= (1 << i) + (j << (i - K_SUB_BITS))) return (i << K_SUB_BITS) + j;
     return (32 << K_SUB_BITS);
   }
 
@@ -369,10 +370,10 @@ public class LzmaBench {
         crcOutStream.init();
         long startTime = System.currentTimeMillis();
         if (!decoder.code(inputCompressedStream, crcOutStream, outSize))
-          throw (new IllegalStateException("Decoding Error"));
+          throw new IllegalStateException("Decoding Error");
         decodeTime = System.currentTimeMillis() - startTime;
         if (crcOutStream.getDigest() != crc.getDigest())
-          throw (new IllegalStateException("CRC Error"));
+          throw new IllegalStateException("CRC Error");
       }
     }
     return decodeTime;
@@ -450,9 +451,9 @@ public class LzmaBench {
         if (i == 0) {
           compressedSize = compressedStream.size();
         } else if (compressedSize != compressedStream.size())
-          throw (new IllegalStateException("Encoding error"));
+          throw new IllegalStateException("Encoding error");
 
-        if (progressInfo.inSize == 0) throw (new IllegalStateException("Internal ERROR 1282"));
+        if (progressInfo.inSize == 0) throw new IllegalStateException("Internal ERROR 1282");
 
         long decodeTime =
             decodeTwiceAndCheck(

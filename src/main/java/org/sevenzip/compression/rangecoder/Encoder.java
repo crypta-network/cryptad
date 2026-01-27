@@ -256,7 +256,7 @@ public class Encoder {
    */
   public static int getPrice(int prob, int symbol) {
     return probPrices[
-        (((prob - symbol) ^ (-symbol)) & (BIT_MODEL_TOTAL - 1)) >>> NUM_MOVE_REDUCING_BITS];
+        (((prob - symbol) ^ -symbol) & (BIT_MODEL_TOTAL - 1)) >>> NUM_MOVE_REDUCING_BITS];
   }
 
   /**

@@ -92,7 +92,7 @@ public class Decoder {
         int symbol = 1;
         do {
           int matchBit = (matchByte >> 7) & 1;
-          matchByte <<= 1;
+          matchByte = (byte) (matchByte << 1);
           int bit = rangeDecoder.decodeBit(decoders, ((1 + matchBit) << 8) + symbol);
           symbol = (symbol << 1) | bit;
           if (matchBit != bit) {
@@ -401,7 +401,7 @@ public class Decoder {
     int lp = remainder % 5;
     int pb = remainder / 5;
     int dictSize = 0;
-    for (int i = 0; i < 4; i++) dictSize += ((properties[1 + i]) & 0xFF) << (i * 8);
+    for (int i = 0; i < 4; i++) dictSize += (properties[1 + i] & 0xFF) << (i * 8);
     if (!setLcLpPb(lc, lp, pb)) return false;
     return setDictionarySize(dictSize);
   }
