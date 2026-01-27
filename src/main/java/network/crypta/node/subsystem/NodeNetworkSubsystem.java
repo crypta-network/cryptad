@@ -1589,7 +1589,7 @@ public final class NodeNetworkSubsystem {
     }
     m = replyRef.get();
     if (m == null) return -1;
-    if (m.getSpec() == DMT.FNPRoutedRejected) return -1;
+    if (DMT.FNPRoutedRejected.equals(m.getSpec())) return -1;
     return m.getInt(DMT.COUNTER) - initialX;
   }
 

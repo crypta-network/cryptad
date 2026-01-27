@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import network.crypta.keys.NodeCHK;
 import network.crypta.support.Ticker;
 import org.slf4j.Logger;
@@ -554,7 +555,7 @@ public class RequestTracker {
     for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
       UIDTag tag = entry.getValue();
       if (!local && tag.wasLocal) continue;
-      if (tag.getSource() == source) {
+      if (Objects.equals(tag.getSource(), source)) {
         int out = tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, true);
         int in = tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, true);
         totals.count++;
