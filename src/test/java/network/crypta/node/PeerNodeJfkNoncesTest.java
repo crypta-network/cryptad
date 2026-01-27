@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 import network.crypta.crypt.SHA256;
@@ -24,7 +25,7 @@ class PeerNodeJfkNoncesTest {
     byte[] found = nonces.findOriginalNonceByHash(nonceHash);
 
     // Assert
-    assertArrayEquals(new byte[0], found);
+    assertNull(found);
   }
 
   @Test
@@ -59,7 +60,7 @@ class PeerNodeJfkNoncesTest {
     byte[] foundSecond = nonces.findOriginalNonceByHash(secondHash);
 
     // Assert
-    assertArrayEquals(new byte[0], foundFirst);
+    assertNull(foundFirst);
     assertSame(second, foundSecond);
   }
 
@@ -74,7 +75,7 @@ class PeerNodeJfkNoncesTest {
     byte[] found = nonces.findOriginalNonceByHash(nonceHash);
 
     // Assert
-    assertArrayEquals(new byte[0], found);
+    assertNull(found);
   }
 
   @Test
@@ -90,6 +91,6 @@ class PeerNodeJfkNoncesTest {
     byte[] found = nonces.findOriginalNonceByHash(nonceHash);
 
     // Assert
-    assertArrayEquals(new byte[0], found);
+    assertNull(found);
   }
 }

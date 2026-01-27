@@ -41,13 +41,12 @@ final class PeerNodeJfkNonces {
   PeerNodeJfkNonces() {}
 
   /**
-   * Remembers a nonce for later lookup by its hash, enforcing a maximum retained count.
+   * Remembers nonce for later lookup by its hash, enforcing a maximum retained count.
    *
    * <p>This method appends the provided nonce to the end of the internal list and trims the oldest
    * entry if the list grows beyond {@code maxNonces}. The operation is synchronized, so callers may
-   * invoke it concurrently with lookup and clear operations. The nonce is stored by reference, so
-   * callers should not modify the array after storing it if they expect hash lookups to remain
-   * valid.
+   * invoke it concurrently with lookup and clear operations. Reference stores the nonce, so callers
+   * should not modify the array after storing it if they expect hash lookups to remain valid.
    *
    * <pre>{@code
    * byte[] nonce = new byte[] {1, 2, 3};
@@ -79,19 +78,20 @@ final class PeerNodeJfkNonces {
    * }</pre>
    *
    * @param nonceHash the SHA-256 digest to match against stored nonces; non-null input required
-   * @return the original nonce array that matches the hash, or an empty array if none matches
+   * @return the original nonce array that matches the hash, or {@code null} if none matches
    */
+  @SuppressWarnings("java:S1168")
   byte[] findOriginalNonceByHash(byte[] nonceHash) {
     synchronized (nonces) {
       for (byte[] nonce : nonces) {
         if (MessageDigest.isEqual(nonceHash, SHA256.digest(nonce))) return nonce;
       }
     }
-    return new byte[0];
+    return null;
   }
 
   /**
-   * Removes all remembered nonces so subsequent lookups return {@code null}.
+   * Removes all remembered nonces so later lookups return {@code null}.
    *
    * <p>This method is synchronized and can be called at any time to reset the retained nonce
    * window, such as after a handshake failure or when shutting down. Clearing is idempotent and
