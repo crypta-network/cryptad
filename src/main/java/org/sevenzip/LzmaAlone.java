@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -240,7 +241,7 @@ public class LzmaAlone {
         state.switchMode = false;
         return true;
       }
-      String sw = s.substring(1).toLowerCase();
+      String sw = s.substring(1).toLowerCase(Locale.ROOT);
       if (sw.isEmpty()) return false;
       try {
         return parseSwitch(sw);

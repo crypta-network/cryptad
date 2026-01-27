@@ -5,6 +5,7 @@
  */
 package org.bitpedia.collider.core;
 
+import java.nio.charset.StandardCharsets;
 import org.bitpedia.util.Sha1;
 
 /**
@@ -690,7 +691,7 @@ public class Mp3Handler {
     int i;
     for (i = 0; i < ID3_TAG_LEN; i++) {
 
-      if ("TAG".equals(new String(audioShaBuffer, i, 3))) {
+      if ("TAG".equals(new String(audioShaBuffer, i, 3, StandardCharsets.ISO_8859_1))) {
         break;
       }
     }
