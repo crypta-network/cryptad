@@ -540,7 +540,8 @@ public class USKFetcher
       long lastEd) {
     boolean decode;
     List<USKAttempt> killAttempts = null;
-    boolean registerNow;
+    boolean shouldFillKeysWatching;
+    long effectiveLatest = curLatest;
     synchronized (this) {
       if (att != null) attempts.removeRunningAttempt(att.number);
       if (completed || cancelled) {
@@ -549,17 +550,17 @@ public class USKFetcher
         return null;
       }
       decode = USKSuccessPlanner.shouldDecode(curLatest, lastEd, dontUpdate, block);
-      curLatest = Math.max(lastEd, curLatest);
-      if (LOG.isDebugEnabled()) LOG.debug("Latest: {} in onSuccess", curLatest);
+      effectiveLatest = Math.max(lastEd, curLatest);
+      if (LOG.isDebugEnabled()) LOG.debug("Latest: {} in onSuccess", effectiveLatest);
       if (!checkStoreOnly) {
-        killAttempts = attempts.cancelBefore(curLatest);
-        attempts.addNewAttempts(curLatest, context, pollingRound.firstLoop());
+        killAttempts = attempts.cancelBefore(effectiveLatest);
+        attempts.addNewAttempts(effectiveLatest, context, pollingRound.firstLoop());
       }
-      if ((!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding())
-        registerNow = !fillKeysWatching(curLatest, context);
-      else registerNow = false;
+      shouldFillKeysWatching =
+          (!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding();
     }
-    return successPlanner.createSuccessPlan(decode, curLatest, registerNow, killAttempts);
+    boolean registerNow = shouldFillKeysWatching && !fillKeysWatching(effectiveLatest, context);
+    return successPlanner.createSuccessPlan(decode, effectiveLatest, registerNow, killAttempts);
   }
 
   /**
@@ -1009,21 +1010,22 @@ public class USKFetcher
     final long lastEd = uskManager.lookupLatestSlot(origUSK);
     boolean decode;
     List<USKAttempt> killAttempts = null;
-    boolean registerNow;
+    boolean shouldFillKeysWatching;
+    long effectiveEd = ed;
     synchronized (this) {
       if (completed || cancelled) return null;
       decode = lastEd == ed && data != null;
-      ed = Math.max(lastEd, ed);
-      if (LOG.isDebugEnabled()) LOG.debug("Latest: {} in onFoundEdition", ed);
+      effectiveEd = Math.max(lastEd, ed);
+      if (LOG.isDebugEnabled()) LOG.debug("Latest: {} in onFoundEdition", effectiveEd);
 
       if (!checkStoreOnly) {
-        killAttempts = attempts.cancelBefore(ed);
-        attempts.addNewAttempts(ed, context, pollingRound.firstLoop());
+        killAttempts = attempts.cancelBefore(effectiveEd);
+        attempts.addNewAttempts(effectiveEd, context, pollingRound.firstLoop());
       }
-      if ((!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding())
-        registerNow = !fillKeysWatching(ed, context);
-      else registerNow = false;
+      shouldFillKeysWatching =
+          (!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding();
     }
+    boolean registerNow = shouldFillKeysWatching && !fillKeysWatching(effectiveEd, context);
     return successPlanner.createFoundPlan(decode, registerNow, killAttempts);
   }
 
