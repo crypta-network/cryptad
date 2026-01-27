@@ -239,13 +239,13 @@ final class OpennetNoderefWaiter {
 
                 @Override
                 public void onMatched(Message msg) {
-                  if (msg.getSpec() == DMT.FNPOpennetCompletedAck
-                      || msg.getSpec() == DMT.FNPOpennetCompletedTimeout) {
+                  if (DMT.FNPOpennetCompletedAck.equals(msg.getSpec())
+                      || DMT.FNPOpennetCompletedTimeout.equals(msg.getSpec())) {
                     synchronized (this) {
                       if (completed) return;
                       completed = true;
                     }
-                    callback.acked(msg.getSpec() == DMT.FNPOpennetCompletedTimeout);
+                    callback.acked(DMT.FNPOpennetCompletedTimeout.equals(msg.getSpec()));
                   } else {
                     // Noderef bulk transfer
                     long xferUID = msg.getLong(DMT.TRANSFER_UID);

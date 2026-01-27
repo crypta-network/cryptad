@@ -422,21 +422,31 @@ public class OpennetManager {
      * <p>These peers are acquired opportunistically to improve routing locality. They are tracked
      * separately so path folding cannot exhaust the grace-period budget.
      */
-    PATH_FOLDING,
+    PATH_FOLDING(0),
     /**
      * Connection established to support an announcement exchange.
      *
      * <p>Announcement-driven peers are tracked separately to avoid crowding out other types. This
      * category helps keep announcement bursts from displacing routine connections.
      */
-    ANNOUNCE,
+    ANNOUNCE(1),
     /**
      * Connection created to re-establish contact with a previously known peer.
      *
      * <p>This is used for reconnecting peers from old-peer tracking or recent successes. It is also
      * used when a successful peer is re-added after falling out of the LRU.
      */
-    RECONNECT
+    RECONNECT(2);
+
+    private final int code;
+
+    ConnectionType(int code) {
+      this.code = code;
+    }
+
+    int code() {
+      return code;
+    }
   }
 
   private final long creationTime;
@@ -1179,7 +1189,7 @@ public class OpennetManager {
 
     if (nodeToAddNow != null) {
       nodeToAddNow.setAddedReason(
-          connectionType == null ? PeerNode.ADDED_REASON_UNKNOWN : connectionType.ordinal());
+          connectionType == null ? PeerNode.ADDED_REASON_UNKNOWN : connectionType.code());
     }
     if (state.notMany) return addPeerIfPresent(nodeToAddNow);
 
@@ -1288,7 +1298,7 @@ public class OpennetManager {
 
   private int countActivePeersOfType(LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type) {
     int count = 0;
-    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.code();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
       if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {
@@ -1301,7 +1311,7 @@ public class OpennetManager {
   private boolean exceedsTypeLimit(
       LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type, int myLimit) {
     int count = 0;
-    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.code();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
       if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {

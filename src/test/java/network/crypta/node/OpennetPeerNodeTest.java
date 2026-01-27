@@ -211,8 +211,8 @@ class OpennetPeerNodeTest {
   @Test
   void setAndGetAddedReason_roundTrip() throws Exception {
     OpennetPeerNode pn = newPeerLocal("0.25");
-    pn.setAddedReason(ConnectionType.ANNOUNCE.ordinal());
-    assertEquals(ConnectionType.ANNOUNCE.ordinal(), pn.getAddedReason());
+    pn.setAddedReason(ConnectionType.ANNOUNCE.code());
+    assertEquals(ConnectionType.ANNOUNCE.code(), pn.getAddedReason());
   }
 
   @Test
