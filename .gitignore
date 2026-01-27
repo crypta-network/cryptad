@@ -11,6 +11,7 @@
 /generator/js/gwt-unitCache/
 /run
 .classpath
+.factorypath
 *.swp
 *.iml
 *.ipr
