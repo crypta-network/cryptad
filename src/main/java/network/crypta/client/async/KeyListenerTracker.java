@@ -273,12 +273,15 @@ class KeyListenerTracker implements KeySalter {
     return ret;
   }
 
-  private synchronized ArrayList<KeyListener> probablyMatches(Key key, byte[] saltedKey) {
-    ArrayList<KeyListener> matches;
+  private ArrayList<KeyListener> probablyMatches(Key key, byte[] saltedKey) {
     final ByteArrayWrapper wrapper = new ByteArrayWrapper(saltedKey);
-    matches = appendSingleMatches(wrapper, key, saltedKey);
-    matches = appendListMatches(matches, key, saltedKey);
-    return matches;
+    synchronized (this) {
+      Object singleMatch = singleKeyListeners.get(wrapper);
+      ArrayList<KeyListener> matches = appendSingleMatches(singleMatch, key, saltedKey);
+      if (keyListeners.isEmpty()) return matches;
+      List<KeyListener> listMatches = new ArrayList<>(keyListeners);
+      return appendListMatches(matches, listMatches, key, saltedKey);
+    }
   }
 
   /**
@@ -321,16 +324,24 @@ class KeyListenerTracker implements KeySalter {
    *
    * @return the sum of {@code countKeys()} across all listeners; never negative.
    */
-  public synchronized long countWaitingKeys() {
+  public long countWaitingKeys() {
+    List<Object> singleSnapshot;
+    List<KeyListener> listSnapshot;
+    synchronized (this) {
+      if (singleKeyListeners.isEmpty() && keyListeners.isEmpty()) return 0;
+      singleSnapshot = new ArrayList<>(singleKeyListeners.values());
+      listSnapshot =
+          keyListeners.isEmpty() ? Collections.emptyList() : new ArrayList<>(keyListeners);
+    }
     long count = 0;
-    for (Object o : singleKeyListeners.values()) {
+    for (Object o : singleSnapshot) {
       if (o instanceof KeyListener listener1) {
         count += listener1.countKeys();
       } else if (o instanceof KeyListener[] listeners) {
         for (KeyListener listener : listeners) count += listener.countKeys();
       }
     }
-    for (KeyListener listener : keyListeners) {
+    for (KeyListener listener : listSnapshot) {
       try {
         count += listener.countKeys();
       } catch (Exception t) {
@@ -382,14 +393,20 @@ class KeyListenerTracker implements KeySalter {
    * @param context execution context used for validation only; must not be {@code null}.
    * @return {@code true} if any listener indicates probable interest; {@code false} otherwise.
    */
-  public synchronized boolean anyProbablyWantKey(Key key, ClientContext context) {
+  public boolean anyProbablyWantKey(Key key, ClientContext context) {
     java.util.Objects.requireNonNull(context, "context");
     if ((key instanceof NodeSSK) != isSSKScheduler) {
       return false;
     }
     byte[] saltedKey = saltKey(key);
-    if (anySingleProbablyWant(key, saltedKey)) return true;
-    return anyListProbablyWant(key, saltedKey);
+    final ByteArrayWrapper wrapper = new ByteArrayWrapper(saltedKey);
+    synchronized (this) {
+      Object singleMatch = singleKeyListeners.get(wrapper);
+      if (anySingleProbablyWant(singleMatch, key, saltedKey)) return true;
+      if (keyListeners.isEmpty()) return false;
+      List<KeyListener> listMatches = new ArrayList<>(keyListeners);
+      return anyListProbablyWant(listMatches, key, saltedKey);
+    }
   }
 
   /**
@@ -488,11 +505,14 @@ class KeyListenerTracker implements KeySalter {
 
   /** Returns all KeyListeners that return true on probablyWantKey(key, saltedKey) */
   private List<KeyListener> probablyWantKey(Key key, byte[] saltedKey) {
-    ArrayList<KeyListener> matches = new ArrayList<>();
+    ArrayList<KeyListener> matches = null;
     synchronized (this) {
-      for (KeyListener listener : keyListeners) {
+      if (keyListeners.isEmpty()) return Collections.emptyList();
+      List<KeyListener> listSnapshot = new ArrayList<>(keyListeners);
+      for (KeyListener listener : listSnapshot) {
         try {
           if (listener.probablyWantKey(key, saltedKey)) {
+            if (matches == null) matches = new ArrayList<>();
             matches.add(listener);
           }
         } catch (Exception t) {
@@ -501,7 +521,7 @@ class KeyListenerTracker implements KeySalter {
         }
       }
     }
-    return matches;
+    return matches == null ? Collections.emptyList() : matches;
   }
 
   private void registerListener(byte[] wantedKey, ByteArrayWrapper wrapper, KeyListener listener) {
@@ -582,20 +602,19 @@ class KeyListenerTracker implements KeySalter {
   }
 
   private ArrayList<KeyListener> appendSingleMatches(
-      ByteArrayWrapper wrapper, Key key, byte[] saltedKey) {
+      Object singleMatch, Key key, byte[] saltedKey) {
     ArrayList<KeyListener> matches = null;
-    Object o = singleKeyListeners.get(wrapper);
-    if (o instanceof KeyListener single) {
+    if (singleMatch instanceof KeyListener single) {
       matches = appendMatchIfSingle(single, key, saltedKey);
-    } else if (o instanceof KeyListener[] listeners) {
+    } else if (singleMatch instanceof KeyListener[] listeners) {
       matches = appendMatchesIfArray(listeners, key, saltedKey);
     }
     return matches;
   }
 
   private ArrayList<KeyListener> appendListMatches(
-      ArrayList<KeyListener> matches, Key key, byte[] saltedKey) {
-    for (KeyListener listener : keyListeners) {
+      ArrayList<KeyListener> matches, List<KeyListener> listMatches, Key key, byte[] saltedKey) {
+    for (KeyListener listener : listMatches) {
       if (listener.probablyWantKey(key, saltedKey)) {
         if (matches == null) matches = new ArrayList<>();
         matches.add(listener);
@@ -706,13 +725,11 @@ class KeyListenerTracker implements KeySalter {
     return accum;
   }
 
-  private boolean anySingleProbablyWant(Key key, byte[] saltedKey) {
-    final ByteArrayWrapper wrapper = new ByteArrayWrapper(saltedKey);
-    Object o = singleKeyListeners.get(wrapper);
-    if (o instanceof KeyListener listener) {
+  private boolean anySingleProbablyWant(Object singleMatch, Key key, byte[] saltedKey) {
+    if (singleMatch instanceof KeyListener listener) {
       return listener.probablyWantKey(key, saltedKey);
     }
-    if (o instanceof KeyListener[] listeners) {
+    if (singleMatch instanceof KeyListener[] listeners) {
       for (KeyListener listener : listeners) {
         if (listener.probablyWantKey(key, saltedKey)) return true;
       }
@@ -720,8 +737,8 @@ class KeyListenerTracker implements KeySalter {
     return false;
   }
 
-  private boolean anyListProbablyWant(Key key, byte[] saltedKey) {
-    for (KeyListener listener : keyListeners) {
+  private boolean anyListProbablyWant(List<KeyListener> listMatches, Key key, byte[] saltedKey) {
+    for (KeyListener listener : listMatches) {
       try {
         if (listener.probablyWantKey(key, saltedKey)) {
           return true;
