@@ -1,7 +1,6 @@
 package network.crypta.client.async;
 
 import java.io.Serial;
-import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.Metadata;
 import network.crypta.support.api.ManifestElement;
@@ -101,7 +100,7 @@ public class PlainManifestPutter extends BaseManifestPutter {
    *     equality against child file entries.
    */
   @Override
-  protected void makePutHandlers(HashMap<String, Object> manifestElements, String defaultName) {
+  protected void makePutHandlers(Map<String, Object> manifestElements, String defaultName) {
     if (LOG.isTraceEnabled()) LOG.trace("Root map : {} elements", manifestElements.size());
     makePutHandlers(getRootBuilder(), manifestElements, defaultName);
   }

@@ -6,6 +6,7 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.TreeMap;
 import network.crypta.node.NodeStats.RequestType;
 import org.jetbrains.annotations.NotNull;
@@ -192,12 +193,24 @@ public final class PeerNodeLoadTracker {
   public record Usage(double output, double input) {}
 
   enum RequestLikelyAcceptedState {
-    GUARANTEED, // guaranteed to be accepted, under the per-peer guaranteed limit
-    LIKELY, // likely to be accepted even though above the per-peer guaranteed limit, as overall is
+    GUARANTEED(0), // guaranteed to be accepted, under the per-peer guaranteed limit
+    LIKELY(
+        1), // likely to be accepted even though above the per-peer guaranteed limit, as overall is
     // below the overall lower limit
-    UNLIKELY, // not likely to be accepted; peer is over the per-peer guaranteed limit, and global
+    UNLIKELY(
+        2), // not likely to be accepted; peer is over the per-peer guaranteed limit, and global
     // is over the overall lower limit
-    UNKNOWN // no data but accepting anyway
+    UNKNOWN(3); // no data but accepting anyway
+
+    private final int rank;
+
+    RequestLikelyAcceptedState(int rank) {
+      this.rank = rank;
+    }
+
+    int rank() {
+      return rank;
+    }
   }
 
   // Consider adding LOW_CAPACITY/BROKEN status when capacity is far below median.
@@ -313,7 +326,7 @@ public final class PeerNodeLoadTracker {
      */
     public boolean addWaitingFor(PeerNode peer) {
       boolean cantQueue =
-          (!peer.isRoutable()) || peer.isInMandatoryBackoff(System.currentTimeMillis(), realTime);
+          !peer.isRoutable() || peer.isInMandatoryBackoff(System.currentTimeMillis(), realTime);
       synchronized (this) {
         if (acceptedBy != null) {
           if (LOG.isDebugEnabled())
@@ -379,7 +392,7 @@ public final class PeerNodeLoadTracker {
     }
 
     private void removeTagForPeerIfDifferent(PeerNode peer) {
-      if (acceptedBy != peer) {
+      if (!Objects.equals(acceptedBy, peer)) {
         tag.removeRoutingTo(peer);
       }
     }
@@ -392,7 +405,7 @@ public final class PeerNodeLoadTracker {
      */
     void unregister(PeerNode exclude, PeerNode[] all) {
       for (PeerNode p : all) {
-        if (p != exclude) p.outputLoadTracker(realTime).unqueueSlotWaiter(this);
+        if (!Objects.equals(p, exclude)) p.outputLoadTracker(realTime).unqueueSlotWaiter(this);
       }
     }
 
@@ -503,7 +516,7 @@ public final class PeerNodeLoadTracker {
       boolean anyValid = false;
       long now = System.currentTimeMillis();
       for (PeerNode p : all) {
-        if ((!p.isRoutable()) || p.isInMandatoryBackoff(now, realTime)) {
+        if (!p.isRoutable() || p.isInMandatoryBackoff(now, realTime)) {
           if (LOG.isDebugEnabled()) LOG.debug("Peer is not valid in waitForAny(): {}", p);
           continue;
         }
@@ -640,7 +653,7 @@ public final class PeerNodeLoadTracker {
     }
 
     private boolean shouldContinueWaiting() {
-      return acceptedBy == null && (!waitingFor.isEmpty()) && !failed;
+      return acceptedBy == null && !waitingFor.isEmpty() && !failed;
     }
 
     private boolean onDeadlineElapsed() {
@@ -664,6 +677,7 @@ public final class PeerNodeLoadTracker {
       }
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record PreGrabResult(
         PeerNode[] all, PeerNode ret, boolean grabbed, SlotWaiterFailedException f) {
       @Override
@@ -700,6 +714,7 @@ public final class PeerNodeLoadTracker {
 
     private record EarlyResult(boolean anyValid, PeerNode accepted) {}
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record WaitOutcome(PeerNode ret, PeerNode[] toUnregister) {
       @Override
       public boolean equals(Object o) {
@@ -827,6 +842,7 @@ public final class PeerNodeLoadTracker {
       return list;
     }
 
+    @Override
     public String toString() {
       return super.toString() + ":peers=" + lru.size();
     }
@@ -875,7 +891,7 @@ public final class PeerNodeLoadTracker {
     public synchronized double proportionTimingOutFatallyInWait() {
       if (totalFatalTimeouts == 1 && totalAllocated == 0)
         return 0.5; // Limit impact if the first one is rejected.
-      return (double) totalFatalTimeouts / ((double) (totalFatalTimeouts + totalAllocated));
+      return (double) totalFatalTimeouts / (totalFatalTimeouts + totalAllocated);
     }
 
     public PeerLoadStats getLastIncomingLoadStats() {
@@ -960,7 +976,7 @@ public final class PeerNodeLoadTracker {
               "Predicted acceptance state for request: {} must beat {}",
               acceptState,
               worstAcceptable);
-        if (acceptState.ordinal() > worstAcceptable.ordinal()) return null;
+        if (acceptState.rank() > worstAcceptable.rank()) return null;
         if (tag.addRoutedTo(peer, false)) return acceptState;
         else {
           if (LOG.isDebugEnabled()) LOG.debug("Already routed to peer");
@@ -984,8 +1000,8 @@ public final class PeerNodeLoadTracker {
       }
       // If we queued but conditions changed, fail fast
       if (r.queued
-          && ((!peer.isRoutable())
-              || (peer.isInMandatoryBackoff(System.currentTimeMillis(), realTime)))) {
+          && (!peer.isRoutable()
+              || peer.isInMandatoryBackoff(System.currentTimeMillis(), realTime))) {
         if (LOG.isDebugEnabled())
           LOG.debug("Queued but not routable or in mandatory backoff, failing");
         waiter.onFailed(peer);
@@ -1006,6 +1022,7 @@ public final class PeerNodeLoadTracker {
       return true;
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record QueueResult(boolean queued, PeerNode[] toUnregister) {
 
       boolean wokeUpImmediately() {
@@ -1139,6 +1156,7 @@ public final class PeerNodeLoadTracker {
       return current;
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record Decision(
         SlotWaiter slot,
         RequestLikelyAcceptedState acceptState,
@@ -1248,6 +1266,7 @@ public final class PeerNodeLoadTracker {
       return false;
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record SlotWakeResult(SlotWaiter slot, PeerNode[] peersForSuccessfulSlot) {
       @Override
       public boolean equals(Object o) {
@@ -1312,8 +1331,8 @@ public final class PeerNodeLoadTracker {
           getRequestLikelyAcceptedStateTransfers(runningRequests, otherRunningRequests, stats);
       RequestLikelyAcceptedState ret = inputState;
 
-      if (outputState.ordinal() > ret.ordinal()) ret = outputState;
-      if (transfersState.ordinal() > ret.ordinal()) ret = transfersState;
+      if (outputState.rank() > ret.rank()) ret = outputState;
+      if (transfersState.rank() > ret.rank()) ret = transfersState;
       return ret;
     }
 

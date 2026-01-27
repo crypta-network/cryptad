@@ -597,7 +597,7 @@ public final class CHKInsertSender extends BaseSender
 
   private void maybeForkOnCacheable(boolean canWriteStorePrev) {
     if (node.routing().canWriteDatastoreInsert(htl)
-        && (!canWriteStorePrev)
+        && !canWriteStorePrev
         && forkOnCacheable
         && forkedRequestTag == null) {
       uid = node.services().clientCore().makeUID();
@@ -834,11 +834,11 @@ public final class CHKInsertSender extends BaseSender
 
                 @Override
                 public void onMatched(Message m) {
-                  if (m.getSpec() == DMT.FNPRejectedLoop
-                      || m.getSpec() == DMT.FNPRejectedOverload) {
+                  if (DMT.FNPRejectedLoop.equals(m.getSpec())
+                      || DMT.FNPRejectedOverload.equals(m.getSpec())) {
                     // Ok.
                     next.noLongerRoutingTo(tag, false);
-                  } else if (m.getSpec() == DMT.FNPAccepted) {
+                  } else if (DMT.FNPAccepted.equals(m.getSpec())) {
                     if (LOG.isDebugEnabled())
                       LOG.debug(
                           "Accepted after timeout on {} - will not send DataInsert, waiting for"
@@ -1007,7 +1007,7 @@ public final class CHKInsertSender extends BaseSender
   private boolean preFinishUpdateStatus(int code) {
     synchronized (this) {
       if (allTransfersCompleted) return true;
-      if ((code == ROUTE_NOT_FOUND) && !hasForwarded) {
+      if (code == ROUTE_NOT_FOUND && !hasForwarded) {
         status = ROUTE_REALLY_NOT_FOUND;
       } else if (status != NOT_FINISHED) {
         if (status == RECEIVE_FAILED) {
@@ -1651,28 +1651,28 @@ public final class CHKInsertSender extends BaseSender
 
   private boolean handleSecondTimeoutOutcome(
       Message msg, PeerNode waitingFor, BackgroundTransfer transfer) {
-    if (msg.getSpec() == DMT.FNPRejectedTimeout) {
+    if (DMT.FNPRejectedTimeout.equals(msg.getSpec())) {
       handleRejectedTimeout(msg, waitingFor);
       transfer.kill();
       return true;
     }
-    if (msg.getSpec() == DMT.FNPRejectedOverload) {
+    if (DMT.FNPRejectedOverload.equals(msg.getSpec())) {
       if (handleRejectedOverload(msg, waitingFor)) {
         transfer.onCompleted();
         return true; // Don't try another node.
       }
       return false; // retry loop
     }
-    if (msg.getSpec() == DMT.FNPRouteNotFound) {
+    if (DMT.FNPRouteNotFound.equals(msg.getSpec())) {
       transfer.onCompleted();
       return true; // Don't try another node.
     }
-    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
+    if (DMT.FNPDataInsertRejected.equals(msg.getSpec())) {
       handleDataInsertRejected(msg, waitingFor);
       transfer.kill();
       return true; // Don't try another node.
     }
-    if (msg.getSpec() != DMT.FNPInsertReply) {
+    if (!DMT.FNPInsertReply.equals(msg.getSpec())) {
       LOG.error("event=second_timeout_unknown_reply unexpected message: {}", msg);
     }
     transfer.onCompleted();
@@ -1681,12 +1681,12 @@ public final class CHKInsertSender extends BaseSender
 
   private boolean handleMessageAfterAcceptance(
       Message msg, PeerNode next, BackgroundTransfer transfer) {
-    if (msg.getSpec() == DMT.FNPRejectedTimeout) {
+    if (DMT.FNPRejectedTimeout.equals(msg.getSpec())) {
       transfer.kill();
       handleRejectedTimeout(msg, next);
       return true;
     }
-    if (msg.getSpec() == DMT.FNPRejectedOverload) {
+    if (DMT.FNPRejectedOverload.equals(msg.getSpec())) {
       if (handleRejectedOverload(msg, next)) {
         transfer.onCompleted();
         routeRequests();
@@ -1694,19 +1694,19 @@ public final class CHKInsertSender extends BaseSender
       }
       return false; // try again on the next loop iteration
     }
-    if (msg.getSpec() == DMT.FNPRouteNotFound) {
+    if (DMT.FNPRouteNotFound.equals(msg.getSpec())) {
       handleRNF(msg, next);
       transfer.onCompleted();
       routeRequests();
       return true;
     }
-    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
+    if (DMT.FNPDataInsertRejected.equals(msg.getSpec())) {
       handleDataInsertRejected(msg, next);
       transfer.kill();
       routeRequests();
       return true;
     }
-    if (msg.getSpec() != DMT.FNPInsertReply) {
+    if (!DMT.FNPInsertReply.equals(msg.getSpec())) {
       LOG.error("event=insert_outcome_unknown_reply unexpected message: {}", msg);
       transfer.onCompleted();
       finish(INTERNAL_ERROR, next);

@@ -180,6 +180,7 @@ public class SSKInsertSender extends BaseSender
   // is allowed to cache inserts at the current HTL.
 
   /** Performs one routing step: adjust HTL, optionally fork, pick a peer, and continue. */
+  @Override
   protected void routeRequests() {
     final boolean couldWriteStoreBefore = node.routing().canWriteDatastoreInsert(htl);
 
@@ -220,7 +221,7 @@ public class SSKInsertSender extends BaseSender
   // Fork a local insert when we cross a store‑writable HTL boundary and forking is enabled.
   private void maybeForkOnCacheable(boolean couldWriteStoreBefore) {
     if (node.routing().canWriteDatastoreInsert(htl)
-        && (!couldWriteStoreBefore)
+        && !couldWriteStoreBefore
         && forkOnCacheable
         && forkedRequestTag == null) {
       uid = node.services().clientCore().makeUID();
@@ -321,27 +322,27 @@ public class SSKInsertSender extends BaseSender
   }
 
   private DO handleMessage(Message msg, PeerNode next, InsertTag thisTag) {
-    if (msg.getSpec() == DMT.FNPRejectedOverload) {
+    if (DMT.FNPRejectedOverload.equals(msg.getSpec())) {
       if (handleRejectedOverload(msg, next, thisTag)) return DO.NEXT_PEER;
       else return DO.WAIT;
     }
 
-    if (msg.getSpec() == DMT.FNPRouteNotFound) {
+    if (DMT.FNPRouteNotFound.equals(msg.getSpec())) {
       handleRouteNotFound(msg, next, thisTag);
       // Finished as far as this node is concerned
       return DO.NEXT_PEER;
     }
 
-    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
+    if (DMT.FNPDataInsertRejected.equals(msg.getSpec())) {
       handleDataInsertRejected(msg, next, thisTag);
       return DO.NEXT_PEER; // What else can we do?
     }
 
-    if (msg.getSpec() == DMT.FNPSSKDataFoundHeaders) {
+    if (DMT.FNPSSKDataFoundHeaders.equals(msg.getSpec())) {
       return handleSSKDataFoundHeaders(msg, next, thisTag);
     }
 
-    if (msg.getSpec() != DMT.FNPInsertReply) {
+    if (!DMT.FNPInsertReply.equals(msg.getSpec())) {
       LOG.error("Unknown reply: {}", msg);
       finish(INTERNAL_ERROR, next);
       return DO.FINISHED;
@@ -413,11 +414,11 @@ public class SSKInsertSender extends BaseSender
      */
     @Override
     public void onMatched(Message m) {
-      if (m.getSpec() == DMT.FNPRejectedLoop || m.getSpec() == DMT.FNPRejectedOverload) {
+      if (DMT.FNPRejectedLoop.equals(m.getSpec()) || DMT.FNPRejectedOverload.equals(m.getSpec())) {
         next.noLongerRoutingTo(tag, false);
         return;
       }
-      if (m.getSpec() != DMT.FNPSSKAccepted) {
+      if (!DMT.FNPSSKAccepted.equals(m.getSpec())) {
         if (LOG.isDebugEnabled()) LOG.debug("Unexpected message in timeout handler: {}", m);
         next.noLongerRoutingTo(tag, false);
         return;
@@ -937,7 +938,7 @@ public class SSKInsertSender extends BaseSender
    */
   @Override
   protected boolean isAccepted(Message msg) {
-    if (msg.getSpec() == DMT.FNPSSKAccepted) {
+    if (DMT.FNPSSKAccepted.equals(msg.getSpec())) {
       needPubKey = msg.getBoolean(DMT.NEED_PUB_KEY);
       return true;
     } else return false;

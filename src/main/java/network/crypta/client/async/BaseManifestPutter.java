@@ -10,6 +10,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
@@ -38,7 +40,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Base class responsible for inserting a directory tree (a “manifest”) into the network. Subclasses
- * supply the “packing” strategy in {@link #makePutHandlers(HashMap, String)} while this class
+ * supply the “packing” strategy in {@link #makePutHandlers(Map, String)} while this class
  * coordinates asynchronous puts, metadata resolution, and container construction.
  *
  * <p>Usage overview: callers construct a concrete implementation, provide a map describing the
@@ -118,7 +120,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         BaseManifestPutter bmp,
         PutHandler parent,
         String name,
-        HashMap<String, Object> data,
+        Map<String, Object> data,
         FreenetURI insertURI) {
       super(bmp, parent, name, null, containerPutHandlers);
       InsertExecutionOptions execOptions =
@@ -185,9 +187,9 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         BaseManifestPutter bmp,
         PutHandler parent,
         String name,
-        HashMap<String, Object> data,
+        Map<String, Object> data,
         FreenetURI insertURI,
-        HashSet<PutHandler> runningMap) {
+        Set<PutHandler> runningMap) {
       super(bmp, parent, name, null, runningMap);
       InsertExecutionOptions execOptions =
           new InsertExecutionOptions(
@@ -200,7 +202,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (LOG.isDebugEnabled())
         LOG.debug(LOG_CONTAINER_ON_ENCODE, key.getURI().toString(false, false), this);
 
-      if (rootContainerPutHandler == this) {
+      if (Objects.equals(rootContainerPutHandler, this)) {
         finalURI = key.getURI();
         cb.onGeneratedURI(finalURI, this);
       } else {
@@ -224,7 +226,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     public void onSuccess(ClientPutState state, ClientContext context) {
       if (LOG.isDebugEnabled()) LOG.debug(LOG_CONTAINER_COMPLETED, this.itemName, this);
 
-      if (rootContainerPutHandler == this) {
+      if (Objects.equals(rootContainerPutHandler, this)) {
         if (containerPutHandlers.contains(this))
           throw new IllegalStateException("was in containerPutHandlers");
         rootContainerPutHandler = null;
@@ -424,7 +426,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (LOG.isDebugEnabled())
         LOG.debug(LOG_META_ON_ENCODE, key.getURI().toString(false, false), this);
 
-      if (rootMetaPutHandler == this) {
+      if (Objects.equals(rootMetaPutHandler, this)) {
         finalURI = key.getURI();
         cb.onGeneratedURI(finalURI, this);
         return;
@@ -437,7 +439,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     public void onSuccess(ClientPutState state, ClientContext context) {
       boolean wasRoot = false;
       synchronized (BaseManifestPutter.this) {
-        if (rootMetaPutHandler == this) {
+        if (Objects.equals(rootMetaPutHandler, this)) {
           rootMetaPutHandler = null;
           wasRoot = true;
         }
@@ -494,7 +496,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         PutHandler parent,
         String name,
         ClientMetadata cm,
-        HashSet<PutHandler> runningMap) {
+        Set<PutHandler> runningMap) {
       super(bmp.priorityClass, bmp.cb.getRequestClient());
       this.persistent = bmp.persistent();
       this.cm = cm;
@@ -521,7 +523,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       }
     }
 
-    private void registerInRunningMap(HashSet<PutHandler> runningMap) {
+    @SuppressWarnings("ReferenceEquality")
+    private void registerInRunningMap(Set<PutHandler> runningMap) {
       // Avoid synchronizing on a local variable; synchronize on the owning field directly.
       if (runningMap == containerPutHandlers) {
         synchronized (containerPutHandlers) {
@@ -599,7 +602,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     private void validatePlacement() {
       boolean ok;
       if ((this instanceof ContainerPutHandler) || (this instanceof ArchivePutHandler)) {
-        if (this != rootContainerPutHandler) {
+        if (!Objects.equals(this, rootContainerPutHandler)) {
           synchronized (containerPutHandlers) {
             ok = containerPutHandlers.contains(this);
           }
@@ -609,7 +612,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
           }
         }
       } else {
-        if (this != rootMetaPutHandler) {
+        if (!Objects.equals(this, rootMetaPutHandler)) {
           synchronized (runningPutHandlers) {
             ok = runningPutHandlers.contains(this);
           }
@@ -1194,7 +1197,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     }
   }
 
-  private String findDefaultName(HashMap<String, Object> manifestElements) {
+  private String findDefaultName(Map<String, Object> manifestElements) {
     // Try exact-case matches first
     String exact = findDefaultNameExact(manifestElements);
     if (!exact.isEmpty()) return exact;
@@ -1202,7 +1205,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     return findDefaultNameCaseInsensitive(manifestElements);
   }
 
-  private String findDefaultNameExact(HashMap<String, Object> manifestElements) {
+  private String findDefaultNameExact(Map<String, Object> manifestElements) {
     for (String name : defaultDefaultNames) {
       Object o = manifestElements.get(name);
       if (o == null || o instanceof Map) continue;
@@ -1211,7 +1214,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     return "";
   }
 
-  private String findDefaultNameCaseInsensitive(HashMap<String, Object> manifestElements) {
+  private String findDefaultNameCaseInsensitive(Map<String, Object> manifestElements) {
     for (String canonicalName : defaultDefaultNames) {
       for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
         Object o = entry.getValue();
@@ -1290,7 +1293,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         phToStart.add(ph);
       }
     }
-    if ((!excludeRoot) && (maybeStartPH.length == 0)) {
+    if (!excludeRoot && maybeStartPH.length == 0) {
       phToStart.add(rootContainerPutHandler);
     }
     return phToStart.toArray(new PutHandler[0]);
@@ -1311,8 +1314,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    * @throws TooManyFilesInsertException if the number of files or containers exceeds safe limits
    *     for the current configuration.
    */
-  protected abstract void makePutHandlers(
-      HashMap<String, Object> manifestElements, String defaultName)
+  protected abstract void makePutHandlers(Map<String, Object> manifestElements, String defaultName)
       throws TooManyFilesInsertException;
 
   @Override
