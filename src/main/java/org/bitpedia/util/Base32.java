@@ -93,7 +93,7 @@ public class Base32 {
     while (bitsLeft > 0 || nextIndex < bytes.length) {
       if (bitsLeft < 5) {
         if (nextIndex < bytes.length) {
-          buffer = buffer << 8 | bytes[nextIndex] & 0xFF;
+          buffer = (buffer << 8) | (bytes[nextIndex] & 0xFF);
           bitsLeft += 8;
           nextIndex++;
         } else {
@@ -102,7 +102,7 @@ public class Base32 {
         }
       }
 
-      int index = buffer >> bitsLeft - 5 & 0x1F;
+      int index = (buffer >> (bitsLeft - 5)) & 0x1F;
       bitsLeft -= 5;
       base32.append(BASE32_CHARS.charAt(index));
     }
@@ -149,14 +149,14 @@ public class Base32 {
           bytes[offset] = (byte) (bytes[offset] | digit);
           offset++;
         } else {
-          bytes[offset] = (byte) (bytes[offset] | digit << 8 - index & 0xFF);
+          bytes[offset] = (byte) (bytes[offset] | ((digit << (8 - index)) & 0xFF));
         }
       } else {
         index = (index + 5) % 8;
-        bytes[offset] = (byte) (bytes[offset] | digit >>> index & 0xFF);
+        bytes[offset] = (byte) (bytes[offset] | ((digit >>> index) & 0xFF));
         offset++;
         if (offset < bytes.length) {
-          bytes[offset] = (byte) (bytes[offset] | digit << 8 - index & 0xFF);
+          bytes[offset] = (byte) (bytes[offset] | ((digit << (8 - index)) & 0xFF));
         }
       }
     }
@@ -174,7 +174,7 @@ public class Base32 {
    * @param args command-line arguments where {@code args[0]} should hold a Base32-encoded payload;
    *     additional elements are ignored
    */
-  static void main(String[] args) {
+  public static void main(String[] args) {
     if (args.length == 0) {
       LOGGER.info("Supply a Base32-encoded argument.");
       return;
