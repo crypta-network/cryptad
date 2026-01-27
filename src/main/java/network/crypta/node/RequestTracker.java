@@ -429,7 +429,7 @@ public class RequestTracker {
     for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
       UIDTag tag = entry.getValue();
       // The overall running* map can include local. But the local map can't include non-local.
-      if ((!local) && tag.wasLocal) continue;
+      if (!local && tag.wasLocal) continue;
       int out = tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, true);
       int in = tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, true);
       totals.count++;
@@ -553,7 +553,7 @@ public class RequestTracker {
     CountTotals totals = new CountTotals();
     for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
       UIDTag tag = entry.getValue();
-      if ((!local) && tag.wasLocal) continue;
+      if (!local && tag.wasLocal) continue;
       if (tag.getSource() == source) {
         int out = tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, true);
         int in = tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, true);
@@ -590,7 +590,7 @@ public class RequestTracker {
     CountTotals totals = new CountTotals();
     for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
       UIDTag tag = entry.getValue();
-      if ((!local) && tag.wasLocal) continue;
+      if (!local && tag.wasLocal) continue;
       if (tag.currentlyFetchingOfferedKeyFrom(source)) {
         if (LOG.isDebugEnabled())
           LOG.debug("Count to peer (offered key) tag={} uid={}", tag, entry.getKey());
@@ -638,7 +638,7 @@ public class RequestTracker {
         for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
           UIDTag tag = entry.getValue();
           // The overall running* map can include local. But the local map can't include non-local.
-          if ((!mode.isLocal()) && tag.wasLocal) continue;
+          if (!mode.isLocal() && tag.wasLocal) continue;
           PeerNode source = tag.getSource(); // Can be null in various cases
           CountedRequests counter = counterMap.computeIfAbsent(source, k -> new CountedRequests());
           int out =

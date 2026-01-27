@@ -350,18 +350,12 @@ public final class NodeNetworkSubsystem {
   /**
    * Initializes the localhost address used by networking helpers.
    *
-   * <p>This method resolves the loopback IPv4 address and stores it as a {@link
-   * FreenetInetAddress}. If resolution fails (which is unexpected for {@code 127.0.0.1}), it throws
-   * an {@link IllegalStateException}. The stored address is later exposed by {@link
-   * #freenetLocalhostAddress()}.
+   * <p>This method resolves the loopback address and stores it as a {@link FreenetInetAddress}. The
+   * stored address is later exposed by {@link #freenetLocalhostAddress()}.
    */
   public void initLocalhost() {
-    try {
-      InetAddress localhostAddress = InetAddress.getByName("127.0.0.1");
-      freenetLocalhostAddress = new FreenetInetAddress(localhostAddress);
-    } catch (java.net.UnknownHostException e3) {
-      throw new IllegalStateException(e3);
-    }
+    InetAddress localhostAddress = InetAddress.getLoopbackAddress();
+    freenetLocalhostAddress = new FreenetInetAddress(localhostAddress);
   }
 
   /**
