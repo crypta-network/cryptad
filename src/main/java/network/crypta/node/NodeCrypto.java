@@ -633,7 +633,7 @@ public class NodeCrypto {
       PeerNode incomingPeer, FreenetInetAddress address, PeerNode existingPeer) {
     if (!existingPeer.crypto.getConfig().oneConnectionPerAddress()) return;
     if (existingPeer instanceof DarknetPeerNode darknetPeerNode) {
-      if (!(incomingPeer instanceof DarknetPeerNode)) {
+      if (!(incomingPeer instanceof DarknetPeerNode incomingDarknetPeer)) {
         // Darknet is only affected by other darknet peers.
         // Opennet peers with the same IP will NOT cause darknet peers to be dropped, even if
         // one connection per IP is set for darknet, and even if it isn't set for opennet.
@@ -646,7 +646,7 @@ public class NodeCrypto {
           "Disconnect permanently from friend \"{}\" because friend \"{}\" uses the same IP address"
               + " {}",
           darknetPeerNode.getName(),
-          ((DarknetPeerNode) incomingPeer).getName(),
+          incomingDarknetPeer.getName(),
           address);
     }
     node.network()

@@ -166,13 +166,14 @@ public class MessageType {
    * name.
    */
   @Override
+  @SuppressWarnings("ReferenceEquality")
   public boolean equals(Object o) {
-    if (!(o instanceof MessageType)) {
+    if (!(o instanceof MessageType other)) {
       return false;
     }
     // Intentionally use reference equality for the name based on registration semantics.
     //noinspection StringEquality
-    return ((MessageType) o).name == name;
+    return other.name == name;
   }
 
   /**
