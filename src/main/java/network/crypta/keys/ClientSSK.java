@@ -194,7 +194,7 @@ public class ClientSSK extends ClientKey {
    *     computed hash of {@code pubKey} does not equal {@link #pubKeyHash}
    */
   public synchronized void setPublicKey(DSAPublicKey pubKey) {
-    if ((this.pubKey != null) && (this.pubKey != pubKey) && !this.pubKey.equals(pubKey))
+    if (this.pubKey != null && !this.pubKey.equals(pubKey))
       throw new IllegalArgumentException("Cannot reassign: was " + this.pubKey + " now " + pubKey);
     byte[] newKeyHash = pubKey.asBytesHash();
     if (!Arrays.equals(newKeyHash, pubKeyHash))

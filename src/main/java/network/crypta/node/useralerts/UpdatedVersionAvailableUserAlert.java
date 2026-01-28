@@ -320,7 +320,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
   @Override
   public boolean isValid() {
     return updater.isEnabled()
-        && (!updater.isBlown())
+        && !updater.isBlown()
         && (updater.fetchingNewMainJar() || updater.hasNewMainJar() || updater.fetchingFromUOM());
   }
 
