@@ -262,7 +262,7 @@ public class NodeIPDetector {
     ArrayList<FreenetInetAddress> filtered = new ArrayList<>(addresses.length);
     for (FreenetInetAddress addr : addresses) {
       if (addr == null) continue;
-      if ((addr == overrideIPAddress && addr.hasHostnameNoIP())
+      if ((Objects.equals(addr, overrideIPAddress) && addr.hasHostnameNoIP())
           || IPUtil.isValidAddress(addr.getAddress(), false)) {
         filtered.add(addr);
       }
