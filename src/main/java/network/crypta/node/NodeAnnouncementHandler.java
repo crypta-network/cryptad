@@ -1,5 +1,6 @@
 package network.crypta.node;
 
+import java.util.Objects;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageType;
@@ -69,7 +70,7 @@ final class NodeAnnouncementHandler {
    */
   boolean handle(Message m, PeerNode source) {
     MessageType spec = m.getSpec();
-    if (spec == DMT.FNPOpennetAnnounceRequest) {
+    if (Objects.equals(spec, DMT.FNPOpennetAnnounceRequest)) {
       handleAnnounceRequest(m, source);
       return true;
     }

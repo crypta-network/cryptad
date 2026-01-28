@@ -267,7 +267,7 @@ final class NodeControlMessageHandler {
     double[] locs = Fields.bytesToDoubles(buffer.getData());
 
     // See: http://archives.freenetproject.org/message/20080718.144240.359e16d3.en.html
-    if ((OpennetManager.MAX_PEERS_FOR_SCALING < locs.length) && (source.isOpennet())) {
+    if (OpennetManager.MAX_PEERS_FOR_SCALING < locs.length && source.isOpennet()) {
       if (locs.length > OpennetManager.PANIC_MAX_PEERS) {
         LOG.error(
             "Received {} locations from {}; unexpected count; possible attack",
