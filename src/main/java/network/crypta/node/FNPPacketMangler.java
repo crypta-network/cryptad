@@ -343,8 +343,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     int dataStart = ivLength + digestLength + offset + 2;
 
-    int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
-    int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
+    int byte1 = (pcfb.decipher(buf[dataStart - 2]) & 0xff);
+    int byte2 = (pcfb.decipher(buf[dataStart - 1]) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
     if (LOG.isTraceEnabled())
       LOG.trace(
@@ -447,8 +447,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     int dataStart = ivLength + digestLength + offset + 2;
 
-    int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
-    int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
+    int byte1 = (pcfb.decipher(buf[dataStart - 2]) & 0xff);
+    int byte2 = (pcfb.decipher(buf[dataStart - 1]) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
     if (LOG.isTraceEnabled())
       LOG.trace(
@@ -519,8 +519,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     int dataStart = ivLength + digestLength + offset + 2;
 
-    int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
-    int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
+    int byte1 = (pcfb.decipher(buf[dataStart - 2]) & 0xff);
+    int byte2 = (pcfb.decipher(buf[dataStart - 1]) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
     if (LOG.isTraceEnabled())
       LOG.trace(
@@ -964,7 +964,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   private boolean computeDontWantForDuplicateIP(boolean dontWant, PeerNode pn, Peer replyTo) {
-    if ((!dontWant) && !crypto.allowConnection(pn, replyTo.getFreenetAddress())) {
+    if (!dontWant && !crypto.allowConnection(pn, replyTo.getFreenetAddress())) {
       if (pn instanceof DarknetPeerNode peerNode) {
         LOG.error("Drop peer {} due to existing connections on the same IP address", pn);
         LOG.warn(
