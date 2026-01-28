@@ -1,6 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -2103,8 +2102,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
     scheduleJFK3ResendIfNoReply(p.pn, p.replyTo, p.negotiation, message3, timeSent);
     long t2 = System.currentTimeMillis();
-    if ((t2 - t1) > MILLISECONDS.toMillis(500))
-      LOG.error("event=jfk3_send_slow (>500 ms) for {}", p.pn.getPeer());
+    if ((t2 - t1) > 500L) LOG.error("event=jfk3_send_slow (>500 ms) for {}", p.pn.getPeer());
   }
 
   private int getInitialMessageID(byte[] identity) {
