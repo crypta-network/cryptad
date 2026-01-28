@@ -128,17 +128,18 @@ public class FCPConnectionOutputHandler implements Runnable {
         return;
       }
       switch (action.type()) {
-        case MESSAGE:
+        case MESSAGE -> {
           sendMessage(os, action.message());
           flushedSinceLastSend = false;
-          break;
-        case FLUSH:
+        }
+        case FLUSH -> {
           flushOutput(os);
           flushedSinceLastSend = true;
-          break;
-        case CLOSED:
+        }
+        case CLOSED -> {
           flushAndClose(os);
           return;
+        }
       }
     }
   }

@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -599,8 +600,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
         LOG.debug("Not sending UOM {} request to {} (disconnected or seednode)", lname, source);
       return;
     }
-    final HashSet<PeerNode> sendingJar = nodesSendingMainJar;
-    final HashSet<PeerNode> askedSendJar = nodesAskedSendMainJar;
+    final Set<PeerNode> sendingJar = nodesSendingMainJar;
+    final Set<PeerNode> askedSendJar = nodesAskedSendMainJar;
 
     UomRequestDecision decision =
         decideUomRequest(source, addOnFail, lname, sendingJar, askedSendJar);
@@ -615,8 +616,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private void doSendUomRequestAsync(
       final PeerNode source,
       String lname,
-      final HashSet<PeerNode> sendingJar,
-      final HashSet<PeerNode> askedSendJar,
+      final Set<PeerNode> sendingJar,
+      final Set<PeerNode> askedSendJar,
       Message msg) {
     try {
       if (LOG.isInfoEnabled()) {
@@ -689,8 +690,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
       final PeerNode source,
       boolean addOnFail,
       String lname,
-      final HashSet<PeerNode> sendingJar,
-      final HashSet<PeerNode> askedSendJar) {
+      final Set<PeerNode> sendingJar,
+      final Set<PeerNode> askedSendJar) {
     boolean startedFetching;
     synchronized (this) {
       int offeredVersion = source.getMainJarOfferedVersion();
@@ -755,8 +756,8 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
   private boolean isAtCapacityAndQueueOffer(
       boolean addOnFail,
-      HashSet<PeerNode> sendingJar,
-      HashSet<PeerNode> askedSendJar,
+      Set<PeerNode> sendingJar,
+      Set<PeerNode> askedSendJar,
       PeerNode source,
       String lname) {
     if (addOnFail && askedSendJar.size() + sendingJar.size() >= MAX_NODES_SENDING_JAR) {
@@ -774,7 +775,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   }
 
   private boolean alreadyFetchingFromSource(
-      HashSet<PeerNode> sendingJar, PeerNode source, String lname) {
+      Set<PeerNode> sendingJar, PeerNode source, String lname) {
     if (sendingJar.contains(source)) {
       if (LOG.isDebugEnabled())
         LOG.debug(
@@ -1031,7 +1032,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
 
   private Runnable buildRevocationSenderRunnable(
       final BulkTransmitter btFinal, final RandomAccessBuffer data, final PeerNode source) {
-    return (() -> {
+    return () -> {
       try {
         if (!btFinal.send()) {
           if (LOG.isErrorEnabled()) {
@@ -1056,7 +1057,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       } finally {
         data.close();
       }
-    });
+    };
   }
 
   private void sendRevocationAsync(
@@ -2229,7 +2230,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
    */
   public boolean fetchingFromTwo() {
     synchronized (this) {
-      return (this.nodesSendingMainJar.size()) >= 2;
+      return this.nodesSendingMainJar.size() >= 2;
     }
   }
 
@@ -2711,7 +2712,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       }
     }
 
-    private synchronized PeerNode chooseRandomPeer(HashSet<PeerNode> uomPeers) {
+    private synchronized PeerNode chooseRandomPeer(Set<PeerNode> uomPeers) {
       if (completed) return null;
       if (peersFetching.size() >= MAX_NODES_SENDING_JAR) {
         LOG.debug(

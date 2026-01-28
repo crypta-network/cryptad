@@ -219,18 +219,10 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     void accept(ResumeOutcome outcome) {
       if (outcome == null) return;
       switch (outcome.status) {
-        case LOADED:
-          success++;
-          break;
-        case RESTORED_FULLY:
-          restoredFully++;
-          break;
-        case RESTORED_RESTARTED:
-          restoredRestarted++;
-          break;
-        case FAILED:
-          failed++;
-          break;
+        case LOADED -> success++;
+        case RESTORED_FULLY -> restoredFully++;
+        case RESTORED_RESTARTED -> restoredRestarted++;
+        case FAILED -> failed++;
       }
       if (outcome.serializeFailed) failedSerialize = true;
     }

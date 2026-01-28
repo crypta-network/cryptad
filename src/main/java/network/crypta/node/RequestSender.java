@@ -1126,23 +1126,23 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         status = tryOffer(offer, pn, offers);
       }
       switch (status) {
-        case FATAL:
+        case FATAL -> {
           offers.deleteLastOffer();
           pn.noLongerRoutingTo(origTag, true);
           return;
-        case TWO_STAGE_TIMEOUT:
-          offers.deleteLastOffer();
-          break;
-        case FETCHING:
+        }
+        case TWO_STAGE_TIMEOUT -> offers.deleteLastOffer();
+        case FETCHING -> {
           return;
-        case KEEP:
+        }
+        case KEEP -> {
           offers.keepLastOffer();
           pn.noLongerRoutingTo(origTag, true);
-          break;
-        case TRY_ANOTHER:
+        }
+        case TRY_ANOTHER -> {
           offers.deleteLastOffer();
           pn.noLongerRoutingTo(origTag, true);
-          break;
+        }
       }
       pn = null;
       status = null;
