@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
@@ -1021,7 +1022,7 @@ public class WelcomeToadlet extends Toadlet {
     if (userAgent == null) {
       return;
     }
-    String lowered = userAgent.toLowerCase();
+    String lowered = userAgent.toLowerCase(Locale.ROOT);
     if (lowered.contains("msie") && !lowered.contains("opera")) {
       ctx.getPageMaker()
           .getInfobox(
@@ -1075,11 +1076,12 @@ public class WelcomeToadlet extends Toadlet {
     HTMLNode bookmarkBoxContent = bookmarkBox.addChild("div", ATTR_CLASS, "infobox-content");
 
     HTMLNode bookmarksList = bookmarkBoxContent.addChild("ul", "id", BOOKMARKS_ANCHOR);
+    String loweredAgent = userAgent == null ? null : userAgent.toLowerCase(Locale.ROOT);
     boolean disableActivelinks =
-        (!container.enableActivelinks())
-            || (userAgent != null
-                && userAgent.toLowerCase().contains("khtml")
-                && !userAgent.toLowerCase().contains("chrome"));
+        !container.enableActivelinks()
+            || (loweredAgent != null
+                && loweredAgent.contains("khtml")
+                && !loweredAgent.contains("chrome"));
     BookmarkCategory category =
         ctx.isAllowedFullAccess() || !ctx.getContainer().publicGatewayMode()
             ? BookmarkManager.MAIN_CATEGORY
