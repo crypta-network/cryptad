@@ -1169,6 +1169,7 @@ public class LocationManager implements ByteCounter {
     if (log) recordLocChange(randomReset, fromDupLocation);
   }
 
+  @SuppressWarnings("JavaUtilDate")
   private void recordLocChange(final boolean randomReset, final boolean fromDupLocation) {
     node.network()
         .executor()
@@ -1498,7 +1499,7 @@ public class LocationManager implements ByteCounter {
         runNow = true;
         lockedTime = System.currentTimeMillis();
       } else {
-        if ((!node.isEnableSwapQueueing())
+        if (!node.isEnableSwapQueueing()
             || incomingMessageQueue.size() > MAX_INCOMING_QUEUE_LENGTH) {
           reject = true;
           incrementSwapsRejectedAlreadyLocked();
@@ -1655,7 +1656,7 @@ public class LocationManager implements ByteCounter {
       LOG.error("SwapReply on {} but routedTo is null", uid);
       return false;
     }
-    if (source != item.routedTo) {
+    if (!Objects.equals(source, item.routedTo)) {
       LOG.error(
           UNMATCHED_SWAP_REPLY_WRONG_SOURCE_MSG, uid, source, item.routedTo, item.requestSender);
       return true;
@@ -1695,7 +1696,7 @@ public class LocationManager implements ByteCounter {
       LOG.error("SwapRejected on {} but routedTo is null", uid);
       return false;
     }
-    if (source != item.routedTo) {
+    if (!Objects.equals(source, item.routedTo)) {
       LOG.error(
           UNMATCHED_SWAP_REJECTED_WRONG_SOURCE_MSG, uid, source, item.routedTo, item.requestSender);
       return true;
@@ -1728,7 +1729,7 @@ public class LocationManager implements ByteCounter {
     RecentlyForwardedItem item = recentlyForwardedIDs.get(uid);
     if (item == null) return false;
     if (item.routedTo == null) return false;
-    if (source != item.requestSender) {
+    if (!Objects.equals(source, item.requestSender)) {
       LOG.error(
           UNMATCHED_SWAP_COMMIT_WRONG_SOURCE_MSG, uid, source, item.requestSender, item.routedTo);
       return true;
@@ -1779,7 +1780,7 @@ public class LocationManager implements ByteCounter {
       LOG.error("SwapComplete on {} but routedTo is null", uid);
       return false;
     }
-    if (source != item.routedTo) {
+    if (!Objects.equals(source, item.routedTo)) {
       LOG.error(
           UNMATCHED_SWAP_COMPLETE_WRONG_SOURCE_MSG, uid, source, item.routedTo, item.requestSender);
       return true;
