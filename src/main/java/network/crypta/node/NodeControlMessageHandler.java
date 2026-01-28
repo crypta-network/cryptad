@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import java.util.Arrays;
+import java.util.Objects;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
@@ -94,10 +95,10 @@ final class NodeControlMessageHandler {
     MessageType spec = m.getSpec();
     if (handlePing(m, source, spec)) return true;
     if (handleDetectedAddress(m, source, spec)) return true;
-    if (spec == DMT.FNPTime) return handleTime(m, source);
-    if (spec == DMT.FNPUptime) return handleUptime(m, source);
+    if (Objects.equals(spec, DMT.FNPTime)) return handleTime(m, source);
+    if (Objects.equals(spec, DMT.FNPUptime)) return handleUptime(m, source);
     if (handleVisibility(m, source, spec)) return true;
-    if (spec == DMT.FNPVoid) return true;
+    if (Objects.equals(spec, DMT.FNPVoid)) return true;
     if (handleDisconnectMessage(m, source, spec)) return true;
     if (handleNodeToNodeMessage(m, source, spec)) return true;
     if (handleUomMessages(m, source, spec)) return true;
@@ -115,7 +116,7 @@ final class NodeControlMessageHandler {
    * @return {@code true} when a ping was handled and a reply attempted
    */
   private boolean handlePing(Message m, PeerNode source, MessageType spec) {
-    if (spec != DMT.FNPPing) return false;
+    if (!Objects.equals(spec, DMT.FNPPing)) return false;
     Message reply = DMT.createFNPPong(m.getInt(DMT.PING_SEQNO));
     try {
       source.transport().sendAsync(reply, null, pingCounter);
@@ -134,7 +135,7 @@ final class NodeControlMessageHandler {
    * @return {@code true} when the message was a detected-address notification
    */
   private boolean handleDetectedAddress(Message m, PeerNode source, MessageType spec) {
-    if (spec != DMT.FNPDetectedIPAddress) return false;
+    if (!Objects.equals(spec, DMT.FNPDetectedIPAddress)) return false;
     Peer p = (Peer) m.getObject(DMT.EXTERNAL_ADDRESS);
     source.setRemoteDetectedPeer(p);
     node.network().ipDetector().redetectAddress();
@@ -150,7 +151,7 @@ final class NodeControlMessageHandler {
    * @return {@code true} if a visibility message was consumed; otherwise {@code false}
    */
   private boolean handleVisibility(Message m, PeerNode source, MessageType spec) {
-    if (spec == DMT.FNPVisibility && source instanceof DarknetPeerNode peerNode) {
+    if (Objects.equals(spec, DMT.FNPVisibility) && source instanceof DarknetPeerNode peerNode) {
       peerNode.handleVisibility(m);
       return true;
     }
@@ -166,7 +167,7 @@ final class NodeControlMessageHandler {
    * @return {@code true} if the message is a disconnect request, otherwise {@code false}
    */
   private boolean handleDisconnectMessage(Message m, PeerNode source, MessageType spec) {
-    if (spec != DMT.FNPDisconnect) return false;
+    if (!Objects.equals(spec, DMT.FNPDisconnect)) return false;
     handleDisconnect(m, source);
     return true;
   }
@@ -180,7 +181,7 @@ final class NodeControlMessageHandler {
    * @return {@code true} if the message was dispatched, otherwise {@code false}
    */
   private boolean handleNodeToNodeMessage(Message m, PeerNode source, MessageType spec) {
-    if (spec != DMT.nodeToNodeMessage) return false;
+    if (!Objects.equals(spec, DMT.nodeToNodeMessage)) return false;
     node.messaging().receivedNodeToNodeMessage(m, source);
     return true;
   }
@@ -194,7 +195,7 @@ final class NodeControlMessageHandler {
    * @return {@code true} if the message was a routing-status request, otherwise {@code false}
    */
   private boolean handleRoutingStatus(Message m, PeerNode source, MessageType spec) {
-    if (spec != DMT.FNPRoutingStatus) return false;
+    if (!Objects.equals(spec, DMT.FNPRoutingStatus)) return false;
     if (source instanceof DarknetPeerNode peerNode) {
       boolean value = m.getBoolean(DMT.ROUTING_ENABLED);
       if (LOG.isDebugEnabled()) LOG.debug("Peer {} requests routing={}", source, value);
@@ -212,33 +213,33 @@ final class NodeControlMessageHandler {
    * @return {@code true} if a UOM path handled the message, otherwise {@code false}
    */
   private boolean handleUomMessages(Message m, PeerNode source, MessageType spec) {
-    if (spec == DMT.CryptadUOMAnnouncement && source.isRealConnection()) {
+    if (Objects.equals(spec, DMT.CryptadUOMAnnouncement) && source.isRealConnection()) {
       return node.services().nodeUpdater().getUpdateOverMandatory().handleAnnounce(m, source);
     }
-    if (spec == DMT.CryptadUOMRequestRevocation && source.isRealConnection()) {
+    if (Objects.equals(spec, DMT.CryptadUOMRequestRevocation) && source.isRealConnection()) {
       return node.services()
           .nodeUpdater()
           .getUpdateOverMandatory()
           .handleRequestRevocation(m, source);
     }
-    if (spec == DMT.CryptadUOMSendingRevocation && source.isRealConnection()) {
+    if (Objects.equals(spec, DMT.CryptadUOMSendingRevocation) && source.isRealConnection()) {
       return node.services()
           .nodeUpdater()
           .getUpdateOverMandatory()
           .handleSendingRevocation(m, source);
     }
-    if (spec == DMT.CryptadUOMRequestMainJar
+    if (Objects.equals(spec, DMT.CryptadUOMRequestMainJar)
         && node.services().nodeUpdater().supportsJarUOM()
         && source.isRealConnection()) {
       node.services().nodeUpdater().getUpdateOverMandatory().handleRequestJar(m, source);
       return true;
     }
-    if (spec == DMT.CryptadUOMSendingMainJar
+    if (Objects.equals(spec, DMT.CryptadUOMSendingMainJar)
         && node.services().nodeUpdater().supportsJarUOM()
         && source.isRealConnection()) {
       return node.services().nodeUpdater().getUpdateOverMandatory().handleSendingMain(m, source);
     }
-    if (spec == DMT.CryptadUOMFetchDependency
+    if (Objects.equals(spec, DMT.CryptadUOMFetchDependency)
         && node.services().nodeUpdater().supportsJarUOM()
         && source.isRealConnection()) {
       node.services().nodeUpdater().getUpdateOverMandatory().handleFetchDependency(m, source);
@@ -257,7 +258,9 @@ final class NodeControlMessageHandler {
    */
   private boolean handleLocationChangeIfRealConnection(
       Message m, PeerNode source, MessageType spec) {
-    if (!(source.isRealConnection() && spec == DMT.FNPLocChangeNotificationNew)) return false;
+    if (!(source.isRealConnection() && Objects.equals(spec, DMT.FNPLocChangeNotificationNew))) {
+      return false;
+    }
 
     double newLoc = m.getDouble(DMT.LOCATION);
     ShortBuffer buffer = ((ShortBuffer) m.getObject(DMT.PEER_LOCATIONS));
@@ -294,9 +297,9 @@ final class NodeControlMessageHandler {
    * @return {@code true} if a supported load status was processed, otherwise {@code false}
    */
   private boolean handlePeerLoadStatuses(Message m, PeerNode source, MessageType spec) {
-    if (spec == DMT.FNPPeerLoadStatusByte
-        || spec == DMT.FNPPeerLoadStatusShort
-        || spec == DMT.FNPPeerLoadStatusInt) {
+    if (Objects.equals(spec, DMT.FNPPeerLoadStatusByte)
+        || Objects.equals(spec, DMT.FNPPeerLoadStatusShort)
+        || Objects.equals(spec, DMT.FNPPeerLoadStatusInt)) {
       return handlePeerLoadStatus(m, source);
     }
     return false;

@@ -1879,7 +1879,7 @@ public class LocationManager implements ByteCounter {
 
         if (item == null) {
           LOG.error("recentlyForwardedIDs missing value for key {}", l);
-        } else if (item.routedTo == pn && item.successfullyForwarded) {
+        } else if (Objects.equals(item.routedTo, pn) && item.successfullyForwarded) {
           v.add(item);
         }
       }
