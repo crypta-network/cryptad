@@ -232,7 +232,7 @@ public class InsertableClientSSK extends ClientSSK {
     // The first two bytes = hash algorithm ID.
     int x = 0;
     headers[x++] = 0;
-    headers[x++] = (byte) (KeyBlock.HASH_SHA256);
+    headers[x++] = (byte) KeyBlock.HASH_SHA256;
     // Then crypto algorithm ID (two bytes, big-endian).
     headers[x++] = 0;
     headers[x++] = Key.ALGO_AES_PCFB_256_SHA256;
