@@ -66,11 +66,11 @@ public class PeerOpennetGate {
    */
   public boolean allowPeer(PeerNode peer, boolean ignoreOpennet) {
     if (ignoreOpennet) return true;
-    if (!(peer instanceof OpennetPeerNode)) return true;
+    if (!(peer instanceof OpennetPeerNode opennetPeer)) return true;
 
     OpennetManager opennet = node.network().opennet();
     if (opennet != null) {
-      opennet.forceAddPeer((OpennetPeerNode) peer, true);
+      opennet.forceAddPeer(opennetPeer, true);
       return true;
     }
 

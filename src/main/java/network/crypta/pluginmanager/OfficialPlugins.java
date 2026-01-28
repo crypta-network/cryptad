@@ -532,7 +532,7 @@ public class OfficialPlugins {
 
       FreenetURI resolvedUri = definition.uri();
       if (this.alwaysFetchLatestVersion && resolvedUri != null) {
-        assert (resolvedUri.isUSK()) : "Non-USK URIs do not support updates!";
+        assert resolvedUri.isUSK() : "Non-USK URIs do not support updates!";
 
         // Force fetching the latest edition by setting a negative USK edition.
         long edition = resolvedUri.getSuggestedEdition();
