@@ -24,7 +24,6 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.io.AddressTracker;
-import network.crypta.io.AddressTracker.Status;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.IncomingPacketFilter;
 import network.crypta.io.comm.IncomingPacketFilter.DECODED;
@@ -141,7 +140,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   private final Runnable transientKeyRekeyer = this::maybeResetTransientKey;
 
   private long lastConnectivityStatusUpdate;
-  private Status lastConnectivityStatus;
+  private AddressTracker.Status lastConnectivityStatus;
 
   public FNPPacketMangler(Node node, NodeCrypto crypt, PacketSocketHandler sock) {
     this.node = node;
@@ -3093,11 +3092,11 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * @return a {@link Status} value describing NAT/connectivity observations
    */
   @Override
-  public Status getConnectivityStatus() {
+  public AddressTracker.Status getConnectivityStatus() {
     long now = System.currentTimeMillis();
     if (now - lastConnectivityStatusUpdate < MINUTES.toMillis(3)) return lastConnectivityStatus;
 
-    Status value;
+    AddressTracker.Status value;
     if (crypto.getConfig().alwaysHandshakeAggressively())
       value = AddressTracker.Status.DEFINITELY_NATED;
     else value = sock.getDetectedConnectivityStatus();
