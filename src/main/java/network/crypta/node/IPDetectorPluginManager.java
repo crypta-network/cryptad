@@ -76,7 +76,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
 
     @Override
     public String anchor() {
-      return "port-forward:" + super.hashCode();
+      return "port-forward:" + System.identityHashCode(this);
     }
 
     @Override
@@ -432,11 +432,11 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   }
 
   private static boolean isUnknown(Status status) {
-    return status.ordinal() >= AddressTracker.Status.DONT_KNOW.ordinal();
+    return status.compareTo(AddressTracker.Status.DONT_KNOW) >= 0;
   }
 
   private static int indicator(Status status, int portNumber) {
-    return (status.ordinal() < AddressTracker.Status.MAYBE_NATED.ordinal() ? -1 : 1) * portNumber;
+    return (status.compareTo(AddressTracker.Status.MAYBE_NATED) < 0 ? -1 : 1) * portNumber;
   }
 
   private static final String L10N_PREFIX = "IPDetectorPluginManager.";
