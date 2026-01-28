@@ -637,9 +637,11 @@ public final class MessageFilter {
     synchronized (this) {
       try {
         long now;
-        while (!(matchedFlag
-            || (droppedConnection != null)
-            || reallyTimedOut(now = System.currentTimeMillis()))) {
+        while (true) {
+          now = System.currentTimeMillis();
+          if (matchedFlag || droppedConnection != null || reallyTimedOut(now)) {
+            break;
+          }
           long wait = timeout - now;
           if (wait <= 0) break;
           this.wait(wait);
