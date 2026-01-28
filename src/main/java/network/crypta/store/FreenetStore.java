@@ -197,6 +197,7 @@ public interface FreenetStore<T extends StorableBlock> extends Closeable {
   boolean start(Ticker ticker, boolean longStart) throws IOException;
 
   /** Close the store and release resources. */
+  @Override
   void close();
 
   /**
