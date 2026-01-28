@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.net.MalformedURLException;
+import java.util.Locale;
 import java.util.Optional;
 import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
@@ -152,7 +153,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
     sfs.putSingle("ClientToken", clientToken);
     sfs.put("GetCHKOnly", getCHKOnly);
     sfs.put("PriorityClass", priorityClass);
-    sfs.putSingle("Persistence", persistence.toString().toLowerCase());
+    sfs.putSingle("Persistence", persistence.toString().toLowerCase(Locale.ROOT));
     sfs.put("DontCompress", dontCompress);
     if (compressorDescriptor != null) sfs.putSingle("Codecs", compressorDescriptor);
     sfs.put("Global", global);

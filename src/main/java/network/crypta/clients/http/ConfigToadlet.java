@@ -624,6 +624,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
    * @throws ToadletContextClosedException if the client disconnects while the page is being sent.
    * @throws IOException if output generation or transmission fails.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
 

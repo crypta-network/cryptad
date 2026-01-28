@@ -3,6 +3,7 @@ package network.crypta.clients.fcp;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.util.Locale;
 import network.crypta.client.HighLevelSimpleClientImpl;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.PersistenceDisabledException;
@@ -439,23 +440,23 @@ public class ClientPutMessage extends DataCarryingMessage {
     sfs.putSingle("Metadata.ContentType", contentType);
     sfs.putSingle("ClientToken", clientToken);
     switch (uploadFromType) {
-      case DIRECT:
+      case DIRECT -> {
         sfs.putSingle(FIELD_UPLOAD_FROM, "direct");
         sfs.put(FIELD_DATA_LENGTH, payloadLength);
-        break;
-      case DISK:
+      }
+      case DISK -> {
         sfs.putSingle(FIELD_UPLOAD_FROM, "disk");
         sfs.putSingle("Filename", origFilename.getAbsolutePath());
         sfs.put(FIELD_DATA_LENGTH, payloadLength);
-        break;
-      case REDIRECT:
+      }
+      case REDIRECT -> {
         sfs.putSingle(FIELD_UPLOAD_FROM, "redirect");
         sfs.putSingle("TargetURI", redirectTarget.toString());
-        break;
+      }
     }
     sfs.put("GetCHKOnly", getCHKOnly);
     sfs.put("PriorityClass", priorityClass);
-    sfs.putSingle("Persistence", persistence.toString().toLowerCase());
+    sfs.putSingle("Persistence", persistence.toString().toLowerCase(Locale.ROOT));
     sfs.put("DontCompress", dontCompress);
     if (compressorDescriptor != null) sfs.putSingle("Codecs", compressorDescriptor);
     sfs.put("Global", global);

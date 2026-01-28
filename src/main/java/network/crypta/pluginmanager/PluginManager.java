@@ -20,6 +20,7 @@ import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -957,8 +958,9 @@ public class PluginManager {
     File pluginDirectory = node.getPluginDir();
     if (lastSlash == -1) {
       /* it's an official plugin or filename without a path */
-      if (pluginSpecification.toLowerCase().endsWith(".jar")) pluginFilename = pluginSpecification;
-      else pluginFilename = pluginSpecification + ".jar";
+      if (pluginSpecification.toLowerCase(Locale.ROOT).endsWith(".jar")) {
+        pluginFilename = pluginSpecification;
+      } else pluginFilename = pluginSpecification + ".jar";
     } else pluginFilename = pluginSpecification.substring(lastSlash + 1);
     LOG.debug("Delete plugin - plugname: {} filename: {}", pluginSpecification, pluginFilename);
     List<File> cachedFiles = getPreviousInstances(pluginDirectory, pluginFilename);
@@ -1223,7 +1225,7 @@ public class PluginManager {
     synchronized (toadletList) {
       handler = toadletList.get(plugin);
     }
-    if (!(handler instanceof FredPluginHTTP)) {
+    if (!(handler instanceof FredPluginHTTP fredPluginHTTP)) {
       throw new NotFoundPluginHTTPException("Plugin not loaded!", "/plugins");
     }
 
@@ -1231,7 +1233,7 @@ public class PluginManager {
     ClassLoader pluginClassLoader = handler.getClass().getClassLoader();
     Thread.currentThread().setContextClassLoader(pluginClassLoader);
     try {
-      return ((FredPluginHTTP) handler).handleHTTPGet(request);
+      return fredPluginHTTP.handleHTTPGet(request);
     } finally {
       Thread.currentThread().setContextClassLoader(oldClassLoader);
     }
@@ -1615,7 +1617,7 @@ public class PluginManager {
       return;
     }
     String testsum = getFileDigest(pluginFile);
-    if (!(digest.equalsIgnoreCase(testsum))) {
+    if (!digest.equalsIgnoreCase(testsum)) {
       LOG.error("Checksum verification failed, should be {} but was {}", digest, testsum);
       throw new PluginNotFoundException(
           "Checksum verification failed, should be " + digest + " but was " + testsum);
@@ -2071,7 +2073,7 @@ public class PluginManager {
   private void setPluginLanguage(final LANGUAGE lang) {
     for (PluginInfoWrapper pluginInfoWrapper : loadedPlugins.getLoadedPlugins()) {
       if (pluginInfoWrapper.isL10nPlugin()) {
-        final FredPluginL10n plug = (FredPluginL10n) (pluginInfoWrapper.plug);
+        final FredPluginL10n plug = (FredPluginL10n) pluginInfoWrapper.plug;
         executor.execute(
             () -> {
               try {
@@ -2082,7 +2084,7 @@ public class PluginManager {
             },
             CALLBACK_TASK_NAME);
       } else if (pluginInfoWrapper.isBaseL10nPlugin()) {
-        final FredPluginBaseL10n plug = (FredPluginBaseL10n) (pluginInfoWrapper.plug);
+        final FredPluginBaseL10n plug = (FredPluginBaseL10n) pluginInfoWrapper.plug;
         executor.execute(
             () -> {
               try {

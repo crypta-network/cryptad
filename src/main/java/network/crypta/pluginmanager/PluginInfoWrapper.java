@@ -159,7 +159,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
    */
   @Override
   public String toString() {
-    return "ID: \"" + threadName + "\", Name: " + className + ", Started: " + (new Date(start));
+    return "ID: \"" + threadName + "\", Name: " + className + ", Started: " + new Date(start);
   }
 
   /**

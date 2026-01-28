@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.WeakHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -477,7 +478,7 @@ final class FcpServerPersistentOps implements DownloadCache {
   void makePersistentGlobalRequest(PersistentGlobalRequestParams params)
       throws NotAllowedException, IOException {
     boolean persistence = params.persistenceType().equalsIgnoreCase("reboot");
-    ReturnType returnType = ReturnType.valueOf(params.returnType().toUpperCase());
+    ReturnType returnType = ReturnType.valueOf(params.returnType().toUpperCase(Locale.ROOT));
     File returnFilename = null;
     if (returnType == ReturnType.DISK) {
       returnFilename =
@@ -795,7 +796,7 @@ final class FcpServerPersistentOps implements DownloadCache {
 
     if (get != null) {
       boolean requestFiltered = get.filterData();
-      if ((!noFilter) || (!requestFiltered)) {
+      if (!noFilter || !requestFiltered) {
         filtered = requestFiltered;
         origData = new NoFreeBucket(get.getBucket());
         mime = get.getMIMEType();

@@ -407,9 +407,9 @@ public class PersistentRequestClient {
     }
     if (statusCache != null) {
       if (cg instanceof ClientGet) {
-        statusCache.addDownload((DownloadRequestStatus) (cg.getStatus()));
+        statusCache.addDownload((DownloadRequestStatus) cg.getStatus());
       } else if (cg instanceof ClientPutBase) {
-        statusCache.addUpload((UploadRequestStatus) (cg.getStatus()));
+        statusCache.addUpload((UploadRequestStatus) cg.getStatus());
       }
     }
   }
@@ -536,7 +536,7 @@ public class PersistentRequestClient {
               "Request is null on runningPersistentRequests for {} - database corruption??", this);
           continue;
         }
-        if ((req.isPersistentForever()) || !onlyForever) v.add(req);
+        if (req.isPersistentForever() || !onlyForever) v.add(req);
       }
       v.addAll(completedUnackedRequests);
     }

@@ -6,6 +6,7 @@ import java.net.MalformedURLException;
 import java.net.Socket;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.StringTokenizer;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.client.async.PersistenceDisabledException;
@@ -816,9 +817,10 @@ public class FCPConnectionHandler implements Closeable {
     if (descriptor == null || descriptor.isBlank()) {
       return false;
     }
-    String[] tokens = descriptor.split(",");
-    for (String token : tokens) {
-      if ("LZMA".equalsIgnoreCase(token.trim())) {
+    StringTokenizer tokenizer = new StringTokenizer(descriptor, ",");
+    while (tokenizer.hasMoreTokens()) {
+      String token = tokenizer.nextToken().trim();
+      if ("LZMA".equalsIgnoreCase(token)) {
         return true;
       }
     }

@@ -94,7 +94,7 @@ public class ClientSSK extends ClientKey {
    * @param docName document name (non-{@code null}); encoded as UTF-8 for hashing
    * @param pubKeyHash hash of the serialized DSA public key; length {@link
    *     NodeSSK#PUBKEY_HASH_SIZE}
-   * @param extras SSK {@code extra} bytes; must equal {@link #getExtraBytes()} for this instance
+   * @param extras SSK {@code extras} bytes; must equal {@link #getExtraBytes()} for this instance
    * @param pubKey optional DSA public key; if non-{@code null} its hash must equal {@code
    *     pubKeyHash}
    * @param cryptoKey decryption key; length {@link #CRYPTO_KEY_LENGTH}

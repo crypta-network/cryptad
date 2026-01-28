@@ -1058,20 +1058,13 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
 
   private void writeTypeByteOrThrow(DataOutputStream dos) throws IOException {
     switch (keyType) {
-      case "CHK":
-        dos.writeByte(CHK);
-        return;
-      case "SSK":
-        dos.writeByte(SSK);
-        return;
-      case "KSK":
-        dos.writeByte(KSK);
-        return;
-      case "USK":
-        throw new MalformedURLException("Cannot write USKs as binary keys");
-      default:
-        throw new MalformedURLException(
-            "Cannot write key of type " + keyType + " - do not know how");
+      case "CHK" -> dos.writeByte(CHK);
+      case "SSK" -> dos.writeByte(SSK);
+      case "KSK" -> dos.writeByte(KSK);
+      case "USK" -> throw new MalformedURLException("Cannot write USKs as binary keys");
+      default ->
+          throw new MalformedURLException(
+              "Cannot write key of type " + keyType + " - do not know how");
     }
   }
 
