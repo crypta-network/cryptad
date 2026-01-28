@@ -729,7 +729,7 @@ public class ConfigToadlet extends Toadlet implements LinkEnabledCallback {
       SelectionOverride selectionOverride) {
     short displayedConfigElements = 0;
     for (Option<?> option : subConfig.getOptions()) {
-      if ((!advancedModeEnabled) && option.isExpert()) {
+      if (!advancedModeEnabled && option.isExpert()) {
         continue;
       }
       displayedConfigElements++;
