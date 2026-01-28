@@ -481,7 +481,7 @@ public class NodeCrypto {
   }
 
   private void maybeAppendIPs(SimpleFieldSet fs, boolean forSetup, boolean forAnonInitiator) {
-    if ((!forAnonInitiator) && (!forSetup)) {
+    if (!forAnonInitiator && !forSetup) {
       Peer[] ips = detector.detectPrimaryPeers();
       if (ips != null) {
         for (Peer ip : ips) {
@@ -513,7 +513,7 @@ public class NodeCrypto {
   }
 
   private void maybeAddName(SimpleFieldSet fs, boolean forSetup, boolean forARK) {
-    if ((!isOpennet) && (!forSetup) && (!forARK)) {
+    if (!isOpennet && !forSetup && !forARK) {
       fs.putSingle("myName", node.getMyName());
     }
   }
@@ -624,7 +624,7 @@ public class NodeCrypto {
         node.network().peers().roster().getAllConnectedByAddress(address, true);
     if (possibleMatches == null) return;
     for (PeerNode pn : possibleMatches) {
-      if (pn == peerNode || pn.equals(peerNode)) continue;
+      if (pn.equals(peerNode)) continue;
       maybeDisconnectForSameIP(peerNode, address, pn);
     }
   }

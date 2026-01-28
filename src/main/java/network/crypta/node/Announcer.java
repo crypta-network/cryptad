@@ -518,7 +518,7 @@ public class Announcer {
   }
 
   private boolean checkAndMaybeKillForTooOld() {
-    if ((!node.services().nodeUpdater().isEnabled())
+    if (!node.services().nodeUpdater().isEnabled()
         || (node.services().nodeUpdater().canUpdateNow()
             && !node.services().nodeUpdater().isArmed())) {
       synchronized (this) {
@@ -1015,7 +1015,7 @@ public class Announcer {
 
     @Override
     public boolean isValid() {
-      return (!enoughPeers()) && node.network().isOpennetEnabled();
+      return !enoughPeers() && node.network().isOpennetEnabled();
     }
 
     @Override

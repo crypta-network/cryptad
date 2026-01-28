@@ -189,7 +189,7 @@ public final class MessageFilter {
    * @throws IncorrectTypeException if the value type does not match the message specification
    */
   public MessageFilter setField(String fieldName, Object fieldValue) {
-    if ((type != null) && (!type.checkType(fieldName, fieldValue))) {
+    if (type != null && !type.checkType(fieldName, fieldValue)) {
       throw new IncorrectTypeException(
           "Got "
               + fieldValue.getClass()
