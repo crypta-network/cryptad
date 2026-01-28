@@ -2953,8 +2953,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         }
       }
 
-      if ((ecdhContextToBePrunned != null)
-          && ((ecdhContextToBePrunned.getPublicKey()).equals(exponential)))
+      if (ecdhContextToBePrunned != null
+          && ecdhContextToBePrunned.getPublicKey().equals(exponential))
         return ecdhContextToBePrunned;
     }
     return null;
