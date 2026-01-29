@@ -102,6 +102,7 @@ class StaticToadletTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void handleMethodGET_whenResourceExists_streamsFromClasspath() throws Exception {
     URL resourceUrl =
         Objects.requireNonNull(
