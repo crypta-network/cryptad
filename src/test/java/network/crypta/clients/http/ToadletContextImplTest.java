@@ -11,6 +11,7 @@ import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,6 +68,7 @@ class ToadletContextImplTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void parseHTTPDate_whenValidString_parsesEpoch() throws Exception {
     Date parsed = ToadletContextImpl.parseHTTPDate("Thu, 01 Jan 1970 00:00:00 GMT");
     assertEquals(0L, parsed.getTime());
@@ -152,6 +154,7 @@ class ToadletContextImplTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void sendReplyHeaders_withModifiedTime_allowsCachingAndScripts() throws Exception {
     MultiValueTable<String, String> headers = new MultiValueTable<>();
     Date modified = new Date(0L);
@@ -206,15 +209,15 @@ class ToadletContextImplTest {
 
   private static Map<String, List<String>> parseHeaders(String raw) {
     Map<String, List<String>> map = new LinkedHashMap<>();
-    String[] lines = raw.split("\\r?\\n");
-    if (lines.length == 0) return map;
-    String statusLine = lines[0];
-    String[] statusParts = statusLine.split(" ");
+    List<String> lines = splitLines(raw);
+    if (lines.isEmpty()) return map;
+    String statusLine = lines.get(0);
+    String[] statusParts = splitOnChar(statusLine, ' ');
     if (statusParts.length >= 2) {
       map.put("__status", List.of(statusParts[1]));
     }
-    for (int i = 1; i < lines.length; i++) {
-      String line = lines[i];
+    for (int i = 1; i < lines.size(); i++) {
+      String line = lines.get(i);
       if (line.trim().isEmpty()) {
         continue;
       }
@@ -229,13 +232,58 @@ class ToadletContextImplTest {
 
   private static String getScriptDirective(String csp) {
     final String prefix = "script-src";
-    for (String part : csp.split(";")) {
+    for (String part : splitOnChar(csp, ';')) {
       String trimmed = part.trim();
       if (trimmed.startsWith(prefix)) {
         return trimmed;
       }
     }
     return "";
+  }
+
+  private static List<String> splitLines(String raw) {
+    List<String> lines = new ArrayList<>();
+    int start = 0;
+    for (int i = 0; i < raw.length(); i++) {
+      if (raw.charAt(i) == '\n') {
+        int end = i;
+        if (end > start && raw.charAt(end - 1) == '\r') {
+          end--;
+        }
+        lines.add(raw.substring(start, end));
+        start = i + 1;
+      }
+    }
+    lines.add(raw.substring(start));
+    while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
+      lines.remove(lines.size() - 1);
+    }
+    return lines;
+  }
+
+  private static String[] splitOnChar(String value, char delimiter) {
+    int segments = 1;
+    for (int i = 0; i < value.length(); i++) {
+      if (value.charAt(i) == delimiter) {
+        segments++;
+      }
+    }
+    String[] parts = new String[segments];
+    int start = 0;
+    int partIndex = 0;
+    for (int i = 0; i < value.length(); i++) {
+      if (value.charAt(i) == delimiter) {
+        parts[partIndex++] = value.substring(start, i);
+        start = i + 1;
+      }
+    }
+    parts[partIndex] = value.substring(start, value.length());
+
+    int end = parts.length;
+    while (end > 0 && parts[end - 1].isEmpty()) {
+      end--;
+    }
+    return end == parts.length ? parts : java.util.Arrays.copyOf(parts, end);
   }
 
   private static class FakeSocket extends Socket {
