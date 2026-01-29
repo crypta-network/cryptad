@@ -96,7 +96,7 @@ class DarknetConnectionsToadletTest {
     HTMLNode row = new HTMLNode("tr");
     DarknetPeerNodeStatus status = mock(DarknetPeerNodeStatus.class);
     when(status.getPrivateDarknetCommentNote()).thenReturn("note");
-    int statusHash = status.hashCode();
+    int statusHash = System.identityHashCode(status);
 
     toadlet.drawPrivateNoteColumn(row, status, true);
 
@@ -110,7 +110,7 @@ class DarknetConnectionsToadletTest {
     HTMLNode row = new HTMLNode("tr");
     DarknetPeerNodeStatus status = mock(DarknetPeerNodeStatus.class);
     when(status.getPrivateDarknetCommentNote()).thenReturn("note");
-    int statusHash = status.hashCode();
+    int statusHash = System.identityHashCode(status);
 
     toadlet.drawPrivateNoteColumn(row, status, false);
 

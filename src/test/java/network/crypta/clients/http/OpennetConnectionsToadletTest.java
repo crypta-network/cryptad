@@ -159,7 +159,7 @@ class OpennetConnectionsToadletTest {
     OpennetPeerNodeStatus status = statusWithLastSuccess(-1);
     HTMLNode row = new HTMLNode("tr");
 
-    OpennetConnectionsToadlet.SimpleColumn[] columns = toadlet.endColumnHeaders(true);
+    ConnectionsToadlet.SimpleColumn[] columns = toadlet.endColumnHeaders(true);
     assertNotNull(columns);
     columns[0].drawColumn(row, status);
 
@@ -175,7 +175,7 @@ class OpennetConnectionsToadletTest {
     OpennetPeerNodeStatus status = statusWithLastSuccess(now - 5000);
     HTMLNode row = new HTMLNode("tr");
 
-    OpennetConnectionsToadlet.SimpleColumn[] columns = toadlet.endColumnHeaders(true);
+    ConnectionsToadlet.SimpleColumn[] columns = toadlet.endColumnHeaders(true);
     columns[0].drawColumn(row, status);
 
     String rendered = row.getChildren().getFirst().getChildren().getFirst().getContent();
@@ -226,8 +226,14 @@ class OpennetConnectionsToadletTest {
       field.setAccessible(true);
       field.setLong(status, timestamp);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Unable to set timeLastSuccess on mock", e);
+      throw linkageError("Unable to set timeLastSuccess on mock", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 
   /** Minimal concrete subclass to expose the protected constructor for testing. */

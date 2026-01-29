@@ -191,8 +191,14 @@ class PeerTrustInputForAddPeerBoxNodeTest {
       baseField.setAccessible(true);
       baseField.set(null, base);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to set NodeL10n base via reflection", e);
+      throw linkageError("Failed to set NodeL10n base via reflection", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 
   private static List<HTMLNode> brChildren(HTMLNode node) {
