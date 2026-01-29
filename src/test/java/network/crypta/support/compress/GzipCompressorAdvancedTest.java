@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -118,7 +119,8 @@ class GzipCompressorAdvancedTest {
 
     // Mock input bucket returning a spy InputStream so we can assert close() was called.
     Bucket inputBucket = mock(Bucket.class);
-    ByteArrayInputStream rawIn = spy(new ByteArrayInputStream("hello world".getBytes()));
+    ByteArrayInputStream rawIn =
+        spy(new ByteArrayInputStream("hello world".getBytes(StandardCharsets.UTF_8)));
     when(inputBucket.getInputStream()).thenReturn(rawIn);
 
     // Mock factory + output bucket whose OutputStream we can inspect and verify close() on.
@@ -150,7 +152,7 @@ class GzipCompressorAdvancedTest {
   void compress_whenMaxReadLengthLessThanInput_truncatesToMax() throws Exception {
     // Arrange
     GzipCompressor gzip = new GzipCompressor();
-    byte[] raw = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".getBytes(); // 26 bytes
+    byte[] raw = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".getBytes(StandardCharsets.UTF_8); // 26 bytes
     int readLimit = 13; // Half
     InputStream in = new ByteArrayInputStream(raw);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -165,7 +167,7 @@ class GzipCompressorAdvancedTest {
         new ByteArrayInputStream(compressed), decompressed, readLimit, -1);
     assertEquals(readLimit, decompressed.size());
     assertArrayEquals(
-        new String(raw, 0, readLimit).getBytes(),
+        Arrays.copyOfRange(raw, 0, readLimit),
         decompressed.toByteArray(),
         "Decompressed data must match the truncated input prefix");
     assertTrue(written > 0, "Some bytes must be written even for small inputs (header+footer)");
@@ -327,7 +329,7 @@ class GzipCompressorAdvancedTest {
   @DisplayName("decompress(byte[], off,len, out) honors input offset and length")
   void decompressByteArray_whenOffsetAndLengthUsed_readsCorrectSegment() throws Exception {
     // Arrange
-    byte[] raw = "Quick brown fox jumps over the lazy dog".getBytes();
+    byte[] raw = "Quick brown fox jumps over the lazy dog".getBytes(StandardCharsets.UTF_8);
     ByteArrayOutputStream fullCompressed = new ByteArrayOutputStream();
     new GzipCompressor()
         .compress(
