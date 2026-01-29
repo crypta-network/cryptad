@@ -599,7 +599,7 @@ class NewPacketFormatTest {
         sf.setLong(sp, newSent);
       }
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to backdate sentTimes via reflection", e);
+      throw linkageError("Failed to backdate sentTimes via reflection", e);
     }
   }
 
@@ -616,8 +616,14 @@ class NewPacketFormatTest {
         map.put(k, newTime);
       }
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to backdate acks via reflection", e);
+      throw linkageError("Failed to backdate acks via reflection", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 
   @Test

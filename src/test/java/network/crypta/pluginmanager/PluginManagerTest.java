@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -339,7 +340,7 @@ class PluginManagerTest {
       }
 
       jarOut.putNextEntry(new JarEntry("testplugin/resource.txt"));
-      jarOut.write("ok\n".getBytes());
+      jarOut.write("ok\n".getBytes(StandardCharsets.UTF_8));
       jarOut.closeEntry();
     } catch (UncheckedIOException e) {
       throw e.getCause();

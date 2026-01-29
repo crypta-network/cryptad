@@ -145,7 +145,7 @@ class SectoredRandomGrabArrayTest {
     long now = 1_000L;
     long excludeUntil = 5_000L;
     RemoveRandomWithObject<Object> rga =
-        newGrabber(client, excludeUntil, /* val= */ null, /* emptyAfter= */ false);
+        newGrabber(client, excludeUntil, /* removeRandomReturn= */ null, /* emptyAfter= */ false);
     srga.addGrabber(client, rga, null);
 
     ClientContext ctx = contextWithRandom(new FixedRandom(false, 0));

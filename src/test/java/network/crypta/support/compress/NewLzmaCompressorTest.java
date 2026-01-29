@@ -96,6 +96,7 @@ class NewLzmaCompressorTest {
         Arguments.of(1024, PATTERN_RANDOM));
   }
 
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static byte[] buildPayload(int size, String pattern) {
     byte[] data = new byte[size];
     switch (pattern) {
