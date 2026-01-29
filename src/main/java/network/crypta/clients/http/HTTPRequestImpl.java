@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -274,7 +273,7 @@ public class HTTPRequestImpl implements HTTPRequest {
    * @return the list of all values for this parameter that were parsed so far.
    */
   private List<String> getParameterValueList(String name) {
-    return parameterNameValuesMap.computeIfAbsent(name, ignored -> new LinkedList<>());
+    return parameterNameValuesMap.computeIfAbsent(name, ignored -> new ArrayList<>());
   }
 
   /**

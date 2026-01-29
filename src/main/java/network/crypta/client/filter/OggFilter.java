@@ -8,8 +8,9 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.Map;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.io.CountedOutputStream;
@@ -101,7 +102,7 @@ public class OggFilter implements ContentDataFilter {
       FilterCallback cb)
       throws IOException {
     HashMap<Integer, OggBitstreamFilter> streamFilters = new HashMap<>();
-    LinkedList<OggPage> splitPages = new LinkedList<>();
+    Deque<OggPage> splitPages = new ArrayDeque<>();
     CountedOutputStream out = new CountedOutputStream(output);
     DataInputStream in = new DataInputStream(new BufferedInputStream(input, 255));
 
@@ -146,7 +147,7 @@ public class OggFilter implements ContentDataFilter {
   }
 
   private void handlePage(
-      OggPage page, OggPage nextPage, LinkedList<OggPage> splitPages, CountedOutputStream out)
+      OggPage page, OggPage nextPage, Deque<OggPage> splitPages, CountedOutputStream out)
       throws IOException {
     if (isWritablePage(page, nextPage)) {
       splitPages.add(page);
@@ -162,7 +163,7 @@ public class OggFilter implements ContentDataFilter {
     return nextPage == null || !nextPage.isPacketContinued();
   }
 
-  private void writeAllSplitPages(LinkedList<OggPage> splitPages, CountedOutputStream out)
+  private void writeAllSplitPages(Deque<OggPage> splitPages, CountedOutputStream out)
       throws IOException {
     while (!splitPages.isEmpty()) {
       OggPage part = splitPages.remove();

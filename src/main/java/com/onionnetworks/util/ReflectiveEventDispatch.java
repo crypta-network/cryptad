@@ -1,11 +1,11 @@
 package com.onionnetworks.util;
 
 import java.lang.reflect.Method;
+import java.util.ArrayDeque;
 import java.util.EventListener;
 import java.util.EventObject;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
@@ -50,7 +50,7 @@ public class ReflectiveEventDispatch implements Runnable {
   private final Map<Tuple, Method> methodCache = new HashMap<>();
   private final Map<Object, Map<String, Set<EventListener>>> listeners = new HashMap<>();
   // Holds either Tuple(event, methodName) or a sentinel (this) to signal shutdown
-  private final LinkedList<Object> eventQueue = new LinkedList<>();
+  private final ArrayDeque<Object> eventQueue = new ArrayDeque<>();
   private ExceptionHandler handler;
 
   /**
@@ -236,6 +236,7 @@ public class ReflectiveEventDispatch implements Runnable {
    * to simplify synchronization concerns for clients. Applications typically never call this method
    * directly because it is invoked automatically when the dispatcher is constructed.
    */
+  @Override
   public void run() {
     while (true) {
       DispatchWork work;

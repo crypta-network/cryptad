@@ -3,8 +3,9 @@ package network.crypta.clients.fcp;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import network.crypta.client.Metadata;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -60,7 +61,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
   private final HashMap<String, Object /* <HashMap || DirPutFile> */> filesByName;
 
   /** Any files we want to read data from */
-  private final LinkedList<DirPutFile> filesToRead;
+  private final List<DirPutFile> filesToRead;
 
   /** Total number of bytes of attached data */
   private final long attachedBytes;
@@ -92,7 +93,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
     super(fs);
 
     filesByName = new HashMap<>();
-    filesToRead = new LinkedList<>();
+    filesToRead = new ArrayList<>();
     long totalBytes = 0;
     // Now parse the meat
     SimpleFieldSet files = fs.subset("Files");
@@ -112,7 +113,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
       if (LOG.isDebugEnabled()) LOG.debug("Adding {}", f);
       if (f instanceof DirectDirPutFile file) {
         totalBytes += file.bytesToRead();
-        filesToRead.addLast(f);
+        filesToRead.add(f);
         if (LOG.isDebugEnabled()) LOG.debug("totalBytes now {}", totalBytes);
       }
     }

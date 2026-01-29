@@ -1,8 +1,8 @@
 package com.onionnetworks.util;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.logging.Level;
@@ -144,7 +144,7 @@ public abstract class FilteringIterator<T> implements Iterator<T> {
    * warning, so the example remains simple to debug.
    */
   static void main() {
-    List<String> l = new LinkedList<>(Arrays.asList("a", null, "was", null));
+    List<String> l = new ArrayList<>(Arrays.asList("a", null, "was", null));
     Iterator<String> i = l.iterator();
     FilteringIterator<String> f =
         new FilteringIterator<>(i) {
