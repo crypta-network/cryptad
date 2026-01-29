@@ -533,7 +533,7 @@ public class PeerMessageQueue {
       } else if (parent == emptyItemsWithID) {
         LOG.error("Tracker is in empty items list when is non-empty");
         emptyItemsWithID.remove(tracker);
-      } else assert (false);
+      } else assert false;
       addToNonEmptyBackward(tracker);
     }
 

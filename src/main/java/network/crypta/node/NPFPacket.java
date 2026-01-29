@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.SortedSet;
@@ -36,7 +35,7 @@ class NPFPacket {
    * <p>Receivers process these before regular fragments and may drop them without affecting
    * correctness. Older peers can emit unexpected data here; callers should validate as needed.
    */
-  private final List<byte[]> lossyMessages = new LinkedList<>();
+  private final List<byte[]> lossyMessages = new ArrayList<>();
 
   private boolean error;
   private int length = 5; // Sequence number (4), numAcks(1)
@@ -394,7 +393,7 @@ class NPFPacket {
     buf[offset] = (byte) (sequenceNumber >>> 24);
     buf[offset + 1] = (byte) (sequenceNumber >>> 16);
     buf[offset + 2] = (byte) (sequenceNumber >>> 8);
-    buf[offset + 3] = (byte) (sequenceNumber);
+    buf[offset + 3] = (byte) sequenceNumber;
     return offset + 4;
   }
 
