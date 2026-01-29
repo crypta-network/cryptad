@@ -11,7 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.xfer.PacketThrottle;
@@ -204,8 +204,8 @@ class PeerNodeStatusTest {
   @Test
   void constructor_whenNoHeavy_false_localMessageStatsCopied() {
     SeedServerPeerNode pn = basePeerNodeMock(SeedServerPeerNode.class);
-    Hashtable<String, Long> recv = new Hashtable<>();
-    Hashtable<String, Long> sent = new Hashtable<>();
+    LinkedHashMap<String, Long> recv = new LinkedHashMap<>();
+    LinkedHashMap<String, Long> sent = new LinkedHashMap<>();
     recv.put("Foo", 1L);
     sent.put("Bar", 2L);
     when(pn.getLocalNodeReceivedMessagesFromStatistic()).thenReturn(recv);

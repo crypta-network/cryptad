@@ -89,13 +89,9 @@ public class BarrierRandomAccessBuffer implements LockableRandomAccessBuffer {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof BarrierRandomAccessBuffer other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    BarrierRandomAccessBuffer other = (BarrierRandomAccessBuffer) obj;
     return underlying.equals(other.underlying);
   }
 
