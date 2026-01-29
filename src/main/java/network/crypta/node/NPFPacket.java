@@ -398,7 +398,7 @@ class NPFPacket {
   }
 
   private int writeAcks(byte[] buf, int offset) {
-    buf[offset++] = (byte) (ackRangeCount);
+    buf[offset++] = (byte) ackRangeCount;
     List<AckRange> ranges = computeAckRanges();
     if (!ranges.isEmpty()) {
       for (int i = 0; i < ranges.size(); i++) {
@@ -457,7 +457,7 @@ class NPFPacket {
     buf[offset] = (byte) (value >>> 24);
     buf[offset + 1] = (byte) (value >>> 16);
     buf[offset + 2] = (byte) (value >>> 8);
-    buf[offset + 3] = (byte) (value);
+    buf[offset + 3] = (byte) value;
     return offset + 4;
   }
 
@@ -481,20 +481,20 @@ class NPFPacket {
       buf[offset] = (byte) ((buf[offset] & 0xFF) | ((fragment.messageID >>> 24) & 0x0F));
       buf[offset + 1] = (byte) (fragment.messageID >>> 16);
       buf[offset + 2] = (byte) (fragment.messageID >>> 8);
-      buf[offset + 3] = (byte) (fragment.messageID);
+      buf[offset + 3] = (byte) fragment.messageID;
       offset += 4;
     } else {
       int compressedMsgID = fragment.messageID - prevFragmentID;
       buf[offset] = (byte) ((buf[offset] & 0xFF) | ((compressedMsgID >>> 8) & 0x0F));
-      buf[offset + 1] = (byte) (compressedMsgID);
+      buf[offset + 1] = (byte) compressedMsgID;
       offset += 2;
     }
 
     if (fragment.shortMessage) {
-      buf[offset++] = (byte) (fragment.fragmentLength);
+      buf[offset++] = (byte) fragment.fragmentLength;
     } else {
       buf[offset] = (byte) (fragment.fragmentLength >>> 8);
-      buf[offset + 1] = (byte) (fragment.fragmentLength);
+      buf[offset + 1] = (byte) fragment.fragmentLength;
       offset += 2;
     }
 
@@ -509,10 +509,10 @@ class NPFPacket {
       }
 
       if (fragment.shortMessage) {
-        buf[offset++] = (byte) (value);
+        buf[offset++] = (byte) value;
       } else {
         buf[offset] = (byte) (value >>> 8);
-        buf[offset + 1] = (byte) (value);
+        buf[offset + 1] = (byte) value;
         offset += 2;
       }
     }
