@@ -132,7 +132,7 @@ public class PeerMessageQueue {
             && it.timeLastSent + timeout <= System.currentTimeMillis()) {
           it.addLast(item);
           if (it.getParent() == emptyItemsWithID) moveFromEmptyToNonEmptyBackward(it);
-          else assert (it.getParent() == nonEmptyItemsWithID);
+          else assert it.getParent() == nonEmptyItemsWithID;
           if (LOG.isDebugEnabled()) checkOrder();
           return;
         }
@@ -228,7 +228,7 @@ public class PeerMessageQueue {
 
     private void moveFromEmptyToNonEmptyForward(Items list) {
       // Assumed to be in emptyItemsWithID
-      assert (list.messages.isEmpty());
+      assert list.messages.isEmpty();
       if (LOG.isDebugEnabled() && list.getParent() == nonEmptyItemsWithID) {
         LOG.error("Item is marked non-empty but contains no messages");
         return;
@@ -518,7 +518,7 @@ public class PeerMessageQueue {
       } else if (parent == nonEmptyItemsWithID) {
         LOG.error("Tracker is in non empty items list when is empty");
         nonEmptyItemsWithID.remove(tracker);
-      } else assert (false);
+      } else assert false;
       addToEmptyBackward(tracker);
     }
 
