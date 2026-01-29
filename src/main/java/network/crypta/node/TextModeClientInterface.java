@@ -27,7 +27,10 @@ import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
@@ -459,7 +462,7 @@ public class TextModeClientInterface implements Runnable {
       return true;
     }
     if (line == null) return true;
-    String uline = line.toUpperCase();
+    String uline = line.toUpperCase(Locale.ROOT);
     if (LOG.isDebugEnabled()) LOG.debug("Command: {}", line);
     String token = commandToken(uline);
     CommandHandler handler = handlers.get(token);
@@ -835,7 +838,7 @@ public class TextModeClientInterface implements Runnable {
   private boolean handlePutOrGetChk(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
     boolean getCHKOnly = uline.startsWith("GETCHK:");
-    if (getCHKOnly) line = line.substring(("GETCHK:").length()).trim();
+    if (getCHKOnly) line = line.substring("GETCHK:".length()).trim();
     else line = line.substring("PUT:".length()).trim();
     String content;
     if (!line.isEmpty()) {
@@ -890,7 +893,7 @@ public class TextModeClientInterface implements Runnable {
     String defaultFile = params.defaultFile;
     FreenetURI insertURI = params.insertURI;
     // parameters already parsed by parseDirInsertParams
-    HashMap<String, Object> bucketsByName = makeBucketsByName(linePath);
+    Map<String, Object> bucketsByName = makeBucketsByName(linePath);
     if (defaultFile == null) {
       defaultFile =
           detectDefaultFile(
@@ -920,7 +923,7 @@ public class TextModeClientInterface implements Runnable {
   }
 
   private static String detectDefaultFile(
-      HashMap<String, Object> bucketsByName,
+      Map<String, Object> bucketsByName,
       @SuppressWarnings("SameParameterValue") String... candidates) {
     for (String file : candidates) {
       if (bucketsByName.containsKey(file)) {
@@ -928,6 +931,34 @@ public class TextModeClientInterface implements Runnable {
       }
     }
     return null;
+  }
+
+  private static String[] splitOnChar(String value, char delimiter) {
+    int segments = 1;
+    for (int i = 0; i < value.length(); i++) {
+      if (value.charAt(i) == delimiter) {
+        segments++;
+      }
+    }
+    String[] parts = new String[segments];
+    int start = 0;
+    int partIndex = 0;
+    for (int i = 0; i < value.length(); i++) {
+      if (value.charAt(i) == delimiter) {
+        parts[partIndex++] = value.substring(start, i);
+        start = i + 1;
+      }
+    }
+    parts[partIndex] = value.substring(start, value.length());
+
+    int end = parts.length;
+    while (end > 0 && parts[end - 1].isEmpty()) {
+      end--;
+    }
+    if (end == parts.length) {
+      return parts;
+    }
+    return Arrays.copyOf(parts, end);
   }
 
   private record DirInsertParams(
@@ -941,7 +972,7 @@ public class TextModeClientInterface implements Runnable {
       line = line.substring("PUTSSKDIR:".length());
       ssk = true;
     } else if (uline.startsWith("GETCHKDIR:")) {
-      line = line.substring(("GETCHKDIR:").length());
+      line = line.substring("GETCHKDIR:".length());
     } else {
       LOG.warn("Impossible");
     }
@@ -949,7 +980,7 @@ public class TextModeClientInterface implements Runnable {
     String defaultFile = null;
     FreenetURI insertURI = FreenetURI.EMPTY_CHK_URI;
     if (line.indexOf('#') >= 0) {
-      String[] split = line.split("#");
+      String[] split = splitOnChar(line, '#');
       if (ssk) {
         insertURI = new FreenetURI(split[0]);
         line = split[1];
@@ -972,13 +1003,13 @@ public class TextModeClientInterface implements Runnable {
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
     boolean getCHKOnly = uline.startsWith("GETCHKFILE:");
     if (getCHKOnly) {
-      line = line.substring(("GETCHKFILE:").length()).trim();
+      line = line.substring("GETCHKFILE:".length()).trim();
     } else {
       line = line.substring("PUTFILE:".length()).trim();
     }
     String mimeType = DefaultMIMETypes.guessMIMEType(line, false);
     if (line.indexOf('#') > -1) {
-      String[] splittedLine = line.split("#");
+      String[] splittedLine = splitOnChar(line, '#');
       line = splittedLine[0];
       mimeType = splittedLine[1];
     }
@@ -1070,7 +1101,7 @@ public class TextModeClientInterface implements Runnable {
       outsb.append("PUTSSK:<insert uri>;<url to redirect to>");
       return false;
     }
-    String[] split = cmd.split(";");
+    String[] split = splitOnChar(cmd, ';');
     String insertURI = split[0];
     String targetURI = split[1];
     outsb.append("Insert URI: ").append(insertURI);
@@ -1180,7 +1211,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handleDisablePeerCmd(
       String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
-    String nodeIdentifier = (line.substring("DISABLEPEER:".length())).trim();
+    String nodeIdentifier = line.substring("DISABLEPEER:".length()).trim();
     if (!havePeer(nodeIdentifier)) {
       w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
       w.flush();
@@ -1203,7 +1234,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handleEnablePeerCmd(
       String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
-    String nodeIdentifier = (line.substring("ENABLEPEER:".length())).trim();
+    String nodeIdentifier = line.substring("ENABLEPEER:".length()).trim();
     if (!havePeer(nodeIdentifier)) {
       w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
       w.flush();
@@ -1226,7 +1257,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handleSetPeerListenOnly(
       String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
-    String nodeIdentifier = (line.substring("SETPEERLISTENONLY:".length())).trim();
+    String nodeIdentifier = line.substring("SETPEERLISTENONLY:".length()).trim();
     if (!havePeer(nodeIdentifier)) {
       w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
       w.flush();
@@ -1260,7 +1291,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handleUnsetPeerListenOnly(
       String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
-    String nodeIdentifier = (line.substring("UNSETPEERLISTENONLY:".length())).trim();
+    String nodeIdentifier = line.substring("UNSETPEERLISTENONLY:".length()).trim();
     if (!havePeer(nodeIdentifier)) {
       w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
       w.flush();
@@ -1294,7 +1325,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handleHavePeerCmd(
       String line, String uline, BufferedReader reader, StringBuilder outsb) {
-    String nodeIdentifier = (line.substring("HAVEPEER:".length())).trim();
+    String nodeIdentifier = line.substring("HAVEPEER:".length()).trim();
     if (havePeer(nodeIdentifier)) {
       outsb.append("true for ").append(nodeIdentifier);
     } else {
@@ -1335,7 +1366,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handlePeer(String line, String uline, BufferedReader reader, StringBuilder outsb)
       throws IOException {
-    String nodeIdentifier = (line.substring("PEER:".length())).trim();
+    String nodeIdentifier = line.substring("PEER:".length()).trim();
     if (!havePeer(nodeIdentifier)) {
       w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
       w.flush();
@@ -1361,7 +1392,7 @@ public class TextModeClientInterface implements Runnable {
   @SuppressWarnings({"java:S3516", "SameReturnValue"})
   private boolean handlePeerWmd(
       String line, String uline, BufferedReader reader, StringBuilder outsb) throws IOException {
-    String nodeIdentifier = (line.substring("PEERWMD:".length())).trim();
+    String nodeIdentifier = line.substring("PEERWMD:".length()).trim();
     if (!havePeer(nodeIdentifier)) {
       w.write((NO_PEER_FOR_PREFIX + nodeIdentifier + "\r\n"));
       w.flush();
@@ -1592,7 +1623,7 @@ public class TextModeClientInterface implements Runnable {
   }
 
   /** Create a map of String -> Bucket for every file in a directory and its subdirs. */
-  private HashMap<String, Object> makeBucketsByName(String directory) {
+  private Map<String, Object> makeBucketsByName(String directory) {
 
     if (!directory.endsWith("/")) directory = directory + '/';
     File thisdir = new File(directory);
@@ -1613,7 +1644,7 @@ public class TextModeClientInterface implements Runnable {
 
           ret.put(file.getName(), bucket);
         } else if (file.isDirectory()) {
-          HashMap<String, Object> subdir = makeBucketsByName(directory + file.getName());
+          Map<String, Object> subdir = makeBucketsByName(directory + file.getName());
           ret.put(file.getName(), subdir);
         }
       }
