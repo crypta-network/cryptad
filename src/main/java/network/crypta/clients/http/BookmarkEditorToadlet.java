@@ -907,7 +907,7 @@ public class BookmarkEditorToadlet extends Toadlet {
         postCtx
             .bookmarkManager()
             .getBookmarkByPath(postCtx.bookmarkManager().parentPath(bookmarkPath) + name);
-    if (!isValidName(name) || (targetBookmark != null && targetBookmark != bookmark)) {
+    if (!isValidName(name) || (targetBookmark != null && !targetBookmark.equals(bookmark))) {
       addNameError(postCtx.pageMaker(), postCtx.content());
       return;
     }

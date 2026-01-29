@@ -475,7 +475,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
                   + "&"
                   + COMPRESS_FIELD
                   + "="
-                  + (!(request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty()))
+                  + !request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty()
                   + "&"
                   + COMPATIBILITY_MODE_FIELD
                   + "="
@@ -941,6 +941,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     private record BulkDownloadResult(List<String> success, List<String> failure) {}
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record InsertUploadContext(
         FreenetURI insertURI,
         HTTPUploadedFile file,
@@ -999,6 +1000,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record InsertOptions(
         boolean compress, CompatibilityMode cmode, byte[] overrideSplitfileKey, String target) {
       @Override
@@ -1098,6 +1100,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record LocalDirInsertParams(
         File file,
         String identifier,
@@ -2448,6 +2451,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     };
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record RequestTableContext(
       PageMaker pageMaker,
       ToadletContext ctx,
@@ -2494,6 +2498,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record FailureColumns(
       QueueColumn[] advancedModeColumns, QueueColumn[] simpleModeColumns) {
 
@@ -2526,6 +2531,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record RowRenderContext(
       ToadletContext ctx,
       String[] priorityClasses,
@@ -4513,7 +4519,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return (!container.publicGatewayMode()) || ((ctx != null) && ctx.isAllowedFullAccess());
+    return !container.publicGatewayMode() || (ctx != null && ctx.isAllowedFullAccess());
   }
 
   private static final String DEFAULT_UPLOADS_SEGMENT = "uploads";

@@ -420,6 +420,6 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
    */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return (!container.publicGatewayMode()) || ((ctx != null) && ctx.isAllowedFullAccess());
+    return !container.publicGatewayMode() || (ctx != null && ctx.isAllowedFullAccess());
   }
 }
