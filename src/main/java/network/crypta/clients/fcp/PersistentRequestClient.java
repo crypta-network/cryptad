@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -139,7 +138,7 @@ public class PersistentRequestClient {
   int watchGlobalVerbosityMask;
 
   /** FCPClients watching us. Lazy init, sync on clientsWatchingLock */
-  private LinkedList<PersistentRequestClient> clientsWatching;
+  private List<PersistentRequestClient> clientsWatching;
 
   private final Object clientsWatchingLock = new Object();
   private final RequestClient lowLevelClient;
@@ -688,7 +687,7 @@ public class PersistentRequestClient {
   private void watch(PersistentRequestClient client) {
     if (!isGlobalQueue) return;
     synchronized (clientsWatchingLock) {
-      if (clientsWatching == null) clientsWatching = new LinkedList<>();
+      if (clientsWatching == null) clientsWatching = new ArrayList<>();
       clientsWatching.add(client);
     }
   }

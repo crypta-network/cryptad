@@ -3,10 +3,11 @@ package network.crypta.io.comm;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
@@ -60,9 +61,9 @@ public class MessageCore {
    * Serves both as the filter list and the lock protecting itself and {@link #unclaimed}. Acquire
    * this monitor before mutating either structure.
    */
-  private final LinkedList<MessageFilter> filters = new LinkedList<>();
+  private final List<MessageFilter> filters = new ArrayList<>();
 
-  private final LinkedList<Message> unclaimed = new LinkedList<>();
+  private final ArrayDeque<Message> unclaimed = new ArrayDeque<>();
   private static final int MAX_UNMATCHED_FIFO_SIZE = 50000;
   private static final long MAX_UNCLAIMED_FIFO_ITEM_LIFETIME =
       MINUTES.toMillis(10); // Applied uniformly to all message types.
@@ -542,7 +543,7 @@ public class MessageCore {
   }
 
   private Message tryMatchUnclaimedForAsync(MessageFilter filter, long now, long messageDropTime) {
-    for (ListIterator<Message> i = unclaimed.listIterator(); i.hasNext(); ) {
+    for (Iterator<Message> i = unclaimed.iterator(); i.hasNext(); ) {
       Message m = i.next();
       // These messages have already arrived, so we can match against them even if we are timed out.
       MATCHED status = filter.match(m, true, now);
@@ -654,7 +655,7 @@ public class MessageCore {
       if (LOG.isDebugEnabled()) LOG.debug("waitFor: checking unclaimed queue");
       long now = System.currentTimeMillis();
       long messageDropTime = now - MAX_UNCLAIMED_FIFO_ITEM_LIFETIME;
-      for (ListIterator<Message> i = unclaimed.listIterator(); i.hasNext(); ) {
+      for (Iterator<Message> i = unclaimed.iterator(); i.hasNext(); ) {
         Message m = i.next();
         ret = handleUnclaimedCandidate(filter, startTime, now, messageDropTime, i, m);
         if (ret != null) break;
@@ -672,7 +673,7 @@ public class MessageCore {
       long startTime,
       long now,
       long messageDropTime,
-      ListIterator<Message> iterator,
+      Iterator<Message> iterator,
       Message message) {
     MATCHED status = filter.match(message, true, startTime);
     if (status == MATCHED.MATCHED) {
