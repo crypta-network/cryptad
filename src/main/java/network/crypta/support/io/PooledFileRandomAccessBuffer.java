@@ -566,6 +566,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
    *
    * @return a string in the form {@code super.toString():<path>}
    */
+  @Override
   public String toString() {
     return super.toString() + ":" + file;
   }

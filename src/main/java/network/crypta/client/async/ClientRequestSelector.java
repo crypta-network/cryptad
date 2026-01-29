@@ -1104,7 +1104,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   void innerRegister(SendableRequest req, ClientContext context) {
     if (isInsertScheduler && req instanceof BaseSendableGet)
       throw new IllegalArgumentException("Adding a SendableGet to an insert scheduler!!");
-    if ((!isInsertScheduler) && req instanceof SendableInsert)
+    if (!isInsertScheduler && req instanceof SendableInsert)
       throw new IllegalArgumentException("Adding a SendableInsert to a request scheduler!!");
     if (isInsertScheduler != req.isInsert())
       throw new IllegalArgumentException(
