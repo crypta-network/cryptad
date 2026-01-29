@@ -1675,6 +1675,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record MasterKeyState(byte[] clientCacheKey, MasterSecret persistentSecret) {
     @Override
     public boolean equals(Object o) {
@@ -1699,10 +1700,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     @Override
     public @NotNull String toString() {
+      String secretLabel =
+          persistentSecret == null ? "null" : persistentSecret.getClass().getSimpleName();
       return "MasterKeyState[clientCacheKey="
           + Arrays.toString(clientCacheKey)
           + ", persistentSecret="
-          + persistentSecret
+          + secretLabel
           + "]";
     }
   }
