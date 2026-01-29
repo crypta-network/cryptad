@@ -8,9 +8,9 @@ import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.interfaces.ECPublicKey;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.ECDH;
 import network.crypta.crypt.ECDHLightContext;
@@ -93,7 +93,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * FIFO of pre-generated ECDH contexts.
    * Must hold the lock on {@code ecdhContextFIFO} before accessing.
    */
-  private final LinkedList<ECDHLightContext> ecdhContextFIFO = new LinkedList<>();
+  private final ArrayDeque<ECDHLightContext> ecdhContextFIFO = new ArrayDeque<>();
   private ECDHLightContext ecdhContextToBePrunned;
   private static final ECDH.Curves ecdhCurveToUse = ECDH.Curves.P256;
   private long jfkECDHLastGenerationTimestamp = 0;
