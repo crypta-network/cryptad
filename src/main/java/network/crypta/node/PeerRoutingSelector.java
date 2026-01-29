@@ -104,8 +104,14 @@ public class PeerRoutingSelector {
       this.rates = rates;
       this.total = total;
     }
+
+    @Override
+    public String toString() {
+      return "SelectionRates[total=" + total + ", rates=" + Arrays.toString(rates) + "]";
+    }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record CloserPeerContextData(
       PeerNode[] peers,
       Key key,
@@ -392,6 +398,7 @@ public class PeerRoutingSelector {
     return false;
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private boolean isOrigin(PeerNode p, PeerNode origin) {
     if (p == origin) {
       if (LOG.isDebugEnabled()) LOG.debug("Skipping (req came from): {}", p.getPeer());
@@ -649,6 +656,7 @@ public class PeerRoutingSelector {
     return new BestCandidate(best, bestDistance);
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private PeerNode maybeHandleRecentlyFailed(
       PeerRoutingSelectionParams params,
       CloserPeerContext ctx,
@@ -813,6 +821,7 @@ public class PeerRoutingSelector {
     return overallWakeup;
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private long wakeupTimeIfBetterAlternative(
       PeerNode p,
       PeerNode best,
