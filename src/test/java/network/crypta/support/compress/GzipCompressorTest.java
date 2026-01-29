@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -44,7 +45,7 @@ class GzipCompressorTest {
   @Test
   void testCompress() throws IOException {
     // do gzip compression
-    byte[] compressedData = doCompress(UNCOMPRESSED_DATA_1.getBytes());
+    byte[] compressedData = doCompress(UNCOMPRESSED_DATA_1.getBytes(StandardCharsets.UTF_8));
 
     // output size same as expected?
     assertEquals(compressedData.length, COMPRESSED_DATA_1.length);
@@ -59,7 +60,7 @@ class GzipCompressorTest {
     byte[] uncompressedData = doBucketDecompress();
 
     // is the (round-tripped) uncompressed string the same as the original?
-    String uncompressedString = new String(uncompressedData);
+    String uncompressedString = new String(uncompressedData, StandardCharsets.UTF_8);
     assertEquals(UNCOMPRESSED_DATA_1, uncompressedString);
   }
 
@@ -85,7 +86,7 @@ class GzipCompressorTest {
   @Test
   void testCompressException() throws IOException {
 
-    byte[] uncompressedData = UNCOMPRESSED_DATA_1.getBytes();
+    byte[] uncompressedData = UNCOMPRESSED_DATA_1.getBytes(StandardCharsets.UTF_8);
     assertTrue(uncompressedData.length > 0);
     Bucket inBucket = new ArrayBucket(uncompressedData);
     BucketFactory factory = new ArrayBucketFactory();

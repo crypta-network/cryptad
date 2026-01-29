@@ -110,7 +110,9 @@ class UdpSocketHandlerTest {
   @Test
   void getHeadersLength_whenIPv4AndIPv6AndNull_expectCorrectValues() throws Exception {
     InetAddress ipv4 = InetAddress.getByName("203.0.113.1"); // RFC 5737 TEST-NET-3
-    InetAddress ipv6 = InetAddress.getByName(LOOPBACK_V6);
+    byte[] loopbackV6 = new byte[16];
+    loopbackV6[15] = 1;
+    InetAddress ipv6 = InetAddress.getByAddress(LOOPBACK_V6, loopbackV6);
     assertEquals(UdpSocketHandler.udpV4HeadersLength, handler.getHeadersLength(ipv4));
     // Sanity check type in test to ensure we're actually passing IPv6
     assertInstanceOf(Inet6Address.class, ipv6);

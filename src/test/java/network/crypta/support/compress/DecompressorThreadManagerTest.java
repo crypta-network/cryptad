@@ -21,7 +21,7 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,7 +49,7 @@ class DecompressorThreadManagerTest {
   @DisplayName("constructor_whenNullInputStream_expectIOException")
   void constructor_whenNullInputStream_expectIOException() {
     // Arrange
-    LinkedList<Compressor> decompressors = new LinkedList<>();
+    List<Compressor> decompressors = new ArrayList<>();
 
     // Act + Assert
     IOException ex =
@@ -77,7 +77,7 @@ class DecompressorThreadManagerTest {
     // Arrange
     PipedInputStream in = new PipedInputStream();
     sourceOut = new PipedOutputStream(in);
-    LinkedList<Compressor> decompressors = new LinkedList<>();
+    List<Compressor> decompressors = new ArrayList<>();
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, 1024);
 
     // Act
@@ -120,7 +120,7 @@ class DecompressorThreadManagerTest {
         .when(mockDecompressor)
         .decompress(any(InputStream.class), any(java.io.OutputStream.class), anyLong(), anyLong());
 
-    LinkedList<Compressor> decompressors = new LinkedList<>(List.of(mockDecompressor));
+    List<Compressor> decompressors = new ArrayList<>(List.of(mockDecompressor));
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, 64);
 
     // Act
@@ -185,7 +185,7 @@ class DecompressorThreadManagerTest {
         .decompress(any(InputStream.class), any(java.io.OutputStream.class), anyLong(), anyLong());
 
     // The manager removes from the end, so to apply B then A, provide list [A, B]
-    LinkedList<Compressor> decompressors = new LinkedList<>(List.of(a, b));
+    List<Compressor> decompressors = new ArrayList<>(List.of(a, b));
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, 64);
 
     // Act
@@ -211,7 +211,7 @@ class DecompressorThreadManagerTest {
     // Arrange
     PipedInputStream in = new PipedInputStream();
     sourceOut = new PipedOutputStream(in);
-    LinkedList<Compressor> decompressors = new LinkedList<>();
+    List<Compressor> decompressors = new ArrayList<>();
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, 1);
     RuntimeException boom = new RuntimeException("boom");
     manager.onFailure(boom);
@@ -238,7 +238,7 @@ class DecompressorThreadManagerTest {
         .when(failing)
         .decompress(any(InputStream.class), any(java.io.OutputStream.class), anyLong(), anyLong());
 
-    LinkedList<Compressor> decompressors = new LinkedList<>(List.of(failing));
+    List<Compressor> decompressors = new ArrayList<>(List.of(failing));
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, 1024);
 
     // Act
@@ -269,7 +269,7 @@ class DecompressorThreadManagerTest {
         .when(mockDecompressor)
         .decompress(any(InputStream.class), any(java.io.OutputStream.class), anyLong(), anyLong());
 
-    LinkedList<Compressor> decompressors = new LinkedList<>(List.of(mockDecompressor));
+    List<Compressor> decompressors = new ArrayList<>(List.of(mockDecompressor));
     DecompressorThreadManager manager = new DecompressorThreadManager(in, decompressors, maxLen);
 
     // Act
