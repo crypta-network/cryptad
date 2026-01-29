@@ -13,7 +13,7 @@ import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "JavaUtilDate"})
 class SimpleProgressMessageTest {
 
   private static final String IDENTIFIER = "req-123";
