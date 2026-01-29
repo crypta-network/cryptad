@@ -1217,6 +1217,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       context.writeData(data);
     }
 
+    @SuppressWarnings("JavaUtilDate")
     private void sendRangeOrFullResponse(
         ToadletContext context,
         BucketFactory bucketFactory,

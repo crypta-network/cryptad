@@ -2485,9 +2485,10 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     @Override
     public @NotNull String toString() {
+      String pageMakerType = pageMaker == null ? "null" : pageMaker.getClass().getName();
       return "RequestTableContext["
           + "pageMaker="
-          + pageMaker
+          + pageMakerType
           + ", ctx="
           + ctx
           + ", priorityClasses="
@@ -4091,6 +4092,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * @param lastActivity The last activity of the request
    * @return The created table cell HTML node
    */
+  @SuppressWarnings("JavaUtilDate")
   private HTMLNode createLastActivityCell(long now, Date lastActivity) {
     HTMLNode lastActivityCell = new HTMLNode("td", ATTR_CLASS, "request-last-activity");
     if (lastActivity == null) {
@@ -4112,6 +4114,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   /**
    * @see #createLastActivityCell(long, Date)
    */
+  @SuppressWarnings("JavaUtilDate")
   private HTMLNode createLastFailureCell(long now, Date lastFailure) {
     HTMLNode lastFailureCell = new HTMLNode("td", ATTR_CLASS, "request-last-failure");
     if (lastFailure == null) {
@@ -4198,6 +4201,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void addHeaderCell(HTMLNode headerRow, QueueColumn column) {
     switch (column) {
       case IDENTIFIER:
