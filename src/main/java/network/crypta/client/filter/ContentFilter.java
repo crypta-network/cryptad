@@ -646,8 +646,11 @@ public class ContentFilter {
     if (idx != -1) {
       String options = type.substring(idx + 1);
       type = type.substring(0, idx);
-      String[] rawOpts = options.split(";");
-      for (String raw : rawOpts) {
+      int start = 0;
+      while (start < options.length()) {
+        int next = options.indexOf(';', start);
+        if (next == -1) next = options.length();
+        String raw = options.substring(start, next);
         int eq = raw.indexOf('=');
         if (eq == -1) {
           LOG.error("idx = -1 for '=' on option: {} from {}", raw, typeName);
@@ -657,6 +660,7 @@ public class ContentFilter {
         String after = raw.substring(eq + 1).trim();
         if (before.equals("charset")) charset = after;
         else otherParams.put(before, after);
+        start = next + 1;
       }
     }
     return new ParsedMime(type, charset, otherParams);
@@ -807,7 +811,8 @@ public class ContentFilter {
    *     reasonable default when the extension is not recognized
    */
   public static String mimeTypeForSrc(String uriold) {
-    String uriPath = uriold.contains("?") ? uriold.split("\\?")[0] : uriold;
+    int queryIndex = uriold.indexOf('?');
+    String uriPath = queryIndex == -1 ? uriold : uriold.substring(0, queryIndex);
     String subMimetype;
     if (uriPath.endsWith(".m3u") || uriPath.endsWith(".m3u8")) {
       subMimetype = "audio/mpegurl";
