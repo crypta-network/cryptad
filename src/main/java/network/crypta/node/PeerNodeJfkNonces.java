@@ -1,7 +1,7 @@
 package network.crypta.node;
 
 import java.security.MessageDigest;
-import java.util.LinkedList;
+import java.util.ArrayDeque;
 import network.crypta.crypt.SHA256;
 
 /**
@@ -30,7 +30,7 @@ import network.crypta.crypt.SHA256;
  */
 final class PeerNodeJfkNonces {
   /** Holds remembered nonce values in insertion order for bounded replay checks. */
-  private final LinkedList<byte[]> nonces = new LinkedList<>();
+  private final ArrayDeque<byte[]> nonces = new ArrayDeque<>();
 
   /**
    * Creates an empty nonce tracker with no retained values.
