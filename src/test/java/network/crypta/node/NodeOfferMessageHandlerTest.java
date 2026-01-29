@@ -194,6 +194,7 @@ class NodeOfferMessageHandlerTest {
   }
 
   @Test
+  @SuppressWarnings("ReferenceEquality")
   void handle_whenGetOfferedKeyRejectedSoft_sendsOverloadWithSoftMarker() throws Exception {
     Key key = mock(Key.class);
     byte[] keyBytes = new byte[] {5, 6, 7, 8};
@@ -239,6 +240,7 @@ class NodeOfferMessageHandlerTest {
   }
 
   @Test
+  @SuppressWarnings("ReferenceEquality")
   void handle_whenGetOfferedKeyAccepted_callsSendOfferedKeyWithTag() throws Exception {
     NodeSSK key = mock(NodeSSK.class);
     byte[] keyBytes = new byte[] {9, 10, 11, 12};
@@ -280,6 +282,7 @@ class NodeOfferMessageHandlerTest {
   }
 
   @Test
+  @SuppressWarnings("ReferenceEquality")
   void start_whenNewStatsProvided_updatesShouldRejectRequestTarget() throws Exception {
     NodeStats replacementStats = mock(NodeStats.class);
     handler.start(replacementStats);

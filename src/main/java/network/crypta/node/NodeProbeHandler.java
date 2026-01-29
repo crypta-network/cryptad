@@ -66,7 +66,7 @@ final class NodeProbeHandler {
    */
   boolean handle(Message m, PeerNode source) {
     MessageType spec = m.getSpec();
-    if (spec == DMT.ProbeRequest) {
+    if (DMT.ProbeRequest.equals(spec)) {
       probe.request(m, source);
       return true;
     }

@@ -68,16 +68,16 @@ final class NodeSwapMessageHandler {
    */
   boolean handle(Message m, PeerNode source) {
     MessageType spec = m.getSpec();
-    if (spec == DMT.FNPSwapRequest) {
+    if (DMT.FNPSwapRequest.equals(spec)) {
       node.network().locationManager().handleSwapRequest(m, source);
       return true;
-    } else if (spec == DMT.FNPSwapReply) {
+    } else if (DMT.FNPSwapReply.equals(spec)) {
       return node.network().locationManager().handleSwapReply(m, source);
-    } else if (spec == DMT.FNPSwapRejected) {
+    } else if (DMT.FNPSwapRejected.equals(spec)) {
       return node.network().locationManager().handleSwapRejected(m, source);
-    } else if (spec == DMT.FNPSwapCommit) {
+    } else if (DMT.FNPSwapCommit.equals(spec)) {
       return node.network().locationManager().handleSwapCommit(m, source);
-    } else if (spec == DMT.FNPSwapComplete) {
+    } else if (DMT.FNPSwapComplete.equals(spec)) {
       return node.network().locationManager().handleSwapComplete(m, source);
     }
     return false;

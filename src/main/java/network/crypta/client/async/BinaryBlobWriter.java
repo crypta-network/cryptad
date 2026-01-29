@@ -258,6 +258,20 @@ public final class BinaryBlobWriter {
     }
   }
 
+  @Override
+  public String toString() {
+    int bucketCount = buckets == null ? 0 : buckets.size();
+    return "BinaryBlobWriter{mode="
+        + (isSingleBucket ? "single" : "factory")
+        + ", started="
+        + started
+        + ", finalized="
+        + finalized
+        + ", buckets="
+        + bucketCount
+        + "}";
+  }
+
   /**
    * Signals that an operation was attempted on a writer that has already been closed/finalized.
    *

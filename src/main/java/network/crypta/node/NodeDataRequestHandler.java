@@ -89,7 +89,7 @@ final class NodeDataRequestHandler {
           while (!Thread.currentThread().isInterrupted()) {
             try {
               Message msg = requestQueue.take();
-              boolean isSSK = msg.getSpec() == DMT.FNPSSKDataRequest;
+              boolean isSSK = DMT.FNPSSKDataRequest.equals(msg.getSpec());
               innerHandleDataRequest(msg, (PeerNode) msg.getSource(), isSSK);
             } catch (InterruptedException _) {
               Thread.currentThread().interrupt();
@@ -285,10 +285,10 @@ final class NodeDataRequestHandler {
    */
   boolean handle(Message m) {
     MessageType spec = m.getSpec();
-    if (spec == DMT.FNPCHKDataRequest) {
+    if (DMT.FNPCHKDataRequest.equals(spec)) {
       handleDataRequest(m, false);
       return true;
-    } else if (spec == DMT.FNPSSKDataRequest) {
+    } else if (DMT.FNPSSKDataRequest.equals(spec)) {
       handleDataRequest(m, true);
       return true;
     }

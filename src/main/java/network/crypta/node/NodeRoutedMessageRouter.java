@@ -108,12 +108,12 @@ final class NodeRoutedMessageRouter implements Runnable {
    */
   boolean handle(Message m, PeerNode source) {
     MessageType spec = m.getSpec();
-    if (spec == DMT.FNPRoutedPing) {
+    if (DMT.FNPRoutedPing.equals(spec)) {
       handleRouted(m, source);
       return true;
-    } else if (spec == DMT.FNPRoutedPong) {
+    } else if (DMT.FNPRoutedPong.equals(spec)) {
       return handleRoutedReply(m);
-    } else if (spec == DMT.FNPRoutedRejected) {
+    } else if (DMT.FNPRoutedRejected.equals(spec)) {
       return handleRoutedRejected(m);
     }
     return false;
@@ -474,7 +474,7 @@ final class NodeRoutedMessageRouter implements Runnable {
   private Message preForward(Message m, short newHTL) {
     m = m.cloneAndDropSubMessages();
     m.set(DMT.HTL, newHTL); // update htl
-    if (m.getSpec() == DMT.FNPRoutedPing) {
+    if (DMT.FNPRoutedPing.equals(m.getSpec())) {
       int x = m.getInt(DMT.COUNTER);
       x++;
       m.set(DMT.COUNTER, x);
@@ -491,7 +491,7 @@ final class NodeRoutedMessageRouter implements Runnable {
    * @param id The message ID
    */
   private void dispatchRoutedMessage(Message m, PeerNode src, long id) {
-    if (m.getSpec() == DMT.FNPRoutedPing) {
+    if (DMT.FNPRoutedPing.equals(m.getSpec())) {
       if (LOG.isDebugEnabled()) LOG.debug("RoutedPing reaches target ({})", id);
       int x = m.getInt(DMT.COUNTER);
       Message reply = DMT.createFNPRoutedPong(id, x);
