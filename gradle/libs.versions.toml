@@ -23,7 +23,7 @@ sonarqube = "7.2.2.6593"
 remalSonarlint = "7.0.1"
 #noinspection UnusedVersionCatalogEntry
 jacoco = "0.8.14"
-errorpronePlugin = "4.4.0"
+errorpronePlugin = "5.0.0"
 errorproneCore = "2.38.0"
 
 [libraries]
