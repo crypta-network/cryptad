@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -241,7 +242,7 @@ class WAVFilterTest {
 
     Chunk(String id, byte[] payload, Byte padByte) {
       if (id == null || id.length() != 4) throw new IllegalArgumentException("id must be 4 chars");
-      this.id = id.getBytes();
+      this.id = id.getBytes(StandardCharsets.US_ASCII);
       this.payload = payload;
       this.padByte = padByte;
     }

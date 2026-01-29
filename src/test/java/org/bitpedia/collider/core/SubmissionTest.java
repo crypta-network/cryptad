@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -128,11 +129,13 @@ class SubmissionTest {
     assertEquals("present", submission.getAttribute("format.attr"));
 
     String expectedMd5 =
-        bytesToHex(MessageDigest.getInstance("MD5").digest("hello world".getBytes()));
+        bytesToHex(
+            MessageDigest.getInstance("MD5")
+                .digest("hello world".getBytes(StandardCharsets.US_ASCII)));
     assertEquals(expectedMd5, submission.getAttribute("tag.md5.md5"));
 
     CRC32 crc32 = new CRC32();
-    crc32.update("hello world".getBytes());
+    crc32.update("hello world".getBytes(StandardCharsets.US_ASCII));
     String expectedCrc32 =
         String.format("%8s", Long.toHexString(crc32.getValue())).replace(' ', '0');
     assertEquals(expectedCrc32, submission.getAttribute("tag.crc32.crc32"));

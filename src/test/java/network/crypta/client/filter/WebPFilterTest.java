@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import network.crypta.support.io.ArrayBucket;
@@ -371,7 +372,7 @@ class WebPFilterTest {
 
   private static byte[] chunk(String fourcc, byte[] payload) throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream(8 + payload.length + 1);
-    baos.write(fourcc.getBytes());
+    baos.write(fourcc.getBytes(StandardCharsets.US_ASCII));
     baos.write(leInt(payload.length));
     baos.write(payload);
     if ((payload.length & 1) != 0) {
