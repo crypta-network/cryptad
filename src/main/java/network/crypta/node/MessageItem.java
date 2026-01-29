@@ -98,6 +98,8 @@ public class MessageItem {
   }
 
   /**
+   * Records the number of bytes sent for throttle accounting.
+   *
    * @param length The actual number of bytes sent to send this message, including our share of the
    *     packet overheads, *and including alreadyReportedBytes*, which is only used when deciding
    *     how many bytes to report to the throttle.

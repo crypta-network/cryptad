@@ -73,7 +73,7 @@ public class PersistentRequestModifiedMessage extends FCPMessage {
    *     {@code null} when no token was supplied.
    */
   public PersistentRequestModifiedMessage(String identifier, boolean global, String clientToken) {
-    this(identifier, global, (short) (-1), clientToken); // priorityClass not set
+    this(identifier, global, (short) -1, clientToken); // priorityClass not set
   }
 
   /**

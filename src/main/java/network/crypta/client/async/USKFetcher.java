@@ -557,7 +557,7 @@ public class USKFetcher
         attempts.addNewAttempts(effectiveLatest, context, pollingRound.firstLoop());
       }
       shouldFillKeysWatching =
-          (!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding();
+          !schedulingCoordinator.scheduleAfterDBRsDone() || !dbrHintFetches.hasOutstanding();
     }
     boolean registerNow = false;
     if (shouldFillKeysWatching && !isCancelled()) {
@@ -1026,7 +1026,7 @@ public class USKFetcher
         attempts.addNewAttempts(effectiveEd, context, pollingRound.firstLoop());
       }
       shouldFillKeysWatching =
-          (!schedulingCoordinator.scheduleAfterDBRsDone()) || !dbrHintFetches.hasOutstanding();
+          !schedulingCoordinator.scheduleAfterDBRsDone() || !dbrHintFetches.hasOutstanding();
     }
     boolean registerNow = false;
     if (shouldFillKeysWatching && !isCancelled()) {
