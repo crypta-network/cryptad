@@ -21,6 +21,7 @@ import org.jetbrains.annotations.NotNull;
  * @param newKnownGood True when the highest known-good, successfully fetched edition has advanced.
  * @param newSlotToo True when the highest known SSK slot has also advanced alongside known-good.
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record USKFoundEdition(
     long edition,
     USK key,

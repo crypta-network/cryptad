@@ -406,6 +406,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     throw new MalformedURLException("Invalid key type: " + kt);
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record MetaParse(String docName, String[] meta, long edition, String base) {
     @Override
     public boolean equals(Object o) {
@@ -509,6 +510,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return meta;
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record KeyParts(byte[] routingKey, byte[] cryptoKey, byte[] extra) {
     @Override
     public boolean equals(Object o) {

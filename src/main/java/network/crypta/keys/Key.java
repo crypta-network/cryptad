@@ -363,6 +363,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
     return new Compressed(finalData, compressionAlgorithm);
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record CompressionPrep(byte[] cbuf, short algorithm, long headerSourceLength) {
     @Override
     public boolean equals(Object obj) {
@@ -447,6 +448,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
     return finalData;
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record CompressedChoice(byte[] data, short algorithm, long sourceLength) {
     @Override
     public boolean equals(Object obj) {

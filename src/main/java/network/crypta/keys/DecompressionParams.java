@@ -39,6 +39,7 @@ import org.jetbrains.annotations.NotNull;
  *     payload
  * @see Key#decompress(DecompressionParams)
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record DecompressionParams(
     boolean isCompressed,
     byte[] input,
