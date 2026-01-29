@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.StringTokenizer;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -316,7 +317,11 @@ public class LongTermPushPullCHKTest extends LongTermTest {
       String line;
       String dateString = dateFormat.format(targetDate.getTime());
       while ((line = br.readLine()) != null) {
-        String[] split = line.split("!");
+        StringTokenizer tokenizer = new StringTokenizer(line, "!");
+        String[] split = new String[tokenizer.countTokens()];
+        for (int tokenIndex = 0; tokenizer.hasMoreTokens(); tokenIndex++) {
+          split[tokenIndex] = tokenizer.nextToken();
+        }
         int fieldnum = 3 + i * 2;
         if (split.length == 0 || !dateString.equals(split[0]) || line.length() >= fieldnum) {
           continue;
