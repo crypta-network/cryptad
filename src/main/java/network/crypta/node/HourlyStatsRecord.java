@@ -1,9 +1,9 @@
 package network.crypta.node;
 
 import java.text.DecimalFormat;
+import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.Date;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.math.TrivialRunningAverage;
 import org.slf4j.Logger;
@@ -42,7 +42,7 @@ public class HourlyStatsRecord {
   /** Statistics bucketed by {@code log2(distance)}; values are HTL. */
   private final StatsLine[] byDist;
 
-  private final Date beginTime;
+  private final Instant beginTime;
   private final Node node;
 
   /**
@@ -60,7 +60,7 @@ public class HourlyStatsRecord {
     byDist = new StatsLine[N_DISTANCE_GROUPS];
     for (int i = 0; i < byDist.length; i++) byDist[i] = new StatsLine();
 
-    beginTime = new Date();
+    beginTime = Instant.now();
   }
 
   /**
@@ -152,7 +152,7 @@ public class HourlyStatsRecord {
   public synchronized String toString() {
     StringBuilder s = new StringBuilder();
     s.append("HourlyStats: hour start (UTC) ");
-    s.append(UTC_DATE_TIME.format(beginTime.toInstant())).append("\n");
+    s.append(UTC_DATE_TIME.format(beginTime)).append("\n");
     s.append("HourlyStats: node uptime (ms)\t").append(node.network().uptime()).append("\n");
     s.append("HourlyStats: build number\t").append(Version.currentBuildNumber()).append("\n");
     s.append("HourlyStats: completeHour\t").append(completeHour);
@@ -256,8 +256,8 @@ public class HourlyStatsRecord {
 
         double chkRate = 0.;
         double sskRate = 0.;
-        if (chkT > 0) chkRate = ((double) (chkLS + chkRS)) / (chkT);
-        if (sskT > 0) sskRate = ((double) (sskLS + sskRS)) / (sskT);
+        if (chkT > 0) chkRate = ((double) (chkLS + chkRS)) / chkT;
+        if (sskT > 0) sskRate = ((double) (sskLS + sskRS)) / sskT;
 
         row.addChild(
             "td",
