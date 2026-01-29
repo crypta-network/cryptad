@@ -1,6 +1,7 @@
 package network.crypta.support.io;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.ClientContext;
@@ -18,7 +19,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * java.io.IOException} (for example {@link #getInputStream()}), while others may fail with {@link
  * NullPointerException} because the internal buffer is cleared.
  *
- * <p>Character conversion in {@link #toString()} uses the platform default charset.
+ * <p>Character conversion in {@link #toString()} uses UTF-8.
  *
  * @author oskar
  */
@@ -117,7 +118,7 @@ public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
    */
   @Override
   public String toString() {
-    return new String(data.get());
+    return new String(data.get(), StandardCharsets.UTF_8);
   }
 
   /**

@@ -4,6 +4,7 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.HashMap;
 import network.crypta.support.io.FileUtil;
@@ -177,7 +178,7 @@ final class DdaAccessController {
     if (readFile != null) {
       try (FileOutputStream fos = new FileOutputStream(readFile);
           BufferedOutputStream bos = new BufferedOutputStream(fos)) {
-        bos.write(job.readContent.getBytes());
+        bos.write(job.readContent.getBytes(StandardCharsets.UTF_8));
       } catch (IOException e) {
         log.error("Got a IOE while creating the file ({} ! {}", readFile, e.getMessage());
       }

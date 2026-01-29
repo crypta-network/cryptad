@@ -132,6 +132,7 @@ public class StaticToadlet extends Toadlet {
    * resources from the JAR, or possibly from a file in some setups, so we check the modification
    * time of the JAR for resources in a jar and the mtime for files.
    */
+  @SuppressWarnings("JavaUtilDate")
   private Date getUrlMTime(URL url) {
     if (url == null) {
       return null;
@@ -198,7 +199,7 @@ public class StaticToadlet extends Toadlet {
     return !path.matches("^[A-Za-z0-9._/\\-]*$") || path.contains("..");
   }
 
-  @SuppressWarnings("java:S2095")
+  @SuppressWarnings({"java:S2095", "JavaUtilDate"})
   private void serveOverride(String path, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     File overrideFile = this.container.getOverrideFile();
@@ -222,7 +223,7 @@ public class StaticToadlet extends Toadlet {
       return;
     }
     File from = new File(parent, path.substring(OVERRIDE.length()));
-    if ((!from.exists()) && (!from.isFile())) {
+    if (!from.exists() && !from.isFile()) {
       sendPathInvalid(ctx);
       return;
     }
