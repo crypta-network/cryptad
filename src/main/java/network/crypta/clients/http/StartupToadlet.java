@@ -73,6 +73,7 @@ public class StartupToadlet extends Toadlet {
    * @throws IOException if page generation or output streaming fails while sending the response.
    * @throws RedirectException if the handler requests a redirect instead of rendering the page.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     // If we don't disconnect we will have pipelining issues

@@ -100,6 +100,7 @@ public class StaticToadlet extends Toadlet {
    * @throws ToadletContextClosedException if the connection closes before headers or body finish.
    * @throws IOException if filesystem lookups or streaming encounter low-level I/O failures.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     String requestPath = uri.getPath();
