@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.time.Duration;
-import java.util.TreeMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -143,12 +143,12 @@ class FCPPluginConnectionTrackerTest {
     return connection;
   }
 
-  private static TreeMap<UUID, FCPPluginConnectionTracker.ConnectionWeakReference> connectionsById(
+  private static Map<UUID, FCPPluginConnectionTracker.ConnectionWeakReference> connectionsById(
       FCPPluginConnectionTracker tracker) {
     try {
       @SuppressWarnings("unchecked")
-      TreeMap<UUID, FCPPluginConnectionTracker.ConnectionWeakReference> map =
-          (TreeMap<UUID, FCPPluginConnectionTracker.ConnectionWeakReference>)
+      Map<UUID, FCPPluginConnectionTracker.ConnectionWeakReference> map =
+          (Map<UUID, FCPPluginConnectionTracker.ConnectionWeakReference>)
               CONNECTIONS_BY_ID_FIELD.get(tracker);
       return map;
     } catch (IllegalAccessException e) {
