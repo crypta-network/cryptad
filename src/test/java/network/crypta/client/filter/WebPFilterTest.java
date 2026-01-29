@@ -59,7 +59,7 @@ class WebPFilterTest {
             .put(new byte[] {'W', 'E', 'B', 'P'})
             .put(new byte[] {'V', 'P', '8', ' '})
             .putInt(0x12FC)
-            .putLong(((long) 0x2a019d << 24) | (1L << 4));
+            .putLong((0x2a019dL << 24) | (1L << 4));
     WebPFilter filter = new WebPFilter();
     // Act + Assert
     try (ArrayBucket input = new ArrayBucket(buf.array());
@@ -103,7 +103,7 @@ class WebPFilterTest {
             .put(new byte[] {'W', 'E', 'B', 'P'})
             .put(new byte[] {'V', 'P', '8', ' '})
             .putInt(0x7fffff00)
-            .putLong(((long) 0x2a019d << 24) | (1L << 4));
+            .putLong((0x2a019dL << 24) | (1L << 4));
     WebPFilter filter = new WebPFilter();
     // Act + Assert
     try (ArrayBucket input = new ArrayBucket(buf.array());
@@ -125,7 +125,7 @@ class WebPFilterTest {
             .put(new byte[] {'W', 'E', 'B', 'P'})
             .put(new byte[] {'V', 'P', '8', ' '})
             .putInt(12)
-            .putLong(((long) 0x2a019d << 24) | (1L << 4));
+            .putLong((0x2a019dL << 24) | (1L << 4));
     WebPFilter filter = new WebPFilter();
     // Act + Assert
     try (ArrayBucket input = new ArrayBucket(buf.array());
