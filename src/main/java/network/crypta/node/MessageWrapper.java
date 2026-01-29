@@ -331,7 +331,7 @@ public class MessageWrapper {
         }
       }
     }
-    return (((long) report) << 32) | ((resent) & 0xFFFFFFFFL);
+    return (((long) report) << 32) | (resent & 0xFFFFFFFFL);
   }
 
   private boolean checkAndMarkCompleted() {
