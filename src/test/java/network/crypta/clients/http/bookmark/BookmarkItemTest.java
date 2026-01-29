@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import java.net.MalformedURLException;
+import java.util.Locale;
 import java.util.stream.Stream;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
@@ -378,7 +379,7 @@ class BookmarkItemTest {
     // Assert
     assertNotNull(description);
     assertNotEquals("L10N:SomeKey", description);
-    assertFalse(description.toLowerCase().startsWith("l10n:"));
+    assertFalse(description.toLowerCase(Locale.ROOT).startsWith("l10n:"));
   }
 
   @Test
@@ -404,7 +405,7 @@ class BookmarkItemTest {
     // Assert
     assertNotNull(shortDescription);
     assertNotEquals("l10n:SomeKey", shortDescription);
-    assertFalse(shortDescription.toLowerCase().startsWith("l10n:"));
+    assertFalse(shortDescription.toLowerCase(Locale.ROOT).startsWith("l10n:"));
   }
 
   @Test
