@@ -21,6 +21,7 @@ import org.jetbrains.annotations.NotNull;
  * @param overriddenDataType whether the client overrode MIME settings.
  * @param dontCompress whether reinsertion should skip compression.
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record DownloadRequestStatusDetails(
     DownloadOutcomeInfo outcome,
     File destFilename,
