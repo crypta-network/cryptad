@@ -43,6 +43,7 @@ import org.jetbrains.annotations.NotNull;
  * @see SplitfilePayload
  * @see MetadataTopLayerInfo
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record SplitfileParams(
     SplitfileAlgorithm splitfileAlgorithm,
     ClientCHK[] dataURIs,
