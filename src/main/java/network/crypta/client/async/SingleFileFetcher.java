@@ -16,7 +16,6 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import network.crypta.client.ArchiveContext;
 import network.crypta.client.ArchiveExtractCallback;
@@ -151,7 +150,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    * Stack of decompressors to apply to the eventual data stream. Elements are appended as metadata
    * indicates compression layers and consumed when streaming to the client.
    */
-  private final LinkedList<COMPRESSOR_TYPE> decompressors;
+  private final List<COMPRESSOR_TYPE> decompressors;
 
   /**
    * When {@code true}, suppresses certain notifications to {@code ClientGet} during transitions to
@@ -254,7 +253,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
               + params.policy.recursionLevel
               + " > "
               + params.ctx.getMaxRecursionLevel());
-    this.decompressors = new LinkedList<>();
+    this.decompressors = new ArrayList<>();
     this.topDontCompress = params.topDontCompress;
     this.topCompatibilityMode = params.topCompatibilityMode;
     metaSnoop = metaSnoopFrom(params.parent);
@@ -388,7 +387,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       data =
           block.decode(
               context.getBucketFactory(parent.persistent()),
-              (int) (Math.min(ctx.getMaxOutputLength(), Integer.MAX_VALUE)),
+              (int) Math.min(ctx.getMaxOutputLength(), Integer.MAX_VALUE),
               false);
     } catch (KeyDecodeException e1) {
       if (LOG.isDebugEnabled()) LOG.debug("Decode failure: {}", e1, e1);
@@ -473,7 +472,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     // Do not copy the decompressors. Whether the metadata/container is compressed
     // is independent of whether the final data is; when we find the data, we will
     // call back into the original fetcher.
-    this.decompressors = new LinkedList<>();
+    this.decompressors = new ArrayList<>();
     if (fetcher.uri == null) throw new NullPointerException();
     this.uri = persistent ? new FreenetURI(fetcher.uri) : fetcher.uri;
     this.metaSnoop = fetcher.metaSnoop;
@@ -612,7 +611,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private boolean isTooManyPathComponentsFinal() {
-    return (!ctx.ignoreTooManyPathComponents) && (!metaStrings.isEmpty()) && isFinal;
+    return !ctx.ignoreTooManyPathComponents && !metaStrings.isEmpty() && isFinal;
   }
 
   private void handleTooManyPathComponentsResult(FetchResult result, ClientContext context) {
@@ -1975,7 +1974,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       throws MalformedURLException, FetchException {
     BaseClientKey key = null;
     if (!policy.hasInitialMetadata) key = BaseClientKey.getBaseKey(uri);
-    if ((!uri.hasMetaStrings())
+    if (!uri.hasMetaStrings()
         && !ctx.getAllowSplitfiles()
         && !ctx.getFollowRedirects()
         && key instanceof ClientKey clientKey) {
@@ -2151,7 +2150,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       this.token = args.runtime.token;
       this.persistent = args.requester.persistent();
       this.datastoreOnly = datastoreOnly;
-      this.hashCode = super.hashCode();
+      this.hashCode = System.identityHashCode(this);
       this.realTimeFlag = args.runtime.realTimeFlag;
       if (LOG.isDebugEnabled())
         LOG.debug(
