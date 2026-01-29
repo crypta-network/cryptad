@@ -245,7 +245,13 @@ class URIFeedMessageTest {
       Map<String, Bucket> buckets = (Map<String, Bucket>) bucketsField.get(message);
       return buckets;
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to access buckets for URIFeedMessage", e);
+      throw linkageError("Failed to access buckets for URIFeedMessage", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 }

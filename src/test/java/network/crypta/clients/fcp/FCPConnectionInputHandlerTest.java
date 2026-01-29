@@ -23,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -69,7 +70,7 @@ class FCPConnectionInputHandlerTest {
     Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     PriorityAwareExecutor executor = mock(PriorityAwareExecutor.class);
     Socket socket = mock(Socket.class);
-    InetSocketAddress address = new InetSocketAddress("127.0.0.1", 9481);
+    InetSocketAddress address = new InetSocketAddress(InetAddress.getLoopbackAddress(), 9481);
 
     when(handler.getSocket()).thenReturn(socket);
     when(socket.getRemoteSocketAddress()).thenReturn(address);
