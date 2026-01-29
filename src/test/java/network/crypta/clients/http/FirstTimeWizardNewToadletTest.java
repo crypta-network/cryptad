@@ -311,8 +311,6 @@ class FirstTimeWizardNewToadletTest {
   private static final class TestableFirstTimeWizardNewToadlet extends FirstTimeWizardNewToadlet {
     Map<String, Object> lastModel;
     boolean htmlWritten;
-    boolean redirected;
-    String redirectLocation;
 
     TestableFirstTimeWizardNewToadlet(
         HighLevelSimpleClient client, NodeClientCore core, Config config) {
@@ -332,9 +330,6 @@ class FirstTimeWizardNewToadletTest {
     }
 
     @Override
-    protected void writeTemporaryRedirect(ToadletContext ctx, String msg, String location) {
-      this.redirected = true;
-      this.redirectLocation = location;
-    }
+    protected void writeTemporaryRedirect(ToadletContext ctx, String msg, String location) {}
   }
 }
