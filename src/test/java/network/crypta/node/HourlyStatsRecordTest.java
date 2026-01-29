@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
+import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import network.crypta.support.HTMLNode;
@@ -195,7 +196,11 @@ class HourlyStatsRecordTest {
       String line = m.group(1);
       if (line.startsWith(linePrefix)) {
         String tail = line.substring(linePrefix.length());
-        String[] tokens = tail.split("\t");
+        StringTokenizer tokenizer = new StringTokenizer(tail, "\t");
+        String[] tokens = new String[tokenizer.countTokens()];
+        for (int tokenIndex = 0; tokenizer.hasMoreTokens(); tokenIndex++) {
+          tokens[tokenIndex] = tokenizer.nextToken();
+        }
         // First six tokens are the counts from StatsLine.toString()
         return new int[] {
           parseIntSafe(tokens[0]),
