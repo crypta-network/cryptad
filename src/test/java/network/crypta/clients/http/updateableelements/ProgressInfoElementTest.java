@@ -414,8 +414,14 @@ class ProgressInfoElementTest {
       ctor.setAccessible(true);
       return ctor;
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to locate FProxyFetchResult constructor via reflection", e);
+      throw linkageError("Failed to locate FProxyFetchResult constructor via reflection", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 
   private static final class ProgressResultSpec {
@@ -517,7 +523,7 @@ class ProgressInfoElementTest {
               spec.finalizedBlocks),
           spec.failed);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to create FProxyFetchResult via reflection", e);
+      throw linkageError("Failed to create FProxyFetchResult via reflection", e);
     }
   }
 }

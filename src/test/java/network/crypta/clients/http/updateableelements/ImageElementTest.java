@@ -415,7 +415,7 @@ class ImageElementTest {
       field.setAccessible(true);
       field.setBoolean(element, value);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to set ImageElement.wasError via reflection", e);
+      throw linkageError("Failed to set ImageElement.wasError via reflection", e);
     }
   }
 
@@ -425,7 +425,7 @@ class ImageElementTest {
       return RESULT_CTOR_FINISHED_WITH_DATA.newInstance(
           parent, bucket, new FProxyFetchSnapshotInfo("image/png", 1000L, true, 0L, false));
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to construct FProxyFetchResult (finished-with-data)", e);
+      throw linkageError("Failed to construct FProxyFetchResult (finished-with-data)", e);
     }
   }
 
@@ -439,7 +439,7 @@ class ImageElementTest {
           new FProxyFetchProgressCounts(requiredBlocks, requiredBlocks, fetchedBlocks, 0, 0, false),
           failure);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to construct FProxyFetchResult (progress-or-failure)", e);
+      throw linkageError("Failed to construct FProxyFetchResult (progress-or-failure)", e);
     }
   }
 
@@ -451,8 +451,7 @@ class ImageElementTest {
       ctor.setAccessible(true);
       return ctor;
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError(
-          "Failed to resolve FProxyFetchResult constructor (finished-with-data)", e);
+      throw linkageError("Failed to resolve FProxyFetchResult constructor (finished-with-data)", e);
     }
   }
 
@@ -468,8 +467,14 @@ class ImageElementTest {
       ctor.setAccessible(true);
       return ctor;
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError(
+      throw linkageError(
           "Failed to resolve FProxyFetchResult constructor (progress-or-failure)", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 }
