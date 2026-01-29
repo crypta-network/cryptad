@@ -65,6 +65,8 @@ public class PluginJarUpdater extends NodeUpdater {
   private final Object writeJarSync = new Object();
 
   /**
+   * Handle a no-revocation signal and deploy if armed.
+   *
    * @return True if the caller should restart the revocation checker.
    */
   boolean onNoRevocation() {
