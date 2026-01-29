@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Random;
 import network.crypta.support.io.ArrayBucket;
 import network.crypta.support.io.BucketTools;
@@ -75,7 +76,7 @@ class AEADInputStreamTest {
     // Arrange
     byte[] key = new byte[16];
     new Random(0x12345678).nextBytes(key);
-    byte[] plain = "hello world".getBytes();
+    byte[] plain = "hello world".getBytes(StandardCharsets.UTF_8);
     byte[] cipher = encrypt(plain, key, 0x5555AAAAL);
     AEADInputStream cis = AEADInputStream.createAES(new ByteArrayInputStream(cipher), key);
 
@@ -88,7 +89,7 @@ class AEADInputStreamTest {
     // Assert
     assertEquals(0, r0, "zero-length read must return 0");
     assertEquals(5, r1, "subsequent read should deliver data");
-    assertArrayEquals("hello".getBytes(), java.util.Arrays.copyOf(buf, 5));
+    assertArrayEquals("hello".getBytes(StandardCharsets.UTF_8), java.util.Arrays.copyOf(buf, 5));
   }
 
   @Test

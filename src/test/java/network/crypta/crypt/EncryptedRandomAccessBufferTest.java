@@ -62,7 +62,7 @@ class EncryptedRandomAccessBufferTest {
       throws Exception {
     // Arrange
     int payload = 256;
-    long underlyingSize = type.headerLen + payload;
+    long underlyingSize = (long) type.headerLen + payload;
     try (LockableRandomAccessBuffer underlying =
             new network.crypta.support.io.ByteArrayRandomAccessBuffer((int) underlyingSize);
         EncryptedRandomAccessBuffer raf =

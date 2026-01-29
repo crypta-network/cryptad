@@ -13,7 +13,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import network.crypta.crypt.RandomSource;
 import network.crypta.io.comm.IncomingPacketFilter.DECODED;
 import network.crypta.node.FNPPacketMangler;
@@ -53,11 +52,11 @@ class IncomingPacketFilterImplTest {
   private long now;
 
   @BeforeEach
-  void setUp() throws UnknownHostException {
+  void setUp() {
     // Common buffer and time
     buf = new byte[64];
     now = 123_456_789L;
-    peer = new Peer(InetAddress.getByName("127.0.0.1"), 4242);
+    peer = new Peer(InetAddress.getLoopbackAddress(), 4242);
 
     filter = new IncomingPacketFilterImpl(mangler, node, crypto);
   }
