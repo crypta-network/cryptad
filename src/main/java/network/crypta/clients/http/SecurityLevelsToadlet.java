@@ -802,6 +802,7 @@ public class SecurityLevelsToadlet extends Toadlet {
    * @throws ToadletContextClosedException if the response output stream is closed prematurely.
    * @throws IOException if output generation fails during HTML serialization or transmission.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     if (!ctx.checkFullAccess(this)) return;

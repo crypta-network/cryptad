@@ -381,6 +381,7 @@ public class BookmarkEditorToadlet extends Toadlet {
    * @throws IOException if underlying I/O (typically response writing) fails while generating the
    *     HTML page.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     if (!ctx.checkFullAccess(this)) return;

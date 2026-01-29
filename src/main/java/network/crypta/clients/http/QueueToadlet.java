@@ -2105,6 +2105,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * @throws IOException if an I/O error occurs while reading request data or writing the reply.
    * @throws RedirectException if the request should be redirected to a different path.
    */
+  @Override
   public void handleMethodGET(URI uri, final HTTPRequest request, final ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
 
