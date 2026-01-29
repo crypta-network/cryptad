@@ -826,7 +826,7 @@ public final class NodeClientCoreTransfers {
         is.waitIfNotFinished(SECONDS.toMillis(5));
       }
       if (is.getStatus() != CHKInsertSender.NOT_FINISHED) break;
-      if ((!hasReceivedRejectedOverload) && is.receivedRejectedOverload()) {
+      if (!hasReceivedRejectedOverload && is.receivedRejectedOverload()) {
         hasReceivedRejectedOverload = true;
         requestStarters.rejectedOverload(false, true, realTimeFlag);
       }
@@ -838,7 +838,7 @@ public final class NodeClientCoreTransfers {
       CHKInsertSender is, boolean realTimeFlag, boolean hasReceivedRejectedOverload) {
     while (!is.completed()) {
       is.waitIfNotCompleted(SECONDS.toMillis(10));
-      if (is.anyTransfersFailed() && (!hasReceivedRejectedOverload)) {
+      if (is.anyTransfersFailed() && !hasReceivedRejectedOverload) {
         hasReceivedRejectedOverload = true; // not strictly true but the same effect
         requestStarters.rejectedOverload(false, true, realTimeFlag);
       }
@@ -963,7 +963,7 @@ public final class NodeClientCoreTransfers {
         is.waitIfNotFinished(SECONDS.toMillis(5));
       }
       if (is.getStatus() != SSKInsertSender.NOT_FINISHED) break;
-      if ((!hasReceivedRejectedOverload) && is.receivedRejectedOverload()) {
+      if (!hasReceivedRejectedOverload && is.receivedRejectedOverload()) {
         hasReceivedRejectedOverload = true;
         requestStarters.rejectedOverload(true, true, realTimeFlag);
       }

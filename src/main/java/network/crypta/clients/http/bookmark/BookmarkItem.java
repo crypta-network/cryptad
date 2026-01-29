@@ -1,6 +1,7 @@
 package network.crypta.clients.http.bookmark;
 
 import java.net.MalformedURLException;
+import java.util.Locale;
 import java.util.Objects;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
@@ -244,7 +245,7 @@ public class BookmarkItem extends Bookmark {
     if (updated) {
       return;
     }
-    assert (key.isUSK());
+    assert key.isUSK();
     updated = true;
     alerts.register(alert);
   }
@@ -487,7 +488,7 @@ public class BookmarkItem extends Bookmark {
    */
   public String getDescription() {
     if (desc == null) return "";
-    if (desc.toLowerCase().startsWith(L10N_INLINE_PREFIX))
+    if (desc.toLowerCase(Locale.ROOT).startsWith(L10N_INLINE_PREFIX))
       return NodeL10n.getBase()
           .getString(
               "Bookmarks.Defaults.Description." + desc.substring(L10N_INLINE_PREFIX.length()));
@@ -506,7 +507,7 @@ public class BookmarkItem extends Bookmark {
    */
   public String getShortDescription() {
     if (shortDescription == null) return "";
-    if (shortDescription.toLowerCase().startsWith(L10N_INLINE_PREFIX))
+    if (shortDescription.toLowerCase(Locale.ROOT).startsWith(L10N_INLINE_PREFIX))
       return NodeL10n.getBase()
           .getString(
               "Bookmarks.Defaults.ShortDescription."
