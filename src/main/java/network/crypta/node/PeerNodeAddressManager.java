@@ -267,6 +267,7 @@ final class PeerNodeAddressManager {
    * @param localDetectedPeer detected peer address; may be {@code null}.
    * @return {@code true} if {@code p} is a value-equal duplicate of the detected peer.
    */
+  @SuppressWarnings("ReferenceEquality")
   private boolean isDuplicateLocalDetectedPeer(Peer p, Peer localDetectedPeer) {
     return localDetectedPeer != null && (p != localDetectedPeer) && p.equals(localDetectedPeer);
   }

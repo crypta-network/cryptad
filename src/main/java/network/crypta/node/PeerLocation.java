@@ -50,6 +50,7 @@ public class PeerLocation {
    *
    * @return decimal string of the current location; {@code "-1.0"} when unknown
    */
+  @Override
   public synchronized String toString() {
     return Double.toString(currentLocation);
   }

@@ -723,6 +723,7 @@ public class ClientPutDir extends ClientPutBase {
   }
 
   @Override
+  @SuppressWarnings("JavaUtilDate")
   RequestStatus getStatus() {
     FreenetURI finalURI = getFinalURI();
     InsertExceptionMode failureCode = null;

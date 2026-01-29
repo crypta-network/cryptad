@@ -1,5 +1,6 @@
 package network.crypta.clients.fcp;
 
+import java.util.Locale;
 import java.util.Map;
 import network.crypta.client.InsertContext;
 import network.crypta.client.async.BaseManifestPutter;
@@ -129,7 +130,7 @@ public class PersistentPutDir extends FCPMessage {
     fs.putSingle("URI", uri.toString(false, false));
     if (privateURI != null) fs.putSingle("PrivateURI", privateURI.toString(false, false));
     fs.put("Verbosity", verbosity);
-    fs.putSingle("Persistence", persistence.toString().toLowerCase());
+    fs.putSingle("Persistence", persistence.toString().toLowerCase(Locale.ROOT));
     fs.put("PriorityClass", priorityClass);
     fs.put("Global", global);
     fs.putSingle("PutDirType", wasDiskPut ? "disk" : "complex");

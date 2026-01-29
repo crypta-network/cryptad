@@ -74,6 +74,7 @@ public class ChatForumsToadlet extends Toadlet implements LinkEnabledCallback {
    * @throws IOException if writing the generated page to the response stream fails for any I/O
    *     reason, including downstream transport errors.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("title"), ctx);

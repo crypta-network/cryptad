@@ -108,7 +108,7 @@ class UpdateOverMandatoryManagerTest {
           }
 
           @Override
-          protected int next(int bits) {
+          protected synchronized int next(int bits) {
             return delegate.nextInt() >>> (32 - bits);
           }
         };

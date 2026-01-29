@@ -363,6 +363,7 @@ public abstract class LocalFileBrowserToadlet extends Toadlet {
    * @see Toadlet#findSupportedMethods()
    * @see ToadletContext
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, final ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     Objects.requireNonNull(uri);

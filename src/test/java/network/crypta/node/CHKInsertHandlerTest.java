@@ -101,7 +101,7 @@ class CHKInsertHandlerTest {
             (short) 5,
             uid,
             /* startTime= */ beyondHandshakeWindow(),
-            /* rt= */ false);
+            /* realTime= */ false);
 
     // Act
     handler.run();
@@ -168,7 +168,7 @@ class CHKInsertHandlerTest {
             (short) 3,
             uid,
             /* startTime= */ beyondHandshakeWindow(),
-            /* rt= */ true);
+            /* realTime= */ true);
 
     // Act
     handler.run();
@@ -197,7 +197,7 @@ class CHKInsertHandlerTest {
             (short) 1,
             999L,
             /* startTime= */ beyondHandshakeWindow(),
-            /* rt= */ false);
+            /* realTime= */ false);
 
     handler.sentBytes(100);
     handler.receivedBytes(250);
@@ -221,7 +221,7 @@ class CHKInsertHandlerTest {
             (short) 1,
             1001L,
             /* startTime= */ beyondHandshakeWindow(),
-            /* rt= */ false);
+            /* realTime= */ false);
 
     handler.sentPayload(64);
 
@@ -241,7 +241,7 @@ class CHKInsertHandlerTest {
             (short) 1,
             1002L,
             /* startTime= */ beyondHandshakeWindow(),
-            /* rt= */ false);
+            /* realTime= */ false);
 
     assertEquals(NativeThread.PriorityLevel.HIGH_PRIORITY.value, handler.getPriority());
   }
@@ -259,7 +259,7 @@ class CHKInsertHandlerTest {
             (short) 1,
             uid,
             /* startTime= */ beyondHandshakeWindow(),
-            /* rt= */ false);
+            /* realTime= */ false);
     String s = handler.toString();
     assertTrue(s.contains(" for " + uid));
   }

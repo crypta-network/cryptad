@@ -93,7 +93,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
   protected BaseFileBucket(File file, boolean deleteOnExit) {
     if (file == null) throw new NullPointerException();
     maybeSetDeleteOnExit(deleteOnExit, file);
-    assert (!(createFileOnly() && tempFileAlreadyExists())); // Mutually incompatible!
+    assert !(createFileOnly() && tempFileAlreadyExists()); // Mutually incompatible!
   }
 
   /** Default constructor for deserialization frameworks. */
@@ -407,6 +407,7 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
   }
 
   /** Returns a buffered {@link InputStream} backed by {@link #getInputStreamUnbuffered()}. */
+  @Override
   public InputStream getInputStream() throws IOException {
     return new BufferedInputStream(getInputStreamUnbuffered());
   }

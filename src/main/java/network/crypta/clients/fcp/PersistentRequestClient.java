@@ -388,6 +388,7 @@ public class PersistentRequestClient {
    * @throws IdentifierCollisionException if another request with the same identifier already exists
    *     in the mapping.
    */
+  @SuppressWarnings("ReferenceEquality")
   public void register(ClientRequest cg) throws IdentifierCollisionException {
     if (cg.persistence != persistence) {
       throw new IllegalArgumentException("Persistence mismatch for request " + cg.getIdentifier());
@@ -883,6 +884,7 @@ public class PersistentRequestClient {
    * @throws IllegalArgumentException if the identifier already maps to a different request
    *     instance.
    */
+  @SuppressWarnings("ReferenceEquality")
   public void resume(ClientRequest clientRequest) {
     if (clientRequest.hasFinished()) completedUnackedRequests.add(clientRequest);
     else runningPersistentRequests.add(clientRequest);

@@ -427,6 +427,7 @@ public class ImageElement extends BaseUpdatableElement {
     return maxSize;
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private void logUpdateState() {
     if (!LOG.isDebugEnabled()) {
       return;

@@ -248,7 +248,7 @@ class PeerNodeRoutingReporterTest {
       field.setAccessible(true);
       field.set(stats, value);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed setting " + fieldName, e);
+      throw new LinkageError("Failed setting " + fieldName, e);
     }
   }
 }

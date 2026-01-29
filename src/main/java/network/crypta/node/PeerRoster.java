@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
  * @see PeerManager
  * @see PeerNode
  */
+@SuppressWarnings("ReferenceEquality")
 public class PeerRoster {
   private static final Logger LOG = LoggerFactory.getLogger(PeerRoster.class);
 

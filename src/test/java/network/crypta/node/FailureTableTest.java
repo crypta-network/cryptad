@@ -329,7 +329,7 @@ class FailureTableTest {
       f.setAccessible(true);
       f.set(peer, new WeakReference<PeerContext>(peer));
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to set PeerNode.myRef reflectively", e);
+      throw new LinkageError("Failed to set PeerNode.myRef reflectively", e);
     }
   }
 }

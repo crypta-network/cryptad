@@ -83,7 +83,7 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
             peer.selfPeerNode(), fs, onStartup, forDiffNodeRef, myARK);
     if (ark == null) return false;
     synchronized (peer) {
-      if ((myARK == null) || ((myARK != ark) && !myARK.equals(ark))) {
+      if (myARK == null || !myARK.equals(ark)) {
         myARK = ark;
         return true;
       }

@@ -127,7 +127,7 @@ class NodeCryptoTest {
     }
 
     @Override
-    protected int next(int bits) {
+    protected synchronized int next(int bits) {
       // Delegate to a local deterministic PRNG
       return inner.nextInt() >>> (32 - bits);
     }
@@ -233,7 +233,7 @@ class NodeCryptoTest {
     // detector returns one address
     NodeIPPortDetector detector = (NodeIPPortDetector) getField(nc, "detector");
     Peer[] peers =
-        new Peer[] {new Peer(new FreenetInetAddress(InetAddress.getByName("127.0.0.1")), 54321)};
+        new Peer[] {new Peer(new FreenetInetAddress(InetAddress.getLoopbackAddress()), 54321)};
     when(detector.detectPrimaryPeers()).thenReturn(peers);
     FNPPacketMangler mangler = (FNPPacketMangler) getField(nc, "packetMangler");
     when(mangler.supportedNegTypes(true)).thenReturn(new int[] {1});
@@ -434,7 +434,9 @@ class NodeCryptoTest {
     // Ensure it's an SFS by parsing a few lines through SimpleFieldSet
     return new SimpleFieldSet(
         new BufferedReader(
-            new InputStreamReader(new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8)))),
+            new InputStreamReader(
+                new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8)),
+                StandardCharsets.UTF_8)),
         true,
         true);
   }

@@ -218,6 +218,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     return tryProcessAuthAnonReply(buf, offset, length, opn, peer);
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private boolean tryPeersAuthExcept(
       byte[] buf, int offset, int length, Peer peer, PeerNode exclude) {
     PeerNode[] peers = crypto.getPeerNodes();
@@ -291,6 +292,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private boolean checkAnonAuthChangeIP(
       PeerNode opn, byte[] buf, int offset, int length, Peer peer) {
     PeerNode[] anonPeers = crypto.getAnonSetupPeerNodes();

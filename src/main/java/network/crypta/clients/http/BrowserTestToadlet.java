@@ -212,6 +212,7 @@ public class BrowserTestToadlet extends Toadlet {
    * @throws ToadletContextClosedException if the connection closes before the response is written.
    * @throws IOException if writing the generated HTML to the client stream fails.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     // Yes, we need that in order to test the browser (number of connections per server)

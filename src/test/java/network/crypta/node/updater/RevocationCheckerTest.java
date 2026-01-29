@@ -115,7 +115,7 @@ class RevocationCheckerTest {
 
     // Assert
     assertFalse(alreadyRunning);
-    verify(core.getClientContext(), never()).start(Mockito.<ClientGetter>any());
+    verify(clientContext, never()).start(Mockito.<ClientGetter>any());
   }
 
   @Test
@@ -134,7 +134,7 @@ class RevocationCheckerTest {
     // Arrange: start once to create a getter
     checker.start(false, true);
     ArgumentCaptor<ClientGetter> cgCap = ArgumentCaptor.forClass(ClientGetter.class);
-    verify(core.getClientContext(), times(1)).start(cgCap.capture());
+    verify(clientContext, times(1)).start(cgCap.capture());
 
     // Replace internal getter with a spy so we can verify cancel()
     ClientGetter original = cgCap.getValue();
@@ -154,11 +154,11 @@ class RevocationCheckerTest {
   void onChangeRevocationURI_whenCalled_expectCancelAndRestart() throws Exception {
     // Arrange: initial start creates a getter
     checker.start(false, true);
-    verify(core.getClientContext(), times(1)).start(Mockito.<ClientGetter>any());
+    verify(clientContext, times(1)).start(Mockito.<ClientGetter>any());
 
     // Spy the internal getter to observe cancel()
     ArgumentCaptor<ClientGetter> cgCap = ArgumentCaptor.forClass(ClientGetter.class);
-    verify(core.getClientContext()).start(cgCap.capture());
+    verify(clientContext).start(cgCap.capture());
     ClientGetter spyGetter = Mockito.spy(cgCap.getValue());
     java.lang.reflect.Field f = RevocationChecker.class.getDeclaredField("revocationGetter");
     f.setAccessible(true);
@@ -169,19 +169,19 @@ class RevocationCheckerTest {
 
     // Assert: old getter cancelled and a new start queued
     verify(spyGetter, times(1)).cancel(clientContext);
-    verify(core.getClientContext(), times(2)).start(Mockito.<ClientGetter>any());
+    verify(clientContext, times(2)).start(Mockito.<ClientGetter>any());
   }
 
   @Test
   void onFailure_whenCancelled_expectNoRestart() {
     // Arrange: baseline start count
-    int before = Mockito.mockingDetails(core.getClientContext()).getInvocations().size();
+    int before = Mockito.mockingDetails(clientContext).getInvocations().size();
 
     // Act
     checker.onFailure(new FetchException(FetchExceptionMode.CANCELLED), null, new ArrayBucket());
 
     // Assert: no additional starts
-    int after = Mockito.mockingDetails(core.getClientContext()).getInvocations().size();
+    int after = Mockito.mockingDetails(clientContext).getInvocations().size();
     assertEquals(before, after);
   }
 
@@ -189,14 +189,14 @@ class RevocationCheckerTest {
   void onFailure_whenNonRecentNonFatal_expectImmediateRestart() {
     // Arrange: create initial getter so restart path is exercised
     checker.start(false, true);
-    int callsBefore = Mockito.mockingDetails(core.getClientContext()).getInvocations().size();
+    int callsBefore = Mockito.mockingDetails(clientContext).getInvocations().size();
 
     // Act: ROUTE_NOT_FOUND is non-fatal and should trigger immediate restart
     checker.onFailure(
         new FetchException(FetchExceptionMode.ROUTE_NOT_FOUND), null, new ArrayBucket());
 
     // Assert: another start() call was made
-    int callsAfter = Mockito.mockingDetails(core.getClientContext()).getInvocations().size();
+    int callsAfter = Mockito.mockingDetails(clientContext).getInvocations().size();
     assertTrue(callsAfter > callsBefore);
   }
 
@@ -278,7 +278,7 @@ class RevocationCheckerTest {
     // Assert
     assertTrue(wasRunning);
     assertEquals(0, checker.getRevocationDNFCounter());
-    verify(core.getClientContext(), times(3)).start(Mockito.<ClientGetter>any());
+    verify(clientContext, times(3)).start(Mockito.<ClientGetter>any());
   }
 
   @Test
@@ -316,7 +316,9 @@ class RevocationCheckerTest {
     assertNotNull(buf);
     byte[] roundtrip = new byte[(int) buf.size()];
     buf.pread(0, roundtrip, 0, roundtrip.length);
-    assertEquals(new String(blobBytes), new String(roundtrip));
+    assertEquals(
+        new String(blobBytes, StandardCharsets.UTF_8),
+        new String(roundtrip, StandardCharsets.UTF_8));
   }
 
   @Test
