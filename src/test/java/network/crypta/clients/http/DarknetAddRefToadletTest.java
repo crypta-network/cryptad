@@ -18,9 +18,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.BaseL10n;
@@ -68,7 +70,8 @@ class DarknetAddRefToadletTest {
   void handleMethodGET_whenWindowsInstallerExists_servesExecutableBucket() throws Exception {
     File installer = File.createTempFile("installer-win", ".exe");
     installer.deleteOnExit();
-    try (FileWriter writer = new FileWriter(installer)) {
+    try (BufferedWriter writer =
+        Files.newBufferedWriter(installer.toPath(), StandardCharsets.UTF_8)) {
       writer.write("win");
     }
 
@@ -90,7 +93,8 @@ class DarknetAddRefToadletTest {
   void handleMethodGET_whenNonWindowsInstallerExists_servesJarBucket() throws Exception {
     File installer = File.createTempFile("installer-nonwin", ".jar");
     installer.deleteOnExit();
-    try (FileWriter writer = new FileWriter(installer)) {
+    try (BufferedWriter writer =
+        Files.newBufferedWriter(installer.toPath(), StandardCharsets.UTF_8)) {
       writer.write("jar");
     }
 
