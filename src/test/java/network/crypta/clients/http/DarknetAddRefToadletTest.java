@@ -141,9 +141,10 @@ class DarknetAddRefToadletTest {
     PageMaker pageMaker = mock(PageMaker.class);
     when(ctx.getPageMaker()).thenReturn(pageMaker);
     when(pageMaker.getPageNode(anyString(), eq(ctx))).thenReturn(page);
-    when(ctx.getAlertManager())
-        .thenReturn(mock(network.crypta.node.useralerts.UserAlertManager.class));
-    when(ctx.getAlertManager().createSummary()).thenReturn(new HTMLNode("#", "summary"));
+    network.crypta.node.useralerts.UserAlertManager alertManager =
+        mock(network.crypta.node.useralerts.UserAlertManager.class);
+    when(ctx.getAlertManager()).thenReturn(alertManager);
+    when(alertManager.createSummary()).thenReturn(new HTMLNode("#", "summary"));
 
     when(pageMaker.getInfobox(anyString(), anyString(), eq(content), anyString(), eq(true)))
         .thenAnswer(
@@ -161,7 +162,8 @@ class DarknetAddRefToadletTest {
         org.mockito.Mockito.mock(network.crypta.node.subsystem.NodeNetworkSubsystem.class);
     when(node.network()).thenReturn(network);
     when(network.exportDarknetPublicFieldSet()).thenReturn(noderef);
-    when(friendsToadlet.path()).thenReturn("/friends/");
+    String friendsPath = "/friends/";
+    when(friendsToadlet.path()).thenReturn(friendsPath);
     doNothing().when(friendsToadlet).drawNoderefBox(content, noderef);
 
     try (MockedStatic<NodeL10n> nodeL10n = mockStatic(NodeL10n.class);
@@ -181,8 +183,7 @@ class DarknetAddRefToadletTest {
       assertTrue(toadlet.lastHtml.contains("summary"));
 
       connections.verify(
-          () -> ConnectionsToadlet.drawAddPeerBox(content, ctx, false, friendsToadlet.path()),
-          times(1));
+          () -> ConnectionsToadlet.drawAddPeerBox(content, ctx, false, friendsPath), times(1));
       verify(friendsToadlet, times(1)).drawNoderefBox(content, noderef);
     }
   }
