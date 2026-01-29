@@ -438,7 +438,7 @@ public class USKInserter
   public USKInserter(
       BlockInsertPayload payload, BlockInsertParams params, BlockInsertOptions options)
       throws MalformedURLException {
-    this.hashCode = super.hashCode();
+    this.hashCode = System.identityHashCode(this);
     this.tokenObject = params.tokenObject();
     this.persistent = options.persistent();
     this.parent = params.parent();

@@ -150,7 +150,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
       Object token) {
     parent = parent2;
     cb = cb2;
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     persistent = parent.persistent();
     origMetadata = Metadata.forceMap(metadata2);
     archiveType = options.archiveType();
