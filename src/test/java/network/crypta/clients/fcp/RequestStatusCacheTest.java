@@ -123,8 +123,9 @@ class RequestStatusCacheTest {
 
     cache.updateStarted("dl", redirectUri);
 
+    @SuppressWarnings("unchecked")
     MultiValueTable<FreenetURI, DownloadRequestStatus> downloadsByUri =
-        getField(cache, "downloadsByURI");
+        (MultiValueTable<FreenetURI, DownloadRequestStatus>) getField(cache, "downloadsByURI");
 
     assertFalse(downloadsByUri.containsKey(originalUri));
     assertTrue(downloadsByUri.containsKey(redirectUri));
@@ -234,8 +235,9 @@ class RequestStatusCacheTest {
 
     cache.removeByIdentifier("remove-dl");
 
+    @SuppressWarnings("unchecked")
     MultiValueTable<FreenetURI, DownloadRequestStatus> downloadsByUri =
-        getField(cache, "downloadsByURI");
+        (MultiValueTable<FreenetURI, DownloadRequestStatus>) getField(cache, "downloadsByURI");
     assertFalse(downloadsByUri.containsKey(uri));
     assertNull(cache.getShadowBucket(uri, false));
   }
@@ -256,8 +258,9 @@ class RequestStatusCacheTest {
 
     verify(status).setFinished(true, finalUri, InsertExceptionMode.INTERNAL_ERROR, "s", "l");
 
+    @SuppressWarnings("unchecked")
     MultiValueTable<FreenetURI, RequestStatus> uploadsByFinalUri =
-        getField(cache, "uploadsByFinalURI");
+        (MultiValueTable<FreenetURI, RequestStatus>) getField(cache, "uploadsByFinalURI");
     assertTrue(uploadsByFinalUri.containsKey(finalUri));
   }
 
@@ -277,8 +280,9 @@ class RequestStatusCacheTest {
 
     verify(status).setFinalURI(finalUri);
 
+    @SuppressWarnings("unchecked")
     MultiValueTable<FreenetURI, RequestStatus> uploadsByFinalUri =
-        getField(cache, "uploadsByFinalURI");
+        (MultiValueTable<FreenetURI, RequestStatus>) getField(cache, "uploadsByFinalURI");
     assertTrue(uploadsByFinalUri.containsKey(finalUri));
   }
 
@@ -378,17 +382,20 @@ class RequestStatusCacheTest {
     cache.addTo(snapshot);
     assertTrue(snapshot.isEmpty());
 
-    MultiValueTable<?, ?> downloadsByUri = getField(cache, "downloadsByURI");
-    MultiValueTable<?, ?> uploadsByFinalUri = getField(cache, "uploadsByFinalURI");
+    @SuppressWarnings("unchecked")
+    MultiValueTable<?, ?> downloadsByUri =
+        (MultiValueTable<?, ?>) getField(cache, "downloadsByURI");
+    @SuppressWarnings("unchecked")
+    MultiValueTable<?, ?> uploadsByFinalUri =
+        (MultiValueTable<?, ?>) getField(cache, "uploadsByFinalURI");
     assertTrue(downloadsByUri.isEmpty());
     assertTrue(uploadsByFinalUri.isEmpty());
   }
 
-  @SuppressWarnings("unchecked")
-  private static <T> T getField(Object target, String name) throws Exception {
+  private static Object getField(Object target, String name) throws Exception {
     var field = RequestStatusCache.class.getDeclaredField(name);
     field.setAccessible(true);
-    return (T) field.get(target);
+    return field.get(target);
   }
 
   private static final class FixedBucket implements Bucket {

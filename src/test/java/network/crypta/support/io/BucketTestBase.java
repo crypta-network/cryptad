@@ -182,7 +182,7 @@ public abstract class BucketTestBase {
 
       // Read byte[]
       try (InputStream is = bucket.getInputStream()) {
-        assertEquals(0xff & (byte) 0, is.read(), "Write-0");
+        assertEquals(0, is.read(), "Write-0");
         assertEquals(0xff & (byte) -1, is.read(), "Write-1");
         assertEquals(0xff & (byte) -2, is.read(), "Write-2");
         assertEquals(0xff & (byte) 123, is.read(), "Write-123");

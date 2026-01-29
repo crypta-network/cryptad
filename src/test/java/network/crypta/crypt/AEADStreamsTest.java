@@ -106,11 +106,7 @@ class AEADStreamsTest {
     assertTrue(BucketTools.equalBuckets(decoded, input));
   }
 
-  /**
-   * Check whether we can close the stream early.
-   *
-   * @throws IOException
-   */
+  /** Check whether we can close the stream early. */
   @Test
   void testCloseEarly() throws IOException {
     ArrayBucket input = new ArrayBucket();
@@ -136,8 +132,6 @@ class AEADStreamsTest {
 
   /**
    * If we close the stream early but there is garbage after that point, it should throw on close().
-   *
-   * @throws IOException
    */
   @Test
   void testGarbageAfterClose() throws IOException {
