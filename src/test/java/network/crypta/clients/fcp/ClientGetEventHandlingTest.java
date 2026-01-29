@@ -40,7 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "JavaUtilDate"})
 @ExtendWith(MockitoExtension.class)
 class ClientGetEventHandlingTest {
   private static final String CLIENT_FIELD = "client";
