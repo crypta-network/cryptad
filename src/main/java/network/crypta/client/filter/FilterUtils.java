@@ -3,7 +3,6 @@ package network.crypta.client.filter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Locale;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -228,17 +227,17 @@ public class FilterUtils {
     if (value.contains("deg")) {
       index = value.indexOf("deg");
       String secondpart = value.substring(index).trim();
-      if (!"deg".equals(secondpart)) isValid = false;
+      if (!("deg".equals(secondpart))) isValid = false;
     } else if (value.contains("grad")) {
       index = value.indexOf("grad");
       String secondpart = value.substring(index).trim();
 
-      if (!"grad".equals(secondpart)) isValid = false;
+      if (!("grad".equals(secondpart))) isValid = false;
     } else if (value.contains("rad")) {
       index = value.indexOf("rad");
       String secondpart = value.substring(index).trim();
 
-      if (!"rad".equals(secondpart)) isValid = false;
+      if (!("rad".equals(secondpart))) isValid = false;
     }
     if (index != -1 && isValid) {
       String firstPart = value.substring(0, index);
@@ -427,7 +426,7 @@ public class FilterUtils {
    */
   public static boolean isValidCSSShape(String value) {
     if (value.indexOf("rect(") == 0 && value.indexOf(')') == value.length() - 1) {
-      String[] shapeParts = splitOnCharArray(value.substring(5, value.length() - 1), ",");
+      String[] shapeParts = value.substring(5, value.length() - 1).split(",");
       if (shapeParts.length == 4) {
         for (String s : shapeParts) {
           s = s.trim();
@@ -493,7 +492,7 @@ public class FilterUtils {
    * @return {@code true} if the value matches any supported color notation; otherwise {@code false}
    */
   public static boolean isColor(String value) {
-    String v = value.trim().toLowerCase(Locale.ROOT);
+    String v = value.trim().toLowerCase();
 
     if (CSScolorKeywords.contains(v)
         || CSSsystemColorKeywords.contains(v)
@@ -512,14 +511,14 @@ public class FilterUtils {
 
   private static boolean isColorHsl(String v) {
     if (v.indexOf("hsl(") != 0 || v.indexOf(')') != v.length() - 1) return false;
-    String[] colorParts = splitOnCharArray(v.substring(4, v.length() - 1), ",");
+    String[] colorParts = v.substring(4, v.length() - 1).split(",");
     if (colorParts.length != 3) return false;
     return isNumber(colorParts[0]) && isPercentage(colorParts[1]) && isPercentage(colorParts[2]);
   }
 
   private static boolean isColorHsla(String v) {
     if (v.indexOf("hsla(") != 0 || v.indexOf(')') != v.length() - 1) return false;
-    String[] colorParts = splitOnCharArray(v.substring(5, v.length() - 1), ",");
+    String[] colorParts = v.substring(5, v.length() - 1).split(",");
     if (colorParts.length != 4) return false;
     return isNumber(colorParts[0])
         && isPercentage(colorParts[1])
@@ -532,7 +531,7 @@ public class FilterUtils {
   }
 
   private static boolean isColorRgbLegacy(String v) {
-    String[] colorParts = splitOnCharArray(v.substring(v.indexOf("(") + 1, v.length() - 1), ",");
+    String[] colorParts = v.substring(v.indexOf("(") + 1, v.length() - 1).split(",");
     if (colorParts.length != 3 && colorParts.length != 4) return false;
     for (int i = 0; i < 3; i++) {
       if (!(isPercentage(colorParts[i].trim()) || isInteger(colorParts[i].trim()))) return false;
@@ -552,7 +551,7 @@ public class FilterUtils {
       v = v.substring(0, v.indexOf("/")) + ")"; // Strip alpha value
     }
     // Modern format rgba(r g b)
-    String[] colorParts = splitOnCharArray(v.substring(v.indexOf("(") + 1, v.length() - 1), " ");
+    String[] colorParts = v.substring(v.indexOf("(") + 1, v.length() - 1).split(" ");
     if (colorParts.length != 3) return false;
     for (int i = 0; i < 3; i++) {
       String trimmed = colorParts[i].trim();
@@ -593,7 +592,7 @@ public class FilterUtils {
 
   private static boolean isTransformMatrix(String v) {
     if (v.indexOf("matrix(") == 0 && v.indexOf(')') == v.length() - 1) {
-      String[] parts = splitOnCharArray(v.substring(7, v.length() - 1), ",");
+      String[] parts = v.substring(7, v.length() - 1).split(",");
       if (parts.length != 6) return false;
       for (String part : parts) if (!isNumber(part.trim())) return false;
       if (LOG.isTraceEnabled()) LOG.trace("isCSSTransform found a matrix()");
@@ -626,7 +625,7 @@ public class FilterUtils {
 
   private static boolean isTransformTranslate(String v) {
     if (v.indexOf("translate(") == 0 && v.indexOf(')') == v.length() - 1) {
-      String[] parts = splitOnCharArray(v.substring(10, v.length() - 1), ",");
+      String[] parts = v.substring(10, v.length() - 1).split(",");
       boolean valid =
           (parts.length == 1 && (isPercentage(parts[0].trim()) || isLength(parts[0].trim(), false)))
               || (parts.length == 2
@@ -642,7 +641,7 @@ public class FilterUtils {
 
   private static boolean isTransformScale(String v) {
     if (v.indexOf("scale(") == 0 && v.indexOf(')') == v.length() - 1) {
-      String[] parts = splitOnCharArray(v.substring(6, v.length() - 1), ",");
+      String[] parts = v.substring(6, v.length() - 1).split(",");
       boolean valid =
           (parts.length == 1 && isNumber(parts[0].trim()))
               || (parts.length == 2 && isNumber(parts[0].trim()) && isNumber(parts[1].trim()));
@@ -711,7 +710,7 @@ public class FilterUtils {
 
   private static boolean isTransformSkew(String v) {
     if (v.indexOf("skew(") == 0 && v.indexOf(')') == v.length() - 1) {
-      String[] parts = splitOnCharArray(v.substring(5, v.length() - 1), ",");
+      String[] parts = v.substring(5, v.length() - 1).split(",");
       boolean valid =
           (parts.length == 1 && (isNumber(parts[0].trim()) || isAngle(parts[0].trim())))
               || (parts.length == 2
@@ -738,19 +737,19 @@ public class FilterUtils {
    */
   public static boolean isFrequency(String value) {
     String firstPart;
-    value = value.trim().toLowerCase(Locale.ROOT);
+    value = value.trim().toLowerCase();
     boolean isValidFrequency = true;
     if (value.contains("khz")) {
       int index = value.indexOf("khz");
       firstPart = value.substring(0, index).trim();
-      if (!"khz".equals(value.substring(index).trim())) {
+      if (!("khz".equals(value.substring(index).trim()))) {
         isValidFrequency = false;
       }
 
     } else if (value.contains("hz")) {
       int index = value.indexOf("hz");
       firstPart = value.substring(0, index).trim();
-      if (!"hz".equals(value.substring(index).trim())) {
+      if (!("hz".equals(value.substring(index).trim()))) {
         isValidFrequency = false;
       }
 
@@ -777,7 +776,7 @@ public class FilterUtils {
    * @return {@code true} if a numeric value followed by a supported unit is present
    */
   public static boolean isTime(String value) {
-    value = value.toLowerCase(Locale.ROOT);
+    value = value.toLowerCase();
     String intValue;
     if (value.contains("ms") && value.length() > 2)
       intValue = value.substring(0, value.length() - 2);
@@ -895,7 +894,7 @@ public class FilterUtils {
   public static boolean isPointPair(String value) {
     String[] pointPairs = splitOnCharArray(value, " \n\t");
     for (String pointPair : pointPairs) {
-      String[] strParts = splitOnCharArray(pointPair, ",");
+      String[] strParts = pointPair.split(",");
       if (strParts.length != 2) return false;
       try {
         Float.parseFloat(strParts[0]);

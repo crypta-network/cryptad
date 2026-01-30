@@ -391,16 +391,17 @@ public class SeednodePingTest extends RealNodeTest {
             new InputStreamReader(new FileInputStream(logFile), StandardCharsets.UTF_8))) {
       String line;
       while ((line = br.readLine()) != null) {
-        int firstSep = line.indexOf(" : ");
-        int secondSep = firstSep == -1 ? -1 : line.indexOf(" : ", firstSep + 3);
-        if (firstSep == -1 || secondSep == -1 || line.indexOf(" : ", secondSep + 3) != -1) {
-          LOG.error("Unable to parse line in {} : wrong number of fields : {}", logFile, line);
+        String[] results = line.split(" : ");
+        if (results.length != 3) {
+          LOG.error(
+              "Unable to parse line in {} : wrong number of fields : {} : {}",
+              logFile,
+              results.length,
+              line);
           continue;
         }
-        String timeField = line.substring(0, firstSep);
-        String fateField = line.substring(secondSep + 3);
-        long time = Long.parseLong(timeField);
-        FATE fate = FATE.valueOf(fateField);
+        long time = Long.parseLong(results[0]);
+        FATE fate = FATE.valueOf(results[2]);
         if (firstSample == 0) {
           firstSample = time;
         }

@@ -40,6 +40,7 @@ import network.crypta.support.io.FileRandomAccessBufferFactory;
  *
  * @see SplitFileFetcherStorage
  * @see SplitFileFetcherStorageInitParams.Builder
+ * @hidden
  */
 public final class SplitFileFetcherStorageInitParams {
   Metadata metadata;
@@ -82,6 +83,8 @@ public final class SplitFileFetcherStorageInitParams {
    *   <li>Provide runtime helpers such as tickers, RNGs, and job runners.
    *   <li>Create repeatable snapshots by reusing the same builder.
    * </ul>
+   *
+   * @hidden
    */
   public static class Builder {
     private Metadata metadata;

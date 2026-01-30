@@ -5,7 +5,6 @@ import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.Provider;
 import java.util.Arrays;
-import java.util.Objects;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
 import javax.crypto.spec.IvParameterSpec;
@@ -55,7 +54,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     final String algo = base.getAlgorithm();
     Mac sunHmac = Mac.getInstance(algo, sun);
     sunHmac.init(dummyKey);
-    if (Objects.equals(base.getProvider(), sunHmac.getProvider())) return base;
+    if (base.getProvider() == sunHmac.getProvider()) return base;
     long timeDef = benchmark(base);
     long timeSun = benchmark(sunHmac);
     LOG.debug("{}/{}: {}ns", algo, base.getProvider(), timeDef);
@@ -753,7 +752,7 @@ public class ClientCHKBlock implements ClientKeyBlock {
     byte[] plainIV = md256.digest(encKey);
     header = new byte[plainIV.length + 2 + 2];
     header[0] = 0;
-    header[1] = (byte) KeyBlock.HASH_SHA256;
+    header[1] = (byte) (KeyBlock.HASH_SHA256);
     System.arraycopy(plainIV, 0, header, 2, plainIV.length);
     header[plainIV.length + 2] = (byte) (dataLength >> 8);
     header[plainIV.length + 3] = (byte) (dataLength & 0xff);

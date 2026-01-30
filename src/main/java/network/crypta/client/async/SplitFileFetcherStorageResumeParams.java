@@ -33,6 +33,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  * @see SplitFileFetcherStorageResumeParams.Builder
  * @see SplitFileFetcherStorageInitParams
  * @see SplitFileFetcherStorage
+ * @hidden
  */
 public final class SplitFileFetcherStorageResumeParams {
   LockableRandomAccessBuffer raf;
@@ -73,6 +74,8 @@ public final class SplitFileFetcherStorageResumeParams {
    *         .ticker(ticker)
    *         .build();
    * }</pre>
+   *
+   * @hidden
    */
   public static class Builder {
     private LockableRandomAccessBuffer raf;

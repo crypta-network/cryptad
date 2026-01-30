@@ -14,6 +14,7 @@ import network.crypta.support.io.PersistentFileTracker;
  *
  * @see SplitFileInserterStorage
  * @see SplitFileInserterStorageRuntimeParams
+ * @hidden
  */
 public final class SplitFileInserterStorageResumeParams {
   LockableRandomAccessBuffer raf;
@@ -29,6 +30,8 @@ public final class SplitFileInserterStorageResumeParams {
    * Fluent builder for {@link SplitFileInserterStorageResumeParams}.
    *
    * <p>The builder stores references as-is and performs no validation.
+   *
+   * @hidden
    */
   public static final class Builder {
     private LockableRandomAccessBuffer raf;

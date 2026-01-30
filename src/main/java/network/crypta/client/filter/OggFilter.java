@@ -93,7 +93,6 @@ public class OggFilter implements ContentDataFilter {
    * @throws IOException if reading from {@code input} or writing to {@code output} fails; includes
    *     validation failures signaled via {@link DataFilterException}.
    */
-  @Override
   public void readFilter(
       InputStream input,
       OutputStream output,

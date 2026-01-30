@@ -1,7 +1,6 @@
 package network.crypta.node;
 
 import java.io.Serial;
-import java.util.Objects;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.ChosenBlock;
 import network.crypta.client.async.ClientContext;
@@ -395,7 +394,7 @@ public class SimpleSendableInsert extends SendableInsert {
     @Override
     public boolean equals(Object o) {
       if (o instanceof MySendableRequestItem item) {
-        return Objects.equals(item.parent, parent);
+        return item.parent == parent;
       } else return false;
     }
 

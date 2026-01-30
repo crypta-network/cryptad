@@ -2,7 +2,6 @@ package network.crypta.node;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import java.util.Objects;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -154,7 +153,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       return;
     }
 
-    if (Objects.equals(msg.getSpec(), DMT.FNPDataInsertRejected)) {
+    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
       forwardDataInsertRejected(msg);
       return;
     }
@@ -293,7 +292,6 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     }
   }
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void handleTerminalStatus(int status) {
     switch (status) {
       case CHKInsertSender.TIMED_OUT,
@@ -535,7 +533,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
     Message m = awaitDownstreamAndBuildCompletionMsg(sentCompletionWasSet, transferTimeout);
 
-    if (sender == null && !sentCompletionWasSet && canCommit) {
+    if ((sender == null) && (!sentCompletionWasSet) && (canCommit)) {
       // There are no downstream senders, but we stored the data locally, report successful
       // transfer. Note that this is done even if the verifying fails.
       m = DMT.createFNPInsertTransfersCompleted(uid, false /* no timeouts */);

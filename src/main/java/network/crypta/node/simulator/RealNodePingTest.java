@@ -174,35 +174,32 @@ public class RealNodePingTest {
     PeerNode pn = node1.network().peerNodes()[0];
     AtomicInteger pingID = new AtomicInteger();
     try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) {
-      var pingTask =
-          scheduler.scheduleWithFixedDelay(
-              () -> {
-                int ping = pingID.getAndIncrement();
-                LOG.error("Sending PING {}", ping);
-                boolean success;
-                boolean connected = true;
-                try {
-                  success = pn.transport().ping(ping);
-                } catch (NotConnectedException _) {
-                  LOG.error("Not connected");
-                  connected = false;
-                  success = false;
-                }
-                if (connected) {
-                  if (success) LOG.error("PING {} successful", ping);
-                  else LOG.error("PING FAILED: {}", ping);
-                }
-              },
-              20,
-              2,
-              TimeUnit.SECONDS);
+      scheduler.scheduleWithFixedDelay(
+          () -> {
+            int ping = pingID.getAndIncrement();
+            LOG.error("Sending PING {}", ping);
+            boolean success;
+            boolean connected = true;
+            try {
+              success = pn.transport().ping(ping);
+            } catch (NotConnectedException _) {
+              LOG.error("Not connected");
+              connected = false;
+              success = false;
+            }
+            if (connected) {
+              if (success) LOG.error("PING {} successful", ping);
+              else LOG.error("PING FAILED: {}", ping);
+            }
+          },
+          20,
+          2,
+          TimeUnit.SECONDS);
       CountDownLatch done = new CountDownLatch(1);
       try {
         done.await();
       } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
-      } finally {
-        pingTask.cancel(false);
       }
     }
   }

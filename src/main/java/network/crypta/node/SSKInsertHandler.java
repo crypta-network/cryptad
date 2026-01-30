@@ -1,6 +1,5 @@
 package network.crypta.node;
 
-import java.util.Objects;
 import network.crypta.crypt.CryptFormatException;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.io.comm.ByteCounter;
@@ -210,18 +209,18 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       }
       return false;
     }
-    if (Objects.equals(msg.getSpec(), DMT.FNPSSKInsertRequestHeaders)) {
+    if (msg.getSpec() == DMT.FNPSSKInsertRequestHeaders) {
       headers = ((ShortBuffer) msg.getObject(DMT.BLOCK_HEADERS)).getData();
       return true;
     }
-    if (Objects.equals(msg.getSpec(), DMT.FNPSSKInsertRequestData)) {
+    if (msg.getSpec() == DMT.FNPSSKInsertRequestData) {
       data = ((ShortBuffer) msg.getObject(DMT.DATA)).getData();
       return true;
     }
-    if (Objects.equals(msg.getSpec(), DMT.FNPSSKPubKey)) {
+    if (msg.getSpec() == DMT.FNPSSKPubKey) {
       return handlePubKeyMessage(msg);
     }
-    if (Objects.equals(msg.getSpec(), DMT.FNPDataInsertRejected)) {
+    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
       try {
         source
             .transport()

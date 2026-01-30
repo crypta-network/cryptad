@@ -270,7 +270,7 @@ public class CSSReadFilter implements ContentDataFilter, CharsetExtractor {
    *     valid entries are present after filtering.
    */
   public static String filterMediaList(String media) {
-    String[] split = FilterUtils.splitOnCharArray(media, ",");
+    String[] split = media.split(",");
     boolean first = true;
     StringBuilder sb = new StringBuilder();
     for (String m : split) {

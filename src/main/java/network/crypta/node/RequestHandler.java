@@ -206,7 +206,7 @@ public class RequestHandler
         return;
       }
       appliedByteCounts = true;
-      if (!(!finalTransferFailed
+      if (!((!finalTransferFailed)
           && rs != null
           && status != RequestSender.TIMED_OUT
           && status != RequestSender.GENERATED_REJECTED_OVERLOAD
@@ -542,7 +542,6 @@ public class RequestHandler
     throw new IllegalStateException("Unknown status code " + status);
   }
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private boolean processStatusSimpleCases(int status, RequestSender rs) {
     switch (status) {
       case RequestSender.NOT_FINISHED, RequestSender.DATA_NOT_FOUND:
@@ -589,7 +588,7 @@ public class RequestHandler
   private boolean handleSuccess(int status, RequestSender rs) throws NotConnectedException {
     if (status != RequestSender.SUCCESS) return false;
     if (key instanceof NodeSSK) {
-      sendSSK(rs.getHeaders(), rs.getSSKData(), rs.getSSKBlock().getKey().getPubKey());
+      sendSSK(rs.getHeaders(), rs.getSSKData(), (rs.getSSKBlock().getKey()).getPubKey());
     } else {
       maybeCompleteTransfer();
     }
@@ -1204,7 +1203,7 @@ public class RequestHandler
   @Override
   public void onNotStarted(boolean internalError) {
     // Impossible
-    assert false;
+    assert (false);
   }
 
   /**
@@ -1215,6 +1214,6 @@ public class RequestHandler
   @Override
   public void onDataFoundLocally() {
     // Can't happen.
-    assert false;
+    assert (false);
   }
 }

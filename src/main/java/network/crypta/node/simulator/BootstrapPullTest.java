@@ -332,7 +332,7 @@ public class BootstrapPullTest {
 
   private static FreenetURI insertData(File dataFile) throws IOException {
     long startInsertTime = System.currentTimeMillis();
-    InetAddress localhost = InetAddress.getLoopbackAddress();
+    InetAddress localhost = InetAddress.getByName("127.0.0.1");
     try (Socket sock = new Socket(localhost, 9481);
         OutputStream sockOS = sock.getOutputStream();
         InputStream sockIS = sock.getInputStream();

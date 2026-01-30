@@ -6,7 +6,6 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.util.HashMap;
-import java.util.Locale;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertBlock;
@@ -151,7 +150,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
    * @param params parameter bundle describing the insert inputs and execution options
    */
   SingleFileInserter(SingleFileInserterParams params) {
-    hashCode = System.identityHashCode(this);
+    hashCode = super.hashCode();
     InsertExecutionOptions execOptions = params.executionOptions;
     this.reportMetadataOnly = execOptions.reportMetadataOnly();
     this.token = params.token;
@@ -642,7 +641,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       CompatibilityMode cmode = ctx.getCompatibilityMode();
       boolean allowSizes =
           (cmode == CompatibilityMode.COMPAT_CURRENT
-              || cmode.code >= CompatibilityMode.COMPAT_1255.code);
+              || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal());
       if (metadata) allowSizes = false;
       SplitHandler sh = new SplitHandler(origSize, data.size(), allowSizes);
       SplitFileInserter.Options opts =
@@ -701,7 +700,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     if (block.desiredURI == null) {
       throw new InsertException(InsertExceptionMode.INVALID_URI, "Null key type", null);
     }
-    BlockSizes sizes = determineBlockSizes(block.desiredURI.getKeyType().toUpperCase(Locale.ROOT));
+    BlockSizes sizes = determineBlockSizes(block.desiredURI.getKeyType().toUpperCase());
     long origSize = origData.size();
     long wantHashes = computeWantedHashes(origData.size());
     boolean tryCompress =
@@ -758,7 +757,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     CompatibilityMode cmode = ctx.getCompatibilityMode();
     boolean atLeast1254 =
         (cmode == CompatibilityMode.COMPAT_CURRENT
-            || cmode.code >= CompatibilityMode.COMPAT_1255.code);
+            || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal());
     if (atLeast1254) {
       // We verify this. We want it for *all* files.
       wantHashes |= HashType.SHA256.bitmask;
@@ -959,7 +958,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     public SplitHandler(long origDataLength, long origCompressedDataLength, boolean allowSizes) {
       // Default constructor
       this.persistent = SingleFileInserter.this.persistent;
-      this.hashCode = System.identityHashCode(this);
+      this.hashCode = super.hashCode();
       this.origDataLength = allowSizes ? origDataLength : 0;
       this.origCompressedDataLength = allowSizes ? origCompressedDataLength : 0;
     }
@@ -1158,7 +1157,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       ClientMetadata m = meta.getClientMetadata();
       CompatibilityMode cmode = ctx.getCompatibilityMode();
       if (!(cmode == CompatibilityMode.COMPAT_CURRENT
-          || cmode.code >= CompatibilityMode.COMPAT_1255.code)) m = null;
+          || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal())) m = null;
       return m;
     }
 
@@ -1177,7 +1176,6 @@ class SingleFileInserter implements ClientPutState, Serializable {
       return false;
     }
 
-    @SuppressWarnings("ArrayRecordComponent")
     private record RedirectResult(Metadata meta, byte[] bytes, String target) {
       @Override
       public boolean equals(Object o) {

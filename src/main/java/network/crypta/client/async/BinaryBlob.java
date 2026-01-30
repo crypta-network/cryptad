@@ -170,7 +170,6 @@ public final class BinaryBlob {
    * @throws BinaryBlobFormatException if the magic, version, sizes, or record types are invalid, or
    *     when a block record cannot be decoded into a valid key.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public static void readBinaryBlob(DataInputStream dis, BlockSet blocks, boolean tolerant)
       throws IOException, BinaryBlobFormatException {
     long magic = dis.readLong();

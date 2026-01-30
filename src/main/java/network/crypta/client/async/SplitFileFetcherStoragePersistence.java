@@ -61,7 +61,6 @@ final class SplitFileFetcherStoragePersistence {
    * @param offsetOriginalDetails byte offset of encoded original details within storage layout
    * @param offsetBasicSettings byte offset of basic settings block within storage layout
    */
-  @SuppressWarnings("ArrayRecordComponent")
   record PreparedMetadata(
       Bucket metadataTemp,
       byte[] encodedURI,

@@ -212,7 +212,6 @@ public class BinaryBlobInserter implements ClientPutState {
 
     // Note: logic mirrors SingleBlockInserter; consider future refactor.
     @Override
-    @SuppressWarnings("StatementSwitchToExpressionSwitch")
     public void onFailure(
         LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
       synchronized (BinaryBlobInserter.this) {

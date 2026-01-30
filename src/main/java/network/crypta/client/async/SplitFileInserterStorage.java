@@ -299,7 +299,7 @@ public class SplitFileInserterStorage {
     InsertContext ctx = params.ctx;
     byte[] providedSplitfileCryptoKey = params.splitfileCryptoKey;
     cmode = ctx.getCompatibilityMode();
-    if (cmode.code < CompatibilityMode.COMPAT_1255.code) {
+    if (cmode.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
       this.hashes = null;
       providedSplitfileCryptoKey = null;
     } else {
@@ -661,7 +661,7 @@ public class SplitFileInserterStorage {
   private int calculateDeductBlocks(
       int totalDataBlocks, int segmentSize, int segs, CompatibilityMode cmode) {
     if (cmode == CompatibilityMode.COMPAT_CURRENT
-        || cmode.code >= CompatibilityMode.COMPAT_1255.code) {
+        || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal()) {
       int lastSegmentSize = totalDataBlocks - (segmentSize * (segs - 1));
       return segmentSize - lastSegmentSize;
     }
@@ -672,7 +672,7 @@ public class SplitFileInserterStorage {
     // Cross-segment splitfile redundancy becomes useful at 20 segments.
     if (segs >= 20
         && (cmode == CompatibilityMode.COMPAT_CURRENT
-            || cmode.code >= CompatibilityMode.COMPAT_1255.code)) {
+            || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal())) {
       return 3; // Optimal number of cross-check blocks per segment
     }
     return 0;
@@ -734,7 +734,6 @@ public class SplitFileInserterStorage {
   }
 
   /** Includes magic, version, length, basic settings, checksum. */
-  @SuppressWarnings("EnumOrdinal")
   private byte[] encodeHeader() {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream dos = new DataOutputStream(baos);
@@ -864,7 +863,6 @@ public class SplitFileInserterStorage {
     return null;
   }
 
-  @SuppressWarnings("EnumOrdinal")
   private CompatibilityMode readCompatibilityModeChecked(DataInputStream dis)
       throws IOException, StorageFormatException {
     int compatMode = dis.readInt();
@@ -1131,7 +1129,7 @@ public class SplitFileInserterStorage {
     if (providedKey != null) {
       return new CryptoInit(providedKey, true);
     } else if (cmode == CompatibilityMode.COMPAT_CURRENT
-        || cmode.code >= CompatibilityMode.COMPAT_1255.code) {
+        || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal()) {
       byte[] key =
           (hashThisLayerOnly != null)
               ? Metadata.getCryptoKey(hashThisLayerOnly)

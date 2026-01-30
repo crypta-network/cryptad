@@ -41,7 +41,6 @@ import org.jetbrains.annotations.NotNull;
  * @param rafLength total length of the backing storage buffer in bytes.
  * @see SplitFileFetcherSegmentsBuilder#initSegmentsFromStream(SplitFileFetcherSegmentsLoadParams)
  */
-@SuppressWarnings("ArrayRecordComponent")
 record SplitFileFetcherSegmentsLoadParams(
     SplitFileFetcherStorage parent,
     int totalDataBlocks,

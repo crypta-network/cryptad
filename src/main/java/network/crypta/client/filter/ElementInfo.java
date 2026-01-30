@@ -1,8 +1,6 @@
 package network.crypta.client.filter;
 
-import java.util.Locale;
 import java.util.Set;
-import java.util.StringTokenizer;
 import java.util.regex.Pattern;
 
 /**
@@ -492,8 +490,7 @@ public class ElementInfo {
    * @return {@code true} when the normalized name is in the allow list; {@code false} otherwise.
    */
   public static boolean isValidHTMLTag(String tag) {
-    return (HTML_ELEMENTS.contains(tag.toLowerCase(Locale.ROOT))
-        || VOID_ELEMENTS.contains(tag.toLowerCase(Locale.ROOT)));
+    return (HTML_ELEMENTS.contains(tag.toLowerCase()) || VOID_ELEMENTS.contains(tag.toLowerCase()));
   }
 
   /**
@@ -701,10 +698,8 @@ public class ElementInfo {
   public static boolean isBannedPseudoClass(String cname) {
     if (cname.indexOf(':') != -1) {
       // Pseudo-classes can be chained, at least dynamic ones can, see CSS2.1 section 5.11.3
-      StringTokenizer tokenizer = new StringTokenizer(cname, ":");
-      while (tokenizer.hasMoreTokens()) {
-        if (isBannedPseudoClass2(tokenizer.nextToken())) return true;
-      }
+      String[] split = cname.split(":");
+      for (String s : split) if (isBannedPseudoClass2(s)) return true;
       return false;
     } else {
       return isBannedPseudoClass2(cname);
@@ -712,7 +707,7 @@ public class ElementInfo {
   }
 
   private static boolean isBannedPseudoClass2(String cname) {
-    return BANNED_PSEUDOCLASS.contains(cname.toLowerCase(Locale.ROOT));
+    return BANNED_PSEUDOCLASS.contains(cname.toLowerCase());
   }
 
   /**
@@ -728,10 +723,8 @@ public class ElementInfo {
   public static boolean isValidPseudoClass(String cname) {
     if (cname.indexOf(':') != -1) {
       // Pseudo-classes can be chained, at least dynamic ones can, see CSS2.1 section 5.11.3
-      StringTokenizer tokenizer = new StringTokenizer(cname, ":");
-      while (tokenizer.hasMoreTokens()) {
-        if (!isValidPseudoClass2(tokenizer.nextToken())) return false;
-      }
+      String[] split = cname.split(":");
+      for (String s : split) if (!isValidPseudoClass2(s)) return false;
       return true;
     } else {
       return isValidPseudoClass2(cname);
@@ -739,7 +732,7 @@ public class ElementInfo {
   }
 
   private static boolean isValidPseudoClass2(String cname) {
-    cname = cname.toLowerCase(Locale.ROOT);
+    cname = cname.toLowerCase();
     if (PSEUDOCLASS.contains(cname)) return true;
     else if (cname.startsWith(PC_LANG)
         && Pattern.matches("[\\w\\-*]{1,30}", getPseudoClassArg(cname, PC_LANG))) {

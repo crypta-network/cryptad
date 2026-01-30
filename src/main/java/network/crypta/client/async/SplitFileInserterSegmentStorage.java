@@ -1095,14 +1095,8 @@ public class SplitFileInserterSegmentStorage {
       return this;
     }
 
-    @Override
     public String toString() {
-      return "BlockInsert:"
-          + segment
-          + ":"
-          + blockNumber
-          + "@memory:"
-          + System.identityHashCode(this);
+      return "BlockInsert:" + segment + ":" + blockNumber + "@memory:" + super.hashCode();
     }
   }
 
@@ -1133,7 +1127,6 @@ public class SplitFileInserterSegmentStorage {
     return blockChooser.countFetchable();
   }
 
-  @Override
   public String toString() {
     return super.toString() + ":" + parent;
   }

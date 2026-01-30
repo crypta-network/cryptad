@@ -25,7 +25,6 @@ import org.jetbrains.annotations.NotNull;
  * @param cryptoAlgorithm identifier for optional per-block cryptography; {@code 0} for none
  * @param cryptoKey raw key material for {@code cryptoAlgorithm}; may be {@code null} when unused
  */
-@SuppressWarnings("ArrayRecordComponent")
 public record BlockInsertPayload(
     Bucket data,
     FreenetURI uri,

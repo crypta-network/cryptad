@@ -7,7 +7,6 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.zip.CRC32;
@@ -375,7 +374,7 @@ public class PNGFilter implements ContentDataFilter {
     if (readCRC != computedCRC && LOG.isDebugEnabled()) {
       LOG.debug(
           "CRC of the chunk {} doesn't match ({} but should be {})!",
-          new String(type, StandardCharsets.US_ASCII),
+          new String(type),
           Long.toHexString(readCRC),
           Long.toHexString(computedCRC));
     }
@@ -483,7 +482,6 @@ public class PNGFilter implements ContentDataFilter {
   private static final String ERROR_INVALID_COLOUR_COMBO =
       "Invalid colourType/bitDepth combination!";
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void throwOnInvalidColour(int bitDepth, int colourType) throws DataFilterException {
     switch (bitDepth) {
       case 1, 2, 4:

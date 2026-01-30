@@ -2,7 +2,6 @@ package network.crypta.node.simulator;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Objects;
 import network.crypta.crypt.DummyRandomSource;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.PeerParseException;
@@ -316,8 +315,8 @@ public class RealNodeULPRTest extends RealNodeTest {
     boolean[] visited = new boolean[nodes.length];
     NodeDispatcherCallback cb =
         (m, n) -> {
-          if ((!isSSK && Objects.equals(m.getSpec(), DMT.FNPCHKDataRequest))
-              || (isSSK && Objects.equals(m.getSpec(), DMT.FNPSSKDataRequest))) {
+          if (((!isSSK) && m.getSpec() == DMT.FNPCHKDataRequest)
+              || (isSSK && m.getSpec() == DMT.FNPSSKDataRequest)) {
             Key key = (Key) m.getObject(DMT.FREENET_ROUTING_KEY);
             if (key.equals(nodeKey)) {
               visited[n.network().darknetPortNumber() - DARKNET_PORT_BASE] = true;

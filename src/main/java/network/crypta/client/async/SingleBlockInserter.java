@@ -929,7 +929,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     @Override
     public boolean equals(Object o) {
       if (o instanceof BlockItemKey key) {
-        return Objects.equals(key.parent, parent);
+        return key.parent == parent;
       }
       return false;
     }

@@ -126,7 +126,6 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
    * @return the full plain-text message body including a localized header; never {@code null}
    */
   @Override
-  @SuppressWarnings("JavaUtilDate")
   public String getText() {
     return l10n(
             "header",
@@ -161,7 +160,6 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
    * @return an HTML fragment suitable for embedding in UI renderers; never {@code null}
    */
   @Override
-  @SuppressWarnings("JavaUtilDate")
   public HTMLNode getHTMLText() {
     HTMLNode alertNode = new HTMLNode("div");
     alertNode.addChild(
@@ -175,15 +173,10 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
               DateFormat.getInstance().format(new Date(sentTime)),
               DateFormat.getInstance().format(new Date(receivedTime))
             }));
-    int start = 0;
-    int next;
-    while ((next = messageText.indexOf('\n', start)) != -1) {
-      alertNode.addChild("#", messageText.substring(start, next));
-      alertNode.addChild("br");
-      start = next + 1;
-    }
-    if (start < messageText.length() || messageText.isEmpty()) {
-      alertNode.addChild("#", messageText.substring(start));
+    String[] lines = messageText.split("\n");
+    for (int i = 0, c = lines.length; i < c; i++) {
+      alertNode.addChild("#", lines[i]);
+      if (i != lines.length - 1) alertNode.addChild("br");
     }
 
     DarknetPeerNode pn = (DarknetPeerNode) peerRef.get();

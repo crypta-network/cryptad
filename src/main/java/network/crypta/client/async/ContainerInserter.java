@@ -321,7 +321,7 @@ public class ContainerInserter implements ClientPutState, Serializable {
     for (Metadata m : metas) {
       try {
         Bucket bucket = m.toBucket(context.getBucketFactory(persistent));
-        String nameInArchive = ".metadata-" + x++;
+        String nameInArchive = ".metadata-" + (x++);
         containerItems.add(new ContainerElement(bucket, nameInArchive));
         m.resolve(nameInArchive);
       } catch (MetadataUnresolvedException _) {

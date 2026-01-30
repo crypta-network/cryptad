@@ -23,7 +23,6 @@ import org.jetbrains.annotations.NotNull;
  * @param cryptoAlgorithm crypto algorithm identifier understood by downstream inserters
  * @param realTimeFlag whether to request real-time scheduling behavior
  */
-@SuppressWarnings("ArrayRecordComponent")
 public record InsertExecutionOptions(
     boolean dontCompress,
     boolean reportMetadataOnly,
