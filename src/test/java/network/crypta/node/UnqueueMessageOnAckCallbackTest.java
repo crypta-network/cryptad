@@ -2,6 +2,7 @@ package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -74,8 +75,9 @@ class UnqueueMessageOnAckCallbackTest {
     UnqueueMessageOnAckCallback cb = new UnqueueMessageOnAckCallback(dest, fileNumber);
 
     // Act
+    String destString = "dest-7";
+    doReturn(destString).when(dest).toString();
     String s = cb.toString();
-    String destString = dest.toString();
 
     // Assert
     assertTrue(s.contains(destString));

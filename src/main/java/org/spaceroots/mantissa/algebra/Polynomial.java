@@ -359,7 +359,7 @@ public abstract class Polynomial implements Serializable {
 
       // remove null high degree coefficients
       int i = a.length - 1;
-      while ((i > 0) && (a[i].isZero())) {
+      while (i > 0 && a[i].isZero()) {
         --i;
       }
 
@@ -391,6 +391,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return true if the polynomial is null
      */
+    @Override
     public boolean isZero() {
       return (a.length == 1) && a[0].isZero();
     }
@@ -400,6 +401,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return true if the polynomial is the constant unit polynomial
      */
+    @Override
     public boolean isOne() {
       return (a.length == 1) && a[0].isOne();
     }
@@ -409,6 +411,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return true if the polynomial is the identity polynomial
      */
+    @Override
     public boolean isIdentity() {
       return (a.length == 2) && a[0].isZero() && a[1].isOne();
     }
@@ -418,6 +421,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return degree
      */
+    @Override
     public int getDegree() {
       return a.length - 1;
     }
@@ -488,6 +492,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return a new polynomial
      */
+    @Override
     public Polynomial negate() {
       RationalNumber[] newA = new RationalNumber[a.length];
       for (int i = 0; i < a.length; ++i) {
@@ -522,6 +527,7 @@ public abstract class Polynomial implements Serializable {
      * @param l constant to multiply by
      * @return a new polynomial
      */
+    @Override
     public Polynomial multiply(long l) {
       return multiply(new RationalNumber(l));
     }
@@ -532,6 +538,7 @@ public abstract class Polynomial implements Serializable {
      * @param r constant to multiply by
      * @return a new polynomial
      */
+    @Override
     public Polynomial multiply(RationalNumber r) {
 
       if (r.isZero()) {
@@ -555,6 +562,7 @@ public abstract class Polynomial implements Serializable {
      * @param x value of the unknown
      * @return value of the polynomial
      */
+    @Override
     public double valueAt(double x) {
       double y = 0;
       for (int i = a.length - 1; i >= 0; --i) {
@@ -569,6 +577,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return a new polynomial which is the derivative of the instance
      */
+    @Override
     public Polynomial getDerivative() {
       if (a.length == 1) {
         return new Rational();
@@ -594,7 +603,7 @@ public abstract class Polynomial implements Serializable {
 
       int divisorDegree = divisor.getDegree();
       int remainderDegree = remainder.getDegree();
-      while ((!remainder.isZero()) && (remainderDegree >= divisorDegree)) {
+      while (!remainder.isZero() && remainderDegree >= divisorDegree) {
 
         RationalNumber c = remainder.a[remainderDegree].divide(divisor.a[divisorDegree]);
         Rational monomial = new Rational(c, remainderDegree - divisorDegree);
@@ -646,6 +655,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return a string representation of the polynomial suitable for diagnostics
      */
+    @Override
     public String toString() {
 
       StringBuilder s = new StringBuilder();
@@ -722,6 +732,7 @@ public abstract class Polynomial implements Serializable {
    * <p>Because doubles are subject to rounding, repeated operations may accumulate error. Prefer
    * the {@link Rational} variant when correctness across many divisions is critical.
    */
+  @SuppressWarnings("JavaLangClash")
   public static class Double extends Polynomial {
 
     /** Simple constructor. Build a null polynomial */
@@ -893,6 +904,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return true if the polynomial is null
      */
+    @Override
     public boolean isZero() {
       return (a.length == 1) && (a[0] == 0);
     }
@@ -902,6 +914,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return true if the polynomial is the constant unit polynomial
      */
+    @Override
     public boolean isOne() {
       return (a.length == 1) && ((a[0] - 1.0) == 0);
     }
@@ -911,6 +924,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return true if the polynomial is the identity polynomial
      */
+    @Override
     public boolean isIdentity() {
       return (a.length == 2) && (a[0] == 0) && ((a[1] - 1.0) == 0);
     }
@@ -920,6 +934,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return degree
      */
+    @Override
     public int getDegree() {
       return a.length - 1;
     }
@@ -990,6 +1005,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return a new polynomial
      */
+    @Override
     public Polynomial negate() {
       double[] newA = new double[a.length];
       for (int i = 0; i < a.length; ++i) {
@@ -1024,6 +1040,7 @@ public abstract class Polynomial implements Serializable {
      * @param l constant to multiply by
      * @return a new polynomial
      */
+    @Override
     public Polynomial multiply(long l) {
       return multiply((double) l);
     }
@@ -1034,6 +1051,7 @@ public abstract class Polynomial implements Serializable {
      * @param r constant to multiply by
      * @return a new polynomial
      */
+    @Override
     public Polynomial multiply(RationalNumber r) {
       return multiply(r.doubleValue());
     }
@@ -1063,6 +1081,7 @@ public abstract class Polynomial implements Serializable {
      * @param x value of the unknown
      * @return value of the polynomial
      */
+    @Override
     public double valueAt(double x) {
       double y = 0;
       for (int i = a.length - 1; i >= 0; --i) {
@@ -1077,6 +1096,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return a new polynomial which is the derivative of the instance
      */
+    @Override
     public Polynomial getDerivative() {
       if (a.length == 1) {
         return new Double();
@@ -1105,6 +1125,7 @@ public abstract class Polynomial implements Serializable {
      *
      * @return a string representation of the polynomial suitable for human inspection
      */
+    @Override
     public String toString() {
 
       StringBuilder s = new StringBuilder();

@@ -9,7 +9,8 @@ package org.bitpedia.util;
 
 import java.nio.ByteBuffer;
 import java.security.DigestException;
-import java.util.LinkedList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import org.bitpedia.util.hash.StreamingHash;
 
 /**
@@ -49,7 +50,7 @@ public class TigerTree implements StreamingHash {
   private final Tiger tiger;
 
   /** Interim tree node hash values */
-  private LinkedList<byte[]> nodes;
+  private Deque<byte[]> nodes;
 
   /** Blocks handled until now */
   long blockCount;
@@ -63,7 +64,7 @@ public class TigerTree implements StreamingHash {
     buffer = new byte[BLOCKSIZE];
     bufferOffset = 0;
     blockCount = 0;
-    nodes = new LinkedList<>();
+    nodes = new ArrayDeque<>();
     tiger = new Tiger();
   }
 
@@ -224,7 +225,7 @@ public class TigerTree implements StreamingHash {
   public void reset() {
     bufferOffset = 0;
     blockCount = 0;
-    nodes = new LinkedList<>();
+    nodes = new ArrayDeque<>();
     tiger.reset();
   }
 

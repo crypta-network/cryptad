@@ -82,6 +82,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
    *
    * @param handler non-null consumer for accepted steps; must tolerate reuse across many steps.
    */
+  @Override
   public void setStepHandler(StepHandler handler) {
     this.handler = handler;
   }
@@ -95,6 +96,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
    *
    * @return mutable step handler instance currently registered with this integrator.
    */
+  @Override
   public StepHandler getStepHandler() {
     return handler;
   }
@@ -111,6 +113,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
    * @param maxCheckInterval maximum interval, in integration time units, between event evaluations.
    * @param convergence absolute time accuracy used when refining the event occurrence instant.
    */
+  @Override
   public void addSwitchingFunction(
       SwitchingFunction function, double maxCheckInterval, double convergence) {
     switchesHandler.add(function, maxCheckInterval, convergence);
@@ -140,6 +143,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
    * @throws DerivativeException if equation evaluation fails at any step or intermediate stage.
    * @throws IntegratorException if dimensions mismatch or the interval length is too small.
    */
+  @Override
   public void integrate(
       FirstOrderDifferentialEquations equations, double t0, double[] y0, double t, double[] y)
       throws DerivativeException, IntegratorException {
@@ -218,6 +222,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
    *
    * @return time coordinate for the start of the last accepted step, or {@code NaN} when undefined.
    */
+  @Override
   public double getCurrentStepStart() {
     return stepStart;
   }
@@ -231,6 +236,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
    *
    * @return length of the current step in integration time units, or {@code NaN} when not running.
    */
+  @Override
   public double getCurrentStepsize() {
     return stepSize;
   }
@@ -303,7 +309,7 @@ public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
 
   private AbstractStepInterpolator createInterpolator(
       FirstOrderDifferentialEquations equations, double[] yTmp, double[][] yDotK, boolean forward) {
-    if (handler.requiresDenseOutput() || (!switchesHandler.isEmpty())) {
+    if (handler.requiresDenseOutput() || !switchesHandler.isEmpty()) {
       RungeKuttaStepInterpolator rki = (RungeKuttaStepInterpolator) prototype.copy();
       rki.reinitialize(equations, yTmp, yDotK, forward);
       return rki;

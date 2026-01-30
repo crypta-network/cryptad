@@ -53,6 +53,7 @@ public final class RotationOrder {
    *
    * @return human-readable identifier for the order, never {@code null} and owned by this instance
    */
+  @Override
   public String toString() {
     return name;
   }

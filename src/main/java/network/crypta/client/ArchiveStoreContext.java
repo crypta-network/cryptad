@@ -1,6 +1,6 @@
 package network.crypta.client;
 
-import java.util.LinkedList;
+import java.util.ArrayDeque;
 import network.crypta.keys.FreenetURI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,7 +59,7 @@ class ArchiveStoreContext {
    * then take another lock! In particular, we must not take the ArchiveManager lock while holding
    * this lock. It must be the inner lock to avoid deadlocks.
    */
-  private final LinkedList<ArchiveStoreItem> myItems;
+  private final ArrayDeque<ArchiveStoreItem> myItems;
 
   /**
    * Creates a new context bound to a specific key and archive type.
@@ -76,7 +76,7 @@ class ArchiveStoreContext {
   ArchiveStoreContext(FreenetURI key, ArchiveManager.ARCHIVE_TYPE archiveType) {
     this.key = key;
     this.archiveType = archiveType;
-    myItems = new LinkedList<>();
+    myItems = new ArrayDeque<>();
   }
 
   /**

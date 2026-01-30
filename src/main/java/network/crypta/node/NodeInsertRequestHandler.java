@@ -104,10 +104,10 @@ final class NodeInsertRequestHandler {
    */
   boolean handle(Message m, PeerNode source) {
     MessageType spec = m.getSpec();
-    if (spec == DMT.FNPInsertRequest) {
+    if (DMT.FNPInsertRequest.equals(spec)) {
       handleInsertRequest(m, source, false);
       return true;
-    } else if (spec == DMT.FNPSSKInsertRequest || spec == DMT.FNPSSKInsertRequestNew) {
+    } else if (DMT.FNPSSKInsertRequest.equals(spec) || DMT.FNPSSKInsertRequestNew.equals(spec)) {
       handleInsertRequest(m, source, true);
       return true;
     }

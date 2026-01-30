@@ -50,6 +50,7 @@ public class EnhancedSimpsonIntegrator implements SampledFunctionIntegrator {
     // default constructor
   }
 
+  @Override
   public double[] integrate(SampledFunctionIterator iter)
       throws ExhaustedSampleException, FunctionException {
 

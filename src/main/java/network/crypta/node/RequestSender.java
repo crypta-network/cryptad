@@ -283,6 +283,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    * MainLoopCallback, i.e., the caller isn't going to do more stuff relevant to the request
    * afterward.
    */
+  @Override
   protected void routeRequests() {
 
     if (LOG.isDebugEnabled()) LOG.debug("Routing requests on {}", this);
@@ -363,7 +364,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       return false;
     }
     // See notes on when to decrement HTL in the original code.
-    if ((!starting) && (!canWriteStorePrev)) {
+    if (!starting && !canWriteStorePrev) {
       if (highHTLFailureCount++ >= MAX_HIGH_HTL_FAILURES) {
         if (LOG.isDebugEnabled()) LOG.debug("Too many failures at non-cacheable HTL");
         finish(ROUTE_NOT_FOUND, null, false);
@@ -510,19 +511,19 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     }
 
     private DO handleControlMessage(Message msg, boolean wasFork, PeerNode source) {
-      if (msg.getSpec() == DMT.FNPDataNotFound) {
+      if (DMT.FNPDataNotFound.equals(msg.getSpec())) {
         handleDataNotFound(wasFork, source);
         return DO.FINISHED;
       }
-      if (msg.getSpec() == DMT.FNPRecentlyFailed) {
+      if (DMT.FNPRecentlyFailed.equals(msg.getSpec())) {
         handleRecentlyFailed(msg, source);
         return DO.NEXT_PEER;
       }
-      if (msg.getSpec() == DMT.FNPRouteNotFound) {
+      if (DMT.FNPRouteNotFound.equals(msg.getSpec())) {
         handleRouteNotFound(msg, source);
         return DO.NEXT_PEER;
       }
-      if (msg.getSpec() == DMT.FNPRejectedOverload) {
+      if (DMT.FNPRejectedOverload.equals(msg.getSpec())) {
         return handleRejectedOverload(msg, wasFork, source) ? DO.WAIT : DO.FINISHED;
       }
       return null;
@@ -539,7 +540,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
     private DO handleChkMessage(
         Message msg, boolean wasFork, PeerNode source, MainLoopCallback waiter) {
-      if (msg.getSpec() == DMT.FNPCHKDataFound) {
+      if (DMT.FNPCHKDataFound.equals(msg.getSpec())) {
         handleCHKDataFound(msg, wasFork, source, waiter);
         return DO.FINISHED;
       }
@@ -552,10 +553,10 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
     private DO handleSskMessage(
         Message msg, boolean wasFork, PeerNode source, MainLoopCallback waiter) {
-      if (msg.getSpec() == DMT.FNPSSKPubKey) return onSskPubKey(msg, wasFork, source, waiter);
-      if (msg.getSpec() == DMT.FNPSSKDataFoundData)
+      if (DMT.FNPSSKPubKey.equals(msg.getSpec())) return onSskPubKey(msg, wasFork, source, waiter);
+      if (DMT.FNPSSKDataFoundData.equals(msg.getSpec()))
         return onSskDataFoundData(msg, wasFork, source, waiter);
-      if (msg.getSpec() == DMT.FNPSSKDataFoundHeaders)
+      if (DMT.FNPSSKDataFoundHeaders.equals(msg.getSpec()))
         return onSskDataFoundHeaders(msg, wasFork, source, waiter);
       LOG.error("Unexpected SSK control message: {}", msg);
       int t = timeSinceSent();
@@ -638,7 +639,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
     public void schedule() {
       long now = System.currentTimeMillis();
-      int timeout = (int) (Math.min(Integer.MAX_VALUE, deadline - now));
+      int timeout = (int) Math.min(Integer.MAX_VALUE, deadline - now);
       if (timeout >= 0) {
         MessageFilter mf = createMessageFilter(timeout, waitingFor);
         try {
@@ -694,7 +695,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         Message msg;
         try {
           int timeout =
-              (int) (Math.min(Integer.MAX_VALUE, secondDeadline - System.currentTimeMillis()));
+              (int) Math.min(Integer.MAX_VALUE, secondDeadline - System.currentTimeMillis());
           msg =
               node.network()
                   .usm()
@@ -849,9 +850,9 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
       boolean failNow = false;
       synchronized (RequestSender.this) {
         finalHeaders = waiter.headers;
-        if (status == SUCCESS || RequestSender.this.prb != null && transferringFrom != null)
+        if (status == SUCCESS || (RequestSender.this.prb != null && transferringFrom != null))
           failNow = true;
-        if ((!wasFork)
+        if (!wasFork
             && (RequestSender.this.prb == null
                 || !RequestSender.this.prb.allReceivedAndNotAborted()))
           RequestSender.this.prb = localPrb;
@@ -1021,7 +1022,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
                 source);
         int reason = e.getReason();
         boolean timeout =
-            (!br.senderAborted())
+            !br.senderAborted()
                 && (reason == RetrievalException.SENDER_DIED
                     || reason == RetrievalException.RECEIVER_DIED
                     || reason == RetrievalException.TIMED_OUT
@@ -1125,23 +1126,23 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         status = tryOffer(offer, pn, offers);
       }
       switch (status) {
-        case FATAL:
+        case FATAL -> {
           offers.deleteLastOffer();
           pn.noLongerRoutingTo(origTag, true);
           return;
-        case TWO_STAGE_TIMEOUT:
-          offers.deleteLastOffer();
-          break;
-        case FETCHING:
+        }
+        case TWO_STAGE_TIMEOUT -> offers.deleteLastOffer();
+        case FETCHING -> {
           return;
-        case KEEP:
+        }
+        case KEEP -> {
           offers.keepLastOffer();
           pn.noLongerRoutingTo(origTag, true);
-          break;
-        case TRY_ANOTHER:
+        }
+        case TRY_ANOTHER -> {
           offers.deleteLastOffer();
           pn.noLongerRoutingTo(origTag, true);
-          break;
+        }
       }
       pn = null;
       status = null;
@@ -1329,7 +1330,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   }
 
   private OFFER_STATUS handleSSKOfferReply(Message reply, PeerNode pn, BlockOffer offer) {
-    if (reply.getSpec() == DMT.FNPRejectedOverload) {
+    if (DMT.FNPRejectedOverload.equals(reply.getSpec())) {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "SSK offer reply: " + NODE_PREFIX + "{} rejected FNPGetOfferedKey for {} (expired={}",
@@ -1338,7 +1339,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             offer.isExpired());
       return OFFER_STATUS.KEEP;
     }
-    if (reply.getSpec() == DMT.FNPGetOfferedKeyInvalid) {
+    if (DMT.FNPGetOfferedKeyInvalid.equals(reply.getSpec())) {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "SSK offer reply invalid: "
@@ -1348,7 +1349,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             reply.getShort(DMT.REASON));
       return OFFER_STATUS.TRY_ANOTHER;
     }
-    if (reply.getSpec() == DMT.FNPSSKDataFoundHeaders) {
+    if (DMT.FNPSSKDataFoundHeaders.equals(reply.getSpec())) {
       return processSskHeadersReply(
           pn, ((ShortBuffer) reply.getObject(DMT.BLOCK_HEADERS)).getData());
     }
@@ -1432,7 +1433,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    */
   private OFFER_STATUS handleCHKOfferReply(
       Message reply, final PeerNode pn, final BlockOffer offer, final OfferList offers) {
-    if (reply.getSpec() == DMT.FNPRejectedOverload) {
+    if (DMT.FNPRejectedOverload.equals(reply.getSpec())) {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "CHK offer reply: " + NODE_PREFIX + "{} rejected FNPGetOfferedKey for {} (expired={}",
@@ -1441,7 +1442,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             offer.isExpired());
       return OFFER_STATUS.KEEP;
     }
-    if (reply.getSpec() == DMT.FNPGetOfferedKeyInvalid) {
+    if (DMT.FNPGetOfferedKeyInvalid.equals(reply.getSpec())) {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "CHK offer reply invalid: "
@@ -1451,7 +1452,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
             reply.getShort(DMT.REASON));
       return OFFER_STATUS.TRY_ANOTHER;
     }
-    if (reply.getSpec() == DMT.FNPCHKDataFound) {
+    if (DMT.FNPCHKDataFound.equals(reply.getSpec())) {
       return processChkOfferReply(
           pn, offers, ((ShortBuffer) reply.getObject(DMT.BLOCK_HEADERS)).getData());
     }
@@ -1631,6 +1632,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    *
    * @return A fully populated request message including the real-time flag sub-message.
    */
+  @Override
   protected Message createDataRequest() {
     Message req;
     if (!isSSK) {
@@ -1680,6 +1682,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    * <p>Only the first call forwards; later calls are ignored. Wakes up any waiter blocked in {@link
    * #waitUntilStatusChange(short)} via {@link #notifyAll()}.
    */
+  @Override
   protected void forwardRejectedOverload() {
     synchronized (this) {
       if (hasForwardedRejectedOverload) return;
@@ -1853,7 +1856,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   private boolean handleFinishSuccess(
       int code, PeerNode next, boolean fromOfferedKey, boolean doOpennet, boolean shouldUnlock) {
-    if ((!isSSK) && transferTime > 0 && LOG.isDebugEnabled()) {
+    if (!isSSK && transferTime > 0 && LOG.isDebugEnabled()) {
       logSuccessfulChkStats();
     }
     if (next != null) {
@@ -2454,6 +2457,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   }
 
   /** Returns the timeout (ms) to wait for {@code Accepted} after sending a request. */
+  @Override
   protected long getAcceptedTimeout() {
     return ACCEPTED_TIMEOUT;
   }
@@ -2507,8 +2511,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
                 @Override
                 public void onMatched(Message m) {
-                  if (m.getSpec() == DMT.FNPRejectedLoop
-                      || m.getSpec() == DMT.FNPRejectedOverload) {
+                  if (DMT.FNPRejectedLoop.equals(m.getSpec())
+                      || DMT.FNPRejectedOverload.equals(m.getSpec())) {
                     // Ok.
                     next.noLongerRoutingTo(origTag, false);
                   } else {

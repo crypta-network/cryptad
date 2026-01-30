@@ -4,6 +4,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
@@ -476,7 +477,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
 
   private boolean handleGuaranteedMismatch(NlmState state, UIDTag origTag) {
     if (state.expectedAcceptState == null) return false;
-    if (state.lastNext == state.next
+    if (Objects.equals(state.lastNext, state.next)
         && state.lastExpectedAcceptState == RequestLikelyAcceptedState.GUARANTEED
         && state.expectedAcceptState == RequestLikelyAcceptedState.GUARANTEED) {
       LOG.warn(
@@ -740,9 +741,9 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     long longTimeout = getLongSlotWaiterTimeout();
     String suffix = buildDeltaSuffix(waitedForLoadManagement, retriedForLoadManagement);
     String time = TimeUtil.formatTime(delta, 2, true);
-    if ((delta > longTimeout) || tryCount > 3) {
+    if (delta > longTimeout || tryCount > 3) {
       LOG.error(TOOK_MSG, tryCount, time, suffix);
-    } else if ((delta > longTimeout / 5) || tryCount > 1) {
+    } else if (delta > longTimeout / 5 || tryCount > 1) {
       LOG.warn(TOOK_MSG, tryCount, time, suffix);
     } else if (waitedForLoadManagement || retriedForLoadManagement) {
       LOG.debug(TOOK_MSG, tryCount, time, suffix);
@@ -813,10 +814,10 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
       next.outputLoadTracker(realTimeFlag).clearDontSendUnlessGuaranteed();
       return DO.FINISHED;
     }
-    if (msg.getSpec() == DMT.FNPRejectedLoop) {
+    if (DMT.FNPRejectedLoop.equals(msg.getSpec())) {
       return onRejectedLoop(next, origTag);
     }
-    if (msg.getSpec() == DMT.FNPRejectedOverload) {
+    if (DMT.FNPRejectedOverload.equals(msg.getSpec())) {
       return onRejectedOverload(msg, expectedAcceptState, next, origTag);
     }
     LOG.error("Accepted-wait received unrecognized message: {}", msg);
@@ -897,7 +898,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
    */
   @SuppressWarnings("unused")
   protected boolean isAccepted(Message msg) {
-    return msg.getSpec() == DMT.FNPAccepted;
+    return DMT.FNPAccepted.equals(msg.getSpec());
   }
 
   /**

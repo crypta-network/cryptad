@@ -127,7 +127,7 @@ class NodeCryptoTest {
     }
 
     @Override
-    protected int next(int bits) {
+    protected synchronized int next(int bits) {
       // Delegate to a local deterministic PRNG
       return inner.nextInt() >>> (32 - bits);
     }
@@ -233,7 +233,7 @@ class NodeCryptoTest {
     // detector returns one address
     NodeIPPortDetector detector = (NodeIPPortDetector) getField(nc, "detector");
     Peer[] peers =
-        new Peer[] {new Peer(new FreenetInetAddress(InetAddress.getByName("127.0.0.1")), 54321)};
+        new Peer[] {new Peer(new FreenetInetAddress(InetAddress.getLoopbackAddress()), 54321)};
     when(detector.detectPrimaryPeers()).thenReturn(peers);
     FNPPacketMangler mangler = (FNPPacketMangler) getField(nc, "packetMangler");
     when(mangler.supportedNegTypes(true)).thenReturn(new int[] {1});
@@ -349,7 +349,7 @@ class NodeCryptoTest {
     when(node.network().peers()).thenReturn(pm);
     when(pm.roster()).thenReturn(roster);
 
-    FreenetInetAddress addr = new FreenetInetAddress(InetAddress.getByName("203.0.113.5"));
+    FreenetInetAddress addr = new FreenetInetAddress(InetAddress.getAllByName("203.0.113.5")[0]);
     PeerNode peer = mock(PeerNode.class);
 
     NodeIPPortDetector detector = (NodeIPPortDetector) getField(nc, "detector");
@@ -368,7 +368,8 @@ class NodeCryptoTest {
     NodeCrypto nc = bare(node, false); // darknet instance
 
     NodeIPPortDetector detector = (NodeIPPortDetector) getField(nc, "detector");
-    FreenetInetAddress address = new FreenetInetAddress(InetAddress.getByName("198.51.100.7"));
+    FreenetInetAddress address =
+        new FreenetInetAddress(InetAddress.getAllByName("198.51.100.7")[0]);
     when(detector.includes(address)).thenReturn(false);
 
     // Prepare PeerManager with a conflicting Darknet peer
@@ -434,7 +435,9 @@ class NodeCryptoTest {
     // Ensure it's an SFS by parsing a few lines through SimpleFieldSet
     return new SimpleFieldSet(
         new BufferedReader(
-            new InputStreamReader(new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8)))),
+            new InputStreamReader(
+                new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8)),
+                StandardCharsets.UTF_8)),
         true,
         true);
   }

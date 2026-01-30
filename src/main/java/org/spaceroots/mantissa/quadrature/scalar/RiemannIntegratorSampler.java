@@ -83,6 +83,7 @@ public class RiemannIntegratorSampler implements SampledFunctionIterator {
     sum = 0.0;
   }
 
+  @Override
   public boolean hasNext() {
     return iter.hasNext();
   }
@@ -104,6 +105,7 @@ public class RiemannIntegratorSampler implements SampledFunctionIterator {
    *     iterator
    * @throws FunctionException if the underlying iterator fails while producing the next sample
    */
+  @Override
   public ScalarValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
     // performs one step of a Riemann scheme
     ScalarValuedPair previous = current;

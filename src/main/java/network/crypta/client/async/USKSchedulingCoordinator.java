@@ -109,7 +109,7 @@ final class USKSchedulingCoordinator {
     boolean registerNow = false;
     boolean completeCheckingStore;
     valueAtSchedule = Math.max(lookedUp + 1, valueAtSchedule);
-    if ((!checkStoreOnly)
+    if (!checkStoreOnly
         && !attempts.hasPendingAttempts()
         && !attempts.hasRunningAttempts()
         && attempts.hasNoPollingAttempts()) {
@@ -118,7 +118,7 @@ final class USKSchedulingCoordinator {
     started = true;
     if (lookedUp <= 0 && startedDBRs) {
       scheduleAfterDBRsDone = true;
-    } else if ((!scheduleAfterDBRsDone) || !dbrHintFetches.hasOutstanding()) {
+    } else if (!scheduleAfterDBRsDone || !dbrHintFetches.hasOutstanding()) {
       registerNow = !storeChecks.fillKeysWatching(lookedUp, context);
     }
     completeCheckingStore =

@@ -57,7 +57,7 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
   SendableRequest(boolean persistent, boolean realTimeFlag) {
     this.persistent = persistent;
     this.realTimeFlag = realTimeFlag;
-    int oid = super.hashCode();
+    int oid = System.identityHashCode(this);
     if (oid == 0) oid = 1;
     this.hashCode = oid;
   }

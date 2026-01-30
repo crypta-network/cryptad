@@ -1,5 +1,6 @@
 package network.crypta.node;
 
+import java.util.Objects;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
@@ -73,17 +74,17 @@ final class NodeNotRoutableHandler {
   boolean handle(Message m) {
     MessageType spec = m.getSpec();
     if (LOG.isTraceEnabled()) LOG.trace("Peer not routable");
-    if (spec == DMT.FNPCHKDataRequest) {
+    if (Objects.equals(spec, DMT.FNPCHKDataRequest)) {
       rejectRequest(m, node.network().stats().chkRequestCtr);
-    } else if (spec == DMT.FNPSSKDataRequest) {
+    } else if (Objects.equals(spec, DMT.FNPSSKDataRequest)) {
       rejectRequest(m, node.network().stats().sskRequestCtr);
-    } else if (spec == DMT.FNPInsertRequest) {
+    } else if (Objects.equals(spec, DMT.FNPInsertRequest)) {
       rejectRequest(m, node.network().stats().chkInsertCtr);
-    } else if (spec == DMT.FNPSSKInsertRequest) {
+    } else if (Objects.equals(spec, DMT.FNPSSKInsertRequest)) {
       rejectRequest(m, node.network().stats().sskInsertCtr);
-    } else if (spec == DMT.FNPSSKInsertRequestNew) {
+    } else if (Objects.equals(spec, DMT.FNPSSKInsertRequestNew)) {
       rejectRequest(m, node.network().stats().sskInsertCtr);
-    } else if (spec == DMT.FNPGetOfferedKey) {
+    } else if (Objects.equals(spec, DMT.FNPGetOfferedKey)) {
       rejectRequest(m, node.routing().failureTable().senderCounter);
     } else {
       return false;

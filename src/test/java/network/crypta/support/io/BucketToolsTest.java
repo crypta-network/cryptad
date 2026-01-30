@@ -21,6 +21,7 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Random;
@@ -51,7 +52,7 @@ class BucketToolsTest {
   @Test
   void copy_whenSourceHasData_copiesAllBytes() throws Exception {
     // Arrange
-    byte[] payload = "hello world".getBytes();
+    byte[] payload = "hello world".getBytes(StandardCharsets.UTF_8);
     try (ArrayBucket src = new ArrayBucket();
         ArrayBucket dst = new ArrayBucket()) {
       try (OutputStream os = src.getOutputStreamUnbuffered()) {
@@ -322,7 +323,7 @@ class BucketToolsTest {
   @Test
   void makeImmutableBucket_whenDataProvided_writesAndSetsReadOnly() throws Exception {
     // Arrange
-    byte[] data = "fixed".getBytes();
+    byte[] data = "fixed".getBytes(StandardCharsets.UTF_8);
     ArrayBucketFactory bf = new ArrayBucketFactory();
 
     // Act
@@ -464,7 +465,7 @@ class BucketToolsTest {
   @Test
   void split_whenExactMultiples_returnsEqualSizedBuckets_andFreesWhenRequested() throws Exception {
     // Arrange
-    byte[] data = "abcdefghij".getBytes(); // 10 bytes
+    byte[] data = "abcdefghij".getBytes(StandardCharsets.UTF_8); // 10 bytes
     try (ArrayBucket src = new ArrayBucket()) {
       try (OutputStream os = src.getOutputStreamUnbuffered()) {
         os.write(data);
@@ -478,8 +479,10 @@ class BucketToolsTest {
       assertEquals(2, parts.length);
       try (Bucket p0 = parts[0];
           Bucket p1 = parts[1]) {
-        assertArrayEquals("abcde".getBytes(), ((ArrayBucket) p0).toByteArray());
-        assertArrayEquals("fghij".getBytes(), ((ArrayBucket) p1).toByteArray());
+        assertArrayEquals(
+            "abcde".getBytes(StandardCharsets.UTF_8), ((ArrayBucket) p0).toByteArray());
+        assertArrayEquals(
+            "fghij".getBytes(StandardCharsets.UTF_8), ((ArrayBucket) p1).toByteArray());
       }
       assertThrows(IOException.class, src::getInputStream); // freed
     }
@@ -488,7 +491,7 @@ class BucketToolsTest {
   @Test
   void split_whenRemainder_lastBucketShorter() throws Exception {
     // Arrange
-    byte[] data = "abcdef".getBytes(); // 6 bytes
+    byte[] data = "abcdef".getBytes(StandardCharsets.UTF_8); // 6 bytes
     try (ArrayBucket src = new ArrayBucket()) {
       try (OutputStream os = src.getOutputStreamUnbuffered()) {
         os.write(data);
@@ -501,8 +504,9 @@ class BucketToolsTest {
       assertEquals(2, parts.length);
       try (Bucket p0 = parts[0];
           Bucket p1 = parts[1]) {
-        assertArrayEquals("abcd".getBytes(), ((ArrayBucket) p0).toByteArray());
-        assertArrayEquals("ef".getBytes(), ((ArrayBucket) p1).toByteArray());
+        assertArrayEquals(
+            "abcd".getBytes(StandardCharsets.UTF_8), ((ArrayBucket) p0).toByteArray());
+        assertArrayEquals("ef".getBytes(StandardCharsets.UTF_8), ((ArrayBucket) p1).toByteArray());
       }
     }
   }
@@ -526,7 +530,7 @@ class BucketToolsTest {
   @Test
   void pad_whenCalledTwiceWithSameInputs_isDeterministic() throws Exception {
     // Arrange
-    byte[] orig = "seeded".getBytes();
+    byte[] orig = "seeded".getBytes(StandardCharsets.UTF_8);
 
     // Act
     byte[] p1 = BucketTools.pad(orig, 32, orig.length);
@@ -541,8 +545,8 @@ class BucketToolsTest {
   @Test
   void pad_whenDifferentContent_producesDifferentPadding() throws Exception {
     // Arrange
-    byte[] a = "aaaa".getBytes();
-    byte[] b = "bbbb".getBytes();
+    byte[] a = "aaaa".getBytes(StandardCharsets.UTF_8);
+    byte[] b = "bbbb".getBytes(StandardCharsets.UTF_8);
 
     // Act
     byte[] pa = BucketTools.pad(a, 16, 4);
@@ -687,7 +691,7 @@ class BucketToolsTest {
   @Test
   void toRandomAccessBucket_whenNotRAB_copiesAndFreesOriginal() throws Exception {
     // Arrange
-    byte[] bytes = "hello".getBytes();
+    byte[] bytes = "hello".getBytes(StandardCharsets.UTF_8);
     ArrayBucketFactory bf = new ArrayBucketFactory();
 
     // Act

@@ -119,6 +119,7 @@ public class GaussLegendreIntegrator implements ComputableFunctionIntegrator {
    *     f}; array length equals {@code f.getDimension()}
    * @throws FunctionException if the integrand fails to evaluate at any requested abscissa
    */
+  @Override
   public double[] integrate(ComputableFunction f, double a, double b) throws FunctionException {
 
     int orientation = 1;

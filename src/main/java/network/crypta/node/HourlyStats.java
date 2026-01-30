@@ -1,7 +1,6 @@
 package network.crypta.node;
 
 import java.util.Calendar;
-import java.util.Date;
 import java.util.TimeZone;
 import network.crypta.support.HTMLNode;
 
@@ -70,12 +69,12 @@ public class HourlyStats {
    */
   public synchronized void remoteRequest(
       boolean ssk, boolean success, boolean local, int htl, double location) {
-    Date now = new Date();
-    currentTime.setTime(now);
+    long now = System.currentTimeMillis();
+    currentTime.setTimeInMillis(now);
     if (lastHourlyTime.get(Calendar.HOUR_OF_DAY) != currentTime.get(Calendar.HOUR_OF_DAY)) {
       // Hour boundary crossed (UTC): finalize and log the previous hour,
       // then start a fresh current record.
-      lastHourlyTime.setTime(now);
+      lastHourlyTime.setTimeInMillis(now);
       prevRecord = currentRecord;
       currentRecord = new HourlyStatsRecord(node, true);
       prevRecord.markFinal();

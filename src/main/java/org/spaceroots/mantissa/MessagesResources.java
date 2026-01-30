@@ -56,6 +56,7 @@ public class MessagesResources extends ListResourceBundle {
    *
    * @return a shallow clone of the bundle’s contents table, intended for read‑only iteration.
    */
+  @Override
   public Object[][] getContents() {
     return contents.clone();
   }

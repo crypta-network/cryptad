@@ -195,6 +195,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     private boolean firstIteration = true;
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record LmWorkArrays(double[] work1, double[] work2, double[] work3) {
     @Override
     public boolean equals(Object obj) {
@@ -230,6 +231,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record IterationWorkspace(double[] diag, double[] oldX, LmWorkArrays workArrays) {
     @Override
     public boolean equals(Object obj) {
@@ -269,6 +271,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record LmParameterContext(
       double[] qy, double delta, double[] diag, LmWorkArrays workArrays) {
     @Override
@@ -351,6 +354,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
    * @param problem estimation problem providing weighted residuals; must not be {@code null}
    * @return non-negative RMS of the current residuals, computed without altering the estimator
    */
+  @Override
   public double getRMS(EstimationProblem problem) {
     WeightedMeasurement[] wm = problem.getMeasurements();
     double criterion = 0;
@@ -394,6 +398,7 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
    * @see #setParRelativeTolerance(double)
    * @see #setOrthoTolerance(double)
    */
+  @Override
   public void estimate(EstimationProblem problem) throws EstimationException {
 
     // retrieve the equations and the parameters

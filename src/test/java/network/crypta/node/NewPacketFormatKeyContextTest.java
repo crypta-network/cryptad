@@ -14,8 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
-import java.util.HashMap;
-import java.util.TreeMap;
+import java.util.Map;
 import network.crypta.io.xfer.PacketThrottle;
 import network.crypta.node.NewPacketFormat.SentPacket;
 import org.jetbrains.annotations.NotNull;
@@ -36,21 +35,21 @@ class NewPacketFormatKeyContextTest {
     return new SessionKey(null, null, ctx, /*trackerId*/ 0L);
   }
 
-  private static TreeMap<Integer, Long> acksOf(NewPacketFormatKeyContext ctx) throws Exception {
+  private static Map<Integer, Long> acksOf(NewPacketFormatKeyContext ctx) throws Exception {
     Field f = NewPacketFormatKeyContext.class.getDeclaredField("acks");
     f.setAccessible(true);
     @SuppressWarnings("unchecked")
-    TreeMap<Integer, Long> m = (TreeMap<Integer, Long>) f.get(ctx);
+    Map<Integer, Long> m = (Map<Integer, Long>) f.get(ctx);
     return m;
   }
 
-  private static HashMap<Integer, NewPacketFormat.SentPacket> sentPacketsOf(
+  private static Map<Integer, NewPacketFormat.SentPacket> sentPacketsOf(
       NewPacketFormatKeyContext ctx) throws Exception {
     Field f = NewPacketFormatKeyContext.class.getDeclaredField("sentPackets");
     f.setAccessible(true);
     @SuppressWarnings("unchecked")
-    HashMap<Integer, NewPacketFormat.SentPacket> m =
-        (HashMap<Integer, NewPacketFormat.SentPacket>) f.get(ctx);
+    Map<Integer, NewPacketFormat.SentPacket> m =
+        (Map<Integer, NewPacketFormat.SentPacket>) f.get(ctx);
     return m;
   }
 
@@ -140,7 +139,7 @@ class NewPacketFormatKeyContextTest {
   @Test
   void addAcks_whenWithinPacketSize_movesAcksAndFlagsUrgentBasedOnAge() throws Exception {
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(0, 0);
-    TreeMap<Integer, Long> acks = acksOf(ctx);
+    Map<Integer, Long> acks = acksOf(ctx);
     acks.put(101, 1000L); // old
     acks.put(202, 5000L); // newer
 
@@ -164,7 +163,7 @@ class NewPacketFormatKeyContextTest {
   @Test
   void addAcks_respectsMaxPacketSize_andStopsWhenFull() throws Exception {
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(0, 0);
-    TreeMap<Integer, Long> acks = acksOf(ctx);
+    Map<Integer, Long> acks = acksOf(ctx);
     acks.put(10, 1000L);
     acks.put(11, 1000L);
 
@@ -182,7 +181,7 @@ class NewPacketFormatKeyContextTest {
   @Test
   void timeCheckForAcks_returnsEarliestTimeout() throws Exception {
     NewPacketFormatKeyContext ctx = new NewPacketFormatKeyContext(0, 0);
-    TreeMap<Integer, Long> acks = acksOf(ctx);
+    Map<Integer, Long> acks = acksOf(ctx);
     acks.put(1, 1000L);
     acks.put(2, 1100L);
     long expected = 1000L + NewPacketFormatKeyContext.MAX_ACK_DELAY; // 1200

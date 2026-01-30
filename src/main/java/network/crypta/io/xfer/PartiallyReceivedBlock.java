@@ -1,9 +1,9 @@
 package network.crypta.io.xfer;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.LinkedList;
 import network.crypta.support.Buffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,7 +95,7 @@ public class PartiallyReceivedBlock {
       throw new AbortedException("Adding listener to aborted PRB");
     }
     packetReceivedListeners.add(listener);
-    Deque<Integer> ret = new LinkedList<>();
+    Deque<Integer> ret = new ArrayDeque<>();
     for (int x = 0; x < packets; x++) {
       if (received[x]) {
         ret.addLast(x);

@@ -378,7 +378,7 @@ public class LongTermPushPullTest extends LongTermTest {
     }
   }
 
-  private static void readDumpElements(File file, TreeMap<GregorianCalendar, DumpElement> map)
+  private static void readDumpElements(File file, Map<GregorianCalendar, DumpElement> map)
       throws IOException, ParseException {
     Calendar prevDate = null;
     try (FileInputStream fis = new FileInputStream(file);
@@ -451,7 +451,7 @@ public class LongTermPushPullTest extends LongTermTest {
   }
 
   private static void summarizeDelta(
-      TreeMap<GregorianCalendar, DumpElement> map, int delta, int index) {
+      Map<GregorianCalendar, DumpElement> map, int delta, int index) {
     LOG.warn("Checking delta: {} days", delta);
     DeltaStats stats = new DeltaStats();
     for (Entry<GregorianCalendar, DumpElement> entry : map.entrySet()) {
@@ -582,7 +582,7 @@ public class LongTermPushPullTest extends LongTermTest {
     private final Map<String, Integer> failureModes = new HashMap<>();
 
     private void processEntry(
-        TreeMap<GregorianCalendar, DumpElement> map,
+        Map<GregorianCalendar, DumpElement> map,
         GregorianCalendar date,
         DumpElement element,
         int delta,

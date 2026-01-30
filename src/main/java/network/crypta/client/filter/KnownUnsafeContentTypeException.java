@@ -1,7 +1,7 @@
 package network.crypta.client.filter;
 
 import java.io.Serial;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.l10n.NodeL10n;
@@ -88,7 +88,7 @@ public class KnownUnsafeContentTypeException extends UnsafeContentTypeException 
    */
   @Override
   public List<String> details() {
-    List<String> details = new LinkedList<>();
+    List<String> details = new ArrayList<>();
     if (type.dangerousInlines)
       details.add(l10n("dangerousInlinesLabel") + l10n("dangerousInlines"));
     if (type.dangerousLinks) details.add(l10n("dangerousLinksLabel") + l10n("dangerousLinks"));

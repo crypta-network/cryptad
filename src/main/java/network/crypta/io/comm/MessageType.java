@@ -1,5 +1,6 @@
 package network.crypta.io.comm;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -27,7 +28,7 @@ public class MessageType {
   private static final HashMap<Integer, MessageType> _specs = new HashMap<>();
 
   private final String name;
-  private final LinkedList<String> orderedFields = new LinkedList<>();
+  private final List<String> orderedFields = new ArrayList<>();
   private final HashMap<String, Class<?>> fields = new HashMap<>();
   private final HashMap<String, Class<?>> linkedListTypes = new HashMap<>();
   private final boolean internalOnly;
@@ -104,7 +105,7 @@ public class MessageType {
    */
   public void addField(String name, Class<?> type) {
     fields.put(name, type);
-    orderedFields.addLast(name);
+    orderedFields.add(name);
   }
 
   /**
@@ -166,13 +167,14 @@ public class MessageType {
    * name.
    */
   @Override
+  @SuppressWarnings("ReferenceEquality")
   public boolean equals(Object o) {
-    if (!(o instanceof MessageType)) {
+    if (!(o instanceof MessageType other)) {
       return false;
     }
     // Intentionally use reference equality for the name based on registration semantics.
     //noinspection StringEquality
-    return ((MessageType) o).name == name;
+    return other.name == name;
   }
 
   /**

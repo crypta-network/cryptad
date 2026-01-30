@@ -7,7 +7,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.LinkedList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -416,16 +415,16 @@ public class OggPage {
      * stuff away, but if we need to write stuff, we run the risk of overflowing
      * past the hard limit of 255 packets, and will need to create a continuing page
      */
-    LinkedList<Integer> sizes = ensurePacketSizes(packetSizes);
+    List<Integer> sizes = ensurePacketSizes(packetSizes);
     segments = intToUnsignedByte(computeTotalSegments(sizes));
     if (LOG.isDebugEnabled()) LOG.debug("Segments {}", segments);
     segmentTable = buildSegmentTable(sizes, segments);
   }
 
-  private LinkedList<Integer> ensurePacketSizes(List<Integer> packetSizes) {
-    if (packetSizes != null) return new LinkedList<>(packetSizes);
-    LinkedList<Integer> sizes = new LinkedList<>();
-    sizes.push(payload.length);
+  private List<Integer> ensurePacketSizes(List<Integer> packetSizes) {
+    if (packetSizes != null) return new ArrayList<>(packetSizes);
+    List<Integer> sizes = new ArrayList<>(1);
+    sizes.add(payload.length);
     return sizes;
   }
 

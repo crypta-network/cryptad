@@ -189,12 +189,12 @@ public class BulkReceiver {
    * @return {@code true} to continue receiving; {@code false} if the sender canceled the transfer.
    */
   private boolean handleMessage(Message m) {
-    if (m.getSpec() == DMT.FNPBulkSendAborted) {
+    if (DMT.FNPBulkSendAborted.equals(m.getSpec())) {
       // Sender explicitly canceled this transfer.
       prb.abort(RetrievalException.SENDER_DIED, "Sender cancelled send");
       return false;
     }
-    if (m.getSpec() == DMT.FNPBulkPacketSend) {
+    if (DMT.FNPBulkPacketSend.equals(m.getSpec())) {
       int packetNo = m.getInt(DMT.PACKET_NO);
       byte[] data = ((ShortBuffer) m.getObject(DMT.DATA)).getData();
       // Commit the packet payload to storage. Length is validated by PartiallyReceivedBulk.

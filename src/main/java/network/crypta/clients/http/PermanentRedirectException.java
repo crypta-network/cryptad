@@ -53,10 +53,10 @@ public class PermanentRedirectException extends Exception {
    * callers typically provide an absolute {@link URI} so the transport layer can instruct clients
    * precisely where to retry the request without mutating the HTTP method.
    *
-   * @param newURI absolute or context-resolved {@link URI} designating the permanent redirect
+   * @param newuri absolute or context-resolved {@link URI} designating the permanent redirect
    *     target; may be {@code null} when the destination is deferred to later processing
    */
-  public PermanentRedirectException(URI newURI) {
-    this.newuri = newURI;
+  public PermanentRedirectException(URI newuri) {
+    this.newuri = newuri;
   }
 }

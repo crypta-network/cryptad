@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.TimeZone;
 import network.crypta.support.HTMLNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +58,7 @@ class HourlyStatsTest {
     // deterministically.
     Calendar lastHourly = getField(stats, "lastHourlyTime", Calendar.class);
     Calendar nowUtc = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-    nowUtc.setTime(new Date());
+    nowUtc.setTimeInMillis(System.currentTimeMillis());
     nowUtc.add(Calendar.HOUR_OF_DAY, -1);
     lastHourly.setTime(nowUtc.getTime());
 

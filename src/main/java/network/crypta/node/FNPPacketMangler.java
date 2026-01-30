@@ -1,6 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -9,9 +8,9 @@ import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.interfaces.ECPublicKey;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.ECDH;
 import network.crypta.crypt.ECDHLightContext;
@@ -25,7 +24,6 @@ import network.crypta.crypt.UnsupportedCipherException;
 import network.crypta.crypt.Util;
 import network.crypta.crypt.ciphers.Rijndael;
 import network.crypta.io.AddressTracker;
-import network.crypta.io.AddressTracker.Status;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.IncomingPacketFilter;
 import network.crypta.io.comm.IncomingPacketFilter.DECODED;
@@ -95,7 +93,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * FIFO of pre-generated ECDH contexts.
    * Must hold the lock on {@code ecdhContextFIFO} before accessing.
    */
-  private final LinkedList<ECDHLightContext> ecdhContextFIFO = new LinkedList<>();
+  private final ArrayDeque<ECDHLightContext> ecdhContextFIFO = new ArrayDeque<>();
   private ECDHLightContext ecdhContextToBePrunned;
   private static final ECDH.Curves ecdhCurveToUse = ECDH.Curves.P256;
   private long jfkECDHLastGenerationTimestamp = 0;
@@ -142,7 +140,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   private final Runnable transientKeyRekeyer = this::maybeResetTransientKey;
 
   private long lastConnectivityStatusUpdate;
-  private Status lastConnectivityStatus;
+  private AddressTracker.Status lastConnectivityStatus;
 
   public FNPPacketMangler(Node node, NodeCrypto crypt, PacketSocketHandler sock) {
     this.node = node;
@@ -220,6 +218,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     return tryProcessAuthAnonReply(buf, offset, length, opn, peer);
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private boolean tryPeersAuthExcept(
       byte[] buf, int offset, int length, Peer peer, PeerNode exclude) {
     PeerNode[] peers = crypto.getPeerNodes();
@@ -293,6 +292,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private boolean checkAnonAuthChangeIP(
       PeerNode opn, byte[] buf, int offset, int length, Peer peer) {
     PeerNode[] anonPeers = crypto.getAnonSetupPeerNodes();
@@ -343,8 +343,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     int dataStart = ivLength + digestLength + offset + 2;
 
-    int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
-    int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
+    int byte1 = (pcfb.decipher(buf[dataStart - 2]) & 0xff);
+    int byte2 = (pcfb.decipher(buf[dataStart - 1]) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
     if (LOG.isTraceEnabled())
       LOG.trace(
@@ -447,8 +447,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     int dataStart = ivLength + digestLength + offset + 2;
 
-    int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
-    int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
+    int byte1 = (pcfb.decipher(buf[dataStart - 2]) & 0xff);
+    int byte2 = (pcfb.decipher(buf[dataStart - 1]) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
     if (LOG.isTraceEnabled())
       LOG.trace(
@@ -519,8 +519,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     int dataStart = ivLength + digestLength + offset + 2;
 
-    int byte1 = ((pcfb.decipher(buf[dataStart - 2])) & 0xff);
-    int byte2 = ((pcfb.decipher(buf[dataStart - 1])) & 0xff);
+    int byte1 = (pcfb.decipher(buf[dataStart - 2]) & 0xff);
+    int byte2 = (pcfb.decipher(buf[dataStart - 1]) & 0xff);
     int dataLength = (byte1 << 8) + byte2;
     if (LOG.isTraceEnabled())
       LOG.trace(
@@ -964,7 +964,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   }
 
   private boolean computeDontWantForDuplicateIP(boolean dontWant, PeerNode pn, Peer replyTo) {
-    if ((!dontWant) && !crypto.allowConnection(pn, replyTo.getFreenetAddress())) {
+    if (!dontWant && !crypto.allowConnection(pn, replyTo.getFreenetAddress())) {
       if (pn instanceof DarknetPeerNode peerNode) {
         LOG.error("Drop peer {} due to existing connections on the same IP address", pn);
         LOG.warn(
@@ -2103,8 +2103,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
     scheduleJFK3ResendIfNoReply(p.pn, p.replyTo, p.negotiation, message3, timeSent);
     long t2 = System.currentTimeMillis();
-    if ((t2 - t1) > MILLISECONDS.toMillis(500))
-      LOG.error("event=jfk3_send_slow (>500 ms) for {}", p.pn.getPeer());
+    if ((t2 - t1) > 500L) LOG.error("event=jfk3_send_slow (>500 ms) for {}", p.pn.getPeer());
   }
 
   private int getInitialMessageID(byte[] identity) {
@@ -2956,8 +2955,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
         }
       }
 
-      if ((ecdhContextToBePrunned != null)
-          && ((ecdhContextToBePrunned.getPublicKey()).equals(exponential)))
+      if (ecdhContextToBePrunned != null
+          && ecdhContextToBePrunned.getPublicKey().equals(exponential))
         return ecdhContextToBePrunned;
     }
     return null;
@@ -3095,11 +3094,11 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    * @return a {@link Status} value describing NAT/connectivity observations
    */
   @Override
-  public Status getConnectivityStatus() {
+  public AddressTracker.Status getConnectivityStatus() {
     long now = System.currentTimeMillis();
     if (now - lastConnectivityStatusUpdate < MINUTES.toMillis(3)) return lastConnectivityStatus;
 
-    Status value;
+    AddressTracker.Status value;
     if (crypto.getConfig().alwaysHandshakeAggressively())
       value = AddressTracker.Status.DEFINITELY_NATED;
     else value = sock.getDetectedConnectivityStatus();

@@ -189,7 +189,7 @@ public final class MessageFilter {
    * @throws IncorrectTypeException if the value type does not match the message specification
    */
   public MessageFilter setField(String fieldName, Object fieldValue) {
-    if ((type != null) && (!type.checkType(fieldName, fieldValue))) {
+    if (type != null && !type.checkType(fieldName, fieldValue)) {
       throw new IncorrectTypeException(
           "Got "
               + fieldValue.getClass()
@@ -637,9 +637,11 @@ public final class MessageFilter {
     synchronized (this) {
       try {
         long now;
-        while (!(matchedFlag
-            || (droppedConnection != null)
-            || reallyTimedOut(now = System.currentTimeMillis()))) {
+        while (true) {
+          now = System.currentTimeMillis();
+          if (matchedFlag || droppedConnection != null || reallyTimedOut(now)) {
+            break;
+          }
           long wait = timeout - now;
           if (wait <= 0) break;
           this.wait(wait);

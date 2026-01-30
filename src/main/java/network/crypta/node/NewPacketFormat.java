@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import network.crypta.crypt.BlockCipher;
@@ -194,7 +193,7 @@ public class NewPacketFormat implements PacketFormat {
   }
 
   List<byte[]> handleDecryptedPacket(NPFPacket packet, SessionKey sessionKey) {
-    List<byte[]> fullyReceived = new LinkedList<>();
+    List<byte[]> fullyReceived = new ArrayList<>();
 
     NewPacketFormatKeyContext keyContext = sessionKey.packetContext;
     processAcks(packet, keyContext, sessionKey);
@@ -529,7 +528,7 @@ public class NewPacketFormat implements PacketFormat {
     // i2->i1 is smaller than i1->i2. See RFC1982 for details and limitations.
 
     long halfValue = 1L << (serialBits - 1);
-    return i1 < i2 && i2 - i1 > halfValue || i1 > i2 && i1 - i2 < halfValue;
+    return (i1 < i2 && i2 - i1 > halfValue) || (i1 > i2 && i1 - i2 < halfValue);
   }
 
   static byte[] encryptSequenceNumber(int seqNum, SessionKey sessionKey) {

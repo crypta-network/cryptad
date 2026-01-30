@@ -1,8 +1,9 @@
 package network.crypta.node;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Random;
@@ -55,13 +56,13 @@ public class PeerMessageQueue {
 
     private static class Items extends DoublyLinkedListImpl.Item<Items> {
       /** Messages to send for a single UID. Earlier elements are sent first within the UID. */
-      final LinkedList<MessageItem> messages;
+      final ArrayDeque<MessageItem> messages;
 
       final long id;
       long timeLastSent;
 
       Items(long id, long initialTimeLastSent) {
-        messages = new LinkedList<>();
+        messages = new ArrayDeque<>();
         this.id = id;
         timeLastSent = initialTimeLastSent;
       }
@@ -105,7 +106,7 @@ public class PeerMessageQueue {
     Map<Long, Items> itemsByID;
 
     /** Non‑urgent messages. Earlier elements are sent first when they become eligible. */
-    LinkedList<MessageItem> itemsNonUrgent;
+    ArrayList<MessageItem> itemsNonUrgent;
 
     // Structures are constructed lazily while callers hold PeerMessageQueue's monitor.
 
@@ -131,7 +132,7 @@ public class PeerMessageQueue {
             && it.timeLastSent + timeout <= System.currentTimeMillis()) {
           it.addLast(item);
           if (it.getParent() == emptyItemsWithID) moveFromEmptyToNonEmptyBackward(it);
-          else assert (it.getParent() == nonEmptyItemsWithID);
+          else assert it.getParent() == nonEmptyItemsWithID;
           if (LOG.isDebugEnabled()) checkOrder();
           return;
         }
@@ -140,7 +141,7 @@ public class PeerMessageQueue {
     }
 
     private void addToNonUrgent(MessageItem item) {
-      if (itemsNonUrgent == null) itemsNonUrgent = new LinkedList<>();
+      if (itemsNonUrgent == null) itemsNonUrgent = new ArrayList<>();
       ListIterator<MessageItem> it = itemsNonUrgent.listIterator(itemsNonUrgent.size());
       // MessageItems can be created out of order; submitted timestamps may not be monotonic.
       // This insertion runs under the PeerMessageQueue lock, so ordering remains consistent.
@@ -227,7 +228,7 @@ public class PeerMessageQueue {
 
     private void moveFromEmptyToNonEmptyForward(Items list) {
       // Assumed to be in emptyItemsWithID
-      assert (list.messages.isEmpty());
+      assert list.messages.isEmpty();
       if (LOG.isDebugEnabled() && list.getParent() == nonEmptyItemsWithID) {
         LOG.error("Item is marked non-empty but contains no messages");
         return;
@@ -400,7 +401,7 @@ public class PeerMessageQueue {
 
     private long getNextUrgentTimeNonRoundRobin(long t, long stopIfBeforeTime) {
       if (itemsNonUrgent != null && !itemsNonUrgent.isEmpty()) {
-        t = Math.min(t, itemsNonUrgent.getFirst().submitted + timeout);
+        t = Math.min(t, itemsNonUrgent.get(0).submitted + timeout);
         if (t <= stopIfBeforeTime) return t;
       }
       assert (nonEmptyItemsWithID == null);
@@ -487,7 +488,7 @@ public class PeerMessageQueue {
     private MessageItem addNonUrgentMessages(long now) {
       if (LOG.isDebugEnabled()) checkOrder();
       if (itemsNonUrgent == null || itemsNonUrgent.isEmpty()) return null;
-      MessageItem item = itemsNonUrgent.removeFirst();
+      MessageItem item = itemsNonUrgent.remove(0);
       item.setDeadline(item.submitted + timeout);
       if (itemsByID != null) demoteTrackerAfterNonUrgentSend(now, item);
       if (LOG.isDebugEnabled()) checkOrder();
@@ -517,7 +518,7 @@ public class PeerMessageQueue {
       } else if (parent == nonEmptyItemsWithID) {
         LOG.error("Tracker is in non empty items list when is empty");
         nonEmptyItemsWithID.remove(tracker);
-      } else assert (false);
+      } else assert false;
       addToEmptyBackward(tracker);
     }
 
@@ -532,7 +533,7 @@ public class PeerMessageQueue {
       } else if (parent == emptyItemsWithID) {
         LOG.error("Tracker is in empty items list when is non-empty");
         emptyItemsWithID.remove(tracker);
-      } else assert (false);
+      } else assert false;
       addToNonEmptyBackward(tracker);
     }
 

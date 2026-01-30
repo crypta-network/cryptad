@@ -618,7 +618,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
     long timeleft = discardEndTime - System.currentTimeMillis();
     if (timeleft > 0) {
       try {
-        discardFilter.setTimeout((int) timeleft);
+        discardFilter.setTimeout(timeleft);
         usm.addAsyncFilter(discardFilter, this, ctr);
       } catch (DisconnectedException _) {
         // ignore

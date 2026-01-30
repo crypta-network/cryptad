@@ -90,6 +90,7 @@ public class NelderMead extends DirectSearchOptimizer {
    * @throws CostException if the configured {@link CostFunction} refuses to evaluate a candidate
    *     point or returns a value that cannot be produced.
    */
+  @Override
   protected void iterateSimplex() throws CostException {
 
     // the simplex has n+1 point if dimension is n

@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -151,7 +152,8 @@ class PluginDownLoaderURLTest {
       throws Exception {
     byte[] expectedBytes = "ok".getBytes(StandardCharsets.UTF_8);
 
-    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    HttpServer server =
+        HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
     server.createContext(
         "/plugin.jar",
         exchange -> {

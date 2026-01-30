@@ -445,7 +445,13 @@ class PluginRespiratorTest {
       ArrayList<SessionManager> managers = (ArrayList<SessionManager>) field.get(null);
       managers.clear();
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to reset PluginRespirator sessionManagers", e);
+      throw linkageError("Failed to reset PluginRespirator sessionManagers", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 }

@@ -131,6 +131,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
    *
    * @param handler non-null callback used to process or observe accepted steps during integration.
    */
+  @Override
   public void setStepHandler(StepHandler handler) {
     this.handler = handler;
   }
@@ -144,6 +145,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
    *
    * @return active handler invoked after each accepted step; never {@code null}.
    */
+  @Override
   public StepHandler getStepHandler() {
     return handler;
   }
@@ -162,6 +164,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
    * @param convergence absolute convergence threshold for event time search; must be positive and
    *     appropriate for the problem scale.
    */
+  @Override
   public void addSwitchingFunction(
       SwitchingFunction function, double maxCheckInterval, double convergence) {
     switchesHandler.add(function, maxCheckInterval, convergence);
@@ -288,6 +291,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
    *
    * @return time coordinate at the beginning of the current step, or {@code NaN} when unset.
    */
+  @Override
   public double getCurrentStepStart() {
     return stepStart;
   }
@@ -303,6 +307,7 @@ public abstract class AdaptiveStepsizeIntegrator implements FirstOrderIntegrator
    *
    * @return current signed step size chosen by the integrator, or the initial guess when unset.
    */
+  @Override
   public double getCurrentStepsize() {
     return stepSize;
   }

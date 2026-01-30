@@ -186,6 +186,7 @@ public class BookmarkManager implements RequestClient {
    *
    * <p>This operation is additive: it does not remove or overwrite existing user bookmarks.
    */
+  @SuppressWarnings("JavaUtilDate")
   public void reAddDefaultBookmarks() {
     BookmarkCategory bc = new BookmarkCategory(l10n("defaultBookmarks") + " - " + new Date());
     addBookmark("/", bc);
@@ -486,6 +487,7 @@ public class BookmarkManager implements RequestClient {
     }
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private boolean wantUSK(USK u, BookmarkItem ignore) {
     List<BookmarkItem> items = MAIN_CATEGORY.getAllItems();
     for (BookmarkItem item : items) {

@@ -98,7 +98,7 @@ class Inet4AddressMatcherTest {
   @Test
   void matches_whenIPv6AddressProvided_expectFalseEvenForZeroMask() throws Exception {
     Inet4AddressMatcher matcher = new Inet4AddressMatcher("0.0.0.0/0");
-    InetAddress ipv6 = InetAddress.getByName("::1");
+    InetAddress ipv6 = addr("::1");
     assertFalse(matcher.matches(ipv6));
   }
 
@@ -180,6 +180,6 @@ class Inet4AddressMatcherTest {
   // ---------- helpers ----------
 
   private static InetAddress addr(String literal) throws UnknownHostException {
-    return InetAddress.getByName(literal);
+    return InetAddress.getAllByName(literal)[0];
   }
 }

@@ -2,6 +2,7 @@ package org.bitpedia.collider.core;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -25,7 +26,7 @@ class KzTreeHandlerTest {
 
   @Test
   void analyzeFinal_whenSingleShortBlock_returnsDoubleMd5OfData() {
-    byte[] data = "hello world".getBytes();
+    byte[] data = "hello world".getBytes(StandardCharsets.US_ASCII);
     KzTreeHandler handler = new KzTreeHandler();
     handler.analyzeInit();
 

@@ -59,6 +59,7 @@ public class StepNormalizer implements StepHandler {
    *
    * @return {@code true} because intermediate interpolation is mandatory for normalization
    */
+  @Override
   public boolean requiresDenseOutput() {
     return true;
   }
@@ -71,6 +72,7 @@ public class StepNormalizer implements StepHandler {
    * prematurely. Calling it between successive {@link #handleStep(StepInterpolator, boolean)} calls
    * inside one integration would corrupt the normalization sequence.
    */
+  @Override
   public void reset() {
     lastTime = Double.NaN;
     lastState = null;
@@ -93,6 +95,7 @@ public class StepNormalizer implements StepHandler {
    * @throws DerivativeException if the interpolator triggers derivative evaluation while preparing
    *     an intermediate state and the user function signals a failure.
    */
+  @Override
   public void handleStep(StepInterpolator interpolator, boolean isLast) throws DerivativeException {
 
     double nextTime;

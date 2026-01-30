@@ -7,6 +7,7 @@ package org.bitpedia.collider.core;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Utility reader for ID3 metadata embedded in audio files.
@@ -231,16 +232,16 @@ public class Id3Handler {
         f.read(buf);
 
         Id3v1 info = new Id3v1();
-        info.id = new String(buf, 0, 3);
-        info.title = new String(buf, 3, 30);
-        info.artist = new String(buf, 33, 30);
-        info.album = new String(buf, 63, 30);
-        info.year = new String(buf, 93, 4);
+        info.id = new String(buf, 0, 3, StandardCharsets.ISO_8859_1);
+        info.title = new String(buf, 3, 30, StandardCharsets.ISO_8859_1);
+        info.artist = new String(buf, 33, 30, StandardCharsets.ISO_8859_1);
+        info.album = new String(buf, 63, 30, StandardCharsets.ISO_8859_1);
+        info.year = new String(buf, 93, 4, StandardCharsets.ISO_8859_1);
         if (0 == buf[125]) {
-          info.comment = new String(buf, 97, 28);
+          info.comment = new String(buf, 97, 28, StandardCharsets.ISO_8859_1);
           info.track = buf[126] >= 0 ? buf[126] : buf[126] + 256;
         } else {
-          info.comment = new String(buf, 97, 30);
+          info.comment = new String(buf, 97, 30, StandardCharsets.ISO_8859_1);
         }
         info.genre = buf[127] >= 0 ? buf[127] : buf[127] + 256;
 
@@ -300,7 +301,7 @@ public class Id3Handler {
         f.read(buf);
 
         Id3Header h = new Id3Header();
-        h.tag = new String(buf, 0, 3);
+        h.tag = new String(buf, 0, 3, StandardCharsets.ISO_8859_1);
         h.versionMajor = buf[3] >= 0 ? buf[3] : buf[3] + 256;
         h.versionRevision = buf[4] >= 0 ? buf[4] : buf[4] + 256;
         h.flags = buf[5] >= 0 ? buf[5] : buf[5] + 256;
@@ -343,7 +344,7 @@ public class Id3Handler {
 
         byte[] buf = new byte[4];
         f.read(buf);
-        h.tag = new String(buf);
+        h.tag = new String(buf, StandardCharsets.ISO_8859_1);
         h.size = f.readInt();
         h.flags = f.readUnsignedShort();
 
@@ -382,7 +383,7 @@ public class Id3Handler {
 
         byte[] buf = new byte[3];
         f.read(buf);
-        h.tag = new String(buf, 0, 3);
+        h.tag = new String(buf, 0, 3, StandardCharsets.ISO_8859_1);
         f.read(h.size);
 
         return h;
@@ -434,16 +435,16 @@ public class Id3Handler {
     }
 
     if ("TIT2".equals(tag)) {
-      info.title = new String(data, TEXT_DATA_OFFSET, len);
+      info.title = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TALB".equals(tag)) {
-      info.album = new String(data, TEXT_DATA_OFFSET, len);
+      info.album = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TPE1".equals(tag)) {
-      info.artist = new String(data, TEXT_DATA_OFFSET, len);
+      info.artist = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TYER".equals(tag)) {
-      info.year = new String(data, TEXT_DATA_OFFSET, len);
+      info.year = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TCON".equals(tag)) {
 
-      String genreName = new String(data, TEXT_DATA_OFFSET, len);
+      String genreName = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
       for (int i = 0; i < genres.length; i++) {
 
         if (genres[i].equals(genreName)) {
@@ -451,9 +452,9 @@ public class Id3Handler {
         }
       }
     } else if ("TRCK".equals(tag)) {
-      info.trackNumber = new String(data, TEXT_DATA_OFFSET, len);
+      info.trackNumber = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TSSE".equals(tag)) {
-      info.encoder = new String(data, TEXT_DATA_OFFSET, len);
+      info.encoder = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     }
   }
 
@@ -462,19 +463,19 @@ public class Id3Handler {
     if ((null == data) || (0 == data.length)) return;
 
     if ("TT2".equals(tag)) {
-      info.title = new String(data, TEXT_DATA_OFFSET, len);
+      info.title = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TAL".equals(tag)) {
-      info.album = new String(data, TEXT_DATA_OFFSET, len);
+      info.album = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TP1".equals(tag)) {
-      info.artist = new String(data, TEXT_DATA_OFFSET, len);
+      info.artist = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TYE".equals(tag)) {
-      info.year = new String(data, TEXT_DATA_OFFSET, len);
+      info.year = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TSI".equals(tag)) {
-      info.genre = new String(data, TEXT_DATA_OFFSET, len);
+      info.genre = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TRK".equals(tag)) {
-      info.trackNumber = new String(data, TEXT_DATA_OFFSET, len);
+      info.trackNumber = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     } else if ("TSS".equals(tag)) {
-      info.encoder = new String(data, TEXT_DATA_OFFSET, len);
+      info.encoder = new String(data, TEXT_DATA_OFFSET, len, StandardCharsets.ISO_8859_1);
     }
   }
 
@@ -524,7 +525,7 @@ public class Id3Handler {
 
     try (RandomAccessFile f = new RandomAccessFile(fileName, "r")) {
       Id3v1 id3 = Id3v1.readFromFile(f);
-      if ((null == id3) || (!"TAG".equals(id3.id))) {
+      if ((null == id3) || !"TAG".equals(id3.id)) {
         return info;
       }
 

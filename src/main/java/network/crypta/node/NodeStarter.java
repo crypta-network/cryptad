@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.security.Security;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -196,14 +197,14 @@ public class NodeStarter implements WrapperListener {
   public static Node createTestNode(TestNodeParameters params) throws NodeInitException {
 
     synchronized (NodeStarter.class) {
-      if ((!isStarted) || (!isTestingVM)) {
+      if (!isStarted || !isTestingVM) {
         throw new IllegalStateException("Call globalTestInit() first!");
       }
     }
 
     File baseDir = params.getBaseDirectory();
     File portDir = new File(baseDir, Integer.toString(params.getPort()));
-    if ((!portDir.mkdir()) && ((!portDir.exists()) || (!portDir.isDirectory()))) {
+    if (!portDir.mkdir() && (!portDir.exists() || !portDir.isDirectory())) {
       LOG.error("Test port directory creation failed");
       System.exit(NodeInitException.EXIT_TEST_ERROR);
     }
@@ -471,7 +472,7 @@ public class NodeStarter implements WrapperListener {
     File explicitConfigFile = cli.explicitConfigFile();
     String serviceModeOverride = cli.serviceModeOverride();
     if (serviceModeOverride != null) {
-      System.setProperty("cryptad.service.mode", serviceModeOverride.toLowerCase());
+      System.setProperty("cryptad.service.mode", serviceModeOverride.toLowerCase(Locale.ROOT));
     }
 
     AppEnv appEnv = new AppEnv();

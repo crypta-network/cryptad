@@ -70,6 +70,7 @@ public class EnhancedSimpsonIntegrator implements SampledFunctionIntegrator {
    * @throws FunctionException if evaluating the underlying function to obtain a sample fails at any
    *     point in the traversal
    */
+  @Override
   public double integrate(SampledFunctionIterator iter)
       throws ExhaustedSampleException, FunctionException {
 

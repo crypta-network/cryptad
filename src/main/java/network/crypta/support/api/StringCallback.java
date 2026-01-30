@@ -11,9 +11,10 @@ import network.crypta.config.ConfigCallback;
  * persistence required by the owning option or subsystem.
  *
  * <p>Thread-safety and handling of {@code null} are defined by the concrete implementation; callers
- * must follow the specific option's contract. The inherited {@link #get()} returns the current
- * effective value. The inherited {@link #set(String)} applies a new value and may reject it as
- * invalid or indicate that a node restart is required, depending on implementation.
+ * must follow the specific option's contract. The inherited {@link ConfigCallback#get()} returns
+ * the current effective value. The inherited {@link ConfigCallback#set(Object)} applies a new value
+ * and may reject it as invalid or indicate that a node restart is required, depending on
+ * implementation.
  *
  * @see ConfigCallback
  * @see network.crypta.config.StringOption

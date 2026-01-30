@@ -315,7 +315,7 @@ public class HTMLNode {
   }
 
   private void setContentOrCreateChild(String name, String content) {
-    if (content != null && !("#").equals(name) && !("%").equals(name)) {
+    if (content != null && !"#".equals(name) && !"%".equals(name)) {
       addChild(new HTMLNode("#", content));
       this.content = null;
     } else {

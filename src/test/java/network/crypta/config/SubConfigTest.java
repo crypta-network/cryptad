@@ -409,6 +409,7 @@ class SubConfigTest {
   }
 
   @Test
+  @SuppressWarnings("SelfComparison")
   void compareTo_whenUsingPrefixLexOrder_returnsZeroForSameInstance() {
     // Arrange
     SubConfig a = config.createSubConfig("alpha");

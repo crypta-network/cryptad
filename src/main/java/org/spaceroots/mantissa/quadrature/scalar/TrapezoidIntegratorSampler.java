@@ -83,6 +83,7 @@ public class TrapezoidIntegratorSampler implements SampledFunctionIterator {
    * @return {@code true} when the underlying iterator reports another sample, {@code false} when
    *     the stream is exhausted and no further integrated values will be available.
    */
+  @Override
   public boolean hasNext() {
     return iter.hasNext();
   }
@@ -111,6 +112,7 @@ public class TrapezoidIntegratorSampler implements SampledFunctionIterator {
    * @throws FunctionException if computing the next sample fails in the underlying iterator due to
    *     function evaluation or sampling errors.
    */
+  @Override
   public ScalarValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
     // performs one step of a trapezoid scheme
     ScalarValuedPair previous = current;

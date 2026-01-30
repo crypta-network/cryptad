@@ -293,7 +293,7 @@ public class PolynomialFraction implements Serializable {
 
     RationalNumber[] a = p.getCoefficients();
     PolynomialFraction inverse =
-        (a[a.length - 1].isNegative())
+        a[a.length - 1].isNegative()
             ? new PolynomialFraction(
                 (Polynomial.Rational) q.negate(), (Polynomial.Rational) p.negate())
             : new PolynomialFraction(q, p);
@@ -398,6 +398,7 @@ public class PolynomialFraction implements Serializable {
    *
    * @return string representation with parentheses added when either part contains spaces
    */
+  @Override
   public String toString() {
     if (p.isZero()) {
       return "0";

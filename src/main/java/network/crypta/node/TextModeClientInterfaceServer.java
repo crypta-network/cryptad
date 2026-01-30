@@ -445,7 +445,7 @@ public class TextModeClientInterfaceServer implements Runnable {
 
   private void acceptLoop(int curPort, String tempBindTo) {
     while (isEnabled) {
-      if (port != curPort || !(this.bindTo.equals(tempBindTo))) break;
+      if (port != curPort || !this.bindTo.equals(tempBindTo)) break;
       try {
         Socket s = networkInterface.accept();
         if (s != null) { // non-timeout

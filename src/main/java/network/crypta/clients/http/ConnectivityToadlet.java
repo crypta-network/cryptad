@@ -103,6 +103,7 @@ public class ConnectivityToadlet extends Toadlet {
    * @throws IOException if HTML generation or writing to the response stream fails for transport
    *     reasons such as socket errors.
    */
+  @Override
   public void handleMethodGET(URI uri, final HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     PageMaker pageMaker = ctx.getPageMaker();

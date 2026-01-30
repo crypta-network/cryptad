@@ -6,6 +6,7 @@ import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import network.crypta.io.comm.PeerContext;
 import network.crypta.keys.Key;
 import org.slf4j.Logger;
@@ -464,7 +465,7 @@ class FailureTableEntry implements TimedOutNodesList {
     }
   }
 
-  private void collectRequestorOfferTargets(HashSet<PeerNodeUnlocked> set) {
+  private void collectRequestorOfferTargets(Set<PeerNodeUnlocked> set) {
     for (int i = 0; i < requestorNodes.length; i++) {
       WeakReference<PeerContext> ref = requestorNodes[i];
       PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);
@@ -475,7 +476,7 @@ class FailureTableEntry implements TimedOutNodesList {
     }
   }
 
-  private void collectRequestedOfferTargets(HashSet<PeerNodeUnlocked> set) {
+  private void collectRequestedOfferTargets(Set<PeerNodeUnlocked> set) {
     for (int i = 0; i < requestedNodes.length; i++) {
       WeakReference<PeerContext> ref = requestedNodes[i];
       PeerNodeUnlocked pn = asPeerNodeUnlocked(ref);

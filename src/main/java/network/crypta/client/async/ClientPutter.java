@@ -261,7 +261,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   private byte selectCryptoAlgorithm() {
     CompatibilityMode mode = ctx.getCompatibilityMode();
     return (mode == CompatibilityMode.COMPAT_CURRENT
-            || mode.ordinal() >= CompatibilityMode.COMPAT_1416.ordinal())
+            || mode.code >= CompatibilityMode.COMPAT_1416.code)
         ? Key.ALGO_AES_CTR_256_SHA256
         : Key.ALGO_AES_PCFB_256_SHA256;
   }
@@ -406,8 +406,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     if (randomiseSplitfileKeys) {
       CompatibilityMode cmode = ctx.getCompatibilityMode();
       if (!(cmode == CompatibilityMode.COMPAT_CURRENT
-          || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal()))
-        randomiseSplitfileKeys = false;
+          || cmode.code >= CompatibilityMode.COMPAT_1255.code)) randomiseSplitfileKeys = false;
     }
     return randomiseSplitfileKeys;
   }
@@ -489,6 +488,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * Called when {@link #metadataThreshold} is set and the final compact metadata is returned
    * instead of a URI because its length falls below the threshold.
    */
+  @Override
   public void onMetadata(Bucket finalMetadata, ClientPutState state, ClientContext context) {
     boolean freeIt = false;
     synchronized (this) {

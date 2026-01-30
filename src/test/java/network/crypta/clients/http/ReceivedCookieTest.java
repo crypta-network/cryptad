@@ -7,7 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.text.ParseException;
-import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -29,17 +30,17 @@ class ReceivedCookieTest {
   void parseHeader_singleCookieLowercasesNameAndKeepsValue() throws ParseException {
     Cookie parsed = ReceivedCookie.parseHeader("SessionID=abCd12345;$path=/").getFirst();
 
-    assertEquals(VALID_NAME.toLowerCase(), parsed.getName());
+    assertEquals(VALID_NAME.toLowerCase(Locale.ROOT), parsed.getName());
     assertEquals(VALID_VALUE, parsed.getValue());
   }
 
   @Test
   void parseHeader_multipleCookies_parsesSequentially() throws ParseException {
-    ArrayList<ReceivedCookie> cookies =
+    List<ReceivedCookie> cookies =
         ReceivedCookie.parseHeader("SessionID=abCd12345;$path=/;key2=valUe2;$path=/");
 
     assertEquals(2, cookies.size());
-    assertEquals(VALID_NAME.toLowerCase(), cookies.get(0).getName());
+    assertEquals(VALID_NAME.toLowerCase(Locale.ROOT), cookies.get(0).getName());
     assertEquals(VALID_VALUE, cookies.get(0).getValue());
     assertEquals("key2", cookies.get(1).getName());
     assertEquals("valUe2", cookies.get(1).getValue());
@@ -50,7 +51,7 @@ class ReceivedCookieTest {
     Cookie parsed =
         ReceivedCookie.parseHeader("$version=1; SessionID=abCd12345;$path=/").getFirst();
 
-    assertEquals(VALID_NAME.toLowerCase(), parsed.getName());
+    assertEquals(VALID_NAME.toLowerCase(Locale.ROOT), parsed.getName());
     assertEquals(VALID_VALUE, parsed.getValue());
   }
 

@@ -76,7 +76,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
 
     @Override
     public String anchor() {
-      return "port-forward:" + super.hashCode();
+      return "port-forward:" + System.identityHashCode(this);
     }
 
     @Override
@@ -432,11 +432,11 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   }
 
   private static boolean isUnknown(Status status) {
-    return status.ordinal() >= AddressTracker.Status.DONT_KNOW.ordinal();
+    return status.compareTo(AddressTracker.Status.DONT_KNOW) >= 0;
   }
 
   private static int indicator(Status status, int portNumber) {
-    return (status.ordinal() < AddressTracker.Status.MAYBE_NATED.ordinal() ? -1 : 1) * portNumber;
+    return (status.compareTo(AddressTracker.Status.MAYBE_NATED) < 0 ? -1 : 1) * portNumber;
   }
 
   private static final String L10N_PREFIX = "IPDetectorPluginManager.";
@@ -575,12 +575,11 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
     FreenetInetAddress[] nodeAddrs = detector.getPrimaryIPAddress(true);
     long now = System.currentTimeMillis();
 
-    switch (gateOnPluginState(now)) {
-      case RETURN, START_AND_RETURN:
-        return;
-      case PROCEED:
-        // continue below
-        break;
+    if (switch (gateOnPluginState(now)) {
+      case RETURN, START_AND_RETURN -> true;
+      case PROCEED -> false;
+    }) {
+      return;
     }
 
     if (detector.hasDirectlyDetectedIP() && !shouldDetectDespiteRealIP(now, conns, nodeAddrs)) {
@@ -979,30 +978,18 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
       for (DetectedIP d : list) {
         LOG.info(LOG_DETECTED_IP_PREFIX + "{}: type={}", d.publicAddress, d.natType);
         switch (d.natType) {
-          case DetectedIP.FULL_CONE_NAT:
-            c.fullCone++;
-            break;
-          case DetectedIP.FULL_INTERNET:
-            c.open++;
-            break;
-          case DetectedIP.NO_UDP:
-            c.closed++;
-            break;
-          case DetectedIP.NOT_SUPPORTED:
+          case DetectedIP.FULL_CONE_NAT -> c.fullCone++;
+          case DetectedIP.FULL_INTERNET -> c.open++;
+          case DetectedIP.NO_UDP -> c.closed++;
+          case DetectedIP.NOT_SUPPORTED -> {
             // Ignore
-            break;
-          case DetectedIP.RESTRICTED_CONE_NAT:
-            c.restricted++;
-            break;
-          case DetectedIP.PORT_RESTRICTED_NAT:
-            c.portRestricted++;
-            break;
-          case DetectedIP.SYMMETRIC_NAT, DetectedIP.SYMMETRIC_UDP_FIREWALL:
-            c.symmetric++;
-            break;
-          default:
+          }
+          case DetectedIP.RESTRICTED_CONE_NAT -> c.restricted++;
+          case DetectedIP.PORT_RESTRICTED_NAT -> c.portRestricted++;
+          case DetectedIP.SYMMETRIC_NAT, DetectedIP.SYMMETRIC_UDP_FIREWALL -> c.symmetric++;
+          default -> {
             // Unknown natType; ignore
-            break;
+          }
         }
       }
       return c;

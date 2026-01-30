@@ -699,7 +699,7 @@ public class Message {
   public Message getSubMessage(MessageType t) {
     if (subMessages == null) return null;
     for (Message m : subMessages) {
-      if (m.getSpec() == t) return m;
+      if (t.equals(m.getSpec())) return m;
     }
     return null;
   }
@@ -714,7 +714,7 @@ public class Message {
     if (subMessages == null) return null;
     for (int i = 0; i < subMessages.size(); i++) {
       Message m = subMessages.get(i);
-      if (m.getSpec() == t) {
+      if (t.equals(m.getSpec())) {
         subMessages.remove(i);
         return m;
       }

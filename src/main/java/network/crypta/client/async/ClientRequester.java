@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
  *
  * @see SendableRequest
  */
+@SuppressWarnings("JavaUtilDate")
 public abstract class ClientRequester implements Serializable, ClientRequestSchedulerGroup {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequester.class);
 
@@ -119,7 +120,8 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     this.client = requestClient;
     this.realTimeFlag = requestClient.realTimeFlag();
     hashCode =
-        super.hashCode(); // the old object id will do fine, as long as we ensure it doesn't change!
+        System.identityHashCode(
+            this); // the old object id will do fine, as long as we ensure it doesn't change!
     synchronized (allRequesters) {
       if (!persistent()) allRequesters.put(this, dumbValue);
     }
@@ -685,7 +687,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected void innerOnResume(ClientContext context) throws ResumeFailedException {
     ClientBaseCallback cb = getCallback();
     client = cb.getRequestClient();
-    assert (client.persistent());
+    assert client.persistent();
     if (sentToNetwork) innerToNetwork(context);
   }
 

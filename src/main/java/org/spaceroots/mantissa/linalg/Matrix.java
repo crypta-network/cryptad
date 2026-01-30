@@ -578,6 +578,7 @@ public abstract class Matrix implements Serializable {
    *
    * @return textual view of the matrix coefficients in row-major order
    */
+  @Override
   public String toString() {
     String separator = System.lineSeparator();
 

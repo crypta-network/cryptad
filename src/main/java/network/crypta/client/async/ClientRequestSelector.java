@@ -621,6 +621,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     }
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private SendableRequest maybePreferRecentSuccess(
       SendableRequest req,
       int choosenPriorityClass,
@@ -765,6 +766,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * @return {@code true} if the key is already fetching locally; otherwise {@code false}
    */
   @Override
+  @SuppressWarnings("ReferenceEquality")
   public boolean hasKey(Key key, BaseSendableGet getterWaiting) {
     if (keysFetching == null) {
       throw new NullPointerException();
@@ -1104,7 +1106,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
   void innerRegister(SendableRequest req, ClientContext context) {
     if (isInsertScheduler && req instanceof BaseSendableGet)
       throw new IllegalArgumentException("Adding a SendableGet to an insert scheduler!!");
-    if ((!isInsertScheduler) && req instanceof SendableInsert)
+    if (!isInsertScheduler && req instanceof SendableInsert)
       throw new IllegalArgumentException("Adding a SendableInsert to a request scheduler!!");
     if (isInsertScheduler != req.isInsert())
       throw new IllegalArgumentException(

@@ -5,11 +5,11 @@ import static java.util.Arrays.stream;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
-import java.text.Format;
-import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -71,6 +71,8 @@ public class UserAlertManager implements Comparator<UserAlert> {
   private static final String ATTR_VALUE = "value";
   private static final String INPUT_TAG = "input";
   private static final String INPUT_TYPE_HIDDEN = "hidden";
+  private static final DateTimeFormatter RFC3339_FORMATTER =
+      DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx");
 
   // No point keeping them sorted as some alerts can change priority.
   private final Set<UserAlert> alerts;
@@ -347,7 +349,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
   }
 
   private boolean shouldSkipAlert(UserAlert alert, boolean showOnlyErrors) {
-    return (!alert.isValid()) || (showOnlyErrors && alert.getPriorityClass() > UserAlert.ERROR);
+    return !alert.isValid() || (showOnlyErrors && alert.getPriorityClass() > UserAlert.ERROR);
   }
 
   /**
@@ -589,10 +591,7 @@ public class UserAlertManager implements Comparator<UserAlert> {
 
   // Formats a Unix timestamp according to RFC 3339
   private String formatTime(long time) {
-    final Format format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
-    String date = format.format(new Date(time));
-    // Z doesn't include a colon between the hour and the minutes
-    return date.substring(0, 22) + ":" + date.substring(22);
+    return Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()).format(RFC3339_FORMATTER);
   }
 
   /**

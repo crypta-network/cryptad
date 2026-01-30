@@ -126,6 +126,7 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
    *     load.
    * @throws RedirectException if access control redirects the caller to an authorization page.
    */
+  @Override
   public void handleMethodGET(URI uri, final HTTPRequest request, final ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (container.publicGatewayMode() && !ctx.isAllowedFullAccess()) {
@@ -419,6 +420,6 @@ public class FileInsertWizardToadlet extends Toadlet implements LinkEnabledCallb
    */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return (!container.publicGatewayMode()) || ((ctx != null) && ctx.isAllowedFullAccess());
+    return !container.publicGatewayMode() || (ctx != null && ctx.isAllowedFullAccess());
   }
 }

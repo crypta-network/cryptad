@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import java.lang.ref.WeakReference;
+import java.util.Objects;
 import network.crypta.keys.NodeCHK;
 import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
@@ -265,7 +266,7 @@ public class RequestTag extends UIDTag {
     if (!accepted) return 0;
     if (completedDownstreamTransfers) return 0;
     if (forAccept && (sourceRestarted || unlockedHandler)) return 0;
-    return ((!isLocal()) || ignoreLocalVsRemote) ? 1 : 0;
+    return (!isLocal() || ignoreLocalVsRemote) ? 1 : 0;
   }
 
   private boolean completedDownstreamTransfers;
@@ -323,7 +324,7 @@ public class RequestTag extends UIDTag {
         return;
       }
       PeerNode got = waitingForOpennet.get();
-      if (got != next) {
+      if (!Objects.equals(got, next)) {
         LOG.error("Wait ends on {} but was waiting for {}", next, got);
       }
       waitingForOpennet = null;

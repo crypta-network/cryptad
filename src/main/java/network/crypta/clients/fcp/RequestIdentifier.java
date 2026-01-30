@@ -17,7 +17,7 @@ import java.io.IOException;
  *
  * <ul>
  *   <li>Serialization format: magic int {@link #MAGIC}, version {@link #VERSION}, queue flag,
- *       optional client name, identifier string, and request-type ordinal.
+ *       optional client name, identifier string, and request-type code.
  *   <li>Equality includes {@link RequestType}; {@link #sameIdentifier(RequestIdentifier)} ignores
  *       it for deduplication.
  *   <li>Layout changes require a version bump to stay compatible.
@@ -35,19 +35,32 @@ public final class RequestIdentifier {
   public enum RequestType {
     /**
      * Fetch operation that retrieves existing network content identified by keys such as CHK or
-     * SSK; ordinal position is part of the serialized form.
+     * SSK; code value is part of the serialized form.
      */
-    GET,
+    GET((short) 0),
     /**
      * Insertion of a single data item (for example, a file or message) into the network; serialized
-     * using the enum ordinal and therefore order must remain stable.
+     * using the explicit code.
      */
-    PUT,
+    PUT((short) 1),
     /**
      * Insertion of a directory or bundle where the identifier refers to a manifest rather than a
-     * single block; ordinal stability is required for deserialization.
+     * single block; code stability is required for deserialization.
      */
-    PUTDIR
+    PUTDIR((short) 2);
+
+    private final short code;
+
+    RequestType(short code) {
+      this.code = code;
+    }
+
+    private static RequestType fromCode(short code) throws IOException {
+      for (RequestType type : values()) {
+        if (type.code == code) return type;
+      }
+      throw new IOException("Bogus type");
+    }
   }
 
   static final int MAGIC = 0x25ebd38d;
@@ -86,7 +99,7 @@ public final class RequestIdentifier {
   /**
    * Reconstructs an identifier by consuming its serialized form from a {@link DataInput} stream.
    * The method expects the exact layout produced by {@link #writeTo(DataOutput)}: magic integer,
-   * version short, queue flag, optional UTF client name, UTF identifier, and request-type ordinal.
+   * version short, queue flag, optional UTF client name, UTF identifier, and request-type code.
    *
    * @param dis data source positioned at the start of the serialized identifier.
    * @throws IOException if the magic or version differ, type is invalid, or input fails.
@@ -100,10 +113,8 @@ public final class RequestIdentifier {
     if (globalQueue) clientName = null;
     else clientName = dis.readUTF();
     identifier = dis.readUTF();
-    RequestType[] types = RequestType.values();
     short typeKey = dis.readShort();
-    if (typeKey < 0 || typeKey >= types.length) throw new IOException("Bogus type");
-    type = types[typeKey];
+    type = RequestType.fromCode(typeKey);
   }
 
   /**
@@ -120,7 +131,7 @@ public final class RequestIdentifier {
     dos.writeBoolean(globalQueue);
     if (!globalQueue) dos.writeUTF(clientName);
     dos.writeUTF(identifier);
-    dos.writeShort(type.ordinal());
+    dos.writeShort(type.code);
   }
 
   /**

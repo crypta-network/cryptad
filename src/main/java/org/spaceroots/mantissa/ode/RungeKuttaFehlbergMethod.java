@@ -18,6 +18,7 @@ import org.jetbrains.annotations.NotNull;
  * @param b external weights for the high-order method
  * @param prototype prototype interpolator used for dense output
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record RungeKuttaFehlbergMethod(
     boolean fsal, double[] c, double[][] a, double[] b, RungeKuttaStepInterpolator prototype) {
 

@@ -190,6 +190,7 @@ public abstract class StoreCallback<T extends StorableBlock> {
    * @param routingKey routing key bytes, or {@code null} when unavailable or not required.
    * @param fullKey full key bytes, or {@code null} when unavailable or not required.
    */
+  @SuppressWarnings("ArrayRecordComponent")
   public record BlockPayload(byte[] data, byte[] headers, byte[] routingKey, byte[] fullKey) {
     /**
      * Compares payloads by array contents rather than reference identity.

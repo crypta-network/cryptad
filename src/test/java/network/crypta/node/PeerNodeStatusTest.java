@@ -11,7 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.net.InetAddress;
-import java.util.Hashtable;
+import java.util.LinkedHashMap;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.xfer.PacketThrottle;
@@ -134,7 +134,7 @@ class PeerNodeStatusTest {
     // Mock underlying Peer and FreenetInetAddress for IPv4
     Peer peer = mock(Peer.class);
     FreenetInetAddress faddr = mock(FreenetInetAddress.class);
-    InetAddress inet = InetAddress.getByName("203.0.113.10");
+    InetAddress inet = InetAddress.getAllByName("203.0.113.10")[0];
 
     when(pn.getPeer()).thenReturn(peer);
     when(peer.getFreenetAddress()).thenReturn(faddr);
@@ -159,7 +159,7 @@ class PeerNodeStatusTest {
     Peer peer = mock(Peer.class);
     FreenetInetAddress faddr = mock(FreenetInetAddress.class);
     // Use a documentation prefix address (RFC 3849)
-    InetAddress inet6 = InetAddress.getByName("2001:db8::1");
+    InetAddress inet6 = InetAddress.getAllByName("2001:db8::1")[0];
 
     when(pn.getPeer()).thenReturn(peer);
     when(peer.getFreenetAddress()).thenReturn(faddr);
@@ -204,8 +204,8 @@ class PeerNodeStatusTest {
   @Test
   void constructor_whenNoHeavy_false_localMessageStatsCopied() {
     SeedServerPeerNode pn = basePeerNodeMock(SeedServerPeerNode.class);
-    Hashtable<String, Long> recv = new Hashtable<>();
-    Hashtable<String, Long> sent = new Hashtable<>();
+    LinkedHashMap<String, Long> recv = new LinkedHashMap<>();
+    LinkedHashMap<String, Long> sent = new LinkedHashMap<>();
     recv.put("Foo", 1L);
     sent.put("Bar", 2L);
     when(pn.getLocalNodeReceivedMessagesFromStatistic()).thenReturn(recv);

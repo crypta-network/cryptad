@@ -131,6 +131,7 @@ public class DiagnosticToadlet extends Toadlet {
    * @throws RedirectException if the caller lacks permission and the framework triggers a redirect
    *     to the login or permissions page.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (!ctx.checkFullAccess(this)) {

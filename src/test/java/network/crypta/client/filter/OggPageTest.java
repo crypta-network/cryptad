@@ -14,7 +14,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedList;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 @SuppressWarnings("java:S100")
@@ -175,7 +175,7 @@ class OggPageTest {
     try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(pageBytes))) {
       OggPage page = OggPage.readPage(in);
 
-      LinkedList<Integer> sizes = new LinkedList<>();
+      List<Integer> sizes = new ArrayList<>();
       sizes.add(256); // -> lacing: 255, 1
       sizes.add(1); // -> lacing: 1
 
@@ -224,7 +224,7 @@ class OggPageTest {
     try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(pageBytes))) {
       OggPage page = OggPage.readPage(in);
 
-      LinkedList<Integer> badSizes = new LinkedList<>();
+      List<Integer> badSizes = new ArrayList<>();
       badSizes.add(20); // larger than actual payload
       page.recalculateSegmentLacing(badSizes);
 

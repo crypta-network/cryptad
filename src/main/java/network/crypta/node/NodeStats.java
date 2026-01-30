@@ -1,6 +1,5 @@
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -171,10 +170,10 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /** Sub-max ping time. If ping is greater than this, we reject some requests. */
-  public static final long DEFAULT_SUB_MAX_PING_TIME = MILLISECONDS.toMillis(700);
+  public static final long DEFAULT_SUB_MAX_PING_TIME = 700L;
 
   /** Maximum overall average ping time. If ping is greater than this, we reject all requests. */
-  public static final long DEFAULT_MAX_PING_TIME = MILLISECONDS.toMillis(1500);
+  public static final long DEFAULT_MAX_PING_TIME = 1500L;
 
   /**
    * Maximum throttled packet delay for bulk transfers used by alerting logic. If the throttled
@@ -1302,7 +1301,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // Consider using a shorter average; evaluate behavior when bwlimit changes
 
     double totalCouldSend =
-        Math.max(totalSent, (node.network().outputBandwidthLimit() * uptime) / 1000.0);
+        Math.max((double) totalSent, (node.network().outputBandwidthLimit() * uptime) / 1000.0);
     double nonOverheadFraction = (totalCouldSend - totalOverhead) / totalCouldSend;
     long timeFirstAnyConnections = peers.timeFirstAnyConnections;
     if (timeFirstAnyConnections > 0) {

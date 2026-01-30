@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Random;
 import network.crypta.support.TimeUtil;
@@ -113,7 +114,7 @@ public class FilenameGenerator {
   }
 
   private static boolean shouldWipe(String name, String prefix, boolean windows) {
-    return (windows && name.toLowerCase().startsWith(prefix.toLowerCase()))
+    return (windows && name.toLowerCase(Locale.ROOT).startsWith(prefix.toLowerCase(Locale.ROOT)))
         || name.startsWith(prefix);
   }
 

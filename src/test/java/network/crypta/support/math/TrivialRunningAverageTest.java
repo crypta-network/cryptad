@@ -11,8 +11,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
@@ -231,7 +233,8 @@ class TrivialRunningAverageTest {
   // ---- Concurrency (deterministic) ----
 
   @Test
-  void report_whenConcurrent_updatesDeterministically() throws InterruptedException {
+  void report_whenConcurrent_updatesDeterministically()
+      throws InterruptedException, ExecutionException {
     // Arrange
     TrivialRunningAverage avg = new TrivialRunningAverage();
 
@@ -240,6 +243,7 @@ class TrivialRunningAverageTest {
     try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
       CountDownLatch start = new CountDownLatch(1);
       CountDownLatch done = new CountDownLatch(threads);
+      List<Future<?>> futures = new ArrayList<>(threads);
 
       List<Double> expectedValues = new ArrayList<>(threads * itemsPerThread);
       for (int t = 0; t < threads; t++) {
@@ -250,21 +254,22 @@ class TrivialRunningAverageTest {
 
       for (int t = 0; t < threads; t++) {
         final int threadIndex = t;
-        pool.submit(
-            () -> {
-              try {
-                start.await();
-                int base = threadIndex * itemsPerThread;
-                for (int i = 1; i <= itemsPerThread; i++) {
-                  avg.report(base + i);
-                }
-              } catch (InterruptedException _) {
-                Thread.currentThread().interrupt();
-                fail("Interrupted during test execution");
-              } finally {
-                done.countDown();
-              }
-            });
+        futures.add(
+            pool.submit(
+                () -> {
+                  try {
+                    start.await();
+                    int base = threadIndex * itemsPerThread;
+                    for (int i = 1; i <= itemsPerThread; i++) {
+                      avg.report(base + i);
+                    }
+                  } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                    fail("Interrupted during test execution");
+                  } finally {
+                    done.countDown();
+                  }
+                }));
       }
 
       // Act
@@ -273,6 +278,9 @@ class TrivialRunningAverageTest {
 
       // Assert
       assertTrue(finished, "Worker threads should finish promptly");
+      for (Future<?> future : futures) {
+        future.get();
+      }
       long expectedCount = (long) threads * itemsPerThread;
       double expectedTotal = expectedValues.stream().mapToDouble(Double::doubleValue).sum();
 

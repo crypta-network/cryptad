@@ -262,10 +262,10 @@ public class FailureCodeTracker implements Serializable {
     if (map.isEmpty()) sb.append("empty");
     else if (map.size() == 1) {
       sb.append("one:");
-      Integer code = (Integer) (map.keySet().toArray())[0];
+      Integer code = (Integer) map.keySet().toArray()[0];
       sb.append(code);
       sb.append('=');
-      sb.append((map.get(code)));
+      sb.append(map.get(code));
     } else if (map.size() < 10) {
       boolean needComma = false;
       for (Map.Entry<Integer, Integer> entry : map.entrySet()) {

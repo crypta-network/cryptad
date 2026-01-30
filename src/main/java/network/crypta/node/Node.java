@@ -1,7 +1,6 @@
 /* Freenet 0.7 node. */
 package network.crypta.node;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -17,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Objects;
 import network.crypta.client.FetchContext;
 import network.crypta.config.FreenetFilePersistentConfig;
@@ -142,7 +142,7 @@ public class Node implements TimeSkewDetectorCallback {
 
   /** Time budget in milliseconds for completing a handshake exchange. */
   public static final int HANDSHAKE_TIMEOUT =
-      (int) MILLISECONDS.toMillis(4800); // Keep the below within the 30-second assumed timeout.
+      (int) 4800L; // Keep the below within the 30-second assumed timeout.
 
   // Inter-handshake time must be at least 2x handshake timeout
   /** Minimum interval between handshake attempts (milliseconds). */
@@ -184,8 +184,8 @@ public class Node implements TimeSkewDetectorCallback {
   /** Time without any traffic that triggers a user‑visible alarm (milliseconds). */
   public static final long ALARM_TIME = MINUTES.toMillis(1);
 
-  static final long MIN_INTERVAL_BETWEEN_INCOMING_SWAP_REQUESTS = MILLISECONDS.toMillis(900);
-  static final long MIN_INTERVAL_BETWEEN_INCOMING_PROBE_REQUESTS = MILLISECONDS.toMillis(1000);
+  static final long MIN_INTERVAL_BETWEEN_INCOMING_SWAP_REQUESTS = 900L;
+  static final long MIN_INTERVAL_BETWEEN_INCOMING_PROBE_REQUESTS = 1000L;
 
   /** Length in bytes for symmetric keys used by the node (e.g., AES‑256). */
   public static final int SYMMETRIC_KEY_LENGTH =
@@ -502,7 +502,7 @@ public class Node implements TimeSkewDetectorCallback {
    *
    * @param args command-line arguments forwarded to the wrapper-managed launcher; may be empty.
    */
-  static void main(String[] args) {
+  public static void main(String[] args) {
     NodeStarter.main(args);
   }
 
@@ -760,10 +760,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
             sortOrder++, true, false, "Node.storeUseSlotFilters", "Node.storeUseSlotFiltersLong"),
         new BooleanCallback() {
 
+          @Override
           public Boolean get() {
             return storage.isStoreUseSlotFilters();
           }
 
+          @Override
           public void set(Boolean val) throws NodeNeedRestartException {
             storage.setStoreUseSlotFilters(val);
           }
@@ -1673,6 +1675,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record MasterKeyState(byte[] clientCacheKey, MasterSecret persistentSecret) {
     @Override
     public boolean equals(Object o) {
@@ -1697,10 +1700,12 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
     @Override
     public @NotNull String toString() {
+      String secretLabel =
+          persistentSecret == null ? "null" : persistentSecret.getClass().getSimpleName();
       return "MasterKeyState[clientCacheKey="
           + Arrays.toString(clientCacheKey)
           + ", persistentSecret="
-          + persistentSecret
+          + secretLabel
           + "]";
     }
   }
@@ -1811,7 +1816,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
 
   private File ensureExtraPeerDataDirExists() throws NodeInitException {
     File extraPeerData = userDir.file("extra-peer-data-" + network.darknetPortNumber());
-    if (!((extraPeerData.exists() && extraPeerData.isDirectory()) || (extraPeerData.mkdir()))) {
+    if (!((extraPeerData.exists() && extraPeerData.isDirectory()) || extraPeerData.mkdir())) {
       String msg = "Could not find or create extra peer data directory";
       throw new NodeInitException(NodeInitException.EXIT_BAD_DIR, msg);
     }
@@ -2013,7 +2018,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     for (File f : list) {
       String name = f.getName();
       if (f.isFile()
-          && name.toLowerCase()
+          && name.toLowerCase(Locale.ROOT)
               .matches("((chk)|(ssk)|(pubkey))-\\d*\\.((store)|(cache))(\\.((keys)|(lru)))?")) {
         LOG.info("Deleting old datastore file \"{}\"", f);
         try {

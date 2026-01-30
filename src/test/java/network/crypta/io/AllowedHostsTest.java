@@ -41,8 +41,8 @@ class AllowedHostsTest {
     assertEquals(
         NetworkInterface.DEFAULT_BIND_TO, defaultsEmpty, "Expected default allowed hosts (empty)");
 
-    InetAddress loop4 = InetAddress.getByName("127.0.0.1");
-    InetAddress loop6 = InetAddress.getByName("::1");
+    InetAddress loop4 = addr("127.0.0.1");
+    InetAddress loop6 = addr("::1");
     assertTrue(ahNull.allowed(loop4));
     assertTrue(ahNull.allowed(loop6));
     assertTrue(ahEmpty.allowed(loop4));
@@ -60,8 +60,8 @@ class AllowedHostsTest {
     assertEquals("*", ahOnlyStar.getAllowedHosts());
     assertEquals("*", ahMixed.getAllowedHosts());
 
-    InetAddress any4 = InetAddress.getByName("203.0.113.9"); // TEST-NET-3
-    InetAddress any6 = InetAddress.getByName("2001:db8::dead:beef");
+    InetAddress any4 = addr("203.0.113.9"); // TEST-NET-3
+    InetAddress any6 = addr("2001:db8::dead:beef");
     assertTrue(ahOnlyStar.allowed(any4));
     assertTrue(ahOnlyStar.allowed(any6));
     assertTrue(ahMixed.allowed(any4));
@@ -75,7 +75,7 @@ class AllowedHostsTest {
       throws Exception {
     // Arrange
     AllowedHosts ah = new AllowedHosts(rule);
-    InetAddress addr = InetAddress.getByName(candidate);
+    InetAddress addr = addr(candidate);
 
     // Act / Assert
     assertEquals(expected, ah.allowed(addr));
@@ -101,7 +101,7 @@ class AllowedHostsTest {
       throws Exception {
     // Arrange
     AllowedHosts ah = new AllowedHosts(rule);
-    InetAddress addr = InetAddress.getByName(candidate);
+    InetAddress addr = addr(candidate);
 
     // Act
     boolean actual = ah.allowed(addr);
@@ -159,8 +159,8 @@ class AllowedHostsTest {
 
     // Act
     String rendered = ah.getAllowedHosts();
-    boolean allowed4 = ah.allowed(InetAddress.getByName("127.0.0.1"));
-    boolean allowed6 = ah.allowed(InetAddress.getByName("::1"));
+    boolean allowed4 = ah.allowed(addr("127.0.0.1"));
+    boolean allowed6 = ah.allowed(addr("::1"));
 
     // Assert
     assertEquals("", rendered);
@@ -178,5 +178,9 @@ class AllowedHostsTest {
     // IPv6 with numeric zone ID is classified as IPv6 by AddressIdentifier but not accepted by
     // matcher
     assertThrows(IllegalArgumentException.class, () -> new AllowedHosts("fe80::1%2"));
+  }
+
+  private static InetAddress addr(String host) throws UnknownHostException {
+    return InetAddress.getAllByName(host)[0];
   }
 }

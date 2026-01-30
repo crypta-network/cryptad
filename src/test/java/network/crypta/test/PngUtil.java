@@ -85,7 +85,7 @@ public class PngUtil {
         }
       }
     }
-    return chunks;
+    return List.copyOf(chunks);
   }
 
   /**
@@ -183,10 +183,9 @@ public class PngUtil {
 
     @Override
     public boolean equals(Object o) {
-      if (!(o instanceof Chunk)) {
+      if (!(o instanceof Chunk chunk)) {
         return false;
       }
-      Chunk chunk = (Chunk) o;
       return crc == chunk.crc
           && Objects.equals(type, chunk.type)
           && Objects.deepEquals(data, chunk.data);

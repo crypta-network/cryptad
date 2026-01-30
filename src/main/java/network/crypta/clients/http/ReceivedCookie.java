@@ -5,6 +5,8 @@ import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,7 +87,7 @@ public final class ReceivedCookie extends Cookie {
    *     access.
    * @throws ParseException If the general cookie formatting or quoting rules are violated.
    */
-  static ArrayList<ReceivedCookie> parseHeader(String httpHeader) throws ParseException {
+  static List<ReceivedCookie> parseHeader(String httpHeader) throws ParseException {
 
     if (LOG.isDebugEnabled()) LOG.debug("Received HTTP cookie header:{}", httpHeader);
 
@@ -151,7 +153,8 @@ public final class ReceivedCookie extends Cookie {
       keyEndIndex--;
     }
 
-    String key = new String(header, keyBeginIndex, keyEndIndex - keyBeginIndex).toLowerCase();
+    String key =
+        new String(header, keyBeginIndex, keyEndIndex - keyBeginIndex).toLowerCase(Locale.ROOT);
 
     if (key.isEmpty()) {
       throw new ParseException("Invalid cookie: Contains an empty key: " + httpHeader, index);

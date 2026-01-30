@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 
@@ -74,7 +75,7 @@ class InWindowTest {
 
   @Test
   void getMatchLen_whenStreamEnded_clampsLimitAndReturnsMatchLength() throws Exception {
-    byte[] data = "abcabc".getBytes();
+    byte[] data = "abcabc".getBytes(StandardCharsets.US_ASCII);
     InWindow window = prepareWindow(data, 3, 1, 3);
 
     for (int i = 0; i < 3; i++) {

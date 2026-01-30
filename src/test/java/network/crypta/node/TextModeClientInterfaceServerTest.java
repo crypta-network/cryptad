@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.PrintStream;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import javax.net.ServerSocketFactory;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
@@ -116,7 +117,7 @@ class TextModeClientInterfaceServerTest {
       tmci.start();
 
       // Assert
-      String out = bout.toString().trim();
+      String out = bout.toString(StandardCharsets.UTF_8).trim();
       String expectedPrefix = "TMCI started on " + tmci.networkInterface.getAllowedHosts() + ':';
       assertTrue(out.startsWith(expectedPrefix));
       // Runnable scheduled should be the server itself

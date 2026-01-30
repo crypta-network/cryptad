@@ -27,6 +27,7 @@ import org.jetbrains.annotations.NotNull;
  * @param ignoreUSKDatehints whether USK datehints should be ignored during insert
  * @param overrideSplitfileCryptoKey optional splitfile crypto key override; may be {@code null}
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record FcpInsertOptions(
     boolean getCHKOnly,
     boolean dontCompress,

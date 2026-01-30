@@ -94,6 +94,7 @@ class HighamHall54StepInterpolator extends RungeKuttaStepInterpolator implements
    * @throws DerivativeException if user-supplied derivative code raised an exception during step
    *     preparation; propagated unchanged to preserve caller handling
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 

@@ -81,7 +81,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
    * decisions without repeated {@code instanceof} checks.
    *
    * <p>If the plugin is configurable, a persistent configuration file is created under the node
-   * configuration directory (named {@code plugin-&lt;pluginClass&gt;.ini}), the plugin is asked to
+   * configuration directory (named {@code plugin-<pluginClass>.ini}), the plugin is asked to
    * register its options, and a {@link ConfigToadlet} is created to expose those options over HTTP.
    * For non-configurable plugins, the configuration-related accessors return {@code null}.
    *
@@ -159,7 +159,7 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
    */
   @Override
   public String toString() {
-    return "ID: \"" + threadName + "\", Name: " + className + ", Started: " + (new Date(start));
+    return "ID: \"" + threadName + "\", Name: " + className + ", Started: " + new Date(start);
   }
 
   /**

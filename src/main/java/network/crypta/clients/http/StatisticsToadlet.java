@@ -227,6 +227,7 @@ public class StatisticsToadlet extends Toadlet {
    * @throws RedirectException if a redirect is requested by the framework during handling (for
    *     example, when access control triggers a login flow).
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (!ctx.checkFullAccess(this)) return;
@@ -1409,8 +1410,8 @@ public class StatisticsToadlet extends Toadlet {
       HTMLNode activityList, Node node, long nodeUptimeSeconds, boolean isAdvancedModeEnabled) {
     long[] total = node.network().collector().getTotalIO();
     if (total[0] == 0 || total[1] == 0) return;
-    long totalOutputRate = (total[0]) / nodeUptimeSeconds;
-    long totalInputRate = (total[1]) / nodeUptimeSeconds;
+    long totalOutputRate = total[0] / nodeUptimeSeconds;
+    long totalInputRate = total[1] / nodeUptimeSeconds;
     long totalPayload = node.getTotalPayloadSent();
     long totalPayloadRate = totalPayload / nodeUptimeSeconds;
     if (node.services().clientCore() == null) throw new NullPointerException();
@@ -1975,6 +1976,7 @@ public class StatisticsToadlet extends Toadlet {
     return HEIGHT_PREFIX + fix3pctUS.format(fraction) + WIDTH_100;
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record HistogramComputationResult(int[] histogram, int totalCount) {
     @Override
     public boolean equals(Object o) {
@@ -2107,7 +2109,7 @@ public class StatisticsToadlet extends Toadlet {
         age = MAX_CIRCLE_AGE_THRESHOLD;
       }
       double strength = 1 - ((double) age / MAX_CIRCLE_AGE_THRESHOLD);
-      histogramIndex = (int) (Math.floor(location * HISTOGRAM_LENGTH));
+      histogramIndex = (int) Math.floor(location * HISTOGRAM_LENGTH);
       histogram[histogramIndex]++;
 
       nodeCircleInfoboxContent.addChild(

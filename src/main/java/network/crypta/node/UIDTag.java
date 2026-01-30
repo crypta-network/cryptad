@@ -4,6 +4,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.lang.ref.WeakReference;
 import java.util.HashSet;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -355,19 +356,13 @@ public abstract class UIDTag {
     }
   }
 
-  /**
-   * @return {@code true} if this tag represents an SSK request.
-   */
+  /** Returns {@code true} if this tag represents an SSK request. */
   public abstract boolean isSSK();
 
-  /**
-   * @return {@code true} if this tag represents an insert request.
-   */
+  /** Returns {@code true} if this tag represents an insert request. */
   public abstract boolean isInsert();
 
-  /**
-   * @return {@code true} if this tag represents a reply to an offer.
-   */
+  /** Returns {@code true} if this tag represents a reply to an offer. */
   public abstract boolean isOfferReply();
 
   /**
@@ -436,7 +431,7 @@ public abstract class UIDTag {
     return true;
   }
 
-  private boolean isAnyHandlingTimeout(HashSet<PeerNode> peers) {
+  private boolean isAnyHandlingTimeout(Set<PeerNode> peers) {
     if (handlingTimeouts == null) {
       return false;
     }
@@ -622,9 +617,7 @@ public abstract class UIDTag {
     waitingForSlot = false;
   }
 
-  /**
-   * @return {@code true} if the tag is currently waiting for an outbound slot.
-   */
+  /** Returns {@code true} if the tag is currently waiting for an outbound slot. */
   public synchronized boolean isWaitingForSlot() {
     return waitingForSlot;
   }

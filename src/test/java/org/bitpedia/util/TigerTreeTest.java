@@ -5,8 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.security.DigestException;
+import java.util.ArrayDeque;
 import java.util.Arrays;
-import java.util.LinkedList;
+import java.util.Deque;
 import org.bouncycastle.crypto.digests.TigerDigest;
 import org.junit.jupiter.api.Test;
 
@@ -108,7 +109,7 @@ class TigerTreeTest {
 
   private static byte[] computeExpectedTigerTree(byte[] data) {
     TigerDigest tiger = new TigerDigest();
-    LinkedList<byte[]> nodes = new LinkedList<>();
+    Deque<byte[]> nodes = new ArrayDeque<>();
 
     if (data.length == 0) {
       nodes.add(digestLeaf(tiger, new byte[0], 0, 0));
@@ -143,7 +144,7 @@ class TigerTreeTest {
     return out;
   }
 
-  private static void composeNodes(TigerDigest tiger, LinkedList<byte[]> nodes) {
+  private static void composeNodes(TigerDigest tiger, Deque<byte[]> nodes) {
     byte[] right = nodes.removeLast();
     byte[] left = nodes.removeLast();
     tiger.reset();

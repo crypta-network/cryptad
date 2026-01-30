@@ -62,6 +62,7 @@ public class FirstOrderConverter implements FirstOrderDifferentialEquations {
    * @return total size of the combined state vector (positions then velocities), always <code>2*n
    *     </code>
    */
+  @Override
   public int getDimension() {
     return 2 * dimension;
   }
@@ -90,6 +91,7 @@ public class FirstOrderConverter implements FirstOrderDifferentialEquations {
    * @throws DerivativeException if the wrapped {@link SecondOrderDifferentialEquations} signals a
    *     failure while computing second derivatives
    */
+  @Override
   public void computeDerivatives(double t, double[] y, double[] yDot) throws DerivativeException {
 
     // split the state vector in two

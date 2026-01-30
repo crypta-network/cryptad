@@ -75,6 +75,7 @@ public class MultiDirectional extends DirectSearchOptimizer {
    * @throws CostException if the underlying cost function rejects evaluation for any generated
    *     vertex in the reflected, expanded, or contracted simplices
    */
+  @Override
   protected void iterateSimplex() throws CostException {
 
     while (true) {

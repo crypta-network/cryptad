@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import network.crypta.keys.NodeCHK;
 import network.crypta.support.Ticker;
 import org.slf4j.Logger;
@@ -142,22 +143,21 @@ public class RequestTracker {
     boolean locked;
     if (mode.isOfferReply()) {
       // local irrelevant for OfferReplyTag's.
-      HashMap<Long, OfferReplyTag> map = getOfferTracker(mode.isSSK(), mode.realTimeFlag());
+      Map<Long, OfferReplyTag> map = getOfferTracker(mode.isSSK(), mode.realTimeFlag());
       synchronized (map) {
         locked = doLock(map, null, (OfferReplyTag) tag, uid, false);
       }
     } else if (mode.isInsert()) {
-      HashMap<Long, InsertTag> overallMap =
-          getInsertTracker(mode.isSSK(), false, mode.realTimeFlag());
-      HashMap<Long, InsertTag> localMap =
+      Map<Long, InsertTag> overallMap = getInsertTracker(mode.isSSK(), false, mode.realTimeFlag());
+      Map<Long, InsertTag> localMap =
           mode.isLocal() ? getInsertTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
         locked = doLock(overallMap, localMap, (InsertTag) tag, uid, mode.isLocal());
       }
     } else {
-      HashMap<Long, RequestTag> overallMap =
+      Map<Long, RequestTag> overallMap =
           getRequestTracker(mode.isSSK(), false, mode.realTimeFlag());
-      HashMap<Long, RequestTag> localMap =
+      Map<Long, RequestTag> localMap =
           mode.isLocal() ? getRequestTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
         locked = doLock(overallMap, localMap, (RequestTag) tag, uid, mode.isLocal());
@@ -170,7 +170,7 @@ public class RequestTracker {
   }
 
   private <T extends UIDTag> boolean doLock(
-      HashMap<Long, T> overallMap, HashMap<Long, T> localMap, T tag, Long uid, boolean local) {
+      Map<Long, T> overallMap, Map<Long, T> localMap, T tag, Long uid, boolean local) {
     if (LOG.isDebugEnabled())
       LOG.debug(
           "UID lock acquire (overall) uid={} local={} size={}",
@@ -193,7 +193,7 @@ public class RequestTracker {
   }
 
   private <T extends UIDTag> boolean lockLocal(
-      HashMap<Long, T> localMap, HashMap<Long, T> overallMap, Long uid, T tag) {
+      Map<Long, T> localMap, Map<Long, T> overallMap, Long uid, T tag) {
     if (LOG.isDebugEnabled())
       LOG.debug(
           "UID lock acquire (local map) uid={} local={} size={}",
@@ -253,22 +253,21 @@ public class RequestTracker {
     if (!noRecord) completed(uid);
 
     if (mode.isOfferReply()) {
-      HashMap<Long, OfferReplyTag> map = getOfferTracker(mode.isSSK(), mode.realTimeFlag());
+      Map<Long, OfferReplyTag> map = getOfferTracker(mode.isSSK(), mode.realTimeFlag());
       synchronized (map) {
         doUnlock(map, null, (OfferReplyTag) tag, uid, false, canFail);
       }
     } else if (mode.isInsert()) {
-      HashMap<Long, InsertTag> overallMap =
-          getInsertTracker(mode.isSSK(), false, mode.realTimeFlag());
-      HashMap<Long, InsertTag> localMap =
+      Map<Long, InsertTag> overallMap = getInsertTracker(mode.isSSK(), false, mode.realTimeFlag());
+      Map<Long, InsertTag> localMap =
           mode.isLocal() ? getInsertTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
         doUnlock(overallMap, localMap, (InsertTag) tag, uid, mode.isLocal(), canFail);
       }
     } else {
-      HashMap<Long, RequestTag> overallMap =
+      Map<Long, RequestTag> overallMap =
           getRequestTracker(mode.isSSK(), false, mode.realTimeFlag());
-      HashMap<Long, RequestTag> localMap =
+      Map<Long, RequestTag> localMap =
           mode.isLocal() ? getRequestTracker(mode.isSSK(), true, mode.realTimeFlag()) : null;
       synchronized (overallMap) {
         doUnlock(overallMap, localMap, (RequestTag) tag, uid, mode.isLocal(), canFail);
@@ -292,8 +291,8 @@ public class RequestTracker {
    * @param canFail If true, tolerate missing entries and log at debug level instead of error.
    */
   private <T extends UIDTag> void doUnlock(
-      HashMap<Long, T> overallMap,
-      HashMap<Long, T> localMap,
+      Map<Long, T> overallMap,
+      Map<Long, T> localMap,
       T tag,
       Long uid,
       boolean local,
@@ -315,7 +314,7 @@ public class RequestTracker {
   }
 
   private <T extends UIDTag> void handleLocalAfterUnlock(
-      HashMap<Long, T> localMap, T tag, Long uid, boolean local, boolean canFail) {
+      Map<Long, T> localMap, T tag, Long uid, boolean local, boolean canFail) {
     if (local) {
       removeFromMap(localMap, tag, uid, canFail, true);
       debugUnlocked(true, uid, true, localMap.size());
@@ -325,7 +324,7 @@ public class RequestTracker {
   }
 
   private <T extends UIDTag> void removeFromMap(
-      HashMap<Long, T> map, T tag, Long uid, boolean canFail, boolean isLocal) {
+      Map<Long, T> map, T tag, Long uid, boolean canFail, boolean isLocal) {
     T current = map.get(uid);
     if (current == tag) {
       map.remove(uid);
@@ -388,7 +387,7 @@ public class RequestTracker {
       RequestTransferOptions transferOptions,
       CountedRequests counter,
       CountedRequests counterSourceRestarted) {
-    HashMap<Long, ? extends UIDTag> map = getTracker(mode);
+    Map<Long, ? extends UIDTag> map = getTracker(mode);
     RequestAdmissionMode nonLocal = nonLocalMode(mode);
     // Map is locked by the non-local version, although we're counting from the local version.
     synchronized (mode.isLocal() ? getTracker(nonLocal) : map) {
@@ -429,7 +428,7 @@ public class RequestTracker {
     for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
       UIDTag tag = entry.getValue();
       // The overall running* map can include local. But the local map can't include non-local.
-      if ((!local) && tag.wasLocal) continue;
+      if (!local && tag.wasLocal) continue;
       int out = tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, true);
       int in = tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, true);
       totals.count++;
@@ -469,7 +468,7 @@ public class RequestTracker {
       RequestTransferOptions transferOptions,
       CountedRequests counter,
       CountedRequests counterSR) {
-    HashMap<Long, ? extends UIDTag> map = getTracker(mode);
+    Map<Long, ? extends UIDTag> map = getTracker(mode);
     RequestAdmissionMode nonLocal = nonLocalMode(mode);
     // Map is locked by the non-local version, although we're counting from the local version.
     synchronized (mode.isLocal() ? getTracker(nonLocal) : map) {
@@ -553,8 +552,8 @@ public class RequestTracker {
     CountTotals totals = new CountTotals();
     for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
       UIDTag tag = entry.getValue();
-      if ((!local) && tag.wasLocal) continue;
-      if (tag.getSource() == source) {
+      if (!local && tag.wasLocal) continue;
+      if (Objects.equals(tag.getSource(), source)) {
         int out = tag.expectedTransfersOut(ignoreLocalVsRemote, transfersPerInsert, true);
         int in = tag.expectedTransfersIn(ignoreLocalVsRemote, transfersPerInsert, true);
         totals.count++;
@@ -590,7 +589,7 @@ public class RequestTracker {
     CountTotals totals = new CountTotals();
     for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
       UIDTag tag = entry.getValue();
-      if ((!local) && tag.wasLocal) continue;
+      if (!local && tag.wasLocal) continue;
       if (tag.currentlyFetchingOfferedKeyFrom(source)) {
         if (LOG.isDebugEnabled())
           LOG.debug("Count to peer (offered key) tag={} uid={}", tag, entry.getKey());
@@ -627,7 +626,7 @@ public class RequestTracker {
       RequestAdmissionMode mode,
       RequestTransferOptions transferOptions,
       Map<PeerNode, CountedRequests> counterMap) {
-    HashMap<Long, ? extends UIDTag> map = getTracker(mode);
+    Map<Long, ? extends UIDTag> map = getTracker(mode);
     RequestAdmissionMode nonLocal = nonLocalMode(mode);
     // Map is locked by the non-local version, although we're counting from the local version.
     synchronized (mode.isLocal() ? getTracker(nonLocal) : map) {
@@ -638,7 +637,7 @@ public class RequestTracker {
         for (Map.Entry<Long, ? extends UIDTag> entry : map.entrySet()) {
           UIDTag tag = entry.getValue();
           // The overall running* map can include local. But the local map can't include non-local.
-          if ((!mode.isLocal()) && tag.wasLocal) continue;
+          if (!mode.isLocal() && tag.wasLocal) continue;
           PeerNode source = tag.getSource(); // Can be null in various cases
           CountedRequests counter = counterMap.computeIfAbsent(source, k -> new CountedRequests());
           int out =
@@ -709,7 +708,7 @@ public class RequestTracker {
   }
 
   private void accumulateWaitingForSlots(
-      HashMap<Long, ? extends UIDTag> runningUIDs, WaitingForSlots slots) {
+      Map<Long, ? extends UIDTag> runningUIDs, WaitingForSlots slots) {
     // Note: a counter could be used here, but would require ensuring it is always decremented
     // when something goes wrong.
     for (UIDTag tag : runningUIDs.values()) {
@@ -730,52 +729,51 @@ public class RequestTracker {
         false, mode.isSSK(), mode.isInsert(), mode.isOfferReply(), mode.realTimeFlag());
   }
 
-  private HashMap<Long, ? extends UIDTag> getTracker(RequestAdmissionMode mode) {
+  private Map<Long, ? extends UIDTag> getTracker(RequestAdmissionMode mode) {
     if (mode.isOfferReply()) return getOfferTracker(mode.isSSK(), mode.realTimeFlag());
     else if (mode.isInsert())
       return getInsertTracker(mode.isSSK(), mode.isLocal(), mode.realTimeFlag());
     else return getRequestTracker(mode.isSSK(), mode.isLocal(), mode.realTimeFlag());
   }
 
-  private HashMap<Long, RequestTag> getRequestTracker(
+  private Map<Long, RequestTag> getRequestTracker(
       boolean ssk, boolean local, boolean realTimeFlag) {
     return realTimeFlag ? getRequestTrackerRT(ssk, local) : getRequestTrackerBulk(ssk, local);
   }
 
-  private HashMap<Long, RequestTag> getRequestTrackerRT(boolean ssk, boolean local) {
+  private Map<Long, RequestTag> getRequestTrackerRT(boolean ssk, boolean local) {
     if (ssk) {
       return local ? runningLocalSSKGetUIDsRT : runningSSKGetUIDsRT;
     }
     return local ? runningLocalCHKGetUIDsRT : runningCHKGetUIDsRT;
   }
 
-  private HashMap<Long, RequestTag> getRequestTrackerBulk(boolean ssk, boolean local) {
+  private Map<Long, RequestTag> getRequestTrackerBulk(boolean ssk, boolean local) {
     if (ssk) {
       return local ? runningLocalSSKGetUIDsBulk : runningSSKGetUIDsBulk;
     }
     return local ? runningLocalCHKGetUIDsBulk : runningCHKGetUIDsBulk;
   }
 
-  private HashMap<Long, InsertTag> getInsertTracker(
-      boolean ssk, boolean local, boolean realTimeFlag) {
+  private Map<Long, InsertTag> getInsertTracker(boolean ssk, boolean local, boolean realTimeFlag) {
     return realTimeFlag ? getInsertTrackerRT(ssk, local) : getInsertTrackerBulk(ssk, local);
   }
 
-  private HashMap<Long, InsertTag> getInsertTrackerRT(boolean ssk, boolean local) {
+  private Map<Long, InsertTag> getInsertTrackerRT(boolean ssk, boolean local) {
     if (ssk) {
       return local ? runningLocalSSKPutUIDsRT : runningSSKPutUIDsRT;
     }
     return local ? runningLocalCHKPutUIDsRT : runningCHKPutUIDsRT;
   }
 
-  private HashMap<Long, InsertTag> getInsertTrackerBulk(boolean ssk, boolean local) {
+  private Map<Long, InsertTag> getInsertTrackerBulk(boolean ssk, boolean local) {
     if (ssk) {
       return local ? runningLocalSSKPutUIDsBulk : runningSSKPutUIDsBulk;
     }
     return local ? runningLocalCHKPutUIDsBulk : runningCHKPutUIDsBulk;
   }
 
-  private HashMap<Long, OfferReplyTag> getOfferTracker(boolean ssk, boolean realTimeFlag) {
+  private Map<Long, OfferReplyTag> getOfferTracker(boolean ssk, boolean realTimeFlag) {
     if (realTimeFlag) return ssk ? runningSSKOfferReplyUIDsRT : runningCHKOfferReplyUIDsRT;
     else return ssk ? runningSSKOfferReplyUIDsBulk : runningCHKOfferReplyUIDsBulk;
   }

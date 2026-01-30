@@ -248,6 +248,7 @@ class DoublyLinkedListImplTest {
   }
 
   @Test
+  @SuppressWarnings("JdkObsolete")
   void iterator_manualForwardAndReverse_expectOrder() {
     DoublyLinkedList<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[5];
@@ -445,6 +446,7 @@ class DoublyLinkedListImplTest {
   }
 
   @Test
+  @SuppressWarnings("JdkObsolete")
   void reverseElements_whenIterated_expectReverseOrder() {
     DoublyLinkedListImpl<T> list = new DoublyLinkedListImpl<>();
     T[] array = new T[4];
@@ -547,6 +549,7 @@ class DoublyLinkedListImplTest {
     }
 
     @Override
+    @SuppressWarnings("EqualsGetClass")
     public boolean equals(Object o) {
       if (o == null) {
         return false;

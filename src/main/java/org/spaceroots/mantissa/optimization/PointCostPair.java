@@ -31,6 +31,7 @@ import org.jetbrains.annotations.NotNull;
  * @version $Id: PointCostPair.java 1709 2006-12-03 21:16:50Z luc $
  * @see CostFunction
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record PointCostPair(double[] point, double cost) {
 
   /**

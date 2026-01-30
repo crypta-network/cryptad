@@ -170,7 +170,7 @@ public class OpennetPeerNode extends PeerNode {
         // This only applies after it has connected, and only if !ignoreDisconnect.
         // Hence only DISCONNECTED and not NEVER CONNECTED.
         if ((status == PeerManager.PEER_NODE_STATUS_DISCONNECTED)
-            && (!super.neverConnected())
+            && !super.neverConnected()
             && now - timeLastDisconnect < OpennetManager.DROP_DISCONNECT_DELAY
             && now - timePrevDisconnect > OpennetManager.DROP_DISCONNECT_DELAY_COOLDOWN) {
           // Grace period for node restarting

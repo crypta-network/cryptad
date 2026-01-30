@@ -71,7 +71,7 @@ class MessageTest {
   // No Mockito mocks needed; use a minimal stub PeerContext below.
 
   @Test
-  @SuppressWarnings("java:S100") // method naming per test naming convention
+  @SuppressWarnings({"java:S100", "JdkObsolete"}) // method naming per test naming convention
   void setGet_whenAllSupportedTypes_expectRoundTripViaAccessors() {
     Message msg = new Message(SIMPLE_SPEC);
 
@@ -83,7 +83,8 @@ class MessageTest {
     final double doubleVal = Math.PI;
     final float floatVal = 0.12345f;
     final double[] doubleArrayVal = new double[] {Math.PI, Math.E};
-    final float[] floatArrayVal = new float[] {1234.5678f, 912345.6789f};
+    final float[] floatArrayVal =
+        new float[] {Float.parseFloat("1234.5678"), Float.parseFloat("912345.6789")};
     final String strVal = "hello";
     final LinkedList<Integer> listVal = new LinkedList<>(List.of(1, 2, 3));
 

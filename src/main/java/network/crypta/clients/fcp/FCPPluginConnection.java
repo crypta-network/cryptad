@@ -211,5 +211,6 @@ public interface FCPPluginConnection {
    *
    * @return descriptive snapshot highlighting identity and lifecycle state.
    */
+  @Override
   String toString();
 }

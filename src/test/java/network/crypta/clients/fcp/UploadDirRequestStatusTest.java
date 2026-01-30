@@ -9,7 +9,7 @@ import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "JavaUtilDate"})
 class UploadDirRequestStatusTest {
 
   private static final Date SUCCESS_DATE = new Date(5_000L);

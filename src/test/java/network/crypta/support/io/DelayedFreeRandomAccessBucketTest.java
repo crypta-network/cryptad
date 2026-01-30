@@ -338,10 +338,9 @@ class DelayedFreeRandomAccessBucketTest {
       if (this == obj) {
         return true;
       }
-      if (obj == null || getClass() != obj.getClass()) {
+      if (!(obj instanceof StreamAction other)) {
         return false;
       }
-      StreamAction other = (StreamAction) obj;
       return name.equals(other.name);
     }
 

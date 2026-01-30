@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -143,13 +144,13 @@ class VorbisBitstreamFilterTest {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     out.write(0x03); // header type: comment
     out.write(VorbisPacketFilter.magicNumber);
-    byte[] vendor = "Acme".getBytes();
+    byte[] vendor = "Acme".getBytes(StandardCharsets.UTF_8);
     out.write(intToBytesBE(Integer.reverseBytes(vendor.length))); // vendor_length (LE on read)
     out.write(vendor);
     out.write(intToBytesBE(Integer.reverseBytes(comments.length))); // user_comment_list_length
     for (String c : comments) {
       out.write(intToBytesBE(Integer.reverseBytes(c.length())));
-      out.write(c.getBytes());
+      out.write(c.getBytes(StandardCharsets.UTF_8));
     }
     out.write(1); // framing flag true
     return out.toByteArray();

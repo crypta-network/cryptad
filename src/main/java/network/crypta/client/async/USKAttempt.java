@@ -175,7 +175,7 @@ public final class USKAttempt implements USKCheckerCallback {
     if (c == null) {
       if (LOG.isDebugEnabled()) LOG.debug("Checker == null in schedule() for {}", this);
     } else {
-      assert (!c.persistent());
+      assert !c.persistent();
       c.schedule(context);
     }
   }

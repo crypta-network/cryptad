@@ -10,6 +10,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
@@ -38,7 +40,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Base class responsible for inserting a directory tree (a “manifest”) into the network. Subclasses
- * supply the “packing” strategy in {@link #makePutHandlers(HashMap, String)} while this class
+ * supply the “packing” strategy in {@link #makePutHandlers(Map, String)} while this class
  * coordinates asynchronous puts, metadata resolution, and container construction.
  *
  * <p>Usage overview: callers construct a concrete implementation, provide a map describing the
@@ -118,7 +120,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         BaseManifestPutter bmp,
         PutHandler parent,
         String name,
-        HashMap<String, Object> data,
+        Map<String, Object> data,
         FreenetURI insertURI) {
       super(bmp, parent, name, null, containerPutHandlers);
       InsertExecutionOptions execOptions =
@@ -185,9 +187,9 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         BaseManifestPutter bmp,
         PutHandler parent,
         String name,
-        HashMap<String, Object> data,
+        Map<String, Object> data,
         FreenetURI insertURI,
-        HashSet<PutHandler> runningMap) {
+        Set<PutHandler> runningMap) {
       super(bmp, parent, name, null, runningMap);
       InsertExecutionOptions execOptions =
           new InsertExecutionOptions(
@@ -200,7 +202,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (LOG.isDebugEnabled())
         LOG.debug(LOG_CONTAINER_ON_ENCODE, key.getURI().toString(false, false), this);
 
-      if (rootContainerPutHandler == this) {
+      if (Objects.equals(rootContainerPutHandler, this)) {
         finalURI = key.getURI();
         cb.onGeneratedURI(finalURI, this);
       } else {
@@ -224,7 +226,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     public void onSuccess(ClientPutState state, ClientContext context) {
       if (LOG.isDebugEnabled()) LOG.debug(LOG_CONTAINER_COMPLETED, this.itemName, this);
 
-      if (rootContainerPutHandler == this) {
+      if (Objects.equals(rootContainerPutHandler, this)) {
         if (containerPutHandlers.contains(this))
           throw new IllegalStateException("was in containerPutHandlers");
         rootContainerPutHandler = null;
@@ -424,7 +426,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       if (LOG.isDebugEnabled())
         LOG.debug(LOG_META_ON_ENCODE, key.getURI().toString(false, false), this);
 
-      if (rootMetaPutHandler == this) {
+      if (Objects.equals(rootMetaPutHandler, this)) {
         finalURI = key.getURI();
         cb.onGeneratedURI(finalURI, this);
         return;
@@ -437,7 +439,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     public void onSuccess(ClientPutState state, ClientContext context) {
       boolean wasRoot = false;
       synchronized (BaseManifestPutter.this) {
-        if (rootMetaPutHandler == this) {
+        if (Objects.equals(rootMetaPutHandler, this)) {
           rootMetaPutHandler = null;
           wasRoot = true;
         }
@@ -494,7 +496,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         PutHandler parent,
         String name,
         ClientMetadata cm,
-        HashSet<PutHandler> runningMap) {
+        Set<PutHandler> runningMap) {
       super(bmp.priorityClass, bmp.cb.getRequestClient());
       this.persistent = bmp.persistent();
       this.cm = cm;
@@ -521,7 +523,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       }
     }
 
-    private void registerInRunningMap(HashSet<PutHandler> runningMap) {
+    @SuppressWarnings("ReferenceEquality")
+    private void registerInRunningMap(Set<PutHandler> runningMap) {
       // Avoid synchronizing on a local variable; synchronize on the owning field directly.
       if (runningMap == containerPutHandlers) {
         synchronized (containerPutHandlers) {
@@ -580,7 +583,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         failOuter(new IllegalStateException("origSFI is null on start(), impossible"), context);
       }
 
-      if ((!(this instanceof MetaPutHandler)) && (metadata != null)) {
+      if (!(this instanceof MetaPutHandler) && metadata != null) {
         failOuter(
             new IllegalStateException("metdata=" + metadata + " on start(), impossible"), context);
       }
@@ -599,7 +602,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     private void validatePlacement() {
       boolean ok;
       if ((this instanceof ContainerPutHandler) || (this instanceof ArchivePutHandler)) {
-        if (this != rootContainerPutHandler) {
+        if (!Objects.equals(this, rootContainerPutHandler)) {
           synchronized (containerPutHandlers) {
             ok = containerPutHandlers.contains(this);
           }
@@ -609,7 +612,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
           }
         }
       } else {
-        if (this != rootMetaPutHandler) {
+        if (!Objects.equals(this, rootMetaPutHandler)) {
           synchronized (runningPutHandlers) {
             ok = runningPutHandlers.contains(this);
           }
@@ -1111,7 +1114,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     CompatibilityMode mode = ctx.getCompatibilityMode();
     if (!(mode == CompatibilityMode.COMPAT_CURRENT
-        || mode.ordinal() >= CompatibilityMode.COMPAT_1416.ordinal()))
+        || mode.code >= CompatibilityMode.COMPAT_1416.code))
       this.cryptoAlgorithm = Key.ALGO_AES_PCFB_256_SHA256;
     else this.cryptoAlgorithm = Key.ALGO_AES_CTR_256_SHA256;
     runningPutHandlers = new HashSet<>();
@@ -1194,7 +1197,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     }
   }
 
-  private String findDefaultName(HashMap<String, Object> manifestElements) {
+  private String findDefaultName(Map<String, Object> manifestElements) {
     // Try exact-case matches first
     String exact = findDefaultNameExact(manifestElements);
     if (!exact.isEmpty()) return exact;
@@ -1202,7 +1205,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     return findDefaultNameCaseInsensitive(manifestElements);
   }
 
-  private String findDefaultNameExact(HashMap<String, Object> manifestElements) {
+  private String findDefaultNameExact(Map<String, Object> manifestElements) {
     for (String name : defaultDefaultNames) {
       Object o = manifestElements.get(name);
       if (o == null || o instanceof Map) continue;
@@ -1211,7 +1214,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     return "";
   }
 
-  private String findDefaultNameCaseInsensitive(HashMap<String, Object> manifestElements) {
+  private String findDefaultNameCaseInsensitive(Map<String, Object> manifestElements) {
     for (String canonicalName : defaultDefaultNames) {
       for (Map.Entry<String, Object> entry : manifestElements.entrySet()) {
         Object o = entry.getValue();
@@ -1237,6 +1240,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    *     scheduler issues). On failure the putter cancels outstanding work and marks itself
    *     finished.
    */
+  @Override
   public void start(ClientContext context) throws InsertException {
     if (LOG.isDebugEnabled())
       LOG.debug("Starting {} persistence={} containermode={}", this, persistent(), containerMode);
@@ -1289,7 +1293,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         phToStart.add(ph);
       }
     }
-    if ((!excludeRoot) && (maybeStartPH.length == 0)) {
+    if (!excludeRoot && maybeStartPH.length == 0) {
       phToStart.add(rootContainerPutHandler);
     }
     return phToStart.toArray(new PutHandler[0]);
@@ -1310,8 +1314,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    * @throws TooManyFilesInsertException if the number of files or containers exceeds safe limits
    *     for the current configuration.
    */
-  protected abstract void makePutHandlers(
-      HashMap<String, Object> manifestElements, String defaultName)
+  protected abstract void makePutHandlers(Map<String, Object> manifestElements, String defaultName)
       throws TooManyFilesInsertException;
 
   @Override
@@ -1557,10 +1560,12 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
   // Inherit blockSetFinalized behavior from a parent
 
+  @Override
   public int countFiles() {
     return numberOfFiles;
   }
 
+  @Override
   public long totalSize() {
     return totalSize;
   }
@@ -1789,16 +1794,16 @@ public abstract class BaseManifestPutter extends ManifestPutter {
      * Adds a redirect entry with an optional MIME type override.
      *
      * @param name logical name within the current directory.
-     * @param targetUri target {@link FreenetURI} to redirect to.
+     * @param targetURI target {@link FreenetURI} to redirect to.
      * @param mimeOverride optional MIME type override; when null or blank, type inference may be
      *     applied later.
      * @param isDefaultDoc when {@code true}, also marks this entry as the default document.
      */
     @SuppressWarnings("unused")
     public final void addRedirect(
-        String name, FreenetURI targetUri, String mimeOverride, boolean isDefaultDoc) {
+        String name, FreenetURI targetURI, String mimeOverride, boolean isDefaultDoc) {
       ClientMetadata cm = makeClientMetadata(mimeOverride);
-      addRedirect(name, targetUri, cm, isDefaultDoc);
+      addRedirect(name, targetURI, cm, isDefaultDoc);
     }
 
     /**
@@ -1816,12 +1821,12 @@ public abstract class BaseManifestPutter extends ManifestPutter {
      * Adds a redirect entry to the current directory.
      *
      * @param name logical name within the current directory.
-     * @param targetUri target {@link FreenetURI} to redirect to.
+     * @param targetURI target {@link FreenetURI} to redirect to.
      * @param cm optional {@link ClientMetadata} such as MIME type; may be {@code null}.
      * @param isDefaultDoc when {@code true}, also marks this entry as the default document.
      */
     public abstract void addRedirect(
-        String name, FreenetURI targetUri, ClientMetadata cm, boolean isDefaultDoc);
+        String name, FreenetURI targetURI, ClientMetadata cm, boolean isDefaultDoc);
   }
 
   /**
@@ -1833,7 +1838,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Serial private static final long serialVersionUID = 1L;
 
     /** Creates a new freeform builder with an empty root directory. */
-    protected FreeFormBuilder() {
+    FreeFormBuilder() {
       rootDir = new HashMap<>();
       currentDir = rootDir;
     }
@@ -1985,8 +1990,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
 
     @Override
     public void addRedirect(
-        String name, FreenetURI targetUri, ClientMetadata cm, boolean isDefaultDoc) {
-      Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetUri, cm);
+        String name, FreenetURI targetURI, ClientMetadata cm, boolean isDefaultDoc) {
+      Metadata m = new Metadata(DocumentType.SIMPLE_REDIRECT, null, null, targetURI, cm);
       currentDir.put(name, m);
       if (isDefaultDoc) {
         currentDir.put("", m);

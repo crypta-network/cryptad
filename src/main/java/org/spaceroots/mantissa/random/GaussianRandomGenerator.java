@@ -103,6 +103,7 @@ public class GaussianRandomGenerator implements NormalizedRandomGenerator {
    * @return next pseudo‑random value from a standard normal distribution (mean&nbsp;0, standard
    *     deviation&nbsp;1)
    */
+  @Override
   public double nextDouble() {
     return generator.nextGaussian();
   }

@@ -130,7 +130,7 @@ class SimpleToadletServerTest {
   void isAllowedFullAccess_whenAddressMatchesAllowList_returnsTrue() throws Exception {
     SimpleToadletServer server = newServerWithDefaults();
 
-    assertTrue(server.isAllowedFullAccess(InetAddress.getByName("127.0.0.1")));
+    assertTrue(server.isAllowedFullAccess(InetAddress.getLoopbackAddress()));
     assertFalse(server.isAllowedFullAccess(InetAddress.getByName("8.8.8.8")));
   }
 

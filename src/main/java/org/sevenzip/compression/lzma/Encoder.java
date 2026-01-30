@@ -67,7 +67,7 @@ public class Encoder {
   private int updateStateForCur(int cur) {
     int posPrev = optimum[cur].posPrev;
     int state =
-        (optimum[cur].prev1IsChar) ? stateAfterPrevIsChar(cur, posPrev) : optimum[posPrev].state;
+        optimum[cur].prev1IsChar ? stateAfterPrevIsChar(cur, posPrev) : optimum[posPrev].state;
     if (posPrev == cur - 1) {
       return optimum[cur].isShortRep()
           ? Base.stateUpdateShortRep(state)
@@ -1147,11 +1147,11 @@ public class Encoder {
     }
 
     readMatchDistances();
-    int posState = (int) (nowPos64) & posStateMask;
+    int posState = (int) nowPos64 & posStateMask;
     rangeEncoder.encode(isMatch, (encoderState << Base.NUM_POS_STATES_BITS_MAX) + posState, 0);
     encoderState = Base.stateUpdateChar(encoderState);
     byte curByte = matchFinder.getIndexByte(-additionalOffset);
-    literalEncoder.getSubCoder((int) (nowPos64), previousByte).encode(rangeEncoder, curByte);
+    literalEncoder.getSubCoder((int) nowPos64, previousByte).encode(rangeEncoder, curByte);
     previousByte = curByte;
     additionalOffset--;
     nowPos64++;
@@ -1578,7 +1578,7 @@ public class Encoder {
     numLiteralPosStateBits = lp;
     numLiteralContextBits = lc;
     posStateBits = pb;
-    posStateMask = ((1) << posStateBits) - 1;
+    posStateMask = (1 << posStateBits) - 1;
     return true;
   }
 

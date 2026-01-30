@@ -262,7 +262,7 @@ public class NodeIPDetector {
     ArrayList<FreenetInetAddress> filtered = new ArrayList<>(addresses.length);
     for (FreenetInetAddress addr : addresses) {
       if (addr == null) continue;
-      if ((addr == overrideIPAddress && addr.hasHostnameNoIP())
+      if ((Objects.equals(addr, overrideIPAddress) && addr.hasHostnameNoIP())
           || IPUtil.isValidAddress(addr.getAddress(), false)) {
         filtered.add(addr);
       }
@@ -298,7 +298,7 @@ public class NodeIPDetector {
 
     // Add the old address only if we have no choice, or if we only have the word of two peers to go
     // on.
-    if ((!(hadAddedValidIP || peers.confidence > 2))
+    if (!(hadAddedValidIP || peers.confidence > 2)
         && (oldIPAddress != null)
         && !oldIPAddress.equals(overrideIPAddress)) {
       addresses.add(oldIPAddress);
@@ -354,7 +354,7 @@ public class NodeIPDetector {
     if (node.network().peers() == null) return new PeerInferenceResult(0, false);
 
     PeerNode[] peerList = node.network().peers().myPeers();
-    HashMap<FreenetInetAddress, Integer> countsByPeer = buildCountsByPeer(peerList);
+    Map<FreenetInetAddress, Integer> countsByPeer = buildCountsByPeer(peerList);
 
     if (countsByPeer.isEmpty()) {
       return new PeerInferenceResult(0, false);
@@ -365,8 +365,8 @@ public class NodeIPDetector {
     return handleMultipleCounts(countsByPeer, addresses, detectedAddrs);
   }
 
-  private HashMap<FreenetInetAddress, Integer> buildCountsByPeer(PeerNode[] peerList) {
-    HashMap<FreenetInetAddress, Integer> countsByPeer = new HashMap<>();
+  private Map<FreenetInetAddress, Integer> buildCountsByPeer(PeerNode[] peerList) {
+    Map<FreenetInetAddress, Integer> countsByPeer = new HashMap<>();
     if (peerList == null) return countsByPeer;
     // Note: Could use a standard mutable int object
     for (PeerNode pn : peerList) {
@@ -404,7 +404,7 @@ public class NodeIPDetector {
   }
 
   private PeerInferenceResult handleSingleCount(
-      HashMap<FreenetInetAddress, Integer> countsByPeer, List<FreenetInetAddress> addresses) {
+      Map<FreenetInetAddress, Integer> countsByPeer, List<FreenetInetAddress> addresses) {
     Entry<FreenetInetAddress, Integer> countByPeer = countsByPeer.entrySet().iterator().next();
     FreenetInetAddress addr = countByPeer.getKey();
     int confidence = countByPeer.getValue();
@@ -418,7 +418,7 @@ public class NodeIPDetector {
   }
 
   private PeerInferenceResult handleMultipleCounts(
-      HashMap<FreenetInetAddress, Integer> countsByPeer,
+      Map<FreenetInetAddress, Integer> countsByPeer,
       List<FreenetInetAddress> addresses,
       InetAddress[] detectedAddrs) {
     TopTwo top = selectTopTwo(countsByPeer);
@@ -438,7 +438,7 @@ public class NodeIPDetector {
       FreenetInetAddress secondBest,
       int secondBestPopularity) {}
 
-  private TopTwo selectTopTwo(HashMap<FreenetInetAddress, Integer> countsByPeer) {
+  private TopTwo selectTopTwo(Map<FreenetInetAddress, Integer> countsByPeer) {
     FreenetInetAddress best = null;
     FreenetInetAddress secondBest = null;
     int bestPopularity = 0;

@@ -38,7 +38,7 @@ public class PacketSender implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(PacketSender.class);
 
   /** Maximum time to queue a message before sending (milliseconds). */
-  static final long MAX_COALESCING_DELAY = MILLISECONDS.toMillis(100);
+  static final long MAX_COALESCING_DELAY = 100L;
 
   /**
    * Maximum time to queue bulk data before sending (milliseconds).

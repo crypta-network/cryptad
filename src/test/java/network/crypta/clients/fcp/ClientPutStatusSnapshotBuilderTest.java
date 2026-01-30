@@ -29,7 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings({"java:S100", "java:S3011"})
+@SuppressWarnings({"java:S100", "java:S3011", "JavaUtilDate"})
 class ClientPutStatusSnapshotBuilderTest {
   private static final String VALID_CHK =
       "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"

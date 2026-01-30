@@ -40,7 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "JavaUtilDate"})
 @ExtendWith(MockitoExtension.class)
 class ClientGetEventHandlingTest {
   private static final String CLIENT_FIELD = "client";
@@ -419,8 +419,14 @@ class ClientGetEventHandlingTest {
       Field field = owner.getDeclaredField(fieldName);
       field.setAccessible(true);
       field.set(target, value);
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new AssertionError("Failed to set field: " + fieldName, e);
+    } catch (ReflectiveOperationException e) {
+      throw linkageError("Failed to set field: " + fieldName, e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 }

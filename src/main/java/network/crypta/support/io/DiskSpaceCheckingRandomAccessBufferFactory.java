@@ -145,6 +145,7 @@ public class DiskSpaceCheckingRandomAccessBufferFactory
    * @throws IOException if the file preconditions are not met or another I/O error occurs
    * @throws InsufficientDiskSpaceException if the free‑space requirement is not met
    */
+  @Override
   @SuppressWarnings("java:S2093")
   public PooledFileRandomAccessBuffer createNewRAF(File file, long size, Random random)
       throws IOException {

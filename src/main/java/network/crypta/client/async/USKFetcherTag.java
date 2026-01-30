@@ -131,7 +131,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
     pollingPriorityProgress = callback.getPollingPriorityProgress();
     priority = pollingPriorityNormal;
     this.checkStoreOnly = (options & OPT_CHECK_STORE_ONLY) != 0;
-    this.hashCode = super.hashCode();
+    this.hashCode = System.identityHashCode(this);
     if (LOG.isDebugEnabled()) LOG.debug("Created tag for {} and {} : {}", origUSK, callback, this);
   }
 

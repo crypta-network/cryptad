@@ -417,16 +417,29 @@ final class USKDateHintFetches {
         LOG.error("Impossible throwable - maybe bogus encoding?: {}", t, t);
         return;
       }
-      String[] split = line.split("\n");
-      if (split.length < 3) {
+      List<String> split = new ArrayList<>();
+      int start = 0;
+      while (true) {
+        int next = line.indexOf('\n', start);
+        if (next == -1) {
+          split.add(line.substring(start));
+          break;
+        }
+        split.add(line.substring(start, next));
+        start = next + 1;
+      }
+      for (int i = split.size() - 1; i >= 0 && split.get(i).isEmpty(); i--) {
+        split.remove(i);
+      }
+      if (split.size() < 3) {
         LOG.error("Unable to parse hint (not enough lines): \"{}\"", line);
         return;
       }
-      if (!split[0].startsWith("HINT")) {
+      if (!split.get(0).startsWith("HINT")) {
         LOG.error("Unable to parse hint (first line doesn't start with HINT): \"{}\"", line);
         return;
       }
-      String value = split[1];
+      String value = split.get(1);
       long hint;
       try {
         hint = Long.parseLong(value);

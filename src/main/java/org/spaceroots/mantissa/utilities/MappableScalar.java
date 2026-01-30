@@ -97,6 +97,7 @@ public class MappableScalar implements ArraySliceMappable {
    *
    * @return {@code 1}, indicating a one-element state representation
    */
+  @Override
   public int getStateDimension() {
     return 1;
   }
@@ -114,6 +115,7 @@ public class MappableScalar implements ArraySliceMappable {
    * @throws NullPointerException if {@code array} is {@code null}
    * @throws ArrayIndexOutOfBoundsException if {@code start} is outside array bounds
    */
+  @Override
   public void mapStateFromArray(int start, double[] array) {
     value = array[start];
   }
@@ -131,6 +133,7 @@ public class MappableScalar implements ArraySliceMappable {
    * @throws NullPointerException if {@code array} is {@code null}
    * @throws ArrayIndexOutOfBoundsException if {@code start} is outside array bounds
    */
+  @Override
   public void mapStateToArray(int start, double[] array) {
     array[start] = value;
   }

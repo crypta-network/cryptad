@@ -41,6 +41,7 @@ public class Hermite extends OrthogonalPolynomial {
   private static final CoefficientsGenerator generator =
       new CoefficientsGenerator(
           new RationalNumber(1L), new RationalNumber(0L), new RationalNumber(2L)) {
+        @Override
         public void setRecurrenceCoefficients(int k) {
           // the recurrence relation is
           // Hk+1(X) = 2X Hk(X) - 2k Hk-1(X)

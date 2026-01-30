@@ -106,8 +106,8 @@ class IOUtilsTest {
     IThrowableProxy proxy = evt.getThrowableProxy();
     assertNotNull(proxy, "throwable proxy should be present");
     assertEquals(thrown.getClass().getName(), proxy.getClassName());
-    if (proxy instanceof ThrowableProxy) {
-      assertEquals(thrown.getMessage(), ((ThrowableProxy) proxy).getThrowable().getMessage());
+    if (proxy instanceof ThrowableProxy throwableProxy) {
+      assertEquals(thrown.getMessage(), throwableProxy.getThrowable().getMessage());
     }
   }
 
@@ -170,8 +170,8 @@ class IOUtilsTest {
     IThrowableProxy proxy = evt.getThrowableProxy();
     assertNotNull(proxy, "throwable proxy should be present");
     assertEquals(IOException.class.getName(), proxy.getClassName());
-    if (proxy instanceof ThrowableProxy) {
-      assertEquals("io-failure", ((ThrowableProxy) proxy).getThrowable().getMessage());
+    if (proxy instanceof ThrowableProxy throwableProxy) {
+      assertEquals("io-failure", throwableProxy.getThrowable().getMessage());
     }
   }
 

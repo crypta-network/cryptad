@@ -185,8 +185,8 @@ class NodeStatsHtmlRendererTest {
     assertTrue(output.contains(TimeUtil.formatTime(4000, 2, true)));
 
     DecimalFormat pctFormat = new DecimalFormat("##0.000%");
-    String expectedLocal = pctFormat.format(((double) 1) / ((double) (1 + 9)));
-    String expectedRemote = pctFormat.format(((double) 3) / ((double) (3 + 7)));
+    String expectedLocal = pctFormat.format(1.0 / (1 + 9));
+    String expectedRemote = pctFormat.format(3.0 / (3 + 7));
     assertTrue(output.contains(expectedLocal));
     assertTrue(output.contains(expectedRemote));
     assertEquals(2, countTableOpenTags(output));

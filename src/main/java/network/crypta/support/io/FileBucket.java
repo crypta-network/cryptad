@@ -102,6 +102,7 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
    * @param deleteOnFree when {@code true}, {@link #free()} attempts to delete the underlying file
    * @throws NullPointerException if {@code file} is {@code null}
    */
+  @SuppressWarnings("ReferenceEquality")
   public FileBucket(
       File file,
       boolean readOnly,
@@ -260,10 +261,10 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
    * Reconstructs an instance from a stream produced by {@link #storeTo(DataOutputStream)}.
    *
    * <p>Precondition: the caller must have already consumed this subclass’s magic (see {@link
-   * #MAGIC}). This constructor reads and validates the base header via {@link BaseFileBucket#
-   * BaseFileBucket(DataInputStream)}, then validates the subclass {@link #VERSION} and restores the
-   * flags. The {@link #deleteOnExitFlag} is always restored as {@code false} to avoid relying on
-   * JVM-exit semantics for persisted objects.
+   * #MAGIC}). This constructor reads and validates the base header via {@link
+   * BaseFileBucket#BaseFileBucket(DataInputStream)}, then validates the subclass {@link #VERSION}
+   * and restores the flags. The {@link #deleteOnExitFlag} is always restored as {@code false} to
+   * avoid relying on JVM-exit semantics for persisted objects.
    *
    * @param dis source stream positioned at the subclass header
    * @throws IOException on I/O errors
@@ -295,6 +296,7 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
 
   /** {@inheritDoc} */
   @Override
+  @SuppressWarnings("EqualsGetClass")
   public boolean equals(Object obj) {
     if (this == obj) {
       return true;

@@ -86,7 +86,7 @@ public class ProgramDirectory {
       throw new IOException("move not implemented");
     }
 
-    if (!((newDir.exists() && newDir.isDirectory()) || (newDir.mkdir()))) {
+    if (!((newDir.exists() && newDir.isDirectory()) || newDir.mkdir())) {
       throw new IOException("Could not find or make a directory called: " + l10n(file));
     }
 
@@ -141,7 +141,7 @@ public class ProgramDirectory {
       }
       if (dir.equals(new File(val))) return;
       File f = new File(val);
-      if (!((f.exists() && f.isDirectory()) || (f.mkdir())))
+      if (!((f.exists() && f.isDirectory()) || f.mkdir()))
         // Used in advanced setups; still common enough to translate.
         // Keep message localized for user-facing configuration errors.
         throw new InvalidConfigValueException(l10n(moveErrMsg));

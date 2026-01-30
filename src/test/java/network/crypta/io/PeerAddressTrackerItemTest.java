@@ -25,7 +25,7 @@ class PeerAddressTrackerItemTest {
   void toFieldSet_roundTrip_whenIPv4_expectPeerEqualAndAddressNumeric() throws Exception {
     long noRecv = 1_000L;
     long noSent = 2_000L;
-    Peer peer = new Peer(InetAddress.getByName("127.0.0.1"), 3333);
+    Peer peer = new Peer(InetAddress.getAllByName("127.0.0.1")[0], 3333);
 
     PeerAddressTrackerItem item = new PeerAddressTrackerItem(noRecv, noSent, peer);
 
@@ -70,7 +70,7 @@ class PeerAddressTrackerItemTest {
     long noSent = 20L;
 
     // IPv6 documentation prefix ensures determinism; no DNS is performed for numeric IPs
-    InetAddress v6 = InetAddress.getByName("2001:db8::1");
+    InetAddress v6 = InetAddress.getAllByName("2001:db8::1")[0];
     Peer peer = new Peer(v6, 65000);
 
     PeerAddressTrackerItem item = new PeerAddressTrackerItem(noRecv, noSent, peer);

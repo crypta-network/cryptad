@@ -96,6 +96,7 @@ public class DarknetAddRefToadlet extends Toadlet {
    * @throws RedirectException if the framework requests a redirect instead of returning content in
    *     this handler.
    */
+  @Override
   public void handleMethodGET(URI uri, final HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (!ctx.checkFullAccess(this)) return;

@@ -13,7 +13,7 @@ import network.crypta.support.TimeUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "JavaUtilDate"})
 class CookieTest {
 
   private static final URI VALID_PATH = URI.create("/Freetalk");

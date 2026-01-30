@@ -191,6 +191,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    * @return {@code true} if a previous fetch was running and was not already replaced by an
    *     aggressive one; {@code false} otherwise.
    */
+  @SuppressWarnings("ReferenceEquality")
   public boolean start(boolean aggressive, boolean reset) {
     if (manager.isBlown()) {
       LOG.error("Not starting revocation checker: key already blown!");
@@ -425,6 +426,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     }
   }
 
+  @SuppressWarnings("ReferenceEquality")
   private void verifyExpectedBlobFile(Bucket tmpBlob) {
     if (tmpBlob instanceof FileBucket bucket) {
       File f = bucket.getFile();

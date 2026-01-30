@@ -41,6 +41,7 @@ import org.jetbrains.annotations.NotNull;
  * @see MetadataRedirectTarget
  * @see SplitfilePayload
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record MetadataTopLayerInfo(
     long origDataLength,
     long origCompressedDataLength,

@@ -73,6 +73,7 @@ public class ClassicalRungeKuttaIntegrator extends RungeKuttaIntegrator {
    *
    * @return immutable string {@code "classical Runge-Kutta"} describing this RK4 implementation.
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }

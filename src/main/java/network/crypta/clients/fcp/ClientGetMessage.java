@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
+import java.util.Locale;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -392,7 +393,7 @@ public class ClientGetMessage extends BaseDataCarryingMessage {
   ReturnType parseReturnTypeFCP(String string) throws MessageInvalidException {
     try {
       if (string == null) return ReturnType.DIRECT;
-      return ReturnType.valueOf(string.toUpperCase());
+      return ReturnType.valueOf(string.toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,

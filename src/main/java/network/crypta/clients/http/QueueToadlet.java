@@ -16,13 +16,13 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -475,7 +475,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
                   + "&"
                   + COMPRESS_FIELD
                   + "="
-                  + (!(request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty()))
+                  + !request.getPartAsStringFailsafe(COMPRESS_FIELD, 128).isEmpty()
                   + "&"
                   + COMPATIBILITY_MODE_FIELD
                   + "="
@@ -865,8 +865,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     private BulkDownloadResult enqueueBulkDownloads(
         String[] keys, boolean filterData, DownloadTarget downloadTarget) {
-      LinkedList<String> success = new LinkedList<>();
-      LinkedList<String> failure = new LinkedList<>();
+      List<String> success = new ArrayList<>();
+      List<String> failure = new ArrayList<>();
 
       for (int i = 0; i < keys.length; i++) {
         String currentKey = keys[i].trim();
@@ -941,6 +941,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     private record BulkDownloadResult(List<String> success, List<String> failure) {}
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record InsertUploadContext(
         FreenetURI insertURI,
         HTTPUploadedFile file,
@@ -999,6 +1000,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record InsertOptions(
         boolean compress, CompatibilityMode cmode, byte[] overrideSplitfileKey, String target) {
       @Override
@@ -1098,6 +1100,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
+    @SuppressWarnings("ArrayRecordComponent")
     private record LocalDirInsertParams(
         File file,
         String identifier,
@@ -1838,7 +1841,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
 
     private List<String> extractIdentifierParts(HTTPRequest request) {
-      List<String> parts = new LinkedList<>();
+      List<String> parts = new ArrayList<>();
       for (String part : request.getParts()) {
         if (part.startsWith(IDENTIFIER_PREFIX)) {
           String trimmed = part.substring(IDENTIFIER_PREFIX.length());
@@ -1904,7 +1907,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
         return false;
       }
       String description = request.getPartAsStringFailsafe("description", 32768);
-      List<FreenetURI> uris = new LinkedList<>();
+      List<FreenetURI> uris = new ArrayList<>();
       for (String part : request.getParts()) {
         if (!part.startsWith(KEY_PREFIX)) continue;
         String key = request.getPartAsStringFailsafe(part, MAX_KEY_LENGTH);
@@ -2105,6 +2108,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * @throws IOException if an I/O error occurs while reading request data or writing the reply.
    * @throws RedirectException if the request should be redirected to a different path.
    */
+  @Override
   public void handleMethodGET(URI uri, final HTTPRequest request, final ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
 
@@ -2447,6 +2451,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     };
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record RequestTableContext(
       PageMaker pageMaker,
       ToadletContext ctx,
@@ -2480,9 +2485,10 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     @Override
     public @NotNull String toString() {
+      String pageMakerType = pageMaker == null ? "null" : pageMaker.getClass().getName();
       return "RequestTableContext["
           + "pageMaker="
-          + pageMaker
+          + pageMakerType
           + ", ctx="
           + ctx
           + ", priorityClasses="
@@ -2493,6 +2499,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record FailureColumns(
       QueueColumn[] advancedModeColumns, QueueColumn[] simpleModeColumns) {
 
@@ -2525,6 +2532,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record RowRenderContext(
       ToadletContext ctx,
       String[] priorityClasses,
@@ -3043,7 +3051,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     String[] types = partitions.failedBadMIMEType.keySet().toArray(new String[0]);
     Arrays.sort(types);
     for (String type : types) {
-      LinkedList<DownloadRequestStatus> getters = partitions.failedBadMIMEType.get(type);
+      List<DownloadRequestStatus> getters = partitions.failedBadMIMEType.get(type);
       String atype = type.replace("-", "--").replace('/', '-');
       contentNode.addChild("a", "id", "failedDownload-badtype-" + atype);
       FilterMIMEType typeHandler = ContentFilter.getMIMEType(type);
@@ -3102,7 +3110,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     String[] types = partitions.failedUnknownMIMEType.keySet().toArray(new String[0]);
     Arrays.sort(types);
     for (String type : types) {
-      LinkedList<DownloadRequestStatus> getters = partitions.failedUnknownMIMEType.get(type);
+      List<DownloadRequestStatus> getters = partitions.failedUnknownMIMEType.get(type);
       String atype = type.replace("-", "--").replace('/', '-');
       contentNode.addChild("a", "id", "failedDownload-unknowntype-" + atype);
       HTMLNode failedContent =
@@ -3533,9 +3541,9 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private void addUnknownMimeFailure(
       DownloadRequestStatus download, QueuePartitions partitions, String mimeType) {
     String normalizedMimeType = ContentFilter.stripMIMEType(mimeType);
-    LinkedList<DownloadRequestStatus> list =
+    List<DownloadRequestStatus> list =
         partitions.failedUnknownMIMEType.computeIfAbsent(
-            normalizedMimeType, _ -> new LinkedList<>());
+            normalizedMimeType, _ -> new ArrayList<>());
     list.add(download);
   }
 
@@ -3543,17 +3551,17 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       DownloadRequestStatus download, QueuePartitions partitions, String mimeType) {
     String normalizedMimeType = ContentFilter.stripMIMEType(mimeType);
     FilterMIMEType type = ContentFilter.getMIMEType(normalizedMimeType);
-    LinkedList<DownloadRequestStatus> list;
+    List<DownloadRequestStatus> list;
     if (type == null) {
       LOG.error(
           "Bad MIME failure code yet MIME is {} which does not have a handler!",
           normalizedMimeType);
       list =
           partitions.failedUnknownMIMEType.computeIfAbsent(
-              normalizedMimeType, _ -> new LinkedList<>());
+              normalizedMimeType, _ -> new ArrayList<>());
     } else {
       list =
-          partitions.failedBadMIMEType.computeIfAbsent(normalizedMimeType, _ -> new LinkedList<>());
+          partitions.failedBadMIMEType.computeIfAbsent(normalizedMimeType, _ -> new ArrayList<>());
     }
     list.add(download);
   }
@@ -3568,21 +3576,21 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   }
 
   private static final class QueuePartitions {
-    final LinkedList<DownloadRequestStatus> completedDownloadToDisk = new LinkedList<>();
-    final LinkedList<DownloadRequestStatus> completedDownloadToTemp = new LinkedList<>();
-    final LinkedList<UploadFileRequestStatus> completedUpload = new LinkedList<>();
-    final LinkedList<UploadDirRequestStatus> completedDirUpload = new LinkedList<>();
+    final List<DownloadRequestStatus> completedDownloadToDisk = new ArrayList<>();
+    final List<DownloadRequestStatus> completedDownloadToTemp = new ArrayList<>();
+    final List<UploadFileRequestStatus> completedUpload = new ArrayList<>();
+    final List<UploadDirRequestStatus> completedDirUpload = new ArrayList<>();
 
-    final LinkedList<DownloadRequestStatus> failedDownload = new LinkedList<>();
-    final LinkedList<UploadFileRequestStatus> failedUpload = new LinkedList<>();
-    final LinkedList<UploadDirRequestStatus> failedDirUpload = new LinkedList<>();
+    final List<DownloadRequestStatus> failedDownload = new ArrayList<>();
+    final List<UploadFileRequestStatus> failedUpload = new ArrayList<>();
+    final List<UploadDirRequestStatus> failedDirUpload = new ArrayList<>();
 
-    final LinkedList<DownloadRequestStatus> uncompletedDownload = new LinkedList<>();
-    final LinkedList<UploadFileRequestStatus> uncompletedUpload = new LinkedList<>();
-    final LinkedList<UploadDirRequestStatus> uncompletedDirUpload = new LinkedList<>();
+    final List<DownloadRequestStatus> uncompletedDownload = new ArrayList<>();
+    final List<UploadFileRequestStatus> uncompletedUpload = new ArrayList<>();
+    final List<UploadDirRequestStatus> uncompletedDirUpload = new ArrayList<>();
 
-    final Map<String, LinkedList<DownloadRequestStatus>> failedUnknownMIMEType = new HashMap<>();
-    final Map<String, LinkedList<DownloadRequestStatus>> failedBadMIMEType = new HashMap<>();
+    final Map<String, List<DownloadRequestStatus>> failedUnknownMIMEType = new HashMap<>();
+    final Map<String, List<DownloadRequestStatus>> failedBadMIMEType = new HashMap<>();
 
     short lowestQueuedPrio = RequestStarter.PAUSED_PRIORITY_CLASS;
     long totalQueuedDownloadSize = 0;
@@ -4084,6 +4092,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * @param lastActivity The last activity of the request
    * @return The created table cell HTML node
    */
+  @SuppressWarnings("JavaUtilDate")
   private HTMLNode createLastActivityCell(long now, Date lastActivity) {
     HTMLNode lastActivityCell = new HTMLNode("td", ATTR_CLASS, "request-last-activity");
     if (lastActivity == null) {
@@ -4105,6 +4114,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   /**
    * @see #createLastActivityCell(long, Date)
    */
+  @SuppressWarnings("JavaUtilDate")
   private HTMLNode createLastFailureCell(long now, Date lastFailure) {
     HTMLNode lastFailureCell = new HTMLNode("td", ATTR_CLASS, "request-last-failure");
     if (lastFailure == null) {
@@ -4191,6 +4201,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void addHeaderCell(HTMLNode headerRow, QueueColumn column) {
     switch (column) {
       case IDENTIFIER:
@@ -4512,7 +4523,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    */
   @Override
   public boolean isEnabled(ToadletContext ctx) {
-    return (!container.publicGatewayMode()) || ((ctx != null) && ctx.isAllowedFullAccess());
+    return !container.publicGatewayMode() || (ctx != null && ctx.isAllowedFullAccess());
   }
 
   private static final String DEFAULT_UPLOADS_SEGMENT = "uploads";

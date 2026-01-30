@@ -578,7 +578,7 @@ public class Rotation implements Serializable {
     Vector3D v2 = applyInverseTo(Vector3D.plusI);
     checkAngleBounds(v2.getZ(), true);
     return new double[] {
-      Math.atan2(-(v1.getY()), v1.getZ()), Math.asin(v2.getZ()), Math.atan2(-(v2.getY()), v2.getX())
+      Math.atan2(-v1.getY(), v1.getZ()), Math.asin(v2.getZ()), Math.atan2(-v2.getY(), v2.getX())
     };
   }
 
@@ -623,7 +623,7 @@ public class Rotation implements Serializable {
     Vector3D v2 = applyInverseTo(Vector3D.plusJ);
     checkAngleBounds(v2.getX(), true);
     return new double[] {
-      Math.atan2(-(v1.getZ()), v1.getX()), Math.asin(v2.getX()), Math.atan2(-(v2.getZ()), v2.getY())
+      Math.atan2(-v1.getZ(), v1.getX()), Math.asin(v2.getX()), Math.atan2(-v2.getZ(), v2.getY())
     };
   }
 
@@ -638,7 +638,7 @@ public class Rotation implements Serializable {
     Vector3D v2 = applyInverseTo(Vector3D.plusK);
     checkAngleBounds(v2.getY(), true);
     return new double[] {
-      Math.atan2(-(v1.getX()), v1.getY()), Math.asin(v2.getY()), Math.atan2(-(v2.getX()), v2.getZ())
+      Math.atan2(-v1.getX(), v1.getY()), Math.asin(v2.getY()), Math.atan2(-v2.getX(), v2.getZ())
     };
   }
 

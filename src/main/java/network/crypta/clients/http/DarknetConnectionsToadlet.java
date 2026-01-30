@@ -108,32 +108,32 @@ public class DarknetConnectionsToadlet extends ConnectionsToadlet {
 
     @Override
     protected int customCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      switch (this.sortBy) {
-        case "name":
-          return ((DarknetPeerNodeStatus) firstNode)
-              .getName()
-              .compareToIgnoreCase(((DarknetPeerNodeStatus) secondNode).getName());
-        case "privnote":
-          return ((DarknetPeerNodeStatus) firstNode)
-              .getPrivateDarknetCommentNote()
-              .compareToIgnoreCase(
-                  ((DarknetPeerNodeStatus) secondNode).getPrivateDarknetCommentNote());
-        case "trust":
-          return ((DarknetPeerNodeStatus) firstNode)
-              .getTrustLevel()
-              .compareTo(((DarknetPeerNodeStatus) secondNode).getTrustLevel());
-        case "visibility":
+      return switch (this.sortBy) {
+        case "name" ->
+            ((DarknetPeerNodeStatus) firstNode)
+                .getName()
+                .compareToIgnoreCase(((DarknetPeerNodeStatus) secondNode).getName());
+        case "privnote" ->
+            ((DarknetPeerNodeStatus) firstNode)
+                .getPrivateDarknetCommentNote()
+                .compareToIgnoreCase(
+                    ((DarknetPeerNodeStatus) secondNode).getPrivateDarknetCommentNote());
+        case "trust" ->
+            ((DarknetPeerNodeStatus) firstNode)
+                .getTrustLevel()
+                .compareTo(((DarknetPeerNodeStatus) secondNode).getTrustLevel());
+        case "visibility" -> {
           int ret =
               ((DarknetPeerNodeStatus) firstNode)
                   .getOurVisibility()
                   .compareTo(((DarknetPeerNodeStatus) secondNode).getOurVisibility());
-          if (ret != 0) return ret;
-          return ((DarknetPeerNodeStatus) firstNode)
+          if (ret != 0) yield ret;
+          yield ((DarknetPeerNodeStatus) firstNode)
               .getTheirVisibility()
               .compareTo(((DarknetPeerNodeStatus) secondNode).getTheirVisibility());
-        default:
-          return super.customCompare(firstNode, secondNode);
-      }
+        }
+        default -> super.customCompare(firstNode, secondNode);
+      };
     }
 
     /** Default comparison, after taking into account status. */

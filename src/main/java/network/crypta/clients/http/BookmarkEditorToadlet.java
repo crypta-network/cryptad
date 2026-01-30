@@ -381,6 +381,7 @@ public class BookmarkEditorToadlet extends Toadlet {
    * @throws IOException if underlying I/O (typically response writing) fails while generating the
    *     HTML page.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     if (!ctx.checkFullAccess(this)) return;
@@ -906,7 +907,7 @@ public class BookmarkEditorToadlet extends Toadlet {
         postCtx
             .bookmarkManager()
             .getBookmarkByPath(postCtx.bookmarkManager().parentPath(bookmarkPath) + name);
-    if (!isValidName(name) || (targetBookmark != null && targetBookmark != bookmark)) {
+    if (!isValidName(name) || (targetBookmark != null && !targetBookmark.equals(bookmark))) {
       addNameError(postCtx.pageMaker(), postCtx.content());
       return;
     }

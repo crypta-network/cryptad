@@ -80,6 +80,7 @@ public class UpperTriangularMatrix extends SquareMatrix {
    * @return new {@code UpperTriangularMatrix} with identical data and size; caller receives full
    *     ownership of the copy
    */
+  @Override
   public Matrix duplicate() {
     return new UpperTriangularMatrix(this);
   }
@@ -186,6 +187,7 @@ public class UpperTriangularMatrix extends SquareMatrix {
    *     implementation but retained for compatibility
    * @return product of diagonal entries representing the determinant of this matrix
    */
+  @Override
   public double getDeterminant(double epsilon) {
     double determinant = data[0];
     for (int index = columns + 1; index < columns * columns; index += columns + 1) {
@@ -215,6 +217,7 @@ public class UpperTriangularMatrix extends SquareMatrix {
    * @throws SingularMatrixException if any diagonal element has magnitude smaller than {@code
    *     epsilon}
    */
+  @Override
   public Matrix solve(Matrix b, double epsilon) throws SingularMatrixException {
     // validity check
     if (b.getRows() != rows) {
@@ -327,6 +330,7 @@ public class UpperTriangularMatrix extends SquareMatrix {
    * @return {@link NonNullRange} representing the inclusive column bounds that can hold non-zero
    *     entries
    */
+  @Override
   public NonNullRange getRangeForRow(int i) {
     return new NonNullRange(i, columns);
   }
@@ -342,6 +346,7 @@ public class UpperTriangularMatrix extends SquareMatrix {
    * @return {@link NonNullRange} covering rows that may contain non-zero values in the specified
    *     column
    */
+  @Override
   public NonNullRange getRangeForColumn(int j) {
     return new NonNullRange(0, j + 1);
   }

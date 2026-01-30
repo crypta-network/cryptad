@@ -23,7 +23,6 @@ import network.crypta.io.comm.RetrievalException;
 import network.crypta.support.PriorityAwareExecutor;
 import network.crypta.support.api.RandomAccessBuffer;
 import org.jetbrains.annotations.NotNull;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,15 +39,6 @@ class PartiallyReceivedBulkTest {
   @Mock RandomAccessBuffer raf;
 
   @Mock MessageCore usm;
-
-  // Use a tiny executor stub; MessageCore is not exercised by these tests.
-  @BeforeEach
-  void setUp() {
-    if (usm == null) {
-      // Mockito may choose to not inject if not used; ensure non-null
-      usm = mock(MessageCore.class);
-    }
-  }
 
   private static MessageCore dummyMessageCore() {
     // Minimal real instance with a no-op executor to avoid NPEs if used indirectly.

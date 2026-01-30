@@ -3,7 +3,6 @@ package network.crypta.clients.fcp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -139,7 +138,7 @@ public class PersistentRequestClient {
   int watchGlobalVerbosityMask;
 
   /** FCPClients watching us. Lazy init, sync on clientsWatchingLock */
-  private LinkedList<PersistentRequestClient> clientsWatching;
+  private List<PersistentRequestClient> clientsWatching;
 
   private final Object clientsWatchingLock = new Object();
   private final RequestClient lowLevelClient;
@@ -389,6 +388,7 @@ public class PersistentRequestClient {
    * @throws IdentifierCollisionException if another request with the same identifier already exists
    *     in the mapping.
    */
+  @SuppressWarnings("ReferenceEquality")
   public void register(ClientRequest cg) throws IdentifierCollisionException {
     if (cg.persistence != persistence) {
       throw new IllegalArgumentException("Persistence mismatch for request " + cg.getIdentifier());
@@ -407,9 +407,9 @@ public class PersistentRequestClient {
     }
     if (statusCache != null) {
       if (cg instanceof ClientGet) {
-        statusCache.addDownload((DownloadRequestStatus) (cg.getStatus()));
+        statusCache.addDownload((DownloadRequestStatus) cg.getStatus());
       } else if (cg instanceof ClientPutBase) {
-        statusCache.addUpload((UploadRequestStatus) (cg.getStatus()));
+        statusCache.addUpload((UploadRequestStatus) cg.getStatus());
       }
     }
   }
@@ -536,7 +536,7 @@ public class PersistentRequestClient {
               "Request is null on runningPersistentRequests for {} - database corruption??", this);
           continue;
         }
-        if ((req.isPersistentForever()) || !onlyForever) v.add(req);
+        if (req.isPersistentForever() || !onlyForever) v.add(req);
       }
       v.addAll(completedUnackedRequests);
     }
@@ -688,7 +688,7 @@ public class PersistentRequestClient {
   private void watch(PersistentRequestClient client) {
     if (!isGlobalQueue) return;
     synchronized (clientsWatchingLock) {
-      if (clientsWatching == null) clientsWatching = new LinkedList<>();
+      if (clientsWatching == null) clientsWatching = new ArrayList<>();
       clientsWatching.add(client);
     }
   }
@@ -884,6 +884,7 @@ public class PersistentRequestClient {
    * @throws IllegalArgumentException if the identifier already maps to a different request
    *     instance.
    */
+  @SuppressWarnings("ReferenceEquality")
   public void resume(ClientRequest clientRequest) {
     if (clientRequest.hasFinished()) completedUnackedRequests.add(clientRequest);
     else runningPersistentRequests.add(clientRequest);

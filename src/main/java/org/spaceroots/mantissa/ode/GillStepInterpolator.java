@@ -79,6 +79,7 @@ class GillStepInterpolator extends RungeKuttaStepInterpolator implements StepInt
    * @throws DerivativeException if previously computed derivatives could not be reused to form a
    *     consistent interpolated state.
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 

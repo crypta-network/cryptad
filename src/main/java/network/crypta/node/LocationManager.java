@@ -21,15 +21,16 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Deque;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TimeZone;
@@ -494,7 +495,7 @@ public class LocationManager implements ByteCounter {
           node.bootstrap().fastWeakRandom().nextBytes(randomContentToInsert);
           ArrayBucket randomBucketToInsert = new ArrayBucket(randomContentToInsert);
           // create the KSK
-          ClientKSK insertForToday = (ClientKSK.create(nameForInsert));
+          ClientKSK insertForToday = ClientKSK.create(nameForInsert);
           InsertBlock kskInsertBlock =
               new InsertBlock(randomBucketToInsert, null, insertForToday.getInsertURI());
           // create the CHK
@@ -622,7 +623,7 @@ public class LocationManager implements ByteCounter {
         long diff = endTime - now;
         try {
           if (diff > 0) { // noinspection BusyWait
-            Thread.sleep(Math.min((int) diff, SECONDS.toMillis(10)));
+            Thread.sleep(Math.min(diff, SECONDS.toMillis(10)));
           }
         } catch (InterruptedException _) {
           // Treat interrupt as a shutdown signal for the sender thread.
@@ -1107,7 +1108,7 @@ public class LocationManager implements ByteCounter {
     }
 
     private boolean isRejectedAfterRequest(Message reply, long uid) {
-      if (reply.getSpec() == DMT.FNPSwapRejected) {
+      if (Objects.equals(reply.getSpec(), DMT.FNPSwapRejected)) {
         if (LOG.isDebugEnabled()) LOG.debug("Swap rejected for {}", uid);
         return true;
       }
@@ -1115,7 +1116,7 @@ public class LocationManager implements ByteCounter {
     }
 
     private boolean isRejectedAfterComplete(Message reply) {
-      if (reply.getSpec() == DMT.FNPSwapRejected) {
+      if (Objects.equals(reply.getSpec(), DMT.FNPSwapRejected)) {
         LOG.error(
             "SwapRejected received while waiting for SwapComplete; occasional disconnects are"
                 + " expected, frequent occurrences indicate a bug or attack");
@@ -1168,6 +1169,7 @@ public class LocationManager implements ByteCounter {
     if (log) recordLocChange(randomReset, fromDupLocation);
   }
 
+  @SuppressWarnings("JavaUtilDate")
   private void recordLocChange(final boolean randomReset, final boolean fromDupLocation) {
     node.network()
         .executor()
@@ -1389,7 +1391,7 @@ public class LocationManager implements ByteCounter {
   }
 
   /** Queue of swap requests to handle after this one. */
-  private final Deque<Message> incomingMessageQueue = new LinkedList<>();
+  private final Deque<Message> incomingMessageQueue = new ArrayDeque<>();
 
   static final int MAX_INCOMING_QUEUE_LENGTH = 10;
 
@@ -1497,7 +1499,7 @@ public class LocationManager implements ByteCounter {
         runNow = true;
         lockedTime = System.currentTimeMillis();
       } else {
-        if ((!node.isEnableSwapQueueing())
+        if (!node.isEnableSwapQueueing()
             || incomingMessageQueue.size() > MAX_INCOMING_QUEUE_LENGTH) {
           reject = true;
           incrementSwapsRejectedAlreadyLocked();
@@ -1654,7 +1656,7 @@ public class LocationManager implements ByteCounter {
       LOG.error("SwapReply on {} but routedTo is null", uid);
       return false;
     }
-    if (source != item.routedTo) {
+    if (!Objects.equals(source, item.routedTo)) {
       LOG.error(
           UNMATCHED_SWAP_REPLY_WRONG_SOURCE_MSG, uid, source, item.routedTo, item.requestSender);
       return true;
@@ -1694,7 +1696,7 @@ public class LocationManager implements ByteCounter {
       LOG.error("SwapRejected on {} but routedTo is null", uid);
       return false;
     }
-    if (source != item.routedTo) {
+    if (!Objects.equals(source, item.routedTo)) {
       LOG.error(
           UNMATCHED_SWAP_REJECTED_WRONG_SOURCE_MSG, uid, source, item.routedTo, item.requestSender);
       return true;
@@ -1727,7 +1729,7 @@ public class LocationManager implements ByteCounter {
     RecentlyForwardedItem item = recentlyForwardedIDs.get(uid);
     if (item == null) return false;
     if (item.routedTo == null) return false;
-    if (source != item.requestSender) {
+    if (!Objects.equals(source, item.requestSender)) {
       LOG.error(
           UNMATCHED_SWAP_COMMIT_WRONG_SOURCE_MSG, uid, source, item.requestSender, item.routedTo);
       return true;
@@ -1778,7 +1780,7 @@ public class LocationManager implements ByteCounter {
       LOG.error("SwapComplete on {} but routedTo is null", uid);
       return false;
     }
-    if (source != item.routedTo) {
+    if (!Objects.equals(source, item.routedTo)) {
       LOG.error(
           UNMATCHED_SWAP_COMPLETE_WRONG_SOURCE_MSG, uid, source, item.routedTo, item.requestSender);
       return true;
@@ -1877,7 +1879,7 @@ public class LocationManager implements ByteCounter {
 
         if (item == null) {
           LOG.error("recentlyForwardedIDs missing value for key {}", l);
-        } else if (item.routedTo == pn && item.successfullyForwarded) {
+        } else if (Objects.equals(item.routedTo, pn) && item.successfullyForwarded) {
           v.add(item);
         }
       }

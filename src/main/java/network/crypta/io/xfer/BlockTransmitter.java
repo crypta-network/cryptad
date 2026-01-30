@@ -106,9 +106,9 @@ public class BlockTransmitter {
      *
      * @param interval time in milliseconds since the previous packet was sent; negative when not
      *     applicable (e.g., for the first packet).
-     * @param realtime {@code true} if the transfer runs in realtime mode, {@code false} for bulk.
+     * @param realTime {@code true} if the transfer runs in realtime mode, {@code false} for bulk.
      */
-    void blockTime(long interval, boolean realtime);
+    void blockTime(long interval, boolean realTime);
   }
 
   private final BlockTimeCallback blockTimeCallback;
@@ -538,7 +538,9 @@ public class BlockTransmitter {
   public interface ReceiverAbortHandler {
 
     /**
-     * @return True to cancel the PRB and thus cascade the cancel to the downstream transfer, false
+     * Returns true to cancel the PRB and cascade to downstream transfer.
+     *
+     * @return true to cancel the PRB and thus cascade the cancel to the downstream transfer, false
      *     otherwise.
      */
     boolean onAbort();
@@ -625,7 +627,7 @@ public class BlockTransmitter {
 
         @Override
         public void onMatched(Message msg) {
-          if ((!prb.isAborted()) && abortHandler.onAbort())
+          if (!prb.isAborted() && abortHandler.onAbort())
             prb.abort(
                 RetrievalException.CANCELLED_BY_RECEIVER, "Cascading cancel from receiver", true);
           Future fail;

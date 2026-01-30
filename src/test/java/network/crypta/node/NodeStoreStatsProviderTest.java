@@ -209,7 +209,7 @@ class NodeStoreStatsProviderTest {
       field.setAccessible(true);
       field.set(target, value);
     } catch (ReflectiveOperationException ex) {
-      throw new AssertionError("Failed to set field " + fieldName, ex);
+      throw new LinkageError("Failed to set field " + fieldName, ex);
     }
   }
 

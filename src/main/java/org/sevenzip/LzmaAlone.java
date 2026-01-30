@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -180,19 +181,17 @@ public class LzmaAlone {
       else if (s.startsWith("eos")) eos = true;
       else if (s.startsWith("mf")) {
         String mfs = s.substring(2);
-        switch (mfs) {
-          case "bt2":
-            matchFinder = 0;
-            break;
-          case "bt4":
-            matchFinder = 1;
-            break;
-          case "bt4b":
-            matchFinder = 2;
-            break;
-          default:
-            return false;
+        int matchFinderValue =
+            switch (mfs) {
+              case "bt2" -> 0;
+              case "bt4" -> 1;
+              case "bt4b" -> 2;
+              default -> -1;
+            };
+        if (matchFinderValue < 0) {
+          return false;
         }
+        matchFinder = matchFinderValue;
       } else return false;
       return true;
     }
@@ -240,7 +239,7 @@ public class LzmaAlone {
         state.switchMode = false;
         return true;
       }
-      String sw = s.substring(1).toLowerCase();
+      String sw = s.substring(1).toLowerCase(Locale.ROOT);
       if (sw.isEmpty()) return false;
       try {
         return parseSwitch(sw);
@@ -340,17 +339,10 @@ public class LzmaAlone {
     }
 
     switch (params.command) {
-      case CommandLine.K_BENCHMARK:
-        handleBenchmark(params);
-        break;
-      case CommandLine.K_ENCODE:
-        encode(params);
-        break;
-      case CommandLine.K_DECODE:
-        decode(params);
-        break;
-      default:
-        throw new IllegalArgumentException("Incorrect command");
+      case CommandLine.K_BENCHMARK -> handleBenchmark(params);
+      case CommandLine.K_ENCODE -> encode(params);
+      case CommandLine.K_DECODE -> decode(params);
+      default -> throw new IllegalArgumentException("Incorrect command");
     }
   }
 

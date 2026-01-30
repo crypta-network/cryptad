@@ -34,7 +34,7 @@ class SeedServerPeerNodeTest {
       f.setAccessible(true);
       f.set(target, value);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to set field 'node'", e);
+      throw new LinkageError("Failed to set field 'node'", e);
     }
   }
 
@@ -74,8 +74,8 @@ class SeedServerPeerNodeTest {
   void getInetAddresses_deduplicates_and_keeps_first_seen_order() throws Exception {
     // Arrange
     SeedServerPeerNode seed = mock(SeedServerPeerNode.class, CALLS_REAL_METHODS);
-    InetAddress a = InetAddress.getByName("192.0.2.1"); // TEST-NET-1
-    InetAddress b = InetAddress.getByName("2001:db8::1"); // documentation IPv6
+    InetAddress a = InetAddress.getAllByName("192.0.2.1")[0]; // TEST-NET-1
+    InetAddress b = InetAddress.getAllByName("2001:db8::1")[0]; // documentation IPv6
 
     Peer p1 = new Peer(a, 1234);
     Peer p2 = new Peer(new FreenetInetAddress(a), 2345); // same IP, different port

@@ -66,6 +66,7 @@ public class TrapezoidIntegrator implements SampledFunctionIntegrator {
    * @throws FunctionException if the iterator encounters a failure while generating the next sample
    *     point, propagating the underlying computation error.
    */
+  @Override
   public double integrate(SampledFunctionIterator iter)
       throws ExhaustedSampleException, FunctionException {
 

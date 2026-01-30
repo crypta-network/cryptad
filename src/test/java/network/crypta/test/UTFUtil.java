@@ -5,6 +5,7 @@ package network.crypta.test;
  *
  * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
  */
+@SuppressWarnings("MutablePublicArray")
 public final class UTFUtil {
 
   /**

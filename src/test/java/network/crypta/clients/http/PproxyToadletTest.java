@@ -15,6 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.pluginmanager.DownloadPluginHTTPException;
@@ -83,17 +84,21 @@ class PproxyToadletTest {
             eq("OK"),
             headersCaptor.capture(),
             eq("text/html; charset=utf-8"),
-            eq((long) "<html>ok</html>".getBytes().length));
-    verify(ctx).writeData(bodyCaptor.capture(), eq(0), eq("<html>ok</html>".getBytes().length));
+            eq((long) "<html>ok</html>".getBytes(StandardCharsets.UTF_8).length));
+    verify(ctx)
+        .writeData(
+            bodyCaptor.capture(),
+            eq(0),
+            eq("<html>ok</html>".getBytes(StandardCharsets.UTF_8).length));
 
-    assertArrayEquals("<html>ok</html>".getBytes(), bodyCaptor.getValue());
+    assertArrayEquals("<html>ok</html>".getBytes(StandardCharsets.UTF_8), bodyCaptor.getValue());
     assertTrue(headersCaptor.getValue() == null || headersCaptor.getValue().countAll("any") == 0);
   }
 
   @Test
   void handleMethodPOST_whenPluginRequestsDownload_streamsAttachment() throws Exception {
     when(request.getPath()).thenReturn("/plugins/AttachPlugin");
-    byte[] payload = "data".getBytes();
+    byte[] payload = "data".getBytes(StandardCharsets.UTF_8);
     when(pluginManager.handleHTTPPost("AttachPlugin", request))
         .thenThrow(
             new DownloadPluginHTTPException(payload, "file.bin", "application/octet-stream"));
@@ -157,7 +162,7 @@ class PproxyToadletTest {
             eq("OK"),
             any(),
             eq("text/html; charset=utf-8"),
-            eq((long) "<html>plugin</html>".getBytes().length));
+            eq((long) "<html>plugin</html>".getBytes(StandardCharsets.UTF_8).length));
   }
 
   @Test

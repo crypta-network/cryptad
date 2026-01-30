@@ -104,6 +104,7 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
     }
   }
 
+  @Override
   public int size() {
     return n;
   }
@@ -117,6 +118,7 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
    *
    * @return strictly positive vector dimension consistent with all values produced by the sampler.
    */
+  @Override
   public int getDimension() {
     return function.getDimension();
   }
@@ -135,6 +137,7 @@ public class ComputableFunctionSampler implements SampledFunction, Serializable 
    * @throws FunctionException if the underlying function rejects the computed abscissa or fails
    *     during evaluation.
    */
+  @Override
   public VectorialValuedPair samplePointAt(int index)
       throws ArrayIndexOutOfBoundsException, FunctionException {
 

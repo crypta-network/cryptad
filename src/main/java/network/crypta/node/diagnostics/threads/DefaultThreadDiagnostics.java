@@ -81,6 +81,7 @@ public class DefaultThreadDiagnostics implements Runnable, ThreadDiagnostics {
    * @return a new {@link NodeThreadSnapshot} instance representing the most recent sampling pass;
    *     may reference an empty list when sampling has not yet observed any eligible threads
    */
+  @Override
   public NodeThreadSnapshot getThreadSnapshot() {
     return nodeThreadSnapshot.get();
   }

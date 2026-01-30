@@ -62,6 +62,7 @@ public class BasicSampledFunctionIterator implements SampledFunctionIterator, Se
    *
    * @return number of components in each vector sample; always non-negative
    */
+  @Override
   public int getDimension() {
     return function.getDimension();
   }
@@ -77,6 +78,7 @@ public class BasicSampledFunctionIterator implements SampledFunctionIterator, Se
    *
    * @return {@code true} when at least one more sample can be returned; otherwise {@code false}
    */
+  @Override
   public boolean hasNext() {
     return next < function.size();
   }
@@ -96,6 +98,7 @@ public class BasicSampledFunctionIterator implements SampledFunctionIterator, Se
    *     count
    * @throws FunctionException if the sampled function cannot compute or deliver the requested point
    */
+  @Override
   public VectorialValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
 
     if (next >= function.size()) {

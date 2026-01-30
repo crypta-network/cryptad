@@ -65,6 +65,7 @@ public class BasicSampledFunctionIterator implements SampledFunctionIterator, Se
    *
    * @return {@code true} when at least one sample remains to be returned
    */
+  @Override
   public boolean hasNext() {
     return next < function.size();
   }
@@ -82,6 +83,7 @@ public class BasicSampledFunctionIterator implements SampledFunctionIterator, Se
    *     sample
    * @throws FunctionException if underlying sampled function fails to compute the sample value
    */
+  @Override
   public ScalarValuedPair nextSamplePoint() throws ExhaustedSampleException, FunctionException {
     if (next >= function.size()) {
       throw new ExhaustedSampleException(function.size());

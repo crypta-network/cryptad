@@ -127,7 +127,7 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
       -43306765128.0 / 5313852383.0,
       -20866708358144.0 / 1126708119789.0,
       14886003438020.0 / 654632330667.0,
-      35290686222309375.0 / 14152473387134411.0,
+      35290686222309376.0 / 14152473387134412.0,
       -1477884375.0 / 485066827.0
     },
 
@@ -268,6 +268,7 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
    *
    * @return stable method identifier describing the Dormand–Prince 8(5,3) scheme.
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }
@@ -281,6 +282,7 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
    *
    * @return the integer value {@code 8}, representing the main solution order for this method.
    */
+  @Override
   public int getOrder() {
     return 8;
   }
@@ -306,6 +308,7 @@ public class DormandPrince853Integrator extends RungeKuttaFehlbergIntegrator {
    * @return normalized error ratio; values greater than one trigger step rejection and reduction,
    *     while values at or below one allow acceptance.
    */
+  @Override
   protected double estimateError(double[][] yDotK, double[] y0, double[] y1, double h) {
     double error1 = 0;
     double error2 = 0;

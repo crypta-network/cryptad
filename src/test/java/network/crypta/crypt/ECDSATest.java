@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.security.interfaces.ECPublicKey;
 import java.util.Arrays;
@@ -46,14 +47,14 @@ class ECDSATest {
 
   @Test
   void sign_whenCalled_producesBytes() {
-    byte[] sig = ecdsa.sign("test".getBytes());
+    byte[] sig = ecdsa.sign("test".getBytes(StandardCharsets.UTF_8));
     assertNotNull(sig);
     assertTrue(sig.length > 0);
   }
 
   @Test
   void sign_whenCalledTwiceWithSameData_isDeterministic() {
-    byte[] m = "deterministic".getBytes();
+    byte[] m = "deterministic".getBytes(StandardCharsets.UTF_8);
     byte[] s1 = ecdsa.sign(m);
     byte[] s2 = ecdsa.sign(m);
     assertArrayEquals(s1, s2);
@@ -61,7 +62,7 @@ class ECDSATest {
 
   @Test
   void signToNetworkFormat_whenCalled_returnsFixedLength() {
-    byte[] toSign = "test".getBytes();
+    byte[] toSign = "test".getBytes(StandardCharsets.UTF_8);
     byte[] sig = ecdsa.signToNetworkFormat(toSign);
     assertNotNull(sig);
     assertEquals(curveToTest.maxSigSize, sig.length);
@@ -72,28 +73,28 @@ class ECDSATest {
     ECDSA spy = Mockito.spy(new ECDSA(curveToTest));
     byte[] tooLong = new byte[curveToTest.maxSigSize + 1];
     Mockito.doReturn(tooLong).when(spy).sign(Mockito.any());
-    byte[] smallMsg = "x".getBytes();
+    byte[] smallMsg = "x".getBytes(StandardCharsets.UTF_8);
     assertThrows(IllegalStateException.class, () -> spy.signToNetworkFormat(smallMsg));
   }
 
   @Test
   void verify_whenValidSignature_succeeds() {
     String toSign = "test";
-    byte[] sig = ecdsa.sign(toSign.getBytes());
-    assertTrue(ecdsa.verify(sig, toSign.getBytes()));
-    assertFalse(ecdsa.verify(sig, "".getBytes()));
+    byte[] sig = ecdsa.sign(toSign.getBytes(StandardCharsets.UTF_8));
+    assertTrue(ecdsa.verify(sig, toSign.getBytes(StandardCharsets.UTF_8)));
+    assertFalse(ecdsa.verify(sig, "".getBytes(StandardCharsets.UTF_8)));
   }
 
   @Test
   void verify_whenUsingNetworkPaddedSignature_succeeds() {
-    byte[] msg = "pad me".getBytes();
+    byte[] msg = "pad me".getBytes(StandardCharsets.UTF_8);
     byte[] padded = ecdsa.signToNetworkFormat(msg);
     assertTrue(ecdsa.verify(padded, msg));
   }
 
   @Test
   void verify_withOffsetAndExtraBytes_ignoresPaddingAndSuceeds() {
-    byte[] msg = "offset ok".getBytes();
+    byte[] msg = "offset ok".getBytes(StandardCharsets.UTF_8);
     byte[] padded = ecdsa.signToNetworkFormat(msg);
     byte[] container = new byte[10 + padded.length + 5];
     // Fill with non-zero noise around the signature to ensure we only use declared range
@@ -105,7 +106,7 @@ class ECDSATest {
 
   @Test
   void verify_withTamperedSignature_fails() {
-    byte[] msg = "tamper".getBytes();
+    byte[] msg = "tamper".getBytes(StandardCharsets.UTF_8);
     byte[] sig = ecdsa.sign(msg); // raw DER without network padding
     byte[] tampered = Arrays.copyOf(sig, sig.length);
     tampered[tampered.length - 1] ^= 0x01; // flip a byte inside the DER payload
@@ -114,7 +115,7 @@ class ECDSATest {
 
   @Test
   void verify_withMismatchedKey_fails() {
-    byte[] msg = "wrong key".getBytes();
+    byte[] msg = "wrong key".getBytes(StandardCharsets.UTF_8);
     byte[] sig = ecdsa.sign(msg);
     // New ECDSA with different key
     ECDSA other = new ECDSA(curveToTest);
@@ -123,7 +124,7 @@ class ECDSATest {
 
   @Test
   void verify_withInvalidDerHeader_returnsFalse() {
-    byte[] msg = "bad header".getBytes();
+    byte[] msg = "bad header".getBytes(StandardCharsets.UTF_8);
     byte[] sig = ecdsa.sign(msg);
     byte[] invalid = Arrays.copyOf(sig, sig.length);
     invalid[0] = 0x31; // not a DER SEQUENCE (should be 0x30)
@@ -182,8 +183,8 @@ class ECDSATest {
   @EnumSource(Curves.class)
   void signVerify_acrossCurves_succeeds(Curves curve) {
     ECDSA local = new ECDSA(curve);
-    byte[] msg1 = "hello".getBytes();
-    byte[] msg2 = "world".getBytes();
+    byte[] msg1 = "hello".getBytes(StandardCharsets.UTF_8);
+    byte[] msg2 = "world".getBytes(StandardCharsets.UTF_8);
     byte[] sig1 = local.sign(msg1);
     byte[] sig2 = local.signToNetworkFormat(msg2);
     assertTrue(local.verify(sig1, msg1));

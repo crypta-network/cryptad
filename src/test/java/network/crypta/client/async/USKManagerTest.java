@@ -190,7 +190,7 @@ class USKManagerTest {
     @Override
     public network.crypta.keys.FreenetURI insertManifest(
         network.crypta.keys.FreenetURI insertURI,
-        java.util.HashMap<String, Object> bucketsByName,
+        java.util.Map<String, Object> bucketsByName,
         String defaultName) {
       throw new UnsupportedOperationException();
     }
@@ -198,7 +198,7 @@ class USKManagerTest {
     @Override
     public network.crypta.keys.FreenetURI insertManifest(
         network.crypta.keys.FreenetURI insertURI,
-        java.util.HashMap<String, Object> bucketsByName,
+        java.util.Map<String, Object> bucketsByName,
         String defaultName,
         short priorityClass) {
       throw new UnsupportedOperationException();
@@ -207,7 +207,7 @@ class USKManagerTest {
     @Override
     public network.crypta.keys.FreenetURI insertManifest(
         network.crypta.keys.FreenetURI insertURI,
-        java.util.HashMap<String, Object> bucketsByName,
+        java.util.Map<String, Object> bucketsByName,
         String defaultName,
         short priorityClass,
         byte[] forceCryptoKey) {

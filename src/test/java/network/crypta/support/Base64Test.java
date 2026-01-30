@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.LongSupplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -350,8 +351,13 @@ class Base64Test {
   @SuppressWarnings("java:S2245")
   void randomWhenSeededByMockedTimeExpectDeterministicRoundTrip() throws IllegalBase64Exception {
     // Arrange
-    LongSupplier time = mock(LongSupplier.class);
-    when(time.getAsLong()).thenReturn(987654321L);
+    long seed = 987654321L;
+    AtomicInteger calls = new AtomicInteger();
+    LongSupplier time =
+        () -> {
+          calls.incrementAndGet();
+          return seed;
+        };
     Random r = new Random(time.getAsLong());
     byte[] input = new byte[32];
     for (int i = 0; i < input.length; i++) input[i] = (byte) r.nextInt(256);
@@ -362,7 +368,7 @@ class Base64Test {
 
     // Assert
     assertArrayEquals(input, decoded);
-    verify(time, times(1)).getAsLong();
+    assertEquals(1, calls.get());
   }
 
   // ----------------------------

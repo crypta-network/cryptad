@@ -209,10 +209,10 @@ public class DefaultManifestPutter extends BaseManifestPutter {
    *     exists.
    * @throws TooManyFilesInsertException if a directory contains so many entries that a reasonable
    *     packing plan cannot be constructed within the configured limits.
-   * @see BaseManifestPutter#makePutHandlers(HashMap, String)
+   * @see BaseManifestPutter#makePutHandlers(Map, String)
    */
   @Override
-  protected void makePutHandlers(HashMap<String, Object> manifestElements, String defaultName)
+  protected void makePutHandlers(Map<String, Object> manifestElements, String defaultName)
       throws TooManyFilesInsertException {
     verifyManifest(manifestElements);
     makePutHandlers(

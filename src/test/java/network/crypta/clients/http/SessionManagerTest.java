@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -213,7 +214,7 @@ class SessionManagerTest {
   }
 
   private static String expectedOutboundCookieName(SessionManager manager) {
-    return expectedCookieName(manager).toLowerCase();
+    return expectedCookieName(manager).toLowerCase(Locale.ROOT);
   }
 
   @SuppressWarnings("unchecked")

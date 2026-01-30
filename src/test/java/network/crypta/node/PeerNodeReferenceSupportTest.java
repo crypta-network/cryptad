@@ -448,14 +448,14 @@ class PeerNodeReferenceSupportTest {
 
   @Test
   void isValidAddress_whenLoopback_returnsFalse() throws Exception {
-    InetAddress addr = InetAddress.getByName("127.0.0.1");
+    InetAddress addr = InetAddress.getAllByName("127.0.0.1")[0];
 
     assertFalse(PeerNodeReferenceSupport.isValidAddress(addr));
   }
 
   @Test
   void isValidAddress_whenPublicAddress_returnsTrue() throws Exception {
-    InetAddress addr = InetAddress.getByName("8.8.8.8");
+    InetAddress addr = InetAddress.getAllByName("8.8.8.8")[0];
 
     assertTrue(PeerNodeReferenceSupport.isValidAddress(addr));
   }

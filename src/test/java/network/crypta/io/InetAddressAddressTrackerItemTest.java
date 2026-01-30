@@ -34,7 +34,7 @@ class InetAddressAddressTrackerItemTest {
   void toFieldSet_whenRoundTripped_expectAddressAndStatePreserved(String literal) throws Exception {
     // Arrange
     long base = 10_000L;
-    InetAddress address = InetAddress.getByName(literal);
+    InetAddress address = InetAddress.getAllByName(literal)[0];
     InetAddressAddressTrackerItem original =
         new InetAddressAddressTrackerItem(base /* no-recv */, base /* no-sent */, address);
 

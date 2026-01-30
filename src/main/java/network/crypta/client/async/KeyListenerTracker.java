@@ -273,11 +273,11 @@ class KeyListenerTracker implements KeySalter {
     return ret;
   }
 
-  private ArrayList<KeyListener> probablyMatches(Key key, byte[] saltedKey) {
+  private List<KeyListener> probablyMatches(Key key, byte[] saltedKey) {
     final ByteArrayWrapper wrapper = new ByteArrayWrapper(saltedKey);
     synchronized (this) {
       Object singleMatch = singleKeyListeners.get(wrapper);
-      ArrayList<KeyListener> matches = appendSingleMatches(singleMatch, key, saltedKey);
+      List<KeyListener> matches = appendSingleMatches(singleMatch, key, saltedKey);
       if (keyListeners.isEmpty()) return matches;
       List<KeyListener> listMatches = new ArrayList<>(keyListeners);
       return appendListMatches(matches, listMatches, key, saltedKey);
@@ -301,7 +301,7 @@ class KeyListenerTracker implements KeySalter {
       return priority;
     }
     byte[] saltedKey = saltKey(key);
-    ArrayList<KeyListener> matches = probablyMatches(key, saltedKey);
+    List<KeyListener> matches = probablyMatches(key, saltedKey);
     if (matches == null) return priority;
     for (KeyListener listener : matches) {
       short prio;
@@ -427,7 +427,7 @@ class KeyListenerTracker implements KeySalter {
       return false;
     }
     byte[] saltedKey = saltKey(key);
-    ArrayList<KeyListener> matches = probablyMatches(key, saltedKey);
+    List<KeyListener> matches = probablyMatches(key, saltedKey);
     boolean ret = false;
     if (matches != null) ret = processTripMatches(key, saltedKey, block, context, matches);
     return ret;
@@ -491,6 +491,7 @@ class KeyListenerTracker implements KeySalter {
    * @param key the key whose routing bytes should be salted as appropriate for the scheduler.
    * @return a byte array containing the salted or raw routing key; never {@code null}.
    */
+  @Override
   public byte[] saltKey(Key key) {
     return saltKey(key instanceof NodeSSK nssk ? nssk.getPubKeyHash() : key.getRoutingKey());
   }
@@ -601,9 +602,8 @@ class KeyListenerTracker implements KeySalter {
     return ret;
   }
 
-  private ArrayList<KeyListener> appendSingleMatches(
-      Object singleMatch, Key key, byte[] saltedKey) {
-    ArrayList<KeyListener> matches = null;
+  private List<KeyListener> appendSingleMatches(Object singleMatch, Key key, byte[] saltedKey) {
+    List<KeyListener> matches = null;
     if (singleMatch instanceof KeyListener single) {
       matches = appendMatchIfSingle(single, key, saltedKey);
     } else if (singleMatch instanceof KeyListener[] listeners) {
@@ -612,8 +612,8 @@ class KeyListenerTracker implements KeySalter {
     return matches;
   }
 
-  private ArrayList<KeyListener> appendListMatches(
-      ArrayList<KeyListener> matches, List<KeyListener> listMatches, Key key, byte[] saltedKey) {
+  private List<KeyListener> appendListMatches(
+      List<KeyListener> matches, List<KeyListener> listMatches, Key key, byte[] saltedKey) {
     for (KeyListener listener : listMatches) {
       if (listener.probablyWantKey(key, saltedKey)) {
         if (matches == null) matches = new ArrayList<>();
@@ -623,9 +623,8 @@ class KeyListenerTracker implements KeySalter {
     return matches;
   }
 
-  private ArrayList<KeyListener> appendMatchIfSingle(
-      KeyListener listener, Key key, byte[] saltedKey) {
-    ArrayList<KeyListener> matches = null;
+  private List<KeyListener> appendMatchIfSingle(KeyListener listener, Key key, byte[] saltedKey) {
+    List<KeyListener> matches = null;
     if (listener.probablyWantKey(key, saltedKey)) {
       matches = new ArrayList<>();
       matches.add(listener);
@@ -633,9 +632,9 @@ class KeyListenerTracker implements KeySalter {
     return matches;
   }
 
-  private ArrayList<KeyListener> appendMatchesIfArray(
+  private List<KeyListener> appendMatchesIfArray(
       KeyListener[] listeners, Key key, byte[] saltedKey) {
-    ArrayList<KeyListener> matches = null;
+    List<KeyListener> matches = null;
     for (KeyListener listener : listeners) {
       if (listener.probablyWantKey(key, saltedKey)) {
         if (matches == null) matches = new ArrayList<>();

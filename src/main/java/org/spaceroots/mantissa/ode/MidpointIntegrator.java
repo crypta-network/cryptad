@@ -76,6 +76,7 @@ public class MidpointIntegrator extends RungeKuttaIntegrator {
    * @return constant string {@code "midpoint"} identifying this Runge–Kutta variant; the caller
    *     must not modify or cache assumptions about capitalization beyond this literal.
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }

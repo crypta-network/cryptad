@@ -2,6 +2,7 @@ package network.crypta.io.comm;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
 @SuppressWarnings("java:S100") // Method naming uses AAA style: method_whenCondition_expectOutcome
 class MessageTypeTest {
 
-  private final LinkedList<MessageType> toCleanup = new LinkedList<>();
+  private final List<MessageType> toCleanup = new ArrayList<>();
   private static final String NAME_NOT_NULL_MSG =
       "findAvailableName must return a non-null unique name";
 

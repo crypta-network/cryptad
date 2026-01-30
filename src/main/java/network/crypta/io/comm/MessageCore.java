@@ -3,12 +3,15 @@ package network.crypta.io.comm;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
+import java.util.Iterator;
+import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.Set;
 import network.crypta.io.comm.MessageFilter.MATCHED;
 import network.crypta.node.PeerNode;
 import network.crypta.support.PriorityAwareExecutor;
@@ -58,9 +61,9 @@ public class MessageCore {
    * Serves both as the filter list and the lock protecting itself and {@link #unclaimed}. Acquire
    * this monitor before mutating either structure.
    */
-  private final LinkedList<MessageFilter> filters = new LinkedList<>();
+  private final List<MessageFilter> filters = new ArrayList<>();
 
-  private final LinkedList<Message> unclaimed = new LinkedList<>();
+  private final ArrayDeque<Message> unclaimed = new ArrayDeque<>();
   private static final int MAX_UNMATCHED_FIFO_SIZE = 50000;
   private static final long MAX_UNCLAIMED_FIFO_ITEM_LIFETIME =
       MINUTES.toMillis(10); // Applied uniformly to all message types.
@@ -149,7 +152,7 @@ public class MessageCore {
     // reducing redundant scanning.
     if (LOG.isDebugEnabled()) LOG.debug("Removing timed out filters");
 
-    HashSet<MessageFilter> timedOutFilters = new HashSet<>();
+    Set<MessageFilter> timedOutFilters = new HashSet<>();
     nextTimeout = scanAndCollectTimedOutFilters(nextTimeout, tStart, timedOutFilters);
 
     if (!timedOutFilters.isEmpty()) {
@@ -161,7 +164,7 @@ public class MessageCore {
   }
 
   private long scanAndCollectTimedOutFilters(
-      long nextTimeout, long tStart, HashSet<MessageFilter> timedOutFilters) {
+      long nextTimeout, long tStart, Set<MessageFilter> timedOutFilters) {
     synchronized (filters) {
       for (ListIterator<MessageFilter> i = filters.listIterator(); i.hasNext(); ) {
         MessageFilter f = i.next();
@@ -179,7 +182,7 @@ public class MessageCore {
   }
 
   private void handleTimedOutFilter(
-      MessageFilter f, HashSet<MessageFilter> timedOutFilters, long tStart) {
+      MessageFilter f, Set<MessageFilter> timedOutFilters, long tStart) {
     if (LOG.isDebugEnabled()) LOG.debug("Removing {}", f);
     if (!timedOutFilters.add(f)) {
       LOG.error("Filter {} is in filter list twice!", f);
@@ -207,7 +210,7 @@ public class MessageCore {
     }
   }
 
-  private void notifyTimedOutFilters(HashSet<MessageFilter> timedOutFilters) {
+  private void notifyTimedOutFilters(Set<MessageFilter> timedOutFilters) {
     for (MessageFilter f : timedOutFilters) {
       f.setMessage(null);
       f.onTimedOut(executor);
@@ -259,17 +262,17 @@ public class MessageCore {
 
   private void logInbound(Message m, PacketSocketHandler from) {
     if (LOG.isDebugEnabled()) LOG.debug("checkFilters: {} from {}", m, m.getSource());
-    if ((m.getSource()) instanceof PeerNode peerNode) {
+    if (m.getSource() instanceof PeerNode peerNode) {
       peerNode.incrementReceivedMessageType(m.getSpec().getName());
     }
-    if (LOG.isDebugEnabled() && !(m.getSpec().equals(DMT.packetTransmit))) {
+    if (LOG.isDebugEnabled() && !m.getSpec().equals(DMT.packetTransmit)) {
       LOG.debug("{} {} <- {} : {}", System.currentTimeMillis() % 60000, from, m.getSource(), m);
     }
   }
 
   @SuppressWarnings("java:S1181") // We really do want to catch Throwable here
   private boolean dispatchIfUnmatched(Message m, boolean matched) {
-    if ((!matched) && (dispatcher != null)) {
+    if (!matched && dispatcher != null) {
       try {
         if (LOG.isDebugEnabled()) LOG.debug("Feeding to dispatcher: {}", m);
         return dispatcher.handleMessage(m);
@@ -280,7 +283,7 @@ public class MessageCore {
     return matched;
   }
 
-  private void notifyTimedOutList(ArrayList<MessageFilter> timedOut) {
+  private void notifyTimedOutList(List<MessageFilter> timedOut) {
     for (MessageFilter f : timedOut) {
       if (LOG.isDebugEnabled()) LOG.debug("Timed out {}", f);
       f.setMessage(null);
@@ -309,12 +312,12 @@ public class MessageCore {
   }
 
   private record FilterScanResult(
-      boolean matched, MessageFilter match, ArrayList<MessageFilter> timedOut) {}
+      boolean matched, MessageFilter match, List<MessageFilter> timedOut) {}
 
   private FilterScanResult scanFiltersForMatch(Message m, long tStart) {
     boolean matched = false;
     MessageFilter match = null;
-    ArrayList<MessageFilter> timedOut = new ArrayList<>();
+    List<MessageFilter> timedOut = new ArrayList<>();
     synchronized (filters) {
       for (ListIterator<MessageFilter> i = filters.listIterator(); i.hasNext(); ) {
         MessageFilter f = i.next();
@@ -339,7 +342,7 @@ public class MessageCore {
       long tStart,
       ListIterator<MessageFilter> i,
       MessageFilter f,
-      ArrayList<MessageFilter> timedOut) {
+      List<MessageFilter> timedOut) {
     MATCHED status = f.match(m, false, tStart);
     switch (status) {
       case TIMED_OUT, TIMED_OUT_AND_MATCHED -> {
@@ -355,6 +358,10 @@ public class MessageCore {
         if (LOG.isDebugEnabled()) LOG.debug("scanFilters: matched filter {}", f);
         return f;
       }
+      case NONE -> {
+        if (LOG.isDebugEnabled()) LOG.debug("Did not match {}", f);
+        return null;
+      }
       case null, default -> {
         if (LOG.isDebugEnabled()) LOG.debug("Did not match {}", f);
         return null;
@@ -363,7 +370,7 @@ public class MessageCore {
   }
 
   private record RecheckResult(
-      boolean matched, MessageFilter match, ArrayList<MessageFilter> timedOut) {}
+      boolean matched, MessageFilter match, List<MessageFilter> timedOut) {}
 
   private RecheckResult recheckFiltersAndMaybeQueue(Message m, long tStart) {
     synchronized (filters) {
@@ -379,7 +386,7 @@ public class MessageCore {
   private FilterScanResult scanRecheckFilters(Message m, long tStart) {
     boolean matched = false;
     MessageFilter match = null;
-    ArrayList<MessageFilter> timedOut = null;
+    List<MessageFilter> timedOut = null;
     for (ListIterator<MessageFilter> i = filters.listIterator(); i.hasNext(); ) {
       MessageFilter f = i.next();
       MATCHED status = f.match(m, false, tStart);
@@ -405,7 +412,7 @@ public class MessageCore {
       long messageLifeTime = System.currentTimeMillis() - removed.localInstantiationTime;
       if (LOG.isInfoEnabled()) {
         String lived = TimeUtil.formatTime(messageLifeTime, 2, true);
-        if ((removed.getSource()) instanceof PeerNode) {
+        if (removed.getSource() instanceof PeerNode) {
           LOG.info(
               DROP_UNCLAIMED_OVERFLOW_FROM + "{}" + LIVED + "{} (quantity): {}",
               removed.getSource().getPeer(),
@@ -536,7 +543,7 @@ public class MessageCore {
   }
 
   private Message tryMatchUnclaimedForAsync(MessageFilter filter, long now, long messageDropTime) {
-    for (ListIterator<Message> i = unclaimed.listIterator(); i.hasNext(); ) {
+    for (Iterator<Message> i = unclaimed.iterator(); i.hasNext(); ) {
       Message m = i.next();
       // These messages have already arrived, so we can match against them even if we are timed out.
       MATCHED status = filter.match(m, true, now);
@@ -549,7 +556,7 @@ public class MessageCore {
         long messageLifeTime = now - m.localInstantiationTime;
         if (LOG.isInfoEnabled()) {
           String lived = TimeUtil.formatTime(messageLifeTime, 2, true);
-          if ((m.getSource()) instanceof PeerNode) {
+          if (m.getSource() instanceof PeerNode) {
             LOG.info(
                 DROP_UNCLAIMED_EXPIRED_ASYNC_FROM + "{}" + LIVED + AGE_SUFFIX,
                 m.getSource().getPeer(),
@@ -648,7 +655,7 @@ public class MessageCore {
       if (LOG.isDebugEnabled()) LOG.debug("waitFor: checking unclaimed queue");
       long now = System.currentTimeMillis();
       long messageDropTime = now - MAX_UNCLAIMED_FIFO_ITEM_LIFETIME;
-      for (ListIterator<Message> i = unclaimed.listIterator(); i.hasNext(); ) {
+      for (Iterator<Message> i = unclaimed.iterator(); i.hasNext(); ) {
         Message m = i.next();
         ret = handleUnclaimedCandidate(filter, startTime, now, messageDropTime, i, m);
         if (ret != null) break;
@@ -666,7 +673,7 @@ public class MessageCore {
       long startTime,
       long now,
       long messageDropTime,
-      ListIterator<Message> iterator,
+      Iterator<Message> iterator,
       Message message) {
     MATCHED status = filter.match(message, true, startTime);
     if (status == MATCHED.MATCHED) {
@@ -689,7 +696,7 @@ public class MessageCore {
     long messageLifeTime = now - m.localInstantiationTime;
     if (LOG.isInfoEnabled()) {
       String lived = TimeUtil.formatTime(messageLifeTime, 2, true);
-      if ((m.getSource()) instanceof PeerNode) {
+      if (m.getSource() instanceof PeerNode) {
         LOG.info(
             DROP_UNCLAIMED_EXPIRED_WAITFOR_FROM + "{}" + LIVED + AGE_SUFFIX,
             m.getSource().getPeer(),

@@ -401,7 +401,7 @@ public class UdpSocketHandler
         return;
       }
     }
-    if (dropProbability > 0 && (dropRandom.nextInt() % dropProbability == 0)) {
+    if (dropProbability > 0 && dropRandom.nextInt(dropProbability) == 0) {
       LOG.info("DROPPED: {} -> {}", localAddress.getPort(), destination.getPort());
       return;
     }

@@ -531,10 +531,10 @@ final class USKKeyWatchSet {
    */
   public MatchedBlock matchBlock(Key key, KeyBlock found, long lastSlot) {
     if (!(found instanceof SSKBlock sskBlock)) return null;
-    if (!(key instanceof NodeSSK)) return null;
+    if (!(key instanceof NodeSSK nodeSSK)) return null;
     long edition;
     synchronized (this) {
-      edition = match((NodeSSK) key, lastSlot);
+      edition = match(nodeSSK, lastSlot);
     }
     if (edition == -1) return null;
     if (LOG.isDebugEnabled()) LOG.debug("matched block edition {} for {}", edition, origUSK);

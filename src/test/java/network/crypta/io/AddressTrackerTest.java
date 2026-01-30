@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Set;
 import network.crypta.io.AddressTracker.Status;
@@ -38,8 +39,8 @@ class AddressTrackerTest {
     AddressTracker tracker = AddressTracker.create(2L, tempProgramDir(new File(".")), 43);
 
     // Create two peers: loopback (should be ignored) and a public TEST-NET-2 IPv4 (valid)
-    Peer loopback = new Peer(InetAddress.getByName("127.0.0.1"), 1111);
-    Peer publicPeer = new Peer(InetAddress.getByName("198.51.100.23"), 2222);
+    Peer loopback = new Peer(literal("127.0.0.1"), 1111);
+    Peer publicPeer = new Peer(literal("198.51.100.23"), 2222);
 
     // Ensure tracker maps exist by sending once (actual timestamps not used for gap assertions)
     tracker.sentPacketTo(loopback);
@@ -74,7 +75,7 @@ class AddressTrackerTest {
   void getPortForwardStatus_whenGapsCrossThresholds_expectMaybeAndDefinitely() throws Exception {
     // MAYBE
     AddressTracker maybe = AddressTracker.create(3L, tempProgramDir(new File(".")), 44);
-    Peer p1 = new Peer(InetAddress.getByName("203.0.113.10"), 3333);
+    Peer p1 = new Peer(literal("203.0.113.10"), 3333);
     maybe.sentPacketTo(p1); // ensure entry exists
     AddressTrackerItem it1 = maybe.getPeerAddressTrackerItems()[0];
     long t0 = System.currentTimeMillis() + 10_000_000L;
@@ -85,7 +86,7 @@ class AddressTrackerTest {
 
     // DEFINITELY
     AddressTracker definitely = AddressTracker.create(4L, tempProgramDir(new File(".")), 45);
-    Peer p2 = new Peer(InetAddress.getByName("198.51.100.45"), 4444);
+    Peer p2 = new Peer(literal("198.51.100.45"), 4444);
     definitely.sentPacketTo(p2);
     AddressTrackerItem it2 = definitely.getPeerAddressTrackerItems()[0];
     long t1 = System.currentTimeMillis() + 20_000_000L;
@@ -104,7 +105,7 @@ class AddressTrackerTest {
     tracker.startSend(noSent);
     tracker.startReceive(noRecv);
 
-    Peer peer = new Peer(InetAddress.getByName("203.0.113.77"), 7777);
+    Peer peer = new Peer(literal("203.0.113.77"), 7777);
     tracker.sentPacketTo(peer); // creates the item
 
     AddressTrackerItem item = tracker.getPeerAddressTrackerItems()[0];
@@ -131,7 +132,7 @@ class AddressTrackerTest {
     // Default capacity: 1000. Exceed it by adding 1002 unique peers → should clear once, end at 1.
     AddressTracker small = AddressTracker.create(7L, tempProgramDir(new File(".")), 48);
     for (int i = 0; i < AddressTracker.DEFAULT_MAX_ITEMS + 2; i++) {
-      Peer p = new Peer(InetAddress.getByName("198.51.100." + (i % 250 + 1)), 10000 + i);
+      Peer p = new Peer(literal("198.51.100." + (i % 250 + 1)), 10000 + i);
       small.sentPacketTo(p);
     }
     assertEquals(1, small.getPeerAddressTrackerItems().length, "Expect map cleared on overflow");
@@ -146,7 +147,7 @@ class AddressTrackerTest {
       // Cycle through a pool of /24 addresses to keep InetAddress creation deterministic
       String ip = "203.0.113." + (i % 250 + 1);
       ips.add(ip);
-      Peer p = new Peer(InetAddress.getByName(ip), 20000 + i);
+      Peer p = new Peer(literal(ip), 20000 + i);
       huge.sentPacketTo(p);
     }
     assertEquals(count, huge.getPeerAddressTrackerItems().length);
@@ -165,8 +166,8 @@ class AddressTrackerTest {
     AddressTracker original = AddressTracker.create(10L, dir, port);
 
     // Add two peers with deterministic gaps so items are populated
-    Peer p1 = new Peer(InetAddress.getByName("192.0.2.10"), 3333);
-    Peer p2 = new Peer(InetAddress.getByName("2001:db8::1"), 4444);
+    Peer p1 = new Peer(literal("192.0.2.10"), 3333);
+    Peer p2 = new Peer(literal("2001:db8::1"), 4444);
     original.sentPacketTo(p1);
     original.receivedPacketFrom(p1);
     original.sentPacketTo(p2);
@@ -211,5 +212,9 @@ class AddressTrackerTest {
       throw new IllegalStateException("Failed to initialize ProgramDirectory for tests", e);
     }
     return pd;
+  }
+
+  private static InetAddress literal(String host) throws UnknownHostException {
+    return InetAddress.getAllByName(host)[0];
   }
 }

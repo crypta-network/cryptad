@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.Map;
 import network.crypta.crypt.Util;
 import network.crypta.io.comm.ByteCounter;
@@ -88,10 +89,10 @@ public class OpennetManager {
 
         boolean neverConnected1 = pn1.neverConnected();
         boolean neverConnected2 = pn2.neverConnected();
-        if (neverConnected1 && (!neverConnected2)) {
+        if (neverConnected1 && !neverConnected2) {
           return -1;
         }
-        if ((!neverConnected1) && neverConnected2) {
+        if (!neverConnected1 && neverConnected2) {
           return 1;
         }
         // a-b not the opposite sign to b-a possible in a corner case (a=0 b=Integer.MIN_VALUE).
@@ -422,21 +423,31 @@ public class OpennetManager {
      * <p>These peers are acquired opportunistically to improve routing locality. They are tracked
      * separately so path folding cannot exhaust the grace-period budget.
      */
-    PATH_FOLDING,
+    PATH_FOLDING(0),
     /**
      * Connection established to support an announcement exchange.
      *
      * <p>Announcement-driven peers are tracked separately to avoid crowding out other types. This
      * category helps keep announcement bursts from displacing routine connections.
      */
-    ANNOUNCE,
+    ANNOUNCE(1),
     /**
      * Connection created to re-establish contact with a previously known peer.
      *
      * <p>This is used for reconnecting peers from old-peer tracking or recent successes. It is also
      * used when a successful peer is re-added after falling out of the LRU.
      */
-    RECONNECT
+    RECONNECT(2);
+
+    private final int code;
+
+    ConnectionType(int code) {
+      this.code = code;
+    }
+
+    int code() {
+      return code;
+    }
   }
 
   private final long creationTime;
@@ -809,7 +820,7 @@ public class OpennetManager {
         || ctx.now - timeLastDropped.get(ctx.connectionType) < DROP_CONNECTED_TIME;
   }
 
-  private record DropResult(boolean canAdd, ArrayList<OpennetPeerNode> dropList) {}
+  private record DropResult(boolean canAdd, List<OpennetPeerNode> dropList) {}
 
   private DropResult computeDropAndMaybeAdd(
       WantPeerContext ctx, boolean addAtLRU, boolean justChecking, boolean noDisconnect) {
@@ -875,7 +886,7 @@ public class OpennetManager {
       WantPeerContext ctx,
       int maxPeers,
       boolean noDisconnect,
-      ArrayList<OpennetPeerNode> dropList,
+      List<OpennetPeerNode> dropList,
       int currentSize) {
     if (currentSize == maxPeers && ctx.nodeToAddNow == null) {
       return handleFullSizeNoOffer(ctx, maxPeers, noDisconnect);
@@ -884,7 +895,7 @@ public class OpennetManager {
   }
 
   private void finalizeAddOrOffer(
-      WantPeerContext ctx, boolean addAtLRU, ArrayList<OpennetPeerNode> dropList) {
+      WantPeerContext ctx, boolean addAtLRU, List<OpennetPeerNode> dropList) {
     if (ctx.nodeToAddNow != null) {
       successCount.put(ctx.connectionType, 0L);
       if (addAtLRU) ctx.peersLRU.pushLeast(ctx.nodeToAddNow);
@@ -910,10 +921,7 @@ public class OpennetManager {
   }
 
   private DropDecision dropWhileOverLimit(
-      WantPeerContext ctx,
-      int maxPeers,
-      boolean noDisconnect,
-      ArrayList<OpennetPeerNode> dropList) {
+      WantPeerContext ctx, int maxPeers, boolean noDisconnect, List<OpennetPeerNode> dropList) {
     while (true) {
       int size = getSize(ctx.distance);
       if (!isOverLimitForNextIteration(ctx, maxPeers, size)) {
@@ -1179,7 +1187,7 @@ public class OpennetManager {
 
     if (nodeToAddNow != null) {
       nodeToAddNow.setAddedReason(
-          connectionType == null ? PeerNode.ADDED_REASON_UNKNOWN : connectionType.ordinal());
+          connectionType == null ? PeerNode.ADDED_REASON_UNKNOWN : connectionType.code());
     }
     if (state.notMany) return addPeerIfPresent(nodeToAddNow);
 
@@ -1288,7 +1296,7 @@ public class OpennetManager {
 
   private int countActivePeersOfType(LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type) {
     int count = 0;
-    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.code();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
       if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {
@@ -1301,7 +1309,7 @@ public class OpennetManager {
   private boolean exceedsTypeLimit(
       LRUQueue<OpennetPeerNode> peersLRU, ConnectionType type, int myLimit) {
     int count = 0;
-    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.ordinal();
+    int typeCode = type == null ? PeerNode.ADDED_REASON_UNKNOWN : type.code();
     OpennetPeerNode[] peers = peersLRU.toArray(new OpennetPeerNode[peersLRU.size()]);
     for (OpennetPeerNode pn : peers) {
       if (pn.getAddedReason() == typeCode && pn.isConnected() && !pn.isDroppable(false)) {

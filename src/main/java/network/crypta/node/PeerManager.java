@@ -267,8 +267,12 @@ public class PeerManager {
   }
 
   /**
-   * @return A random routable connected peer. Note: consider taking performance into account. DO
-   *     NOT remove the "synchronized". See below for why.
+   * Returns a random routable connected peer.
+   *
+   * <p>Note: consider taking performance into account. DO NOT remove the "synchronized". See below
+   * for why.
+   *
+   * @return A random routable connected peer.
    */
   public synchronized PeerNode getRandomPeer(PeerNode exclude) {
     return roster.getRandomPeer(exclude);

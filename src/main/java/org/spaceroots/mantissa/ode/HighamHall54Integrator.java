@@ -116,6 +116,7 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
    *
    * @return descriptive method name; immutable and safe for repeated calls
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }
@@ -128,6 +129,7 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
    *
    * @return integration order of the returned solution; always {@code 5}
    */
+  @Override
   public int getOrder() {
     return 5;
   }
@@ -151,6 +153,7 @@ public class HighamHall54Integrator extends RungeKuttaFehlbergIntegrator {
    *     the integration direction.
    * @return dimensionless error ratio; values above one suggest rejecting or shrinking the step
    */
+  @Override
   protected double estimateError(double[][] yDotK, double[] y0, double[] y1, double h) {
 
     double error = 0;

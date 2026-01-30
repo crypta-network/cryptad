@@ -101,15 +101,16 @@ final class NodeOfferMessageHandler {
    */
   boolean handle(Message m, PeerNode source) {
     MessageType spec = m.getSpec();
-    if (spec == DMT.FNPOfferKey) {
+    if (DMT.FNPOfferKey.equals(spec)) {
       return handleOfferKey(m, source);
-    } else if (spec == DMT.FNPGetOfferedKey) {
+    } else if (DMT.FNPGetOfferedKey.equals(spec)) {
       handleGetOfferedKey(m, source);
       return true;
-    } else if (spec == DMT.FNPGetYourFullNoderef && source instanceof DarknetPeerNode peerNode) {
+    } else if (DMT.FNPGetYourFullNoderef.equals(spec)
+        && source instanceof DarknetPeerNode peerNode) {
       peerNode.sendFullNoderef();
       return true;
-    } else if (spec == DMT.FNPMyFullNoderef && source instanceof DarknetPeerNode peerNode) {
+    } else if (DMT.FNPMyFullNoderef.equals(spec) && source instanceof DarknetPeerNode peerNode) {
       peerNode.handleFullNoderef(m);
       return true;
     }

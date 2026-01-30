@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.StringTokenizer;
 import network.crypta.client.FetchException;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.clients.fcp.AddPeer;
@@ -187,57 +188,51 @@ public abstract class ConnectionsToadlet extends Toadlet {
      *     should follow, or zero when the column is not supported.
      */
     protected int customCompare(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
-      switch (sortBy) {
-        case "address":
-          return firstNode.getPeerAddress().compareToIgnoreCase(secondNode.getPeerAddress());
-        case "location":
-          return compareLocations(firstNode, secondNode);
-        case "version":
-          return Version.compareBuildNumbers(
-              Version.parseNodeNameFromVersionStr(firstNode.getVersion()),
-              Version.parseBuildNumberFromVersionStr(firstNode.getVersion(), -1),
-              Version.parseNodeNameFromVersionStr(secondNode.getVersion()),
-              Version.parseBuildNumberFromVersionStr(secondNode.getVersion(), -1));
-        case "backoffRT":
-          return Double.compare(
-              firstNode.getBackedOffPercent(true), secondNode.getBackedOffPercent(true));
-        case "backoffBulk":
-          return Double.compare(
-              firstNode.getBackedOffPercent(false), secondNode.getBackedOffPercent(false));
-        case "overload_p":
-          return Double.compare(firstNode.getPReject(), secondNode.getPReject());
-        case "idle":
-          return compareLongs(
-              firstNode.getTimeLastConnectionCompleted(),
-              secondNode.getTimeLastConnectionCompleted());
-        case "time_routable":
-          return Double.compare(
-              firstNode.getPercentTimeRoutableConnection(),
-              secondNode.getPercentTimeRoutableConnection());
-        case "total_traffic":
-          {
-            long total1 = firstNode.getTotalInputBytes() + firstNode.getTotalOutputBytes();
-            long total2 = secondNode.getTotalInputBytes() + secondNode.getTotalOutputBytes();
-            return compareLongs(total1, total2);
-          }
-        case "total_traffic_since_startup":
-          {
-            long total1 =
-                firstNode.getTotalInputSinceStartup() + firstNode.getTotalOutputSinceStartup();
-            long total2 =
-                secondNode.getTotalInputSinceStartup() + secondNode.getTotalOutputSinceStartup();
-            return compareLongs(total1, total2);
-          }
-        case "selection_percentage":
-          return Double.compare(firstNode.getSelectionRate(), secondNode.getSelectionRate());
-        case "time_delta":
-          return compareLongs(firstNode.getClockDelta(), secondNode.getClockDelta());
-        case "uptime":
-          return compareInts(
-              firstNode.getReportedUptimePercentage(), secondNode.getReportedUptimePercentage());
-        default:
-          return 0;
-      }
+      return switch (sortBy) {
+        case "address" ->
+            firstNode.getPeerAddress().compareToIgnoreCase(secondNode.getPeerAddress());
+        case "location" -> compareLocations(firstNode, secondNode);
+        case "version" ->
+            Version.compareBuildNumbers(
+                Version.parseNodeNameFromVersionStr(firstNode.getVersion()),
+                Version.parseBuildNumberFromVersionStr(firstNode.getVersion(), -1),
+                Version.parseNodeNameFromVersionStr(secondNode.getVersion()),
+                Version.parseBuildNumberFromVersionStr(secondNode.getVersion(), -1));
+        case "backoffRT" ->
+            Double.compare(
+                firstNode.getBackedOffPercent(true), secondNode.getBackedOffPercent(true));
+        case "backoffBulk" ->
+            Double.compare(
+                firstNode.getBackedOffPercent(false), secondNode.getBackedOffPercent(false));
+        case "overload_p" -> Double.compare(firstNode.getPReject(), secondNode.getPReject());
+        case "idle" ->
+            compareLongs(
+                firstNode.getTimeLastConnectionCompleted(),
+                secondNode.getTimeLastConnectionCompleted());
+        case "time_routable" ->
+            Double.compare(
+                firstNode.getPercentTimeRoutableConnection(),
+                secondNode.getPercentTimeRoutableConnection());
+        case "total_traffic" -> {
+          long total1 = firstNode.getTotalInputBytes() + firstNode.getTotalOutputBytes();
+          long total2 = secondNode.getTotalInputBytes() + secondNode.getTotalOutputBytes();
+          yield compareLongs(total1, total2);
+        }
+        case "total_traffic_since_startup" -> {
+          long total1 =
+              firstNode.getTotalInputSinceStartup() + firstNode.getTotalOutputSinceStartup();
+          long total2 =
+              secondNode.getTotalInputSinceStartup() + secondNode.getTotalOutputSinceStartup();
+          yield compareLongs(total1, total2);
+        }
+        case "selection_percentage" ->
+            Double.compare(firstNode.getSelectionRate(), secondNode.getSelectionRate());
+        case "time_delta" -> compareLongs(firstNode.getClockDelta(), secondNode.getClockDelta());
+        case "uptime" ->
+            compareInts(
+                firstNode.getReportedUptimePercentage(), secondNode.getReportedUptimePercentage());
+        default -> 0;
+      };
     }
 
     private int compareLocations(PeerNodeStatus firstNode, PeerNodeStatus secondNode) {
@@ -355,6 +350,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
    * @throws IOException when generating the page or serving downloads fails due to I/O errors.
    * @throws RedirectException when control flow chooses to redirect instead of rendering.
    */
+  @Override
   public void handleMethodGET(URI uri, final HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (!ctx.checkFullAccess(this)) return;
@@ -1019,9 +1015,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
       HTMLNode locationCell = foafRow.addChild("td", ATTR_CLASS, "peer-location");
       for (PeerNodeStatus peerNodeStatus : peersWithFriend) {
         String address =
-            ((peerNodeStatus.getPeerAddress() != null)
+            (peerNodeStatus.getPeerAddress() != null)
                 ? peerNodeStatus.getPeerAddressAndPort()
-                : (l10n("unknownAddress")));
+                : l10n("unknownAddress");
         locationCell.addChild("i", address);
         locationCell.addChild("br");
       }
@@ -1099,6 +1095,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       FRIEND_TRUST trust,
       FRIEND_VISIBILITY visibility) {}
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record RenderContext(
       ToadletContext ctx,
       String path,
@@ -1112,8 +1109,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      RenderContext that = (RenderContext) o;
+      if (!(o instanceof RenderContext that)) return false;
       return drawMessageTypes == that.drawMessageTypes
           && advancedMode == that.advancedMode
           && now == that.now
@@ -1401,10 +1397,11 @@ public abstract class ConnectionsToadlet extends Toadlet {
     replaceCarriageReturns(ref);
     String[] nodesToAdd = ref.toString().split("\nEnd\n");
     for (int i = 0; i < nodesToAdd.length; i++) {
-      String[] split = nodesToAdd[i].split("\n");
       StringBuilder sb = new StringBuilder(nodesToAdd[i].length());
       boolean first = true;
-      for (String s : split) {
+      StringTokenizer tokenizer = new StringTokenizer(nodesToAdd[i], "\n");
+      while (tokenizer.hasMoreTokens()) {
+        String s = tokenizer.nextToken();
         if (s.equals("End")) {
           break;
         }
@@ -1519,9 +1516,10 @@ public abstract class ConnectionsToadlet extends Toadlet {
   }
 
   private String cleanReferenceText(String reftext) {
-    String[] lines = reftext.replace('\r', '\n').split("\n");
     StringBuilder builder = new StringBuilder(reftext.length());
-    for (String line : lines) {
+    StringTokenizer tokenizer = new StringTokenizer(reftext.replace('\r', '\n'), "\n");
+    while (tokenizer.hasMoreTokens()) {
+      String line = tokenizer.nextToken();
       String trimmed = line.trim();
       int equalsAt = trimmed.indexOf('=');
       boolean isFieldLine = equalsAt >= 0 || trimmed.equals("End");
@@ -1905,12 +1903,11 @@ public abstract class ConnectionsToadlet extends Toadlet {
       country.renderFlagIcon(addressRow);
     }
 
-    addressRow.addChild(
-        "#",
-        ((peerNodeStatus.getPeerAddress() != null)
-                ? peerNodeStatus.getPeerAddressAndPort()
-                : (l10n("unknownAddress")))
-            + pingTime);
+    String address =
+        peerNodeStatus.getPeerAddress() != null
+            ? peerNodeStatus.getPeerAddressAndPort()
+            : l10n("unknownAddress");
+    addressRow.addChild("#", address + pingTime);
   }
 
   private void addVersionColumn(HTMLNode peerRow, PeerNodeStatus peerNodeStatus) {
@@ -1934,7 +1931,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
     locationNode.addChild("br");
     double[] peersLoc = peerNodeStatus.getPeersLocation();
     if (peersLoc != null) {
-      locationNode.addChild("i", "+" + (peersLoc.length) + " friends");
+      locationNode.addChild("i", "+" + peersLoc.length + " friends");
     }
   }
 
@@ -1952,7 +1949,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       boolean realtime) {
     HTMLNode backoffCell = peerRow.addChild("td", ATTR_CLASS, "peer-backoff");
     backoffCell.addChild("#", fix1.format(peerNodeStatus.getBackedOffPercent(realtime)));
-    int backoff = (int) (Math.max(peerNodeStatus.getRoutingBackedOffUntil(realtime) - now, 0));
+    int backoff = (int) Math.max(peerNodeStatus.getRoutingBackedOffUntil(realtime) - now, 0);
     if ((backoff > 0) && (backoff < 1000)) {
       backoff = 1000;
     }
@@ -1966,7 +1963,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
         "#",
         (peerNodeStatus.getLastBackoffReason(realtime) == null)
             ? ""
-            : ('/' + (peerNodeStatus.getLastBackoffReason(realtime))));
+            : '/' + peerNodeStatus.getLastBackoffReason(realtime));
   }
 
   private void addPRejectColumn(
@@ -1983,7 +1980,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       idle = peerNodeStatus.getPeerAddedTime();
     }
     HTMLNode idleNode;
-    if (!peerNodeStatus.isConnected() && (now - idle) > (2 * 7 * 24 * 60 * 60 * (long) 1000)) {
+    if (!peerNodeStatus.isConnected() && (now - idle) > (2 * 7 * 24 * 60 * 60 * 1000L)) {
       idleNode = peerRow.addChild("td", ATTR_CLASS, PEER_IDLE_CLASS);
       idleNode.addChild("span", ATTR_CLASS, "peer_idle_old", idleToString(now, idle));
       return;

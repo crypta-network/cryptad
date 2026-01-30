@@ -6,9 +6,9 @@ import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.security.SecureRandom;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.LinkedList;
 import network.crypta.client.filter.HTMLFilter;
 import network.crypta.client.filter.LinkFilterExceptionProvider;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
@@ -81,7 +81,7 @@ public final class SimpleToadletServer
   private static final Logger LOG = LoggerFactory.getLogger(SimpleToadletServer.class);
 
   /** List of urlPrefix / Toadlet */
-  private final LinkedList<ToadletElement> toadlets;
+  private final ArrayDeque<ToadletElement> toadlets;
 
   private static class ToadletElement {
     public ToadletElement(Toadlet t2, String urlPrefix, String menu, String name) {
@@ -581,7 +581,7 @@ public final class SimpleToadletServer
     fetchKeyBoxAboveBookmarks = fproxyConfig.getBoolean("fetchKeyBoxAboveBookmarks");
 
     this.advancedModeEnabled = fproxyConfig.getBoolean("advancedModeEnabled");
-    toadlets = new LinkedList<>();
+    toadlets = new ArrayDeque<>();
 
     if (SSL.available()) {
       ssl = fproxyConfig.getBoolean("ssl");

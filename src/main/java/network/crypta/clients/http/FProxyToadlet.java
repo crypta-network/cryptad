@@ -349,7 +349,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         && !mimeType.equals("application/octet-stream")
         && !mimeType.isEmpty()) {
       FilterMIMEType type = ContentFilter.getMIMEType(mimeType);
-      if ((type == null || (!(type.safeToRead || type.readFilter != null)))
+      if ((type == null || !(type.safeToRead || type.readFilter != null))
           && !(threatLevel == PHYSICAL_THREAT_LEVEL.HIGH
               || threatLevel == PHYSICAL_THREAT_LEVEL.MAXIMUM
               || netLevel == NETWORK_THREAT_LEVEL.HIGH
@@ -546,6 +546,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
   }
 
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest httprequest, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     innerHandleMethodGET(uri, httprequest, ctx, 0);
@@ -1216,6 +1217,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       context.writeData(data);
     }
 
+    @SuppressWarnings("JavaUtilDate")
     private void sendRangeOrFullResponse(
         ToadletContext context,
         BucketFactory bucketFactory,
@@ -1578,11 +1580,11 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
 
     private void addFilterRecoveryOptions(HTMLNode optionList, String mime, FetchException e) {
-      if ((mime.equals("application/x-freenet-index"))
-          && (core.getNode()
+      if (mime.equals("application/x-freenet-index")
+          && core.getNode()
               .services()
               .pluginManager()
-              .isPluginLoaded("plugins.ThawIndexBrowser.ThawIndexBrowser"))) {
+              .isPluginLoaded("plugins.ThawIndexBrowser.ThawIndexBrowser")) {
         HTMLNode option = optionList.addChild("li");
         NodeL10n.getBase()
             .addL10nSubstitution(

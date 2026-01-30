@@ -138,7 +138,7 @@ public class InsertTag extends UIDTag {
   public synchronized int expectedTransfersIn(
       boolean ignoreLocalVsRemote, int outwardTransfersPerInsert, boolean forAccept) {
     if (!accepted) return 0;
-    return ((!isLocal()) || ignoreLocalVsRemote) ? 1 : 0;
+    return (!isLocal() || ignoreLocalVsRemote) ? 1 : 0;
   }
 
   /**

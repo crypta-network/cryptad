@@ -82,6 +82,7 @@ public class PolynomialFitter extends AbstractCurveFitter {
    * @param x abscissa at which the theoretical value is requested; any finite double is accepted
    * @return polynomial value at {@code x}; caller owns the primitive result and may reuse it freely
    */
+  @Override
   public double valueAt(double x) {
     double y = coefficients[coefficients.length - 1].getEstimate();
     for (int i = coefficients.length - 2; i >= 0; --i) {
@@ -106,6 +107,7 @@ public class PolynomialFitter extends AbstractCurveFitter {
    * @throws IllegalArgumentException if {@code p} is not a {@link PolynomialCoefficient} managed by
    *     this fitter
    */
+  @Override
   public double partial(double x, EstimatedParameter p) {
     if (p instanceof PolynomialCoefficient coefficient) {
       return Math.pow(x, coefficient.getDegree());

@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import network.crypta.support.io.ArrayBucket;
@@ -58,7 +59,7 @@ class WebPFilterTest {
             .put(new byte[] {'W', 'E', 'B', 'P'})
             .put(new byte[] {'V', 'P', '8', ' '})
             .putInt(0x12FC)
-            .putLong(((long) 0x2a019d << 24) | (1L << 4));
+            .putLong((0x2a019dL << 24) | (1L << 4));
     WebPFilter filter = new WebPFilter();
     // Act + Assert
     try (ArrayBucket input = new ArrayBucket(buf.array());
@@ -102,7 +103,7 @@ class WebPFilterTest {
             .put(new byte[] {'W', 'E', 'B', 'P'})
             .put(new byte[] {'V', 'P', '8', ' '})
             .putInt(0x7fffff00)
-            .putLong(((long) 0x2a019d << 24) | (1L << 4));
+            .putLong((0x2a019dL << 24) | (1L << 4));
     WebPFilter filter = new WebPFilter();
     // Act + Assert
     try (ArrayBucket input = new ArrayBucket(buf.array());
@@ -124,7 +125,7 @@ class WebPFilterTest {
             .put(new byte[] {'W', 'E', 'B', 'P'})
             .put(new byte[] {'V', 'P', '8', ' '})
             .putInt(12)
-            .putLong(((long) 0x2a019d << 24) | (1L << 4));
+            .putLong((0x2a019dL << 24) | (1L << 4));
     WebPFilter filter = new WebPFilter();
     // Act + Assert
     try (ArrayBucket input = new ArrayBucket(buf.array());
@@ -371,7 +372,7 @@ class WebPFilterTest {
 
   private static byte[] chunk(String fourcc, byte[] payload) throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream(8 + payload.length + 1);
-    baos.write(fourcc.getBytes());
+    baos.write(fourcc.getBytes(StandardCharsets.US_ASCII));
     baos.write(leInt(payload.length));
     baos.write(payload);
     if ((payload.length & 1) != 0) {

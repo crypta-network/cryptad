@@ -11,8 +11,9 @@ import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.Map;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -324,7 +325,7 @@ public class Metadata implements Serializable {
 
   private void readAndDiscardExtraClientMetadata(DataInputStream dis) throws IOException {
     if (!extraMetadata) return;
-    int numberOfExtraFields = (dis.readShort()) & 0xffff;
+    int numberOfExtraFields = dis.readShort() & 0xffff;
     for (int i = 0; i < numberOfExtraFields; i++) {
       short type = dis.readShort();
       int len = (dis.readByte() & 0xff);
@@ -386,7 +387,7 @@ public class Metadata implements Serializable {
   }
 
   private void readSimpleRedirectOrArchiveKeyIfNeeded(DataInputStream dis) throws IOException {
-    if ((!splitfile)
+    if (!splitfile
         && ((documentType == DocumentType.SIMPLE_REDIRECT)
             || (documentType == DocumentType.ARCHIVE_MANIFEST))) {
       simpleRedirectKey = readKey(dis);
@@ -545,8 +546,8 @@ public class Metadata implements Serializable {
   private void enforceTopCompatibilityOrThrow() throws MetadataParseException {
     if (topCompatibilityMode != CompatibilityMode.COMPAT_UNKNOWN) {
       if (minCompatMode == CompatibilityMode.COMPAT_UNKNOWN
-          || !(minCompatMode.ordinal() > topCompatibilityMode.ordinal()
-              || maxCompatMode.ordinal() < topCompatibilityMode.ordinal())) {
+          || !(minCompatMode.code > topCompatibilityMode.code
+              || maxCompatMode.code < topCompatibilityMode.code)) {
         minCompatMode = maxCompatMode = topCompatibilityMode;
       } else
         throw new MetadataParseException(
@@ -960,7 +961,7 @@ public class Metadata implements Serializable {
    *     version or document type.
    */
   public Metadata(DataInputStream dis, long length) throws IOException, MetadataParseException {
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     readMagicVersionAndDocType(dis);
 
     HeaderState header = readFlagsAndHashes(dis);
@@ -1068,7 +1069,7 @@ public class Metadata implements Serializable {
 
   /** Create an empty Metadata object */
   private Metadata() {
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     hashes = null;
     // Should be followed by addRedirectionManifest
     topSize = 0;
@@ -1183,7 +1184,7 @@ public class Metadata implements Serializable {
    *     HashMap's)
    */
   Metadata(Map<String, Object> dir, String prefix) {
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     hashes = null;
     // Simple manifest - contains actual redirects.
     // Not archive manifest, which is basically a redirect.
@@ -1237,7 +1238,7 @@ public class Metadata implements Serializable {
       COMPRESSOR_TYPE compressionCodec,
       String arg,
       ClientMetadata cm) {
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     if ((docType == DocumentType.ARCHIVE_INTERNAL_REDIRECT)
         || (docType == DocumentType.SYMBOLIC_SHORTLINK)) {
       documentType = docType;
@@ -1275,7 +1276,7 @@ public class Metadata implements Serializable {
    * @param name the filename in the archive to read from, must be ".metadata-N" scheme.
    */
   private Metadata(DocumentType docType, String name) {
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     noMIME = true;
     if (docType == DocumentType.ARCHIVE_METADATA_REDIRECT) {
       documentType = docType;
@@ -1333,7 +1334,7 @@ public class Metadata implements Serializable {
     if (topLayer.topCompatibilityMode() == CompatibilityMode.COMPAT_CURRENT) {
       throw new IllegalArgumentException("Invalid top compatibility mode: COMPAT_CURRENT");
     }
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     HashResult[] topHashes = topLayer.hashes();
     if (topHashes != null && topHashes.length == 0) throw new IllegalArgumentException();
     this.hashes = topHashes;
@@ -1400,7 +1401,7 @@ public class Metadata implements Serializable {
     if (topLayer.topCompatibilityMode() == CompatibilityMode.COMPAT_CURRENT) {
       throw new IllegalArgumentException("Invalid top compatibility mode: COMPAT_CURRENT");
     }
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     this.hashes = topLayer.hashes();
     this.hashThisLayerOnly = topLayer.hashThisLayerOnly();
     if (hashThisLayerOnly != null && hashThisLayerOnly.length != 32)
@@ -1454,7 +1455,7 @@ public class Metadata implements Serializable {
     HashResult[] topHashes = topLayer.hashes();
     byte[] splitfileCryptoKeyValue = params.splitfileCryptoKey();
     int deductBlocksFromSegmentsValue = params.deductBlocksFromSegments();
-    if (topCompatibilityModeParam.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
+    if (topCompatibilityModeParam.code < CompatibilityMode.COMPAT_1255.code) {
       if (splitfileCryptoKeyValue != null) throw new IllegalArgumentException();
       if (topHashes != null) throw new IllegalArgumentException();
       if (deductBlocksFromSegmentsValue != 0) throw new IllegalArgumentException();
@@ -1695,7 +1696,7 @@ public class Metadata implements Serializable {
    *     {@code false} otherwise.
    */
   public boolean isSingleFileRedirect() {
-    return ((!splitfile)
+    return (!splitfile
         && ((documentType == DocumentType.SIMPLE_REDIRECT)
             || (documentType == DocumentType.MULTI_LEVEL_METADATA)
             || (documentType == DocumentType.ARCHIVE_MANIFEST)));
@@ -1976,7 +1977,7 @@ public class Metadata implements Serializable {
   }
 
   private void writeKeysOrSplitfileSection(DataOutputStream dos) throws IOException {
-    if ((!splitfile)
+    if (!splitfile
         && ((documentType == DocumentType.SIMPLE_REDIRECT)
             || (documentType == DocumentType.ARCHIVE_MANIFEST))) {
       writeKey(dos, simpleRedirectKey);
@@ -2078,7 +2079,7 @@ public class Metadata implements Serializable {
       throws IOException, MetadataUnresolvedException {
     if (documentType != DocumentType.SIMPLE_MANIFEST) return;
     dos.writeInt(manifestEntries.size());
-    LinkedList<Metadata> unresolvedMetadata = new LinkedList<>();
+    Deque<Metadata> unresolvedMetadata = new ArrayDeque<>();
     for (Map.Entry<String, Metadata> entry : manifestEntries.entrySet()) {
       String name = entry.getKey();
       byte[] nameData = name.getBytes(StandardCharsets.UTF_8);
@@ -2106,7 +2107,7 @@ public class Metadata implements Serializable {
   }
 
   private ManifestEntryData buildManifestEntryPayload(
-      Metadata meta, LinkedList<Metadata> unresolvedMetadata) {
+      Metadata meta, Deque<Metadata> unresolvedMetadata) {
     try {
       byte[] data = meta.writeToByteArray();
       if (data.length > MAX_SIZE_IN_MANIFEST) {
@@ -2468,11 +2469,11 @@ public class Metadata implements Serializable {
       HashMap<String, Object> typed = new HashMap<>();
       for (Map.Entry<?, ?> e : m.entrySet()) {
         Object k = e.getKey();
-        if (!(k instanceof String)) {
+        if (!(k instanceof String string)) {
           throw new ClassCastException(
               "Expected String keys in map, got " + (k == null ? "null" : k.getClass().getName()));
         }
-        typed.put((String) k, e.getValue());
+        typed.put(string, e.getValue());
       }
       return typed;
     }
@@ -2481,10 +2482,10 @@ public class Metadata implements Serializable {
   }
 
   @SuppressWarnings("unchecked")
-  private static Map<String, Object> uncheckedCast(HashMap<?, ?> raw) {
+  private static Map<String, Object> uncheckedCast(Map<?, ?> raw) {
     // Safe by construction in our code paths: subdirectory maps are created as
     // HashMap<String,Object>.
-    return (HashMap<String, Object>) raw;
+    return (Map<String, Object>) raw;
   }
 
   /**

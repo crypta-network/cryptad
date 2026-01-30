@@ -87,6 +87,7 @@ class ClassicalRungeKuttaStepInterpolator extends RungeKuttaStepInterpolator
    * @throws DerivativeException propagated if a user-supplied derivative function triggers it
    *     during interpolation support logic in the parent class.
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 

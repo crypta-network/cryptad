@@ -173,6 +173,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     }
   }
 
+  @Override
   public RequestClient getRequestClient() {
     return this;
   }

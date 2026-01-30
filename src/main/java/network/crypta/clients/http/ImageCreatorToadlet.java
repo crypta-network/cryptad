@@ -110,6 +110,7 @@ public class ImageCreatorToadlet extends Toadlet {
    * @throws IOException if writing image data to the bucket or client output stream fails
    * @throws RedirectException if upstream logic requests redirect handling for this request
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (clientHasCurrentImage(ctx)) {

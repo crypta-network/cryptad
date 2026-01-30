@@ -1,6 +1,6 @@
 package network.crypta.client;
 
-import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import network.crypta.client.async.ClientGetCallback;
 import network.crypta.client.async.ClientGetter;
@@ -338,7 +338,7 @@ public interface HighLevelSimpleClient {
    * @throws InsertException If manifest assembly or publishing fails.
    */
   FreenetURI insertManifest(
-      FreenetURI insertURI, HashMap<String, Object> bucketsByName, String defaultName)
+      FreenetURI insertURI, Map<String, Object> bucketsByName, String defaultName)
       throws InsertException;
 
   /**
@@ -356,7 +356,7 @@ public interface HighLevelSimpleClient {
    */
   FreenetURI insertManifest(
       FreenetURI insertURI,
-      HashMap<String, Object> bucketsByName,
+      Map<String, Object> bucketsByName,
       String defaultName,
       short priorityClass)
       throws InsertException;
@@ -378,7 +378,7 @@ public interface HighLevelSimpleClient {
    */
   FreenetURI insertManifest(
       FreenetURI insertURI,
-      HashMap<String, Object> bucketsByName,
+      Map<String, Object> bucketsByName,
       String defaultName,
       short priorityClass,
       byte[] forceCryptoKey)

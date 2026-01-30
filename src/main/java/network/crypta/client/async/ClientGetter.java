@@ -720,7 +720,7 @@ public class ClientGetter extends BaseClientGetter
     if (!finalizeBlobWriterOrForwardError(context)) return;
     File completionFile = getCompletionFile();
     assert (completionFile != null);
-    assert (!ctx.getFilterData());
+    assert !ctx.getFilterData();
     LOG.info("Succeeding via truncation from {} to {}", tempFile, completionFile);
     try {
       FetchResult result =
@@ -1533,8 +1533,8 @@ public class ClientGetter extends BaseClientGetter
   @Override
   public File getCompletionFile() {
     if (returnBucket == null) return null;
-    if (!(returnBucket instanceof FileBucket)) return null;
+    if (!(returnBucket instanceof FileBucket fileBucket)) return null;
     // Just a plain FileBucket. Not a temporary, not delayed free, etc.
-    return ((FileBucket) returnBucket).getFile();
+    return fileBucket.getFile();
   }
 }

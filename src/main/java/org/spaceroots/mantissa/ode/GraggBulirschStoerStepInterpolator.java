@@ -347,6 +347,7 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
    * @throws DerivativeException propagated unchanged if the underlying user function signalled an
    *     error while evaluating derivatives needed for interpolation
    */
+  @Override
   protected void computeInterpolatedState(double theta, double oneMinusThetaH)
       throws DerivativeException {
 
@@ -391,6 +392,7 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
    * @param out stream where to save the state; must remain open for the duration of the write
    * @throws IOException in case of write error or if the target stream rejects data
    */
+  @Override
   public void writeExternal(ObjectOutput out) throws IOException {
 
     int dimension = currentState.length;
@@ -419,6 +421,7 @@ class GraggBulirschStoerStepInterpolator extends AbstractStepInterpolator
    * @throws IOException in case of read error or when a derivative evaluation fails while restoring
    *     the interpolated time
    */
+  @Override
   public void readExternal(ObjectInput in) throws IOException {
 
     // read the base class

@@ -34,6 +34,7 @@ import org.jetbrains.annotations.NotNull;
  * @param yDot1 workspace for derivatives at the trial state; same length as {@code y0}.
  * @see AdaptiveStepsizeIntegrator#initializeStep(StepInitializationContext)
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record StepInitializationContext(
     FirstOrderDifferentialEquations equations,
     boolean forward,

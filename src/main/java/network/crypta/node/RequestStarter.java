@@ -159,7 +159,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
     }
     boolean started = startRequest(req);
     logIfNotCancelled(req, started);
-    long nextCycle = (!req.localRequestOnly) ? System.currentTimeMillis() : cycleTime;
+    long nextCycle = !req.localRequestOnly ? System.currentTimeMillis() : cycleTime;
     return new ProcessResult(nextCycle, false);
   }
 
@@ -273,7 +273,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   }
 
   private boolean startRequest(ChosenBlock req) {
-    if ((!req.isPersistent()) && req.isCancelled()) {
+    if (!req.isPersistent() && req.isCancelled()) {
       req.onDumped();
       return false;
     }
@@ -330,7 +330,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
       // Key may be null for inserts
       if (key != null) stats.reportOutgoingLocalRequestLocation(key.toNormalizedDouble());
       if (!req.send(core, sched)) {
-        if (!((!req.isPersistent()) && req.isCancelled()))
+        if (!(!req.isPersistent() && req.isCancelled()))
           LOG.error("Send request failed for {}", req);
         else LOG.info("Send request skipped for {} - request was cancelled", req);
       }

@@ -78,7 +78,7 @@ class GillIntegratorTest {
     GillIntegrator integrator = new GillIntegrator(0.3);
     integrator.setStepHandler(
         new StepSizeCapturingHandler(
-            integrator, observedSteps, lastFlags, /* requireDense= */ true));
+            integrator, observedSteps, lastFlags, /* requireDenseOutput= */ true));
 
     RecordingSwitchingFunction switchingFunction = new RecordingSwitchingFunction();
     integrator.addSwitchingFunction(switchingFunction, 0.25, 1.0e-9);

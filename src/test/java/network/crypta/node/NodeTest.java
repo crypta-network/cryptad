@@ -30,7 +30,7 @@ class NodeTest {
       f.setAccessible(true);
       f.set(target, value);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed setting field '" + fieldName + "'", e);
+      throw new LinkageError("Failed setting field '" + fieldName + "'", e);
     }
   }
 

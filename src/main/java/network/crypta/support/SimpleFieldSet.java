@@ -586,9 +586,9 @@ public class SimpleFieldSet {
 
   private void validatePutArguments(
       String key, String value, boolean allowMultiple, boolean fromRead) {
-    if ((!alwaysUseBase64) && value.indexOf('\n') != -1)
+    if (!alwaysUseBase64 && value.indexOf('\n') != -1)
       throw new IllegalArgumentException("A simplefieldSet can't accept newlines !");
-    if (allowMultiple && (!fromRead) && value.indexOf(MULTI_VALUE_CHAR) != -1) {
+    if (allowMultiple && !fromRead && value.indexOf(MULTI_VALUE_CHAR) != -1) {
       throw new IllegalArgumentException(
           "Appending a string to a SimpleFieldSet value should not contain the multi-value char \""
               + MULTI_VALUE_CHAR

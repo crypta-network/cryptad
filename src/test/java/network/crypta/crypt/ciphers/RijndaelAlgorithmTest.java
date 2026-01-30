@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.util.HexFormat;
 import java.util.stream.Stream;
@@ -132,7 +133,10 @@ class RijndaelAlgorithmTest {
     byte[] wrong = new byte[16];
     RijndaelAlgorithm.blockDecrypt(ct, wrong, 0, sessionKey2, 16);
 
-    assertNotEquals(new String(pt), new String(wrong), "Wrong key should not decrypt to original");
+    assertNotEquals(
+        new String(pt, StandardCharsets.UTF_8),
+        new String(wrong, StandardCharsets.UTF_8),
+        "Wrong key should not decrypt to original");
     // Ensure byte-wise inequality too
     boolean equal = true;
     for (int i = 0; i < pt.length; i++)

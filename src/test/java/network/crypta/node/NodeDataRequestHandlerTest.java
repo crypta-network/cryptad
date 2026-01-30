@@ -164,6 +164,7 @@ class NodeDataRequestHandlerTest {
   }
 
   @Test
+  @SuppressWarnings("ReferenceEquality")
   void innerHandleDataRequest_whenOverloadedSoft_expectRejectOverloadWithSoftSubMessage()
       throws Exception {
     PeerNode source = org.mockito.Mockito.mock(PeerNode.class);
@@ -222,7 +223,6 @@ class NodeDataRequestHandlerTest {
     handler.start(updatedStats);
 
     PeerNode source = org.mockito.Mockito.mock(PeerNode.class);
-    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
     NodeSSK key = org.mockito.Mockito.mock(NodeSSK.class);
     when(source.isConnected()).thenReturn(true);
     when(source.isRoutable()).thenReturn(true);
@@ -249,7 +249,6 @@ class NodeDataRequestHandlerTest {
     verify(executor).execute(handlerRunnable.capture(), eq("RequestHandler for UID 42 on 1234"));
     assertInstanceOf(RequestHandler.class, handlerRunnable.getValue());
     assertTrue(needsPubKey(handlerRunnable.getValue()));
-    verify(transport, never()).sendAsync(any(Message.class), any(), any(ByteCounter.class));
   }
 
   private static Message messageWithKey(Key key) {

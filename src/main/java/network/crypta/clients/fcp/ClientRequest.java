@@ -7,6 +7,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.Locale;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.PersistenceDisabledException;
@@ -144,7 +145,7 @@ public abstract class ClientRequest implements Serializable {
    */
   protected ClientRequest(
       ClientRequestParams params, FCPConnectionHandler handler, PersistentRequestClient client) {
-    int hash = super.hashCode();
+    int hash = System.identityHashCode(this);
     if (hash == 0) hash = 1;
     hashCode = hash;
     this.uri = params.uri();
@@ -193,7 +194,7 @@ public abstract class ClientRequest implements Serializable {
    * @param handler connection handler from which persistent client information is derived
    */
   protected ClientRequest(ClientRequestParams params, FCPConnectionHandler handler) {
-    int hash = super.hashCode();
+    int hash = System.identityHashCode(this);
     if (hash == 0) hash = 1;
     hashCode = hash;
     this.uri = params.uri();
@@ -344,7 +345,7 @@ public abstract class ClientRequest implements Serializable {
         throws MessageInvalidException {
       try {
         if (persistenceString == null) return Persistence.CONNECTION;
-        else return Persistence.valueOf(persistenceString.toUpperCase());
+        else return Persistence.valueOf(persistenceString.toUpperCase(Locale.ROOT));
       } catch (IllegalArgumentException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.ERROR_PARSING_NUMBER,
@@ -880,7 +881,7 @@ public abstract class ClientRequest implements Serializable {
     identifier = reqID.identifier;
     global = reqID.globalQueue;
     clientName = reqID.clientName;
-    hashCode = super.hashCode();
+    hashCode = System.identityHashCode(this);
     // We can't wait until onResume() to get the client, because it may be used in the
     // constructors.
     this.client = context.persistentRoot.makeClient(global, clientName);

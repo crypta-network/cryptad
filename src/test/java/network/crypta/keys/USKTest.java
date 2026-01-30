@@ -42,8 +42,14 @@ class USKTest {
       m.setAccessible(true);
       return (Boolean) m.invoke(null, name);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Unable to invoke hasEditionSuffix via reflection", e);
+      throw linkageError("Unable to invoke hasEditionSuffix via reflection", e);
     }
+  }
+
+  private static LinkageError linkageError(String message, ReflectiveOperationException e) {
+    LinkageError error = new LinkageError(message);
+    error.initCause(e);
+    return error;
   }
 
   @Test

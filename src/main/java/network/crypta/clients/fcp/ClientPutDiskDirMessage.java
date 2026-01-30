@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
+import java.util.Map;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.node.Node;
 import network.crypta.support.SimpleFieldSet;
@@ -113,7 +114,7 @@ public class ClientPutDiskDirMessage extends ClientPutDirMessage {
           global);
     // Create a directory listing of Buckets of data, mapped to ManifestElement's.
     // Directories are sub-HashMap's.
-    HashMap<String, Object> buckets = makeBucketsByName(dirname, "");
+    Map<String, Object> buckets = makeBucketsByName(dirname, "");
     handler.startClientPutDir(this, buckets, true);
   }
 
@@ -129,14 +130,14 @@ public class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * @throws MessageInvalidException if a directory does not exist or a child violates the
    *     configured readability rules.
    */
-  private HashMap<String, Object> makeBucketsByName(File thisdir, String prefix)
+  private Map<String, Object> makeBucketsByName(File thisdir, String prefix)
       throws MessageInvalidException {
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Listing directory: {}", thisdir);
     }
 
-    HashMap<String, Object> ret = new HashMap<>();
+    Map<String, Object> ret = new HashMap<>();
 
     File[] filelist = thisdir.listFiles();
     if (filelist == null)
@@ -176,19 +177,19 @@ public class ClientPutDiskDirMessage extends ClientPutDirMessage {
     return true;
   }
 
-  private void addEntry(HashMap<String, Object> ret, String prefix, File child)
+  private void addEntry(Map<String, Object> ret, String prefix, File child)
       throws MessageInvalidException {
     if (child.isFile()) {
       addFileEntry(ret, prefix, child);
     } else if (child.isDirectory()) {
-      HashMap<String, Object> subdir = makeBucketsByName(child, prefix + child.getName() + '/');
+      Map<String, Object> subdir = makeBucketsByName(child, prefix + child.getName() + '/');
       ret.put(child.getName(), subdir);
     } else {
       handleUnknownEntry(child);
     }
   }
 
-  private void addFileEntry(HashMap<String, Object> ret, String prefix, File file) {
+  private void addFileEntry(Map<String, Object> ret, String prefix, File file) {
     FileBucket bucket = new FileBucket(file, true, false, false, false);
     ret.put(
         file.getName(),

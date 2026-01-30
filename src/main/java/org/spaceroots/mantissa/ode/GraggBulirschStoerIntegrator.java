@@ -66,7 +66,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   public GraggBulirschStoerIntegrator(
       double minStep, double maxStep, double scalAbsoluteTolerance, double scalRelativeTolerance) {
     super(minStep, maxStep, scalAbsoluteTolerance, scalRelativeTolerance);
-    denseOutput = (handler.requiresDenseOutput() || (!switchesHandler.isEmpty()));
+    denseOutput = handler.requiresDenseOutput() || !switchesHandler.isEmpty();
     setStabilityCheck(true, -1, -1, -1);
     setStepsizeControl(-1, -1, -1, -1);
     setOrderControl(-1, -1, -1);
@@ -94,7 +94,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
       double[] vecAbsoluteTolerance,
       double[] vecRelativeTolerance) {
     super(minStep, maxStep, vecAbsoluteTolerance, vecRelativeTolerance);
-    denseOutput = (handler.requiresDenseOutput() || (!switchesHandler.isEmpty()));
+    denseOutput = handler.requiresDenseOutput() || !switchesHandler.isEmpty();
     setStabilityCheck(true, -1, -1, -1);
     setStepsizeControl(-1, -1, -1, -1);
     setOrderControl(-1, -1, -1);
@@ -247,7 +247,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   public void setStepHandler(StepHandler handler) {
 
     super.setStepHandler(handler);
-    denseOutput = (handler.requiresDenseOutput() || (!switchesHandler.isEmpty()));
+    denseOutput = handler.requiresDenseOutput() || !switchesHandler.isEmpty();
 
     // reinitialize the arrays
     initializeArrays();
@@ -269,7 +269,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   public void addSwitchingFunction(
       SwitchingFunction function, double maxCheckInterval, double convergence) {
     super.addSwitchingFunction(function, maxCheckInterval, convergence);
-    denseOutput = (handler.requiresDenseOutput() || (!switchesHandler.isEmpty()));
+    denseOutput = handler.requiresDenseOutput() || !switchesHandler.isEmpty();
 
     // reinitialize the arrays
     initializeArrays();
@@ -348,6 +348,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    *
    * @return the constant string {@code "Gragg-Bulirsch-Stoer"}; callers must not mutate it
    */
+  @Override
   public String getName() {
     return METHOD_NAME;
   }
@@ -509,6 +510,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * @throws DerivativeException if user-supplied derivative computation fails
    * @throws IntegratorException if dimensions mismatch or the step size becomes unusable
    */
+  @Override
   public void integrate(
       FirstOrderDifferentialEquations equations, double t0, double[] y0, double t, double[] y)
       throws DerivativeException, IntegratorException {
@@ -584,6 +586,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     updateRejectionStatus(status, status.reject);
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record IntegrationContext(
       FirstOrderDifferentialEquations equations,
       double targetTime,
@@ -653,6 +656,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record ModifiedMidpointContext(
       FirstOrderDifferentialEquations equations,
       double t0,
@@ -824,7 +828,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
   private boolean adjustStepForTarget(double targetTime, boolean forward) {
     if ((forward && (stepStart + stepSize > targetTime))
-        || ((!forward) && (stepStart + stepSize < targetTime))) {
+        || (!forward && (stepStart + stepSize < targetTime))) {
       stepSize = targetTime - stepStart;
     }
     double nextT = stepStart + stepSize;
@@ -937,23 +941,19 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   private void checkConvergence(int k, double error, StepStatus status) {
     status.loopExit = false;
     switch (k - status.targetIter) {
-      case -1:
-        handleConvergenceBeforeTarget(k, error, status);
-        break;
-      case 0:
-        handleConvergenceAtTarget(error, status);
-        break;
-      case 1:
+      case -1 -> handleConvergenceBeforeTarget(k, error, status);
+      case 0 -> handleConvergenceAtTarget(error, status);
+      case 1 -> {
         if (error > 1.0) {
           rejectAndReduceOrder(status);
         }
         status.loopExit = true;
-        break;
-      default:
+      }
+      default -> {
         if ((status.firstTime || status.lastStep) && (error <= 1.0)) {
           status.loopExit = true;
         }
-        break;
+      }
     }
   }
 
@@ -1176,7 +1176,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
   private AbstractStepInterpolator createInterpolator(
       double[] y, boolean forward, WorkingState workingState) {
-    if (denseOutput || (!switchesHandler.isEmpty())) {
+    if (denseOutput || !switchesHandler.isEmpty()) {
       return new GraggBulirschStoerStepInterpolator(
           y,
           workingState.yDot0,
@@ -1251,6 +1251,17 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
         yMidDots[0] = new double[dimension];
       }
     }
+
+    @Override
+    public String toString() {
+      return "WorkingState[dimension="
+          + y1.length
+          + ", sequenceLength="
+          + sequence.length
+          + ", denseOutput="
+          + denseOutput
+          + "]";
+    }
   }
 
   private static final class StepStatus {
@@ -1267,6 +1278,23 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
     StepStatus(int targetIter) {
       this.targetIter = targetIter;
+    }
+
+    @Override
+    public String toString() {
+      return "StepStatus[hNew="
+          + hNew
+          + ", maxError="
+          + maxError
+          + ", targetIter="
+          + targetIter
+          + ", firstTime="
+          + firstTime
+          + ", lastStep="
+          + lastStep
+          + ", reject="
+          + reject
+          + "]";
     }
   }
 

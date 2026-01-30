@@ -339,8 +339,8 @@ public class PushDataManager {
     if (LOG.isDebugEnabled()) {
       LOG.debug("Polling for notification:{}", requestId);
     }
-    while (awaitingNotifications.get(requestId) != null
-            && awaitingNotifications.get(requestId).isEmpty()
+    while ((awaitingNotifications.get(requestId) != null
+            && awaitingNotifications.get(requestId).isEmpty())
         || // No notifications
         (awaitingNotifications.get(requestId) != null
             && !awaitingNotifications.get(requestId).isEmpty()

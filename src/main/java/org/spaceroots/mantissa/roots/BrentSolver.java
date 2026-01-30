@@ -99,6 +99,7 @@ public class BrentSolver implements RootsFinder {
    * @return {@code true} when a root satisfying {@code checker} is found; {@code false} otherwise.
    * @throws FunctionException if {@code function.valueAt(...)} fails during evaluation.
    */
+  @Override
   public boolean findRoot(
       ComputableFunction function,
       ConvergenceChecker checker,
@@ -258,6 +259,7 @@ public class BrentSolver implements RootsFinder {
    *
    * @return last computed root abscissa, or {@link Double#NaN} if none is available.
    */
+  @Override
   public double getRoot() {
     return root;
   }

@@ -605,7 +605,7 @@ public class ToadletContextImpl implements ToadletContext {
     cookies = new ArrayList<>(cookieAmount + 1);
 
     for (String cookieHeader : headers.iterateAll("cookie")) {
-      ArrayList<ReceivedCookie> parsedCookies = ReceivedCookie.parseHeader(cookieHeader);
+      List<ReceivedCookie> parsedCookies = ReceivedCookie.parseHeader(cookieHeader);
       cookies.addAll(parsedCookies);
     }
   }

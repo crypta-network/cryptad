@@ -219,18 +219,10 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     void accept(ResumeOutcome outcome) {
       if (outcome == null) return;
       switch (outcome.status) {
-        case LOADED:
-          success++;
-          break;
-        case RESTORED_FULLY:
-          restoredFully++;
-          break;
-        case RESTORED_RESTARTED:
-          restoredRestarted++;
-          break;
-        case FAILED:
-          failed++;
-          break;
+        case LOADED -> success++;
+        case RESTORED_FULLY -> restoredFully++;
+        case RESTORED_RESTARTED -> restoredRestarted++;
+        case FAILED -> failed++;
       }
       if (outcome.serializeFailed) failedSerialize = true;
     }
@@ -503,7 +495,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
         }
       }
       PartiallyLoadedRequest old = partiallyLoadedRequests.get(reqID);
-      if (old == null || old.status.ordinal() > status.ordinal()) {
+      if (old == null || old.status.compareTo(status) > 0) {
         partiallyLoadedRequests.put(reqID, new PartiallyLoadedRequest(request, status));
         if (!(status == RequestLoadStatus.LOADED || status == RequestLoadStatus.RESTORED_FULLY))
           somethingFailed = true;
@@ -908,6 +900,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
     return clientCore.getPersistentRequests();
   }
 
+  @Override
   public boolean newSalt() {
     return newSalt;
   }

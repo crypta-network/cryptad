@@ -298,13 +298,13 @@ class SSKInsertSenderTest {
     // Assert: onAccepted path executed — headers and data were sent
     Mockito.verify(transport)
         .sendAsync(
-            ArgumentMatchers.argThat(m -> m.getSpec() == DMT.FNPSSKInsertRequestHeaders),
+            ArgumentMatchers.argThat(m -> DMT.FNPSSKInsertRequestHeaders.equals(m.getSpec())),
             ArgumentMatchers.isNull(),
             ArgumentMatchers.eq(sender));
 
     Mockito.verify(transport)
         .sendSync(
-            ArgumentMatchers.argThat(m -> m.getSpec() == DMT.FNPSSKInsertRequestData),
+            ArgumentMatchers.argThat(m -> DMT.FNPSSKInsertRequestData.equals(m.getSpec())),
             ArgumentMatchers.eq(sender),
             ArgumentMatchers.eq(false));
 

@@ -13,6 +13,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.regex.Pattern;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
@@ -154,7 +155,7 @@ class SimpleReadOnlyArrayBucketTest {
 
         // Writes must be rejected because the buffer is read-only
         IOException ex = assertThrows(IOException.class, () -> rab.pwrite(0, new byte[] {1}, 0, 1));
-        assertTrue(ex.getMessage().toLowerCase().contains("read"));
+        assertTrue(ex.getMessage().toLowerCase(Locale.ROOT).contains("read"));
 
         // Out-of-bounds and negative offsets propagate underlying exceptions
         assertThrows(IllegalArgumentException.class, () -> rab.pread(-1, new byte[1], 0, 1));

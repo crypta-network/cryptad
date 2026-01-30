@@ -401,24 +401,25 @@ public class InsertException extends Exception {
    *     otherwise {@code false}.
    */
   public static boolean isFatal(InsertExceptionMode mode) {
-    switch (mode) {
+    return switch (mode) {
       case INVALID_URI,
-      FATAL_ERRORS_IN_BLOCKS,
-      COLLISION,
-      CANCELLED,
-      META_STRINGS_NOT_SUPPORTED,
-      BINARY_BLOB_FORMAT_ERROR,
-      TOO_BIG,
-      BUCKET_ERROR, // maybe. No point retrying.
-      INTERNAL_ERROR: // maybe. No point retrying.
-        return true;
-      case REJECTED_OVERLOAD, TOO_MANY_RETRIES_IN_BLOCKS, ROUTE_NOT_FOUND, ROUTE_REALLY_NOT_FOUND:
-        return false;
-      default:
+          FATAL_ERRORS_IN_BLOCKS,
+          COLLISION,
+          CANCELLED,
+          META_STRINGS_NOT_SUPPORTED,
+          BINARY_BLOB_FORMAT_ERROR,
+          TOO_BIG,
+          BUCKET_ERROR, // maybe. No point retrying.
+          INTERNAL_ERROR ->
+          true; // maybe. No point retrying.
+      case REJECTED_OVERLOAD, TOO_MANY_RETRIES_IN_BLOCKS, ROUTE_NOT_FOUND, ROUTE_REALLY_NOT_FOUND ->
+          false;
+      default -> {
         String unknown = getMessage(mode);
         LOG.error("Error unknown to isFatal(): {}", unknown);
-        return false;
-    }
+        yield false;
+      }
+    };
   }
 
   /**

@@ -227,7 +227,7 @@ class NodeIPPortDetectorTest {
   }
 
   private static FreenetInetAddress ip(String addr) throws UnknownHostException {
-    return new FreenetInetAddress(InetAddress.getByName(addr));
+    return new FreenetInetAddress(InetAddress.getAllByName(addr)[0]);
   }
 
   private static PeerNode pnWithDetected(Peer p) {

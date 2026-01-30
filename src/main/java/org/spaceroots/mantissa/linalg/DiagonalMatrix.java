@@ -109,6 +109,7 @@ public class DiagonalMatrix extends SquareMatrix {
    *
    * @return new {@link DiagonalMatrix} with copied data and identical dimensions
    */
+  @Override
   public Matrix duplicate() {
     return new DiagonalMatrix(this);
   }
@@ -146,6 +147,7 @@ public class DiagonalMatrix extends SquareMatrix {
    *     computation
    * @return product of all diagonal elements as a {@code double} value
    */
+  @Override
   public double getDeterminant(double epsilon) {
     double determinant = data[0];
     for (int index = columns + 1; index < columns * columns; index += columns + 1) {
@@ -195,6 +197,7 @@ public class DiagonalMatrix extends SquareMatrix {
    * @return new matrix containing the solution vector or block, leaving {@code b} unchanged
    * @throws SingularMatrixException if any diagonal entry magnitude falls below {@code epsilon}
    */
+  @Override
   public Matrix solve(Matrix b, double epsilon) throws SingularMatrixException {
 
     Matrix result = b.duplicate();
@@ -225,6 +228,7 @@ public class DiagonalMatrix extends SquareMatrix {
    * @param i zero-based row index queried for its non-null column interval
    * @return range whose {@code begin} is {@code i} and {@code end} is {@code i + 1}
    */
+  @Override
   public NonNullRange getRangeForRow(int i) {
     return new NonNullRange(i, i + 1);
   }
@@ -239,6 +243,7 @@ public class DiagonalMatrix extends SquareMatrix {
    * @param j zero-based column index queried for its non-null row interval
    * @return range whose {@code begin} is {@code j} and {@code end} is {@code j + 1}
    */
+  @Override
   public NonNullRange getRangeForColumn(int j) {
     return new NonNullRange(j, j + 1);
   }

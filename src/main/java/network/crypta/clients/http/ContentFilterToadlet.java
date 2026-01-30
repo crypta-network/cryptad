@@ -134,6 +134,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
    * @return {@code true} when advanced mode and full access allow serving the request; otherwise
    *     {@code false}.
    */
+  @Override
   public boolean isEnabled(ToadletContext ctx) {
     if (ctx == null) return false;
     boolean fullAccess = !container.publicGatewayMode() || ctx.isAllowedFullAccess();
@@ -157,6 +158,7 @@ public class ContentFilterToadlet extends Toadlet implements LinkEnabledCallback
    * @throws RedirectException if a redirect is required by the underlying framework while building
    *     the page.
    */
+  @Override
   public void handleMethodGET(URI uri, final HTTPRequest request, final ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (container.publicGatewayMode() && !ctx.isAllowedFullAccess()) {

@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Random;
 import java.util.StringTokenizer;
@@ -261,7 +262,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
       byte[] cryptoKey,
       byte[] extra2) {
     // Construct from components
-    this.keyType = keyType.trim().toUpperCase().intern();
+    this.keyType = keyType.trim().toUpperCase(Locale.ROOT).intern();
     this.docName = docName;
     this.metaStr = metaStr;
     this.routingKey = routingKey;
@@ -296,7 +297,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
       byte[] extra2,
       long suggestedEdition) {
     // Construct from components with explicit edition
-    this.keyType = keyType.trim().toUpperCase().intern();
+    this.keyType = keyType.trim().toUpperCase(Locale.ROOT).intern();
     this.docName = docName;
     this.metaStr = metaStr;
     this.routingKey = routingKey;
@@ -349,7 +350,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     int atchar = normalized.indexOf('@');
     if (atchar == -1)
       throw new MalformedURLException("There is no @ in that URI! (" + normalized + ')');
-    String kt = normalized.substring(0, atchar).toUpperCase();
+    String kt = normalized.substring(0, atchar).toUpperCase(Locale.ROOT);
     String remainder = normalized.substring(atchar + 1);
 
     keyType = validateKeyTypeOrThrow(kt);
@@ -405,6 +406,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     throw new MalformedURLException("Invalid key type: " + kt);
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record MetaParse(String docName, String[] meta, long edition, String base) {
     @Override
     public boolean equals(Object o) {
@@ -508,6 +510,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return meta;
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record KeyParts(byte[] routingKey, byte[] cryptoKey, byte[] extra) {
     @Override
     public boolean equals(Object o) {
@@ -1057,20 +1060,13 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
 
   private void writeTypeByteOrThrow(DataOutputStream dos) throws IOException {
     switch (keyType) {
-      case "CHK":
-        dos.writeByte(CHK);
-        return;
-      case "SSK":
-        dos.writeByte(SSK);
-        return;
-      case "KSK":
-        dos.writeByte(KSK);
-        return;
-      case "USK":
-        throw new MalformedURLException("Cannot write USKs as binary keys");
-      default:
-        throw new MalformedURLException(
-            "Cannot write key of type " + keyType + " - do not know how");
+      case "CHK" -> dos.writeByte(CHK);
+      case "SSK" -> dos.writeByte(SSK);
+      case "KSK" -> dos.writeByte(KSK);
+      case "USK" -> throw new MalformedURLException("Cannot write USKs as binary keys");
+      default ->
+          throw new MalformedURLException(
+              "Cannot write key of type " + keyType + " - do not know how");
     }
   }
 

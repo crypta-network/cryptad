@@ -88,10 +88,11 @@ public class DatastoreChecker implements PrioRunnable {
     }
 
     @Override
+    @SuppressWarnings("ReferenceEquality")
     public boolean equals(Object o) {
       // Hack to make queue.remove() work, see removeRequest() below.
-      if (!(o instanceof QueueItem)) return false; // equals() should not throw ClassCastException
-      return this.getter == ((QueueItem) o).getter;
+      if (!(o instanceof QueueItem queueItem)) return false;
+      return getter == queueItem.getter;
     }
 
     @Override

@@ -98,7 +98,7 @@ class SSKInsertHandlerTest {
             uid,
             System.currentTimeMillis(),
             /* canWriteDatastore= */ false,
-            /* rt= */ false);
+            /* realTime= */ false);
 
     // Act
     handler.run();
@@ -134,7 +134,7 @@ class SSKInsertHandlerTest {
             uid,
             System.currentTimeMillis(),
             /* canWriteDatastore= */ true,
-            /* rt= */ true);
+            /* realTime= */ true);
 
     // Act
     handler.run();
@@ -178,7 +178,7 @@ class SSKInsertHandlerTest {
             uid,
             System.currentTimeMillis(),
             /* canWriteDatastore= */ true,
-            /* rt= */ false);
+            /* realTime= */ false);
 
     // Act
     handler.run();
@@ -207,7 +207,7 @@ class SSKInsertHandlerTest {
             999L,
             System.currentTimeMillis(),
             /* canWriteDatastore= */ true,
-            /* rt= */ false);
+            /* realTime= */ false);
 
     handler.sentBytes(120);
     handler.receivedBytes(220);
@@ -234,7 +234,7 @@ class SSKInsertHandlerTest {
             1001L,
             System.currentTimeMillis(),
             /* canWriteDatastore= */ true,
-            /* rt= */ false);
+            /* realTime= */ false);
 
     handler.sentPayload(64);
 
@@ -257,7 +257,7 @@ class SSKInsertHandlerTest {
             1002L,
             System.currentTimeMillis(),
             /* canWriteDatastore= */ true,
-            /* rt= */ false);
+            /* realTime= */ false);
 
     assertEquals(NativeThread.PriorityLevel.HIGH_PRIORITY.value, handler.getPriority());
   }
@@ -278,7 +278,7 @@ class SSKInsertHandlerTest {
             uid,
             System.currentTimeMillis(),
             /* canWriteDatastore= */ true,
-            /* rt= */ false);
+            /* realTime= */ false);
     String s = handler.toString();
     assertTrue(s.contains(" for " + uid));
   }

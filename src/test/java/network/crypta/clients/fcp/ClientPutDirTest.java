@@ -33,7 +33,7 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings("java:S100")
+@SuppressWarnings({"java:S100", "JavaUtilDate"})
 class ClientPutDirTest {
 
   @Mock private PersistentRequestClient persistentRequestClient;

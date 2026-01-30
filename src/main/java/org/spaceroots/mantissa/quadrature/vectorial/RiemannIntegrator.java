@@ -69,6 +69,7 @@ public class RiemannIntegrator implements SampledFunctionIntegrator {
    * @throws FunctionException if evaluating the sampled function fails at any iteration step or
    *     when advancing the iterator.
    */
+  @Override
   public double[] integrate(SampledFunctionIterator iter)
       throws ExhaustedSampleException, FunctionException {
 

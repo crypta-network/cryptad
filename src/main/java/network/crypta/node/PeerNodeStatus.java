@@ -561,11 +561,11 @@ public class PeerNodeStatus {
         + " RT backoff: "
         + routingBackoffLengthRT
         + " ("
-        + (Math.max(routingBackedOffUntilRT - System.currentTimeMillis(), 0))
+        + Math.max(routingBackedOffUntilRT - System.currentTimeMillis(), 0)
         + " ) bulk backoff: "
         + routingBackoffLengthBulk
         + " ("
-        + (Math.max(routingBackedOffUntilBulk - System.currentTimeMillis(), 0))
+        + Math.max(routingBackedOffUntilBulk - System.currentTimeMillis(), 0)
         + ')';
   }
 

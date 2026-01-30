@@ -270,6 +270,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
    *     written.
    * @throws IOException if HTML generation or redirect writing fails.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     if (!ctx.checkFullAccess(this)) return;
