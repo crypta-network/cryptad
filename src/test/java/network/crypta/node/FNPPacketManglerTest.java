@@ -1,7 +1,9 @@
 package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -9,6 +11,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import network.crypta.crypt.BlockCipher;
+import network.crypta.crypt.ECDH;
 import network.crypta.crypt.PCFBMode;
 import network.crypta.crypt.SHA256;
 import network.crypta.crypt.UnsupportedCipherException;
@@ -151,6 +154,38 @@ class FNPPacketManglerTest {
     DECODED result = mangler.process(packet, 0, packet.length, loopbackPeer, null);
 
     assertEquals(DECODED.NOT_DECODED, result);
+  }
+
+  @Test
+  void isValidJfk3HeaderLengths_rejectsEmptyNonce() {
+    int modulusLength = ECDH.Curves.P256.modulusSize;
+
+    boolean valid =
+        FNPPacketMangler.isValidJfk3HeaderLengths(
+            new byte[0],
+            new byte[16],
+            new byte[modulusLength],
+            new byte[modulusLength],
+            new byte[SHA256.getDigestLength()],
+            modulusLength);
+
+    assertFalse(valid);
+  }
+
+  @Test
+  void isValidJfk3HeaderLengths_acceptsExpectedSizes() {
+    int modulusLength = ECDH.Curves.P256.modulusSize;
+
+    boolean valid =
+        FNPPacketMangler.isValidJfk3HeaderLengths(
+            new byte[16],
+            new byte[16],
+            new byte[modulusLength],
+            new byte[modulusLength],
+            new byte[SHA256.getDigestLength()],
+            modulusLength);
+
+    assertTrue(valid);
   }
 
   // --- helpers --------------------------------------------------------------
