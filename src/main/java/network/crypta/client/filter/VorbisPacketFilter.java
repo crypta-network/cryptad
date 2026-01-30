@@ -91,6 +91,7 @@ public class VorbisPacketFilter implements CodecPacketFilter {
    * @throws IOException if parsing the packet fails due to truncated input, unsupported values, or
    *     other I/O-related decoding problems encountered while reading fields
    */
+  @Override
   public CodecPacket parse(CodecPacket packet) throws IOException {
     // Assemble the Vorbis packets
     try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(packet.payload))) {

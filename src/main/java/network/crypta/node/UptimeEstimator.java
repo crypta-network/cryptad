@@ -79,7 +79,7 @@ public class UptimeEstimator implements Runnable {
     prevFile = runDir.file("uptime.old.dat");
     timeOffset =
         (int)
-            ((((double) (Math.abs(Fields.hashCode(bs, bs.length / 2, bs.length - bs.length / 2))))
+            (((double) Math.abs(Fields.hashCode(bs, bs.length / 2, bs.length - bs.length / 2))
                     / Integer.MAX_VALUE)
                 * PERIOD);
   }

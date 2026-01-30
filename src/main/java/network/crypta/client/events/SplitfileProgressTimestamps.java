@@ -25,6 +25,7 @@ import java.util.Date;
  * @param latestSuccess time of the most recent successful block, or {@code null} if none yet
  * @param latestFailure time of the most recent failure, or {@code null} if none yet
  */
+@SuppressWarnings("JavaUtilDate")
 public record SplitfileProgressTimestamps(Date latestSuccess, Date latestFailure) {
   /**
    * Creates a snapshot of the latest success and failure timestamps.

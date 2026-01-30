@@ -22,6 +22,7 @@ package network.crypta.node.probe;
  * across threads. The mapping between codes and enum constants is fixed at compile time and does
  * not change at runtime.
  */
+@SuppressWarnings("JavaLangClash")
 public enum Error {
   /**
    * The target node disconnected while the probe awaited a response.

@@ -53,8 +53,7 @@ public class TimeSortedHashtable<T extends Comparable<T>> {
     @Override
     public boolean equals(Object obj) {
       if (this == obj) return true;
-      if (obj == null || getClass() != obj.getClass()) return false;
-      Element<?> other = (Element<?>) obj;
+      if (!(obj instanceof Element<?> other)) return false;
       return time == other.time && Objects.equals(value, other.value);
     }
 

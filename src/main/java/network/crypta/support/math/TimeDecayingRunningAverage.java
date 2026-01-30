@@ -537,7 +537,7 @@ public final class TimeDecayingRunningAverage implements RunningAverage {
     }
     if (thisHalfLife == 0) thisHalfLife = 1;
     long monoDeltaMillis = Math.max(0L, (monoNanos - lastMonotonicNanos) / 1_000_000L);
-    double changeFactor = Math.pow(0.5, (monoDeltaMillis) / thisHalfLife);
+    double changeFactor = Math.pow(0.5, monoDeltaMillis / thisHalfLife);
     applyUpdatedValueAndDebug(d, monoDeltaMillis, uptime, thisHalfLife, changeFactor);
   }
 

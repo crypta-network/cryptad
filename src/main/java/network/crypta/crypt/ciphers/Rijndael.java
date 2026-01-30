@@ -3,6 +3,7 @@ package network.crypta.crypt.ciphers;
 import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;
 import java.security.Provider;
+import java.util.Objects;
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
@@ -152,7 +153,7 @@ public class Rijndael implements BlockCipher {
       bouncy.init(Cipher.ENCRYPT_MODE, key, randomIv());
 
       Provider bouncyProvider = bouncy.getProvider();
-      if (currentProvider == bouncyProvider) return currentProvider;
+      if (Objects.equals(currentProvider, bouncyProvider)) return currentProvider;
 
       long timeDef = benchmark(current, key);
       long timeBouncy = benchmark(bouncy, key);

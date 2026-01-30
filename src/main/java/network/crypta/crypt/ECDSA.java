@@ -47,6 +47,7 @@ public class ECDSA {
 
   private final KeyPair key;
 
+  @SuppressWarnings("ImmutableEnumChecker")
   public enum Curves {
     /**
      * Supported NIST prime curves (a.k.a. Suite B). The order is part of the external format;

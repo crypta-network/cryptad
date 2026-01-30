@@ -93,6 +93,7 @@ public class PureCode extends FECCode {
    * @param index indices for each repair packet; values {@code k..n-1} are expected.
    * @param packetLength number of bytes to read or write for every packet.
    */
+  @Override
   protected void encode(
       byte[][] src, int[] srcOff, byte[][] repair, int[] repairOff, int[] index, int packetLength) {
     for (int i = 0; i < repair.length; i++) {
@@ -149,6 +150,7 @@ public class PureCode extends FECCode {
    * @param packetLength number of payload bytes considered for decode operations.
    * @param shuffled set to {@code true} when {@code pkts} already matches index order.
    */
+  @Override
   protected void decode(
       byte[][] pkts, int[] pktsOff, int[] index, int packetLength, boolean shuffled) {
     // This may be the second time shuffle has been called, if so
@@ -197,6 +199,7 @@ public class PureCode extends FECCode {
    *
    * @return human-readable code summary showing {@code k} data and {@code n} total packets.
    */
+  @Override
   public String toString() {
     return "PureCode[k=" + k + ",n=" + n + "]";
   }

@@ -2,6 +2,7 @@ package network.crypta.client;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.regex.Pattern;
 import network.crypta.support.MediaType;
 import org.slf4j.Logger;
@@ -126,7 +127,7 @@ public class DefaultMIMETypes {
     addMIMEType(number, type);
     if (extensions != null) {
       for (String ext : extensions) {
-        ext = ext.toLowerCase();
+        ext = ext.toLowerCase(Locale.ROOT);
         Short s = mimeTypesByExtension.get(ext);
         if (s != null) {
           // No big deal
@@ -890,7 +891,7 @@ public class DefaultMIMETypes {
   public static synchronized String guessMIMEType(String arg, boolean noDefault) {
     int x = arg.lastIndexOf('.');
     if ((x == -1) || (x == arg.length() - 1)) return noDefault ? null : DEFAULT_MIME_TYPE;
-    String ext = arg.substring(x + 1).toLowerCase();
+    String ext = arg.substring(x + 1).toLowerCase(Locale.ROOT);
     Short mimeIndexOb = mimeTypesByExtension.get(ext);
     if (mimeIndexOb != null) {
       return mimeTypesByNumber.get(mimeIndexOb.intValue());

@@ -931,14 +931,16 @@ public abstract class Fields {
      * IEC endings are case-sensitive, so the input string's case should not be modified. However, the
      * qualifiers should not be case-sensitive.
      */
-    final String lower = limit.toLowerCase();
+    final String lower = limit.toLowerCase(Locale.ROOT);
     for (String ending :
         new String[] {
           "/s",
           "/sec",
           "/second",
           "ps",
-          NodeL10n.getBase().getString("FirstTimeWizardToadlet.bandwidthPerSecond").toLowerCase()
+          NodeL10n.getBase()
+              .getString("FirstTimeWizardToadlet.bandwidthPerSecond")
+              .toLowerCase(Locale.ROOT)
         }) {
       if (lower.endsWith(ending)) {
         return limit.substring(0, limit.length() - ending.length());
@@ -1082,7 +1084,7 @@ public abstract class Fields {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         StringBuilder tmp = new StringBuilder();
         tmp.append(val / MULTIPLES[i]).append(MULTIPLES_2[i]);
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+        if (!MULTIPLES_2[i].toLowerCase(Locale.ROOT).equals(MULTIPLES_2[i])) {
           tmp.append("iB");
         }
         ret = tmp.toString();
@@ -1126,7 +1128,7 @@ public abstract class Fields {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         StringBuilder tmp = new StringBuilder();
         tmp.append(val / MULTIPLES[i]).append(MULTIPLES_2[i]);
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+        if (!MULTIPLES_2[i].toLowerCase(Locale.ROOT).equals(MULTIPLES_2[i])) {
           tmp.append("iB");
         }
         ret = tmp.toString();
@@ -1155,7 +1157,7 @@ public abstract class Fields {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         StringBuilder tmp = new StringBuilder();
         tmp.append(val / MULTIPLES[i]).append(MULTIPLES_2[i]);
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+        if (!MULTIPLES_2[i].toLowerCase(Locale.ROOT).equals(MULTIPLES_2[i])) {
           tmp.append("iB");
         }
         ret = tmp.toString();

@@ -75,6 +75,7 @@ public class ECDH {
    *   <li>Performs provider self-tests and fallback handling.
    * </ul>
    */
+  @SuppressWarnings("ImmutableEnumChecker")
   public enum Curves {
     // rfc5903 or rfc6460: it's NIST's random/prime curves: suite B
     // Order matters. Append to the list, do not re-order.

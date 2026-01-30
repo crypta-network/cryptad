@@ -86,6 +86,7 @@ public class FlacPacketFilter implements CodecPacketFilter {
    * @throws IOException if reading the packet payload fails due to truncated or malformed data
    *     while extracting STREAMINFO fields or rewriting metadata content.
    */
+  @Override
   public CodecPacket parse(CodecPacket packet) throws IOException {
     if (!streamValid) return null;
     boolean logMINOR = LOG.isDebugEnabled();

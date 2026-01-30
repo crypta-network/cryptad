@@ -39,6 +39,7 @@ public class UptimeContainer implements Serializable {
    *     {@code false}
    */
   @Override
+  @SuppressWarnings("EqualsGetClass")
   public boolean equals(Object o) {
     if (o == null) return false;
     if (o.getClass() == UptimeContainer.class) {

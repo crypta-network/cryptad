@@ -95,7 +95,7 @@ public abstract class MultiMessageCallback {
    */
   public AsyncMessageCallback make() {
     synchronized (this) {
-      assert (!armed);
+      assert !armed;
       AsyncMessageCallback cb = new MessageCallbackImpl();
       waiting++;
       waitingForSend++;

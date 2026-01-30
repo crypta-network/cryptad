@@ -30,6 +30,7 @@ import org.jetbrains.annotations.NotNull;
  * @param overrideSplitfileCrypto optional 32-byte key to override random splitfile key generation.
  * @param metadataThreshold byte threshold for compact metadata; non-positive disables optimization.
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record ClientPutterOptions(
     String targetFilename,
     boolean binaryBlob,
