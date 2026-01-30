@@ -329,7 +329,7 @@ class USKStoreCheckCoordinatorTest {
             true);
 
     USKStoreCheckCoordinator.USKStoreChecker checker =
-        new USKStoreCheckCoordinator.USKStoreChecker(List.of(subChecker));
+        coordinator.new USKStoreChecker(List.of(subChecker));
 
     // Act
     Key[] keys = checker.getKeys();
@@ -364,7 +364,7 @@ class USKStoreCheckCoordinatorTest {
             true);
 
     USKStoreCheckCoordinator.USKStoreChecker checker =
-        new USKStoreCheckCoordinator.USKStoreChecker(List.of(first, second));
+        coordinator.new USKStoreChecker(List.of(first, second));
 
     // Act
     Key[] keys = checker.getKeys();
@@ -396,7 +396,7 @@ class USKStoreCheckCoordinatorTest {
             true);
 
     USKStoreCheckCoordinator.USKStoreChecker checker =
-        new USKStoreCheckCoordinator.USKStoreChecker(List.of(subChecker));
+        coordinator.new USKStoreChecker(List.of(subChecker));
 
     // Act
     checker.checked();
