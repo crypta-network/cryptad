@@ -43,6 +43,7 @@ import org.jetbrains.annotations.NotNull;
 /// @param preallocate whether to preallocate files up to `maxKeys` for startup latency.
 /// @param resizeOnStart when true, finishes any in-progress resize before returning to the caller.
 /// @param masterKey master key used to derive per-store salts; reference copies contents.
+@SuppressWarnings("ArrayRecordComponent")
 public record SaltedHashStoreParams<T extends StorableBlock>(
     File baseDir,
     String name,

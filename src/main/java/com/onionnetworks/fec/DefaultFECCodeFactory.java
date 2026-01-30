@@ -148,6 +148,7 @@ public class DefaultFECCodeFactory extends FECCodeFactory {
    * @throws IllegalArgumentException if {@code k} or {@code n} fall outside the documented bounds
    *     or {@code n} is smaller than {@code k}.
    */
+  @Override
   public synchronized FECCode createFECCode(int k, int n) {
     //noinspection ConditionCoveredByFurtherCondition
     if (k < 1 || k > 65536 || n < k || n > 65536) {

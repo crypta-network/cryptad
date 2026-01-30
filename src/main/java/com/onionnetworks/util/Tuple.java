@@ -123,6 +123,7 @@ public class Tuple {
    *
    * @return combined hash code based on {@code left} and {@code right} components
    */
+  @Override
   public int hashCode() {
     return left.hashCode() ^ right.hashCode();
   }
@@ -138,6 +139,7 @@ public class Tuple {
    * @param obj candidate object to compare, typically another {@code Tuple}
    * @return {@code true} when both tuples contain equal component values; otherwise {@code false}
    */
+  @Override
   public boolean equals(Object obj) {
     if (!(obj instanceof Tuple t)) {
       return false;

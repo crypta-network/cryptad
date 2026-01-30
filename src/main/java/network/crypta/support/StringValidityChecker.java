@@ -348,23 +348,31 @@ public final class StringValidityChecker {
   }
 
   private static boolean applyAnnotation(FormattingState s, char c) {
-    switch (c) {
-      case 0xFFF9: // INTERLINEAR ANNOTATION ANCHOR
-        if (s.inAnnotatedText || s.inAnnotation) return false;
+    return switch (c) {
+      case 0xFFF9 -> { // INTERLINEAR ANNOTATION ANCHOR
+        if (s.inAnnotatedText || s.inAnnotation) {
+          yield false;
+        }
         s.inAnnotatedText = true;
-        return true;
-      case 0xFFFA: // INTERLINEAR ANNOTATION SEPARATOR
-        if (!s.inAnnotatedText) return false;
+        yield true;
+      }
+      case 0xFFFA -> { // INTERLINEAR ANNOTATION SEPARATOR
+        if (!s.inAnnotatedText) {
+          yield false;
+        }
         s.inAnnotatedText = false;
         s.inAnnotation = true;
-        return true;
-      case 0xFFFB: // INTERLINEAR ANNOTATION TERMINATOR
-        if (!s.inAnnotation) return false;
+        yield true;
+      }
+      case 0xFFFB -> { // INTERLINEAR ANNOTATION TERMINATOR
+        if (!s.inAnnotation) {
+          yield false;
+        }
         s.inAnnotation = false;
-        return true;
-      default:
-        return true;
-    }
+        yield true;
+      }
+      default -> true;
+    };
   }
 
   private static final class FormattingState {

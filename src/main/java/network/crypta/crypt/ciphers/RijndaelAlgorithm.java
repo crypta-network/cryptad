@@ -1231,6 +1231,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record KeyScheduleCtx(
       int[][] ke, int[][] kd, int rounds, int bcShift, int bc, int kc, int roundKeyCount) {
     @Override

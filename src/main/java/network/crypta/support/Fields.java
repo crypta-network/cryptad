@@ -1186,7 +1186,7 @@ public abstract class Fields {
   }
 
   /**
-   * Encodes {@code double} values as bytes using {@link Double#doubleToLongBits(double)}.
+   * Encodes {@code doubles} values as bytes using {@link Double#doubleToLongBits(double)}.
    *
    * @param doubles source values.
    * @return byte array containing all encodings.
@@ -1218,14 +1218,22 @@ public abstract class Fields {
    */
   public static String trimLines(String str) {
     StringBuilder r = new StringBuilder(str.length());
-    for (String line : str.split("\n")) {
-      line = line.trim();
-      if (line.isEmpty()) {
-        continue;
+    int start = 0;
+    int length = str.length();
+    while (start <= length) {
+      int end = str.indexOf('\n', start);
+      if (end == -1) {
+        end = length;
       }
-
-      r.append(line);
-      r.append('\n');
+      String line = str.substring(start, end).trim();
+      if (!line.isEmpty()) {
+        r.append(line);
+        r.append('\n');
+      }
+      if (end == length) {
+        break;
+      }
+      start = end + 1;
     }
     return r.toString();
   }

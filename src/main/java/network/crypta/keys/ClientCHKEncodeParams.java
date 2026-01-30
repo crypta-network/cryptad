@@ -17,6 +17,7 @@ import org.jetbrains.annotations.NotNull;
  * @param cryptoAlgorithm crypto algorithm identifier
  * @param blockHashAlgorithm block-hash identifier to store in the header
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record ClientCHKEncodeParams(
     byte[] data,
     int dataLength,

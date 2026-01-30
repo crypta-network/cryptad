@@ -71,8 +71,14 @@ public class MediaType {
       return;
     }
     subtype = mediaType.substring(slash + 1, semicolon).trim();
-    String[] parsedParameters = mediaType.substring(semicolon + 1).split(";");
-    for (String parameter : parsedParameters) {
+    String params = mediaType.substring(semicolon + 1);
+    int paramStart = 0;
+    while (paramStart <= params.length()) {
+      int paramEnd = params.indexOf(';', paramStart);
+      if (paramEnd == -1) {
+        paramEnd = params.length();
+      }
+      String parameter = params.substring(paramStart, paramEnd);
       int equals = parameter.indexOf('=');
       if (equals == -1) {
         throw new MalformedURLException("Illegal parameter: “%s”".formatted(parameter));
@@ -83,6 +89,10 @@ public class MediaType {
       if (value.startsWith("\"") && value.endsWith("\""))
         value = value.substring(1, value.length() - 1).trim();
       this.parameters.put(name, value);
+      if (paramEnd == params.length()) {
+        break;
+      }
+      paramStart = paramEnd + 1;
     }
   }
 

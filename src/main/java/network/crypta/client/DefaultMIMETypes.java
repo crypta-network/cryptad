@@ -190,6 +190,7 @@ public class DefaultMIMETypes {
    * @param extensions space‑separated list of extensions without dots; the first token becomes the
    *     primary extension
    */
+  @SuppressWarnings("StringSplitter")
   protected static synchronized void addMIMEType(short number, String type, String extensions) {
     String[] split = extensions.split(" ");
     addMIMEType(number, type, split, split[0]);
@@ -204,6 +205,7 @@ public class DefaultMIMETypes {
    * @param extensions space‑separated list of extensions without dots
    * @param outExtension explicit primary extension to prefer when multiple extensions are supplied
    */
+  @SuppressWarnings("StringSplitter")
   protected static synchronized void addMIMEType(
       short number, String type, String extensions, String outExtension) {
     addMIMEType(number, type, extensions.split(" "), outExtension);

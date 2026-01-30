@@ -1360,6 +1360,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
   private record CacheState(int cache, boolean valid, boolean likelyMatch) {}
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record KeyContext(byte[] digestedKey, byte[] routingKey, byte[] fullKey) {
     @Override
     public boolean equals(Object other) {
@@ -1393,6 +1394,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record EntryData(byte[] header, byte[] data) {
     @Override
     public boolean equals(Object other) {

@@ -108,7 +108,7 @@ public class ModuloTimeTriggeringPolicy<E>
    *
    * <p>First delegates to the default time-based policy; if a period boundary is detected, it then
    * requires the local wall clock to satisfy the configured modulo predicate (see class
-   * documentation). If {@code multiple &lt;= 1}, the modulo predicate is ignored and any boundary
+   * documentation). If {@code multiple <= 1}, the modulo predicate is ignored and any boundary
    * triggers rollover.
    *
    * <p>Thread-safety: typically invoked by an appender thread without external synchronization.

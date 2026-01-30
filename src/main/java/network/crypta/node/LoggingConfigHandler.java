@@ -802,6 +802,7 @@ public class LoggingConfigHandler {
     appliedLoggerNames.clear();
   }
 
+  @SuppressWarnings("StringSplitter")
   private Map<String, Level> parseOverrides(String raw) throws InvalidConfigValueException {
     Map<String, Level> result = new HashMap<>();
     String[] tokens = raw.split(",");

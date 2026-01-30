@@ -88,6 +88,7 @@ public class FileIntegrityImpl implements FileIntegrity {
    *
    * @return algorithm identifier; callers must not assume normalization beyond the provided value.
    */
+  @Override
   public String getAlgorithm() {
     return algo;
   }

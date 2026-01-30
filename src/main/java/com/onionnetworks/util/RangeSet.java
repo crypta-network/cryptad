@@ -444,10 +444,11 @@ public class RangeSet {
    *
    * @return a hash code suitable for use in hashed collections.
    */
+  @Override
   public int hashCode() {
     int result = 0;
     for (int i = 0; i < rangeCount * 2; i++) {
-      result = (int) (91 * result + ranges[i]);
+      result = (int) (91L * result + ranges[i]);
     }
     return result;
   }
@@ -463,6 +464,7 @@ public class RangeSet {
    * @param obj the object to compare against this set.
    * @return {@code true} when the provided object represents the same ranges and flags.
    */
+  @Override
   public boolean equals(Object obj) {
     if (!(obj instanceof RangeSet rs)) {
       return false;
@@ -482,6 +484,7 @@ public class RangeSet {
    *
    * @return a comma-separated string describing all ranges contained in this set.
    */
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     for (Iterator<Range> it = iterator(); it.hasNext(); ) {

@@ -90,6 +90,7 @@ public class Native8Code extends FECCode {
    *     treated as direct copies by the native code.
    * @param packetLength Number of bytes per packet slice shared by all buffers in this operation.
    */
+  @Override
   protected void encode(
       byte[][] src, int[] srcOff, byte[][] repair, int[] repairOff, int[] index, int packetLength) {
 
@@ -117,6 +118,7 @@ public class Native8Code extends FECCode {
    * @param inOrder {@code true} if {@code pkts} is already arranged so {@code index < k} entries
    *     occupy matching positions; {@code false} to request an in-place shuffle first.
    */
+  @Override
   protected void decode(
       byte[][] pkts, int[] pktsOff, int[] index, int packetLength, boolean inOrder) {
     // We need to shuffle at this point so that the Java byte[][] stays
@@ -243,6 +245,7 @@ public class Native8Code extends FECCode {
    *
    * @return Human-readable description containing the configured {@code k} and {@code n} values.
    */
+  @Override
   public String toString() {
     return "Native8Code[k=" + k + ",n=" + n + "]";
   }

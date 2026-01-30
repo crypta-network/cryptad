@@ -231,6 +231,7 @@ public class AsyncPersistentProps implements Runnable {
    * then signals waiting threads. Any {@link IOException} terminates the loop and marks the
    * instance as failed so callers learn of the error on their next interaction.
    */
+  @Override
   public void run() {
     while (true) {
       try {

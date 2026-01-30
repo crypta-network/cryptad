@@ -257,6 +257,7 @@ public class Range {
    *
    * @return deterministic hash value suitable for use in hash-based collections
    */
+  @Override
   public int hashCode() {
     return (int) (min + 23 * max);
   }
@@ -275,6 +276,7 @@ public class Range {
    * @return {@code true} when all endpoints and infinity markers are identical; otherwise {@code
    *     false}
    */
+  @Override
   public boolean equals(Object obj) {
     if (obj instanceof Range other) {
       return other.min == min
@@ -297,6 +299,7 @@ public class Range {
    * @return human-readable representation of this range that can be fed back into {@link
    *     #parse(String)}
    */
+  @Override
   public String toString() {
     if (!negInf && !posInf && min == max) {
       return Long.toString(min);
