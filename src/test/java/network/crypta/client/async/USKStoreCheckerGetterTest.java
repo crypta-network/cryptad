@@ -450,7 +450,7 @@ class USKStoreCheckerGetterTest {
       field.setAccessible(true);
       field.set(fetcher, ctx);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Unable to set USKFetcher.ctx for test", e);
+      throw new LinkageError("Unable to set USKFetcher.ctx for test", e);
     }
     return fetcher;
   }

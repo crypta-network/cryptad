@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.OutputStream;
 import java.util.HashMap;
+import java.util.Map;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
 import network.crypta.client.NullClientCallback;
@@ -61,7 +62,7 @@ class PlainManifestPutterTest {
     RandomAccessBucket b10 = bucketWithBytes(10);
     RandomAccessBucket b20 = bucketWithBytes(20);
 
-    HashMap<String, Object> root = getStringObjectHashMap(b10, b20);
+    Map<String, Object> root = getStringObjectHashMap(b10, b20);
 
     RequestClient requestClient = new RequestClientBuilder().build();
     NullClientCallback cb = new NullClientCallback(requestClient);
@@ -88,7 +89,7 @@ class PlainManifestPutterTest {
     assertEquals(30, putter.totalSize(), "sums sizes of external data buckets");
   }
 
-  private static @NotNull HashMap<String, Object> getStringObjectHashMap(
+  private static @NotNull Map<String, Object> getStringObjectHashMap(
       RandomAccessBucket b10, RandomAccessBucket b20) {
     ManifestElement eIndex = new ManifestElement("index.html", b10, "text/html", 10);
     ManifestElement eReadme = new ManifestElement("readme.txt", b20, "text/plain", 20);
@@ -110,7 +111,7 @@ class PlainManifestPutterTest {
 
     TestablePlainManifestPutter(
         NullClientCallback cb,
-        HashMap<String, Object> manifest,
+        Map<String, Object> manifest,
         InsertContext ctx,
         byte[] forceKey,
         ClientContext context)

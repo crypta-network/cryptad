@@ -1170,7 +1170,7 @@ class SplitFileFetcherStorageTest {
               .decompressors(NO_DECOMPRESSORS)
               .clientMetadata(metadata.getClientMetadata())
               .topDontCompress(false)
-              .topCompatibilityMode((short) COMPATIBILITY_MODE.ordinal())
+              .topCompatibilityMode(COMPATIBILITY_MODE.code)
               .fetchContext(ctx)
               .realTime(false)
               .salt(salt)

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
@@ -137,7 +138,7 @@ class SingleFileInserterTest {
   @Test
   void onCompressed_whenUnknownKeyType_expectCallbackFailure() throws Exception {
     // Arrange
-    RandomAccessBucket data = makeData("hello".getBytes());
+    RandomAccessBucket data = makeData("hello".getBytes(StandardCharsets.UTF_8));
     InsertBlock block =
         new InsertBlock(data, null, new FreenetURI("ABC", null, (byte[]) null, null, null));
     InsertExecutionOptions execOptions =
@@ -179,7 +180,7 @@ class SingleFileInserterTest {
   void onCompressed_whenFitsInOneBlockWithoutMetadata_schedulesSingleBlock_andNotifies()
       throws Exception {
     // Arrange: CHK with tiny data, no metadata, no archive type
-    RandomAccessBucket data = makeData("tiny".getBytes());
+    RandomAccessBucket data = makeData("tiny".getBytes(StandardCharsets.UTF_8));
     InsertBlock block =
         new InsertBlock(data, null, new FreenetURI("CHK", null, (byte[]) null, null, null));
 
@@ -226,7 +227,7 @@ class SingleFileInserterTest {
   @Test
   void cancel_whenCalled_marksCancelled_andNotifiesCancelled_andFreesData() throws Exception {
     // Arrange
-    RandomAccessBucket data = makeData("abcdef".getBytes());
+    RandomAccessBucket data = makeData("abcdef".getBytes(StandardCharsets.UTF_8));
     InsertBlock block = new InsertBlock(data, null, FreenetURI.EMPTY_CHK_URI);
     SingleFileInserter sfi =
         new SingleFileInserter(
@@ -301,7 +302,7 @@ class SingleFileInserterTest {
       throws Exception {
     // Arrange: small CHK so tryCompress() will not compress and will queue a job invoking
     // onCompressed
-    RandomAccessBucket data = makeData("xyz".getBytes());
+    RandomAccessBucket data = makeData("xyz".getBytes(StandardCharsets.UTF_8));
     InsertBlock block =
         new InsertBlock(data, null, new FreenetURI("CHK", null, (byte[]) null, null, null));
     insertCtx.setGetCHKOnly(true); // downstream schedule avoids real schedulers

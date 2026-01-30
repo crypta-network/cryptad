@@ -1,6 +1,7 @@
 package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import network.crypta.io.comm.UdpSocketHandler;
 import network.crypta.support.OutputThrottle;
 import network.crypta.support.math.MersenneTwister;
@@ -162,9 +164,10 @@ class PacketSenderTest {
     when(pn.maxTimeBetweenReceivedAcks()).thenReturn(Long.MAX_VALUE);
     when(pn.isRoutable()).thenReturn(false);
 
+    AtomicBoolean forcedDisconnect = new AtomicBoolean(false);
     doAnswer(
             inv -> {
-              pn.forceDisconnect();
+              forcedDisconnect.set(true);
               return false;
             })
         .when(pn)
@@ -176,7 +179,7 @@ class PacketSenderTest {
     invokeRealRun(ps);
 
     // Assert
-    verify(pn, times(1)).forceDisconnect();
+    assertTrue(forcedDisconnect.get(), "Expected disconnect to be triggered");
   }
 
   @Test

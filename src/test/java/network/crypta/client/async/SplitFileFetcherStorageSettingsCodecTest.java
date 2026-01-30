@@ -531,6 +531,7 @@ class SplitFileFetcherStorageSettingsCodecTest {
       dos.writeLong(offsetBasicSettings);
     }
 
+    @SuppressWarnings("EnumOrdinal")
     private int resolveCompatModeOrdinal() {
       return compatModeOrdinalOverride != null ? compatModeOrdinalOverride : compatMode.ordinal();
     }

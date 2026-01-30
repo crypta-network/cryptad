@@ -2238,7 +2238,8 @@ class CSSParserTest {
         charset.equalsIgnoreCase(detectedCharset),
         CD + detectedCharset + SHOULD_BE + charset + "\" even when parsing with correct charset");
     BOMDetection bom = filter.getCharsetByBOM(bytes, bytes.length);
-    String bomCharset = detectedCharset = bom == null ? null : bom.charset;
+    String bomCharset = bom == null ? null : bom.charset;
+    detectedCharset = bomCharset;
     assertTrue(
         detectedCharset == null
             || charset.equalsIgnoreCase(detectedCharset)
@@ -2295,7 +2296,8 @@ class CSSParserTest {
     CSSReadFilter filter = new CSSReadFilter();
     String detectedCharset;
     BOMDetection bom = filter.getCharsetByBOM(bytes, bytes.length);
-    String bomCharset = detectedCharset = bom == null ? null : bom.charset;
+    String bomCharset = bom == null ? null : bom.charset;
+    detectedCharset = bomCharset;
     assertNull(
         detectedCharset,
         CHARSET_DETECTED_PREFIX

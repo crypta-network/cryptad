@@ -22,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 class DroppedOldPeersUserAlertTest {
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void isEmpty_whenNoAdds_expectTrueAndAfterAddFalse(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert =
@@ -51,12 +52,13 @@ class DroppedOldPeersUserAlertTest {
 
     // Assert (text): first line contains filename from l10n intro, then list label, then two names
     String text = alert.getText();
-    String[] lines = text.split("\n");
-    assertTrue(lines[0].contains(peersFile.toString()));
+    List<String> lines = text.lines().toList();
+    assertTrue(lines.get(0).contains(peersFile.toString()));
     assertEquals(
-        NodeL10n.getBase().getString("DroppedOldPeersUserAlert.droppingOldFriendList"), lines[1]);
-    assertEquals("\"Alice\"", lines[2]);
-    assertEquals("(unknown name)", lines[3]);
+        NodeL10n.getBase().getString("DroppedOldPeersUserAlert.droppingOldFriendList"),
+        lines.get(1));
+    assertEquals("\"Alice\"", lines.get(2));
+    assertEquals("(unknown name)", lines.get(3));
 
     // Assert (HTML): structure contains a single <ul> with two <li> entries in order
     HTMLNode html = alert.getHTMLText();
@@ -86,6 +88,7 @@ class DroppedOldPeersUserAlertTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void getTitle_whenMultipleBuilds_expectBuildDateFromMaxBuild(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert =
@@ -103,6 +106,7 @@ class DroppedOldPeersUserAlertTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void getShortText_whenCalled_expectSameAsTitle(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert = new DroppedOldPeersUserAlert(tmp.resolve("p.txt").toFile());
@@ -113,6 +117,7 @@ class DroppedOldPeersUserAlertTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void getFCPMessage_whenBuilt_expectFieldsMatchAlert(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert =

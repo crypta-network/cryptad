@@ -281,6 +281,7 @@ class SplitFileFetcherStorageResumeReaderTest {
     return raf;
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record ResumeLayout(
       byte[] data,
       long rafLength,

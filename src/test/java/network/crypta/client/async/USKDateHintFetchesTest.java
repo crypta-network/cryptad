@@ -15,8 +15,8 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
-import java.util.HashSet;
 import java.util.Random;
+import java.util.Set;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.events.SimpleEventProducer;
@@ -282,9 +282,9 @@ class USKDateHintFetchesTest {
     return owner;
   }
 
-  private static HashSet<?> getAttempts(USKDateHintFetches fetches)
+  private static Set<?> getAttempts(USKDateHintFetches fetches)
       throws ReflectiveOperationException {
-    return getField(fetches, "attempts", HashSet.class);
+    return getField(fetches, "attempts", Set.class);
   }
 
   private static int getIntField(USKDateHintFetches fetches, String field)

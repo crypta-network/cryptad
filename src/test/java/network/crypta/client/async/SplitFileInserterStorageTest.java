@@ -96,7 +96,7 @@ class SplitFileInserterStorageTest {
     byte[] hashThisLayerOnly =
         (explicitSplitfileKey == null
                 && (cmode == InsertContext.CompatibilityMode.COMPAT_CURRENT
-                    || cmode.ordinal() >= InsertContext.CompatibilityMode.COMPAT_1255.ordinal()))
+                    || cmode.code >= InsertContext.CompatibilityMode.COMPAT_1255.code))
             ? new byte[32]
             : null;
     SplitFileInserterStorageRuntimeParams runtimeParams =

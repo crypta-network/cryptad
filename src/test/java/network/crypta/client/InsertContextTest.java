@@ -104,7 +104,7 @@ class InsertContextTest {
     assertNotNull(ctx.getEventProducer());
 
     assertEquals(mode, ctx.getCompatibilityMode());
-    assertEquals(mode.ordinal(), ctx.getCompatibilityCode());
+    assertEquals(mode.code, ctx.getCompatibilityCode());
   }
 
   @Test
@@ -118,7 +118,7 @@ class InsertContextTest {
 
     // Assert
     assertEquals(latest, ctx.getCompatibilityMode());
-    assertEquals(latest.ordinal(), ctx.getCompatibilityCode());
+    assertEquals(latest.code, ctx.getCompatibilityCode());
   }
 
   @Test

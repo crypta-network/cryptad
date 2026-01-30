@@ -164,9 +164,11 @@ class SplitFileFetcherKeyListenerTest {
 
     when(segs[0].definitelyWantKey(key)).thenReturn(true);
     when(segs[1].definitelyWantKey(key)).thenReturn(false);
+    short expectedPrio = 5;
+    when(fetcher.getPriorityClass()).thenReturn(expectedPrio);
 
     short prio = listener.definitelyWantKey(key, saltedKey, mock(ClientContext.class));
-    assertEquals(fetcher.getPriorityClass(), prio);
+    assertEquals(expectedPrio, prio);
   }
 
   @Test
@@ -357,11 +359,16 @@ class SplitFileFetcherKeyListenerTest {
     SplitFileFetcherKeyListener listener =
         new SplitFileFetcherKeyListener(fetcher, storageMock, true, salt, 4, 2, 1);
 
+    short expectedPrio = 9;
+    HasKeyListener expectedHasKeyListener = mock(HasKeyListener.class);
+    when(fetcher.getPriorityClass()).thenReturn(expectedPrio);
+    when(fetcher.getHasKeyListener()).thenReturn(expectedHasKeyListener);
+
     assertTrue(listener.persistent());
-    assertEquals(fetcher.getPriorityClass(), listener.getPriorityClass());
+    assertEquals(expectedPrio, listener.getPriorityClass());
 
     assertThrows(UnsupportedOperationException.class, listener::countKeys);
-    assertEquals(fetcher.getHasKeyListener(), listener.getHasKeyListener());
+    assertEquals(expectedHasKeyListener, listener.getHasKeyListener());
 
     when(storageMock.hasFinished()).thenReturn(true);
     assertTrue(listener.isEmpty());

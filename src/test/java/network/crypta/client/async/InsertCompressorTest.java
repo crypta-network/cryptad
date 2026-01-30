@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Random;
 import network.crypta.client.FetchContextOptions;
@@ -96,7 +97,6 @@ class InsertCompressorTest {
     CompressionOutput lastOutput;
     ClientContext lastContext;
     COMPRESSOR_TYPE lastStartType;
-    final PutCompletionCallback testCb;
 
     TestInserter(
         InsertBlock block, InsertContext ctx, boolean persistent, PutCompletionCallback cb) {
@@ -118,7 +118,6 @@ class InsertCompressorTest {
               .withOrigCompressedDataLength(0L)
               .withOrigHashes(null)
               .withMetadataThreshold(0L));
-      this.testCb = cb;
     }
 
     @Override
@@ -206,7 +205,7 @@ class InsertCompressorTest {
     InsertBlock block = new InsertBlock(new ArrayBucket(), null, FreenetURI.EMPTY_CHK_URI);
     TestInserter inserter =
         new TestInserter(block, insertCtx, /*persistent*/ false, mock(PutCompletionCallback.class));
-    RandomAccessBucket data = makeData("hello world".getBytes());
+    RandomAccessBucket data = makeData("hello world".getBytes(StandardCharsets.UTF_8));
     InsertCompressor compressor =
         new InsertCompressor(
             inserter,
@@ -236,7 +235,7 @@ class InsertCompressorTest {
     InsertBlock block = new InsertBlock(new ArrayBucket(), null, FreenetURI.EMPTY_CHK_URI);
     TestInserter inserter =
         new TestInserter(block, insertCtx, false, mock(PutCompletionCallback.class));
-    RandomAccessBucket data = makeData("abc".getBytes());
+    RandomAccessBucket data = makeData("abc".getBytes(StandardCharsets.UTF_8));
 
     // Act
     InsertCompressor.start(
@@ -354,7 +353,7 @@ class InsertCompressorTest {
     InsertBlock block = new InsertBlock(new ArrayBucket(), null, FreenetURI.EMPTY_CHK_URI);
     TestInserter inserter = new TestInserter(block, insertCtx, /*persistent*/ false, cb);
 
-    RandomAccessBucket origData = makeData("data".getBytes());
+    RandomAccessBucket origData = makeData("data".getBytes(StandardCharsets.UTF_8));
 
     InsertCompressor compressor =
         new InsertCompressor(

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -61,8 +62,8 @@ class RAFTest {
   void renameTo_whenDestExists_replacesFileAndReopens() throws Exception {
     File source = tempDir.resolve("source.bin").toFile();
     File dest = tempDir.resolve("dest.bin").toFile();
-    Files.write(source.toPath(), "source-data".getBytes());
-    Files.write(dest.toPath(), "old".getBytes());
+    Files.write(source.toPath(), "source-data".getBytes(StandardCharsets.UTF_8));
+    Files.write(dest.toPath(), "old".getBytes(StandardCharsets.UTF_8));
 
     try (RAF raf = new RAF(source, "rw")) {
       raf.renameTo(dest);
@@ -78,7 +79,7 @@ class RAFTest {
   void renameTo_whenRenameFails_fallsBackToCopyAndDeletesSource() throws Exception {
     Path sourcePath = tempDir.resolve("nonrename.bin");
     Path destPath = tempDir.resolve("copy-dest.bin");
-    Files.write(sourcePath, "copy-me".getBytes());
+    Files.write(sourcePath, "copy-me".getBytes(StandardCharsets.UTF_8));
 
     File failingFile = new NonRenamingFile(sourcePath);
     try (RAF raf = new RAF(failingFile, "rw")) {

@@ -310,7 +310,7 @@ class HighLevelSimpleClientImplTest {
       pf.setAccessible(true);
       assertEquals(prio, pf.get(getter));
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
+      throw new LinkageError(e.getMessage(), e);
     }
   }
 
@@ -409,7 +409,7 @@ class HighLevelSimpleClientImplTest {
         sep.produceEvent(ev, null);
       }
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
+      throw new LinkageError(e.getMessage(), e);
     }
 
     // Assert: listener observed exactly one event
@@ -445,7 +445,7 @@ class HighLevelSimpleClientImplTest {
       f.setAccessible(true);
       return (FetchContext) f.get(getter);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
+      throw new LinkageError(e.getMessage(), e);
     }
   }
 

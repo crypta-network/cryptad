@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContext.CompatibilityMode;
@@ -399,7 +400,7 @@ class ClientPutterTest {
     // Verify that something was written and begins with the expected header (length prefix)
     assertNotNull(detail);
     // Minimal sanity check: contains the bytes of the string "hello" somewhere
-    String s = new String(detail);
+    String s = new String(detail, StandardCharsets.UTF_8);
     assertTrue(s.contains("hello"));
   }
 

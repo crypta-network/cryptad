@@ -71,7 +71,7 @@ class NodeConfigManagerTest {
     verify(nodeConfig)
         .register(
             eq("l10n"),
-            eq(Locale.getDefault().getLanguage().toLowerCase()),
+            eq(Locale.getDefault().getLanguage().toLowerCase(Locale.ROOT)),
             any(Option.Meta.class),
             callbackCaptor.capture());
     assertInstanceOf(EnumerableOptionCallback.class, callbackCaptor.getValue());

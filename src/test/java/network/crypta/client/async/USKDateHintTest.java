@@ -13,7 +13,6 @@ import java.time.temporal.TemporalField;
 import java.time.temporal.WeekFields;
 import java.util.Locale;
 import java.util.stream.Stream;
-import network.crypta.client.async.USKDateHint.Type;
 import network.crypta.keys.ClientSSK;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableClientSSK;
@@ -129,7 +128,8 @@ class USKDateHintTest {
 
   @ParameterizedTest
   @MethodSource("alwaysMorePreciseThanCases")
-  void alwaysMorePreciseThan_variousPairs_expectDefinedOrdering(boolean expected, Type a, Type b) {
+  void alwaysMorePreciseThan_variousPairs_expectDefinedOrdering(
+      boolean expected, USKDateHint.Type a, USKDateHint.Type b) {
     // Arrange
     // Act
     boolean result = a.alwaysMorePreciseThan(b);

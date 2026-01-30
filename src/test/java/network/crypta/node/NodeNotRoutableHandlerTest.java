@@ -66,7 +66,7 @@ class NodeNotRoutableHandlerTest {
     long uid = 42L;
     when(message.getSpec()).thenReturn(spec);
     when(message.getLong(DMT.UID)).thenReturn(uid);
-    if (spec == DMT.FNPGetOfferedKey) {
+    if (DMT.FNPGetOfferedKey.equals(spec)) {
       prepareRoutingFailureTable();
     } else {
       prepareNetworkStats();
@@ -155,7 +155,7 @@ class NodeNotRoutableHandlerTest {
       field.setAccessible(true);
       field.set(target, value);
     } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new AssertionError("Failed to set field: " + fieldName, e);
+      throw new LinkageError("Failed to set field: " + fieldName, e);
     }
   }
 

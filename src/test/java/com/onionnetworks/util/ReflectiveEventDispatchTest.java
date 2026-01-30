@@ -184,7 +184,9 @@ class ReflectiveEventDispatchTest {
 
     @SuppressWarnings("unused")
     public void onEvent(EventObject ev) {
-      throw toThrow;
+      if (toThrow != null) {
+        throw toThrow;
+      }
     }
   }
 }

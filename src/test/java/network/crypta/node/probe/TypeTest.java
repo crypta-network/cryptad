@@ -43,7 +43,7 @@ class TypeTest {
   }
 
   static Stream<Byte> invalidCodes() {
-    return Stream.of((byte) -1, Byte.MIN_VALUE, (byte) (Type.values().length), Byte.MAX_VALUE);
+    return Stream.of((byte) -1, Byte.MIN_VALUE, (byte) Type.values().length, Byte.MAX_VALUE);
   }
 
   @Test

@@ -192,7 +192,7 @@ class SemiOrderedShutdownHookTest {
         ctor.setAccessible(true);
         return ctor.newInstance();
       } catch (ReflectiveOperationException e) {
-        throw new AssertionError("Failed to construct SemiOrderedShutdownHook for test", e);
+        throw new LinkageError("Failed to construct SemiOrderedShutdownHook for test", e);
       }
     }
   }

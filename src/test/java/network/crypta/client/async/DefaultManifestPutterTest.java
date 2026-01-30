@@ -92,7 +92,7 @@ class DefaultManifestPutterTest {
 
     TestableDefaultManifestPutter(
         NullClientCallback cb,
-        HashMap<String, Object> manifest,
+        Map<String, Object> manifest,
         short prio,
         FreenetURI target,
         String defaultName,

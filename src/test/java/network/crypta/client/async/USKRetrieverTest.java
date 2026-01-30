@@ -381,7 +381,9 @@ class USKRetrieverTest {
     try (Bucket b = res.asBucket()) {
       // ArrayBucket exposes the bytes through its API
       assertEquals(payload.length, ((ArrayBucket) b).toByteArray().length);
-      assertEquals(new String(payload), new String(((ArrayBucket) b).toByteArray()));
+      assertEquals(
+          new String(payload, StandardCharsets.UTF_8),
+          new String(((ArrayBucket) b).toByteArray(), StandardCharsets.UTF_8));
     }
   }
 

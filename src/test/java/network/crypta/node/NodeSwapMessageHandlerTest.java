@@ -120,6 +120,7 @@ class NodeSwapMessageHandlerTest {
         .flatMap(action -> Stream.of(Arguments.of(action, true), Arguments.of(action, false)));
   }
 
+  @SuppressWarnings("ImmutableEnumChecker")
   private enum SwapAction {
     REPLY(DMT.FNPSwapReply) {
       @Override
