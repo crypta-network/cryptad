@@ -92,6 +92,7 @@ final class ClientPutStatusSnapshotBuilder {
    * @return {@link RequestStatusSnapshot} populated with the request’s progress counters and
    *     timestamps, ready to be wrapped by higher-level status objects.
    */
+  @SuppressWarnings("JavaUtilDate")
   private static RequestStatusSnapshot buildStatusSnapshot(ClientPut request) {
     int total = 0;
     int min = 0;

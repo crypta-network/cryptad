@@ -45,6 +45,7 @@ public interface Compressor {
    * <p><strong>Serialization note:</strong> Changing non-transient members of serializable classes
    * may restart downloads or invalidate previously stored uploads.
    */
+  @SuppressWarnings("ImmutableEnumChecker")
   enum COMPRESSOR_TYPE implements Compressor {
     // Codecs will be tried in order; put the less resource-consuming first
     GZIP("GZIP", new GzipCompressor(), (short) 0),

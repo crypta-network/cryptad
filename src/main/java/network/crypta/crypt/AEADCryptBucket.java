@@ -275,6 +275,7 @@ public class AEADCryptBucket implements Bucket, Serializable {
   private static final String FIELD_READONLY = "readOnly";
 
   @Serial
+  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_UNDERLYING, Bucket.class),
     new ObjectStreamField(FIELD_KEY, byte[].class),

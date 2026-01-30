@@ -363,6 +363,7 @@ public class SSL {
   }
 
   /** Creates a self-signed certificate and stores it in the current keystore. */
+  @SuppressWarnings("JavaUtilDate")
   private static void createSelfSignedCertificate()
       throws NoSuchAlgorithmException,
           CertificateException,

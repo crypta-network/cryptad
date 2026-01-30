@@ -122,7 +122,7 @@ public class NodeCryptoConfig {
         new IntCallback() {
           @Override
           public Integer get() {
-            synchronized (NodeCryptoConfig.class) {
+            synchronized (NodeCryptoConfig.this) {
               if (crypto != null) portNumber = crypto.getPortNumber();
               return portNumber;
             }
@@ -134,7 +134,7 @@ public class NodeCryptoConfig {
               throw new InvalidConfigValueException("Invalid port number");
             }
 
-            synchronized (NodeCryptoConfig.class) {
+            synchronized (NodeCryptoConfig.this) {
               if (portNumber == val) return;
               // On-the-fly listenPort changes are not supported.
               // Note that this sort of thing should be the exception rather than the rule!

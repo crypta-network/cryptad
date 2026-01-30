@@ -517,6 +517,7 @@ public class FirstTimeWizardToadlet extends Toadlet {
    * @return the step users should be sent to when navigating backward from {@code currentStep},
    *     defaulting to {@link WIZARD_STEP#WELCOME} when unknown.
    */
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public static WIZARD_STEP getPreviousStep(WIZARD_STEP currentStep, WIZARD_PRESET preset) {
 
     // Might be obvious, but still: No breaks needed in cases because their only contents are

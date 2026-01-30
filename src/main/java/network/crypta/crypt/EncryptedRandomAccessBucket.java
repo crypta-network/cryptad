@@ -555,13 +555,9 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof EncryptedRandomAccessBucket other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    EncryptedRandomAccessBucket other = (EncryptedRandomAccessBucket) obj;
     if (type != other.type) {
       return false;
     }
@@ -586,6 +582,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
   private static final String FIELD_VERSION = "version";
 
   @Serial
+  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_TYPE, EncryptedRandomAccessBufferType.class),
     new ObjectStreamField(FIELD_UNDERLYING, network.crypta.support.api.RandomAccessBucket.class),

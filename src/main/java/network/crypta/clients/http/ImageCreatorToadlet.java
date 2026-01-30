@@ -41,6 +41,7 @@ import network.crypta.support.api.HTTPRequest;
  *
  * @see network.crypta.clients.http.Toadlet
  */
+@SuppressWarnings("JavaUtilDate")
 public class ImageCreatorToadlet extends Toadlet {
 
   private static final String ROOT_URL = "/imagecreator/";

@@ -20,6 +20,7 @@ public interface IncomingPacketFilter {
    * <p>These values allow the caller to distinguish between normal non-matches, intentional
    * declines, and shutdown handling.
    */
+  @SuppressWarnings("VariableNameSameAsType")
   enum DECODED {
     /** The packet was recognized and decoded; messages may have been dispatched to USM/filters. */
     DECODED,

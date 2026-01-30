@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.net.MalformedURLException;
+import java.util.Locale;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginInfoWrapper;
@@ -190,7 +191,7 @@ public class LoadPlugin extends FCPMessage {
 
   private String resolveUrlType(Node node) {
     if (urlType != null) {
-      return urlType.toLowerCase();
+      return urlType.toLowerCase(Locale.ROOT);
     }
     if (node.services().pluginManager().isOfficialPlugin(pluginURL) != null) {
       return TYPENAME_OFFICIAL;
@@ -207,6 +208,7 @@ public class LoadPlugin extends FCPMessage {
     }
   }
 
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private PluginInfoWrapper startPlugin(Node node, String type, FCPConnectionHandler handler) {
     switch (type) {
       case TYPENAME_OFFICIAL:

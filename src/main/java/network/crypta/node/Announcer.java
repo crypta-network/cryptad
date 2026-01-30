@@ -595,38 +595,36 @@ public class Announcer {
 
   private boolean started = false;
 
-  private Runnable checker() {
-    return () -> {
-      int running;
-      synchronized (Announcer.this) {
-        running = runningAnnouncements;
+  private void runChecker() {
+    int running;
+    synchronized (Announcer.this) {
+      running = runningAnnouncements;
+    }
+    if (enoughPeers()) {
+      for (SeedServerPeerNode pn :
+          node.network().peers().seedPeers().getConnectedSeedServerPeersVector(null)) {
+        node.network().peers().messenger().disconnectAndRemove(pn, true, true, false);
       }
-      if (enoughPeers()) {
-        for (SeedServerPeerNode pn :
-            node.network().peers().seedPeers().getConnectedSeedServerPeersVector(null)) {
-          node.network().peers().messenger().disconnectAndRemove(pn, true, true, false);
-        }
-        // Re-check every minute. Adverse conditions (e.g., CPU starvation) might require reseeding.
-        node.network()
-            .ticker()
-            .queueTimedJob(
-                this::maybeSendAnnouncement,
-                "Check whether we need to announce",
-                RETRY_DELAY,
-                false,
-                true);
-      } else {
-        node.network()
-            .ticker()
-            .queueTimedJob(
-                this::maybeSendAnnouncement,
-                "Check whether we need to announce",
-                RETRY_DELAY,
-                false,
-                true);
-        if (running != 0) maybeSendAnnouncement();
-      }
-    };
+      // Re-check every minute. Adverse conditions (e.g., CPU starvation) might require reseeding.
+      node.network()
+          .ticker()
+          .queueTimedJob(
+              this::maybeSendAnnouncement,
+              "Check whether we need to announce",
+              RETRY_DELAY,
+              false,
+              true);
+    } else {
+      node.network()
+          .ticker()
+          .queueTimedJob(
+              this::maybeSendAnnouncement,
+              "Check whether we need to announce",
+              RETRY_DELAY,
+              false,
+              true);
+      if (running != 0) maybeSendAnnouncement();
+    }
   }
 
   /**
@@ -672,7 +670,7 @@ public class Announcer {
     if (enoughPeers()) {
       node.network()
           .ticker()
-          .queueTimedJob(checker(), "Announcement checker", FINAL_DELAY, false, true);
+          .queueTimedJob(this::runChecker, "Announcement checker", FINAL_DELAY, false, true);
       return true;
     }
     return false;
@@ -683,7 +681,7 @@ public class Announcer {
     if (enoughPeers()) {
       node.network()
           .ticker()
-          .queueTimedJob(checker(), "Announcement checker", FINAL_DELAY, false, true);
+          .queueTimedJob(this::runChecker, "Announcement checker", FINAL_DELAY, false, true);
       return true;
     }
     if (runningAnnouncements > WANT_ANNOUNCEMENTS) {

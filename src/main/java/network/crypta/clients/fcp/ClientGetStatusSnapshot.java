@@ -33,6 +33,7 @@ import org.jetbrains.annotations.NotNull;
  * @param uri request URI to report.
  * @param dontCompress whether reinsertion should skip compression.
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record ClientGetStatusSnapshot(
     String identifier,
     ClientRequest.Persistence persistence,

@@ -166,6 +166,7 @@ public class PaddedBucket implements Bucket, Serializable {
       }
     }
 
+    @Override
     public String toString() {
       return "TrivialPaddedBucketOutputStream:" + out + "(" + PaddedBucket.this + ")";
     }
@@ -362,6 +363,7 @@ public class PaddedBucket implements Bucket, Serializable {
   // was a non-transient field written via default serialization. We keep a declared persistent
   // field for it so readObject() can consume legacy streams that still carry it.
   @Serial
+  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_SIZE, long.class),
     new ObjectStreamField(FIELD_READ_ONLY, boolean.class),

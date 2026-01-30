@@ -502,6 +502,7 @@ public class SubConfig implements Comparable<SubConfig> {
    * @param withDefaults Whether to include default-valued options for current settings.
    * @return a new {@link SimpleFieldSet} containing the requested data.
    */
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public SimpleFieldSet exportFieldSet(Config.RequestType configRequestType, boolean withDefaults) {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     // Snapshot entries into a typed List to avoid generic array casts.

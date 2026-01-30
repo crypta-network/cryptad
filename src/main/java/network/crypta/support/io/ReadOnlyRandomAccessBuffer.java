@@ -190,13 +190,9 @@ public class ReadOnlyRandomAccessBuffer implements LockableRandomAccessBuffer {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof ReadOnlyRandomAccessBuffer other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    ReadOnlyRandomAccessBuffer other = (ReadOnlyRandomAccessBuffer) obj;
     return underlying.equals(other.underlying);
   }
 }

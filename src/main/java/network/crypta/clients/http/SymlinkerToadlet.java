@@ -86,8 +86,10 @@ public class SymlinkerToadlet extends Toadlet {
     String[] fns = tslconfig.getStringArr("symlinks");
     if (fns != null) {
       for (String fn : fns) {
-        String[] tuple = fn.split("#");
-        if (tuple.length == 2) addLink(tuple[0], tuple[1], false);
+        int sep = fn.indexOf('#');
+        if (sep > -1 && sep == fn.lastIndexOf('#') && sep < fn.length() - 1) {
+          addLink(fn.substring(0, sep), fn.substring(sep + 1), false);
+        }
       }
     }
 
@@ -175,6 +177,7 @@ public class SymlinkerToadlet extends Toadlet {
    * @throws IOException if writing a response fails due to I/O problems in the context.
    * @throws RedirectException when a matching alias is found and the client should be redirected.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     String path = uri.getPath();

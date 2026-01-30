@@ -1116,9 +1116,7 @@ public class FetchContext implements Serializable {
   @Override
   public boolean equals(Object obj) {
     if (this == obj) return true;
-    if (obj == null) return false;
-    if (getClass() != obj.getClass()) return false;
-    FetchContext other = (FetchContext) obj;
+    if (!(obj instanceof FetchContext other)) return false;
     // eventProducer is ignored.
     if (allowSplitfiles != other.allowSplitfiles) return false;
     if (allowedMIMETypes == null) {

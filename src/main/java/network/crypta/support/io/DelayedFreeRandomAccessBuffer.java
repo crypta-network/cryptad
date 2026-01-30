@@ -265,13 +265,9 @@ public class DelayedFreeRandomAccessBuffer
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof DelayedFreeRandomAccessBuffer other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    DelayedFreeRandomAccessBuffer other = (DelayedFreeRandomAccessBuffer) obj;
     return underlying.equals(other.underlying);
   }
 

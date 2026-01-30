@@ -210,6 +210,7 @@ final class ClientPutDiskUploadValidator {
  * @param salt per-request salt string used when computing the digest, or {@code null} when absent.
  * @param saltedHash hash bytes computed by the client, or {@code null} when not provided.
  */
+@SuppressWarnings("ArrayRecordComponent")
 record DiskUploadContext(String salt, byte[] saltedHash) {
   /** Shared empty context used when no salted hash was supplied. */
   private static final DiskUploadContext EMPTY = new DiskUploadContext(null, null);

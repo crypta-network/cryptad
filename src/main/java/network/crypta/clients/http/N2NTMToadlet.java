@@ -112,6 +112,7 @@ public class N2NTMToadlet extends Toadlet {
    * @throws IOException if response writing fails due to I/O issues.
    * @throws RedirectException if a redirect is required for the request flow.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
 

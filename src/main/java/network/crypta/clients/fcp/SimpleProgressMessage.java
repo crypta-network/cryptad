@@ -33,6 +33,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see SplitfileProgressEvent
  * @see FCPMessage
  */
+@SuppressWarnings("JavaUtilDate")
 public class SimpleProgressMessage extends FCPMessage {
 
   private final String ident;

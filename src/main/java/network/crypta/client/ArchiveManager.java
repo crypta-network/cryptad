@@ -9,6 +9,7 @@ import java.io.PipedOutputStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
@@ -70,20 +71,18 @@ public class ArchiveManager {
    *
    * <p>This enum is persisted. Renaming or removing members can break existing data.
    */
+  @SuppressWarnings("ImmutableEnumChecker")
   public enum ARCHIVE_TYPE {
     /** ZIP archives; common MIME aliases are supported. */
-    ZIP(
-        (short) 0,
-        new String[] {
-          "application/zip", "application/x-zip"
-        }), /* eventually get rid of ZIP support at some point */
+    ZIP((short) 0, List.of("application/zip", "application/x-zip")),
+    /* eventually get rid of ZIP support at some point */
     /** TAR archives; a standard TAR MIME type is supported. */
-    TAR((short) 1, new String[] {"application/x-tar"});
+    TAR((short) 1, List.of("application/x-tar"));
 
     /** Stable numeric identifier for this type used in serialized metadata and messages. */
     public final short metadataID;
 
-    private final String[] mimeTypes;
+    private final List<String> mimeTypes;
 
     /** Cached values(). Never modify or pass this array to outside code! */
     private static final ARCHIVE_TYPE[] values = values();
@@ -94,9 +93,9 @@ public class ArchiveManager {
      * @param metadataID stable, persisted identifier for this archive type
      * @param mimeTypes recognized MIME aliases, compared case-insensitively
      */
-    ARCHIVE_TYPE(short metadataID, String[] mimeTypes) {
+    ARCHIVE_TYPE(short metadataID, List<String> mimeTypes) {
       this.metadataID = metadataID;
-      this.mimeTypes = mimeTypes;
+      this.mimeTypes = List.copyOf(mimeTypes);
     }
 
     /**
@@ -161,7 +160,7 @@ public class ArchiveManager {
      * @return non-null MIME string suitable for labelling responses
      */
     public String defaultMimeType() {
-      return mimeTypes[0];
+      return mimeTypes.get(0);
     }
   }
 

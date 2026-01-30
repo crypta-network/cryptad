@@ -74,6 +74,7 @@ public class NewLZMACompressor extends AbstractCompressor {
    * @throws IOException on I/O errors
    * @throws CompressionRatioException if the compression ratio check fails
    */
+  @Override
   public long compress(
       InputStream is,
       OutputStream os,
@@ -317,6 +318,7 @@ public class NewLZMACompressor extends AbstractCompressor {
    *     negative
    * @throws TooBigDictionaryException if the dictionary exceeds {@link #MAX_DICTIONARY_SIZE}
    */
+  @Override
   public long decompress(InputStream is, OutputStream os, long maxLength, long maxCheckSizeBytes)
       throws IOException {
     byte[] props = new byte[5];
@@ -325,7 +327,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     CountedOutputStream cos = new CountedOutputStream(os);
 
     int dictionarySize = 0;
-    for (int i = 0; i < 4; i++) dictionarySize += ((props[1 + i]) & 0xFF) << (i * 8);
+    for (int i = 0; i < 4; i++) dictionarySize += (props[1 + i] & 0xFF) << (i * 8);
 
     if (dictionarySize < 0) throw new InvalidCompressedDataException("Invalid dictionary size");
     if (dictionarySize > MAX_DICTIONARY_SIZE) throw new TooBigDictionaryException();
@@ -350,6 +352,7 @@ public class NewLZMACompressor extends AbstractCompressor {
    * @return number of bytes written into {@code output}
    * @throws CompressionOutputSizeException if the decompressed size would exceed {@code output}
    */
+  @Override
   public int decompress(byte[] dbuf, int i, int j, byte[] output)
       throws CompressionOutputSizeException {
     // Note: java.util.zip.Inflater does not apply to LZMA bitstream format.

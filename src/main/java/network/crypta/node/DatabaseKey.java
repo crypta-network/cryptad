@@ -121,13 +121,9 @@ public class DatabaseKey {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof DatabaseKey other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    DatabaseKey other = (DatabaseKey) obj;
     return Arrays.equals(key, other.key);
   }
 }

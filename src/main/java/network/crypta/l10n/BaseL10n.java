@@ -63,6 +63,7 @@ public class BaseL10n {
    * @see "http://loc.gov/standards/iso639-2/php/code_list.php"
    * @see "http://tools.ietf.org/html/rfc5646"
    */
+  @SuppressWarnings("ImmutableEnumChecker")
   public enum LANGUAGE {
 
     // Windows language codes must be preceded with WINDOWS and be in upper case hex, 4 digits.

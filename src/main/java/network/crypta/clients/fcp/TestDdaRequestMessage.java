@@ -90,7 +90,7 @@ public class TestDdaRequestMessage extends FCPMessage {
 
     wantRead = fs.getBoolean(WANT_READ, false);
     wantWrite = fs.getBoolean(WANT_WRITE, false);
-    if ((!wantRead) && (!wantWrite))
+    if (!wantRead && !wantWrite)
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_MESSAGE,
           "Both "

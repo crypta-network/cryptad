@@ -161,8 +161,8 @@ public class NullRandomAccessBuffer implements LockableRandomAccessBuffer {
   /**
    * Compares by runtime class only.
    *
-   * <p>Two instances are considered equal if and only if they are instances of the same runtime
-   * class. The configured length is intentionally ignored.
+   * <p>Two instances are considered equal when the other object is a compatible {@link
+   * NullRandomAccessBuffer} instance. The configured length is intentionally ignored.
    *
    * @param o the object to compare
    * @return {@code true} when {@code o} has the same runtime class; {@code false} otherwise
@@ -170,7 +170,6 @@ public class NullRandomAccessBuffer implements LockableRandomAccessBuffer {
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (o == null) return false;
-    return o.getClass() == getClass();
+    return o instanceof NullRandomAccessBuffer;
   }
 }
