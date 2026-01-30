@@ -191,27 +191,28 @@ class SplitFileFetcherStorageLayoutTest {
     return new SplitFileSegmentKeys(dataBlocks, checkBlocks, commonKey, algorithm);
   }
 
-  private static int expectedStoredKeysLength(
+  private static long expectedStoredKeysLength(
       int dataBlocks, int checkBlocks, boolean commonKey, int checksumLength) {
-    int blocks = dataBlocks + checkBlocks;
-    int keyBytes;
+    long blocks = (long) dataBlocks + checkBlocks;
+    long keyBytes;
     if (commonKey) {
       keyBytes = blocks * NodeCHK.KEY_LENGTH;
     } else {
-      keyBytes = blocks * (SplitFileSegmentKeys.EXTRA_BYTES_LENGTH + NodeCHK.KEY_LENGTH * 2);
+      long perBlock = SplitFileSegmentKeys.EXTRA_BYTES_LENGTH + (long) NodeCHK.KEY_LENGTH * 2;
+      keyBytes = blocks * perBlock;
     }
     return keyBytes + checksumLength;
   }
 
-  private static int expectedStoredSegmentStatusLength(
+  private static long expectedStoredSegmentStatusLength(
       int dataBlocks,
       int checkBlocks,
       int crossCheckBlocks,
       boolean trackRetries,
       int checksumLength) {
-    int fetchedBlocks = dataBlocks + crossCheckBlocks;
-    int totalBlocks = dataBlocks + checkBlocks + crossCheckBlocks;
-    int base = fetchedBlocks * 4 + (trackRetries ? totalBlocks * 4 : 0);
+    long fetchedBlocks = (long) dataBlocks + crossCheckBlocks;
+    long totalBlocks = (long) dataBlocks + checkBlocks + crossCheckBlocks;
+    long base = fetchedBlocks * 4L + (trackRetries ? totalBlocks * 4L : 0L);
     return base + checksumLength;
   }
 }

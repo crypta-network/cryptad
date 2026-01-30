@@ -173,6 +173,7 @@ class SerializerTest {
   // ---------- LinkedList / list ----------
 
   @Test
+  @SuppressWarnings("JdkObsolete")
   void readListFromDataInputStream_whenLinkedListOfStrings_expectRoundTrip() throws IOException {
     LinkedList<String> list = new LinkedList<>();
     list.add("alpha");
@@ -189,6 +190,7 @@ class SerializerTest {
   }
 
   @Test
+  @SuppressWarnings("JdkObsolete")
   void readListFromDataInputStream_whenEmpty_expectEmptyList() throws IOException {
     LinkedList<String> list = new LinkedList<>();
     byte[] bytes = writeWithSerializer(list);
@@ -239,6 +241,7 @@ class SerializerTest {
   }
 
   @Test
+  @SuppressWarnings("JdkObsolete")
   void length_whenLinkedList_expectIllegalArgumentException() {
     assertThrows(IllegalArgumentException.class, () -> Serializer.length(LinkedList.class, 0));
   }
