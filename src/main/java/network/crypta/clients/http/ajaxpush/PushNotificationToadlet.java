@@ -81,7 +81,6 @@ public class PushNotificationToadlet extends Toadlet {
    * @throws IOException if writing the HTTP response fails due to an underlying I/O error
    * @throws RedirectException if the framework requires a redirect response for this request
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     String requestId = req.getParam("requestId");

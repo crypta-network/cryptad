@@ -53,11 +53,11 @@ public class SendingToNetworkMessage extends FCPMessage {
    * reused across threads that merely serialize the fields.
    *
    * @param id Request identifier echoed back to the FCP client for correlation.
-   * @param global True when the request should be visible on the global client queue.
+   * @param global2 True when the request should be visible on the global client queue.
    */
-  public SendingToNetworkMessage(String id, boolean global) {
+  public SendingToNetworkMessage(String id, boolean global2) {
     this.messageIdentifier = id;
-    this.global = global;
+    this.global = global2;
   }
 
   /**

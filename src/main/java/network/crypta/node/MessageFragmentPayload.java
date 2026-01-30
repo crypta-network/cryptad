@@ -26,7 +26,6 @@ import org.jetbrains.annotations.NotNull;
  * @see MessageFragment
  * @see MessageWrapper
  */
-@SuppressWarnings("ArrayRecordComponent")
 record MessageFragmentPayload(byte[] fragmentData, MessageWrapper wrapper) {
   /**
    * Compares this payload to another object using buffer contents and wrapper identity.

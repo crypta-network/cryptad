@@ -33,7 +33,6 @@ import network.crypta.l10n.NodeL10n;
  * @author toad
  * @see RequestStatusCache
  */
-@SuppressWarnings("JavaUtilDate")
 public abstract class RequestStatus {
 
   private final String identifier;

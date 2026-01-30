@@ -80,7 +80,6 @@ public class LogWritebackToadlet extends Toadlet {
    * @throws RedirectException declared for the base dispatch contract; this implementation does not
    *     initiate redirects
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     if (LOG.isDebugEnabled()) {

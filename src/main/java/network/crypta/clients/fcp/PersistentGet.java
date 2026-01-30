@@ -1,7 +1,6 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
-import java.util.Locale;
 import network.crypta.clients.fcp.ClientGet.ReturnType;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -103,8 +102,8 @@ public class PersistentGet extends FCPMessage {
     fs.putSingle("Identifier", messageIdentifier);
     fs.putSingle("URI", uri.toString(false, false));
     fs.put("Verbosity", verbosity);
-    fs.putSingle("ReturnType", returnType.toString().toLowerCase(Locale.ROOT));
-    fs.putSingle("Persistence", persistence.toString().toLowerCase(Locale.ROOT));
+    fs.putSingle("ReturnType", returnType.toString().toLowerCase());
+    fs.putSingle("Persistence", persistence.toString().toLowerCase());
     if (returnType == ReturnType.DISK) {
       fs.putSingle("Filename", targetFile.getAbsolutePath());
     }

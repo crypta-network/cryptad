@@ -76,7 +76,6 @@ public class PushKeepaliveToadlet extends Toadlet {
    * @throws IOException if writing the response fails due to an underlying I/O problem
    * @throws RedirectException if the request must be redirected by the surrounding toadlet logic
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     String requestId = req.getParam("requestId");

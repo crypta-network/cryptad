@@ -256,7 +256,7 @@ public class ClientPutComplexDirMessage extends ClientPutDirMessage {
    * containing ManifestElement's.
    */
   private void convertFilesByNameToManifestElements(
-      Map<String, Object> filesByName, Map<String, Object> manifestElements, Node node)
+      Map<String, Object> filesByName, HashMap<String, Object> manifestElements, Node node)
       throws MessageInvalidException {
 
     for (Map.Entry<String, Object> entry : filesByName.entrySet()) {

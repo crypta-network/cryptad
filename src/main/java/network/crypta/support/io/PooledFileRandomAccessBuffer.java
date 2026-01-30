@@ -671,9 +671,13 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     if (this == obj) {
       return true;
     }
-    if (!(obj instanceof PooledFileRandomAccessBuffer other)) {
+    if (obj == null) {
       return false;
     }
+    if (getClass() != obj.getClass()) {
+      return false;
+    }
+    PooledFileRandomAccessBuffer other = (PooledFileRandomAccessBuffer) obj;
     if (deleteOnFree != other.deleteOnFree) {
       return false;
     }

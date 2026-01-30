@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import network.crypta.clients.http.StaticToadlet;
 import network.crypta.support.HTMLNode;
@@ -73,7 +72,6 @@ public class IPConverter {
    *   <li>Flag availability is cached per enum constant to avoid repeated filesystem checks.
    * </ul>
    */
-  @SuppressWarnings("ImmutableEnumChecker")
   public enum Country {
     /** GeoIP code {@code L0} ({@code localhost}). */
     L0("localhost"),
@@ -642,7 +640,7 @@ public class IPConverter {
 
     /** Does not check whether it exists. Relative to the top of static files. */
     private String flagIconPath() {
-      return "icon/flags/" + toString().toLowerCase(Locale.ROOT) + ".png";
+      return "icon/flags/" + toString().toLowerCase() + ".png";
     }
 
     /**
@@ -719,7 +717,6 @@ public class IPConverter {
     return instance;
   }
 
-  @SuppressWarnings("EnumOrdinal")
   private static short countryOrdinalOrUnknown(String code) {
     try {
       return (short) Country.valueOf(code).ordinal();
@@ -788,7 +785,7 @@ public class IPConverter {
    * @throws NumberFormatException If the string is not an IP address.
    */
   public long ip2num(String ip) {
-    String[] split = splitIpv4(ip);
+    String[] split = ip.split("\\.");
     if (split.length != 4) throw new NumberFormatException();
     long num = 0;
     long coef = (256 << 16);
@@ -798,26 +795,6 @@ public class IPConverter {
       coef >>= 8;
     }
     return num;
-  }
-
-  private static String[] splitIpv4(String ip) {
-    String[] parts = new String[4];
-    int part = 0;
-    int start = 0;
-    int len = ip.length();
-    for (int i = 0; i <= len; i++) {
-      if (i == len || ip.charAt(i) == '.') {
-        if (part >= parts.length) {
-          return new String[0];
-        }
-        parts[part++] = ip.substring(start, i);
-        start = i + 1;
-      }
-    }
-    if (part != parts.length) {
-      return new String[0];
-    }
-    return parts;
   }
 
   /**

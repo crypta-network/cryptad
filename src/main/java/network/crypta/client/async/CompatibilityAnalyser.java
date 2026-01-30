@@ -125,8 +125,9 @@ public class CompatibilityAnalyser implements Serializable {
     }
     if (definitive) this.definitive = true;
     if (!dontCompress) this.dontCompress = false;
-    if (min.compareTo(this.min) > 0) this.min = min;
-    if (max.compareTo(this.max) < 0 || this.max == CompatibilityMode.COMPAT_UNKNOWN) this.max = max;
+    if (min.ordinal() > this.min.ordinal()) this.min = min;
+    if (max.ordinal() < this.max.ordinal() || this.max == CompatibilityMode.COMPAT_UNKNOWN)
+      this.max = max;
     if (this.cryptoKey == null) {
       this.cryptoKey = cryptoKey;
     } else if (cryptoKey != null && !Arrays.equals(this.cryptoKey, cryptoKey)) {

@@ -182,7 +182,6 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
       }
     }
 
-    @Override
     public String toString() {
       return "TrivialPaddedBucketOutputStream:" + out + "(" + PaddedRandomAccessBucket.this + ")";
     }
@@ -461,7 +460,6 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
   private static final String FIELD_UNDERLYING = "underlying";
 
   @Serial
-  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_SIZE, long.class),
     new ObjectStreamField(FIELD_READ_ONLY, boolean.class),

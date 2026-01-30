@@ -449,7 +449,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return new MetaParse(de.docName(), meta, de.edition(), segs.base());
   }
 
-  private record Segments(List<String> list, String base) {}
+  private record Segments(ArrayList<String> list, String base) {}
 
   private static Segments decodeSegments(String remainder, boolean isKSK)
       throws MalformedURLException {
@@ -472,7 +472,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   private record DocEdition(String docName, long edition) {}
 
   private static DocEdition deriveDocAndEdition(
-      List<String> segments, String keyType, boolean isUSK, boolean isSSK, boolean isKSK)
+      ArrayList<String> segments, String keyType, boolean isUSK, boolean isSSK, boolean isKSK)
       throws MalformedURLException {
     if (segments.isEmpty() && (isUSK || isKSK))
       throw new MalformedURLException("No docname for " + keyType);
@@ -489,7 +489,8 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return new DocEdition(docName, edition);
   }
 
-  private static long parseUskEditionOrThrow(List<String> segments) throws MalformedURLException {
+  private static long parseUskEditionOrThrow(ArrayList<String> segments)
+      throws MalformedURLException {
     if (segments.isEmpty()) throw new MalformedURLException("No suggested edition number for USK");
     try {
       return Long.parseLong(segments.removeLast());
@@ -499,7 +500,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     }
   }
 
-  private static String[] toMetaArray(List<String> segments) {
+  private static String[] toMetaArray(ArrayList<String> segments) {
     if (segments.isEmpty()) return new String[0];
     String[] meta = new String[segments.size()];
     for (int i = 0; i < meta.length; i++) {
@@ -1005,7 +1006,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * @param dos Destination stream.
    * @throws IOException On I/O errors.
    */
-  @SuppressWarnings({"unused", "AmbiguousMethodReference"})
+  @SuppressWarnings("unused")
   public static void writeFullBinaryKeyWithLength(FreenetURI uri, DataOutputStream dos)
       throws IOException {
     if (uri == null) dos.writeShort((short) 0);
@@ -1022,7 +1023,6 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * @throws MalformedURLException If internal invariants are violated (e.g., wrong key lengths).
    * @throws IOException If an I/O error occurs.
    */
-  @SuppressWarnings("AmbiguousMethodReference")
   public void writeFullBinaryKeyWithLength(DataOutputStream dos) throws IOException {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     DataOutputStream ndos = new DataOutputStream(baos);
@@ -1180,7 +1180,6 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * Throw an InsertException if we have any meta-strings. They are not valid for inserts, you must
    * insert a directory to create a directory structure.
    */
-  @SuppressWarnings("AmbiguousMethodReference")
   public void checkInsertURI() throws InsertException {
     if (metaStr != null && metaStr.length > 0)
       throw new InsertException(InsertExceptionMode.META_STRINGS_NOT_SUPPORTED, this);
@@ -1190,7 +1189,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * Throw an InsertException if the argument has any meta-strings. They are not valid for inserts,
    * you must insert a directory to create a directory structure.
    */
-  @SuppressWarnings({"unused", "AmbiguousMethodReference"})
+  @SuppressWarnings("unused")
   public static void checkInsertURI(FreenetURI uri) throws InsertException {
     uri.checkInsertURI();
   }

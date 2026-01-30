@@ -117,7 +117,6 @@ public class ExternalLinkToadlet extends Toadlet {
    *     written.
    * @throws IOException if rendering or sending the response fails.
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     Objects.requireNonNull(uri, "uri");

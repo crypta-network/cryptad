@@ -491,7 +491,6 @@ public class PproxyToadlet extends Toadlet {
    * @throws ToadletContextClosedException if the client disconnects before the response completes
    * @throws IOException if the handler encounters an I/O problem while reading or writing data
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     String path = normalizePluginPath(request.getPath());
@@ -692,7 +691,6 @@ public class PproxyToadlet extends Toadlet {
     headerRow.addChild("th");
   }
 
-  @SuppressWarnings("JavaUtilDate")
   private void addPluginRow(
       ToadletContext ctx,
       HTMLNode pluginTable,

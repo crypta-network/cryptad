@@ -87,7 +87,6 @@ public class PushFailoverToadlet extends Toadlet {
    * @throws IOException If writing the response fails due to an I/O error.
    * @throws RedirectException If the container requests a redirect while processing this request.
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     String requestId = req.getParam("requestId");

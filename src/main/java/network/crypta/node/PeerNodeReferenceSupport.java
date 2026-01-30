@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.List;
-import java.util.StringTokenizer;
 import java.util.TimeZone;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
@@ -70,7 +69,6 @@ import org.slf4j.LoggerFactory;
  * @see PeerNode
  */
 final class PeerNodeReferenceSupport {
-
   /**
    * Logger used for peer-reference parsing and validation diagnostics.
    *
@@ -332,7 +330,7 @@ final class PeerNodeReferenceSupport {
    * @param phys raw physical entry string that may contain {@code A,B,C:port}
    * @param out destination list to append parsed peers to
    */
-  private static void addPeersWithSharedPortSuffix(String phys, List<Peer> out) {
+  private static void addPeersWithSharedPortSuffix(String phys, ArrayList<Peer> out) {
     int lastColon = phys.lastIndexOf(':');
     if (lastColon <= 0 || lastColon >= phys.length() - 1) {
       return;
@@ -344,9 +342,7 @@ final class PeerNodeReferenceSupport {
     }
 
     String hostList = phys.substring(0, lastColon);
-    StringTokenizer tokenizer = new StringTokenizer(hostList, ",");
-    while (tokenizer.hasMoreTokens()) {
-      String host = tokenizer.nextToken();
+    for (String host : hostList.split(",")) {
       addPeerIfParsable(host.trim() + ":" + portStr, out);
     }
   }
@@ -360,10 +356,8 @@ final class PeerNodeReferenceSupport {
    * @param phys raw physical entry string that may contain {@code A:port,B:port}
    * @param out destination list to append parsed peers to
    */
-  private static void addPeersFromCommaSeparatedTokens(String phys, List<Peer> out) {
-    StringTokenizer tokenizer = new StringTokenizer(phys, ",");
-    while (tokenizer.hasMoreTokens()) {
-      String token = tokenizer.nextToken();
+  private static void addPeersFromCommaSeparatedTokens(String phys, ArrayList<Peer> out) {
+    for (String token : phys.split(",")) {
       String cand = token.trim();
       if (cand.isEmpty()) {
         continue;
@@ -399,7 +393,7 @@ final class PeerNodeReferenceSupport {
    * @param cand candidate {@code host:port} string to parse
    * @param out destination list to append a parsed peer to
    */
-  private static void addPeerIfParsable(String cand, List<Peer> out) {
+  private static void addPeerIfParsable(String cand, ArrayList<Peer> out) {
     try {
       out.add(new Peer(cand, true, true));
     } catch (Exception _) {
@@ -416,7 +410,7 @@ final class PeerNodeReferenceSupport {
    * @param cand candidate {@code host:port} string to parse
    * @param out destination list to append a parsed peer to if unique
    */
-  private static void addPeerIfParsableAndNotDuplicate(String cand, List<Peer> out) {
+  private static void addPeerIfParsableAndNotDuplicate(String cand, ArrayList<Peer> out) {
     try {
       Peer parsed = new Peer(cand, true, true);
       if (!out.contains(parsed)) {
@@ -489,7 +483,7 @@ final class PeerNodeReferenceSupport {
    */
   void checkTestnetAndOpennet(SimpleFieldSet fs, boolean forDiffNodeRef, boolean forFullNodeRef)
       throws FSParseException {
-    if (!forDiffNodeRef && fs.getBoolean(PeerNode.SFS_KEY_TESTNET, false)) {
+    if (!forDiffNodeRef && (fs.getBoolean(PeerNode.SFS_KEY_TESTNET, false))) {
       String err = "Preventing connection to node " + peer.getPeer() + " - testnet is enabled!";
       LOG.error(err);
       throw new FSParseException(err);
@@ -636,7 +630,7 @@ final class PeerNodeReferenceSupport {
 
       // If there is no signature, FAIL
       // If there is an ECDSA signature, and it doesn't verify, FAIL
-      boolean hasNoSignature = !isECDSAsigPresent;
+      boolean hasNoSignature = (!isECDSAsigPresent);
       boolean isECDSAsigInvalid = (isECDSAsigPresent && !verifyECDSA);
       failed = hasNoSignature || isECDSAsigInvalid;
       if (failed) {
@@ -767,10 +761,10 @@ final class PeerNodeReferenceSupport {
     if (versionStr == null) {
       return new String[0];
     }
-    StringTokenizer tokenizer = new StringTokenizer(versionStr, ",");
-    ArrayList<String> components = new ArrayList<>();
-    while (tokenizer.hasMoreTokens()) {
-      String trimmed = tokenizer.nextToken().trim();
+    String[] raw = versionStr.split(",");
+    ArrayList<String> components = new ArrayList<>(raw.length);
+    for (String token : raw) {
+      String trimmed = token.trim();
       if (!trimmed.isEmpty()) {
         components.add(trimmed);
       }

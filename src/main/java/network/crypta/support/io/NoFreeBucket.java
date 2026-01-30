@@ -47,7 +47,6 @@ public class NoFreeBucket implements Bucket, Serializable {
   // serialPersistentFields allows readObject(ObjectInputStream) to obtain it via
   // ObjectInputStream.GetField, even though the runtime field is now transient.
   @Serial
-  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(PROXY_FIELD_NAME, Bucket.class)
   };

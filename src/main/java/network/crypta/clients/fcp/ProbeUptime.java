@@ -61,7 +61,6 @@ public class ProbeUptime extends FCPResponse {
    *
    * @return immutable literal {@code "ProbeUptime"} understood by the FCP framing layer.
    */
-  @Override
   public String getName() {
     return "ProbeUptime";
   }

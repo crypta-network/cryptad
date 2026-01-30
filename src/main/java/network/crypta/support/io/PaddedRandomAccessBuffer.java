@@ -230,9 +230,13 @@ public class PaddedRandomAccessBuffer implements LockableRandomAccessBuffer, Ser
     if (this == obj) {
       return true;
     }
-    if (!(obj instanceof PaddedRandomAccessBuffer other)) {
+    if (obj == null) {
       return false;
     }
+    if (getClass() != obj.getClass()) {
+      return false;
+    }
+    PaddedRandomAccessBuffer other = (PaddedRandomAccessBuffer) obj;
     if (!raf.equals(other.raf)) {
       return false;
     }
@@ -250,7 +254,6 @@ public class PaddedRandomAccessBuffer implements LockableRandomAccessBuffer, Ser
   // object data when it was non-transient.
   /** Declares persistent fields to keep on-the-wire layout stable across versions. */
   @Serial
-  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields =
       new ObjectStreamField[] {
         new ObjectStreamField(FIELD_RAF, LockableRandomAccessBuffer.class),

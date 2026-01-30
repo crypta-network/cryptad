@@ -313,7 +313,6 @@ public final class NodeClientCoreTransfers {
     }
   }
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void handleStatusResult(
       boolean isSSK, RequestCompletionListener listener, RequestSender rs, int status) {
     switch (status) {

@@ -462,7 +462,7 @@ final class PeerNodeTransport implements PeerTransport {
           if (disconnected) throw new NotConnectedException();
           return;
         }
-        int waitTime = (int) Math.min(end - now, Integer.MAX_VALUE);
+        int waitTime = (int) (Math.min(end - now, Integer.MAX_VALUE));
         try {
           wait(waitTime);
         } catch (InterruptedException _) {

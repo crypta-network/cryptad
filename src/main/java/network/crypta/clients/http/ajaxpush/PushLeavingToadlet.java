@@ -71,7 +71,6 @@ public class PushLeavingToadlet extends Toadlet {
    * @throws RedirectException if the framework requires redirecting this request to another
    *     location
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     String requestId = req.getParam("requestId");

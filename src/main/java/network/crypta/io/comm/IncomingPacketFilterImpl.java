@@ -1,6 +1,5 @@
 package network.crypta.io.comm;
 
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.crypt.EntropySource;
 import network.crypta.node.FNPPacketMangler;
@@ -178,7 +177,7 @@ public class IncomingPacketFilterImpl implements IncomingPacketFilter {
   private boolean tryFallbackPeers(
       byte[] buf, int offset, int length, Peer peer, long now, PeerNode opn) {
     for (PeerNode pn : crypto.getPeerNodes()) {
-      if (Objects.equals(pn, opn)) {
+      if (pn == opn) {
         continue;
       }
       if (pn.handleReceivedPacket(buf, offset, length, now, peer)) {

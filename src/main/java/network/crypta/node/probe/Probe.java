@@ -673,7 +673,6 @@ public class Probe implements ByteCounter {
    * @param htl current probe HTL; used to calculate timeout.
    * @return filter for the requested result type, probe error, and probe refusal.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static MessageFilter createResponseFilter(
       final Type type, final PeerNode candidate, final long uid, final byte htl) {
     final long timeout = (htl - 1) * TIMEOUT_PER_HTL + TIMEOUT_HTL1;
@@ -729,7 +728,6 @@ public class Probe implements ByteCounter {
    * Depending on node settings, sends a message to source containing either a refusal or the
    * requested result.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void respond(final Type type, final Listener listener) {
 
     if (!respondTo(type)) {

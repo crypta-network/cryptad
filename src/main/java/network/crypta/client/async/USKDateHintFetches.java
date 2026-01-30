@@ -237,7 +237,7 @@ final class USKDateHintFetches {
     DBRAttempt[] created = new DBRAttempt[ssks.length];
     for (int i = 0; i < ssks.length; i++) {
       ClientKey key = ssks[i];
-      DBRAttempt attempt = new DBRAttempt(key, context, USKDateHint.Type.byIndex(i));
+      DBRAttempt attempt = new DBRAttempt(key, context, USKDateHint.Type.values()[i]);
       synchronized (this) {
         attempts.add(attempt);
       }

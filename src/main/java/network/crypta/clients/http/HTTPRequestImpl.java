@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
@@ -609,13 +608,9 @@ public class HTTPRequestImpl implements HTTPRequest {
   private String extractBoundary(String[] contentTypeParts) {
     String boundary = null;
     for (String contentTypePart : contentTypeParts) {
-      int eqIndex = contentTypePart.indexOf('=');
-      if (eqIndex <= 0 || contentTypePart.indexOf('=', eqIndex + 1) != -1) {
-        continue;
-      }
-      String key = contentTypePart.substring(0, eqIndex).trim();
-      if (key.equalsIgnoreCase("boundary")) {
-        boundary = contentTypePart.substring(eqIndex + 1);
+      String[] subparts = contentTypePart.split("=");
+      if ((subparts.length == 2) && subparts[0].trim().equalsIgnoreCase("boundary")) {
+        boundary = subparts[1];
       }
     }
     return boundary;
@@ -723,15 +718,14 @@ public class HTTPRequestImpl implements HTTPRequest {
   }
 
   private void parseContentDisposition(String headerValue, MutablePartMetadata metadata) {
-    StringTokenizer tokenizer = new StringTokenizer(headerValue, ";");
-    while (tokenizer.hasMoreTokens()) {
-      String valuepart = tokenizer.nextToken();
-      int eqIndex = valuepart.indexOf('=');
-      if (eqIndex <= 0) {
+    String[] valueparts = headerValue.split(";");
+    for (String valuepart : valueparts) {
+      String[] subparts = valuepart.split("=", 2);
+      if (subparts.length != 2) {
         continue;
       }
-      String fieldname = valuepart.substring(0, eqIndex).trim();
-      String value = stripWrappingQuotes(valuepart.substring(eqIndex + 1).trim());
+      String fieldname = subparts[0].trim();
+      String value = stripWrappingQuotes(subparts[1].trim());
       if (fieldname.equalsIgnoreCase("name")) {
         metadata.name = value;
       } else if (fieldname.equalsIgnoreCase("filename")) {
@@ -1096,10 +1090,10 @@ public class HTTPRequestImpl implements HTTPRequest {
    */
   @Override
   public String getHeader(String name) {
-    if (!name.equals(name.toLowerCase(Locale.ROOT))) {
+    if (!name.equals(name.toLowerCase())) {
       throw new IllegalArgumentException("Header name must be lower-case");
     }
-    return this.headers.getFirst(name.toLowerCase(Locale.ROOT));
+    return this.headers.getFirst(name.toLowerCase());
   }
 
   /**

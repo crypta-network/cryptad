@@ -261,7 +261,6 @@ public final class MessageFilter {
   }
 
   /** Outcome of {@link #match(Message, long)}. */
-  @SuppressWarnings("VariableNameSameAsType")
   public enum MATCHED {
     /** The message matches all constraints and is within the timeout window. */
     MATCHED,

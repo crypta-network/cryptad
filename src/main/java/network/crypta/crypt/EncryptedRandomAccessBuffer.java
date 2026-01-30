@@ -499,7 +499,6 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   private static final String FIELD_VERSION = "version";
 
   @Serial
-  @SuppressWarnings("UnusedVariable")
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_TYPE, EncryptedRandomAccessBufferType.class),
     new ObjectStreamField(FIELD_UNDERLYING, LockableRandomAccessBuffer.class),

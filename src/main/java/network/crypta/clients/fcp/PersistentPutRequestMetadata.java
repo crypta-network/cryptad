@@ -20,7 +20,6 @@ import org.jetbrains.annotations.NotNull;
  * @param compressorDescriptor optional codec pipeline description
  * @param splitfileCryptoKey encryption key for splitfile segments, if known
  */
-@SuppressWarnings("ArrayRecordComponent")
 public record PersistentPutRequestMetadata(
     FreenetURI privateURI,
     boolean started,

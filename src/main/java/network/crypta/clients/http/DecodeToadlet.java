@@ -56,7 +56,6 @@ public class DecodeToadlet extends Toadlet {
    *     written
    * @throws IOException if generating or sending the redirect page encounters an I/O failure
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
 

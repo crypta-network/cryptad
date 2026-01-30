@@ -187,7 +187,7 @@ final class ClientGetGetterFactory {
    * @param snapshot captured request state used to populate the status.
    * @return a populated {@link DownloadRequestStatus} instance.
    */
-  @SuppressWarnings({"resource", "JavaUtilDate"})
+  @SuppressWarnings("resource")
   static RequestStatus buildStatus(ClientGetStatusSnapshot snapshot) {
     boolean totalFinalized = false;
     int total = 0;

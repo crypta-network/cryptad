@@ -87,8 +87,8 @@ public class CompatibilityMode extends FCPMessage {
     SimpleFieldSet fs = new SimpleFieldSet(false);
     fs.putOverwrite("Min", compat.min().name());
     fs.putOverwrite("Max", compat.max().name());
-    fs.put("Min.Number", compat.min().code);
-    fs.put("Max.Number", compat.max().code);
+    fs.put("Min.Number", compat.min().ordinal());
+    fs.put("Max.Number", compat.max().ordinal());
     fs.putOverwrite("Identifier", messageIdentifier);
     fs.put("Global", global);
     byte[] cryptoKey = compat.getCryptoKey();

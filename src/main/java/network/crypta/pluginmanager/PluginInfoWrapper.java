@@ -158,7 +158,6 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
    * @return a descriptive string containing identifier, class name, and start time information.
    */
   @Override
-  @SuppressWarnings("JavaUtilDate")
   public String toString() {
     return "ID: \"" + threadName + "\", Name: " + className + ", Started: " + new Date(start);
   }

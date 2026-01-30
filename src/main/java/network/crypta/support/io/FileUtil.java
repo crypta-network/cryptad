@@ -20,8 +20,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.util.Locale;
-import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.node.NodeStarter;
@@ -231,7 +229,6 @@ public final class FileUtil {
    * Detects the operating system in which the JVM is running. Returns {@link
    * OperatingSystem#UNKNOWN} if the OS is unknown or an error occurred. This method never throws.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static OperatingSystem detectOperatingSystem() { // Now delegates to AppEnv first
     try {
       network.crypta.fs.AppEnv env = new network.crypta.fs.AppEnv();
@@ -247,7 +244,7 @@ public final class FileUtil {
           // Keep the legacy os.name fallback until AppEnv distinguishes BSD variants to avoid
           // misclassifying FreeBSD as Linux.
           {
-            final String n = String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
+            final String n = String.valueOf(System.getProperty("os.name")).toLowerCase();
             if (n.contains("linux")) return OperatingSystem.LINUX;
             // fall through to legacy fallback for FreeBSD/Generic Unix
             break;
@@ -261,7 +258,7 @@ public final class FileUtil {
       LOG.error("Operating system detection via AppEnv failed", e);
     }
     // Legacy fallback to preserve FreeBSD/GenericUnix behavior and work in restricted envs
-    final String name = String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
+    final String name = String.valueOf(System.getProperty("os.name")).toLowerCase();
     if (name.contains("freebsd")) return OperatingSystem.FREE_BSD;
     if (name.contains("linux")) return OperatingSystem.LINUX;
     if (name.contains("unix")) return OperatingSystem.GENERIC_UNIX;
@@ -281,7 +278,7 @@ public final class FileUtil {
       LOG.error("CPU architecture detection via AppEnv failed", e);
     }
     try {
-      final String name = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
+      final String name = System.getProperty("os.arch").toLowerCase();
       if (name.equals("x86") || name.equals("i386") || name.matches("i[3-9]86"))
         return CPUArchitecture.X86;
       if (name.equals("amd64")
@@ -351,7 +348,7 @@ public final class FileUtil {
     // issues observed with some persistence layers.
     String name = file.getPath();
     if (File.pathSeparatorChar == '\\') {
-      name = name.toLowerCase(Locale.ROOT);
+      name = name.toLowerCase();
     }
     file = new File(name);
     File result;
@@ -810,7 +807,8 @@ public final class FileUtil {
    * @return {@code true} if both refer to the same canonical path
    */
   public static boolean equals(File a, File b) {
-    if (Objects.equals(a, b)) return true;
+    if (a == b) return true;
+    if (a.equals(b)) return true;
     a = getCanonicalFile(a);
     b = getCanonicalFile(b);
     return a.equals(b);

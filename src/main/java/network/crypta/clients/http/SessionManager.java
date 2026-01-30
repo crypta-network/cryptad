@@ -448,7 +448,6 @@ public final class SessionManager {
    * @param session The session to create a cookie for
    * @param context The context to store the cookie in
    */
-  @SuppressWarnings("JavaUtilDate")
   private void setSessionCookie(Session session, ToadletContext context) {
     context.setCookie(
         new Cookie(

@@ -76,7 +76,6 @@ public class DismissAlertToadlet extends Toadlet {
    * @throws IOException If writing the response fails due to I/O problems.
    * @throws RedirectException Never thrown by this implementation, but declared by contract.
    */
-  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     // The anchor is used to identify the alert

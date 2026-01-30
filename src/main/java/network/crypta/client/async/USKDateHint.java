@@ -53,8 +53,6 @@ public class USKDateHint {
     /** Week-based year and week of year, for example {@code 2023-WEEK-1}. */
     WEEK;
 
-    private static final Type[] VALUES = values();
-
     /**
      * Report whether this precision is strictly more precise than another.
      *
@@ -80,10 +78,6 @@ public class USKDateHint {
       } else { // YEAR: everything else is more precise
         return false;
       }
-    }
-
-    static Type byIndex(int index) {
-      return VALUES[index];
     }
   }
 

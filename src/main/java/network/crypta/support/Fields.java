@@ -7,7 +7,6 @@ import java.util.Calendar;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
-import java.util.Locale;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
 import network.crypta.config.Dimension;
@@ -323,10 +322,10 @@ public abstract class Fields {
       // Preserve historical behavior: default to days when the unit is omitted.
       gc.add(Calendar.DAY_OF_YEAR, amount);
     } else {
-      String deltaTypeString = date.substring(chop).toLowerCase(Locale.ROOT);
+      String deltaTypeString = date.substring(chop).toLowerCase();
       addDelta(gc, deltaTypeString, amount);
     }
-    return gc.getTimeInMillis();
+    return gc.getTime().getTime();
   }
 
   private static void addDelta(GregorianCalendar gc, String deltaTypeString, int amount) {
@@ -369,34 +368,46 @@ public abstract class Fields {
     return switch (month) {
       case 1 ->
           new GregorianCalendar(year, Calendar.JANUARY, day, hour, minute, second)
-              .getTimeInMillis();
+              .getTime()
+              .getTime();
       case 2 ->
           new GregorianCalendar(year, Calendar.FEBRUARY, day, hour, minute, second)
-              .getTimeInMillis();
+              .getTime()
+              .getTime();
       case 3 ->
-          new GregorianCalendar(year, Calendar.MARCH, day, hour, minute, second).getTimeInMillis();
+          new GregorianCalendar(year, Calendar.MARCH, day, hour, minute, second)
+              .getTime()
+              .getTime();
       case 4 ->
-          new GregorianCalendar(year, Calendar.APRIL, day, hour, minute, second).getTimeInMillis();
+          new GregorianCalendar(year, Calendar.APRIL, day, hour, minute, second)
+              .getTime()
+              .getTime();
       case 5 ->
-          new GregorianCalendar(year, Calendar.MAY, day, hour, minute, second).getTimeInMillis();
+          new GregorianCalendar(year, Calendar.MAY, day, hour, minute, second).getTime().getTime();
       case 6 ->
-          new GregorianCalendar(year, Calendar.JUNE, day, hour, minute, second).getTimeInMillis();
+          new GregorianCalendar(year, Calendar.JUNE, day, hour, minute, second).getTime().getTime();
       case 7 ->
-          new GregorianCalendar(year, Calendar.JULY, day, hour, minute, second).getTimeInMillis();
+          new GregorianCalendar(year, Calendar.JULY, day, hour, minute, second).getTime().getTime();
       case 8 ->
-          new GregorianCalendar(year, Calendar.AUGUST, day, hour, minute, second).getTimeInMillis();
+          new GregorianCalendar(year, Calendar.AUGUST, day, hour, minute, second)
+              .getTime()
+              .getTime();
       case 9 ->
           new GregorianCalendar(year, Calendar.SEPTEMBER, day, hour, minute, second)
-              .getTimeInMillis();
+              .getTime()
+              .getTime();
       case 10 ->
           new GregorianCalendar(year, Calendar.OCTOBER, day, hour, minute, second)
-              .getTimeInMillis();
+              .getTime()
+              .getTime();
       case 11 ->
           new GregorianCalendar(year, Calendar.NOVEMBER, day, hour, minute, second)
-              .getTimeInMillis();
+              .getTime()
+              .getTime();
       case 12 ->
           new GregorianCalendar(year, Calendar.DECEMBER, day, hour, minute, second)
-              .getTimeInMillis();
+              .getTime()
+              .getTime();
       default -> throw new NumberFormatException("Invalid month: " + month);
     };
   }

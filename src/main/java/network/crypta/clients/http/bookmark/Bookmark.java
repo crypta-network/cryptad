@@ -1,6 +1,5 @@
 package network.crypta.clients.http.bookmark;
 
-import java.util.Locale;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.SimpleFieldSet;
 
@@ -81,7 +80,7 @@ public abstract class Bookmark {
    * @return the localized name when {@code l10n:} is used, otherwise the raw name.
    */
   public String getVisibleName() {
-    if (name.toLowerCase(Locale.ROOT).startsWith("l10n:"))
+    if (name.toLowerCase().startsWith("l10n:"))
       return NodeL10n.getBase()
           .getString("Bookmarks.Defaults.Name." + name.substring("l10n:".length()));
     return name;

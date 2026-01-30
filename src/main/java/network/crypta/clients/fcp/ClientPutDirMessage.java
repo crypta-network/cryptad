@@ -171,15 +171,15 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
       return InsertContext.CompatibilityMode.valueOf(modeValue).intern();
     } catch (IllegalArgumentException _) {
       try {
-        short code = Short.parseShort(modeValue);
-        return InsertContext.CompatibilityMode.byCode(code).intern();
+        int ordinal = Integer.parseInt(modeValue);
+        return InsertContext.CompatibilityMode.values()[ordinal].intern();
       } catch (NumberFormatException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Invalid CompatibilityMode (not a name and not a number)",
             identifier,
             global);
-      } catch (IllegalArgumentException _) {
+      } catch (ArrayIndexOutOfBoundsException _) {
         throw new MessageInvalidException(
             ProtocolErrorMessage.INVALID_FIELD,
             "Invalid CompatibilityMode (not a valid number)",

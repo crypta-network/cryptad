@@ -441,7 +441,7 @@ final class USKStoreCheckCoordinator {
    * <p>This helper merges keys from multiple sources and forwards completion notifications back to
    * the underlying sub-checkers.
    */
-  static final class USKStoreChecker {
+  final class USKStoreChecker {
 
     /** Sub-checkers contributing keys to a query in the datastore. */
     final USKKeyWatchSet.KeyList.StoreSubChecker[] checkers;

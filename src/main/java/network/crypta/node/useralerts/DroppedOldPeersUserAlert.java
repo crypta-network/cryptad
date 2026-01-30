@@ -32,7 +32,6 @@ import org.slf4j.LoggerFactory;
  *   <li>Emits a critical‑priority alert intended to be user‑dismissible.
  * </ul>
  */
-@SuppressWarnings("JavaUtilDate")
 public class DroppedOldPeersUserAlert implements UserAlert {
   private static final Logger LOG = LoggerFactory.getLogger(DroppedOldPeersUserAlert.class);
 
