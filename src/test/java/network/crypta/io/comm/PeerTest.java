@@ -36,7 +36,7 @@ class PeerTest {
   @Test
   @SuppressWarnings("java:S100")
   void constructor_inetAddress_withInvalidPort_throwsIllegalArgumentException() throws Exception {
-    InetAddress ip = InetAddress.getByName(LOOPBACK);
+    InetAddress ip = literal(LOOPBACK);
     assertThrows(IllegalArgumentException.class, () -> new Peer(ip, -1));
     assertThrows(IllegalArgumentException.class, () -> new Peer(ip, 65536));
   }
@@ -53,7 +53,7 @@ class PeerTest {
     // Prepare a serialized FreenetInetAddress (IPv4 127.0.0.1, empty hostname)
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     try (DataOutputStream dos = new DataOutputStream(bout)) {
-      FreenetInetAddress addr = new FreenetInetAddress(InetAddress.getByName(LOOPBACK));
+      FreenetInetAddress addr = new FreenetInetAddress(literal(LOOPBACK));
       addr.writeToDataOutputStream(dos);
       dos.writeInt(99999); // invalid port (> 65535)
     }
@@ -96,8 +96,8 @@ class PeerTest {
   @Test
   @SuppressWarnings("java:S100")
   void isNull_whenPortZero_trueOtherwiseFalse() throws Exception {
-    Peer p1 = new Peer(InetAddress.getByName("192.0.2.10"), 0);
-    Peer p2 = new Peer(InetAddress.getByName("192.0.2.10"), 80);
+    Peer p1 = new Peer(literal("192.0.2.10"), 0);
+    Peer p2 = new Peer(literal("192.0.2.10"), 80);
     assertTrue(p1.isNull());
     assertFalse(p2.isNull());
   }
@@ -105,7 +105,7 @@ class PeerTest {
   @Test
   @SuppressWarnings("java:S100")
   void getAddress_localDisallowed_throwsLocalAddressException() throws Exception {
-    Peer p = new Peer(InetAddress.getByName(LOOPBACK), 1);
+    Peer p = new Peer(literal(LOOPBACK), 1);
     assertThrows(LocalAddressException.class, () -> p.getAddress(true, false));
     // Allowed when flag is true
     InetAddress a = p.getAddress(true, true);
@@ -129,7 +129,7 @@ class PeerTest {
   @Test
   @SuppressWarnings("java:S100")
   void dropHostName_whenAlreadyIpOnly_returnsSameInstance() throws Exception {
-    Peer p = new Peer(InetAddress.getByName("198.51.100.10"), 4242);
+    Peer p = new Peer(literal("198.51.100.10"), 4242);
     Peer dropped = p.dropHostName();
     assertSame(p, dropped, "Expected the same instance");
   }
@@ -138,8 +138,7 @@ class PeerTest {
   @SuppressWarnings("java:S100")
   void dropHostName_whenHostnameAndResolved_returnsNewPeerWithIpOnly() throws Exception {
     FreenetInetAddress withHostname = mock(FreenetInetAddress.class);
-    when(withHostname.dropHostname())
-        .thenReturn(new FreenetInetAddress(InetAddress.getByName("198.51.100.20")));
+    when(withHostname.dropHostname()).thenReturn(new FreenetInetAddress(literal("198.51.100.20")));
     Peer p = new Peer(withHostname, 443);
     Peer dropped = p.dropHostName();
     assertNotSame(p, dropped);
@@ -159,24 +158,24 @@ class PeerTest {
   @Test
   @SuppressWarnings("java:S100")
   void laxEquals_whenSameIpAndPort_true() throws Exception {
-    Peer p1 = new Peer(InetAddress.getByName("203.0.113.10"), 1111);
-    Peer p2 = new Peer(InetAddress.getByName("203.0.113.10"), 1111);
+    Peer p1 = new Peer(literal("203.0.113.10"), 1111);
+    Peer p2 = new Peer(literal("203.0.113.10"), 1111);
     assertTrue(p1.laxEquals(p2));
   }
 
   @Test
   @SuppressWarnings("java:S100")
   void strictEquals_whenSameNumericIp_true() throws Exception {
-    Peer p1 = new Peer(InetAddress.getByName(DOC_IP_EQUAL), 7);
-    Peer p2 = new Peer(InetAddress.getByName(DOC_IP_EQUAL), 7);
+    Peer p1 = new Peer(literal(DOC_IP_EQUAL), 7);
+    Peer p2 = new Peer(literal(DOC_IP_EQUAL), 7);
     assertTrue(p1.strictEquals(p2));
   }
 
   @Test
   @SuppressWarnings("java:S100")
   void strictEquals_whenDifferentNumericIp_false() throws Exception {
-    Peer p1 = new Peer(InetAddress.getByName(DOC_IP_EQUAL), 7);
-    Peer p2 = new Peer(InetAddress.getByName("203.0.113.23"), 7);
+    Peer p1 = new Peer(literal(DOC_IP_EQUAL), 7);
+    Peer p2 = new Peer(literal("203.0.113.23"), 7);
     assertFalse(p1.strictEquals(p2));
   }
 
@@ -185,7 +184,7 @@ class PeerTest {
   @DisplayName("PeerComparator: hostname < no-hostname")
   void comparator_prefersHostnameBeforeIpOnly() throws Exception {
     Peer withHost = new Peer("example.invalid:9999", true);
-    Peer ipOnly = new Peer(InetAddress.getByName("203.0.113.1"), 9999);
+    Peer ipOnly = new Peer(literal("203.0.113.1"), 9999);
     assertTrue(Peer.PEER_COMPARATOR.compare(withHost, ipOnly) < 0);
     assertTrue(Peer.PEER_COMPARATOR.compare(ipOnly, withHost) > 0);
   }
@@ -203,8 +202,8 @@ class PeerTest {
   @SuppressWarnings("java:S100")
   @DisplayName("PeerComparator: IPv6 preferred over IPv4")
   void comparator_prefersIpv6OverIpv4() throws Exception {
-    Inet6Address v6 = (Inet6Address) InetAddress.getByName("2001:db8::1");
-    InetAddress v4 = InetAddress.getByName("203.0.113.100");
+    Inet6Address v6 = (Inet6Address) literal("2001:db8::1");
+    InetAddress v4 = literal("203.0.113.100");
     Peer p6 = new Peer(v6, 65000);
     Peer p4 = new Peer(v4, 65000);
     assertTrue(Peer.PEER_COMPARATOR.compare(p6, p4) < 0);
@@ -213,8 +212,7 @@ class PeerTest {
   @Test
   @SuppressWarnings("java:S100")
   void writeAndRead_roundTrip_preservesEqualityAndHashCode() throws Exception {
-    Peer original = new Peer(InetAddress.getByName("198.51.100.30"), 3210);
-
+    Peer original = new Peer(literal("198.51.100.30"), 3210);
     byte[] serialized;
     try (ByteArrayOutputStream bout = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(bout)) {
@@ -230,5 +228,9 @@ class PeerTest {
     assertEquals(original, restored);
     assertEquals(original.hashCode(), restored.hashCode());
     assertEquals(original.toString(), restored.toString());
+  }
+
+  private static InetAddress literal(String host) throws UnknownHostException {
+    return InetAddress.getAllByName(host)[0];
   }
 }

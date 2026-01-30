@@ -116,7 +116,7 @@ class NetworkInterfaceTest {
     assertNotNull(srv);
 
     // Enqueue a client that matches AllowedHosts (127.0.0.1)
-    srv.enqueue(new TestSocket(InetAddress.getByName("127.0.0.1")));
+    srv.enqueue(new TestSocket(InetAddress.getAllByName("127.0.0.1")[0]));
 
     Socket accepted = iface.accept();
     assertNotNull(accepted, "Expected a socket to be accepted");
@@ -138,7 +138,7 @@ class NetworkInterfaceTest {
     assertNotNull(srv);
 
     // Enqueue a client from a different address; should be denied by acceptor
-    TestSocket disallowed = new TestSocket(InetAddress.getByName("10.0.0.15"));
+    TestSocket disallowed = new TestSocket(InetAddress.getAllByName("10.0.0.15")[0]);
     srv.enqueue(disallowed);
 
     // Kick off accept() which will wait for a signal; we'll close the interface to signal.

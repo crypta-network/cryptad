@@ -349,7 +349,7 @@ class NodeCryptoTest {
     when(node.network().peers()).thenReturn(pm);
     when(pm.roster()).thenReturn(roster);
 
-    FreenetInetAddress addr = new FreenetInetAddress(InetAddress.getByName("203.0.113.5"));
+    FreenetInetAddress addr = new FreenetInetAddress(InetAddress.getAllByName("203.0.113.5")[0]);
     PeerNode peer = mock(PeerNode.class);
 
     NodeIPPortDetector detector = (NodeIPPortDetector) getField(nc, "detector");
@@ -368,7 +368,8 @@ class NodeCryptoTest {
     NodeCrypto nc = bare(node, false); // darknet instance
 
     NodeIPPortDetector detector = (NodeIPPortDetector) getField(nc, "detector");
-    FreenetInetAddress address = new FreenetInetAddress(InetAddress.getByName("198.51.100.7"));
+    FreenetInetAddress address =
+        new FreenetInetAddress(InetAddress.getAllByName("198.51.100.7")[0]);
     when(detector.includes(address)).thenReturn(false);
 
     // Prepare PeerManager with a conflicting Darknet peer

@@ -263,7 +263,7 @@ class BootstrapPullTestTest {
    * runtime (Security Manager is disabled).
    */
   public static final class InsertDataRunner {
-    static void main(String[] args) throws IOException, ReflectiveOperationException {
+    public static void main(String[] args) throws IOException, ReflectiveOperationException {
       if (args.length != 2) {
         throw new IllegalArgumentException("Expected args: <testSize> <dataFile>");
       }
@@ -356,7 +356,7 @@ class BootstrapPullTestTest {
     }
 
     private static ServerSocket bindLocalhost() throws IOException {
-      InetAddress localhost = InetAddress.getByName("127.0.0.1");
+      InetAddress localhost = InetAddress.getAllByName("127.0.0.1")[0];
       ServerSocket serverSocket = new ServerSocket();
       serverSocket.setReuseAddress(true);
       try {

@@ -32,7 +32,7 @@ class SeedAnnounceTrackerTest {
   void setUp() throws Exception {
     tracker = new SeedAnnounceTracker();
     // Default peer with stable IP/port and fresh version; specific tests may override.
-    InetAddress ip = InetAddress.getByName("203.0.113.1"); // TEST-NET-3 address
+    InetAddress ip = InetAddress.getAllByName("203.0.113.1")[0]; // TEST-NET-3 address
     Peer peer = new Peer(ip, 12345);
     lenient().when(peerNode.getPeer()).thenReturn(peer);
     lenient().when(peerNode.getBuildNumber()).thenReturn(100);
@@ -234,7 +234,7 @@ class SeedAnnounceTrackerTest {
 
   private SeedClientPeerNode mockPeer(String ip, int build) throws Exception {
     SeedClientPeerNode pn = mock(SeedClientPeerNode.class);
-    Peer peer = new Peer(InetAddress.getByName(ip), 4242);
+    Peer peer = new Peer(InetAddress.getAllByName(ip)[0], 4242);
     lenient().when(pn.getPeer()).thenReturn(peer);
     lenient().when(pn.getBuildNumber()).thenReturn(build);
     lenient().when(pn.isUnroutableOlderVersion()).thenReturn(false);

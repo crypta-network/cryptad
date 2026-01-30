@@ -102,6 +102,7 @@ class BitprintTest {
         shaBytes, tigerBytes, Base32.encode(shaBytes), Base32.encode(tigerBytes));
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record DigestComponents(
       byte[] shaBytes, byte[] tigerBytes, String shaBase32, String tigerBase32) {}
 }

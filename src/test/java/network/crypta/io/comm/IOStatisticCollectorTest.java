@@ -44,7 +44,7 @@ class IOStatisticCollectorTest {
   @DisplayName("reportSentBytes_whenRemotePositive_addsToOutOnly")
   @CsvSource({"8.8.8.8, 1500", "2001:4860:4860::8888, 2048"})
   void reportSentBytes_whenRemotePositive_addsToOutOnly(String ip, int bytes) throws Exception {
-    InetAddress addr = InetAddress.getByName(ip);
+    InetAddress addr = literal(ip);
 
     collector.reportSentBytes(addr, bytes);
 
@@ -56,7 +56,7 @@ class IOStatisticCollectorTest {
   @DisplayName("reportReceivedBytes_whenRemotePositive_addsToInOnly")
   @CsvSource({"1.1.1.1, 777", "2606:4700:4700::1111, 4096"})
   void reportReceivedBytes_whenRemotePositive_addsToInOnly(String ip, int bytes) throws Exception {
-    InetAddress addr = InetAddress.getByName(ip);
+    InetAddress addr = literal(ip);
 
     collector.reportReceivedBytes(addr, bytes);
 
@@ -68,7 +68,7 @@ class IOStatisticCollectorTest {
   @DisplayName("reportMethods_whenZeroOrNegativeBytes_ignored")
   @CsvSource({"0", "-1", "-1024"})
   void reportMethods_whenZeroOrNegativeBytes_ignored(int bytes) throws Exception {
-    InetAddress remote = InetAddress.getByName("9.9.9.9");
+    InetAddress remote = literal("9.9.9.9");
 
     collector.reportSentBytes(remote, bytes);
     collector.reportReceivedBytes(remote, bytes);
@@ -80,7 +80,7 @@ class IOStatisticCollectorTest {
   @DisplayName("reportMethods_whenLocalAddresses_ignored")
   @MethodSource("localAddresses")
   void reportMethods_whenLocalAddresses_ignored(String ip) throws Exception {
-    InetAddress local = InetAddress.getByName(ip);
+    InetAddress local = literal(ip);
 
     collector.reportSentBytes(local, 1000);
     collector.reportReceivedBytes(local, 2000);
@@ -107,7 +107,7 @@ class IOStatisticCollectorTest {
   @Test
   @DisplayName("getTotalIO_whenArrayMutated_doesNotAffectInternalState")
   void getTotalIO_whenArrayMutated_doesNotAffectInternalState() throws Exception {
-    InetAddress remote = InetAddress.getByName("8.8.4.4");
+    InetAddress remote = literal("8.8.4.4");
     collector.reportSentBytes(remote, 10);
     collector.reportReceivedBytes(remote, 20);
 
@@ -130,7 +130,7 @@ class IOStatisticCollectorTest {
   @Test
   @DisplayName("concurrency_reportSentBytes_multipleThreads_correctTotal")
   void concurrency_reportSentBytes_multipleThreads_correctTotal() throws Exception {
-    InetAddress remote = InetAddress.getByName("1.2.3.4");
+    InetAddress remote = literal("1.2.3.4");
     int threads = 4;
     int incrementsPerThread = 1_000;
     int bytesPerIncrement = 1;
@@ -165,7 +165,7 @@ class IOStatisticCollectorTest {
   @Test
   @DisplayName("concurrency_reportReceivedBytes_multipleThreads_correctTotal")
   void concurrency_reportReceivedBytes_multipleThreads_correctTotal() throws Exception {
-    InetAddress remote = InetAddress.getByName("4.3.2.1");
+    InetAddress remote = literal("4.3.2.1");
     int threads = 3;
     int incrementsPerThread = 2_000;
     int bytesPerIncrement = 2;
@@ -195,5 +195,9 @@ class IOStatisticCollectorTest {
 
     long expectedIn = (long) threads * incrementsPerThread * bytesPerIncrement;
     assertArrayEquals(new long[] {0L, expectedIn}, collector.getTotalIO());
+  }
+
+  private static InetAddress literal(String host) throws Exception {
+    return InetAddress.getAllByName(host)[0];
   }
 }

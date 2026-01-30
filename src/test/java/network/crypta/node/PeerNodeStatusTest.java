@@ -134,7 +134,7 @@ class PeerNodeStatusTest {
     // Mock underlying Peer and FreenetInetAddress for IPv4
     Peer peer = mock(Peer.class);
     FreenetInetAddress faddr = mock(FreenetInetAddress.class);
-    InetAddress inet = InetAddress.getByName("203.0.113.10");
+    InetAddress inet = InetAddress.getAllByName("203.0.113.10")[0];
 
     when(pn.getPeer()).thenReturn(peer);
     when(peer.getFreenetAddress()).thenReturn(faddr);
@@ -159,7 +159,7 @@ class PeerNodeStatusTest {
     Peer peer = mock(Peer.class);
     FreenetInetAddress faddr = mock(FreenetInetAddress.class);
     // Use a documentation prefix address (RFC 3849)
-    InetAddress inet6 = InetAddress.getByName("2001:db8::1");
+    InetAddress inet6 = InetAddress.getAllByName("2001:db8::1")[0];
 
     when(pn.getPeer()).thenReturn(peer);
     when(peer.getFreenetAddress()).thenReturn(faddr);

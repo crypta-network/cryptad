@@ -43,7 +43,7 @@ class FNPPacketManglerTest {
   @BeforeEach
   void setUp() throws UnknownHostException {
     mangler = new FNPPacketMangler(node, crypto, sock);
-    loopbackPeer = new Peer(InetAddress.getByName("127.0.0.1"), 4242);
+    loopbackPeer = new Peer(InetAddress.getAllByName("127.0.0.1")[0], 4242);
 
     // Defaults that keep control-flow simple for most tests
     lenient().when(node.isStopping()).thenReturn(false);

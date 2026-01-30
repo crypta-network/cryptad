@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.List;
 import network.crypta.crypt.RandomSource;
 import network.crypta.io.comm.FreenetInetAddress;
@@ -245,7 +246,7 @@ class PeerRosterTest {
   void getByPeer_whenMatchesIpOnly_expectFallbackMatch() throws Exception {
     // Arrange
     PeerRoster roster = newRoster(mock(RandomSource.class), true);
-    FreenetInetAddress address = new FreenetInetAddress(InetAddress.getByName("127.0.0.1"));
+    FreenetInetAddress address = new FreenetInetAddress(literal("127.0.0.1"));
     Peer peer = mock(Peer.class);
     when(peer.getFreenetAddress()).thenReturn(address);
     PeerNode peerNode = mock(PeerNode.class);
@@ -290,7 +291,7 @@ class PeerRosterTest {
   void getAllConnectedByAddress_whenMatches_expectListReturned() throws Exception {
     // Arrange
     PeerRoster roster = newRoster(mock(RandomSource.class), true);
-    FreenetInetAddress address = new FreenetInetAddress(InetAddress.getByName("127.0.0.3"));
+    FreenetInetAddress address = new FreenetInetAddress(literal("127.0.0.3"));
     PeerNode match = mock(PeerNode.class);
     PeerNode noMatch = mock(PeerNode.class);
     when(match.isConnected()).thenReturn(true);
@@ -321,7 +322,7 @@ class PeerRosterTest {
   void getAllConnectedByAddress_whenNone_expectNull() throws Exception {
     // Arrange
     PeerRoster roster = newRoster(mock(RandomSource.class), true);
-    FreenetInetAddress address = new FreenetInetAddress(InetAddress.getByName("127.0.0.4"));
+    FreenetInetAddress address = new FreenetInetAddress(literal("127.0.0.4"));
     PeerNode peer = mock(PeerNode.class);
     when(peer.isConnected()).thenReturn(false);
     addPeers(roster, peer);
@@ -615,7 +616,7 @@ class PeerRosterTest {
   void anyConnectedPeerHasAddress_whenMatchAndEligible_expectTrue() throws Exception {
     // Arrange
     PeerRoster roster = newRoster(mock(RandomSource.class), true);
-    FreenetInetAddress address = new FreenetInetAddress(InetAddress.getByName("127.0.0.5"));
+    FreenetInetAddress address = new FreenetInetAddress(literal("127.0.0.5"));
     PeerNode peer = mock(PeerNode.class);
     PeerNode other = mock(PeerNode.class);
     Peer otherPeer = mock(Peer.class);
@@ -638,7 +639,7 @@ class PeerRosterTest {
   void anyConnectedPeerHasAddress_whenDarknetMismatch_expectFalse() throws Exception {
     // Arrange
     PeerRoster roster = newRoster(mock(RandomSource.class), true);
-    FreenetInetAddress address = new FreenetInetAddress(InetAddress.getByName("127.0.0.6"));
+    FreenetInetAddress address = new FreenetInetAddress(literal("127.0.0.6"));
     PeerNode peer = mock(PeerNode.class);
     PeerNode other = mock(PeerNode.class);
     when(peer.isDarknet()).thenReturn(false);
@@ -964,6 +965,10 @@ class PeerRosterTest {
       roster.addPeer(peer, false);
       roster.addConnectedPeer(peer, noOp);
     }
+  }
+
+  private static InetAddress literal(String host) throws UnknownHostException {
+    return InetAddress.getAllByName(host)[0];
   }
 
   @SuppressWarnings("java:S3011")

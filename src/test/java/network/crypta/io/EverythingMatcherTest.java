@@ -16,13 +16,13 @@ class EverythingMatcherTest {
 
   static Stream<InetAddress> addressesProvider() throws UnknownHostException {
     return Stream.of(
-        InetAddress.getByName("127.0.0.1"),
-        InetAddress.getByName("0.0.0.0"),
-        InetAddress.getByName("255.255.255.255"),
-        InetAddress.getByName("203.0.113.1"),
-        InetAddress.getByName("::1"),
-        InetAddress.getByName("::"),
-        InetAddress.getByName("2001:db8::1"));
+        literal("127.0.0.1"),
+        literal("0.0.0.0"),
+        literal("255.255.255.255"),
+        literal("203.0.113.1"),
+        literal("::1"),
+        literal("::"),
+        literal("2001:db8::1"));
   }
 
   @ParameterizedTest
@@ -63,5 +63,9 @@ class EverythingMatcherTest {
 
     // Assert
     assertEquals("*", human);
+  }
+
+  private static InetAddress literal(String host) throws UnknownHostException {
+    return InetAddress.getAllByName(host)[0];
   }
 }

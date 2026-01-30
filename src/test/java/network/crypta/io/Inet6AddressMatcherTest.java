@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,8 +40,8 @@ class Inet6AddressMatcherTest {
     Inet6AddressMatcher matcher = new Inet6AddressMatcher("::/0");
 
     // Act & Assert
-    assertTrue(matcher.matches(InetAddress.getByName("fe80::203:dff:fe22:420f")));
-    assertTrue(matcher.matches(InetAddress.getByName("::1")));
+    assertTrue(matcher.matches(addr("fe80::203:dff:fe22:420f")));
+    assertTrue(matcher.matches(addr("::1")));
   }
 
   @ParameterizedTest
@@ -51,7 +52,7 @@ class Inet6AddressMatcherTest {
     Inet6AddressMatcher matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/64");
 
     // Act
-    boolean result = matcher.matches(InetAddress.getByName(candidate));
+    boolean result = matcher.matches(addr(candidate));
 
     // Assert
     assertTrue(result);
@@ -75,7 +76,7 @@ class Inet6AddressMatcherTest {
     Inet6AddressMatcher matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/64");
 
     // Act
-    boolean result = matcher.matches(InetAddress.getByName(candidate));
+    boolean result = matcher.matches(addr(candidate));
 
     // Assert
     assertFalse(result);
@@ -95,11 +96,11 @@ class Inet6AddressMatcherTest {
     Inet6AddressMatcher matcher = new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/128");
 
     // Act & Assert
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:203:dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe80:0:0:0:0204:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe81:0:0:0:0203:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("0:0:0:0:0:0:0:1")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe80:0:0:0:0:0:0:1")));
+    assertTrue(matcher.matches(addr("fe80:0:0:0:203:dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("fe80:0:0:0:0204:0dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("fe81:0:0:0:0203:0dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("0:0:0:0:0:0:0:1")));
+    assertFalse(matcher.matches(addr("fe80:0:0:0:0:0:0:1")));
   }
 
   @Test
@@ -109,9 +110,9 @@ class Inet6AddressMatcherTest {
         new Inet6AddressMatcher("fe80:0:0:0:203:dff:fe22:420f/ffff:ffff:ffff:ffff:0:0:0:0");
 
     // Act & Assert
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0203:0dff:fe22:420f")));
-    assertTrue(matcher.matches(InetAddress.getByName("fe80:0:0:0:0204:0dff:fe22:420f")));
-    assertFalse(matcher.matches(InetAddress.getByName("fe81:0:0:0:0203:0dff:fe22:420f")));
+    assertTrue(matcher.matches(addr("fe80:0:0:0:0203:0dff:fe22:420f")));
+    assertTrue(matcher.matches(addr("fe80:0:0:0:0204:0dff:fe22:420f")));
+    assertFalse(matcher.matches(addr("fe81:0:0:0:0203:0dff:fe22:420f")));
   }
 
   @Test
@@ -120,7 +121,7 @@ class Inet6AddressMatcherTest {
     Inet6AddressMatcher matcher = new Inet6AddressMatcher("::/0");
 
     // Act
-    boolean result = matcher.matches(InetAddress.getByName("127.0.0.1"));
+    boolean result = matcher.matches(addr("127.0.0.1"));
 
     // Assert
     assertFalse(result, "IPv4 addresses must not match an IPv6 matcher");
@@ -129,8 +130,8 @@ class Inet6AddressMatcherTest {
   @Test
   void staticMatches_whenPatternAndAddressMatch_returnsTrue() throws Exception {
     // Arrange
-    InetAddress loopback6 = InetAddress.getByName("::1");
-    InetAddress linkLocal = InetAddress.getByName("fe80::");
+    InetAddress loopback6 = addr("::1");
+    InetAddress linkLocal = addr("fe80::");
 
     // Act & Assert
     assertTrue(Inet6AddressMatcher.matches("::1", loopback6));
@@ -184,7 +185,7 @@ class Inet6AddressMatcherTest {
     Inet6AddressMatcher matcher = new Inet6AddressMatcher(addr);
 
     // Act & Assert
-    assertTrue(matcher.matches(InetAddress.getByName(addr)));
+    assertTrue(matcher.matches(addr(addr)));
   }
 
   @ParameterizedTest
@@ -209,5 +210,9 @@ class Inet6AddressMatcherTest {
         Arguments.of("::/0", "0:0:0:0:0:0:0:0/0:0:0:0:0:0:0:0"),
         // Uppercase input canonicalizes to lowercase expanded
         Arguments.of("FE80:0:0:0:0203:0DFF:FE22:420F", "fe80:0:0:0:203:dff:fe22:420f"));
+  }
+
+  private static InetAddress addr(String literal) throws UnknownHostException {
+    return InetAddress.getAllByName(literal)[0];
   }
 }

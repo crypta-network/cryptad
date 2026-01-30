@@ -453,7 +453,7 @@ class IPDetectorPluginManagerTest {
           mock(network.crypta.io.comm.FreenetInetAddress.class);
       when(peer.getFreenetAddress()).thenReturn(fna);
       // Valid InetAddress to pass eligibility check
-      when(fna.getAddress(false)).thenReturn(java.net.InetAddress.getByName("198.51.100.10"));
+      when(fna.getAddress(false)).thenReturn(java.net.InetAddress.getAllByName("198.51.100.10")[0]);
     }
     when(node.network().peerNodes()).thenReturn(new PeerNode[] {p1, p2, p3});
     when(node.network().connectedPeers()).thenReturn(new PeerNode[0]);

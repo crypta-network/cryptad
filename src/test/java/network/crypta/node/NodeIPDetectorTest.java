@@ -74,7 +74,7 @@ class NodeIPDetectorTest {
   }
 
   private static InetAddress ip(String s) throws UnknownHostException {
-    return InetAddress.getByName(s);
+    return InetAddress.getAllByName(s)[0];
   }
 
   @Test

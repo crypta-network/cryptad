@@ -37,13 +37,13 @@ class IPAddressDetectorTest {
 
     List<InetAddress> input = new ArrayList<>();
     InetAddress loopbackV4 = InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
-    input.add(InetAddress.getByName("0.0.0.0")); // any local -> excluded
+    input.add(addr("0.0.0.0")); // any local -> excluded
     input.add(loopbackV4); // loopback -> included
-    input.add(InetAddress.getByName("224.0.0.1")); // multicast -> excluded
-    input.add(InetAddress.getByName("8.8.8.8")); // global unicast -> included
-    input.add(InetAddress.getByName("192.168.1.5")); // site-local -> included
-    input.add(InetAddress.getByName("fe80::1")); // IPv6 link-local -> included
-    input.add(InetAddress.getByName("2001:db8::5efe:0:1")); // ISATAP style (may be included)
+    input.add(addr("224.0.0.1")); // multicast -> excluded
+    input.add(addr("8.8.8.8")); // global unicast -> included
+    input.add(addr("192.168.1.5")); // site-local -> included
+    input.add(addr("fe80::1")); // IPv6 link-local -> included
+    input.add(addr("2001:db8::5efe:0:1")); // ISATAP style (may be included)
 
     det.onGetAddresses(input);
 
@@ -55,13 +55,13 @@ class IPAddressDetectorTest {
 
     // Expected inclusions
     assertTrue(actual.contains(loopbackV4.getHostAddress()));
-    assertTrue(actual.contains(InetAddress.getByName("8.8.8.8").getHostAddress()));
-    assertTrue(actual.contains(InetAddress.getByName("192.168.1.5").getHostAddress()));
-    assertTrue(actual.contains(InetAddress.getByName("fe80::1").getHostAddress()));
+    assertTrue(actual.contains(addr("8.8.8.8").getHostAddress()));
+    assertTrue(actual.contains(addr("192.168.1.5").getHostAddress()));
+    assertTrue(actual.contains(addr("fe80::1").getHostAddress()));
 
     // Exclusions (wildcard + multicast)
-    assertFalse(actual.contains(InetAddress.getByName("0.0.0.0").getHostAddress()));
-    assertFalse(actual.contains(InetAddress.getByName("224.0.0.1").getHostAddress()));
+    assertFalse(actual.contains(addr("0.0.0.0").getHostAddress()));
+    assertFalse(actual.contains(addr("224.0.0.1").getHostAddress()));
   }
 
   @Test
@@ -118,6 +118,10 @@ class IPAddressDetectorTest {
     InetAddress[] out = assertDoesNotThrow(det::getAddressNoCallback);
     assertNotNull(out);
     assertEquals(0, out.length);
+  }
+
+  private static InetAddress addr(String host) throws Exception {
+    return InetAddress.getAllByName(host)[0];
   }
 
   @Test
