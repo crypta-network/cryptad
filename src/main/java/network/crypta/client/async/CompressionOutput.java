@@ -45,6 +45,7 @@ import org.jetbrains.annotations.NotNull;
  * @param hashes an optional array of {@link HashResult} values describing computed content digests;
  *     may be {@code null} or empty, and is stored without defensive copying
  */
+@SuppressWarnings("ArrayRecordComponent")
 record CompressionOutput(RandomAccessBucket data, COMPRESSOR_TYPE bestCodec, HashResult[] hashes) {
 
   @Override

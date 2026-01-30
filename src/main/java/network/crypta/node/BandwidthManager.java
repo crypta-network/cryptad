@@ -87,10 +87,10 @@ public class BandwidthManager {
                       node.getConfig().get("node").getInt("outputBandwidthLimit");
 
                   // Trigger only on a large step-up (≥3×) vs current and last offer.
-                  if (detectedInputBandwidth > currentInputBandwidth * 3
-                          && detectedInputBandwidth > lastOfferedInputBandwidth * 3
-                      || detectedOutputBandwidth > currentOutputBandwidth * 3
-                          && detectedOutputBandwidth > lastOfferedOutputBandwidth * 3) {
+                  if ((detectedInputBandwidth > currentInputBandwidth * 3
+                          && detectedInputBandwidth > lastOfferedInputBandwidth * 3)
+                      || (detectedOutputBandwidth > currentOutputBandwidth * 3
+                          && detectedOutputBandwidth > lastOfferedOutputBandwidth * 3)) {
                     // Offer half of the detected rate but never below current limits.
                     lastOfferedInputBandwidth =
                         Math.max(detectedInputBandwidth / 2, currentInputBandwidth);

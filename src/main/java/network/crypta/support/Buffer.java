@@ -155,7 +155,7 @@ public class Buffer implements WritableToDataOutputStream {
    * Return a human-readable representation.
    *
    * <p>If the length is greater than 50, returns {@code "Buffer {<length>}"}. Otherwise, returns a
-   * string in the form {@code "{[length]:[byte0] [byte1] ... "} with a trailing space after the
+   * string in the form <code>{[length]:[byte0] [byte1] ... </code> with a trailing space after the
    * last value. This method is intended for debugging only; do not parse its output.
    */
   @Override

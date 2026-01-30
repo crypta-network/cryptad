@@ -14,7 +14,6 @@ import network.crypta.support.Ticker;
  *
  * @see SplitFileInserterStorageInitParams
  * @see SplitFileInserterStorageResumeParams
- * @hidden
  */
 public final class SplitFileInserterStorageRuntimeParams {
   SplitFileInserterStorageCallback callback;
@@ -30,8 +29,6 @@ public final class SplitFileInserterStorageRuntimeParams {
    * Fluent builder for {@link SplitFileInserterStorageRuntimeParams}.
    *
    * <p>The builder stores references as-is and performs no validation.
-   *
-   * @hidden
    */
   public static final class Builder {
     private SplitFileInserterStorageCallback callback;

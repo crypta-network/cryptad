@@ -93,6 +93,8 @@ public class TheoraPacketFilter implements CodecPacketFilter {
    * @throws IOException if reading the bitstream fails or the packet cannot be fully consumed due
    *     to I/O problems; malformed content may trigger unchecked exceptions as appropriate.
    */
+  @Override
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public CodecPacket parse(CodecPacket packet) throws IOException {
     // Assemble the Theora packets https://www.theora.org/doc/Theora.pdf
     // https://github.com/xiph/theora/blob/master/doc/spec/spec.tex

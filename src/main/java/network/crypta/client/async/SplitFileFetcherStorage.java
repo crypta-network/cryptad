@@ -620,9 +620,9 @@ public class SplitFileFetcherStorage {
         boolean dontCompress = decompressors.isEmpty();
         if (topCompatibilityMode != 0) {
           if (minCompatMode == CompatibilityMode.COMPAT_UNKNOWN
-              || !(minCompatMode.ordinal() > topCompatibilityMode
-                  || maxCompatMode.ordinal() < topCompatibilityMode)) {
-            minCompatMode = maxCompatMode = CompatibilityMode.values()[topCompatibilityMode];
+              || !(minCompatMode.code > topCompatibilityMode
+                  || maxCompatMode.code < topCompatibilityMode)) {
+            minCompatMode = maxCompatMode = CompatibilityMode.byCode(topCompatibilityMode);
             dontCompress = topDontCompress;
           } else {
             throw new FetchException(
@@ -1183,6 +1183,7 @@ public class SplitFileFetcherStorage {
      *
      * @return a stable hash suitable for hash-based collections and caches.
      */
+    @Override
     public int hashCode() {
       return hashCode;
     }
@@ -1206,6 +1207,7 @@ public class SplitFileFetcherStorage {
      *
      * @return a concise string containing the segment and block numbers.
      */
+    @Override
     public String toString() {
       return "SplitFileFetcherStorageKey:" + segmentNumber + ":" + blockNumber;
     }
@@ -1366,7 +1368,7 @@ public class SplitFileFetcherStorage {
    */
   public boolean lastBlockMightNotBePadded() {
     return (finalMinCompatMode == CompatibilityMode.COMPAT_UNKNOWN
-        || finalMinCompatMode.ordinal() < CompatibilityMode.COMPAT_1416.ordinal());
+        || finalMinCompatMode.code < CompatibilityMode.COMPAT_1416.code);
   }
 
   /**

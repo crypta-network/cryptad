@@ -74,6 +74,7 @@ public class Serializer {
    * @see #readFromDataInputStream(Class, DataInput)
    * @see #writeToDataOutputStream(Object, DataOutputStream)
    */
+  @SuppressWarnings("JdkObsolete")
   public static List<Object> readListFromDataInputStream(Class<?> elementType, DataInput dis)
       throws IOException {
     LinkedList<Object> ret = new LinkedList<>();
@@ -241,7 +242,7 @@ public class Serializer {
    * {@link #readFromDataInputStream(Class, DataInput)}.
    *
    * <p>The {@code object} must be non-{@code null} and of a supported type. For lists, only {@link
-   * LinkedList} is supported here; see {@link #writeLinkedList(LinkedList, DataOutputStream)} for
+   * LinkedList} is supported here; see {@link #writeLinkedList(List, DataOutputStream)} for
    * details. Strings are written as a 32-bit length followed by UTF-16 {@code char}s via {@link
    * DataOutputStream#writeChar(int)}.
    *
@@ -271,7 +272,7 @@ public class Serializer {
     }
 
     if (type.equals(LinkedList.class)) {
-      writeLinkedList((LinkedList<?>) object, dos);
+      writeLinkedList((List<?>) object, dos);
       return;
     }
 
@@ -336,8 +337,8 @@ public class Serializer {
   }
 
   /**
-   * Serializes a {@link LinkedList} using a snapshot-and-write strategy to avoid concurrent
-   * modification races.
+   * Serializes a {@link List} using a snapshot-and-write strategy to avoid concurrent modification
+   * races.
    *
    * <p>First, the method takes a stable snapshot of the list under synchronization on the list
    * instance itself; then it releases the lock and writes the snapshot to the stream. Synchronizing
@@ -351,8 +352,7 @@ public class Serializer {
    * @throws IOException if an I/O error occurs while writing an element.
    */
   @SuppressWarnings({"java:S2445", "SynchronizationOnLocalVariableOrMethodParameter"})
-  private static void writeLinkedList(final LinkedList<?> ll, DataOutputStream dos)
-      throws IOException {
+  private static void writeLinkedList(final List<?> ll, DataOutputStream dos) throws IOException {
     // Intentionally lock on the list instance so external synchronization on the same
     // object also applies. Snapshot under lock; perform I/O after releasing it to
     // minimize contention.

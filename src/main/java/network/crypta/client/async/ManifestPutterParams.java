@@ -45,6 +45,7 @@ import org.jetbrains.annotations.NotNull;
  * @param context client context providing randomness and scheduling services; expected to be
  *     non-{@code null} during putter execution.
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record ManifestPutterParams(
     ClientPutCallback clientCallback,
     Map<String, Object> manifestElements,

@@ -324,7 +324,7 @@ public class SplitFileFetcherSegmentStorage {
     this.segmentBlockDataOffset = p.segmentDataOffset;
     long sccdo = p.segmentCrossCheckDataOffset;
     if (sccdo == -1) {
-      sccdo = segmentBlockDataOffset + dataBlocks * CHKBlock.DATA_LENGTH;
+      sccdo = segmentBlockDataOffset + dataBlocks * (long) CHKBlock.DATA_LENGTH;
     }
     this.segmentCrossCheckBlockDataOffset = sccdo;
     this.segmentKeyListOffset = p.segmentKeysOffset;
@@ -629,7 +629,7 @@ public class SplitFileFetcherSegmentStorage {
   }
 
   private DecodePrep prepareDecodeArrays(
-      ArrayList<SplitFileFetcherBlock> maybeBlocks, SplitFileSegmentKeys keys) {
+      List<SplitFileFetcherBlock> maybeBlocks, SplitFileSegmentKeys keys) {
     int validBlocks = 0;
     int validDataBlocks = 0;
     byte[][] dataBlocksArr = new byte[blocksForDecode()][];
@@ -1428,6 +1428,7 @@ public class SplitFileFetcherSegmentStorage {
    * Only called during creation. Writes the segment key list and its checksum; callers must not
    * trigger a read of the keys before they have been persisted.
    */
+  @SuppressWarnings("ReferenceEquality")
   void writeKeysWithChecksum(SplitFileSegmentKeys keys) throws IOException {
     assert (keysCache.get() == keys);
     assert (this.dataBlocks + this.crossSegmentCheckBlocks == keys.dataBlocks);
@@ -1682,7 +1683,7 @@ public class SplitFileFetcherSegmentStorage {
           ClientCHKBlock block =
               ClientCHKBlock.encodeSplitfileBlock(
                   buf, key.getCryptoKey(), key.getCryptoAlgorithm());
-          if (!(block.getClientKey().equals(key))) {
+          if (!block.getClientKey().equals(key)) {
             LOG.error("Block {} in blocksFound[{}] is not valid!", blockNum, i);
             blockChooser.onUnSuccess(blockNum);
             succeeded = false;

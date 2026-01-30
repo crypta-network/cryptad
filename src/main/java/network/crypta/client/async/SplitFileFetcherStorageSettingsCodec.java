@@ -221,6 +221,7 @@ public final class SplitFileFetcherStorageSettingsCodec {
     return value;
   }
 
+  @SuppressWarnings("EnumOrdinal")
   private static CompatAndCounts readCompatAndCounts(DataInputStream dis)
       throws IOException, StorageFormatException {
     int compatMode = dis.readInt();
@@ -246,6 +247,7 @@ public final class SplitFileFetcherStorageSettingsCodec {
         finalMode, segmentCount, totalDataBlocks, totalCheckBlocks, totalCrossCheckBlocks);
   }
 
+  @SuppressWarnings("EnumOrdinal")
   private static byte[] innerEncodeBasicSettings(
       SplitFileFetcherStorage storage,
       int totalDataBlocks,
@@ -382,6 +384,7 @@ public final class SplitFileFetcherStorageSettingsCodec {
  * <p>The {@code settingsStream} remains open and positioned at the first byte after the parsed
  * fields so callers can continue reading segment metadata without reparsing the buffer.
  */
+@SuppressWarnings("ArrayRecordComponent")
 record ParsedBasicSettings(
     SplitfileAlgorithm splitfileType,
     byte splitfileSingleCryptoAlgorithm,

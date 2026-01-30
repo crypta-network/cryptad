@@ -54,6 +54,13 @@ import org.slf4j.LoggerFactory;
  * @see #parse()
  * @see FilterCallback
  */
+@SuppressWarnings({
+  "MixedMutabilityReturnType",
+  "StringCaseLocaleUsage",
+  "OperatorPrecedence",
+  "StatementSwitchToExpressionSwitch",
+  "NonApiType"
+})
 class CSSTokenizerFilter {
   // Common string literals (SonarLint java:S1192)
   private static final String S_BORDER_TOP_WIDTH = "border-top-width";
@@ -6385,10 +6392,11 @@ class CSSTokenizerFilter {
             tokensUpper);
 
       int index = Integer.parseInt(firstPart);
-      String[] strLimits = expression.substring(ltIndex + 1, tindex).split(",");
-      if (strLimits.length != 2) return false;
-      int lowerLimit = Integer.parseInt(strLimits[0]);
-      int upperLimit = Integer.parseInt(strLimits[1]);
+      String limitsText = expression.substring(ltIndex + 1, tindex);
+      int commaIndex = limitsText.indexOf(',');
+      if (commaIndex == -1 || limitsText.indexOf(',', commaIndex + 1) != -1) return false;
+      int lowerLimit = Integer.parseInt(limitsText.substring(0, commaIndex));
+      int upperLimit = Integer.parseInt(limitsText.substring(commaIndex + 1));
 
       VariableOccurrenceLimits limits =
           new VariableOccurrenceLimits(lowerLimit, upperLimit, tokensLower, tokensUpper);
@@ -6405,9 +6413,18 @@ class CSSTokenizerFilter {
       if (tindex != expression.length() - 1 && expression.charAt(tindex + 1) == '[') {
         int end = expression.indexOf(']');
         if (end > tindex + 1) {
-          String[] limits = expression.substring(tindex + 2, end).split(",");
-          tokensLower = Integer.parseInt(limits[0]);
-          tokensUpper = Integer.parseInt(limits[1]);
+          String limitsText = expression.substring(tindex + 2, end);
+          int commaIndex = limitsText.indexOf(',');
+          if (commaIndex == -1) {
+            return new int[] {tokensLower, tokensUpper, firstIndex};
+          }
+          int secondComma = limitsText.indexOf(',', commaIndex + 1);
+          String upperText =
+              secondComma == -1
+                  ? limitsText.substring(commaIndex + 1)
+                  : limitsText.substring(commaIndex + 1, secondComma);
+          tokensLower = Integer.parseInt(limitsText.substring(0, commaIndex));
+          tokensUpper = Integer.parseInt(upperText);
           firstIndex = end + 1;
         }
       }
@@ -6425,7 +6442,7 @@ class CSSTokenizerFilter {
      * Takes b-expressions and evaluates them.
      *
      * <p>{@literal &&} means all the expressions must occur in any order.<br>
-     * CSS Grammar {@code list-item &amp;&amp; [ block | nonsense ] &amp;&amp; [ more ]?}<br>
+     * CSS Grammar {@code list-item && [ block | nonsense ] && [ more ]?}<br>
      * Will accept the following inputs as valid:<br>
      * {@code list-item block}<br>
      * {@code block list-item more}<br>
@@ -6581,6 +6598,7 @@ class CSSTokenizerFilter {
      * @param secondPart expression to validate after the repeated part.
      * @param cb callback consulted by nested verifiers when URLs are encountered.
      */
+    @SuppressWarnings("ArrayRecordComponent")
     private record VariableOccurrenceParams(
         int verifierIndex,
         ParsedWord[] valueParts,

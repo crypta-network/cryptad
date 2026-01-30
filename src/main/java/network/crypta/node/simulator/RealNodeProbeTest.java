@@ -5,6 +5,7 @@ import java.io.Console;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.text.NumberFormat;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
@@ -338,13 +339,14 @@ public class RealNodeProbeTest extends RealNodeRoutingTest {
     System.exit(0);
   }
 
+  @SuppressWarnings("SystemConsoleNull")
   private static BufferedReader createReader() {
     Console console = System.console();
     if (console != null) {
       return new BufferedReader(console.reader());
     }
     // Use the system locale here.
-    return new BufferedReader(new InputStreamReader(System.in));
+    return new BufferedReader(new InputStreamReader(System.in, Charset.defaultCharset()));
   }
 
   private static void logMenu(int index, byte htl) {

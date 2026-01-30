@@ -75,7 +75,7 @@ public final class NodeConfigManager {
   public int configureLocalization(SubConfig nodeConfig, ProgramDirectory cfgDir, int sortOrder) {
     nodeConfig.register(
         "l10n",
-        Locale.getDefault().getLanguage().toLowerCase(),
+        Locale.getDefault().getLanguage().toLowerCase(Locale.ROOT),
         new Option.Meta(sortOrder++, false, true, "Node.l10nLanguage", "Node.l10nLanguageLong"),
         new L10nCallback());
 

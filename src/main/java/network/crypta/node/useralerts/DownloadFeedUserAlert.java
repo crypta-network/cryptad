@@ -142,14 +142,19 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
     HTMLNode alertNode = new HTMLNode("div");
     alertNode.addChild("a", "href", "/" + uri).addChild("#", uri.toShortString());
     if (description != null && !description.isEmpty()) {
-      String[] lines = description.split("\n");
       alertNode.addChild("br");
       alertNode.addChild("br");
       alertNode.addChild("#", l10n("fileDescription"));
       alertNode.addChild("br");
-      for (int i = 0; i < lines.length; i++) {
-        alertNode.addChild("#", lines[i]);
-        if (i != lines.length - 1) alertNode.addChild("br");
+      int start = 0;
+      int next;
+      while ((next = description.indexOf('\n', start)) != -1) {
+        alertNode.addChild("#", description.substring(start, next));
+        alertNode.addChild("br");
+        start = next + 1;
+      }
+      if (start < description.length()) {
+        alertNode.addChild("#", description.substring(start));
       }
     }
     return alertNode;

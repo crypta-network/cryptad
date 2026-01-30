@@ -293,6 +293,7 @@ public class NodeSSK extends Key {
    * @throws SSKVerifyException if the key's hash does not match {@link #pubKeyHash} or if a hash
    *     collision is detected with an existing different key.
    */
+  @SuppressWarnings("ReferenceEquality")
   public void setPubKey(DSAPublicKey pubKey2) throws SSKVerifyException {
     if (pubKey == pubKey2) return;
     if (pubKey2 == null) return;
