@@ -1346,13 +1346,14 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     if (LOG.isDebugEnabled())
       LOG.debug("JFK(2) inbound: processing responder packet - {}", pn.getPeer());
     // Note: The spec suggests sending IDr'; the current code omits it.
-    int expectedLength = nonceSizeHashed + nonceSize + modulusLength + HASH_LENGTH * 2;
-    if (payload.length < expectedLength + 3) {
+    int sigLength = getSignatureLength();
+    int expectedLength = nonceSizeHashed + nonceSize + modulusLength + sigLength + HASH_LENGTH;
+    if (payload.length < inputOffset + expectedLength) {
       LOG.error(
           "event=jfk2_packet_too_short from {}: {} bytes, expected at least {}",
           pn.getPeer(),
           payload.length,
-          expectedLength + 3);
+          inputOffset + expectedLength);
       return;
     }
 
@@ -1366,7 +1367,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     byte[] hisExponential = Arrays.copyOfRange(payload, inputOffset, inputOffset + modulusLength);
     inputOffset += modulusLength;
 
-    int sigLength = getSignatureLength();
+    // sigLength already computed for payload length validation.
     byte[] sig = new byte[sigLength];
     System.arraycopy(payload, inputOffset, sig, 0, sigLength);
     inputOffset += sigLength;
@@ -1388,13 +1389,16 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
     // sanity check
     byte[] myNi = pn.findOriginalJfkNonceByHash(nonceInitiator);
-    if (myNi == null) {
+    if (myNi == null || myNi.length != NONCE_SIZE) {
       if (shouldLogErrorInHandshake(t1)) {
         LOG.info(
-            "Unexpected JFK(2) from {} (since added={}, last receive={})",
+            "event=jfk2_invalid_nonce_length from {} (since added={}, last receive={}) len={}"
+                + " expected={}",
             pn.getPeer(),
             pn.timeSinceAddedOrRestarted(),
-            pn.lastReceivedPacketTime());
+            pn.lastReceivedPacketTime(),
+            lengthOrNegOne(myNi),
+            NONCE_SIZE);
       }
       return;
     }
@@ -2028,6 +2032,39 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     System.arraycopy(Fields.longToBytes(p.pn.getOutgoingBootID()), 0, data, ptr, 8);
     ptr += 8;
     System.arraycopy(p.pn.jfkMyRef, 0, data, ptr, p.pn.jfkMyRef.length);
+    if (!isValidJfk3HeaderLengths(
+        p.nonceInitiator,
+        p.nonceResponder,
+        ourExponential,
+        p.hisExponential,
+        p.authenticator,
+        modulusLength)) {
+      if (shouldLogErrorInHandshake(t1)) {
+        LOG.error(
+            "event=jfk3_invalid_header peer={} niLen={} nrLen={} giLen={} grLen={} authLen={}"
+                + " modLen={}",
+            p.pn.getPeer(),
+            lengthOrNegOne(p.nonceInitiator),
+            lengthOrNegOne(p.nonceResponder),
+            lengthOrNegOne(ourExponential),
+            lengthOrNegOne(p.hisExponential),
+            lengthOrNegOne(p.authenticator),
+            modulusLength);
+      } else if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "event=jfk3_invalid_header peer={} niLen={} nrLen={} giLen={} grLen={} authLen={}"
+                + " modLen={}",
+            p.pn.getPeer(),
+            lengthOrNegOne(p.nonceInitiator),
+            lengthOrNegOne(p.nonceResponder),
+            lengthOrNegOne(ourExponential),
+            lengthOrNegOne(p.hisExponential),
+            lengthOrNegOne(p.authenticator),
+            modulusLength);
+      }
+      return;
+    }
+
     final byte[] message3 =
         new byte
             [NONCE_SIZE * 2
@@ -2340,6 +2377,29 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     System.arraycopy(authenticator, 0, message3, offset, HASH_LENGTH);
     offset += HASH_LENGTH;
     return offset;
+  }
+
+  static boolean isValidJfk3HeaderLengths(
+      byte[] nonceInitiator,
+      byte[] nonceResponder,
+      byte[] ourExponential,
+      byte[] hisExponential,
+      byte[] authenticator,
+      int modulusLength) {
+    return nonceInitiator != null
+        && nonceInitiator.length == NONCE_SIZE
+        && nonceResponder != null
+        && nonceResponder.length == NONCE_SIZE
+        && ourExponential != null
+        && ourExponential.length == modulusLength
+        && hisExponential != null
+        && hisExponential.length == modulusLength
+        && authenticator != null
+        && authenticator.length == HASH_LENGTH;
+  }
+
+  private static int lengthOrNegOne(byte[] data) {
+    return data == null ? -1 : data.length;
   }
 
   private byte[] signJFK3AndCacheBuffer(
