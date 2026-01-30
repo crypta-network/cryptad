@@ -86,6 +86,7 @@ class ByteArrayWrapperTest {
   }
 
   @Test
+  @SuppressWarnings("SelfComparison")
   void compareTo_sameInstance_returnsZero() {
     ByteArrayWrapper w = new ByteArrayWrapper(new byte[] {1, 2, 3});
     //noinspection EqualsWithItself

@@ -140,7 +140,7 @@ class MemoryLimitedJobRunnerTest {
     void queueJob_whenCapacityAvailable_expectImmediateStartAndRelease() {
       CapturingExecutor exec = new CapturingExecutor();
       MemoryLimitedJobRunner runner = new MemoryLimitedJobRunner(10, 1, exec, 4);
-      TestJob job = new TestJob(7, /* prio= */ 1, /* finishSynchronously= */ true);
+      TestJob job = new TestJob(7, /* priority= */ 1, /* finishSynchronously= */ true);
 
       runner.queueJob(job);
 
@@ -193,9 +193,9 @@ class MemoryLimitedJobRunnerTest {
       CapturingExecutor exec = new CapturingExecutor();
       MemoryLimitedJobRunner runner = new MemoryLimitedJobRunner(5, 1, exec, 3);
       // All jobs fit individually but only one can run at a time (maxThreads=1, capacity=5)
-      TestJob low = new TestJob(5, /* prio= */ 2, /*sync*/ true);
-      TestJob mid = new TestJob(5, /* prio= */ 1, /*sync*/ true);
-      TestJob high = new TestJob(5, /* prio= */ 0, /*sync*/ true);
+      TestJob low = new TestJob(5, /* priority= */ 2, /*sync*/ true);
+      TestJob mid = new TestJob(5, /* priority= */ 1, /*sync*/ true);
+      TestJob high = new TestJob(5, /* priority= */ 0, /*sync*/ true);
 
       // Queue in reverse-priority order to verify selection
       runner.queueJob(low);

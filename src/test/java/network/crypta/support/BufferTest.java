@@ -16,6 +16,7 @@ import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,7 +38,7 @@ class BufferTest {
   @DisplayName("getData_whenFullArray_expectSameInstanceAndCorrectContent")
   void getData_whenFullArray_expectSameInstanceAndCorrectContent() {
     // Arrange
-    byte[] data = DATA_STRING_1.getBytes();
+    byte[] data = DATA_STRING_1.getBytes(StandardCharsets.UTF_8);
 
     // Act
     Buffer buffer = new Buffer(data);
@@ -51,7 +52,7 @@ class BufferTest {
   @DisplayName("getData_whenSubrange_expectCopyWithEqualContentAndNewInstanceEachCall")
   void getData_whenSubrange_expectCopyWithEqualContentAndNewInstanceEachCall() {
     // Arrange
-    byte[] data = DATA_STRING_1.getBytes();
+    byte[] data = DATA_STRING_1.getBytes(StandardCharsets.UTF_8);
     byte[] dataSub = Arrays.copyOfRange(data, 4, 9);
 
     // Act
@@ -88,7 +89,7 @@ class BufferTest {
   @DisplayName("ctorDataInput_whenValidLengthAndBytes_expectBufferWithCorrectContent")
   void ctorDataInput_whenValidLengthAndBytes_expectBufferWithCorrectContent() {
     // Arrange
-    byte[] data = DATA_STRING_1.getBytes();
+    byte[] data = DATA_STRING_1.getBytes(StandardCharsets.UTF_8);
     byte[] framed = new byte[data.length + 4];
     int length = data.length;
     framed[0] = (byte) ((length >>> 24) & 0xFF);
@@ -154,7 +155,7 @@ class BufferTest {
 
   @Test
   void toString_whenLengthGreaterThan50_expectSummaryForm() {
-    Buffer buffer = new Buffer(DATA_STRING_1.getBytes());
+    Buffer buffer = new Buffer(DATA_STRING_1.getBytes(StandardCharsets.UTF_8));
     String longString = buffer.toString();
     assertEquals("Buffer {" + buffer.getLength() + "}", longString);
   }
@@ -170,9 +171,9 @@ class BufferTest {
   @Test
   @SuppressWarnings("EqualsWithItself")
   void equals_whenSameContentAndLayout_expectEquality() {
-    Buffer b1 = new Buffer("Buffer1".getBytes());
-    Buffer b2 = new Buffer("Buffer2".getBytes());
-    Buffer b3 = new Buffer("Buffer1".getBytes());
+    Buffer b1 = new Buffer("Buffer1".getBytes(StandardCharsets.UTF_8));
+    Buffer b2 = new Buffer("Buffer2".getBytes(StandardCharsets.UTF_8));
+    Buffer b3 = new Buffer("Buffer1".getBytes(StandardCharsets.UTF_8));
 
     assertNotEquals(b1, b2);
     assertEquals(b1, b3);
@@ -205,9 +206,9 @@ class BufferTest {
 
   @Test
   void hashCode_whenPutInMap_expectKeyCollisionForEqualBuffers() {
-    Buffer b1 = new Buffer("Buffer1".getBytes());
-    Buffer b2 = new Buffer("Buffer2".getBytes());
-    Buffer b3 = new Buffer("Buffer1".getBytes());
+    Buffer b1 = new Buffer("Buffer1".getBytes(StandardCharsets.UTF_8));
+    Buffer b2 = new Buffer("Buffer2".getBytes(StandardCharsets.UTF_8));
+    Buffer b3 = new Buffer("Buffer1".getBytes(StandardCharsets.UTF_8));
 
     Map<Buffer, Buffer> hashMap = new HashMap<>();
     hashMap.put(b1, b1);
@@ -225,7 +226,7 @@ class BufferTest {
 
   @Test
   void copyTo_whenPositionZero_expectExactCopy() {
-    byte[] oldBuf = DATA_STRING_1.getBytes();
+    byte[] oldBuf = DATA_STRING_1.getBytes(StandardCharsets.UTF_8);
     Buffer b = new Buffer(oldBuf);
 
     byte[] newBuf = new byte[b.getLength()];

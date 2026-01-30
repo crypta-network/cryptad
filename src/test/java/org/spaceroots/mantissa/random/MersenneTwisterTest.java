@@ -219,7 +219,7 @@ class MersenneTwisterTest {
     }
 
     @Override
-    public void setSeed(long seed) {
+    public synchronized void setSeed(long seed) {
       this.capturedLongSeed = seed;
     }
   }

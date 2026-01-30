@@ -13,6 +13,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
@@ -32,7 +33,7 @@ class ShortBufferTest {
 
   @Test
   void constructor_withByteArray_returnsSameArrayAndLength() {
-    byte[] data = DATA_STRING.getBytes();
+    byte[] data = DATA_STRING.getBytes(StandardCharsets.UTF_8);
 
     ShortBuffer buffer = new ShortBuffer(data);
 
@@ -45,7 +46,7 @@ class ShortBufferTest {
 
   @Test
   void constructor_withByteArrayStartLength_returnsCopyAndExposesSlice() {
-    byte[] data = DATA_STRING.getBytes();
+    byte[] data = DATA_STRING.getBytes(StandardCharsets.UTF_8);
     ShortBuffer buffer = new ShortBuffer(data, 4, 5);
 
     byte[] expected = new byte[5];
@@ -102,7 +103,7 @@ class ShortBufferTest {
 
   @Test
   void constructor_withDataInput_readsLengthAndBytes() throws IOException {
-    byte[] data = DATA_STRING.getBytes();
+    byte[] data = DATA_STRING.getBytes(StandardCharsets.UTF_8);
     int len = data.length;
     byte[] in = new byte[len + 2];
     in[0] = (byte) ((len >>> 8) & 0xFF);
@@ -211,8 +212,8 @@ class ShortBufferTest {
 
   @Test
   void equalsAndHashCode_whenDifferentArraysSameContent_areEqual() {
-    byte[] a1 = "ShortBuffer1".getBytes();
-    byte[] a2 = "ShortBuffer1".getBytes();
+    byte[] a1 = "ShortBuffer1".getBytes(StandardCharsets.UTF_8);
+    byte[] a2 = "ShortBuffer1".getBytes(StandardCharsets.UTF_8);
     ShortBuffer b1 = new ShortBuffer(a1);
     ShortBuffer b2 = new ShortBuffer(a2);
 
@@ -231,7 +232,7 @@ class ShortBufferTest {
   @Test
   @DisplayName("toString small: shows bytes and trailing space")
   void toString_whenShort_returnsVerboseWithTrailingSpace() {
-    ShortBuffer b = new ShortBuffer("feep".getBytes());
+    ShortBuffer b = new ShortBuffer("feep".getBytes(StandardCharsets.UTF_8));
     assertEquals("{4:102 101 101 112 ", b.toString());
   }
 

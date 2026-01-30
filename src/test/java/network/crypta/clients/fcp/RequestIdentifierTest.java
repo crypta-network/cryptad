@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 @SuppressWarnings("java:S100")
 class RequestIdentifierTest {
 
+  private static final short GET_CODE = 0;
+
   @Test
   void writeTo_andConstructor_whenNonGlobalQueue_roundTripsFields() throws Exception {
     RequestIdentifier original =
@@ -85,7 +87,7 @@ class RequestIdentifierTest {
       dos.writeBoolean(false);
       dos.writeUTF("clientA");
       dos.writeUTF("identifier-1");
-      dos.writeShort(RequestIdentifier.RequestType.GET.ordinal());
+      dos.writeShort(GET_CODE);
     }
 
     try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {
@@ -102,7 +104,7 @@ class RequestIdentifierTest {
       dos.writeBoolean(false);
       dos.writeUTF("clientA");
       dos.writeUTF("identifier-1");
-      dos.writeShort(RequestIdentifier.RequestType.GET.ordinal());
+      dos.writeShort(GET_CODE);
     }
 
     try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(baos.toByteArray()))) {

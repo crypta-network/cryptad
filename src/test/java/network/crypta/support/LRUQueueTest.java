@@ -74,9 +74,9 @@ class LRUQueueTest {
     int counter = 0;
     while (methodEnum.hasMoreElements()) {
       // next-to-last object
-      if (counter == size - 2) retVal &= (methodEnum.nextElement()).equals(nextToLast);
+      if (counter == size - 2) retVal &= methodEnum.nextElement().equals(nextToLast);
       // last object
-      else if (counter == size - 1) retVal &= (methodEnum.nextElement()).equals(last);
+      else if (counter == size - 1) retVal &= methodEnum.nextElement().equals(last);
       else methodEnum.nextElement();
       counter++;
     }

@@ -86,7 +86,13 @@ class StringCounterTest {
     String s = sc.toLongString();
 
     // Assert
-    String expected = String.join("\n", "b\t2", "a\t2", "c\t1");
+    String expected =
+        """
+        b	2
+        a	2
+        c	1
+        """
+            .stripTrailing();
     assertEquals(expected, s);
   }
 

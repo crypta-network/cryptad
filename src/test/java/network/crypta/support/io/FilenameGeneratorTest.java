@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Random;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -78,7 +79,7 @@ class FilenameGeneratorTest {
     Path prefB = Files.createFile(tempDir.resolve(PREFIX + "B"));
     Path other = Files.createFile(tempDir.resolve("other.txt"));
     // On non-Windows systems the match is case-sensitive
-    Path caseVariant = Files.createFile(tempDir.resolve(PREFIX.toUpperCase() + "C"));
+    Path caseVariant = Files.createFile(tempDir.resolve(PREFIX.toUpperCase(Locale.ROOT) + "C"));
 
     // Act
     new FilenameGenerator(new Random(3), true, tempDir.toFile(), PREFIX);

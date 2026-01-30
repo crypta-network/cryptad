@@ -57,7 +57,7 @@ class DSAPrivateKeyTest {
     BigInteger expected;
     do {
       expected = new BigInteger(256, replay);
-    } while (expected.compareTo(GROUP.getQ()) > -1 || expected.compareTo(BigInteger.ZERO) < 1);
+    } while (expected.compareTo(GROUP.getQ()) >= 0 || expected.compareTo(BigInteger.ZERO) <= 0);
 
     BigInteger genX = generated.getX();
     assertEquals(expected, genX);

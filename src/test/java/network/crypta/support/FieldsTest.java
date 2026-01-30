@@ -9,10 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Date;
-import java.util.GregorianCalendar;
+import java.util.Locale;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -366,7 +367,7 @@ class FieldsTest {
 
   private String generateNonDigits(Random r, int count) {
     final String ALPHABET = "abcdefghijklmnopqrstuvwxyz";
-    final String NONDIGITS = "./\\_=+:" + ALPHABET + ALPHABET.toUpperCase();
+    final String NONDIGITS = "./\\_=+:" + ALPHABET + ALPHABET.toUpperCase(Locale.ROOT);
     StringBuilder sb = new StringBuilder(count);
     for (int i = 0; i < count; i++) sb.append(NONDIGITS.charAt(r.nextInt(NONDIGITS.length())));
     return sb.toString();
@@ -418,7 +419,11 @@ class FieldsTest {
   void dateTime_whenValidDateOnly_expectMidnightMillis() {
     String date = "20240102"; // 2024-01-02 00:00:00 local time
     long actual = Fields.dateTime(date);
-    long expected = new GregorianCalendar(2024, Calendar.JANUARY, 2, 0, 0, 0).getTime().getTime();
+    long expected =
+        LocalDateTime.of(2024, 1, 2, 0, 0, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli();
     assertEquals(expected, actual);
   }
 
@@ -426,7 +431,11 @@ class FieldsTest {
   void dateTime_whenValidDateAndTime_expectExactMillis() {
     String date = "20240102-03:04:05"; // 2024-01-02 03:04:05 local time
     long actual = Fields.dateTime(date);
-    long expected = new GregorianCalendar(2024, Calendar.JANUARY, 2, 3, 4, 5).getTime().getTime();
+    long expected =
+        LocalDateTime.of(2024, 1, 2, 3, 4, 5)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli();
     assertEquals(expected, actual);
   }
 
@@ -613,6 +622,7 @@ class FieldsTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void compareDate_whenNulls_expectZeroAndOrdering() {
     Date now = new Date();
     assertEquals(0, Fields.compare(null, null));

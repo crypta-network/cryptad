@@ -10,6 +10,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import org.junit.jupiter.api.AfterEach;
@@ -168,12 +169,13 @@ class WrapperConfigTest {
     Files.createDirectories(wrapper);
     Path conf = wrapper.resolve("wrapper.conf");
     String initial =
-        String.join(
-            "\n",
-            "foo=bar",
-            "my.key=old",
-            "wrapper.restart.reload_configuration=TRUE",
-            "other=val");
+        """
+        foo=bar
+        my.key=old
+        wrapper.restart.reload_configuration=TRUE
+        other=val
+        """
+            .stripTrailing();
     Files.writeString(conf, initial + "\n");
 
     // Act
@@ -217,7 +219,8 @@ class WrapperConfigTest {
     assertTrue(ok);
     String content = Files.readString(conf, StandardCharsets.UTF_8);
     assertTrue(content.contains("added.key=value"));
-    assertTrue(content.toLowerCase().contains("wrapper.restart.reload_configuration=true"));
+    assertTrue(
+        content.toLowerCase(Locale.ROOT).contains("wrapper.restart.reload_configuration=true"));
   }
 
   @Test
@@ -249,6 +252,7 @@ class WrapperConfigTest {
     assertTrue(ok);
     String content = Files.readString(conf, StandardCharsets.UTF_8);
     assertTrue(content.contains("top.level=ok"));
-    assertTrue(content.toLowerCase().contains("wrapper.restart.reload_configuration=true"));
+    assertTrue(
+        content.toLowerCase(Locale.ROOT).contains("wrapper.restart.reload_configuration=true"));
   }
 }
