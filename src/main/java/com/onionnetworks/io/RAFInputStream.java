@@ -64,6 +64,7 @@ public class RAFInputStream extends InputStream {
    *     stream has been closed.
    * @throws IOException if an I/O failure occurs during delegation to the underlying {@link RAF}.
    */
+  @Override
   public int read() throws IOException {
     byte[] b = new byte[1];
     if (read(b, 0, 1) == -1) {

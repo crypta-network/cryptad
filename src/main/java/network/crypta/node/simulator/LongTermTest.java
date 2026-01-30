@@ -66,6 +66,7 @@ public class LongTermTest {
    * consistent "today" semantics within a run. The snapshot is immutable and safe for concurrent
    * access by multiple simulator tasks.
    */
+  @SuppressWarnings("TimeInStaticInitializer")
   protected static final Today today = new Today(Instant.now());
 
   /**

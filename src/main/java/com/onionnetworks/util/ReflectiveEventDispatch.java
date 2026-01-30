@@ -78,6 +78,7 @@ public class ReflectiveEventDispatch implements Runnable {
    * @param priority new thread priority in the platform-dependent {@link Thread} range; values
    *     outside the allowed range are subject to JVM clamping.
    */
+  @SuppressWarnings("ThreadPriorityCheck")
   public void setPriority(int priority) {
     thread.setPriority(priority);
   }

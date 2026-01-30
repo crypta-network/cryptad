@@ -50,6 +50,7 @@ public class HTMLEncoder {
    * @return encoded string suitable for use as HTML text or attribute value
    * @throws NullPointerException if {@code s} is {@code null}
    */
+  @SuppressWarnings("EscapedEntity")
   public static String encode(String s) {
     int n = s.length();
     StringBuilder sb = new StringBuilder(n);
@@ -98,9 +99,8 @@ public class HTMLEncoder {
    *
    * <p>This routine emits numeric character references for the minimal set of XML-special
    * characters: {@literal &} ({@literal &#38;}), {@literal "} ({@literal &#34;}), {@literal '}
-   * ({@literal &#39;}), {@literal <} ({@literal &#60;}), and {@literal >} ({@literal &#62;}). It does
-   * not perform the broader HTML
-   * entity substitution that {@link #encode(String)} performs.
+   * ({@literal &#39;}), {@literal <} ({@literal &#60;}), and {@literal >} ({@literal &#62;}). It
+   * does not perform the broader HTML entity substitution that {@link #encode(String)} performs.
    *
    * <p>References:
    *
@@ -112,6 +112,7 @@ public class HTMLEncoder {
    * @return XML-safe string using numeric character references
    * @throws NullPointerException if {@code s} is {@code null}
    */
+  @SuppressWarnings("EscapedEntity")
   public static String encodeXML(String s) {
     // XML grammar requires quoting of these characters in attribute values and text. We use
     // numeric references to avoid dependencies on entity declarations.

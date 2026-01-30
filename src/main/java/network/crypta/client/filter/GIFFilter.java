@@ -220,6 +220,7 @@ public class GIFFilter implements ContentDataFilter {
     }
 
     /** Looks for data blocks and filters them according to their type. */
+    @SuppressWarnings("StatementSwitchToExpressionSwitch")
     private void filterData() throws IOException {
       boolean imageSeen = false;
       boolean terminated = false;
@@ -460,6 +461,7 @@ public class GIFFilter implements ContentDataFilter {
       new GIF89aValidator(input, output).filter();
     }
 
+    @SuppressWarnings("StatementSwitchToExpressionSwitch")
     @Override
     protected void filterExtensionBlock() throws IOException {
       int label = readByte();

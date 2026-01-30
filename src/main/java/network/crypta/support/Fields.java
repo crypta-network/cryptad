@@ -409,6 +409,7 @@ public abstract class Fields {
    * @param time seconds since 1970-01-01T00:00:00Z.
    * @return formatted timestamp in GMT.
    */
+  @SuppressWarnings("JavaUtilDate")
   public static String secToDateTime(long time) {
     DateFormat f = new SimpleDateFormat("yyyyMMdd-HH:mm:ss");
     f.setTimeZone(TimeZone.getTimeZone("GMT"));
@@ -830,7 +831,7 @@ public abstract class Fields {
     byte[] buf = new byte[2];
     for (int j = 0; j < 2; j++) {
       buf[j] = (byte) x;
-      x >>>= 8;
+      x = (short) (x >>> 8);
     }
     return buf;
   }
@@ -1395,6 +1396,7 @@ public abstract class Fields {
    * @param b second date or {@code null}.
    * @return the result of {@link Date#compareTo(Date)} on normalized values.
    */
+  @SuppressWarnings("JavaUtilDate")
   public static int compare(Date a, Date b) {
     // Normalize nulls to epoch so Date#compareTo can be used safely.
     a = (a != null ? a : new Date(0));

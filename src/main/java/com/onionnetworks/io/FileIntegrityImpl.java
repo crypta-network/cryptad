@@ -103,6 +103,7 @@ public class FileIntegrityImpl implements FileIntegrity {
    *
    * @return positive integer size in bytes; unchanged from construction input.
    */
+  @Override
   public int getBlockSize() {
     return blockSize;
   }
@@ -115,6 +116,7 @@ public class FileIntegrityImpl implements FileIntegrity {
    *
    * @return non-negative length in bytes for the represented file.
    */
+  @Override
   public long getFileSize() {
     return fileSize;
   }
@@ -128,6 +130,7 @@ public class FileIntegrityImpl implements FileIntegrity {
    *
    * @return positive count when {@code fileSize > 0}; otherwise zero for an empty file.
    */
+  @Override
   public int getBlockCount() {
     return blockCount;
   }
@@ -144,6 +147,7 @@ public class FileIntegrityImpl implements FileIntegrity {
    * @throws IllegalArgumentException if {@code blockNum} is negative or greater than or equal to
    *     {@link #getBlockCount()}.
    */
+  @Override
   public Buffer getBlockHash(int blockNum) {
     if (blockNum < 0 || blockNum >= blockCount) {
       throw new IllegalArgumentException("Invalid block #" + blockNum);
@@ -159,6 +163,7 @@ public class FileIntegrityImpl implements FileIntegrity {
    *
    * @return hash buffer for the whole file, covering every byte from start to end.
    */
+  @Override
   public Buffer getFileHash() {
     return fileHash;
   }
