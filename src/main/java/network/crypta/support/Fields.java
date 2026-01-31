@@ -7,6 +7,7 @@ import java.util.Calendar;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.Locale;
 import java.util.StringTokenizer;
 import java.util.TimeZone;
 import network.crypta.config.Dimension;
@@ -71,7 +72,7 @@ public abstract class Fields {
     "k", "K", "m", "M", "g", "G", "t", "T", "p", "P", "e", "E"
   };
 
-  // IEC size suffix helpers are implemented without regex to avoid ReDoS risks.
+  // IEC size suffix helpers are implemented without a regex to avoid ReDoS risks.
 
   /**
    * Parses a hexadecimal string into a {@code long} using two's-complement semantics.
@@ -141,7 +142,7 @@ public abstract class Fields {
    * @param def default value used when the string does not explicitly specify the opposite.
    * @return parsed value or {@code def} when uncertain.
    */
-  /* wooo, rocket science! (this is purely abstraction people) */
+  /* woo, rocket science! (this is purely abstraction people) */
   public static boolean stringToBool(String s, boolean def) {
     if (s == null) {
       return def;
@@ -525,7 +526,7 @@ public abstract class Fields {
   // Future: If needed, add IntegerComparator/LongComparator.
 
   /**
-   * Computes a simple XOR-shift based hash for a byte array.
+   * Computes a simple XOR-shift-based hash for a byte array.
    *
    * @param b source array.
    * @return hash code suitable for evenly distributed random-like input.
@@ -535,7 +536,7 @@ public abstract class Fields {
   }
 
   /**
-   * Computes a simple XOR-shift based hash for a byte range.
+   * Computes a simple XOR-shift-based hash for a byte range.
    *
    * @param b source array.
    * @param ptr start offset.
@@ -1001,7 +1002,7 @@ public abstract class Fields {
    */
   public static int parseInt(String s) throws NumberFormatException {
     boolean isSizeInBits = s.endsWith("b");
-    // strip bit/byte suffix without regex to avoid backtracking
+    // strip bit/byte suffix without a regex to avoid backtracking
     s = isSizeInBits ? stripIecSuffix(s, 'b') : stripIecSuffix(s, 'B');
     int res = 1;
     int x = s.length() - 1;
@@ -1259,7 +1260,7 @@ public abstract class Fields {
    *
    * @param x left-hand version.
    * @param y right-hand version.
-   * @return negative, zero, or positive according to the comparison.
+   * @return negative, zero, or positive, according to the comparison.
    */
   public static int compareVersion(String x, String y) {
     int i = 0;
@@ -1289,7 +1290,7 @@ public abstract class Fields {
   private static int compareTokens(String xTok, String yTok, boolean wantDigits) {
     int presenceCmp = compareTokenPresence(xTok, yTok);
     if (presenceCmp != 0) return presenceCmp;
-    if (xTok == null) return 0; // both null
+    if (xTok == null) return 0; // both nulls
     return wantDigits ? compareDigitTokens(xTok, yTok) : compareNonDigitTokens(xTok, yTok);
   }
 
@@ -1311,8 +1312,8 @@ public abstract class Fields {
       long b = Integer.parseInt(yDigits);
       if (a > b) return 1;
       if (a < b) return -1;
-      return Integer.compare(yDigits.length(), xDigits.length()); // Extra 0's at beginning.
-      // Extra 0's at beginning.
+      return Integer.compare(yDigits.length(), xDigits.length()); // Extra 0's at the beginning.
+      // Extra 0's at the beginning.
     } catch (NumberFormatException _) {
       // Too many digits!
       return xDigits.compareTo(yDigits);
@@ -1366,7 +1367,7 @@ public abstract class Fields {
       if (Double.isNaN(y)) {
         return 0; // kind of!
       } else {
-        return -1; // second is better
+        return -1; // the second is better
       }
     } else if (Double.isNaN(y)) {
       return 1; // first is better
@@ -1386,7 +1387,7 @@ public abstract class Fields {
       if (Float.isNaN(y)) {
         return 0; // kind of!
       } else {
-        return -1; // second is better
+        return -1; // the second is better
       }
     } else if (Float.isNaN(y)) {
       return 1; // first is better
