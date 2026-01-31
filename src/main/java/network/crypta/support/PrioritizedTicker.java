@@ -43,11 +43,11 @@ public class PrioritizedTicker implements Ticker, Runnable {
 
     @Override
     public boolean equals(Object o) {
-      if (!(o instanceof Job)) {
+      if (!(o instanceof Job job)) {
         return false;
       }
       // Ignore the name; we are only interested in the job, needed for noDupes.
-      return ((Job) o).task == task;
+      return job.task == task;
     }
 
     @Override
@@ -238,7 +238,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
    * "sleep until the original deadline" would reintroduce latency and defeat the purpose of {@link
    * #wakeUp()}.
    */
-  @SuppressWarnings("java:S2274")
+  @SuppressWarnings({"java:S2274", "WaitNotInLoop"})
   protected void sleep(long sleepTime) throws InterruptedException {
     if (LOG.isDebugEnabled()) LOG.debug("Sleeping for {}", sleepTime);
     synchronized (this) {
@@ -428,9 +428,9 @@ public class PrioritizedTicker implements Ticker, Runnable {
    */
   private void removeQueuedJobInner(Job job, Long t) {
     Object o = timedJobsByTime.get(t);
-    assert (o != null);
+    assert o != null;
     if (o instanceof Job) {
-      assert (o.equals(job));
+      assert o.equals(job);
       timedJobsByTime.remove(t);
       return;
     }
@@ -439,7 +439,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
 
   private void handleArrayRemoval(Job[] jobs, Job job, Long t) {
     if (jobs.length == 1) {
-      assert (jobs[0].equals(job));
+      assert jobs[0].equals(job);
       timedJobsByTime.remove(t);
       return;
     }

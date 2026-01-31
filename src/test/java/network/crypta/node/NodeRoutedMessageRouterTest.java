@@ -301,7 +301,7 @@ class NodeRoutedMessageRouterTest {
           (Map<Long, NodeRoutedMessageRouter.RoutedContext>) field.get(router);
       return map;
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to access routedContexts", e);
+      throw new LinkageError("Failed to access routedContexts", e);
     }
   }
 
@@ -311,7 +311,7 @@ class NodeRoutedMessageRouterTest {
       field.setAccessible(true);
       field.setLong(context, value);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to set createdTime", e);
+      throw new LinkageError("Failed to set createdTime", e);
     }
   }
 

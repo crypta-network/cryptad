@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
  *     not a general‑purpose {@code javax.crypto.Cipher} implementation.
  *     <p>License is apparently available from http://www.cryptix.org/docs/license.html
  */
+@SuppressWarnings("OperatorPrecedence")
 public final class RijndaelAlgorithm // implicit no-argument constructor
  {
   private static final Logger LOG = LoggerFactory.getLogger(RijndaelAlgorithm.class);
@@ -1230,6 +1231,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record KeyScheduleCtx(
       int[][] ke, int[][] kd, int rounds, int bcShift, int bc, int kc, int roundKeyCount) {
     @Override

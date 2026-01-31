@@ -46,12 +46,12 @@ public class RedirectException extends Exception {
    * request context (path segments, query parameters) and should avoid passing user-controlled
    * values without validation to prevent open redirects.
    *
-   * @param newURI fully qualified or context-relative URI string indicating the retry destination;
+   * @param newuri fully qualified or context-relative URI string indicating the retry destination;
    *     must be valid per {@link URI#URI(String)} and should not be {@code null}
    * @throws URISyntaxException if the supplied text cannot be converted into a legal {@link URI}
    */
-  public RedirectException(String newURI) throws URISyntaxException {
-    this.newuri = new URI(newURI);
+  public RedirectException(String newuri) throws URISyntaxException {
+    this.newuri = new URI(newuri);
   }
 
   /**
@@ -63,11 +63,11 @@ public class RedirectException extends Exception {
    * immutable {@link URI} instance and ensure it accurately represents the desired destination to
    * avoid surprising downstream routing.
    *
-   * @param newURI resolved and validated target URI to use when the container retries the request;
+   * @param newuri resolved and validated target URI to use when the container retries the request;
    *     must not be {@code null}
    */
-  public RedirectException(URI newURI) {
-    this.newuri = newURI;
+  public RedirectException(URI newuri) {
+    this.newuri = newuri;
   }
 
   /**

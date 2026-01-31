@@ -17,7 +17,7 @@ public class DSAPrivateKey extends CryptoKey {
 
   public DSAPrivateKey(BigInteger x, DSAGroup g) {
     this.x = x;
-    if (x.signum() != 1 || x.compareTo(g.getQ()) > -1 || x.compareTo(BigInteger.ZERO) < 1)
+    if (x.signum() != 1 || x.compareTo(g.getQ()) >= 0 || x.compareTo(BigInteger.ZERO) <= 0)
       throw new IllegalArgumentException();
   }
 
@@ -27,7 +27,7 @@ public class DSAPrivateKey extends CryptoKey {
     BigInteger tempX;
     do {
       tempX = new BigInteger(256, r);
-    } while (tempX.compareTo(g.getQ()) > -1 || tempX.compareTo(BigInteger.ZERO) < 1);
+    } while (tempX.compareTo(g.getQ()) >= 0 || tempX.compareTo(BigInteger.ZERO) <= 0);
     this.x = tempX;
   }
 

@@ -648,7 +648,7 @@ public class LoggingConfigHandler {
    */
   private String datePatternForInterval(String configured) {
     if (configured == null || configured.isEmpty()) return PATTERN_HOURLY; // default hourly
-    String s = configured.trim().toUpperCase();
+    String s = configured.trim().toUpperCase(Locale.ROOT);
     // Strip optional trailing 'S'
     if (s.endsWith("S")) s = s.substring(0, s.length() - 1);
     // Extract numeric prefix (we ignore it for Logback granularity)
@@ -667,7 +667,7 @@ public class LoggingConfigHandler {
 
   private String parseIntervalUnit(String s) {
     if (s == null || s.isEmpty()) return UNIT_HOUR; // default granularity
-    String up = s.toUpperCase();
+    String up = s.toUpperCase(Locale.ROOT);
     // Accept plural units (e.g. 5MINUTES) by trimming an optional trailing 'S'
     if (up.endsWith("S")) up = up.substring(0, up.length() - 1);
     int i = 0;
@@ -689,7 +689,7 @@ public class LoggingConfigHandler {
 
   private int parseIntervalMultiple(String configured) {
     if (configured == null || configured.isEmpty()) return 1;
-    String s = configured.trim().toUpperCase();
+    String s = configured.trim().toUpperCase(Locale.ROOT);
     if (s.endsWith("S")) s = s.substring(0, s.length() - 1);
     int i = 0;
     while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
@@ -802,6 +802,7 @@ public class LoggingConfigHandler {
     appliedLoggerNames.clear();
   }
 
+  @SuppressWarnings("StringSplitter")
   private Map<String, Level> parseOverrides(String raw) throws InvalidConfigValueException {
     Map<String, Level> result = new HashMap<>();
     String[] tokens = raw.split(",");

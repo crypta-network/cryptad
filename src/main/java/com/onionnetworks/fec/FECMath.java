@@ -204,7 +204,7 @@ public class FECMath {
      * At the same time build gfLog[gfExp[i]] = i .
      * The first gfBits powers are simply bits shifted to the left.
      */
-    for (i = 0; i < gfBits; i++, mask <<= 1) {
+    for (i = 0; i < gfBits; i++, mask = (char) (mask << 1)) {
       gfExp[i] = mask;
       gfLog[gfExp[i]] = i;
       /*

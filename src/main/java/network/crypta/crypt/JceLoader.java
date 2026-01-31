@@ -81,7 +81,7 @@ public class JceLoader {
     p = null;
     if (checkUse("use.NSS", "false")) {
       try {
-        p = (new NSSLoader()).load(checkUse("prefer.NSS"));
+        p = new NSSLoader().load(checkUse("prefer.NSS"));
       } catch (Exception e) {
         // Note: The SunPKCS11-NSS provider may be unavailable on some platforms.
         final String msg =
@@ -104,7 +104,7 @@ public class JceLoader {
     p = null;
     if (checkUse("use.BC.I.know.what.I.am.doing")) {
       try {
-        p = (new BouncyCastleLoader()).load();
+        p = new BouncyCastleLoader().load();
       } catch (Exception e) {
         // Catch reflective loading issues and runtime failures from algorithm probes inside
         // BouncyCastleLoader (e.g., IllegalStateException when ECDH/ECDSA are missing) so we

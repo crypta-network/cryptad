@@ -6,7 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.util.Hashtable;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -81,9 +82,9 @@ class OpennetPeerNodeStatusTest {
   void constructor_whenNoHeavyFalse_heavyMapsArePopulated() {
     // Arrange
     OpennetPeerNode node = mockMinimalOpennetPeerNode(42L);
-    Hashtable<String, Long> received = new Hashtable<>();
+    Map<String, Long> received = new HashMap<>();
     received.put("Hello", 3L);
-    Hashtable<String, Long> sent = new Hashtable<>();
+    Map<String, Long> sent = new HashMap<>();
     sent.put("World", 4L);
     when(node.getLocalNodeReceivedMessagesFromStatistic()).thenReturn(received);
     when(node.getLocalNodeSentMessagesToStatistic()).thenReturn(sent);

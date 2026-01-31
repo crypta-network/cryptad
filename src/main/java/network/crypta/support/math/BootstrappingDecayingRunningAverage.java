@@ -134,7 +134,7 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
       return; // Don't update the average with invalid values
     }
     reports++;
-    double decayFactor = 1.0 / (Math.min(reports, maxReports));
+    double decayFactor = 1.0 / Math.min(reports, maxReports);
     currentValue = (d * decayFactor) + (currentValue * (1 - decayFactor));
   }
 
@@ -152,7 +152,7 @@ public final class BootstrappingDecayingRunningAverage implements RunningAverage
       traceInvalid(d);
       return currentValue; // Return unchanged value for invalid inputs
     }
-    double decayFactor = 1.0 / (Math.min(reports + 1, maxReports));
+    double decayFactor = 1.0 / Math.min(reports + 1, maxReports);
     return (d * decayFactor) + (currentValue * (1 - decayFactor));
   }
 

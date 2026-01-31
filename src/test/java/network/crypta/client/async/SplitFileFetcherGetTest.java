@@ -200,7 +200,7 @@ class SplitFileFetcherGetTest {
     assertFalse(cancelled);
     verify(storage, times(1)).setHasCheckedStore(clientContext);
     // The requester notifies via the job runner; ensure a job was queued
-    verify(clientContext.getJobRunner(true), times(1)).queueNormalOrDrop(any(PersistentJob.class));
+    verify(runner, times(1)).queueNormalOrDrop(any(PersistentJob.class));
   }
 
   @Test

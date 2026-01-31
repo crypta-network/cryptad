@@ -16,6 +16,7 @@ import org.jetbrains.annotations.NotNull;
  * @param alternateMimeTypes additional MIME type aliases accepted for this handler
  * @param alternateExtensions additional filename extensions associated with the type
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record FilterMIMETypeNames(
     String primaryMimeType,
     String primaryExtension,

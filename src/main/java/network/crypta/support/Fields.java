@@ -420,6 +420,7 @@ public abstract class Fields {
    * @param time seconds since 1970-01-01T00:00:00Z.
    * @return formatted timestamp in GMT.
    */
+  @SuppressWarnings("JavaUtilDate")
   public static String secToDateTime(long time) {
     DateFormat f = new SimpleDateFormat("yyyyMMdd-HH:mm:ss");
     f.setTimeZone(TimeZone.getTimeZone("GMT"));
@@ -841,7 +842,7 @@ public abstract class Fields {
     byte[] buf = new byte[2];
     for (int j = 0; j < 2; j++) {
       buf[j] = (byte) x;
-      x >>>= 8;
+      x = (short) (x >>> 8);
     }
     return buf;
   }
@@ -942,14 +943,16 @@ public abstract class Fields {
      * IEC endings are case-sensitive, so the input string's case should not be modified. However, the
      * qualifiers should not be case-sensitive.
      */
-    final String lower = limit.toLowerCase();
+    final String lower = limit.toLowerCase(Locale.ROOT);
     for (String ending :
         new String[] {
           "/s",
           "/sec",
           "/second",
           "ps",
-          NodeL10n.getBase().getString("FirstTimeWizardToadlet.bandwidthPerSecond").toLowerCase()
+          NodeL10n.getBase()
+              .getString("FirstTimeWizardToadlet.bandwidthPerSecond")
+              .toLowerCase(Locale.ROOT)
         }) {
       if (lower.endsWith(ending)) {
         return limit.substring(0, limit.length() - ending.length());
@@ -1093,7 +1096,7 @@ public abstract class Fields {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         StringBuilder tmp = new StringBuilder();
         tmp.append(val / MULTIPLES[i]).append(MULTIPLES_2[i]);
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+        if (!MULTIPLES_2[i].toLowerCase(Locale.ROOT).equals(MULTIPLES_2[i])) {
           tmp.append("iB");
         }
         ret = tmp.toString();
@@ -1137,7 +1140,7 @@ public abstract class Fields {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         StringBuilder tmp = new StringBuilder();
         tmp.append(val / MULTIPLES[i]).append(MULTIPLES_2[i]);
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+        if (!MULTIPLES_2[i].toLowerCase(Locale.ROOT).equals(MULTIPLES_2[i])) {
           tmp.append("iB");
         }
         ret = tmp.toString();
@@ -1166,7 +1169,7 @@ public abstract class Fields {
       if (val > MULTIPLES[i] && val % MULTIPLES[i] == 0 && (isSize || MULTIPLES[i] % 1000 == 0)) {
         StringBuilder tmp = new StringBuilder();
         tmp.append(val / MULTIPLES[i]).append(MULTIPLES_2[i]);
-        if (!MULTIPLES_2[i].toLowerCase().equals(MULTIPLES_2[i])) {
+        if (!MULTIPLES_2[i].toLowerCase(Locale.ROOT).equals(MULTIPLES_2[i])) {
           tmp.append("iB");
         }
         ret = tmp.toString();
@@ -1195,7 +1198,7 @@ public abstract class Fields {
   }
 
   /**
-   * Encodes {@code double} values as bytes using {@link Double#doubleToLongBits(double)}.
+   * Encodes {@code doubles} values as bytes using {@link Double#doubleToLongBits(double)}.
    *
    * @param doubles source values.
    * @return byte array containing all encodings.
@@ -1227,14 +1230,22 @@ public abstract class Fields {
    */
   public static String trimLines(String str) {
     StringBuilder r = new StringBuilder(str.length());
-    for (String line : str.split("\n")) {
-      line = line.trim();
-      if (line.isEmpty()) {
-        continue;
+    int start = 0;
+    int length = str.length();
+    while (start <= length) {
+      int end = str.indexOf('\n', start);
+      if (end == -1) {
+        end = length;
       }
-
-      r.append(line);
-      r.append('\n');
+      String line = str.substring(start, end).trim();
+      if (!line.isEmpty()) {
+        r.append(line);
+        r.append('\n');
+      }
+      if (end == length) {
+        break;
+      }
+      start = end + 1;
     }
     return r.toString();
   }
@@ -1396,6 +1407,7 @@ public abstract class Fields {
    * @param b second date or {@code null}.
    * @return the result of {@link Date#compareTo(Date)} on normalized values.
    */
+  @SuppressWarnings("JavaUtilDate")
   public static int compare(Date a, Date b) {
     // Normalize nulls to epoch so Date#compareTo can be used safely.
     a = (a != null ? a : new Date(0));

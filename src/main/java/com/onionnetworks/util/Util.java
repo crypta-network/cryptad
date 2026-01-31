@@ -406,8 +406,8 @@ public class Util {
    *
    * <p>Each character is expanded into two bytes: the high-order byte first, followed by the
    * low-order byte. The returned array length is exactly twice the input length. This helper is
-   * primarily intended for legacy protocols that treat Java {@code char} values as unsigned
-   * 16&nbsp;bit quantities rather than UTF-16 text; no charset encoding is performed.
+   * primarily intended for legacy protocols that treat Java char values as unsigned 16&nbsp;bit
+   * quantities rather than UTF-16 text; no charset encoding is performed.
    *
    * @param chars characters expanded into two big-endian bytes each.
    * @return byte array twice the length containing encoded characters.
@@ -509,9 +509,9 @@ public class Util {
   /**
    * Copies bytes into a {@code char[]} using big-endian reconstruction.
    *
-   * <p>Pairs of bytes are combined into {@code char} values until either {@code numBytes} are
-   * consumed or the destination range is filled. If {@code numBytes} is odd, the high byte of the
-   * final character is written and the low byte is implicitly zero. This routine complements {@link
+   * <p>Pairs of bytes are combined into char values until either {@code numBytes} are consumed or
+   * the destination range is filled. If {@code numBytes} is odd, the high byte of the final
+   * character is written and the low byte is implicitly zero. This routine complements {@link
    * #arraycopy(char[], int, byte[], int, int)} and is useful when handling compact binary encodings
    * of UTF-16 code units.
    *
@@ -652,7 +652,7 @@ public class Util {
     byte[] out = new byte[len / 2];
     try {
       for (int i = 0; i < out.length; i++) {
-        out[i] = (byte) (Integer.parseInt(in.substring(i * 2, i * 2 + 2), 16));
+        out[i] = (byte) Integer.parseInt(in.substring(i * 2, i * 2 + 2), 16);
       }
     } catch (NumberFormatException doh) {
       throw new IllegalArgumentException("ParseError", doh);
@@ -782,14 +782,17 @@ public class Util {
    */
   public static IntIterator createIntIterator(final Iterator<Integer> it) {
     return new IntIterator() {
+      @Override
       public boolean hasNextInt() {
         return it.hasNext();
       }
 
+      @Override
       public int nextInt() {
         return it.next();
       }
 
+      @Override
       public void removeInt() {
         it.remove();
       }

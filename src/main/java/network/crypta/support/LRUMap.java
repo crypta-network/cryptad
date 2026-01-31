@@ -229,7 +229,7 @@ public class LRUMap<K, V> {
    */
   public final synchronized boolean removeKey(K key) {
     if (key == null) throw new NullPointerException();
-    QItem<K, V> i = (hash.remove(key));
+    QItem<K, V> i = hash.remove(key);
     if (i != null) {
       list.remove(i);
       return true;

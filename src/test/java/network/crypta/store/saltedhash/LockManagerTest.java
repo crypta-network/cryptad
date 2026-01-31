@@ -179,8 +179,6 @@ class LockManagerTest {
   // Helper: detect whether JVM assertions are enabled for this class
   @SuppressWarnings({"AssertWithSideEffects", "ConstantValue"})
   private static boolean assertionsEnabled() {
-    boolean enabled = false;
-    assert enabled = true; // set to true when -ea is active
-    return enabled;
+    return LockManagerTest.class.desiredAssertionStatus();
   }
 }

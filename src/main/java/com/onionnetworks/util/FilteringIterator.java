@@ -87,14 +87,14 @@ public abstract class FilteringIterator<T> implements Iterator<T> {
    */
   @Override
   public boolean hasNext() {
-    while ((next == null) && (parent.hasNext())) {
+    while (next == null && parent.hasNext()) {
       T o = parent.next();
       if (accept(o)) {
         next = o;
         return true;
       }
     }
-    return (next != null);
+    return next != null;
   }
 
   /**
@@ -148,8 +148,9 @@ public abstract class FilteringIterator<T> implements Iterator<T> {
     Iterator<String> i = l.iterator();
     FilteringIterator<String> f =
         new FilteringIterator<>(i) {
+          @Override
           public boolean accept(String o) {
-            return (o != null);
+            return o != null;
           }
         };
     LOGGER.info("--[ Unfiltered list: ]--");

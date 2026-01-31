@@ -359,7 +359,7 @@ class SimpleFieldSetTest {
       try {
         // there is no assertEquals(Double,Double) so we are obliged to do this way -_-
         assertEquals(
-            0, Double.compare((methodSFS.getDouble(Double.toString(doubles[0]))), doubles[1]));
+            0, Double.compare(methodSFS.getDouble(Double.toString(doubles[0])), doubles[1]));
         assertEquals(
             0, Double.compare(methodSFS.getDouble(Double.toString(doubles[0]), 5), doubles[1]));
       } catch (FSParseException aException) {
@@ -588,7 +588,7 @@ class SimpleFieldSetTest {
     double[] result = methodSFS.getDoubleArray(keyPrefix);
     // Assert
     for (int i = 0; i < 15; i++) {
-      assertEquals(result[i], (i), 0.0);
+      assertEquals(result[i], i, 0.0);
     }
   }
 

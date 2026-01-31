@@ -136,7 +136,7 @@ class USKAttemptManagerTest {
     private final ClientBaseCallback callback;
     private final network.crypta.keys.FreenetURI uri;
     private int toNetworkCalls;
-    private boolean cancelled;
+    private boolean wasCancelled;
 
     private TestRequester(network.crypta.keys.FreenetURI uri, RequestClient client) {
       super((short) 1, client);
@@ -163,7 +163,7 @@ class USKAttemptManagerTest {
 
     @Override
     public void cancel(ClientContext context) {
-      cancelled = true;
+      wasCancelled = true;
     }
 
     @Override
@@ -173,7 +173,7 @@ class USKAttemptManagerTest {
 
     @Override
     public boolean isFinished() {
-      return cancelled;
+      return wasCancelled;
     }
 
     @Override

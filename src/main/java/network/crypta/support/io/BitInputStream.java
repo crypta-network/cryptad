@@ -135,6 +135,7 @@ public class BitInputStream implements Closeable {
    * @throws EOFException if there is not enough data to satisfy the read.
    * @throws IOException if an I/O error occurs while reading from the underlying stream.
    */
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public int readInt(int length, ByteOrder bitOrder) throws IOException {
     if (length == 0) {
       return 0;

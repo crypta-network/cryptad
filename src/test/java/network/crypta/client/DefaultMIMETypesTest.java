@@ -32,6 +32,7 @@ class DefaultMIMETypesTest {
     assertTrue(
         DefaultMIMETypes.isPlausibleMIMEType(
             "multipart/mixed; boundary=\"---this is a silly boundary---\""));
+    assertTrue(DefaultMIMETypes.isPlausibleMIMEType("text/plain; charset=UTF-8;"));
   }
 
   @Test

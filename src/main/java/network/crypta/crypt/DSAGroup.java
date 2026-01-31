@@ -186,9 +186,10 @@ public class DSAGroup extends CryptoKey {
    * @param o other group; may be {@code null}
    * @return {@code true} when all three parameters are equal
    */
+  @SuppressWarnings("NonOverridingEquals")
   public boolean equals(DSAGroup o) {
-    if (this == o) { // Fast path for identity.
-      return true;
+    if (o == null) {
+      return false;
     }
     return p.equals(o.p) && q.equals(o.q) && g.equals(o.g);
   }
@@ -250,7 +251,7 @@ public class DSAGroup extends CryptoKey {
    */
   @Override
   public String toString() {
-    if (this == Global.DSAgroupBigA) return "Global.DSAgroupBigA";
+    if (Global.DSAgroupBigA.equals(this)) return "Global.DSAgroupBigA";
     else return super.toString();
   }
 
@@ -264,7 +265,7 @@ public class DSAGroup extends CryptoKey {
    */
   @Override
   public String toLongString() {
-    if (this == Global.DSAgroupBigA) return "Global.DSAgroupBigA";
+    if (Global.DSAgroupBigA.equals(this)) return "Global.DSAgroupBigA";
     return "p=" + HexUtil.biToHex(p) + ", q=" + HexUtil.biToHex(q) + ", g=" + HexUtil.biToHex(g);
   }
 
@@ -277,7 +278,7 @@ public class DSAGroup extends CryptoKey {
    * @return {@code this} if canonical; otherwise a new, equivalent {@code DSAGroup}
    */
   public DSAGroup cloneKey() {
-    if (this == Global.DSAgroupBigA) return this;
+    if (Global.DSAgroupBigA.equals(this)) return Global.DSAgroupBigA;
     return new DSAGroup(this);
   }
 }

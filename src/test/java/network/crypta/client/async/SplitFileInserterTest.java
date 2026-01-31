@@ -458,6 +458,8 @@ class SplitFileInserterTest {
     ic.setEarlyEncode(false);
     ic.setGetCHKOnly(false);
     Metadata md = Mockito.mock(Metadata.class);
+    short priority = 7;
+    when(parent.getPriorityClass()).thenReturn(priority);
 
     try (MockedConstruction<SplitFileInserterStorage> storageConst =
             Mockito.mockConstruction(
@@ -472,7 +474,7 @@ class SplitFileInserterTest {
 
       verify(cb).onMetadata(md, sfi, context);
       verify(cb).onSuccess(sfi, context);
-      verify(senderConst.constructed().getFirst()).unregister(context, parent.getPriorityClass());
+      verify(senderConst.constructed().getFirst()).unregister(context, priority);
     }
   }
 

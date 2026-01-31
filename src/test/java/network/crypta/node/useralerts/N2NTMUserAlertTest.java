@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.TimeZone;
 import network.crypta.clients.fcp.FCPMessage;
@@ -203,7 +204,9 @@ class N2NTMUserAlertTest {
     assertEquals(Long.toString(sent), fs.get("TimeSent"));
     assertEquals(Long.toString(received), fs.get("TimeReceived"));
     // Verify the additional bucket length for MessageText is present and equals payload size
-    assertEquals(Integer.toString(messageText.getBytes().length), fs.get("MessageTextLength"));
+    assertEquals(
+        Integer.toString(messageText.getBytes(StandardCharsets.UTF_8).length),
+        fs.get("MessageTextLength"));
   }
 
   @Test

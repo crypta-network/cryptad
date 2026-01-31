@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import network.crypta.client.filter.ContentFilter.FilterStatus;
 import network.crypta.clients.http.ExternalLinkToadlet;
 import network.crypta.l10n.L10nTestUtils;
@@ -414,12 +415,12 @@ class ContentFilterTest {
     for (FilterMIMEType type : ContentFilter.mimeTypesByName.values()) {
       String ext = type.primaryExtension;
       if (ext != null) {
-        assertEquals(ext, ext.toLowerCase());
+        assertEquals(ext, ext.toLowerCase(Locale.ROOT));
       }
       String[] exts = type.alternateExtensions;
       if (ext != null) {
         for (String s : exts) {
-          assertEquals(s, s.toLowerCase());
+          assertEquals(s, s.toLowerCase(Locale.ROOT));
         }
       }
     }

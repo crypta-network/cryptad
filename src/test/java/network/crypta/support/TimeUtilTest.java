@@ -133,6 +133,7 @@ class TimeUtilTest {
 
   /** Tests {@link TimeUtil#setTimeToZero(Date)} */
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void testSetTimeToZero() {
     // Test whether zeroing doesn't happen when it needs not to.
 
@@ -283,6 +284,7 @@ class TimeUtilTest {
   }
 
   @Test
+  @SuppressWarnings("JavaUtilDate")
   void setTimeToZero_whenDefaultTzNotUtc_truncatesByUtcDay() {
     // Arrange
     TimeZone originalTz = TimeZone.getDefault();

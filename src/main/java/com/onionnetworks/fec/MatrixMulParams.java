@@ -15,6 +15,7 @@ import org.jetbrains.annotations.NotNull;
  * @param k shared inner dimension of the matrices
  * @param m number of columns in the right matrix and output
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record MatrixMulParams(
     char[] a, int aStart, char[] b, int bStart, char[] c, int cStart, int n, int k, int m) {
 

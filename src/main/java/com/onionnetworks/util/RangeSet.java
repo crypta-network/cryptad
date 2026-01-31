@@ -3,6 +3,7 @@ package com.onionnetworks.util;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -444,10 +445,11 @@ public class RangeSet {
    *
    * @return a hash code suitable for use in hashed collections.
    */
+  @Override
   public int hashCode() {
     int result = 0;
     for (int i = 0; i < rangeCount * 2; i++) {
-      result = (int) (91 * result + ranges[i]);
+      result = (int) (91L * result + ranges[i]);
     }
     return result;
   }
@@ -463,6 +465,7 @@ public class RangeSet {
    * @param obj the object to compare against this set.
    * @return {@code true} when the provided object represents the same ranges and flags.
    */
+  @Override
   public boolean equals(Object obj) {
     if (!(obj instanceof RangeSet rs)) {
       return false;
@@ -482,6 +485,7 @@ public class RangeSet {
    *
    * @return a comma-separated string describing all ranges contained in this set.
    */
+  @Override
   public String toString() {
     StringBuilder sb = new StringBuilder();
     for (Iterator<Range> it = iterator(); it.hasNext(); ) {
@@ -516,7 +520,8 @@ public class RangeSet {
    */
   static void main() throws IOException, ParseException {
     RangeSet rs = RangeSet.parse("5-10,15-20,25-30");
-    try (BufferedReader br = new BufferedReader(new InputStreamReader(System.in))) {
+    try (BufferedReader br =
+        new BufferedReader(new InputStreamReader(System.in, Charset.defaultCharset()))) {
       boolean exit = false;
       while (!exit) {
         logCurrentSet(rs);
@@ -537,6 +542,7 @@ public class RangeSet {
     }
   }
 
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static LoopResult processInput(BufferedReader br, RangeSet current, String input)
       throws IOException, ParseException {
     if (input.isEmpty()) {
@@ -593,7 +599,7 @@ public class RangeSet {
     int pos = binarySearch(max == Long.MAX_VALUE ? max : max + 1);
     // Return pos-1 if there isn't a direct hit because the max
     // pos is inclusive.
-    return pos >= 0 ? pos : (-(pos + 1)) - 1;
+    return pos >= 0 ? pos : -(pos + 1) - 1;
   }
 
   /**

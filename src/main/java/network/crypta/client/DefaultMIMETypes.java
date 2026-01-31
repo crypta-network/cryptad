@@ -2,6 +2,7 @@ package network.crypta.client;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.regex.Pattern;
 import network.crypta.support.MediaType;
 import org.slf4j.Logger;
@@ -126,7 +127,7 @@ public class DefaultMIMETypes {
     addMIMEType(number, type);
     if (extensions != null) {
       for (String ext : extensions) {
-        ext = ext.toLowerCase();
+        ext = ext.toLowerCase(Locale.ROOT);
         Short s = mimeTypesByExtension.get(ext);
         if (s != null) {
           // No big deal
@@ -189,6 +190,7 @@ public class DefaultMIMETypes {
    * @param extensions space‑separated list of extensions without dots; the first token becomes the
    *     primary extension
    */
+  @SuppressWarnings("StringSplitter")
   protected static synchronized void addMIMEType(short number, String type, String extensions) {
     String[] split = extensions.split(" ");
     addMIMEType(number, type, split, split[0]);
@@ -203,6 +205,7 @@ public class DefaultMIMETypes {
    * @param extensions space‑separated list of extensions without dots
    * @param outExtension explicit primary extension to prefer when multiple extensions are supplied
    */
+  @SuppressWarnings("StringSplitter")
   protected static synchronized void addMIMEType(
       short number, String type, String extensions, String outExtension) {
     addMIMEType(number, type, extensions.split(" "), outExtension);
@@ -890,7 +893,7 @@ public class DefaultMIMETypes {
   public static synchronized String guessMIMEType(String arg, boolean noDefault) {
     int x = arg.lastIndexOf('.');
     if ((x == -1) || (x == arg.length() - 1)) return noDefault ? null : DEFAULT_MIME_TYPE;
-    String ext = arg.substring(x + 1).toLowerCase();
+    String ext = arg.substring(x + 1).toLowerCase(Locale.ROOT);
     Short mimeIndexOb = mimeTypesByExtension.get(ext);
     if (mimeIndexOb != null) {
       return mimeTypesByNumber.get(mimeIndexOb.intValue());
@@ -949,17 +952,21 @@ public class DefaultMIMETypes {
   }
 
   /** Regular expression for the top‑level type token (for example, {@code text}). */
-  private static final String TOP_LEVEL = "(?>[a-zA-Z-]+)";
+  private static final String TOP_LEVEL = "[a-zA-Z-]++";
 
   /** Regular expression for the subtype and parameter tokens allowed by this parser. */
-  private static final String CHARS = "(?>[a-zA-Z0-9+_.-]+)";
+  private static final String CHARS = "[a-zA-Z0-9+_.-]++";
+
+  /** Regular expression fragment for a quoted parameter value. */
+  private static final String QUOTED = "\"[^\";]*+\"";
 
   /** Regular expression fragment for a single parameter, including optional quoting. */
-  private static final String PARAM = "(?>;\\s*" + CHARS + "=" + "((" + CHARS + ")|(\".*\")))";
+  private static final String PARAM =
+      "(?>;\\s*+" + CHARS + "\\s*+=\\s*+(?:" + CHARS + "|" + QUOTED + ")\\s*+)";
 
   /** Complete pattern for a MIME type with optional parameters; used for plausibility checks. */
   private static final Pattern MIME_TYPE =
-      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*" + PARAM + "*");
+      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*+" + PARAM + "*+\\s*+;?\\s*+");
 
   /**
    * Compatibility pattern for legacy Infocalypse repositories that encoded a numeric suffix as a

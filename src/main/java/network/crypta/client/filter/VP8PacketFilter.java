@@ -39,16 +39,16 @@ public class VP8PacketFilter {
   /**
    * Creates a new filter with optional WebP-specific validation.
    *
-   * <p>When {@code isWebp} is {@code true}, the parser applies additional rules expected for WebP
+   * <p>When {@code isWebP} is {@code true}, the parser applies additional rules expected for WebP
    * still images embedded with VP8. Specifically, it requires the frame to be a keyframe, forbids
    * the experimental version bit, and enforces that the frame is marked as shown. When {@code
    * false}, the parser validates only generic VP8 header invariants.
    *
-   * @param isWebp whether to enforce WebP constraints in addition to generic VP8 checks; pass
+   * @param isWebP whether to enforce WebP constraints in addition to generic VP8 checks; pass
    *     {@code true} for WebP image validation or {@code false} for general VP8 streams.
    */
-  public VP8PacketFilter(boolean isWebp) {
-    this.isWebP = isWebp;
+  public VP8PacketFilter(boolean isWebP) {
+    this.isWebP = isWebP;
   }
 
   /**

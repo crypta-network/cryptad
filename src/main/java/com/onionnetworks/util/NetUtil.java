@@ -104,7 +104,7 @@ public class NetUtil {
    * @param args optional URL strings to resolve; when empty, built-in examples are used to showcase
    *     common edge cases.
    */
-  static void main(String[] args) throws IOException {
+  public static void main(String[] args) throws IOException {
 
     if (args.length == 0) {
       args =

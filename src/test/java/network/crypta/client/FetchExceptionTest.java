@@ -205,7 +205,8 @@ class FetchExceptionTest {
   @Test
   void constructor_fromDataFilterException_formatsMessageAndFields() {
     DataFilterException dfe = org.mockito.Mockito.mock(DataFilterException.class);
-    org.mockito.Mockito.when(dfe.getMessage()).thenReturn("why unsafe");
+    String dfeMessage = "why unsafe";
+    org.mockito.Mockito.when(dfe.getMessage()).thenReturn(dfeMessage);
     FetchException ex = new FetchException(12L, dfe, "image/gif");
 
     String unsafeDetails = NodeL10n.getBase().getString("FetchException.unsafeContentDetails");
@@ -214,7 +215,7 @@ class FetchExceptionTest {
             + " "
             + unsafeDetails
             + " "
-            + dfe.getMessage(),
+            + dfeMessage,
         ex.getMessage());
     assertEquals(FetchExceptionMode.CONTENT_VALIDATION_FAILED, ex.getMode());
     assertEquals(12L, ex.getExpectedSize());

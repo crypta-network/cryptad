@@ -212,7 +212,7 @@ class PeerAlertCoordinatorTest {
       alertField.setAccessible(true);
       alertField.set(coordinator, alert);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Unable to set PeerAlertCoordinator alert", e);
+      throw new LinkageError("Unable to set PeerAlertCoordinator alert", e);
     }
   }
 }

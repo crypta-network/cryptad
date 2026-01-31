@@ -180,7 +180,7 @@ public class CTRBlockCipher {
 
     // Increment counter as a big-endian integer (propagate carry from the last byte backward).
     for (int i = counter.length - 1; i >= 0; i--) {
-      if ((++counter[i]) != (byte) 0) {
+      if (++counter[i] != (byte) 0) {
         break; // stop when no carry
       }
     }

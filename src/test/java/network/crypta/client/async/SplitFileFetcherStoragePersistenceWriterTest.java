@@ -166,10 +166,10 @@ class SplitFileFetcherStoragePersistenceWriterTest {
         field.setAccessible(true);
         field.set(target, value);
       } catch (ReflectiveOperationException ex) {
-        throw new AssertionError(ex);
+        throw new LinkageError(ex.getMessage(), ex);
       }
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
+      throw new LinkageError(e.getMessage(), e);
     }
   }
 }

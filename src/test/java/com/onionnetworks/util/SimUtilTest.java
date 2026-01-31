@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Handler;
@@ -83,7 +84,7 @@ class SimUtilTest {
             + ls
             + "\" | graph -W .003 -C -T $type -L \"Title\" -X \"X Axis\" -Y \"Y Axis\"";
 
-    assertEquals(expected, stdout.toString());
+    assertEquals(expected, stdout.toString(StandardCharsets.UTF_8));
   }
 
   @Test

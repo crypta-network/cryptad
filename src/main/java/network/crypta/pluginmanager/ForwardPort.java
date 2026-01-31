@@ -134,7 +134,7 @@ public class ForwardPort {
   public boolean equals(Object o) {
     if (o == this) return true;
     if (!(o instanceof ForwardPort f)) return false;
-    return (f.name.equals(name))
+    return f.name.equals(name)
         && f.isIP6 == isIP6
         && f.protocol == protocol
         && f.portNumber == portNumber;

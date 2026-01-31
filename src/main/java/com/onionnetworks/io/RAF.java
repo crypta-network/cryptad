@@ -335,6 +335,7 @@ public class RAF implements AutoCloseable {
    *
    * @throws IOException if closing fails or if delete-on-close cleanup cannot remove the file.
    */
+  @Override
   public synchronized void close() throws IOException {
     closed = true;
     randomAccessFile.close();
@@ -350,6 +351,7 @@ public class RAF implements AutoCloseable {
    *
    * @return human-readable description of this {@code RAF}, including its current file and mode.
    */
+  @Override
   public String toString() {
     return "RAF[file=" + f.getAbsolutePath() + ",mode=" + mode + "]";
   }

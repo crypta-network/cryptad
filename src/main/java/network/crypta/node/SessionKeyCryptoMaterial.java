@@ -35,6 +35,7 @@ import org.jetbrains.annotations.NotNull;
  * @param hmacKey key bytes for message authentication; stored by reference and mutable.
  * @see SessionKey
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record SessionKeyCryptoMaterial(
     BlockCipher outgoingCipher,
     byte[] outgoingKey,

@@ -43,6 +43,7 @@ public class BandwidthStatsContainer implements Serializable {
    *     otherwise
    */
   @Override
+  @SuppressWarnings("EqualsGetClass")
   public boolean equals(Object o) {
     if (o == null) return false;
     if (o.getClass() == BandwidthStatsContainer.class) {

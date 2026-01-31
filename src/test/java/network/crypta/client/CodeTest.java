@@ -182,6 +182,7 @@ class CodeTest {
     return new EncodeDecodeResult(src, repair);
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record EncodeDecodeResult(byte[] original, byte[] decoded) {}
 
   private static Buffer[] createBuffers(byte[] src) {

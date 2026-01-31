@@ -161,8 +161,8 @@ public class ShortBuffer implements WritableToDataOutputStream {
    * Returns a human-readable representation intended for debugging.
    *
    * <p>For buffers with {@code length > 50}, the result is {@code "Buffer {<length>}"}. Otherwise,
-   * the result starts with {@code "{"}, then the length and a colon, followed by the signed byte
-   * values separated by spaces, and ends with a trailing space (historical format).
+   * the result starts with '{', then the length and a colon, followed by the signed byte values
+   * separated by spaces, and ends with a trailing space (historical format).
    *
    * <p>Format stability is not guaranteed. Do not parse this output.
    */

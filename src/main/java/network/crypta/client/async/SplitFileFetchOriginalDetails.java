@@ -24,6 +24,7 @@ import org.jetbrains.annotations.NotNull;
  * @param clientDetails client detail bytes written verbatim to storage
  * @param isFinalFetch true when the request is a final-fetch operation
  */
+@SuppressWarnings("ArrayRecordComponent")
 public record SplitFileFetchOriginalDetails(
     FreenetURI thisKey, FreenetURI origKey, byte[] clientDetails, boolean isFinalFetch) {
   /**

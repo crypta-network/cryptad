@@ -9,10 +9,10 @@ package network.crypta.node.stats;
  * CACHE}). Code that aggregates statistics, maintains per-store counters, or routes operations can
  * use this value object as a compact, strongly-typed identifier.
  *
- * <p>The class is immutable and value-based: two instances are equal when both their key type and
- * store type are equal. This makes it safe to use as a key in maps or as an element in sets. The
- * {@link #hashCode()} implementation combines both components, and {@link #toString()} produces a
- * concise human-readable representation helpful for logging and diagnostics.
+ * <p>The class is immutable and value-based: two instances of this class are equal when both their
+ * key type and store type are equal. This makes it safe to use as a key in maps or as an element in
+ * sets. The {@link #hashCode()} implementation combines both components, and {@link #toString()}
+ * produces a concise human-readable representation helpful for logging and diagnostics.
  *
  * <ul>
  *   <li><strong>Immutability:</strong> both fields are {@code final}; instances are thread-safe.
@@ -62,15 +62,13 @@ public class DataStoreInstanceType {
   }
 
   /** {@inheritDoc} */
+  @SuppressWarnings("EqualsGetClass")
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
     if (o == null || getClass() != o.getClass()) return false;
-
     DataStoreInstanceType that = (DataStoreInstanceType) o;
-
-    if (key != that.key) return false;
-    return store == that.store;
+    return key == that.key && store == that.store;
   }
 
   /** {@inheritDoc} */

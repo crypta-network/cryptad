@@ -116,7 +116,7 @@ class PeerNodeOfferSupportTest {
       field.setAccessible(true);
       field.set(target, value);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to set field: " + fieldName, e);
+      throw new LinkageError("Failed to set field: " + fieldName, e);
     }
   }
 

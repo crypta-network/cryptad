@@ -308,7 +308,8 @@ class DatastoreCheckerTest {
     // Executor runs inline; DatastoreChecker should process immediately and then terminate lazily.
     verify(scheduler, times(2)).tripPendingKey(any(KeyBlock.class));
     verify(scheduler, times(1))
-        .finishRegister(argThat(arr -> arr.length == 1 && arr[0] == getter), eq(false), eq(false));
+        .finishRegister(
+            argThat(arr -> arr.length == 1 && getter.equals(arr[0])), eq(false), eq(false));
   }
 
   @Test
@@ -341,7 +342,8 @@ class DatastoreCheckerTest {
 
     verify(scheduler, times(1)).tripPendingKey(b1);
     verify(scheduler, times(1))
-        .finishRegister(argThat(arr -> arr.length == 1 && arr[0] == getter), eq(false), eq(true));
+        .finishRegister(
+            argThat(arr -> arr.length == 1 && getter.equals(arr[0])), eq(false), eq(true));
   }
 
   @Test
@@ -402,11 +404,12 @@ class DatastoreCheckerTest {
 
     // Finish is invoked from inside the PersistentJob with persistent=true and anyValid=true
     verify(scheduler, times(1))
-        .finishRegister(argThat(arr -> arr.length == 1 && arr[0] == getter), eq(true), eq(true));
+        .finishRegister(
+            argThat(arr -> arr.length == 1 && getter.equals(arr[0])), eq(true), eq(true));
     // No transient finish
     verify(scheduler, never())
         .finishRegister(
-            argThat(arr -> arr.length == 1 && arr[0] == getter), eq(false), anyBoolean());
+            argThat(arr -> arr.length == 1 && getter.equals(arr[0])), eq(false), anyBoolean());
   }
 
   @Test
@@ -467,6 +470,7 @@ class DatastoreCheckerTest {
         .fetch(any(Key.class), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean(), any());
     verify(scheduler, times(2)).tripPendingKey(block);
     verify(scheduler, times(1))
-        .finishRegister(argThat(arr -> arr.length == 1 && arr[0] == getter), eq(false), eq(false));
+        .finishRegister(
+            argThat(arr -> arr.length == 1 && getter.equals(arr[0])), eq(false), eq(false));
   }
 }

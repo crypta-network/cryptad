@@ -14,6 +14,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -76,9 +77,9 @@ public class NativeDeployer {
     } else if (env.isLinux()) {
       baseOS = "linux";
     } else {
-      baseOS = env.osNameRaw().toLowerCase();
+      baseOS = env.osNameRaw().toLowerCase(Locale.ROOT);
     }
-    final String sysArch = System.getProperty("os.arch").toLowerCase();
+    final String sysArch = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
     final String detectedArch = env.arch(); // "amd64" or "arm64"
     if ("amd64".equals(detectedArch) || sysArch.matches("(i?[x0-9]86_64|amd64)")) {
       OS_ARCH = baseOS + "-x86_64";

@@ -164,6 +164,7 @@ public class TempRaf extends FilterRAF {
    *
    * @throws IOException if closing the delegate RAF fails or underlying I/O errors occur.
    */
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   @Override
   public synchronized void close() throws IOException {
 

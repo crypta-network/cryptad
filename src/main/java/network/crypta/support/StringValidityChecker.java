@@ -2,6 +2,8 @@ package network.crypta.support;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Utility methods for validating strings against platform and protocol constraints.
@@ -25,9 +27,9 @@ public final class StringValidityChecker {
   /* Characters blacklisted for IDN labels.
    * Source: http://kb.mozillazine.org/Network.IDN.blacklist_chars
    */
-  private static final HashSet<Character> idnBlacklist = buildIdnBlacklist();
+  private static final Set<Character> idnBlacklist = buildIdnBlacklist();
 
-  private static HashSet<Character> buildIdnBlacklist() {
+  private static Set<Character> buildIdnBlacklist() {
     final int[] codes = {
       0x0020, /* SPACE */
       0x00A0, /* NO-BREAK SPACE */
@@ -173,7 +175,7 @@ public final class StringValidityChecker {
    * @throws NullPointerException if {@code filename} is {@code null}
    */
   public static boolean isWindowsReservedFilename(String filename) {
-    filename = filename.toLowerCase();
+    filename = filename.toLowerCase(Locale.ROOT);
     // Only the segment before the first dot counts as the "base name" on Windows.
     // Example: "con.blah.txt" is treated as base name "con" and is therefore reserved.
     int nameEnd = filename.indexOf('.');
@@ -218,7 +220,8 @@ public final class StringValidityChecker {
    * @throws NullPointerException if {@code text} is {@code null}
    */
   public static boolean containsNoIDNBlacklistCharacters(String text) {
-    for (Character c : text.toCharArray()) {
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       if (idnBlacklist.contains(c)) return false;
     }
 
@@ -237,11 +240,14 @@ public final class StringValidityChecker {
    * @throws NullPointerException if {@code text} is {@code null}
    */
   public static boolean containsNoLinebreaks(String text) {
-    for (Character c : text.toCharArray()) {
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       if (Character.getType(c) == Character.LINE_SEPARATOR
           || Character.getType(c) == Character.PARAGRAPH_SEPARATOR
           || c == '\n'
-          || c == '\r') return false;
+          || c == '\r') {
+        return false;
+      }
     }
 
     return true;
@@ -281,7 +287,8 @@ public final class StringValidityChecker {
    * @throws NullPointerException if {@code text} is {@code null}
    */
   public static boolean containsNoControlCharacters(String text) {
-    for (Character c : text.toCharArray()) {
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       if (Character.getType(c) == Character.CONTROL) return false;
     }
 
@@ -303,7 +310,8 @@ public final class StringValidityChecker {
    */
   public static boolean containsNoInvalidFormatting(String text) {
     FormattingState state = new FormattingState();
-    for (char c : text.toCharArray()) {
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       if (!applyFormattingChar(state, c)) return false;
     }
 
@@ -340,23 +348,31 @@ public final class StringValidityChecker {
   }
 
   private static boolean applyAnnotation(FormattingState s, char c) {
-    switch (c) {
-      case 0xFFF9: // INTERLINEAR ANNOTATION ANCHOR
-        if (s.inAnnotatedText || s.inAnnotation) return false;
+    return switch (c) {
+      case 0xFFF9 -> { // INTERLINEAR ANNOTATION ANCHOR
+        if (s.inAnnotatedText || s.inAnnotation) {
+          yield false;
+        }
         s.inAnnotatedText = true;
-        return true;
-      case 0xFFFA: // INTERLINEAR ANNOTATION SEPARATOR
-        if (!s.inAnnotatedText) return false;
+        yield true;
+      }
+      case 0xFFFA -> { // INTERLINEAR ANNOTATION SEPARATOR
+        if (!s.inAnnotatedText) {
+          yield false;
+        }
         s.inAnnotatedText = false;
         s.inAnnotation = true;
-        return true;
-      case 0xFFFB: // INTERLINEAR ANNOTATION TERMINATOR
-        if (!s.inAnnotation) return false;
+        yield true;
+      }
+      case 0xFFFB -> { // INTERLINEAR ANNOTATION TERMINATOR
+        if (!s.inAnnotation) {
+          yield false;
+        }
         s.inAnnotation = false;
-        return true;
-      default:
-        return true;
-    }
+        yield true;
+      }
+      default -> true;
+    };
   }
 
   private static final class FormattingState {
@@ -379,7 +395,8 @@ public final class StringValidityChecker {
    * @throws NullPointerException if {@code text} is {@code null}
    */
   public static boolean isLatinLettersAndNumbersOnly(String text) {
-    for (char c : text.toCharArray()) {
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       if ((c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9')) {
         return false;
       }

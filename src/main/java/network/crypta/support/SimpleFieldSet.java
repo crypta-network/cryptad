@@ -386,19 +386,28 @@ public class SimpleFieldSet {
    */
   public synchronized String get(String key) {
     int idx = key.indexOf(MULTI_LEVEL_CHAR);
-    switch (idx) {
-      case -1:
-        return values.get(key);
-      case 0:
-        return (subset("") == null) ? null : subset("").get(key.substring(1));
-      default:
-        if (subsets == null) return null;
+    return switch (idx) {
+      case -1 -> values.get(key);
+      case 0 -> {
+        SimpleFieldSet root = subset("");
+        if (root == null) {
+          yield null;
+        }
+        yield root.get(key.substring(1));
+      }
+      default -> {
+        if (subsets == null) {
+          yield null;
+        }
         String before = key.substring(0, idx);
         String after = key.substring(idx + 1);
         SimpleFieldSet fs = subsets.get(before);
-        if (fs == null) return null;
-        return fs.get(after);
-    }
+        if (fs == null) {
+          yield null;
+        }
+        yield fs.get(after);
+      }
+    };
   }
 
   /**

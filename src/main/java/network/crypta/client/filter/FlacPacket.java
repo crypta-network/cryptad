@@ -170,6 +170,7 @@ class FlacMetadataBlock extends FlacPacket {
    *
    * @param type the target metadata category; unsupported values are ignored safely
    */
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public void setMetadataBlockType(BlockType type) {
     switch (type) {
       case STREAMINFO:

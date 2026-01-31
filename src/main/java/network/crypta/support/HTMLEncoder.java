@@ -42,7 +42,7 @@ public class HTMLEncoder {
   /**
    * Encode a string for safe inclusion in HTML.
    *
-   * <p>Characters that have entries in {@link HTMLEntities#encodeMap} are replaced by {@code
+   * <p>Characters that have entries in {@link HTMLEntities#encodeMap} are replaced by {@literal
    * &name;} (or numeric) entity references, except that ASCII letters and decimal digits are always
    * left unchanged. Characters without a mapping are appended verbatim.
    *
@@ -50,6 +50,7 @@ public class HTMLEncoder {
    * @return encoded string suitable for use as HTML text or attribute value
    * @throws NullPointerException if {@code s} is {@code null}
    */
+  @SuppressWarnings("EscapedEntity")
   public static String encode(String s) {
     int n = s.length();
     StringBuilder sb = new StringBuilder(n);
@@ -97,9 +98,9 @@ public class HTMLEncoder {
    * Encode a string so it is safe for XML attribute values and text nodes.
    *
    * <p>This routine emits numeric character references for the minimal set of XML-special
-   * characters: {@code &} ({@code &#38;}), {@code "} ({@code &#34;}), {@code '} ({@code &#39;}),
-   * {@code <} ({@code &#60;}), and {@code >} ({@code &#62;}). It does not perform the broader HTML
-   * entity substitution that {@link #encode(String)} performs.
+   * characters: {@literal &} ({@literal &#38;}), {@literal "} ({@literal &#34;}), {@literal '}
+   * ({@literal &#39;}), {@literal <} ({@literal &#60;}), and {@literal >} ({@literal &#62;}). It
+   * does not perform the broader HTML entity substitution that {@link #encode(String)} performs.
    *
    * <p>References:
    *
@@ -111,6 +112,7 @@ public class HTMLEncoder {
    * @return XML-safe string using numeric character references
    * @throws NullPointerException if {@code s} is {@code null}
    */
+  @SuppressWarnings("EscapedEntity")
   public static String encodeXML(String s) {
     // XML grammar requires quoting of these characters in attribute values and text. We use
     // numeric references to avoid dependencies on entity declarations.

@@ -125,6 +125,7 @@ public class Base64 {
   }
 
   /* Core encoder used by both alphabets. {@code equalsPad} toggles '=' padding. */
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static String encode(byte[] in, boolean equalsPad, char[] alphabet) {
     char[] out = new char[((in.length + 2) / 3) * 4];
     int rem = in.length % 3;
@@ -202,6 +203,7 @@ public class Base64 {
    * value in the selected alphabet yields an IllegalBase64Exception. When the (unpadded) length
    * mod 4 == 1, the length is illegal and an exception is thrown.
    */
+  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static byte[] decode(String inStr, byte[] reverseAlphabet) throws IllegalBase64Exception {
     try {
       char[] in = inStr.toCharArray();

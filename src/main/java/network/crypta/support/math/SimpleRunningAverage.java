@@ -87,6 +87,7 @@ public final class SimpleRunningAverage implements RunningAverage {
     return new Snapshot(curLen, initValue, nextSlotPtr, refs.clone(), total, totalReports);
   }
 
+  @SuppressWarnings("ArrayRecordComponent")
   private record Snapshot(
       int curLen,
       double initValue,

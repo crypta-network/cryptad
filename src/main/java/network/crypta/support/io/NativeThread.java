@@ -250,6 +250,7 @@ public class NativeThread extends Thread {
   }
 
   // Map Java priority to native nice and apply it when allowed.
+  @SuppressWarnings("ThreadPriorityCheck")
   private boolean setNativePriority(int prio) {
     LOG.debug("setNativePriority({})", prio);
     setPriority(prio);

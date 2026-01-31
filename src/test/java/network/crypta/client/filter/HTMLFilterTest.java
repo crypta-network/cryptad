@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
@@ -175,7 +176,7 @@ class HTMLFilterTest {
     String sanitized = out.toString(StandardCharsets.UTF_8);
 
     // Assert: script content is swallowed and no <script> tag remains; body text preserved
-    assertFalse(sanitized.toLowerCase().contains("<script"));
+    assertFalse(sanitized.toLowerCase(Locale.ROOT).contains("<script"));
     assertTrue(sanitized.contains("Hello"));
   }
 

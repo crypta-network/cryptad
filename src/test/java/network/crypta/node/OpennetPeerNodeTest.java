@@ -240,7 +240,7 @@ class OpennetPeerNodeTest {
     OpennetPeerNode pn = newPeerLocal("0.25");
 
     // Age beyond min age should clear added fields and not return TOO_NEW_PEER
-    pn.setAddedReason(ConnectionType.PATH_FOLDING.ordinal());
+    pn.setAddedReason(ConnectionType.PATH_FOLDING.code());
     pn.peerAddedTime = System.currentTimeMillis() - (OpennetManager.DROP_MIN_AGE + 1000);
     setPrivateField(pn, FIELD_PEER_NODE_STATUS, PeerManager.PEER_NODE_STATUS_CONNECTED);
 

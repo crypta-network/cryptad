@@ -131,7 +131,7 @@ public class FileUtil {
    * @throws IllegalStateException if filesystem creation fails after sanitization and validation
    */
   public static File safeOnionFile(String rel) {
-    if ((new File(rel)).isAbsolute()) {
+    if (new File(rel).isAbsolute()) {
       throw new IllegalArgumentException(rel + " isn't relative");
     }
     StringBuilder safe = new StringBuilder();

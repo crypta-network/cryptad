@@ -173,7 +173,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     }
 
     if (updateSeed
-        && !(seed.toString())
+        && !seed.toString()
             .equals(DEV_URANDOM)) // Don't try to update the seed file if we know it won't be
       // possible anyway
       seedfile = seed;

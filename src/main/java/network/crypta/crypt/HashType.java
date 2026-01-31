@@ -20,6 +20,7 @@ import org.bitpedia.util.TigerTree;
  * Ed2MessageDigest} and {@link TigerTree}). For JCA-backed algorithms, a preferred {@link Provider}
  * is selected at startup via {@link Util#mdProviders}.
  */
+@SuppressWarnings("ImmutableEnumChecker")
 public enum HashType {
   // Keep constants synchronized with Util.mdProviders keys.
   SHA1(1, "SHA1", 20),

@@ -65,6 +65,7 @@ public class RAFOutputStream extends OutputStream {
    * @throws IOException if the stream has been closed or the underlying {@code RAF} rejects the
    *     write operation.
    */
+  @Override
   public void write(int b) throws IOException {
     write(new byte[] {(byte) b}, 0, 1);
   }

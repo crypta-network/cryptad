@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -112,14 +113,14 @@ class DataStoreInstanceTypeTest {
         .flatMap(
             store -> {
               // For each key, pair with the next key (cyclic) to ensure difference
-              return Arrays.stream(keys)
-                  .map(
-                      key ->
+              return IntStream.range(0, keys.length)
+                  .mapToObj(
+                      index ->
                           Arguments.of(
                               store,
-                              key, // first
+                              keys[index],
                               store,
-                              keys[(key.ordinal() + 1) % keys.length] // second with diff key
+                              keys[(index + 1) % keys.length] // second with diff key
                               ));
             });
   }
@@ -140,18 +141,18 @@ class DataStoreInstanceTypeTest {
   static Stream<Arguments> sameKey_differentStore() {
     DataStoreType[] stores = DataStoreType.values();
     DataStoreKeyType[] keys = DataStoreKeyType.values();
-    return Arrays.stream(keys)
+    return IntStream.range(0, keys.length)
+        .boxed()
         .flatMap(
-            key ->
-                Arrays.stream(stores)
-                    .map(
-                        store ->
+            keyIndex ->
+                IntStream.range(0, stores.length)
+                    .mapToObj(
+                        storeIndex ->
                             Arguments.of(
-                                store,
-                                key, // first
-                                stores[(store.ordinal() + 1) % stores.length],
-                                key // second with diff store
-                                )));
+                                stores[storeIndex],
+                                keys[keyIndex],
+                                stores[(storeIndex + 1) % stores.length],
+                                keys[keyIndex])));
   }
 
   @ParameterizedTest(name = "not equals when same key {1} but different stores {0}!={2}")

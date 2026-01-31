@@ -371,20 +371,18 @@ class NodeInsertRequestHandlerTest {
       field.setAccessible(true);
       field.set(target, value);
     } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new AssertionError("Failed to set field: " + fieldName, e);
+      throw new LinkageError("Failed to set field: " + fieldName, e);
     }
   }
 
   @SuppressWarnings("java:S3011")
-  private static <T> T getPrivateField(Class<?> declaringClass, Object target, String fieldName) {
+  private static Object getPrivateField(Class<?> declaringClass, Object target, String fieldName) {
     try {
       Field field = declaringClass.getDeclaredField(fieldName);
       field.setAccessible(true);
-      @SuppressWarnings("unchecked")
-      T value = (T) field.get(target);
-      return value;
+      return field.get(target);
     } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new AssertionError("Failed to read field: " + fieldName, e);
+      throw new LinkageError("Failed to read field: " + fieldName, e);
     }
   }
 }

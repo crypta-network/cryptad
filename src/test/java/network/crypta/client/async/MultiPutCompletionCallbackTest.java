@@ -500,6 +500,7 @@ class MultiPutCompletionCallbackTest {
   /* ===== Serialization-focused helpers and tests ===== */
 
   /** Serializable callback that records received events. */
+  @SuppressWarnings("UnusedVariable")
   private static class RecordingCallback implements PutCompletionCallback, Serializable {
     @Serial private static final long serialVersionUID = 1L;
 

@@ -2,6 +2,7 @@ package network.crypta.support;
 
 import java.net.MalformedURLException;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import network.crypta.client.DefaultMIMETypes;
@@ -70,18 +71,34 @@ public class MediaType {
       return;
     }
     subtype = mediaType.substring(slash + 1, semicolon).trim();
-    String[] parsedParameters = mediaType.substring(semicolon + 1).split(";");
-    for (String parameter : parsedParameters) {
+    String params = mediaType.substring(semicolon + 1);
+    int paramStart = 0;
+    while (paramStart < params.length()) {
+      int paramEnd = params.indexOf(';', paramStart);
+      if (paramEnd == -1) {
+        paramEnd = params.length();
+      }
+      String parameter = params.substring(paramStart, paramEnd);
+      if (parameter.trim().isEmpty()) {
+        if (paramEnd == params.length()) {
+          break;
+        }
+        throw new MalformedURLException("Illegal parameter: “%s”".formatted(parameter));
+      }
       int equals = parameter.indexOf('=');
       if (equals == -1) {
         throw new MalformedURLException("Illegal parameter: “%s”".formatted(parameter));
       }
       // Normalize parameter names to lowercase and unquote quoted values.
-      String name = parameter.substring(0, equals).trim().toLowerCase();
+      String name = parameter.substring(0, equals).trim().toLowerCase(Locale.ROOT);
       String value = parameter.substring(equals + 1).trim();
       if (value.startsWith("\"") && value.endsWith("\""))
         value = value.substring(1, value.length() - 1).trim();
       this.parameters.put(name, value);
+      if (paramEnd == params.length()) {
+        break;
+      }
+      paramStart = paramEnd + 1;
     }
   }
 
@@ -180,7 +197,7 @@ public class MediaType {
    * @return parameter value, or {@code null} if not present
    */
   public String getParameter(String name) {
-    return parameters.get(name.toLowerCase());
+    return parameters.get(name.toLowerCase(Locale.ROOT));
   }
 
   /**
@@ -195,8 +212,8 @@ public class MediaType {
    */
   public MediaType setParameter(String name, String value) {
     MediaType newMediaType = new MediaType(type, subtype, parameters);
-    if (value == null) newMediaType.parameters.remove(name.toLowerCase());
-    else newMediaType.parameters.put(name.toLowerCase(), value);
+    if (value == null) newMediaType.parameters.remove(name.toLowerCase(Locale.ROOT));
+    else newMediaType.parameters.put(name.toLowerCase(Locale.ROOT), value);
     return newMediaType;
   }
 
@@ -207,11 +224,11 @@ public class MediaType {
    * @return {@code this} if the parameter was absent; otherwise a new {@link MediaType}
    */
   public MediaType removeParameter(String name) {
-    if (!parameters.containsKey(name.toLowerCase())) {
+    if (!parameters.containsKey(name.toLowerCase(Locale.ROOT))) {
       return this;
     }
     MediaType newMediaType = new MediaType(type, subtype, parameters);
-    newMediaType.parameters.remove(name.toLowerCase());
+    newMediaType.parameters.remove(name.toLowerCase(Locale.ROOT));
     return newMediaType;
   }
 

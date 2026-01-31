@@ -49,7 +49,7 @@ class NodeNetworkSubsystemTest {
       field.setAccessible(true);
       field.set(target, value);
     } catch (ReflectiveOperationException e) {
-      throw new AssertionError("Failed to set field: " + name, e);
+      throw new LinkageError("Failed to set field: " + name, e);
     }
   }
 

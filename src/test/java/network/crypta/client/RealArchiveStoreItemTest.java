@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.ArrayBucket;
@@ -41,7 +42,7 @@ class RealArchiveStoreItemTest {
   @Test
   @DisplayName("dataAsBucket: returns same read-only reader with expected size/content")
   void dataAsBucket_whenConstructed_expectReadOnlySameSizeAndIdentity() throws Exception {
-    byte[] data = "hello".getBytes();
+    byte[] data = "hello".getBytes(StandardCharsets.UTF_8);
     ArrayBucket underlying = new ArrayBucket(data);
     FreenetURI key = new FreenetURI("KSK", "doc");
 
@@ -70,7 +71,7 @@ class RealArchiveStoreItemTest {
       "dataSize/spaceUsed: spaceUsed is captured at construction; dataSize reflects live underlying"
           + " size")
   void dataSize_whenUnderlyingMutates_expectSpaceUsedStaysInitial() throws Exception {
-    byte[] initial = "abc".getBytes(); // 3 bytes
+    byte[] initial = "abc".getBytes(StandardCharsets.UTF_8); // 3 bytes
     ArrayBucket underlying = new ArrayBucket(initial);
     FreenetURI key = new FreenetURI("KSK", "doc");
     RealArchiveStoreItem item = new RealArchiveStoreItem(mockContext, key, "file.bin", underlying);
@@ -80,7 +81,7 @@ class RealArchiveStoreItemTest {
 
     // Mutate the underlying ArrayBucket directly (MultiReaderBucket does not set it read-only).
     java.io.OutputStream os = underlying.getOutputStream();
-    os.write("abcdef".getBytes()); // now 6 bytes
+    os.write("abcdef".getBytes(StandardCharsets.UTF_8)); // now 6 bytes
     os.close();
 
     assertEquals(6L, item.dataSize(), "dataSize should reflect updated underlying size");
@@ -90,7 +91,7 @@ class RealArchiveStoreItemTest {
   @Test
   @DisplayName("getReaderBucket: returns independent reader; still open while main reader is alive")
   void getReaderBucket_whenOpen_expectIndependentReadableReader() throws Exception {
-    byte[] data = "012345".getBytes();
+    byte[] data = "012345".getBytes(StandardCharsets.UTF_8);
     ArrayBucket underlying = new ArrayBucket(data);
     FreenetURI key = new FreenetURI("KSK", "doc");
     RealArchiveStoreItem item = new RealArchiveStoreItem(mockContext, key, "entry", underlying);
@@ -118,7 +119,7 @@ class RealArchiveStoreItemTest {
       "innerClose: frees main reader; subsequent getReaderBucket returns null; main reader becomes"
           + " unusable")
   void innerClose_whenCalled_expectReadersClosed() {
-    byte[] data = "xyz".getBytes();
+    byte[] data = "xyz".getBytes(StandardCharsets.UTF_8);
     ArrayBucket underlying = new ArrayBucket(data);
     FreenetURI key = new FreenetURI("KSK", "doc");
     RealArchiveStoreItem item = new RealArchiveStoreItem(mockContext, key, "x", underlying);
@@ -137,7 +138,7 @@ class RealArchiveStoreItemTest {
   @Test
   @DisplayName("innerClose: idempotent; underlying freed only once")
   void innerClose_whenCalledTwice_expectUnderlyingFreedOnce() {
-    byte[] data = "payload".getBytes();
+    byte[] data = "payload".getBytes(StandardCharsets.UTF_8);
     ArrayBucket underlyingReal = new ArrayBucket(data);
     ArrayBucket underlyingSpy = spy(underlyingReal);
     FreenetURI key = new FreenetURI("KSK", "doc");
@@ -168,7 +169,7 @@ class RealArchiveStoreItemTest {
   @Test
   @DisplayName("close via real context: removing triggers cleanup and frees underlying once")
   void close_whenRegisteredWithRealContext_expectUnderlyingFreedOnceAndNoFurtherReaders() {
-    byte[] data = "abcdef".getBytes();
+    byte[] data = "abcdef".getBytes(StandardCharsets.UTF_8);
     ArrayBucket underlyingReal = new ArrayBucket(data);
     ArrayBucket underlyingSpy = spy(underlyingReal);
     FreenetURI key = new FreenetURI("KSK", "doc");
@@ -187,7 +188,7 @@ class RealArchiveStoreItemTest {
   @Test
   @DisplayName("getDataOrThrow: returns the same instance as dataAsBucket()")
   void getDataOrThrow_whenCalled_expectSameAsDataAsBucket() {
-    ArrayBucket underlying = new ArrayBucket("v".getBytes());
+    ArrayBucket underlying = new ArrayBucket("v".getBytes(StandardCharsets.UTF_8));
     FreenetURI key = new FreenetURI("KSK", "doc");
     RealArchiveStoreItem item = new RealArchiveStoreItem(mockContext, key, "n", underlying);
 

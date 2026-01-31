@@ -51,7 +51,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
       f.setAccessible(true);
       f.set(target, value);
     } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new AssertionError("Failed to set field '" + fieldName + "'", e);
+      throw new LinkageError("Failed to set field '" + fieldName + "'", e);
     }
   }
 
@@ -98,7 +98,7 @@ class SplitFileFetcherCrossSegmentStorageTest {
       f.setAccessible(true);
       f.set(seg, segNo);
     } catch (NoSuchFieldException | IllegalAccessException e) {
-      throw new AssertionError(e);
+      throw new LinkageError(e.getMessage(), e);
     }
     return seg;
   }

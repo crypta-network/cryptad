@@ -92,6 +92,7 @@ public class Native16Code extends FECCode {
    * @param packetLength length in bytes of each packet; must be an even value
    * @throws IllegalArgumentException if {@code packetLength} is not 16-bit aligned
    */
+  @Override
   protected void encode(
       byte[][] src, int[] srcOff, byte[][] repair, int[] repairOff, int[] index, int packetLength) {
 
@@ -116,6 +117,7 @@ public class Native16Code extends FECCode {
    * @param inOrder whether packets are already ordered by index and need no shuffling
    * @throws IllegalArgumentException if {@code packetLength} is not 16-bit aligned
    */
+  @Override
   protected void decode(
       byte[][] pkts, int[] pktsOff, int[] index, int packetLength, boolean inOrder) {
     if (packetLength % 2 != 0) {
@@ -235,6 +237,7 @@ public class Native16Code extends FECCode {
    *
    * @return human-readable summary of the code dimensions for debugging purposes
    */
+  @Override
   public String toString() {
     return "Native16Code[k=" + k + ",n=" + n + "]";
   }

@@ -31,6 +31,7 @@ import java.security.spec.ECGenParameterSpec;
  *
  * <p>Thread safety: enum instances are immutable and safe for concurrent use.
  */
+@SuppressWarnings("ImmutableEnumChecker")
 public enum KeyPairType {
   ECP256("EC", "secp256r1", 91),
   ECP384("EC", "secp384r1", 120),

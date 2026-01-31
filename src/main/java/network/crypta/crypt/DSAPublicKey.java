@@ -53,7 +53,7 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
   public DSAPublicKey(DSAGroup g, BigInteger y) {
     if (y.signum() != 1) throw new IllegalArgumentException();
     this.y = y;
-    if (g == Global.DSAgroupBigA) g = null;
+    if (Global.DSAgroupBigA.equals(g)) g = null;
     this.group = g;
     if (y.compareTo(getGroup().getP()) > 0)
       throw new IllegalArgumentException("y must be < p but y=" + y + " p=" + getGroup().getP());
@@ -72,7 +72,7 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
   public DSAPublicKey(DSAGroup g, String yAsHexString) throws NumberFormatException {
     this.y = new BigInteger(yAsHexString, 16);
     if (y.signum() != 1) throw new IllegalArgumentException();
-    if (g == Global.DSAgroupBigA) g = null;
+    if (Global.DSAgroupBigA.equals(g)) g = null;
     this.group = g;
   }
 
@@ -99,7 +99,7 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
    */
   public DSAPublicKey(InputStream is) throws IOException, CryptFormatException {
     DSAGroup g = (DSAGroup) DSAGroup.read(is);
-    if (g == Global.DSAgroupBigA) g = null;
+    if (Global.DSAgroupBigA.equals(g)) g = null;
     group = g;
     y = Util.readMPI(is);
     if (y.compareTo(getGroup().getP()) > 0)
@@ -300,9 +300,10 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
    * @param o other key.
    * @return {@code true} if both {@code y} and the group are equal.
    */
+  @SuppressWarnings("NonOverridingEquals")
   public boolean equals(DSAPublicKey o) {
-    if (this == o) { // Not necessary, but a very cheap optimization
-      return true;
+    if (o == null) {
+      return false;
     }
     return y.compareTo(o.y) == 0 && getGroup().equals(o.getGroup());
   }
@@ -318,11 +319,11 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
   public boolean equals(Object o) {
     if (this == o) { // Not necessary, but a very cheap optimization
       return true;
-    } else if ((o == null) || (o.getClass() != this.getClass())) {
+    }
+    if (!(o instanceof DSAPublicKey other)) {
       return false;
     }
-    return y.compareTo(((DSAPublicKey) o).y) == 0
-        && getGroup().equals(((DSAPublicKey) o).getGroup());
+    return y.compareTo(other.y) == 0 && getGroup().equals(other.getGroup());
   }
 
   /**

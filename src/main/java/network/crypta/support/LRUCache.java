@@ -47,7 +47,7 @@ public final class LRUCache<K extends Comparable<K>, V> {
       mExpirationDate =
           (mExpirationDelay < Long.MAX_VALUE)
               ? (System.currentTimeMillis() + mExpirationDelay)
-              : (Long.MAX_VALUE);
+              : Long.MAX_VALUE;
     }
 
     /** Returns whether the entry is expired at the given wall-clock time. */

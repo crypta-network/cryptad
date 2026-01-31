@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.support.Fields;
 import network.crypta.support.Loader;
@@ -83,7 +84,7 @@ public class Util {
     try {
       MessageDigest sunMd = MessageDigest.getInstance(algo, sun);
       sunMd.digest();
-      if (md.getProvider() != sunMd.getProvider()) {
+      if (!Objects.equals(md.getProvider(), sunMd.getProvider())) {
         long timeDef = benchmark(md);
         long timeSun = benchmark(sunMd);
         LOG.debug(

@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.client.async.ClientGetter
  * @see network.crypta.client.async.ClientPutter
  */
+@SuppressWarnings("JavaUtilDate")
 public class SplitfileProgressEvent implements ClientEvent {
   private static final Logger LOG = LoggerFactory.getLogger(SplitfileProgressEvent.class);
 
@@ -200,7 +201,7 @@ public class SplitfileProgressEvent implements ClientEvent {
             fatallyFailedBlocks,
             finalizedTotal);
     } else {
-      sb.append((100 * (succeedBlocks) / minSuccessfulBlocks));
+      sb.append(100 * succeedBlocks / minSuccessfulBlocks);
       sb.append('%');
     }
     sb.append(' ');
