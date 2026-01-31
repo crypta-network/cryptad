@@ -270,7 +270,7 @@ public class WebPFilter extends RIFFFilter {
     if (ctx.hasVP8L
         || ctx.hasANIM
         || ctx.hasALPH
-        || (!ctx.hasVP8X)
+        || !ctx.hasVP8X
         || ((ctx.vp8xFlags & ALPHA_FLAG) == 0)) {
       throw new DataFilterException(
           l10n(L10N_INVALID_TITLE),

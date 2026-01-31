@@ -297,12 +297,12 @@ public class BMPFilter implements ContentDataFilter {
   }
 
   private void validateStartWord(byte[] startWord) throws DataFilterException {
-    if ((!Arrays.equals(startWord, bmpHeaderwindows))
-        && (!Arrays.equals(startWord, bmpHeaderos2bArray))
-        && (!Arrays.equals(startWord, bmpHeaderos2cIcon))
-        && (!Arrays.equals(startWord, bmpHeaderos2cPointer))
-        && (!Arrays.equals(startWord, bmpHeaderos2Icon))
-        && (!Arrays.equals(startWord, bmpHeaderos2Pointer))) { // Checking the first word
+    if (!Arrays.equals(startWord, bmpHeaderwindows)
+        && !Arrays.equals(startWord, bmpHeaderos2bArray)
+        && !Arrays.equals(startWord, bmpHeaderos2cIcon)
+        && !Arrays.equals(startWord, bmpHeaderos2cPointer)
+        && !Arrays.equals(startWord, bmpHeaderos2Icon)
+        && !Arrays.equals(startWord, bmpHeaderos2Pointer)) { // Checking the first word
       throwHeaderError(l10n("InvalidStartWordT"), l10n("InvalidStartWordD"));
     }
   }

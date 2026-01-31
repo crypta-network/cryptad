@@ -31,8 +31,8 @@ import network.crypta.clients.http.ExternalLinkToadlet;
  * URI line; dedicated directive/comment lines are intentionally removed. The canonical extended
  * header is {@code #EXTM3U}. A typical entry line that accompanies metadata looks like {@code
  * #EXTINF:233,Title 1} followed by a path, for example {@code Somewhere\\title1.mp3}. In prose the
- * rule is often described as: {@code #EXTINF:&lt;length in seconds&gt;,&lt;title&gt;} followed by
- * {@code &lt;path&gt;}.
+ * rule is often described as: {@code #EXTINF:<length in seconds>,<title>} followed by {@code
+ * <path>}.
  *
  * <ul>
  *   <li>Comments beginning with {@code #} are dropped.
