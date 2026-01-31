@@ -69,6 +69,21 @@ class MediaTypeTest {
   }
 
   @Test
+  @DisplayName("parse constructor: trailing semicolon after params is ignored")
+  void constructor_whenTrailingSemicolon_expectParsedCorrectly() throws Exception {
+    // Arrange
+    String input = MIME_TEXT_HTML + "; " + PARAM_CHARSET + "=" + CHARSET_UTF8 + ";";
+
+    // Act
+    MediaType mt = new MediaType(input);
+
+    // Assert
+    assertEquals(CHARSET_UTF8, mt.getParameter(PARAM_CHARSET));
+    assertEquals(
+        MIME_TEXT_HTML + "; " + PARAM_CHARSET + "=\"" + CHARSET_UTF8 + "\"", mt.toString());
+  }
+
+  @Test
   @SuppressWarnings("ConstantValue")
   @DisplayName("parse constructor: null input throws NPE with message")
   void constructor_whenNull_expectNullPointerException() {

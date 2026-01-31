@@ -962,7 +962,7 @@ public class DefaultMIMETypes {
 
   /** Complete pattern for a MIME type with optional parameters; used for plausibility checks. */
   private static final Pattern MIME_TYPE =
-      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*" + PARAM + "*");
+      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*" + PARAM + "*\\s*;?\\s*");
 
   /**
    * Compatibility pattern for legacy Infocalypse repositories that encoded a numeric suffix as a

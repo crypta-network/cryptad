@@ -73,12 +73,18 @@ public class MediaType {
     subtype = mediaType.substring(slash + 1, semicolon).trim();
     String params = mediaType.substring(semicolon + 1);
     int paramStart = 0;
-    while (paramStart <= params.length()) {
+    while (paramStart < params.length()) {
       int paramEnd = params.indexOf(';', paramStart);
       if (paramEnd == -1) {
         paramEnd = params.length();
       }
       String parameter = params.substring(paramStart, paramEnd);
+      if (parameter.trim().isEmpty()) {
+        if (paramEnd == params.length()) {
+          break;
+        }
+        throw new MalformedURLException("Illegal parameter: “%s”".formatted(parameter));
+      }
       int equals = parameter.indexOf('=');
       if (equals == -1) {
         throw new MalformedURLException("Illegal parameter: “%s”".formatted(parameter));
