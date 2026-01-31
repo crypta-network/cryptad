@@ -812,7 +812,7 @@ public final class FileUtil {
    */
   public static boolean equals(File a, File b) {
     if (Objects.equals(a, b)) return true;
-    if (a.equals(b)) return true;
+    if (a == null || b == null) return false;
     a = getCanonicalFile(a);
     b = getCanonicalFile(b);
     return a.equals(b);
