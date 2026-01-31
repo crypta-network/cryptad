@@ -11,7 +11,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -27,7 +26,7 @@ import java.util.regex.Pattern;
  *   <li>Parse a human-friendly interval string (e.g., {@code 2h30m15.250s}) into milliseconds with
  *       overflow saturation.
  *   <li>Create RFC&nbsp;1123 timestamps suitable for HTTP headers.
- *   <li>Truncate a {@link java.util.Date} to the start of its UTC day.
+ *   <li>Truncate an {@link Instant} to the start of its UTC day.
  * </ul>
  *
  * <p>The class is stateless and thread-safe.
@@ -283,14 +282,14 @@ public class TimeUtil {
   /**
    * Truncates a date to the start of its UTC day.
    *
-   * <p>Returns a new {@link Date} representing the same instant rounded down to {@code
+   * <p>Returns a new {@link Instant} representing the same instant rounded down to {@code
    * 00:00:00.000} in UTC for that day.
    *
-   * @param date the input date, not {@code null}
-   * @return a new {@link Date} aligned to the UTC day boundary
-   * @throws NullPointerException if {@code date} is {@code null}
+   * @param instant the input instant, not {@code null}
+   * @return a new {@link Instant} aligned to the UTC day boundary
+   * @throws NullPointerException if {@code instant} is {@code null}
    */
-  public static Date setTimeToZero(final Date date) {
-    return Date.from(date.toInstant().truncatedTo(ChronoUnit.DAYS));
+  public static Instant setTimeToZero(final Instant instant) {
+    return instant.truncatedTo(ChronoUnit.DAYS);
   }
 }

@@ -1,9 +1,12 @@
 package network.crypta.node.useralerts;
 
 import java.io.File;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.FeedMessage;
 import network.crypta.l10n.NodeL10n;
@@ -39,9 +42,13 @@ public class DroppedOldPeersUserAlert implements UserAlert {
   private static final String KEY_BUILD_NUMBER = "buildNumber";
   private static final String KEY_BUILD_DATE = "buildDate";
 
+  private static final DateTimeFormatter BUILD_DATE_FORMATTER =
+      DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)
+          .withZone(ZoneId.systemDefault());
+
   private final List<String> droppedOldPeers;
   private int droppedOldPeersBuild;
-  private Date droppedOldPeersDate;
+  private Instant droppedOldPeersDate;
   private final File peersBrokenFile;
   private final long creationTime;
 
@@ -60,7 +67,7 @@ public class DroppedOldPeersUserAlert implements UserAlert {
     this.peersBrokenFile = droppedPeersFile;
     creationTime = System.currentTimeMillis();
     this.droppedOldPeersBuild = 0;
-    this.droppedOldPeersDate = new Date();
+    this.droppedOldPeersDate = Instant.now();
   }
 
   /**
@@ -120,7 +127,7 @@ public class DroppedOldPeersUserAlert implements UserAlert {
         new String[] {
           "" + droppedOldPeers.size(),
           "" + droppedOldPeersBuild,
-          droppedOldPeersDate.toString(),
+          formatBuildDate(droppedOldPeersDate),
           peersBrokenFile.toString()
         };
     return l10n("droppingOldFriendFull", keys, values);
@@ -141,7 +148,7 @@ public class DroppedOldPeersUserAlert implements UserAlert {
         new String[] {
           "" + droppedOldPeers.size(),
           "" + droppedOldPeersBuild,
-          droppedOldPeersDate.toString(),
+          formatBuildDate(droppedOldPeersDate),
           peersBrokenFile.toString()
         };
     return l10n("droppingOldFriendTitle", keys, values);
@@ -306,9 +313,13 @@ public class DroppedOldPeersUserAlert implements UserAlert {
         new String[] {
           Integer.toString(droppedOldPeers.size()),
           Integer.toString(e.buildNumber),
-          e.buildDate.toString(),
+          formatBuildDate(e.buildDate),
           peersBrokenFile.getPath()
         };
     return l10n("droppingOldFriendTitle", keys, values);
+  }
+
+  private static String formatBuildDate(Instant buildDate) {
+    return BUILD_DATE_FORMATTER.format(buildDate);
   }
 }

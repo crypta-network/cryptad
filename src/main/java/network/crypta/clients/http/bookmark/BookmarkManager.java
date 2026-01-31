@@ -7,9 +7,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
-import java.util.Date;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import network.crypta.client.async.USKCallback;
 import network.crypta.client.async.USKFoundEdition;
 import network.crypta.clients.http.FProxyToadlet;
@@ -186,9 +189,12 @@ public class BookmarkManager implements RequestClient {
    *
    * <p>This operation is additive: it does not remove or overwrite existing user bookmarks.
    */
-  @SuppressWarnings("JavaUtilDate")
   public void reAddDefaultBookmarks() {
-    BookmarkCategory bc = new BookmarkCategory(l10n("defaultBookmarks") + " - " + new Date());
+    DateTimeFormatter formatter =
+        DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)
+            .withZone(ZoneId.systemDefault());
+    BookmarkCategory bc =
+        new BookmarkCategory(l10n("defaultBookmarks") + " - " + formatter.format(Instant.now()));
     addBookmark("/", bc);
     innerReadBookmarks("/", bc, DEFAULT_BOOKMARKS);
   }

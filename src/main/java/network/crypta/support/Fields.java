@@ -1,15 +1,14 @@
 package network.crypta.support;
 
 import java.nio.ByteBuffer;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.StringTokenizer;
-import java.util.TimeZone;
 import network.crypta.config.Dimension;
 import network.crypta.l10n.NodeL10n;
 import org.slf4j.Logger;
@@ -71,6 +70,9 @@ public abstract class Fields {
   private static final String[] MULTIPLES_2 = {
     "k", "K", "m", "M", "g", "G", "t", "T", "p", "P", "e", "E"
   };
+
+  private static final DateTimeFormatter SEC_TO_DATE_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern("yyyyMMdd-HH:mm:ss").withZone(ZoneOffset.UTC);
 
   // IEC size suffix helpers are implemented without a regex to avoid ReDoS risks.
 
@@ -421,11 +423,8 @@ public abstract class Fields {
    * @param time seconds since 1970-01-01T00:00:00Z.
    * @return formatted timestamp in GMT.
    */
-  @SuppressWarnings("JavaUtilDate")
   public static String secToDateTime(long time) {
-    DateFormat f = new SimpleDateFormat("yyyyMMdd-HH:mm:ss");
-    f.setTimeZone(TimeZone.getTimeZone("GMT"));
-    String dateString = f.format(new Date(time * 1000));
+    String dateString = SEC_TO_DATE_TIME_FORMATTER.format(Instant.ofEpochSecond(time));
 
     if (dateString.endsWith("-00:00:00")) {
       dateString = dateString.substring(0, 8);
@@ -1406,13 +1405,12 @@ public abstract class Fields {
    *
    * @param a first date or {@code null}.
    * @param b second date or {@code null}.
-   * @return the result of {@link Date#compareTo(Date)} on normalized values.
+   * @return the result of {@link Instant#compareTo(Instant)} on normalized values.
    */
-  @SuppressWarnings("JavaUtilDate")
-  public static int compare(Date a, Date b) {
-    // Normalize nulls to epoch so Date#compareTo can be used safely.
-    a = (a != null ? a : new Date(0));
-    b = (b != null ? b : new Date(0));
+  public static int compare(Instant a, Instant b) {
+    // Normalize nulls to epoch so Instant#compareTo can be used safely.
+    a = (a != null ? a : Instant.EPOCH);
+    b = (b != null ? b : Instant.EPOCH);
     return a.compareTo(b);
   }
 

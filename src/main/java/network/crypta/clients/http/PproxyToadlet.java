@@ -6,10 +6,13 @@ import java.io.File;
 import java.io.IOException;
 import java.net.SocketException;
 import java.net.URI;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -55,6 +58,9 @@ import org.slf4j.LoggerFactory;
  * HTTPRequest, ToadletContext)} for each request.
  */
 public class PproxyToadlet extends Toadlet {
+  private static final DateTimeFormatter PLUGIN_STARTED_FORMATTER =
+      DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)
+          .withZone(ZoneId.systemDefault());
   private static final Logger LOG = LoggerFactory.getLogger(PproxyToadlet.class);
   private static final String KEY_PLUGINS = "plugins";
   private static final String PATH_SEPARATOR = "/";
@@ -704,7 +710,8 @@ public class PproxyToadlet extends Toadlet {
     pluginRow.addChild("td", formatPluginVersion(pluginInfo));
     if (advancedMode) {
       pluginRow.addChild("td", pluginInfo.getThreadName());
-      pluginRow.addChild("td", new Date(pluginInfo.getStarted()).toString());
+      pluginRow.addChild(
+          "td", PLUGIN_STARTED_FORMATTER.format(Instant.ofEpochMilli(pluginInfo.getStarted())));
     }
     if (pluginInfo.isStopping()) {
       addStoppingCells(pluginRow);

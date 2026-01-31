@@ -1,24 +1,23 @@
 package network.crypta.clients.fcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.events.SplitfileProgressCounts;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.client.events.SplitfileProgressTimestamps;
 import network.crypta.support.SimpleFieldSet;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 class SimpleProgressMessageTest {
 
   private static final String IDENTIFIER = "req-123";
-  private static final Date SUCCESS_TIME = new Date(1_700_000_000_000L);
-  private static final Date FAILURE_TIME = new Date(1_700_000_100_000L);
+  private static final Instant SUCCESS_TIME = Instant.ofEpochMilli(1_700_000_000_000L);
+  private static final Instant FAILURE_TIME = Instant.ofEpochMilli(1_700_000_100_000L);
 
   @Test
   void getFieldSet_whenMinSuccessFetchZero_excludesOptionalField() {
@@ -35,7 +34,7 @@ class SimpleProgressMessageTest {
     assertEquals("2", fieldSet.get("Failed"));
     assertEquals("1", fieldSet.get("FatallyFailed"));
     assertEquals("4", fieldSet.get("Succeeded"));
-    assertEquals(Long.toString(SUCCESS_TIME.getTime()), fieldSet.get("LastProgress"));
+    assertEquals(Long.toString(SUCCESS_TIME.toEpochMilli()), fieldSet.get("LastProgress"));
     assertEquals("true", fieldSet.get("FinalizedTotal"));
     assertEquals(IDENTIFIER, fieldSet.get("Identifier"));
     assertEquals("true", fieldSet.get("Global"));
@@ -87,33 +86,25 @@ class SimpleProgressMessageTest {
   }
 
   @Test
-  void getLatestSuccess_whenModified_doesNotAffectStoredValue() {
+  void getLatestSuccess_whenRead_matchesEventValue() {
     SplitfileProgressEvent event =
         new SplitfileProgressEvent(
             new SplitfileProgressCounts(5, 3, 0, 0, 4, 0, false),
             new SplitfileProgressTimestamps(SUCCESS_TIME, null));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, false, event);
 
-    Date returned = message.getLatestSuccess();
-    returned.setTime(42L);
-
-    assertNotSame(event.latestSuccess, returned);
-    assertEquals(SUCCESS_TIME.getTime(), message.getLatestSuccess().getTime());
+    assertEquals(SUCCESS_TIME, message.getLatestSuccess());
   }
 
   @Test
-  void getLatestFailure_whenModified_doesNotAffectStoredValue() {
+  void getLatestFailure_whenRead_matchesEventValue() {
     SplitfileProgressEvent event =
         new SplitfileProgressEvent(
             new SplitfileProgressCounts(5, 3, 0, 1, 4, 0, false),
             new SplitfileProgressTimestamps(SUCCESS_TIME, FAILURE_TIME));
     SimpleProgressMessage message = new SimpleProgressMessage(IDENTIFIER, false, event);
 
-    Date returned = message.getLatestFailure();
-    returned.setTime(84L);
-
-    assertNotSame(event.latestFailure, returned);
-    assertEquals(FAILURE_TIME.getTime(), message.getLatestFailure().getTime());
+    assertEquals(FAILURE_TIME, message.getLatestFailure());
   }
 
   @Test
@@ -130,8 +121,8 @@ class SimpleProgressMessageTest {
     assertEquals(9, message.getFetchedBlocks());
     assertEquals(2, message.getFailedBlocks());
     assertEquals(1, message.getFatalyFailedBlocks());
-    assertEquals(FAILURE_TIME.getTime(), message.getLatestFailure().getTime());
-    assertEquals(SUCCESS_TIME.getTime(), message.getLatestSuccess().getTime());
+    assertEquals(FAILURE_TIME, message.getLatestFailure());
+    assertEquals(SUCCESS_TIME, message.getLatestSuccess());
     assertTrue(message.isTotalFinalized());
     assertEquals("SimpleProgress", message.getName());
   }

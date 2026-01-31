@@ -15,25 +15,25 @@ import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.MessageDigest;
-import java.text.DateFormat;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TimeZone;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
@@ -1169,7 +1169,6 @@ public class LocationManager implements ByteCounter {
     if (log) recordLocChange(randomReset, fromDupLocation);
   }
 
-  @SuppressWarnings("JavaUtilDate")
   private void recordLocChange(final boolean randomReset, final boolean fromDupLocation) {
     node.network()
         .executor()
@@ -1186,14 +1185,21 @@ public class LocationManager implements ByteCounter {
               try (FileOutputStream os = new FileOutputStream(locationLog, true);
                   BufferedWriter bw =
                       new BufferedWriter(new OutputStreamWriter(os, StandardCharsets.ISO_8859_1))) {
-                DateFormat df = DateFormat.getDateTimeInstance();
-                df.setTimeZone(TimeZone.getTimeZone("GMT"));
+                DateTimeFormatter formatter =
+                    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+                        .withLocale(Locale.getDefault())
+                        .withZone(ZoneOffset.UTC);
                 String suffix = "";
                 if (randomReset) {
                   suffix =
                       " (random reset" + (fromDupLocation ? " from duplicated location" : "") + ")";
                 }
-                bw.write(df.format(new Date()) + " : " + getLocation() + suffix + '\n');
+                bw.write(
+                    formatter.format(Instant.now(systemClockUTC))
+                        + " : "
+                        + getLocation()
+                        + suffix
+                        + '\n');
               } catch (IOException e) {
                 LOG.error("Unable to write changed location to {} : {}", locationLog, e, e);
               }

@@ -1,7 +1,7 @@
 package network.crypta.node;
 
 import java.io.Serial;
-import java.util.Date;
+import java.time.Instant;
 
 /**
  * Exception indicating that a remote peer was rejected because its software build is older than the
@@ -26,7 +26,7 @@ public class PeerTooOldException extends Exception {
    * Peer-reported build date. May be {@code null} when the date is unknown or not provided by the
    * remote peer.
    */
-  public final Date buildDate;
+  public final Instant buildDate;
 
   /**
    * Constructs a new exception with contextual details about the outdated remote peer.
@@ -35,7 +35,7 @@ public class PeerTooOldException extends Exception {
    * @param build peer-reported build number
    * @param d peer-reported build date; may be {@code null} if unavailable
    */
-  public PeerTooOldException(final String reason, final int build, final Date d) {
+  public PeerTooOldException(final String reason, final int build, final Instant d) {
     super("Peer too old: " + reason + " from " + build + " at " + d);
     this.buildDate = d;
     this.buildNumber = build;

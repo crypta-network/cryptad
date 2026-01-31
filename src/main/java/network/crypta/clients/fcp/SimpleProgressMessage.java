@@ -1,6 +1,6 @@
 package network.crypta.clients.fcp;
 
-import java.util.Date;
+import java.time.Instant;
 import java.util.Objects;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.node.Node;
@@ -27,7 +27,7 @@ import network.crypta.support.SimpleFieldSet;
  * <ul>
  *   <li>Identifier mapping ensures clients can correlate updates with the originating request.
  *   <li>Global flag communicates whether the request resides in the shared queue.
- *   <li>Date fields are defensively cloned to prevent callers from mutating internal state.
+ *   <li>Timestamps use {@link java.time.Instant} for immutable time snapshots.
  * </ul>
  *
  * @see SplitfileProgressEvent
@@ -107,7 +107,8 @@ public class SimpleProgressMessage extends FCPMessage {
      * limitation is addressed. */
     fs.put("Succeeded", localEvent.succeedBlocks);
     fs.put(
-        "LastProgress", localEvent.latestSuccess != null ? localEvent.latestSuccess.getTime() : 0);
+        "LastProgress",
+        localEvent.latestSuccess != null ? localEvent.latestSuccess.toEpochMilli() : 0);
     fs.put("FinalizedTotal", localEvent.finalizedTotal);
     if (localEvent.minSuccessFetchBlocks != 0)
       fs.put("MinSuccessFetchBlocks", localEvent.minSuccessFetchBlocks);
@@ -225,19 +226,14 @@ public class SimpleProgressMessage extends FCPMessage {
   /**
    * Retrieves the timestamp of the most recent successful block transfer, if any.
    *
-   * <p>The returned {@link Date} is a defensive clone of the event's {@code latestSuccess} field to
-   * prevent accidental mutation of internal state. A {@code null} value indicates that no
-   * successful completion has been recorded yet. Consumers should treat the timestamp as wall-clock
-   * time in the default timezone of the node that generated the event; no normalization is
-   * performed here.
+   * <p>A {@code null} value indicates that no successful completion has been recorded yet.
    *
-   * @return clone of the latest success timestamp, or {@code null} when no successes have occurred
-   *     for this request.
+   * @return latest success timestamp, or {@code null} when no successes have occurred for this
+   *     request.
    */
-  public Date getLatestSuccess() {
-    // clone() because Date is mutable
+  public Instant getLatestSuccess() {
     SplitfileProgressEvent localEvent = requireEvent();
-    return localEvent.latestSuccess != null ? (Date) localEvent.latestSuccess.clone() : null;
+    return localEvent.latestSuccess;
   }
 
   /**
@@ -273,18 +269,15 @@ public class SimpleProgressMessage extends FCPMessage {
   /**
    * Returns the timestamp of the most recent failure event, whether recoverable or fatal.
    *
-   * <p>The value is cloned from the underlying {@code latestFailure} field to preserve
-   * encapsulation while allowing callers to modify the returned {@link Date} safely. When no
-   * failures have occurred, {@code null} is returned. Consumers should consider pairing this value
-   * with {@link #getFailedBlocks()} or {@link #getFatalyFailedBlocks()} when diagnosing recent
-   * instability.
+   * <p>When no failures have occurred, {@code null} is returned. Consumers should consider pairing
+   * this value with {@link #getFailedBlocks()} or {@link #getFatalyFailedBlocks()} when diagnosing
+   * recent instability.
    *
-   * @return cloned timestamp of the last recorded failure, or {@code null} if none are available.
+   * @return timestamp of the last recorded failure, or {@code null} if none are available.
    */
-  public Date getLatestFailure() {
-    // clone() because Date is mutable
+  public Instant getLatestFailure() {
     SplitfileProgressEvent localEvent = requireEvent();
-    return localEvent.latestFailure != null ? (Date) localEvent.latestFailure.clone() : null;
+    return localEvent.latestFailure;
   }
 
   /**

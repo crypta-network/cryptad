@@ -6,18 +6,18 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.io.File;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.clients.fcp.ClientPut.COMPRESS_STATE;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 class UploadFileRequestStatusTest {
 
-  private static final Date SUCCESS_DATE = new Date(1_000L);
-  private static final Date FAILURE_DATE = new Date(2_000L);
+  private static final Instant SUCCESS_DATE = Instant.ofEpochMilli(1_000L);
+  private static final Instant FAILURE_DATE = Instant.ofEpochMilli(2_000L);
 
   @Test
   void constructor_whenInitialized_preservesProvidedMetadata() {

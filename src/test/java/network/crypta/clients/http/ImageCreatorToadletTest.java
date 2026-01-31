@@ -22,9 +22,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
-import java.text.SimpleDateFormat;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import java.util.TimeZone;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -94,9 +94,10 @@ class ImageCreatorToadletTest {
   @Test
   void handleMethodGET_whenIfModifiedSinceMatches_sendsNotModified() throws Exception {
     MultiValueTable<String, String> headers = new MultiValueTable<>();
-    SimpleDateFormat sdf = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
-    sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-    headers.put("if-modified-since", sdf.format(ImageCreatorToadlet.LAST_MODIFIED));
+    DateTimeFormatter formatter =
+        DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US)
+            .withZone(ZoneOffset.UTC);
+    headers.put("if-modified-since", formatter.format(ImageCreatorToadlet.LAST_MODIFIED));
     when(ctx.getHeaders()).thenReturn(headers);
 
     toadlet.handleMethodGET(new URI("/imagecreator/"), request, ctx);

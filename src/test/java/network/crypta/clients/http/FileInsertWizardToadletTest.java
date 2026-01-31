@@ -15,6 +15,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
+import java.time.Instant;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -246,7 +247,7 @@ class FileInsertWizardToadletTest {
         MultiValueTable<String, String> mvt,
         String mimeType,
         long length,
-        java.util.Date mTime) {
+        Instant mTime) {
       this.statusCode = code;
     }
 

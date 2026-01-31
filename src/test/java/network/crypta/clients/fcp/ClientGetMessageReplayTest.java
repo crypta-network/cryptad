@@ -9,7 +9,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.lang.reflect.Field;
-import java.util.Date;
+import java.time.Instant;
 import java.util.List;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
@@ -32,7 +32,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class ClientGetMessageReplayTest {
 
@@ -49,7 +49,7 @@ class ClientGetMessageReplayTest {
     PersistentRequestClient client = root.getGlobalForeverClient();
     FreenetURI uri = new FreenetURI("SSK@");
     SplitfileProgressCounts counts = new SplitfileProgressCounts(10, 5, 1, 0, 5, 5, true);
-    SplitfileProgressTimestamps timestamps = new SplitfileProgressTimestamps(new Date(0), null);
+    SplitfileProgressTimestamps timestamps = new SplitfileProgressTimestamps(Instant.EPOCH, null);
     SimpleProgressMessage progressMessage =
         new SimpleProgressMessage("req-1", true, new SplitfileProgressEvent(counts, timestamps));
     HashResult[] hashes = {new HashResult(HashType.SHA256, new byte[32])};

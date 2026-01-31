@@ -16,10 +16,10 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -4092,30 +4092,29 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * @param lastActivity The last activity of the request
    * @return The created table cell HTML node
    */
-  @SuppressWarnings("JavaUtilDate")
-  private HTMLNode createLastActivityCell(long now, Date lastActivity) {
+  private HTMLNode createLastActivityCell(long now, Instant lastActivity) {
     HTMLNode lastActivityCell = new HTMLNode("td", ATTR_CLASS, "request-last-activity");
     if (lastActivity == null) {
       // During normal operation, the lastActivity will never be null even if there was no
-      // activity yet. It will default to the Date when the request was added. (See
+      // activity yet. It will default to the timestamp when the request was added. (See
       // ClientRequester.getLatestSuccess() for the usability motivation behind that.)
       // lastActivity can, however, be null if the user had been using a pre-release of
-      // purge-db4o which did not store the lastActivity Date to the database yet.
+      // purge-db4o which did not store the lastActivity timestamp to the database yet.
       // Thus, we initialize to "unknown" instead of "never" to stress that there was possibly
-      // activity, but we cannot know because the Date was not stored yet.
+      // activity, but we cannot know because the timestamp was not stored yet.
       lastActivityCell.addChild("i", l10n("lastActivity.unknown"));
     } else {
       lastActivityCell.addChild(
-          "#", l10n("lastActivity.ago", "time", TimeUtil.formatTime(now - lastActivity.getTime())));
+          "#",
+          l10n("lastActivity.ago", "time", TimeUtil.formatTime(now - lastActivity.toEpochMilli())));
     }
     return lastActivityCell;
   }
 
   /**
-   * @see #createLastActivityCell(long, Date)
+   * @see #createLastActivityCell(long, Instant)
    */
-  @SuppressWarnings("JavaUtilDate")
-  private HTMLNode createLastFailureCell(long now, Date lastFailure) {
+  private HTMLNode createLastFailureCell(long now, Instant lastFailure) {
     HTMLNode lastFailureCell = new HTMLNode("td", ATTR_CLASS, "request-last-failure");
     if (lastFailure == null) {
       // This is "never" instead of "unknown" because the backend of RequestStatus uses null
@@ -4123,7 +4122,8 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       lastFailureCell.addChild("i", l10n("lastFailure.never"));
     } else {
       lastFailureCell.addChild(
-          "#", l10n("lastFailure.ago", "time", TimeUtil.formatTime(now - lastFailure.getTime())));
+          "#",
+          l10n("lastFailure.ago", "time", TimeUtil.formatTime(now - lastFailure.toEpochMilli())));
     }
     return lastFailureCell;
   }

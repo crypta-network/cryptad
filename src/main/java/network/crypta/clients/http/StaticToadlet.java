@@ -6,7 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URL;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.api.Bucket;
@@ -132,17 +132,16 @@ public class StaticToadlet extends Toadlet {
    * resources from the JAR, or possibly from a file in some setups, so we check the modification
    * time of the JAR for resources in a jar and the mtime for files.
    */
-  @SuppressWarnings("JavaUtilDate")
-  private Date getUrlMTime(URL url) {
+  private Instant getUrlMTime(URL url) {
     if (url == null) {
       return null;
     }
     if (url.getProtocol().equals("jar")) {
       File f = new File(url.getPath().substring(0, url.getPath().indexOf('!')));
-      return new Date(f.lastModified());
+      return Instant.ofEpochMilli(f.lastModified());
     } else if (url.getProtocol().equals("file")) {
       File f = new File(url.getPath());
-      return new Date(f.lastModified());
+      return Instant.ofEpochMilli(f.lastModified());
     } else {
       return null;
     }
@@ -199,7 +198,7 @@ public class StaticToadlet extends Toadlet {
     return !path.matches("^[A-Za-z0-9._/\\-]*$") || path.contains("..");
   }
 
-  @SuppressWarnings({"java:S2095", "JavaUtilDate"})
+  @SuppressWarnings("java:S2095")
   private void serveOverride(String path, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     File overrideFile = this.container.getOverrideFile();
@@ -238,7 +237,7 @@ public class StaticToadlet extends Toadlet {
           null,
           DefaultMIMETypes.guessMIMEType(path, false),
           fb.size(),
-          new Date(System.currentTimeMillis() - 1000)); // Already expired, we want it to reload it.
+          Instant.now().minusMillis(1000)); // Already expired, we want it to reload it.
       handedOff = true;
       ctx.writeData(fb);
     } catch (IOException _) {
@@ -270,7 +269,7 @@ public class StaticToadlet extends Toadlet {
     }
 
     URL url = getClass().getResource(ROOT_PATH + path);
-    Date mTime = getUrlMTime(url);
+    Instant mTime = getUrlMTime(url);
 
     ctx.sendReplyHeadersStatic(
         200, "OK", null, DefaultMIMETypes.guessMIMEType(path, false), data.size(), mTime);

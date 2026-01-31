@@ -25,7 +25,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Date;
+import java.time.Instant;
 import java.util.Objects;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.l10n.NodeL10n;
@@ -102,14 +102,13 @@ class StaticToadletTest {
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void handleMethodGET_whenResourceExists_streamsFromClasspath() throws Exception {
     URL resourceUrl =
         Objects.requireNonNull(
             StaticToadlet.class.getResource(StaticToadlet.ROOT_PATH + "base.css"));
     Path resourcePath = Path.of(resourceUrl.toURI());
     byte[] expectedBytes = Files.readAllBytes(resourcePath);
-    Date expectedMtime = new Date(resourcePath.toFile().lastModified());
+    Instant expectedMtime = Instant.ofEpochMilli(resourcePath.toFile().lastModified());
 
     InMemoryBucketFactory bucketFactory = new InMemoryBucketFactory();
     when(ctx.getBucketFactory()).thenReturn(bucketFactory);
@@ -126,7 +125,7 @@ class StaticToadletTest {
     RandomAccessBucket writtenBucket = bucketFactory.lastCreated;
     assertEquals(expectedBytes.length, writtenBucket.size());
 
-    ArgumentCaptor<Date> dateCaptor = ArgumentCaptor.forClass(Date.class);
+    ArgumentCaptor<Instant> dateCaptor = ArgumentCaptor.forClass(Instant.class);
     ArgumentCaptor<Long> lengthCaptor = ArgumentCaptor.forClass(Long.class);
     ArgumentCaptor<String> mimeCaptor = ArgumentCaptor.forClass(String.class);
 
@@ -177,7 +176,7 @@ class StaticToadletTest {
             isNull(),
             eq(DefaultMIMETypes.guessMIMEType("custom.txt", false)),
             eq(overrideFile.toFile().length()),
-            any(Date.class));
+            any(Instant.class));
     verify(ctx).writeData(any(Bucket.class));
     assertNull(toadlet.lastError());
   }

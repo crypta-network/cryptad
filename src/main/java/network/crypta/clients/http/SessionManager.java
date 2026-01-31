@@ -5,7 +5,7 @@ import static java.util.concurrent.TimeUnit.HOURS;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
-import java.util.Date;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -454,7 +454,7 @@ public final class SessionManager {
             mCookiePath,
             mCookieName,
             session.getID().toString(),
-            new Date(session.getExpirationTime())));
+            Instant.ofEpochMilli(session.getExpirationTime())));
   }
 
   /**

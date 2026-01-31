@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -348,7 +349,7 @@ public class ToadletContextImpl implements ToadletContext {
       MultiValueTable<String, String> mvt,
       String mimeType,
       long contentLength,
-      Date mTime)
+      Instant mTime)
       throws ToadletContextClosedException, IOException {
     if (mTime == null) throw new IllegalArgumentException();
     ReplyHeaders replyHeaders = ReplyHeaders.of(replyCode, replyDescription, mimeType, mvt);
@@ -683,7 +684,7 @@ public class ToadletContextImpl implements ToadletContext {
     String lastModString =
         options.modifiedTime() == null
             ? nowString
-            : TimeUtil.makeHTTPDate(options.modifiedTime().getTime());
+            : TimeUtil.makeHTTPDate(options.modifiedTime().toEpochMilli());
 
     mvt.put("last-modified", lastModString);
     mvt.put("date", nowString);
@@ -719,7 +720,7 @@ public class ToadletContextImpl implements ToadletContext {
     sockOutputStream.write(buf.toString().getBytes(StandardCharsets.US_ASCII));
   }
 
-  private static void addCachingHeaders(MultiValueTable<String, String> mvt, Date mTime) {
+  private static void addCachingHeaders(MultiValueTable<String, String> mvt, Instant mTime) {
     boolean allowCaching = mTime != null;
     String expiresTime;
     String cacheControl;
@@ -1468,7 +1469,7 @@ public class ToadletContextImpl implements ToadletContext {
  */
 record ReplyHeaderOptions(
     long contentLength,
-    Date modifiedTime,
+    Instant modifiedTime,
     boolean disconnect,
     boolean allowScripts,
     boolean allowFrames) {}

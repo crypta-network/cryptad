@@ -11,8 +11,8 @@ import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -68,10 +68,9 @@ class ToadletContextImplTest {
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void parseHTTPDate_whenValidString_parsesEpoch() throws Exception {
-    Date parsed = ToadletContextImpl.parseHTTPDate("Thu, 01 Jan 1970 00:00:00 GMT");
-    assertEquals(0L, parsed.getTime());
+    Instant parsed = ToadletContextImpl.parseHTTPDate("Thu, 01 Jan 1970 00:00:00 GMT").toInstant();
+    assertEquals(Instant.EPOCH, parsed);
   }
 
   @Test
@@ -154,10 +153,9 @@ class ToadletContextImplTest {
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void sendReplyHeaders_withModifiedTime_allowsCachingAndScripts() throws Exception {
     MultiValueTable<String, String> headers = new MultiValueTable<>();
-    Date modified = new Date(0L);
+    Instant modified = Instant.EPOCH;
 
     ReplyHeaders replyHeaders = ReplyHeaders.of(200, "OK", "text/html", headers);
     ReplyHeaderOptions options = new ReplyHeaderOptions(5, modified, false, true, true);
@@ -168,9 +166,9 @@ class ToadletContextImplTest {
     assertEquals("keep-alive", parsed.get("connection").getFirst());
     assertEquals("text/html; charset=UTF-8", parsed.get("content-type").getFirst());
     assertTrue(parsed.get("cache-control").getFirst().startsWith("public"));
-    assertEquals(
-        ToadletContextImpl.parseHTTPDate(parsed.get("last-modified").getFirst()).getTime(),
-        modified.getTime());
+    Instant lastModified =
+        ToadletContextImpl.parseHTTPDate(parsed.get("last-modified").getFirst()).toInstant();
+    assertEquals(modified, lastModified);
     String csp = parsed.get("content-security-policy").getFirst();
     assertTrue(csp.contains("frame-src 'self'"));
     assertTrue(csp.contains("unsafe-inline"));

@@ -120,7 +120,7 @@ final class PeerNodeReferenceSupport {
     if (sfs == null) {
       GregorianCalendar gc = new GregorianCalendar(2013, Calendar.JULY, 20);
       gc.setTimeZone(TimeZone.getTimeZone("GMT"));
-      throw new PeerTooOldException("No ECC support", 1449, gc.getTime());
+      throw new PeerTooOldException("No ECC support", 1449, gc.toInstant());
     }
     byte[] pub;
     try {

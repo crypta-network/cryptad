@@ -2,7 +2,7 @@ package network.crypta.clients.http;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.Date;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Set;
 import network.crypta.support.TimeUtil;
@@ -13,14 +13,14 @@ import network.crypta.support.TimeUtil;
  *
  * <p>This class encapsulates the state required to emit standards-compliant {@code Set-Cookie2}
  * headers for the web interface. Callers typically construct an instance with {@link #Cookie(URI,
- * String, String, Date)} and pass it to {@link ToadletContext#setCookie(Cookie)} to attach it to a
- * response. Validation routines enforce a conservative subset of RFC2965/RFC2616 so malformed or
+ * String, String, Instant)} and pass it to {@link ToadletContext#setCookie(Cookie)} to attach it to
+ * a response. Validation routines enforce a conservative subset of RFC2965/RFC2616 so malformed or
  * potentially dangerous values are rejected early. Instances are mutable only by subclasses (all
  * fields are {@code protected}); typical callers treat them as single-use values assembled on a
  * per-response basis.
  *
  * <p>Cookies produced here use version {@code 1}, default to discard-on-close, and expect absolute
- * paths with optional domains limited to HTTP(S) schemes. Date handling uses {@link
+ * paths with optional domains limited to HTTP(S) schemes. Timestamp handling uses {@link
  * TimeUtil#makeHTTPDate(long)} to format expiration timestamps in HTTP-date format. This class is
  * not thread-safe; create and use instances on the request-handling thread. It deliberately avoids
  * client-side storage concerns and focuses solely on producing outbound header strings suitable for
@@ -37,7 +37,6 @@ import network.crypta.support.TimeUtil;
  *
  * @author xor (xor@freenetproject.org)
  */
-@SuppressWarnings("JavaUtilDate")
 public class Cookie {
   /** Characters that must not appear unquoted in cookie values (based on RFC2616 separators). */
   private static final Set<Character> INVALID_VALUE_CHARACTERS =
@@ -88,9 +87,9 @@ public class Cookie {
 
   /**
    * Expiration timestamp interpreted in the GMT HTTP-date format during header serialization;
-   * callers provide an absolute {@link Date} in the future.
+   * callers provide an absolute {@link Instant} in the future.
    */
-  protected Date expirationDate;
+  protected Instant expirationDate;
 
   /**
    * Indicates whether the cookie should be discarded when the user agent session ends; defaults to
@@ -115,12 +114,12 @@ public class Cookie {
    *     names such as {@code domain} or {@code secure}.
    * @param myValue Payload to send to the client; may be {@code null} to request an empty cookie
    *     value and must avoid control characters and separator tokens.
-   * @param myExpirationDate Absolute expiration moment in the future; dates in the past cause an
+   * @param myExpirationDate Absolute expiration moment in the future; instants in the past cause an
    *     {@link IllegalArgumentException} during validation.
    * @throws IllegalArgumentException If any attribute violates RFC-inspired validation rules or the
    *     expiration time is not in the future.
    */
-  public Cookie(URI myPath, String myName, String myValue, Date myExpirationDate) {
+  public Cookie(URI myPath, String myName, String myValue, Instant myExpirationDate) {
     version = 1;
 
     domain = null;
@@ -368,14 +367,13 @@ public class Cookie {
    * {@link IllegalArgumentException}. Callers should compute the desired lifetime before invoking
    * this method to avoid partially constructed cookies.
    *
-   * @param expirationDate Absolute expiration {@link Date}; must represent a time after the current
-   *     system clock value.
-   * @return The same {@link Date} instance when valid; callers retain ownership of the mutable
-   *     object.
+   * @param expirationDate Absolute expiration {@link Instant}; must represent a time after the
+   *     current system clock value.
+   * @return The same {@link Instant} instance when valid; callers retain ownership of the value.
    * @throws IllegalArgumentException If the supplied date is in the past or exactly now.
    */
-  public static Date validateExpirationDate(Date expirationDate) {
-    if (new Date().after(expirationDate))
+  public static Instant validateExpirationDate(Instant expirationDate) {
+    if (Instant.now().isAfter(expirationDate))
       throw new IllegalArgumentException("Illegal expiration date, is in past: " + expirationDate);
 
     return expirationDate;
@@ -461,7 +459,7 @@ public class Cookie {
     sb.append(';');
 
     sb.append("expires=");
-    sb.append(TimeUtil.makeHTTPDate(expirationDate.getTime()));
+    sb.append(TimeUtil.makeHTTPDate(expirationDate.toEpochMilli()));
     sb.append(';');
 
     if (discard) {

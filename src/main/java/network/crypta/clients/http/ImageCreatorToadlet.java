@@ -9,8 +9,8 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
-import java.sql.Date;
 import java.text.ParseException;
+import java.time.Instant;
 import javax.imageio.ImageIO;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.support.MultiValueTable;
@@ -71,7 +71,7 @@ public class ImageCreatorToadlet extends Toadlet {
    * <p>Update this value whenever the rendering behavior or resource output changes so browsers can
    * correctly invalidate cached responses and fetch a fresh image.
    */
-  protected static final Date LAST_MODIFIED = new Date(1593361729000L);
+  protected static final Instant LAST_MODIFIED = Instant.ofEpochMilli(1593361729000L);
 
   private static final String WIDTH_PARAM = "width";
   private static final String HEIGHT_PARAM = "height";
@@ -194,9 +194,10 @@ public class ImageCreatorToadlet extends Toadlet {
       throws ToadletContextClosedException, IOException {
     if (ctx.getHeaders().containsKey("if-modified-since")) {
       try {
-        if (ToadletContextImpl.parseHTTPDate(ctx.getHeaders().getFirst("if-modified-since"))
-                .compareTo(LAST_MODIFIED)
-            == 0) {
+        Instant ifModifiedSince =
+            ToadletContextImpl.parseHTTPDate(ctx.getHeaders().getFirst("if-modified-since"))
+                .toInstant();
+        if (ifModifiedSince.equals(LAST_MODIFIED)) {
           ctx.sendReplyHeadersStatic(304, "Not Modified", null, "image/png", 0, LAST_MODIFIED);
           return true;
         }
