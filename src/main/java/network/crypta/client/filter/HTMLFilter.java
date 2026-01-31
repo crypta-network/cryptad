@@ -17,6 +17,7 @@ import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.charset.Charset;
 import java.nio.charset.MalformedInputException;
+import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
 import java.util.AbstractMap;
 import java.util.ArrayDeque;
@@ -28,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -446,29 +448,18 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     private void handleEndOfStream() throws IOException {
       switch (mode) {
-        case INTEXT:
-          flushPendingText();
-          break;
-        case INTAG:
-          w.write("<!-- truncated page: last tag not unfinished -->");
-          break;
-        case INTAGQUOTES:
-          w.write("<!-- truncated page: deleted unfinished tag: still in quotes -->");
-          break;
-        case INTAGSQUOTES:
-          w.write("<!-- truncated page: deleted unfinished tag: still in single quotes -->");
-          break;
-        case INTAGWHITESPACE:
-          w.write("<!-- truncated page: deleted unfinished tag: still in whitespace -->");
-          break;
-        case INTAGCOMMENT:
-          w.write("<!-- truncated page: deleted unfinished comment -->");
-          break;
-        case INTAGCOMMENTCLOSING:
-          w.write("<!-- truncated page: deleted unfinished comment, might be closing -->");
-          break;
-        default:
-          break;
+        case INTEXT -> flushPendingText();
+        case INTAG -> w.write("<!-- truncated page: last tag not unfinished -->");
+        case INTAGQUOTES ->
+            w.write("<!-- truncated page: deleted unfinished tag: still in quotes -->");
+        case INTAGSQUOTES ->
+            w.write("<!-- truncated page: deleted unfinished tag: still in single quotes -->");
+        case INTAGWHITESPACE ->
+            w.write("<!-- truncated page: deleted unfinished tag: still in whitespace -->");
+        case INTAGCOMMENT -> w.write("<!-- truncated page: deleted unfinished comment -->");
+        case INTAGCOMMENTCLOSING ->
+            w.write("<!-- truncated page: deleted unfinished comment, might be closing -->");
+        default -> {}
       }
     }
 
@@ -496,29 +487,14 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     private void dispatchTokenizerMode() throws IOException {
       switch (mode) {
-        case INTEXT:
-          handleTextMode();
-          break;
-        case INTAG:
-          handleTagMode();
-          break;
-        case INTAGQUOTES:
-          handleDoubleQuoteMode();
-          break;
-        case INTAGSQUOTES:
-          handleSingleQuoteMode();
-          break;
-        case INTAGCOMMENT:
-          handleCommentMode();
-          break;
-        case INTAGCOMMENTCLOSING:
-          handleCommentClosingMode();
-          break;
-        case INTAGWHITESPACE:
-          handleWhitespaceMode();
-          break;
-        default:
-          break;
+        case INTEXT -> handleTextMode();
+        case INTAG -> handleTagMode();
+        case INTAGQUOTES -> handleDoubleQuoteMode();
+        case INTAGSQUOTES -> handleSingleQuoteMode();
+        case INTAGCOMMENT -> handleCommentMode();
+        case INTAGCOMMENTCLOSING -> handleCommentClosingMode();
+        case INTAGWHITESPACE -> handleWhitespaceMode();
+        default -> {}
       }
     }
 
@@ -823,7 +799,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
     String tagContent;
     try (BufferedReader bufferedReader =
-        new BufferedReader(new InputStreamReader(m3uPlayerTagStream))) {
+        new BufferedReader(new InputStreamReader(m3uPlayerTagStream, StandardCharsets.UTF_8))) {
       StringBuilder stringBuilder = new StringBuilder("<script>");
       String line;
       while ((line = bufferedReader.readLine()) != null) {
@@ -837,6 +813,22 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return errorTag;
     }
     return tagContent;
+  }
+
+  private static String[] splitOnComma(String input) {
+    ArrayList<String> parts = new ArrayList<>();
+    int start = 0;
+    for (int i = 0; i < input.length(); i++) {
+      if (input.charAt(i) == ',') {
+        parts.add(input.substring(start, i));
+        start = i + 1;
+      }
+    }
+    parts.add(input.substring(start));
+    for (int i = parts.size() - 1; i >= 0 && parts.get(i).isEmpty(); i--) {
+      parts.remove(i);
+    }
+    return parts.toArray(new String[0]);
   }
 
   /**
@@ -1276,7 +1268,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     ParsedTag sanitize(HTMLParseContext pc) throws DataFilterException {
-      TagVerifier tv = allowedTagsVerifiers.get(element.toLowerCase());
+      TagVerifier tv = allowedTagsVerifiers.get(element.toLowerCase(Locale.ROOT));
       if (LOG.isTraceEnabled()) LOG.trace("Got verifier: {} for {}", tv, element);
       if (tv == null) {
         if (!DELETE_WIERD_STUFF) {
@@ -1375,7 +1367,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (separatorIndex >= 0 && separatorIndex == rawAttribute.length() - 1) {
         token.expectingValue = true;
         token.key = separatorIndex == 0 ? previousKey : rawAttribute.substring(0, separatorIndex);
-        token.key = token.key.toLowerCase();
+        token.key = token.key.toLowerCase(Locale.ROOT);
         return token;
       }
       if (separatorIndex > -1) {
@@ -1383,7 +1375,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         if (key.isEmpty()) {
           key = previousKey;
         }
-        token.key = key.toLowerCase();
+        token.key = key.toLowerCase(Locale.ROOT);
         String rawValue = rawAttribute.substring(separatorIndex + 1);
         token.value = stripQuotes(rawValue);
         return token;
@@ -3005,7 +2997,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     private void removeBlankEntries(Map<String, Object> attributes, boolean isXhtml) {
       attributes
           .entrySet()
-          .removeIf(entry -> entry.getValue() == null || entry.getValue().equals("") && isXhtml);
+          .removeIf(entry -> entry.getValue() == null || (entry.getValue().equals("") && isXhtml));
     }
 
     static String getHashString(Map<String, Object> h, String key) {
@@ -3553,7 +3545,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (rel == null) {
         return new RelParseResult(null, "", false, false);
       }
-      String lowercase = rel.toLowerCase();
+      String lowercase = rel.toLowerCase(Locale.ROOT);
       StringTokenizer tok = new StringTokenizer(lowercase, " ");
       int index = 0;
       String previousToken = null;
@@ -3598,7 +3590,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (rev == null) {
         return "";
       }
-      String lowercase = rev.toLowerCase();
+      String lowercase = rev.toLowerCase(Locale.ROOT);
       StringTokenizer tok = new StringTokenizer(lowercase, " ");
       StringBuilder builder = new StringBuilder(lowercase.length());
       while (tok.hasMoreTokens()) {
@@ -3699,7 +3691,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private boolean isStandardLinkType(String token) {
-      return standardRelTypes.contains(token.toLowerCase());
+      return standardRelTypes.contains(token.toLowerCase(Locale.ROOT));
     }
   }
 
@@ -3822,7 +3814,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
       // We drop the whole <input> if the type isn't allowed (case-insensitive)
       if (hn.get("type") != null
-          && !allowedTypes.contains(hn.get("type").toString().toLowerCase())) {
+          && !allowedTypes.contains(hn.get("type").toString().toLowerCase(Locale.ROOT))) {
         return dropTag();
       }
 
@@ -3898,7 +3890,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     }
 
     private void handleNamedMetaTag(String name, String content, Map<String, Object> output) {
-      String lowered = name.toLowerCase();
+      String lowered = name.toLowerCase(Locale.ROOT);
       if (SUPPORTED_NAME_FIELDS.contains(lowered)) {
         output.put("name", name);
         output.put(HtmlStrings.STR_CONTENT, content);
@@ -3911,8 +3903,8 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
 
     private void handleRobotsMeta(String name, String content, Map<String, Object> output) {
       StringBuilder normalized = new StringBuilder(content.length());
-      for (String token : content.split(",")) {
-        String trimmed = token.trim().toLowerCase();
+      for (String token : splitOnComma(content)) {
+        String trimmed = token.trim().toLowerCase(Locale.ROOT);
         if (!validRobotsValues.contains(trimmed)) {
           continue;
         }
@@ -3930,7 +3922,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     private boolean handleHttpEquivMeta(
         String httpEquiv, String content, Map<String, Object> output, HTMLParseContext pc)
         throws DataFilterException {
-      String lowered = httpEquiv.toLowerCase();
+      String lowered = httpEquiv.toLowerCase(Locale.ROOT);
       return switch (lowered) {
         case "expires" -> handleExpiresMeta(content, output);
         case "content-style-type" -> handleStyleTypeMeta(content, output);
@@ -4013,7 +4005,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       if (trimmed.isEmpty()) {
         return false;
       }
-      for (String token : trimmed.split(",")) {
+      for (String token : splitOnComma(trimmed)) {
         String cleaned = token.trim();
         if (!isValidLanguageToken(cleaned)) {
           return false;
@@ -4094,7 +4086,7 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
           seconds = getMetaRefreshRedirectMinInterval();
         }
         String after = content.substring(separatorIndex + 1).trim();
-        if (!after.toLowerCase().startsWith("url=")) {
+        if (!after.toLowerCase(Locale.ROOT).startsWith("url=")) {
           pc.writeAfterTag.append("<!-- no url but doesn't parse as number in meta refresh -->");
           return false;
         }

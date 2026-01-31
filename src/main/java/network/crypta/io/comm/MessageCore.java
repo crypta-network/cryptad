@@ -202,7 +202,7 @@ public class MessageCore {
   private void logIfUnclaimedWouldMatch(MessageFilter f, long tStart) {
     for (Message m : unclaimed) {
       MATCHED status = f.match(m, true, tStart);
-      if (status == MATCHED.MATCHED) {
+      if (status == MATCHED.FOUND) {
         // Don't match it, we timed out; two-level timeouts etc. may want it for the next filter.
         LOG.error("Timed out but should have matched in _unclaimed: {} for {}", m, f);
         break;
@@ -350,7 +350,7 @@ public class MessageCore {
         i.remove();
         return null;
       }
-      case MATCHED -> {
+      case FOUND -> {
         i.remove();
         // Set the message while holding the monitor so a concurrent waitFor() that is about to
         // time out can still observe the match.
@@ -390,7 +390,7 @@ public class MessageCore {
     for (ListIterator<MessageFilter> i = filters.listIterator(); i.hasNext(); ) {
       MessageFilter f = i.next();
       MATCHED status = f.match(m, false, tStart);
-      if (status == MATCHED.MATCHED) {
+      if (status == MATCHED.FOUND) {
         matched = true;
         match = f;
         i.remove();
@@ -547,7 +547,7 @@ public class MessageCore {
       Message m = i.next();
       // These messages have already arrived, so we can match against them even if we are timed out.
       MATCHED status = filter.match(m, true, now);
-      if (status == MATCHED.MATCHED) {
+      if (status == MATCHED.FOUND) {
         i.remove();
         if (LOG.isDebugEnabled()) LOG.debug("addAsyncFilter: matched in unclaimed queue");
         return m;
@@ -676,7 +676,7 @@ public class MessageCore {
       Iterator<Message> iterator,
       Message message) {
     MATCHED status = filter.match(message, true, startTime);
-    if (status == MATCHED.MATCHED) {
+    if (status == MATCHED.FOUND) {
       iterator.remove();
       if (LOG.isDebugEnabled()) LOG.debug("waitFor: matched in unclaimed queue");
       return message;

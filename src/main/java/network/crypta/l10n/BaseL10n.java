@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.MissingResourceException;
 import java.util.NoSuchElementException;
+import java.util.StringTokenizer;
 import java.util.regex.Pattern;
 import network.crypta.clients.http.TranslationToadlet;
 import network.crypta.support.HTMLNode;
@@ -68,98 +69,99 @@ public class BaseL10n {
     // Windows language codes must be preceded with WINDOWS and be in upper case hex, 4 digits.
     // See http://www.autohotkey.com/docs/misc/Languages.htm
 
-    CROATIAN("hr", "Hrvatski", "hrv", new String[] {"WINDOWS041A"}),
+    CROATIAN("hr", "Hrvatski", "hrv", aliases("WINDOWS041A")),
     ENGLISH(
         "en",
         "English",
         "eng",
-        new String[] {
-          "WINDOWS0409",
-          "WINDOWS0809",
-          "WINDOWS0C09",
-          "WINDOWS1009",
-          "WINDOWS1409",
-          "WINDOWS1809",
-          "WINDOWS1C09",
-          "WINDOWS2009",
-          "WINDOWS2409",
-          "WINDOWS2809",
-          "WINDOWS2C09",
-          "WINDOWS3009",
-          "WINDOWS3409"
-        }),
-    HUNGARIAN("hu", "magyar", "hun", new String[] {"WINDOWS040E"}),
+        aliases(
+            "WINDOWS0409",
+            "WINDOWS0809",
+            "WINDOWS0C09",
+            "WINDOWS1009",
+            "WINDOWS1409",
+            "WINDOWS1809",
+            "WINDOWS1C09",
+            "WINDOWS2009",
+            "WINDOWS2409",
+            "WINDOWS2809",
+            "WINDOWS2C09",
+            "WINDOWS3009",
+            "WINDOWS3409")),
+    HUNGARIAN("hu", "magyar", "hun", aliases("WINDOWS040E")),
     SPANISH(
         "es",
         "Español",
         "spa",
-        new String[] {
-          "WINDOWS040A",
-          "WINDOWS080A",
-          "WINDOWS0C0A",
-          "WINDOWS100A",
-          "WINDOWS140A",
-          "WINDOWS180A",
-          "WINDOWS1C0A",
-          "WINDOWS200A",
-          "WINDOWS240A",
-          "WINDOWS280A",
-          "WINDOWS2C0A",
-          "WINDOWS300A",
-          "WINDOWS340A",
-          "WINDOWS380A",
-          "WINDOWS3C0A",
-          "WINDOWS400A",
-          "WINDOWS440A",
-          "WINDOWS480A",
-          "WINDOWS4C0A",
-          "WINDOWS500A"
-        }),
-    DANISH("da", "Dansk", "dan", new String[] {"WINDOWS0406"}),
-    DUTCH("nl", "Nederlands", "nld", new String[] {"WINDOWS0413", "WINDOWS0813"}),
+        aliases(
+            "WINDOWS040A",
+            "WINDOWS080A",
+            "WINDOWS0C0A",
+            "WINDOWS100A",
+            "WINDOWS140A",
+            "WINDOWS180A",
+            "WINDOWS1C0A",
+            "WINDOWS200A",
+            "WINDOWS240A",
+            "WINDOWS280A",
+            "WINDOWS2C0A",
+            "WINDOWS300A",
+            "WINDOWS340A",
+            "WINDOWS380A",
+            "WINDOWS3C0A",
+            "WINDOWS400A",
+            "WINDOWS440A",
+            "WINDOWS480A",
+            "WINDOWS4C0A",
+            "WINDOWS500A")),
+    DANISH("da", "Dansk", "dan", aliases("WINDOWS0406")),
+    DUTCH("nl", "Nederlands", "nld", aliases("WINDOWS0413", "WINDOWS0813")),
     GERMAN(
         "de",
         "Deutsch",
         "deu",
-        new String[] {"WINDOWS0407", "WINDOWS0807", "WINDOWS0C07", "WINDOWS1007", "WINDOWS1407"}),
-    FINNISH("fi", "Suomi", "fin", new String[] {"WINDOWS040B"}),
+        aliases("WINDOWS0407", "WINDOWS0807", "WINDOWS0C07", "WINDOWS1007", "WINDOWS1407")),
+    FINNISH("fi", "Suomi", "fin", aliases("WINDOWS040B")),
     FRENCH(
         "fr",
         "Français",
         "fra",
-        new String[] {
-          "WINDOWS040C", "WINDOWS080C", "WINDOWS0C0C", "WINDOWS100C", "WINDOWS140C", "WINDOWS180C"
-        }),
-    ITALIAN("it", "Italiano", "ita", new String[] {"WINDOWS0410", "WINDOWS0810"}),
+        aliases(
+            "WINDOWS040C",
+            "WINDOWS080C",
+            "WINDOWS0C0C",
+            "WINDOWS100C",
+            "WINDOWS140C",
+            "WINDOWS180C")),
+    ITALIAN("it", "Italiano", "ita", aliases("WINDOWS0410", "WINDOWS0810")),
     // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
-    NORWEGIAN("nb-no", "Bokmål", "nob", new String[] {"WINDOWS0414", "WINDOWS0814"}),
-    POLISH("pl", "Polski", "pol", new String[] {"WINDOWS0415"}),
-    SWEDISH("sv", "Svenska", "swe", new String[] {"WINDOWS041D", "WINDOWS081D"}),
+    NORWEGIAN("nb-no", "Bokmål", "nob", aliases("WINDOWS0414", "WINDOWS0814")),
+    POLISH("pl", "Polski", "pol", aliases("WINDOWS0415")),
+    SWEDISH("sv", "Svenska", "swe", aliases("WINDOWS041D", "WINDOWS081D")),
     // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
-    CHINESE("zh-cn", "中文(简体)", "chn", new String[] {"WINDOWS0804", "WINDOWS1004"}),
+    CHINESE("zh-cn", "中文(简体)", "chn", aliases("WINDOWS0804", "WINDOWS1004")),
     // simplified chinese, used on mainland, Singapore and Malaysia
     // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
     CHINESE_TAIWAN(
-        "zh-tw", "中文(繁體)", "zh-tw", new String[] {"WINDOWS0404", "WINDOWS0C04", "WINDOWS1404"}),
+        "zh-tw", "中文(繁體)", "zh-tw", aliases("WINDOWS0404", "WINDOWS0C04", "WINDOWS1404")),
     // traditional chinese, used in Taiwan, Hong Kong and Macau
     RUSSIAN(
         "ru",
         "Русский",
         "rus",
-        new String[] {
-          "WINDOWS0419"
-        }), // Just one variant for russian. Belorussian is separate, code page 423, speakers may or
+        aliases("WINDOWS0419")), // Just one variant for russian. Belorussian is separate, code page
+    // 423, speakers may or
     // may not speak russian, I'm not including it.
-    JAPANESE("ja", "日本語", "jpn", new String[] {"WINDOWS0411"}),
-    PORTUGUESE("pt-PT", "Português do Portugal", "pt", new String[] {"WINDOWS0816"}),
+    JAPANESE("ja", "日本語", "jpn", aliases("WINDOWS0411")),
+    PORTUGUESE("pt-PT", "Português do Portugal", "pt", aliases("WINDOWS0816")),
     // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
-    BRAZILIAN_PORTUGUESE("pt-br", "Português do Brasil", "pt-br", new String[] {"WINDOWS0416"}),
-    GREEK("el", "Ελληνικά", "ell", new String[] {"WINDOWS0408"}),
-    UNLISTED(UNLISTED_LITERAL, UNLISTED_LITERAL, UNLISTED_LITERAL, new String[] {});
+    BRAZILIAN_PORTUGUESE("pt-br", "Português do Brasil", "pt-br", aliases("WINDOWS0416")),
+    GREEK("el", "Ελληνικά", "ell", aliases("WINDOWS0408")),
+    UNLISTED(UNLISTED_LITERAL, UNLISTED_LITERAL, UNLISTED_LITERAL, "");
 
     /** Internal identifier; must be unique. */
     public final String shortCode;
@@ -170,13 +172,20 @@ public class BaseL10n {
     /** Installer-facing language identifier; must be unique (see bug #2424). */
     public final String isoCode;
 
-    private final String[] aliases;
+    private final String aliases;
 
-    LANGUAGE(String shortCode, String fullName, String isoCode, String[] aliases) {
+    LANGUAGE(String shortCode, String fullName, String isoCode, String aliases) {
       this.shortCode = shortCode;
       this.fullName = fullName;
       this.isoCode = isoCode;
       this.aliases = aliases;
+    }
+
+    private static String aliases(String... values) {
+      if (values.length == 0) {
+        return "";
+      }
+      return String.join(",", values);
     }
 
     // No copy-constructor; enum constants are fixed.
@@ -196,9 +205,12 @@ public class BaseL10n {
             || currentLanguage.toString().equalsIgnoreCase(whatever)) {
           return currentLanguage;
         }
-        if (currentLanguage.aliases != null) {
-          for (String s : currentLanguage.aliases)
+        if (!currentLanguage.aliases.isEmpty()) {
+          StringTokenizer tokenizer = new StringTokenizer(currentLanguage.aliases, ",");
+          while (tokenizer.hasMoreTokens()) {
+            String s = tokenizer.nextToken();
             if (whatever.equalsIgnoreCase(s)) return currentLanguage;
+          }
         }
       }
       return null;

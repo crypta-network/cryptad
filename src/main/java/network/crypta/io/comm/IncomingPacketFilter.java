@@ -22,7 +22,7 @@ public interface IncomingPacketFilter {
    */
   enum DECODED {
     /** The packet was recognized and decoded; messages may have been dispatched to USM/filters. */
-    DECODED,
+    SUCCESS,
     /** No matching context was found; the packet was not decoded. */
     NOT_DECODED,
     /**

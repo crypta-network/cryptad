@@ -348,13 +348,9 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof FileRandomAccessBuffer other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    FileRandomAccessBuffer other = (FileRandomAccessBuffer) obj;
     if (!file.equals(other.file)) {
       return false;
     }

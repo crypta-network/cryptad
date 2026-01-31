@@ -12,10 +12,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
+import java.util.regex.Pattern;
 import javax.naming.SizeLimitExceededException;
 import network.crypta.support.Fields;
 import network.crypta.support.MultiValueTable;
@@ -53,6 +55,8 @@ import org.slf4j.LoggerFactory;
  */
 public class HTTPRequestImpl implements HTTPRequest {
   private static final Logger LOG = LoggerFactory.getLogger(HTTPRequestImpl.class);
+  private static final Pattern SEMICOLON_SPLITTER = Pattern.compile(";");
+  private static final Pattern EQUALS_SPLITTER = Pattern.compile("=");
 
   /**
    * This map is used to store all parameter values.
@@ -570,7 +574,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 
     if (LOG.isDebugEnabled()) LOG.debug("Uploaded content-type header: {}", contentTypeHeader);
 
-    String[] contentTypeParts = contentTypeHeader.split(";");
+    String[] contentTypeParts = SEMICOLON_SPLITTER.split(contentTypeHeader);
     if (isUrlEncoded(contentTypeParts)) {
       parseUrlEncodedBody();
       return;
@@ -608,7 +612,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   private String extractBoundary(String[] contentTypeParts) {
     String boundary = null;
     for (String contentTypePart : contentTypeParts) {
-      String[] subparts = contentTypePart.split("=");
+      String[] subparts = EQUALS_SPLITTER.split(contentTypePart);
       if ((subparts.length == 2) && subparts[0].trim().equalsIgnoreCase("boundary")) {
         boundary = subparts[1];
       }
@@ -718,7 +722,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   }
 
   private void parseContentDisposition(String headerValue, MutablePartMetadata metadata) {
-    String[] valueparts = headerValue.split(";");
+    String[] valueparts = SEMICOLON_SPLITTER.split(headerValue);
     for (String valuepart : valueparts) {
       String[] subparts = valuepart.split("=", 2);
       if (subparts.length != 2) {
@@ -1090,10 +1094,10 @@ public class HTTPRequestImpl implements HTTPRequest {
    */
   @Override
   public String getHeader(String name) {
-    if (!name.equals(name.toLowerCase())) {
+    if (!name.equals(name.toLowerCase(Locale.ROOT))) {
       throw new IllegalArgumentException("Header name must be lower-case");
     }
-    return this.headers.getFirst(name.toLowerCase());
+    return this.headers.getFirst(name.toLowerCase(Locale.ROOT));
   }
 
   /**

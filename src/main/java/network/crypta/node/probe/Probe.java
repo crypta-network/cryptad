@@ -679,35 +679,17 @@ public class Probe implements ByteCounter {
     final MessageFilter filter = createFilter(candidate, uid, timeout);
 
     switch (type) {
-      case BANDWIDTH:
-        filter.setType(DMT.ProbeBandwidth);
-        break;
-      case BUILD:
-        filter.setType(DMT.ProbeBuild);
-        break;
-      case IDENTIFIER:
-        filter.setType(DMT.ProbeIdentifier);
-        break;
-      case LINK_LENGTHS:
-        filter.setType(DMT.ProbeLinkLengths);
-        break;
-      case LOCATION:
-        filter.setType(DMT.ProbeLocation);
-        break;
-      case STORE_SIZE:
-        filter.setType(DMT.ProbeStoreSize);
-        break;
-      case UPTIME_48H, UPTIME_7D:
-        filter.setType(DMT.ProbeUptime);
-        break;
-      case REJECT_STATS:
-        filter.setType(DMT.ProbeRejectStats);
-        break;
-      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE:
-        filter.setType(DMT.ProbeOverallBulkOutputCapacityUsage);
-        break;
-      default:
-        throw new UnsupportedOperationException("Missing filter for " + type.name());
+      case BANDWIDTH -> filter.setType(DMT.ProbeBandwidth);
+      case BUILD -> filter.setType(DMT.ProbeBuild);
+      case IDENTIFIER -> filter.setType(DMT.ProbeIdentifier);
+      case LINK_LENGTHS -> filter.setType(DMT.ProbeLinkLengths);
+      case LOCATION -> filter.setType(DMT.ProbeLocation);
+      case STORE_SIZE -> filter.setType(DMT.ProbeStoreSize);
+      case UPTIME_48H, UPTIME_7D -> filter.setType(DMT.ProbeUptime);
+      case REJECT_STATS -> filter.setType(DMT.ProbeRejectStats);
+      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE ->
+          filter.setType(DMT.ProbeOverallBulkOutputCapacityUsage);
+      default -> throw new UnsupportedOperationException("Missing filter for " + type.name());
     }
 
     // Refusal or an error should also be listened for so it can be relayed.
@@ -742,7 +724,7 @@ public class Probe implements ByteCounter {
      * reasonable values.
      */
     switch (type) {
-      case BANDWIDTH:
+      case BANDWIDTH -> {
         /*
          * 5% noise:
          * Reasonable output bandwidth limit is 20 KiB and people are likely to set limits in increments
@@ -751,11 +733,9 @@ public class Probe implements ByteCounter {
          */
         listener.onOutputBandwidth(
             (float) randomNoise((double) node.network().outputBandwidthLimit() / (1 << 10), 0.05));
-        break;
-      case BUILD:
-        listener.onBuild(node.services().nodeUpdater().getMainVersion());
-        break;
-      case IDENTIFIER:
+      }
+      case BUILD -> listener.onBuild(node.services().nodeUpdater().getMainVersion());
+      case IDENTIFIER -> {
         /*
          * 5% noise:
          * Reasonable uptime percentage is at least ~40 hours a week, or ~20%. This uptime is
@@ -773,8 +753,8 @@ public class Probe implements ByteCounter {
         if (percent > Byte.MAX_VALUE) percent = Byte.MAX_VALUE;
         else if (percent < Byte.MIN_VALUE) percent = Byte.MIN_VALUE;
         listener.onIdentifier(probeIdentifier, (byte) percent);
-        break;
-      case LINK_LENGTHS:
+      }
+      case LINK_LENGTHS -> {
         PeerNode[] peers = node.network().connectedPeers();
         float[] linkLengths = new float[peers.length];
         int i = 0;
@@ -795,11 +775,9 @@ public class Probe implements ByteCounter {
         linkLengths = Arrays.copyOf(linkLengths, i);
         Arrays.sort(linkLengths);
         listener.onLinkLengths(linkLengths);
-        break;
-      case LOCATION:
-        listener.onLocation((float) node.network().location());
-        break;
-      case STORE_SIZE:
+      }
+      case LOCATION -> listener.onLocation((float) node.network().location());
+      case STORE_SIZE -> {
         /*
          * 5% noise:
          * Reasonable datastore size is 20 GiB, and size is likely set in, at most, increments of 1 GiB.
@@ -807,8 +785,8 @@ public class Probe implements ByteCounter {
          * 1,073,741,824 bytes (2^30) per GiB.
          */
         listener.onStoreSize((float) randomNoise((double) node.getStoreSize() / (1 << 30), 0.05));
-        break;
-      case UPTIME_48H:
+      }
+      case UPTIME_48H -> {
         /*
          * 8% noise:
          * Continuing with the assumption that reasonable weekly uptime is around 40 hours, this allows
@@ -817,8 +795,8 @@ public class Probe implements ByteCounter {
          */
         listener.onUptime(
             (float) randomNoise(100 * node.network().uptimeEstimator().getUptime(), 0.04));
-        break;
-      case UPTIME_7D:
+      }
+      case UPTIME_7D -> {
         /*
          * 2.4% noise:
          * As a 168-hour uptime covers a longer period 1 hour of ambiguity seems sufficient.
@@ -826,20 +804,19 @@ public class Probe implements ByteCounter {
          */
         listener.onUptime(
             (float) randomNoise(100 * node.network().uptimeEstimator().getUptimeWeek(), 0.03));
-        break;
-      case REJECT_STATS:
+      }
+      case REJECT_STATS -> {
         byte[] stats = node.network().stats().getNoisyRejectStats();
         listener.onRejectStats(stats);
-        break;
-      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE:
+      }
+      case OVERALL_BULK_OUTPUT_CAPACITY_USAGE -> {
         byte bandwidthClass =
             DMT.bandwidthClassForCapacityUsage(node.network().outputBandwidthLimit());
         listener.onOverallBulkOutputCapacity(
             bandwidthClass,
             (float) randomNoise(node.network().stats().getBandwidthLiabilityUsage(), 0.1));
-        break;
-      default:
-        throw new UnsupportedOperationException("Missing response for " + type.name());
+      }
+      default -> throw new UnsupportedOperationException("Missing response for " + type.name());
     }
   }
 

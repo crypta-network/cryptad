@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
@@ -47,19 +48,16 @@ public interface Compressor {
    */
   enum COMPRESSOR_TYPE implements Compressor {
     // Codecs will be tried in order; put the less resource-consuming first
-    GZIP("GZIP", new GzipCompressor(), (short) 0),
-    BZIP2("BZIP2", new Bzip2Compressor(), (short) 1),
-    LZMA("LZMA", new OldLZMACompressor(), (short) 2),
-    LZMA_NEW("LZMA_NEW", new NewLZMACompressor(), (short) 3);
+    GZIP("GZIP", (short) 0),
+    BZIP2("BZIP2", (short) 1),
+    LZMA("LZMA", (short) 2),
+    LZMA_NEW("LZMA_NEW", (short) 3);
 
     /**
      * Human-readable codec name used in descriptors. Distinct from {@link #name()}, the Java enum
      * identifier.
      */
     public final String codecName;
-
-    /** Underlying implementation that performs the actual compression/decompression. */
-    public final Compressor compressor;
 
     /** Short, stable identifier written to metadata and used on the wire. */
     public final short metadataID;
@@ -68,11 +66,23 @@ public interface Compressor {
     private static final COMPRESSOR_TYPE[] values = values();
 
     private static final Logger LOG = LoggerFactory.getLogger(COMPRESSOR_TYPE.class);
+    private static final EnumMap<COMPRESSOR_TYPE, Compressor> compressors =
+        new EnumMap<>(COMPRESSOR_TYPE.class);
 
-    COMPRESSOR_TYPE(String name, Compressor c, short metadataID) {
+    static {
+      compressors.put(GZIP, new GzipCompressor());
+      compressors.put(BZIP2, new Bzip2Compressor());
+      compressors.put(LZMA, new OldLZMACompressor());
+      compressors.put(LZMA_NEW, new NewLZMACompressor());
+    }
+
+    COMPRESSOR_TYPE(String name, short metadataID) {
       this.codecName = name;
-      this.compressor = c;
       this.metadataID = metadataID;
+    }
+
+    private Compressor compressor() {
+      return compressors.get(this);
     }
 
     /**
@@ -278,14 +288,14 @@ public interface Compressor {
     @Override
     public Bucket compress(Bucket data, BucketFactory bf, long maxReadLength, long maxWriteLength)
         throws IOException {
-      return compressor.compress(data, bf, maxReadLength, maxWriteLength);
+      return compressor().compress(data, bf, maxReadLength, maxWriteLength);
     }
 
     /** {@inheritDoc} */
     @Override
     public long compress(InputStream is, OutputStream os, long maxReadLength, long maxWriteLength)
         throws IOException {
-      return compressor.compress(is, os, maxReadLength, maxWriteLength);
+      return compressor().compress(is, os, maxReadLength, maxWriteLength);
     }
 
     /** {@inheritDoc} */
@@ -298,13 +308,14 @@ public interface Compressor {
         long amountOfDataToCheckCompressionRatio,
         int minimumCompressionPercentage)
         throws IOException, CompressionRatioException {
-      return compressor.compress(
-          is,
-          os,
-          maxReadLength,
-          maxWriteLength,
-          amountOfDataToCheckCompressionRatio,
-          minimumCompressionPercentage);
+      return compressor()
+          .compress(
+              is,
+              os,
+              maxReadLength,
+              maxWriteLength,
+              amountOfDataToCheckCompressionRatio,
+              minimumCompressionPercentage);
     }
 
     /** {@inheritDoc} */
@@ -312,14 +323,14 @@ public interface Compressor {
     public long decompress(
         InputStream input, OutputStream output, long maxLength, long maxEstimateSizeLength)
         throws IOException {
-      return compressor.decompress(input, output, maxLength, maxEstimateSizeLength);
+      return compressor().decompress(input, output, maxLength, maxEstimateSizeLength);
     }
 
     /** {@inheritDoc} */
     @Override
     public int decompress(byte[] dbuf, int i, int j, byte[] output)
         throws CompressionOutputSizeException {
-      return compressor.decompress(dbuf, i, j, output);
+      return compressor().decompress(dbuf, i, j, output);
     }
   }
 

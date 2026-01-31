@@ -129,20 +129,20 @@ public class IncomingPacketFilterImpl implements IncomingPacketFilter {
       LOG.info("Got packet from unknown address");
     } else if (opn.handleReceivedPacket(buf, offset, length, now, peer)) {
       incrementDecoded();
-      return DECODED.DECODED;
+      return DECODED.SUCCESS;
     }
 
     DECODED decoded = mangler.process(buf, offset, length, peer, opn);
-    if (decoded == DECODED.DECODED) {
+    if (decoded == DECODED.SUCCESS) {
       incrementDecoded();
-      return DECODED.DECODED;
+      return DECODED.SUCCESS;
     }
     if (decoded == DECODED.NOT_DECODED) {
       // Probe other known peers (excluding the owning peer) as a last resort. This is O(n) in the
       // number of peers but triggers only for undecoded packets.
       if (tryFallbackPeers(buf, offset, length, peer, now, opn)) {
         incrementDecoded();
-        return DECODED.DECODED;
+        return DECODED.SUCCESS;
       }
       incrementFailed();
     }

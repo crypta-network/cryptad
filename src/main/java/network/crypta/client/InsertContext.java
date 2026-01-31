@@ -483,9 +483,7 @@ public class InsertContext implements Serializable {
   @Override
   public boolean equals(Object obj) {
     if (this == obj) return true;
-    if (obj == null) return false;
-    if (getClass() != obj.getClass()) return false;
-    InsertContext other = (InsertContext) obj;
+    if (!(obj instanceof InsertContext other)) return false;
     if (canWriteClientCache != other.canWriteClientCache) return false;
     if (compatibilityMode != other.compatibilityMode) return false;
     if (compressorDescriptor == null) {

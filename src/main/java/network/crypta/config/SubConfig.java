@@ -523,33 +523,15 @@ public class SubConfig implements Comparable<SubConfig> {
         continue;
       }
       switch (configRequestType) {
-        case CURRENT_SETTINGS:
-          fs.putSingle(key, o.getValueString());
-          break;
-        case DEFAULT_SETTINGS:
-          fs.putSingle(key, o.getDefault());
-          break;
-        case SORT_ORDER:
-          fs.put(key, o.getSortOrder());
-          break;
-        case EXPERT_FLAG:
-          fs.put(key, o.isExpert());
-          break;
-        case FORCE_WRITE_FLAG:
-          fs.put(key, o.isForcedWrite());
-          break;
-        case SHORT_DESCRIPTION:
-          fs.putSingle(key, o.getLocalisedShortDesc());
-          break;
-        case LONG_DESCRIPTION:
-          fs.putSingle(key, o.getLocalisedLongDesc());
-          break;
-        case DATA_TYPE:
-          fs.putSingle(key, o.getDataTypeStr());
-          break;
-        default:
-          LOG.error("Unknown config request type value: {}", configRequestType);
-          break;
+        case CURRENT_SETTINGS -> fs.putSingle(key, o.getValueString());
+        case DEFAULT_SETTINGS -> fs.putSingle(key, o.getDefault());
+        case SORT_ORDER -> fs.put(key, o.getSortOrder());
+        case EXPERT_FLAG -> fs.put(key, o.isExpert());
+        case FORCE_WRITE_FLAG -> fs.put(key, o.isForcedWrite());
+        case SHORT_DESCRIPTION -> fs.putSingle(key, o.getLocalisedShortDesc());
+        case LONG_DESCRIPTION -> fs.putSingle(key, o.getLocalisedLongDesc());
+        case DATA_TYPE -> fs.putSingle(key, o.getDataTypeStr());
+        default -> LOG.error("Unknown config request type value: {}", configRequestType);
       }
       if (LOG.isDebugEnabled()) LOG.debug("Key={}.{} value={}", prefix, key, o.getValueString());
     }

@@ -76,6 +76,7 @@ public class PushTesterToadlet extends Toadlet {
    * @throws RedirectException if the framework requests a redirect instead of sending a direct
    *     reply
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException, RedirectException {
     PageNode pageNode =

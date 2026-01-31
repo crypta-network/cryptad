@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
@@ -231,17 +232,18 @@ final class USKDateHintFetches {
     }
 
     USKDateHint date = USKDateHint.now();
-    ClientSSK[] ssks = date.getRequestURIs(origUSK);
-    if (ssks.length == 0) return false;
+    Map<USKDateHint.Type, ClientSSK> ssksByType = date.getRequestURIsByType(origUSK);
+    if (ssksByType.isEmpty()) return false;
 
-    DBRAttempt[] created = new DBRAttempt[ssks.length];
-    for (int i = 0; i < ssks.length; i++) {
-      ClientKey key = ssks[i];
-      DBRAttempt attempt = new DBRAttempt(key, context, USKDateHint.Type.values()[i]);
+    DBRAttempt[] created = new DBRAttempt[ssksByType.size()];
+    int index = 0;
+    for (Map.Entry<USKDateHint.Type, ClientSSK> entry : ssksByType.entrySet()) {
+      ClientKey key = entry.getValue();
+      DBRAttempt attempt = new DBRAttempt(key, context, entry.getKey());
       synchronized (this) {
         attempts.add(attempt);
       }
-      created[i] = attempt;
+      created[index++] = attempt;
     }
     synchronized (this) {
       hintsStarted = created.length;
