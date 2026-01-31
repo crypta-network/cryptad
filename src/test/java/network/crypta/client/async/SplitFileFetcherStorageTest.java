@@ -890,17 +890,21 @@ class SplitFileFetcherStorageTest {
     // so enumeration of all blocks in this round doesn’t spuriously bail out.
     clearChooserCooldownForTesting(storage);
     boolean enumeratedAll = true;
+    long lastChooseTime = 0;
     for (int i = 0; i < dataBlocks + checkBlocks; i++) {
+      lastChooseTime = System.currentTimeMillis();
       int chosen = storage.chooseRandomKey();
       if (chosen == -1 && cooldown) {
         // Deflake: a stale global cooldown gate may linger briefly even when
         // individual blocks are eligible. Clear it and retry a couple of times.
         clearChooserCooldownForTesting(storage);
+        lastChooseTime = System.currentTimeMillis();
         chosen = storage.chooseRandomKey();
         if (chosen == -1) {
           // Allow one more quick pass after the executor drains.
           exec.waitForIdle();
           clearChooserCooldownForTesting(storage);
+          lastChooseTime = System.currentTimeMillis();
           chosen = storage.chooseRandomKey();
         }
       }
@@ -931,7 +935,7 @@ class SplitFileFetcherStorageTest {
         // Partial enumeration because some blocks are still cooling down.
         // Should report a finite cooldown (not MAX) in this case.
         long overall = storage.getOverallCooldownTime();
-        assertTrue(overall > System.currentTimeMillis());
+        assertTrue(overall > lastChooseTime);
         assertNotEquals(Long.MAX_VALUE, overall);
       }
     }
