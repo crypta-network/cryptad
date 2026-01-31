@@ -33,7 +33,6 @@ import org.slf4j.LoggerFactory;
  *     not a general‑purpose {@code javax.crypto.Cipher} implementation.
  *     <p>License is apparently available from http://www.cryptix.org/docs/license.html
  */
-@SuppressWarnings("OperatorPrecedence")
 public final class RijndaelAlgorithm // implicit no-argument constructor
  {
   private static final Logger LOG = LoggerFactory.getLogger(RijndaelAlgorithm.class);
@@ -284,7 +283,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   private static void generateLogAndAlogTables(int root) {
     alog[0] = 1;
     for (int i = 1; i < 256; i++) {
-      int j = alog[i - 1] << 1 ^ alog[i - 1];
+      int j = (alog[i - 1] << 1) ^ alog[i - 1];
       if ((j & 0x100) != 0) j ^= root;
       alog[i] = j;
     }
@@ -319,7 +318,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     box[1][7] = 1;
     for (int i = 2; i < 256; i++) {
       int j = alog[255 - LOG_TABLE[i]];
-      for (int t = 0; t < 8; t++) box[i][t] = (byte) (j >>> 7 - t & 0x01);
+      for (int t = 0; t < 8; t++) box[i][t] = (byte) ((j >>> (7 - t)) & 0x01);
     }
     //
     // Affine transform:  box[i] <- bVector + aMatrix*box[i]
@@ -332,7 +331,8 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
           // Compute in the int domain and narrow once to avoid sign extension surprises.
           cox[i][t] =
               (byte)
-                  ((cox[i][t] & 0xFF ^ (aMatrix[t][j] & 0xFF) * (box[i][j] & 0xFF) & 0xFF) & 0xFF);
+                  (((cox[i][t] & 0xFF) ^ (((aMatrix[t][j] & 0xFF) * (box[i][j] & 0xFF)) & 0xFF))
+                      & 0xFF);
         }
       }
     //
@@ -342,7 +342,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       S[i] = (byte) ((cox[i][0] & 0xFF) << 7);
       for (int t = 1; t < 8; t++) {
         // Compute as int and cast once to avoid lossy implicit narrowing.
-        S[i] = (byte) ((S[i] & 0xFF ^ (cox[i][t] & 0xFF) << 7 - t & 0xFF) & 0xFF);
+        S[i] = (byte) (((S[i] & 0xFF) ^ (((cox[i][t] & 0xFF) << (7 - t)) & 0xFF)) & 0xFF);
       }
       Si[S[i] & 0xFF] = (byte) i;
     }
@@ -400,7 +400,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
         for (int j = i + 1; j < 8; j++) {
           // Narrow the XOR result explicitly to byte.
           aa[t][j] =
-              (byte) ((aa[t][j] & 0xFF ^ mul(aa[i][j] & 0xFF, aa[t][i] & 0xFF) & 0xFF) & 0xFF);
+              (byte) (((aa[t][j] & 0xFF) ^ (mul(aa[i][j] & 0xFF, aa[t][i] & 0xFF) & 0xFF)) & 0xFF);
         }
         aa[t][i] = 0;
       }
@@ -447,7 +447,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     int a1 = b[1] != 0 ? alog[(a + LOG_TABLE[b[1] & 0xFF]) % 255] & 0xFF : 0;
     int a2 = b[2] != 0 ? alog[(a + LOG_TABLE[b[2] & 0xFF]) % 255] & 0xFF : 0;
     int a3 = b[3] != 0 ? alog[(a + LOG_TABLE[b[3] & 0xFF]) % 255] & 0xFF : 0;
-    return a0 << 24 | a1 << 16 | a2 << 8 | a3;
+    return (a0 << 24) | (a1 << 16) | (a2 << 8) | a3;
   }
 
   //	Basic API methods
@@ -473,28 +473,28 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
 
     // plaintext to ints + key
     int t0 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[0];
     int t1 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[1];
     int t2 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[2];
     int t3 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset] & 0xFF))
             ^ ker[3];
 
     int a0;
@@ -504,27 +504,27 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     for (int r = 1; r < rounds; r++) { // apply round transforms
       ker = ke[r];
       a0 =
-          T1[t0 >>> 24 & 0xFF]
-              ^ T2[t1 >>> 16 & 0xFF]
-              ^ T3[t2 >>> 8 & 0xFF]
+          T1[(t0 >>> 24) & 0xFF]
+              ^ T2[(t1 >>> 16) & 0xFF]
+              ^ T3[(t2 >>> 8) & 0xFF]
               ^ T4[t3 & 0xFF]
               ^ ker[0];
       a1 =
-          T1[t1 >>> 24 & 0xFF]
-              ^ T2[t2 >>> 16 & 0xFF]
-              ^ T3[t3 >>> 8 & 0xFF]
+          T1[(t1 >>> 24) & 0xFF]
+              ^ T2[(t2 >>> 16) & 0xFF]
+              ^ T3[(t3 >>> 8) & 0xFF]
               ^ T4[t0 & 0xFF]
               ^ ker[1];
       a2 =
-          T1[t2 >>> 24 & 0xFF]
-              ^ T2[t3 >>> 16 & 0xFF]
-              ^ T3[t0 >>> 8 & 0xFF]
+          T1[(t2 >>> 24) & 0xFF]
+              ^ T2[(t3 >>> 16) & 0xFF]
+              ^ T3[(t0 >>> 8) & 0xFF]
               ^ T4[t1 & 0xFF]
               ^ ker[2];
       a3 =
-          T1[t3 >>> 24 & 0xFF]
-              ^ T2[t0 >>> 16 & 0xFF]
-              ^ T3[t1 >>> 8 & 0xFF]
+          T1[(t3 >>> 24) & 0xFF]
+              ^ T2[(t0 >>> 16) & 0xFF]
+              ^ T3[(t1 >>> 8) & 0xFF]
               ^ T4[t2 & 0xFF]
               ^ ker[3];
       t0 = a0;
@@ -542,25 +542,25 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     // the last round is special
     ker = ke[rounds];
     int tt = ker[0];
-    result[0] = (byte) (S[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[1] = (byte) (S[t1 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[2] = (byte) (S[t2 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[3] = (byte) (S[t3 & 0xFF] ^ tt & 0xFF);
+    result[0] = (byte) (S[(t0 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[1] = (byte) (S[(t1 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[2] = (byte) (S[(t2 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[3] = (byte) (S[t3 & 0xFF] ^ (tt & 0xFF));
     tt = ker[1];
-    result[4] = (byte) (S[t1 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[5] = (byte) (S[t2 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[6] = (byte) (S[t3 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[7] = (byte) (S[t0 & 0xFF] ^ tt & 0xFF);
+    result[4] = (byte) (S[(t1 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[5] = (byte) (S[(t2 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[6] = (byte) (S[(t3 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[7] = (byte) (S[t0 & 0xFF] ^ (tt & 0xFF));
     tt = ker[2];
-    result[8] = (byte) (S[t2 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[9] = (byte) (S[t3 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[10] = (byte) (S[t0 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[11] = (byte) (S[t1 & 0xFF] ^ tt & 0xFF);
+    result[8] = (byte) (S[(t2 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[9] = (byte) (S[(t3 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[10] = (byte) (S[(t0 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[11] = (byte) (S[t1 & 0xFF] ^ (tt & 0xFF));
     tt = ker[3];
-    result[12] = (byte) (S[t3 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[13] = (byte) (S[t0 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[14] = (byte) (S[t1 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[15] = (byte) (S[t2 & 0xFF] ^ tt & 0xFF);
+    result[12] = (byte) (S[(t3 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[13] = (byte) (S[(t0 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[14] = (byte) (S[(t1 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[15] = (byte) (S[t2 & 0xFF] ^ (tt & 0xFF));
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("event=blockEncrypt.final.ct ct={}", toString(result));
       LOG.debug("event=blockEncrypt.final.ct end");
@@ -586,52 +586,52 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
 
     // plaintext to ints + key
     int t0 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[0];
     int t1 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[1];
     int t2 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[2];
     int t3 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[3];
     int t4 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[4];
     int t5 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[5];
     int t6 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ ker[6];
     int t7 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset] & 0xFF))
             ^ ker[7];
 
     int a0;
@@ -645,58 +645,58 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     for (int r = 1; r < rounds; r++) { // apply round transforms
       ker = ke[r];
       a0 =
-          T1[t0 >>> 24 & 0xFF]
-              ^ T2[t1 >>> 16 & 0xFF]
-              ^ T3[t3 >>> 8 & 0xFF]
+          T1[(t0 >>> 24) & 0xFF]
+              ^ T2[(t1 >>> 16) & 0xFF]
+              ^ T3[(t3 >>> 8) & 0xFF]
               ^ T4[t4 & 0xFF]
               ^ ker[0];
 
       a1 =
-          T1[t1 >>> 24 & 0xFF]
-              ^ T2[t2 >>> 16 & 0xFF]
-              ^ T3[t4 >>> 8 & 0xFF]
+          T1[(t1 >>> 24) & 0xFF]
+              ^ T2[(t2 >>> 16) & 0xFF]
+              ^ T3[(t4 >>> 8) & 0xFF]
               ^ T4[t5 & 0xFF]
               ^ ker[1];
 
       a2 =
-          T1[t2 >>> 24 & 0xFF]
-              ^ T2[t3 >>> 16 & 0xFF]
-              ^ T3[t5 >>> 8 & 0xFF]
+          T1[(t2 >>> 24) & 0xFF]
+              ^ T2[(t3 >>> 16) & 0xFF]
+              ^ T3[(t5 >>> 8) & 0xFF]
               ^ T4[t6 & 0xFF]
               ^ ker[2];
 
       a3 =
-          T1[t3 >>> 24 & 0xFF]
-              ^ T2[t4 >>> 16 & 0xFF]
-              ^ T3[t6 >>> 8 & 0xFF]
+          T1[(t3 >>> 24) & 0xFF]
+              ^ T2[(t4 >>> 16) & 0xFF]
+              ^ T3[(t6 >>> 8) & 0xFF]
               ^ T4[t7 & 0xFF]
               ^ ker[3];
 
       a4 =
-          T1[t4 >>> 24 & 0xFF]
-              ^ T2[t5 >>> 16 & 0xFF]
-              ^ T3[t7 >>> 8 & 0xFF]
+          T1[(t4 >>> 24) & 0xFF]
+              ^ T2[(t5 >>> 16) & 0xFF]
+              ^ T3[(t7 >>> 8) & 0xFF]
               ^ T4[t0 & 0xFF]
               ^ ker[4];
 
       a5 =
-          T1[t5 >>> 24 & 0xFF]
-              ^ T2[t6 >>> 16 & 0xFF]
-              ^ T3[t0 >>> 8 & 0xFF]
+          T1[(t5 >>> 24) & 0xFF]
+              ^ T2[(t6 >>> 16) & 0xFF]
+              ^ T3[(t0 >>> 8) & 0xFF]
               ^ T4[t1 & 0xFF]
               ^ ker[5];
 
       a6 =
-          T1[t6 >>> 24 & 0xFF]
-              ^ T2[t7 >>> 16 & 0xFF]
-              ^ T3[t1 >>> 8 & 0xFF]
+          T1[(t6 >>> 24) & 0xFF]
+              ^ T2[(t7 >>> 16) & 0xFF]
+              ^ T3[(t1 >>> 8) & 0xFF]
               ^ T4[t2 & 0xFF]
               ^ ker[6];
 
       a7 =
-          T1[t7 >>> 24 & 0xFF]
-              ^ T2[t0 >>> 16 & 0xFF]
-              ^ T3[t2 >>> 8 & 0xFF]
+          T1[(t7 >>> 24) & 0xFF]
+              ^ T2[(t0 >>> 16) & 0xFF]
+              ^ T3[(t2 >>> 8) & 0xFF]
               ^ T4[t3 & 0xFF]
               ^ ker[7];
       t0 = a0;
@@ -718,45 +718,45 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     // the last round is special
     ker = ke[rounds];
     int tt = ker[0];
-    result[0] = (byte) (S[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[1] = (byte) (S[t1 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[2] = (byte) (S[t3 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[3] = (byte) (S[t4 & 0xFF] ^ tt & 0xFF);
+    result[0] = (byte) (S[(t0 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[1] = (byte) (S[(t1 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[2] = (byte) (S[(t3 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[3] = (byte) (S[t4 & 0xFF] ^ (tt & 0xFF));
     tt = ker[1];
-    result[4] = (byte) (S[t1 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[5] = (byte) (S[t2 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[6] = (byte) (S[t4 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[7] = (byte) (S[t5 & 0xFF] ^ tt & 0xFF);
+    result[4] = (byte) (S[(t1 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[5] = (byte) (S[(t2 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[6] = (byte) (S[(t4 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[7] = (byte) (S[t5 & 0xFF] ^ (tt & 0xFF));
     tt = ker[2];
-    result[8] = (byte) (S[t2 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[9] = (byte) (S[t3 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[10] = (byte) (S[t5 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[11] = (byte) (S[t6 & 0xFF] ^ tt & 0xFF);
+    result[8] = (byte) (S[(t2 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[9] = (byte) (S[(t3 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[10] = (byte) (S[(t5 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[11] = (byte) (S[t6 & 0xFF] ^ (tt & 0xFF));
     tt = ker[3];
-    result[12] = (byte) (S[t3 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[13] = (byte) (S[t4 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[14] = (byte) (S[t6 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[15] = (byte) (S[t7 & 0xFF] ^ tt & 0xFF);
+    result[12] = (byte) (S[(t3 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[13] = (byte) (S[(t4 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[14] = (byte) (S[(t6 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[15] = (byte) (S[t7 & 0xFF] ^ (tt & 0xFF));
     tt = ker[4];
-    result[16] = (byte) (S[t4 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[17] = (byte) (S[t5 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[18] = (byte) (S[t7 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[19] = (byte) (S[t0 & 0xFF] ^ tt & 0xFF);
+    result[16] = (byte) (S[(t4 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[17] = (byte) (S[(t5 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[18] = (byte) (S[(t7 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[19] = (byte) (S[t0 & 0xFF] ^ (tt & 0xFF));
     tt = ker[5];
-    result[20] = (byte) (S[t5 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[21] = (byte) (S[t6 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[22] = (byte) (S[t0 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[23] = (byte) (S[t1 & 0xFF] ^ tt & 0xFF);
+    result[20] = (byte) (S[(t5 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[21] = (byte) (S[(t6 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[22] = (byte) (S[(t0 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[23] = (byte) (S[t1 & 0xFF] ^ (tt & 0xFF));
     tt = ker[6];
-    result[24] = (byte) (S[t6 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[25] = (byte) (S[t7 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[26] = (byte) (S[t1 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[27] = (byte) (S[t2 & 0xFF] ^ tt & 0xFF);
+    result[24] = (byte) (S[(t6 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[25] = (byte) (S[(t7 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[26] = (byte) (S[(t1 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[27] = (byte) (S[t2 & 0xFF] ^ (tt & 0xFF));
     tt = ker[7];
-    result[28] = (byte) (S[t7 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[29] = (byte) (S[t0 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[30] = (byte) (S[t2 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[31] = (byte) (S[t3 & 0xFF] ^ tt & 0xFF);
+    result[28] = (byte) (S[(t7 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[29] = (byte) (S[(t0 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[30] = (byte) (S[(t2 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[31] = (byte) (S[t3 & 0xFF] ^ (tt & 0xFF));
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("event=blockEncrypt256.final.ct ct={}", toString(result));
       LOG.debug("event=blockEncrypt256.final.ct end");
@@ -792,28 +792,28 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
 
     // ciphertext to ints + key
     int t0 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[0];
     int t1 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[1];
     int t2 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[2];
     int t3 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset] & 0xFF))
             ^ kdr[3];
 
     int a0;
@@ -823,27 +823,27 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     for (int r = 1; r < rounds; r++) { // apply round transforms
       kdr = kd[r];
       a0 =
-          T5[t0 >>> 24 & 0xFF]
-              ^ T6[t3 >>> 16 & 0xFF]
-              ^ T7[t2 >>> 8 & 0xFF]
+          T5[(t0 >>> 24) & 0xFF]
+              ^ T6[(t3 >>> 16) & 0xFF]
+              ^ T7[(t2 >>> 8) & 0xFF]
               ^ T8[t1 & 0xFF]
               ^ kdr[0];
       a1 =
-          T5[t1 >>> 24 & 0xFF]
-              ^ T6[t0 >>> 16 & 0xFF]
-              ^ T7[t3 >>> 8 & 0xFF]
+          T5[(t1 >>> 24) & 0xFF]
+              ^ T6[(t0 >>> 16) & 0xFF]
+              ^ T7[(t3 >>> 8) & 0xFF]
               ^ T8[t2 & 0xFF]
               ^ kdr[1];
       a2 =
-          T5[t2 >>> 24 & 0xFF]
-              ^ T6[t1 >>> 16 & 0xFF]
-              ^ T7[t0 >>> 8 & 0xFF]
+          T5[(t2 >>> 24) & 0xFF]
+              ^ T6[(t1 >>> 16) & 0xFF]
+              ^ T7[(t0 >>> 8) & 0xFF]
               ^ T8[t3 & 0xFF]
               ^ kdr[2];
       a3 =
-          T5[t3 >>> 24 & 0xFF]
-              ^ T6[t2 >>> 16 & 0xFF]
-              ^ T7[t1 >>> 8 & 0xFF]
+          T5[(t3 >>> 24) & 0xFF]
+              ^ T6[(t2 >>> 16) & 0xFF]
+              ^ T7[(t1 >>> 8) & 0xFF]
               ^ T8[t0 & 0xFF]
               ^ kdr[3];
       t0 = a0;
@@ -861,25 +861,25 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     // the last round is special
     kdr = kd[rounds];
     int tt = kdr[0];
-    result[0] = (byte) (Si[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[1] = (byte) (Si[t3 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[2] = (byte) (Si[t2 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[3] = (byte) (Si[t1 & 0xFF] ^ tt & 0xFF);
+    result[0] = (byte) (Si[(t0 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[1] = (byte) (Si[(t3 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[2] = (byte) (Si[(t2 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[3] = (byte) (Si[t1 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[1];
-    result[4] = (byte) (Si[t1 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[5] = (byte) (Si[t0 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[6] = (byte) (Si[t3 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[7] = (byte) (Si[t2 & 0xFF] ^ tt & 0xFF);
+    result[4] = (byte) (Si[(t1 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[5] = (byte) (Si[(t0 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[6] = (byte) (Si[(t3 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[7] = (byte) (Si[t2 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[2];
-    result[8] = (byte) (Si[t2 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[9] = (byte) (Si[t1 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[10] = (byte) (Si[t0 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[11] = (byte) (Si[t3 & 0xFF] ^ tt & 0xFF);
+    result[8] = (byte) (Si[(t2 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[9] = (byte) (Si[(t1 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[10] = (byte) (Si[(t0 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[11] = (byte) (Si[t3 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[3];
-    result[12] = (byte) (Si[t3 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[13] = (byte) (Si[t2 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[14] = (byte) (Si[t1 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[15] = (byte) (Si[t0 & 0xFF] ^ tt & 0xFF);
+    result[12] = (byte) (Si[(t3 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[13] = (byte) (Si[(t2 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[14] = (byte) (Si[(t1 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[15] = (byte) (Si[t0 & 0xFF] ^ (tt & 0xFF));
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("event=blockDecrypt.final.pt pt={}", toString(result));
       LOG.debug("event=blockDecrypt.final.pt end");
@@ -912,52 +912,52 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
 
     // ciphertext to ints + key
     int t0 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[0];
     int t1 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[1];
     int t2 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[2];
     int t3 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[3];
     int t4 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[4];
     int t5 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[5];
     int t6 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset++] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset++] & 0xFF))
             ^ kdr[6];
     int t7 =
-        ((in[inOffset++] & 0xFF) << 24
-                | (in[inOffset++] & 0xFF) << 16
-                | (in[inOffset++] & 0xFF) << 8
-                | in[inOffset] & 0xFF)
+        (((in[inOffset++] & 0xFF) << 24)
+                | ((in[inOffset++] & 0xFF) << 16)
+                | ((in[inOffset++] & 0xFF) << 8)
+                | (in[inOffset] & 0xFF))
             ^ kdr[7];
 
     int a0;
@@ -971,58 +971,58 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     for (int r = 1; r < rounds; r++) { // apply round transforms
       kdr = kd[r];
       a0 =
-          T5[t0 >>> 24 & 0xFF]
-              ^ T6[t7 >>> 16 & 0xFF]
-              ^ T7[t5 >>> 8 & 0xFF]
+          T5[(t0 >>> 24) & 0xFF]
+              ^ T6[(t7 >>> 16) & 0xFF]
+              ^ T7[(t5 >>> 8) & 0xFF]
               ^ T8[t4 & 0xFF]
               ^ kdr[0];
 
       a1 =
-          T5[t1 >>> 24 & 0xFF]
-              ^ T6[t0 >>> 16 & 0xFF]
-              ^ T7[t6 >>> 8 & 0xFF]
+          T5[(t1 >>> 24) & 0xFF]
+              ^ T6[(t0 >>> 16) & 0xFF]
+              ^ T7[(t6 >>> 8) & 0xFF]
               ^ T8[t5 & 0xFF]
               ^ kdr[1];
 
       a2 =
-          T5[t2 >>> 24 & 0xFF]
-              ^ T6[t1 >>> 16 & 0xFF]
-              ^ T7[t7 >>> 8 & 0xFF]
+          T5[(t2 >>> 24) & 0xFF]
+              ^ T6[(t1 >>> 16) & 0xFF]
+              ^ T7[(t7 >>> 8) & 0xFF]
               ^ T8[t6 & 0xFF]
               ^ kdr[2];
 
       a3 =
-          T5[t3 >>> 24 & 0xFF]
-              ^ T6[t2 >>> 16 & 0xFF]
-              ^ T7[t0 >>> 8 & 0xFF]
+          T5[(t3 >>> 24) & 0xFF]
+              ^ T6[(t2 >>> 16) & 0xFF]
+              ^ T7[(t0 >>> 8) & 0xFF]
               ^ T8[t7 & 0xFF]
               ^ kdr[3];
 
       a4 =
-          T5[t4 >>> 24 & 0xFF]
-              ^ T6[t3 >>> 16 & 0xFF]
-              ^ T7[t1 >>> 8 & 0xFF]
+          T5[(t4 >>> 24) & 0xFF]
+              ^ T6[(t3 >>> 16) & 0xFF]
+              ^ T7[(t1 >>> 8) & 0xFF]
               ^ T8[t0 & 0xFF]
               ^ kdr[4];
 
       a5 =
-          T5[t5 >>> 24 & 0xFF]
-              ^ T6[t4 >>> 16 & 0xFF]
-              ^ T7[t2 >>> 8 & 0xFF]
+          T5[(t5 >>> 24) & 0xFF]
+              ^ T6[(t4 >>> 16) & 0xFF]
+              ^ T7[(t2 >>> 8) & 0xFF]
               ^ T8[t1 & 0xFF]
               ^ kdr[5];
 
       a6 =
-          T5[t6 >>> 24 & 0xFF]
-              ^ T6[t5 >>> 16 & 0xFF]
-              ^ T7[t3 >>> 8 & 0xFF]
+          T5[(t6 >>> 24) & 0xFF]
+              ^ T6[(t5 >>> 16) & 0xFF]
+              ^ T7[(t3 >>> 8) & 0xFF]
               ^ T8[t2 & 0xFF]
               ^ kdr[6];
 
       a7 =
-          T5[t7 >>> 24 & 0xFF]
-              ^ T6[t6 >>> 16 & 0xFF]
-              ^ T7[t4 >>> 8 & 0xFF]
+          T5[(t7 >>> 24) & 0xFF]
+              ^ T6[(t6 >>> 16) & 0xFF]
+              ^ T7[(t4 >>> 8) & 0xFF]
               ^ T8[t3 & 0xFF]
               ^ kdr[7];
       t0 = a0;
@@ -1047,45 +1047,45 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     // the last round is special
     kdr = kd[rounds];
     int tt = kdr[0];
-    result[0] = (byte) (Si[t0 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[1] = (byte) (Si[t7 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[2] = (byte) (Si[t5 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[3] = (byte) (Si[t4 & 0xFF] ^ tt & 0xFF);
+    result[0] = (byte) (Si[(t0 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[1] = (byte) (Si[(t7 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[2] = (byte) (Si[(t5 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[3] = (byte) (Si[t4 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[1];
-    result[4] = (byte) (Si[t1 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[5] = (byte) (Si[t0 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[6] = (byte) (Si[t6 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[7] = (byte) (Si[t5 & 0xFF] ^ tt & 0xFF);
+    result[4] = (byte) (Si[(t1 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[5] = (byte) (Si[(t0 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[6] = (byte) (Si[(t6 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[7] = (byte) (Si[t5 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[2];
-    result[8] = (byte) (Si[t2 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[9] = (byte) (Si[t1 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[10] = (byte) (Si[t7 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[11] = (byte) (Si[t6 & 0xFF] ^ tt & 0xFF);
+    result[8] = (byte) (Si[(t2 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[9] = (byte) (Si[(t1 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[10] = (byte) (Si[(t7 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[11] = (byte) (Si[t6 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[3];
-    result[12] = (byte) (Si[t3 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[13] = (byte) (Si[t2 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[14] = (byte) (Si[t0 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[15] = (byte) (Si[t7 & 0xFF] ^ tt & 0xFF);
+    result[12] = (byte) (Si[(t3 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[13] = (byte) (Si[(t2 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[14] = (byte) (Si[(t0 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[15] = (byte) (Si[t7 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[4];
-    result[16] = (byte) (Si[t4 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[17] = (byte) (Si[t3 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[18] = (byte) (Si[t1 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[19] = (byte) (Si[t0 & 0xFF] ^ tt & 0xFF);
+    result[16] = (byte) (Si[(t4 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[17] = (byte) (Si[(t3 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[18] = (byte) (Si[(t1 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[19] = (byte) (Si[t0 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[5];
-    result[20] = (byte) (Si[t5 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[21] = (byte) (Si[t4 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[22] = (byte) (Si[t2 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[23] = (byte) (Si[t1 & 0xFF] ^ tt & 0xFF);
+    result[20] = (byte) (Si[(t5 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[21] = (byte) (Si[(t4 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[22] = (byte) (Si[(t2 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[23] = (byte) (Si[t1 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[6];
-    result[24] = (byte) (Si[t6 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[25] = (byte) (Si[t5 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[26] = (byte) (Si[t3 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[27] = (byte) (Si[t2 & 0xFF] ^ tt & 0xFF);
+    result[24] = (byte) (Si[(t6 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[25] = (byte) (Si[(t5 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[26] = (byte) (Si[(t3 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[27] = (byte) (Si[t2 & 0xFF] ^ (tt & 0xFF));
     tt = kdr[7];
-    result[28] = (byte) (Si[t7 >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-    result[29] = (byte) (Si[t6 >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-    result[30] = (byte) (Si[t4 >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-    result[31] = (byte) (Si[t3 & 0xFF] ^ tt & 0xFF);
+    result[28] = (byte) (Si[(t7 >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+    result[29] = (byte) (Si[(t6 >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+    result[30] = (byte) (Si[(t4 >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+    result[31] = (byte) (Si[t3 & 0xFF] ^ (tt & 0xFF));
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("event=blockDecrypt256.final.pt pt={}", toString(result));
       LOG.debug("event=blockDecrypt256.final.pt end");
@@ -1138,7 +1138,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
         };
     int[][] ke = new int[rounds + 1][bc]; // encryption round keys
     int[][] kd = new int[rounds + 1][bc]; // decryption round keys
-    int roundKeyCount = rounds + 1 << bcShift;
+    int roundKeyCount = (rounds + 1) << bcShift;
     int kc = k.length / 4;
     int[] tk = new int[kc];
     // copy user material bytes into temporary ints
@@ -1163,14 +1163,17 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     int j;
     for (i = 0, j = 0; i < kc; ) {
       tk[i++] =
-          (k[j++] & 0xFF) << 24 | (k[j++] & 0xFF) << 16 | (k[j++] & 0xFF) << 8 | k[j++] & 0xFF;
+          ((k[j++] & 0xFF) << 24)
+              | ((k[j++] & 0xFF) << 16)
+              | ((k[j++] & 0xFF) << 8)
+              | (k[j++] & 0xFF);
     }
   }
 
   private static int copyRoundKeysFromTk(KeyScheduleCtx ctx, int[] tk, int t) {
     for (int j = 0; j < ctx.kc && t < ctx.roundKeyCount; j++, t++) {
-      ctx.ke[t >>> ctx.bcShift][t & ctx.bc - 1] = tk[j];
-      ctx.kd[ctx.rounds - (t >>> ctx.bcShift)][t & ctx.bc - 1] = tk[j];
+      ctx.ke[t >>> ctx.bcShift][t & (ctx.bc - 1)] = tk[j];
+      ctx.kd[ctx.rounds - (t >>> ctx.bcShift)][t & (ctx.bc - 1)] = tk[j];
     }
     return t;
   }
@@ -1182,11 +1185,11 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       int tt = tk[ctx.kc - 1];
       // phi evolution
       tk[0] ^=
-          (S[tt >>> 16 & 0xFF] & 0xFF) << 24
-              ^ (S[tt >>> 8 & 0xFF] & 0xFF) << 16
-              ^ (S[tt & 0xFF] & 0xFF) << 8
-              ^ S[tt >>> 24 & 0xFF] & 0xFF
-              ^ (rcon[rconPointer++] & 0xFF) << 24;
+          ((S[(tt >>> 16) & 0xFF] & 0xFF) << 24)
+              ^ ((S[(tt >>> 8) & 0xFF] & 0xFF) << 16)
+              ^ ((S[tt & 0xFF] & 0xFF) << 8)
+              ^ (S[(tt >>> 24) & 0xFF] & 0xFF)
+              ^ ((rcon[rconPointer++] & 0xFF) << 24);
       if (ctx.kc != 8) {
         kcNot8Evolution(ctx.kc, tk);
       } else {
@@ -1211,10 +1214,10 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
     int tt = tk[kc / 2 - 1];
     tk[kc / 2] ^=
-        S[tt & 0xFF] & 0xFF
-            ^ (S[tt >>> 8 & 0xFF] & 0xFF) << 8
-            ^ (S[tt >>> 16 & 0xFF] & 0xFF) << 16
-            ^ (S[tt >>> 24 & 0xFF] & 0xFF) << 24;
+        (S[tt & 0xFF] & 0xFF)
+            ^ ((S[(tt >>> 8) & 0xFF] & 0xFF) << 8)
+            ^ ((S[(tt >>> 16) & 0xFF] & 0xFF) << 16)
+            ^ ((S[(tt >>> 24) & 0xFF] & 0xFF) << 24);
     for (j = kc / 2, i = j + 1; i < kc; i++, j++) {
       tk[i] ^= tk[j];
     }
@@ -1226,7 +1229,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       for (int j = 0; j < bc; j++) {
         int tt = kd[r][j];
         kd[r][j] =
-            U1[tt >>> 24 & 0xFF] ^ U2[tt >>> 16 & 0xFF] ^ U3[tt >>> 8 & 0xFF] ^ U4[tt & 0xFF];
+            U1[(tt >>> 24) & 0xFF] ^ U2[(tt >>> 16) & 0xFF] ^ U3[(tt >>> 8) & 0xFF] ^ U4[tt & 0xFF];
       }
     }
   }
@@ -1345,18 +1348,18 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
 
     for (i = 0; i < bc; i++) { // plaintext to ints + key
       t[i] =
-          ((in[inOffset++] & 0xFF) << 24
-                  | (in[inOffset++] & 0xFF) << 16
-                  | (in[inOffset++] & 0xFF) << 8
-                  | in[inOffset++] & 0xFF)
+          (((in[inOffset++] & 0xFF) << 24)
+                  | ((in[inOffset++] & 0xFF) << 16)
+                  | ((in[inOffset++] & 0xFF) << 8)
+                  | (in[inOffset++] & 0xFF))
               ^ ke[0][i];
     }
     for (int r = 1; r < rounds; r++) { // apply round transforms
       for (i = 0; i < bc; i++)
         a[i] =
-            T1[t[i] >>> 24 & 0xFF]
-                ^ T2[t[(i + s1) % bc] >>> 16 & 0xFF]
-                ^ T3[t[(i + s2) % bc] >>> 8 & 0xFF]
+            T1[(t[i] >>> 24) & 0xFF]
+                ^ T2[(t[(i + s1) % bc] >>> 16) & 0xFF]
+                ^ T3[(t[(i + s2) % bc] >>> 8) & 0xFF]
                 ^ T4[t[(i + s3) % bc] & 0xFF]
                 ^ ke[r][i];
       System.arraycopy(a, 0, t, 0, bc);
@@ -1429,18 +1432,18 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
 
     for (i = 0; i < bc; i++) { // ciphertext to ints + key
       t[i] =
-          ((in[inOffset++] & 0xFF) << 24
-                  | (in[inOffset++] & 0xFF) << 16
-                  | (in[inOffset++] & 0xFF) << 8
-                  | in[inOffset++] & 0xFF)
+          (((in[inOffset++] & 0xFF) << 24)
+                  | ((in[inOffset++] & 0xFF) << 16)
+                  | ((in[inOffset++] & 0xFF) << 8)
+                  | (in[inOffset++] & 0xFF))
               ^ kd[0][i];
     }
     for (int r = 1; r < rounds; r++) { // apply round transforms
       for (i = 0; i < bc; i++)
         a[i] =
-            T5[t[i] >>> 24 & 0xFF]
-                ^ T6[t[(i + s1) % bc] >>> 16 & 0xFF]
-                ^ T7[t[(i + s2) % bc] >>> 8 & 0xFF]
+            T5[(t[i] >>> 24) & 0xFF]
+                ^ T6[(t[(i + s1) % bc] >>> 16) & 0xFF]
+                ^ T7[(t[(i + s2) % bc] >>> 8) & 0xFF]
                 ^ T8[t[(i + s3) % bc] & 0xFF]
                 ^ kd[r][i];
       System.arraycopy(a, 0, t, 0, bc);
@@ -1538,10 +1541,10 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     int j = 0;
     for (int i = 0; i < bc; i++) {
       int tt = ke[rounds][i];
-      result[j++] = (byte) (S[t[i] >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-      result[j++] = (byte) (S[t[(i + s[0]) % bc] >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-      result[j++] = (byte) (S[t[(i + s[1]) % bc] >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-      result[j++] = (byte) (S[t[(i + s[2]) % bc] & 0xFF] ^ tt & 0xFF);
+      result[j++] = (byte) (S[(t[i] >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+      result[j++] = (byte) (S[(t[(i + s[0]) % bc] >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+      result[j++] = (byte) (S[(t[(i + s[1]) % bc] >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+      result[j++] = (byte) (S[t[(i + s[2]) % bc] & 0xFF] ^ (tt & 0xFF));
     }
   }
 
@@ -1550,10 +1553,10 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     int j = 0;
     for (int i = 0; i < bc; i++) {
       int tt = kd[rounds][i];
-      result[j++] = (byte) (Si[t[i] >>> 24 & 0xFF] ^ tt >>> 24 & 0xFF);
-      result[j++] = (byte) (Si[t[(i + s[0]) % bc] >>> 16 & 0xFF] ^ tt >>> 16 & 0xFF);
-      result[j++] = (byte) (Si[t[(i + s[1]) % bc] >>> 8 & 0xFF] ^ tt >>> 8 & 0xFF);
-      result[j++] = (byte) (Si[t[(i + s[2]) % bc] & 0xFF] ^ tt & 0xFF);
+      result[j++] = (byte) (Si[(t[i] >>> 24) & 0xFF] ^ ((tt >>> 24) & 0xFF));
+      result[j++] = (byte) (Si[(t[(i + s[0]) % bc] >>> 16) & 0xFF] ^ ((tt >>> 16) & 0xFF));
+      result[j++] = (byte) (Si[(t[(i + s[1]) % bc] >>> 8) & 0xFF] ^ ((tt >>> 8) & 0xFF));
+      result[j++] = (byte) (Si[t[(i + s[2]) % bc] & 0xFF] ^ (tt & 0xFF));
     }
   }
 
@@ -1577,7 +1580,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
    * the lowest 8 bits of <i>n</i>.
    */
   private static String byteToString(int n) {
-    char[] buf = {HEX_DIGITS[n >>> 4 & 0x0F], HEX_DIGITS[n & 0x0F]};
+    char[] buf = {HEX_DIGITS[(n >>> 4) & 0x0F], HEX_DIGITS[n & 0x0F]};
     return new String(buf);
   }
 
@@ -1603,7 +1606,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     char[] buf = new char[length * 2];
     int j = 0;
     for (int k : ba) {
-      buf[j++] = HEX_DIGITS[k >>> 4 & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 4) & 0x0F];
       buf[j++] = HEX_DIGITS[k & 0x0F];
     }
     return new String(buf);
@@ -1618,13 +1621,13 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     char[] buf = new char[length * 8];
     int j = 0;
     for (int k : ia) {
-      buf[j++] = HEX_DIGITS[k >>> 28 & 0x0F];
-      buf[j++] = HEX_DIGITS[k >>> 24 & 0x0F];
-      buf[j++] = HEX_DIGITS[k >>> 20 & 0x0F];
-      buf[j++] = HEX_DIGITS[k >>> 16 & 0x0F];
-      buf[j++] = HEX_DIGITS[k >>> 12 & 0x0F];
-      buf[j++] = HEX_DIGITS[k >>> 8 & 0x0F];
-      buf[j++] = HEX_DIGITS[k >>> 4 & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 28) & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 24) & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 20) & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 16) & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 12) & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 8) & 0x0F];
+      buf[j++] = HEX_DIGITS[(k >>> 4) & 0x0F];
       buf[j++] = HEX_DIGITS[k & 0x0F];
     }
     return new String(buf);
