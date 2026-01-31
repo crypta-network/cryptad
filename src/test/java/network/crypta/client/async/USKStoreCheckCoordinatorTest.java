@@ -317,15 +317,16 @@ class USKStoreCheckCoordinatorTest {
     NodeSSK key = nodeKeyForEdition(usk, 0L);
     USKKeyWatchSet.KeyList.StoreSubChecker subChecker =
         newStoreSubChecker(watchSet, new NodeSSK[] {key});
-    newCoordinator(
-        watchSet,
-        mock(USKAttemptManager.class),
-        mock(ClientRequester.class),
-        false,
-        mock(USKManager.class),
-        usk,
-        mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class),
-        true);
+    USKStoreCheckCoordinator coordinator =
+        newCoordinator(
+            watchSet,
+            mock(USKAttemptManager.class),
+            mock(ClientRequester.class),
+            false,
+            mock(USKManager.class),
+            usk,
+            mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class),
+            true);
 
     USKStoreCheckCoordinator.USKStoreChecker checker =
         coordinator.new USKStoreChecker(List.of(subChecker));
@@ -351,15 +352,16 @@ class USKStoreCheckCoordinatorTest {
     USKKeyWatchSet.KeyList.StoreSubChecker second =
         newStoreSubChecker(watchSet, new NodeSSK[] {key2, key3});
 
-    newCoordinator(
-        watchSet,
-        mock(USKAttemptManager.class),
-        mock(ClientRequester.class),
-        false,
-        mock(USKManager.class),
-        usk,
-        mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class),
-        true);
+    USKStoreCheckCoordinator coordinator =
+        newCoordinator(
+            watchSet,
+            mock(USKAttemptManager.class),
+            mock(ClientRequester.class),
+            false,
+            mock(USKManager.class),
+            usk,
+            mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class),
+            true);
 
     USKStoreCheckCoordinator.USKStoreChecker checker =
         coordinator.new USKStoreChecker(List.of(first, second));
@@ -382,15 +384,16 @@ class USKStoreCheckCoordinatorTest {
         newStoreSubChecker(watchSet, new NodeSSK[] {key});
     USKKeyWatchSet.KeyList.StoreSubChecker subChecker = spy(realChecker);
 
-    newCoordinator(
-        watchSet,
-        mock(USKAttemptManager.class),
-        mock(ClientRequester.class),
-        false,
-        mock(USKManager.class),
-        usk,
-        mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class),
-        true);
+    USKStoreCheckCoordinator coordinator =
+        newCoordinator(
+            watchSet,
+            mock(USKAttemptManager.class),
+            mock(ClientRequester.class),
+            false,
+            mock(USKManager.class),
+            usk,
+            mock(USKStoreCheckCoordinator.USKStoreCheckCallbacks.class),
+            true);
 
     USKStoreCheckCoordinator.USKStoreChecker checker =
         coordinator.new USKStoreChecker(List.of(subChecker));
