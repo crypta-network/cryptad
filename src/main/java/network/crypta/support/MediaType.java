@@ -15,8 +15,8 @@ import network.crypta.client.DefaultMIMETypes;
  *
  * <p>Instances are immutable and therefore thread-safe. "Setter" methods such as {@link
  * #setType(String)} and {@link #setSubtype(String)} return new {@link MediaType} instances with the
- * requested part changed while copying all other parts. Parameter names are normalized to lowercase
- * and values are trimmed; quoted values are unquoted during parsing.
+ * requested part changed while copying all other parts. Parameter names are normalized to
+ * lowercase, and values are trimmed; quoted values are unquoted during parsing.
  *
  * <p>Media types are defined by <a href="http://www.ietf.org/rfc/rfc2046.txt">RFC&nbsp;2046</a> and
  * related documents.
@@ -38,11 +38,11 @@ public class MediaType {
    * Parses a media type string into a new instance.
    *
    * <p>Accepts inputs like {@code "text/html"} and {@code "text/html; charset=UTF-8; q=0.9"}. The
-   * parser is strict about basic structure:
+   * parser is strict about the basic structure:
    *
    * <ul>
    *   <li>Type/subtype must contain a {@code '/'} separator.
-   *   <li>Parameters are separated by semicolons; each parameter must contain a single {@code '='}.
+   *   <li>Semicolons separate parameters; each parameter must contain a single {@code '='}.
    *   <li>Parameter names are normalized to lowercase; quoted values are unquoted.
    * </ul>
    *
@@ -72,6 +72,10 @@ public class MediaType {
     }
     subtype = mediaType.substring(slash + 1, semicolon).trim();
     String params = mediaType.substring(semicolon + 1);
+    parseParameters(params);
+  }
+
+  private void parseParameters(String params) throws MalformedURLException {
     int paramStart = 0;
     while (paramStart < params.length()) {
       int paramEnd = params.indexOf(';', paramStart);
@@ -81,7 +85,7 @@ public class MediaType {
       String parameter = params.substring(paramStart, paramEnd);
       if (parameter.trim().isEmpty()) {
         if (paramEnd == params.length()) {
-          break;
+          return;
         }
         throw new MalformedURLException("Illegal parameter: “%s”".formatted(parameter));
       }
@@ -94,9 +98,9 @@ public class MediaType {
       String value = parameter.substring(equals + 1).trim();
       if (value.startsWith("\"") && value.endsWith("\""))
         value = value.substring(1, value.length() - 1).trim();
-      this.parameters.put(name, value);
+      parameters.put(name, value);
       if (paramEnd == params.length()) {
-        break;
+        return;
       }
       paramStart = paramEnd + 1;
     }
@@ -265,8 +269,8 @@ public class MediaType {
    *
    * <p>Returns {@code null} when the input is {@code null}, malformed, or when parsing triggers any
    * throwable (including {@link Error}) due to extreme or malicious inputs. This preserves the
-   * historical "robust" contract: callers dealing with untrusted headers should not be taken down
-   * by parse-time failures.
+   * historical "robust" contract: parse-time failures should not take down callers dealing with
+   * untrusted headers.
    *
    * @param expectedMimeType content type string such as {@code "text/html; charset=UTF-8"}
    * @return the charset value if present; otherwise {@code null}
@@ -301,7 +305,7 @@ public class MediaType {
   /**
    * Returns a defensive copy of the parameters map.
    *
-   * <p>The returned map preserves insertion order and may be modified by the caller without
+   * <p>The returned map preserves the insertion order and may be modified by the caller without
    * affecting this instance.
    *
    * @return new {@link LinkedHashMap} containing all parameters
