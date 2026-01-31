@@ -1,17 +1,17 @@
 package network.crypta.node;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
 import network.crypta.io.comm.UdpSocketHandler;
 import network.crypta.support.OutputThrottle;
 import network.crypta.support.math.MersenneTwister;
@@ -61,6 +61,22 @@ class PacketSenderTest {
     var m = PacketSender.class.getDeclaredMethod("realRun");
     m.setAccessible(true);
     m.invoke(ps);
+  }
+
+  @SuppressWarnings("java:S3011")
+  private static void attachPacketFormat(PeerNode peer, Node node, PacketFormat packetFormat)
+      throws Exception {
+    Class<?> internalsClass = Class.forName("network.crypta.node.PeerNode$PeerNodeInternals");
+    var ctor = internalsClass.getDeclaredConstructor(PeerNode.class, Node.class, String.class);
+    ctor.setAccessible(true);
+    Object internals = ctor.newInstance(peer, node, "0");
+    var setPacketFormat = internalsClass.getDeclaredMethod("setPacketFormat", PacketFormat.class);
+    setPacketFormat.setAccessible(true);
+    setPacketFormat.invoke(internals, packetFormat);
+
+    var internalsField = PeerNode.class.getDeclaredField("internals");
+    internalsField.setAccessible(true);
+    internalsField.set(peer, internals);
   }
 
   @Test
@@ -151,27 +167,31 @@ class PacketSenderTest {
   @DisplayName("realRun_whenPacketNumberBlockedTooLong_forcesDisconnectOnPeer")
   void realRun_whenPacketNumberBlockedTooLong_forcesDisconnectOnPeer() throws Exception {
     // Arrange
-    PeerNode pn = mock(PeerNode.class);
+    PeerNode pn = mock(PeerNode.class, org.mockito.Answers.CALLS_REAL_METHODS);
     when(peerManager.myPeers()).thenReturn(new PeerNode[] {pn});
 
-    when(pn.isConnected()).thenReturn(true);
-    when(pn.shouldThrottle()).thenReturn(false);
-    when(pn.getNextUrgentTime(anyLong())).thenReturn(0L); // urgent now
+    doReturn(true).when(pn).isConnected();
+    doReturn(false).when(pn).shouldThrottle();
+    doReturn(0L).when(pn).getNextUrgentTime(anyLong()); // urgent now
 
-    when(pn.lastReceivedDataPacketTime()).thenReturn(System.currentTimeMillis());
-    when(pn.maxTimeBetweenReceivedPackets()).thenReturn(Long.MAX_VALUE);
-    when(pn.lastReceivedAckTime()).thenReturn(System.currentTimeMillis());
-    when(pn.maxTimeBetweenReceivedAcks()).thenReturn(Long.MAX_VALUE);
-    when(pn.isRoutable()).thenReturn(false);
+    doReturn(System.currentTimeMillis()).when(pn).lastReceivedDataPacketTime();
+    doReturn(Long.MAX_VALUE).when(pn).maxTimeBetweenReceivedPackets();
+    doReturn(System.currentTimeMillis()).when(pn).lastReceivedAckTime();
+    doReturn(Long.MAX_VALUE).when(pn).maxTimeBetweenReceivedAcks();
+    doReturn(false).when(pn).isRoutable();
+    doReturn(System.currentTimeMillis()).when(pn).lastReceivedPacketTime();
+    doReturn(false).when(pn).shouldDisconnectAndRemoveNow();
+    doReturn(false).when(pn).isDisconnecting();
+    doReturn(42).when(pn).getBuildNumber();
+    doReturn(false).when(pn).fullPacketQueued();
+    doNothing().when(pn).maybeOnConnect();
+    doNothing().when(pn).checkForLostPackets();
+    doNothing().when(pn).forceDisconnect();
 
-    AtomicBoolean forcedDisconnect = new AtomicBoolean(false);
-    doAnswer(
-            inv -> {
-              forcedDisconnect.set(true);
-              return false;
-            })
-        .when(pn)
-        .maybeSendPacket(anyLong(), anyBoolean());
+    PacketFormat packetFormat = mock(PacketFormat.class);
+    when(packetFormat.maybeSendPacket(anyLong(), anyBoolean()))
+        .thenThrow(new BlockedTooLongException(TimeUnit.SECONDS.toMillis(5)));
+    attachPacketFormat(pn, node, packetFormat);
 
     PacketSender ps = new PacketSender(node);
 
@@ -179,7 +199,7 @@ class PacketSenderTest {
     invokeRealRun(ps);
 
     // Assert
-    assertTrue(forcedDisconnect.get(), "Expected disconnect to be triggered");
+    verify(pn, times(1)).forceDisconnect();
   }
 
   @Test
