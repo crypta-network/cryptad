@@ -391,7 +391,7 @@ public class SeednodePingTest extends RealNodeTest {
             new InputStreamReader(new FileInputStream(logFile), StandardCharsets.UTF_8))) {
       String line;
       while ((line = br.readLine()) != null) {
-        String[] results = line.split(" : ");
+        String[] results = splitStatusLine(line);
         if (results.length != 3) {
           LOG.error(
               "Unable to parse line in {} : wrong number of fields : {} : {}",
@@ -416,6 +416,21 @@ public class SeednodePingTest extends RealNodeTest {
       }
     }
     return new SeednodeHistory(firstSample, lastSuccess, successes, failures);
+  }
+
+  private static String[] splitStatusLine(String line) {
+    ArrayList<String> parts = new ArrayList<>();
+    int start = 0;
+    int idx;
+    while ((idx = line.indexOf(" : ", start)) >= 0) {
+      parts.add(line.substring(start, idx));
+      start = idx + 3;
+    }
+    parts.add(line.substring(start));
+    while (!parts.isEmpty() && parts.get(parts.size() - 1).isEmpty()) {
+      parts.remove(parts.size() - 1);
+    }
+    return parts.toArray(new String[0]);
   }
 
   private static void logHistory(

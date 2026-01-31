@@ -260,6 +260,7 @@ public class NoFreeBucket implements Bucket, Serializable {
    */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
+    assert serialPersistentFields.length > 0;
     // Preserve compatibility with older releases that rely on default Java serialization
     // (no readObject) and expect the legacy 'proxy' field to carry the wrapped bucket when it is
     // serializable. Only when the wrapped bucket is not serializable do we throw, matching legacy

@@ -1,6 +1,7 @@
 package network.crypta.node.useralerts;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.N2NFeedMessageParams;
 import network.crypta.clients.fcp.URIFeedMessage;
@@ -142,7 +143,7 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
     HTMLNode alertNode = new HTMLNode("div");
     alertNode.addChild("a", "href", "/" + uri).addChild("#", uri.toShortString());
     if (description != null && !description.isEmpty()) {
-      String[] lines = description.split("\n");
+      String[] lines = splitLines(description);
       alertNode.addChild("br");
       alertNode.addChild("br");
       alertNode.addChild("#", l10n("fileDescription"));
@@ -170,6 +171,21 @@ public class DownloadFeedUserAlert extends AbstractUserAlert implements NodeToNo
 
   private String l10n(String key) {
     return NodeL10n.getBase().getString("DownloadFeedUserAlert." + key);
+  }
+
+  private static String[] splitLines(String text) {
+    ArrayList<String> lines = new ArrayList<>();
+    int start = 0;
+    int idx;
+    while ((idx = text.indexOf('\n', start)) >= 0) {
+      lines.add(text.substring(start, idx));
+      start = idx + 1;
+    }
+    lines.add(text.substring(start));
+    while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
+      lines.remove(lines.size() - 1);
+    }
+    return lines.toArray(new String[0]);
   }
 
   /**

@@ -327,7 +327,7 @@ public class NewLZMACompressor extends AbstractCompressor {
     CountedOutputStream cos = new CountedOutputStream(os);
 
     int dictionarySize = 0;
-    for (int i = 0; i < 4; i++) dictionarySize += ((props[1 + i]) & 0xFF) << (i * 8);
+    for (int i = 0; i < 4; i++) dictionarySize += (props[1 + i] & 0xFF) << (i * 8);
 
     if (dictionarySize < 0) throw new InvalidCompressedDataException("Invalid dictionary size");
     if (dictionarySize > MAX_DICTIONARY_SIZE) throw new TooBigDictionaryException();

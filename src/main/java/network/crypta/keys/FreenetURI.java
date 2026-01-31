@@ -1006,7 +1006,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * @throws IOException On I/O errors.
    */
   @SuppressWarnings("unused")
-  public static void writeFullBinaryKeyWithLength(FreenetURI uri, DataOutputStream dos)
+  public static void writeNullableFullBinaryKeyWithLength(FreenetURI uri, DataOutputStream dos)
       throws IOException {
     if (uri == null) dos.writeShort((short) 0);
     else uri.writeFullBinaryKeyWithLength(dos);
@@ -1189,7 +1189,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * you must insert a directory to create a directory structure.
    */
   @SuppressWarnings("unused")
-  public static void checkInsertURI(FreenetURI uri) throws InsertException {
+  public static void checkInsertURIOrThrow(FreenetURI uri) throws InsertException {
     uri.checkInsertURI();
   }
 

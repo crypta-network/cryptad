@@ -16,23 +16,71 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>The {@code cryptoKey} array is stored by reference and compared by content for equality. Avoid
  * mutating it after construction if you rely on stable equality or hash semantics.
- *
- * @param data source bucket containing the bytes to insert; must remain readable during encoding
- * @param uri target URI that determines the key type (e.g., CHK/SSK/USK)
- * @param compressionCodec compression codec identifier; {@code -1} lets the encoder decide
- * @param isMetadata whether the content should be encoded as metadata
- * @param sourceLength uncompressed source length in bytes, or {@code -1} if unknown
- * @param cryptoAlgorithm identifier for optional per-block cryptography; {@code 0} for none
- * @param cryptoKey raw key material for {@code cryptoAlgorithm}; may be {@code null} when unused
  */
-public record BlockInsertPayload(
-    Bucket data,
-    FreenetURI uri,
-    short compressionCodec,
-    boolean isMetadata,
-    int sourceLength,
-    byte cryptoAlgorithm,
-    byte[] cryptoKey) {
+public final class BlockInsertPayload {
+  private final Bucket data;
+  private final FreenetURI uri;
+  private final short compressionCodec;
+  private final boolean isMetadata;
+  private final int sourceLength;
+  private final byte cryptoAlgorithm;
+  private final byte[] cryptoKey;
+
+  /**
+   * Creates a bundle describing a single block insert payload.
+   *
+   * @param data source bucket containing the bytes to insert; must remain readable during encoding
+   * @param uri target URI that determines the key type (e.g., CHK/SSK/USK)
+   * @param compressionCodec compression codec identifier; {@code -1} lets the encoder decide
+   * @param isMetadata whether the content should be encoded as metadata
+   * @param sourceLength uncompressed source length in bytes, or {@code -1} if unknown
+   * @param cryptoAlgorithm identifier for optional per-block cryptography; {@code 0} for none
+   * @param cryptoKey raw key material for {@code cryptoAlgorithm}; may be {@code null} when unused
+   */
+  public BlockInsertPayload(
+      Bucket data,
+      FreenetURI uri,
+      short compressionCodec,
+      boolean isMetadata,
+      int sourceLength,
+      byte cryptoAlgorithm,
+      byte[] cryptoKey) {
+    this.data = data;
+    this.uri = uri;
+    this.compressionCodec = compressionCodec;
+    this.isMetadata = isMetadata;
+    this.sourceLength = sourceLength;
+    this.cryptoAlgorithm = cryptoAlgorithm;
+    this.cryptoKey = cryptoKey;
+  }
+
+  public Bucket data() {
+    return data;
+  }
+
+  public FreenetURI uri() {
+    return uri;
+  }
+
+  public short compressionCodec() {
+    return compressionCodec;
+  }
+
+  public boolean isMetadata() {
+    return isMetadata;
+  }
+
+  public int sourceLength() {
+    return sourceLength;
+  }
+
+  public byte cryptoAlgorithm() {
+    return cryptoAlgorithm;
+  }
+
+  public byte[] cryptoKey() {
+    return cryptoKey;
+  }
 
   /**
    * Compares this payload to another for structural equality, including array contents.
@@ -43,23 +91,14 @@ public record BlockInsertPayload(
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!(o
-        instanceof
-        BlockInsertPayload(
-            Bucket otherData,
-            FreenetURI otherUri,
-            short otherCompressionCodec,
-            boolean otherIsMetadata,
-            int otherSourceLength,
-            byte otherCryptoAlgorithm,
-            byte[] otherCryptoKey))) return false;
-    return compressionCodec == otherCompressionCodec
-        && isMetadata == otherIsMetadata
-        && sourceLength == otherSourceLength
-        && cryptoAlgorithm == otherCryptoAlgorithm
-        && Objects.equals(data, otherData)
-        && Objects.equals(uri, otherUri)
-        && Arrays.equals(cryptoKey, otherCryptoKey);
+    if (!(o instanceof BlockInsertPayload other)) return false;
+    return compressionCodec == other.compressionCodec
+        && isMetadata == other.isMetadata
+        && sourceLength == other.sourceLength
+        && cryptoAlgorithm == other.cryptoAlgorithm
+        && Objects.equals(data, other.data)
+        && Objects.equals(uri, other.uri)
+        && Arrays.equals(cryptoKey, other.cryptoKey);
   }
 
   /**

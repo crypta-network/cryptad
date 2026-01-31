@@ -28,32 +28,88 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Preserves existing semantics by avoiding validation or copying.
  *   <li>Supports content-based equality for the optional crypto key.
  * </ul>
- *
- * @param clientCallback callback receiver for progress and completion events; must remain valid for
- *     the putter lifetime and may be {@code null} if callers allow it.
- * @param manifestElements manifest tree of entry names to elements or sub-maps; contents are
- *     interpreted by the target putter without additional normalization here.
- * @param prioClass scheduler priority class for the request; valid values depend on scheduler
- *     configuration and must match the caller’s intent.
- * @param target target URI for the root manifest; typically an SSK or CHK-like {@link FreenetURI}.
- * @param defaultName default document name for directory levels; may be {@code null} when no
- *     default document should be inferred.
- * @param ctx insert context providing retry, chunking, and compatibility settings; must align with
- *     the caller’s overall insertion policy.
- * @param forceCryptoKey optional explicit splitfile key material; {@code null} means the putter may
- *     derive or randomize keys as needed.
- * @param context client context providing randomness and scheduling services; expected to be
- *     non-{@code null} during putter execution.
  */
-public record ManifestPutterParams(
-    ClientPutCallback clientCallback,
-    Map<String, Object> manifestElements,
-    short prioClass,
-    FreenetURI target,
-    String defaultName,
-    InsertContext ctx,
-    byte[] forceCryptoKey,
-    ClientContext context) {
+public final class ManifestPutterParams {
+  private final ClientPutCallback clientCallback;
+  private final Map<String, Object> manifestElements;
+  private final short prioClass;
+  private final FreenetURI target;
+  private final String defaultName;
+  private final InsertContext ctx;
+  private final byte[] forceCryptoKey;
+  private final ClientContext context;
+
+  /**
+   * Creates a parameter bundle for manifest putter construction.
+   *
+   * @param clientCallback callback receiver for progress and completion events; must remain valid
+   *     for the putter lifetime and may be {@code null} if callers allow it.
+   * @param manifestElements manifest tree of entry names to elements or sub-maps; contents are
+   *     interpreted by the target putter without additional normalization here.
+   * @param prioClass scheduler priority class for the request; valid values depend on scheduler
+   *     configuration and must match the caller’s intent.
+   * @param target target URI for the root manifest; typically an SSK or CHK-like {@link
+   *     FreenetURI}.
+   * @param defaultName default document name for directory levels; may be {@code null} when no
+   *     default document should be inferred.
+   * @param ctx insert context providing retry, chunking, and compatibility settings; must align
+   *     with the caller’s overall insertion policy.
+   * @param forceCryptoKey optional explicit splitfile key material; {@code null} means the putter
+   *     may derive or randomize keys as needed.
+   * @param context client context providing randomness and scheduling services; expected to be
+   *     non-{@code null} during putter execution.
+   */
+  public ManifestPutterParams(
+      ClientPutCallback clientCallback,
+      Map<String, Object> manifestElements,
+      short prioClass,
+      FreenetURI target,
+      String defaultName,
+      InsertContext ctx,
+      byte[] forceCryptoKey,
+      ClientContext context) {
+    this.clientCallback = clientCallback;
+    this.manifestElements = manifestElements;
+    this.prioClass = prioClass;
+    this.target = target;
+    this.defaultName = defaultName;
+    this.ctx = ctx;
+    this.forceCryptoKey = forceCryptoKey;
+    this.context = context;
+  }
+
+  public ClientPutCallback clientCallback() {
+    return clientCallback;
+  }
+
+  public Map<String, Object> manifestElements() {
+    return manifestElements;
+  }
+
+  public short prioClass() {
+    return prioClass;
+  }
+
+  public FreenetURI target() {
+    return target;
+  }
+
+  public String defaultName() {
+    return defaultName;
+  }
+
+  public InsertContext ctx() {
+    return ctx;
+  }
+
+  public byte[] forceCryptoKey() {
+    return forceCryptoKey;
+  }
+
+  public ClientContext context() {
+    return context;
+  }
+
   /**
    * Compares this parameter bundle to another for structural equality.
    *
@@ -69,25 +125,15 @@ public record ManifestPutterParams(
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!(o
-        instanceof
-        ManifestPutterParams(
-            ClientPutCallback otherClientCallback,
-            Map<String, Object> otherManifestElements,
-            short otherPrioClass,
-            FreenetURI otherTarget,
-            String otherDefaultName,
-            InsertContext otherCtx,
-            byte[] otherForceCryptoKey,
-            ClientContext otherContext))) return false;
-    return prioClass == otherPrioClass
-        && Objects.equals(clientCallback, otherClientCallback)
-        && Objects.equals(manifestElements, otherManifestElements)
-        && Objects.equals(target, otherTarget)
-        && Objects.equals(defaultName, otherDefaultName)
-        && Objects.equals(ctx, otherCtx)
-        && Arrays.equals(forceCryptoKey, otherForceCryptoKey)
-        && Objects.equals(context, otherContext);
+    if (!(o instanceof ManifestPutterParams other)) return false;
+    return prioClass == other.prioClass
+        && Objects.equals(clientCallback, other.clientCallback)
+        && Objects.equals(manifestElements, other.manifestElements)
+        && Objects.equals(target, other.target)
+        && Objects.equals(defaultName, other.defaultName)
+        && Objects.equals(ctx, other.ctx)
+        && Arrays.equals(forceCryptoKey, other.forceCryptoKey)
+        && Objects.equals(context, other.context);
   }
 
   /**

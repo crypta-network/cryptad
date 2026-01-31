@@ -224,9 +224,12 @@ public final class SplitFileFetcherStorageSettingsCodec {
   private static CompatAndCounts readCompatAndCounts(DataInputStream dis)
       throws IOException, StorageFormatException {
     int compatMode = dis.readInt();
-    if (compatMode < 0 || compatMode > CompatibilityMode.values().length)
+    if (compatMode < 0 || compatMode > Short.MAX_VALUE)
       throw new StorageFormatException("Invalid compatibility mode " + compatMode);
-    CompatibilityMode finalMode = CompatibilityMode.values()[compatMode];
+    short compatCode = (short) compatMode;
+    if (!CompatibilityMode.hasCode(compatCode))
+      throw new StorageFormatException("Invalid compatibility mode " + compatMode);
+    CompatibilityMode finalMode = CompatibilityMode.byCode(compatCode);
     int segmentCount = dis.readInt();
     if (segmentCount <= 0)
       throw new StorageFormatException("Invalid segment count " + segmentCount);
@@ -277,7 +280,7 @@ public final class SplitFileFetcherStorageSettingsCodec {
       dos.writeLong(storage.offsetOriginalDetails);
       dos.writeLong(storage.offsetBasicSettings);
       dos.writeBoolean(storage.completeViaTruncation);
-      dos.writeInt(storage.finalMinCompatMode.ordinal());
+      dos.writeInt(storage.finalMinCompatMode.code);
       dos.writeInt(storage.segments.length);
       dos.writeInt(totalDataBlocks);
       dos.writeInt(totalCheckBlocks);
@@ -382,80 +385,103 @@ public final class SplitFileFetcherStorageSettingsCodec {
  * <p>The {@code settingsStream} remains open and positioned at the first byte after the parsed
  * fields so callers can continue reading segment metadata without reparsing the buffer.
  */
-record ParsedBasicSettings(
-    SplitfileAlgorithm splitfileType,
-    byte splitfileSingleCryptoAlgorithm,
-    byte[] splitfileSingleCryptoKey,
-    long finalLength,
-    long decompressedLength,
-    ClientMetadata clientMetadata,
-    List<COMPRESSOR_TYPE> decompressors,
-    long offsetKeyList,
-    long offsetSegmentStatus,
-    long offsetGeneralProgress,
-    long offsetMainBloomFilter,
-    long offsetSegmentBloomFilters,
-    long offsetOriginalMetadata,
-    long offsetOriginalDetails,
-    long offsetBasicSettings,
-    CompatibilityMode finalMinCompatMode,
-    int segmentCount,
-    int totalDataBlocks,
-    int totalCheckBlocks,
-    int totalCrossCheckBlocks,
-    DataInputStream settingsStream) {
+final class ParsedBasicSettings {
+  private final SplitfileAlgorithm splitfileType;
+  private final byte splitfileSingleCryptoAlgorithm;
+  private final byte[] splitfileSingleCryptoKey;
+  private final long finalLength;
+  private final long decompressedLength;
+  private final ClientMetadata clientMetadata;
+  private final List<COMPRESSOR_TYPE> decompressors;
+  private final long offsetKeyList;
+  private final long offsetSegmentStatus;
+  private final long offsetGeneralProgress;
+  private final long offsetMainBloomFilter;
+  private final long offsetSegmentBloomFilters;
+  private final long offsetOriginalMetadata;
+  private final long offsetOriginalDetails;
+  private final long offsetBasicSettings;
+  private final CompatibilityMode finalMinCompatMode;
+  private final int segmentCount;
+  private final int totalDataBlocks;
+  private final int totalCheckBlocks;
+  private final int totalCrossCheckBlocks;
+  private final DataInputStream settingsStream;
+
+  ParsedBasicSettings(
+      SplitfileAlgorithm splitfileType,
+      byte splitfileSingleCryptoAlgorithm,
+      byte[] splitfileSingleCryptoKey,
+      long finalLength,
+      long decompressedLength,
+      ClientMetadata clientMetadata,
+      List<COMPRESSOR_TYPE> decompressors,
+      long offsetKeyList,
+      long offsetSegmentStatus,
+      long offsetGeneralProgress,
+      long offsetMainBloomFilter,
+      long offsetSegmentBloomFilters,
+      long offsetOriginalMetadata,
+      long offsetOriginalDetails,
+      long offsetBasicSettings,
+      CompatibilityMode finalMinCompatMode,
+      int segmentCount,
+      int totalDataBlocks,
+      int totalCheckBlocks,
+      int totalCrossCheckBlocks,
+      DataInputStream settingsStream) {
+    this.splitfileType = splitfileType;
+    this.splitfileSingleCryptoAlgorithm = splitfileSingleCryptoAlgorithm;
+    this.splitfileSingleCryptoKey = splitfileSingleCryptoKey;
+    this.finalLength = finalLength;
+    this.decompressedLength = decompressedLength;
+    this.clientMetadata = clientMetadata;
+    this.decompressors = decompressors;
+    this.offsetKeyList = offsetKeyList;
+    this.offsetSegmentStatus = offsetSegmentStatus;
+    this.offsetGeneralProgress = offsetGeneralProgress;
+    this.offsetMainBloomFilter = offsetMainBloomFilter;
+    this.offsetSegmentBloomFilters = offsetSegmentBloomFilters;
+    this.offsetOriginalMetadata = offsetOriginalMetadata;
+    this.offsetOriginalDetails = offsetOriginalDetails;
+    this.offsetBasicSettings = offsetBasicSettings;
+    this.finalMinCompatMode = finalMinCompatMode;
+    this.segmentCount = segmentCount;
+    this.totalDataBlocks = totalDataBlocks;
+    this.totalCheckBlocks = totalCheckBlocks;
+    this.totalCrossCheckBlocks = totalCrossCheckBlocks;
+    this.settingsStream = settingsStream;
+  }
+
   @Override
   public boolean equals(Object other) {
     if (this == other) {
       return true;
     }
-    if (!(other
-        instanceof
-        ParsedBasicSettings(
-            var otherSplitfileType,
-            var otherSplitfileSingleCryptoAlgorithm,
-            var otherSplitfileSingleCryptoKey,
-            var otherFinalLength,
-            var otherDecompressedLength,
-            var otherClientMetadata,
-            var otherDecompressors,
-            var otherOffsetKeyList,
-            var otherOffsetSegmentStatus,
-            var otherOffsetGeneralProgress,
-            var otherOffsetMainBloomFilter,
-            var otherOffsetSegmentBloomFilters,
-            var otherOffsetOriginalMetadata,
-            var otherOffsetOriginalDetails,
-            var otherOffsetBasicSettings,
-            var otherFinalMinCompatMode,
-            var otherSegmentCount,
-            var otherTotalDataBlocks,
-            var otherTotalCheckBlocks,
-            var otherTotalCrossCheckBlocks,
-            var otherSettingsStream))) {
+    if (!(other instanceof ParsedBasicSettings otherSettings)) {
       return false;
     }
-    return splitfileSingleCryptoAlgorithm == otherSplitfileSingleCryptoAlgorithm
-        && finalLength == otherFinalLength
-        && decompressedLength == otherDecompressedLength
-        && offsetKeyList == otherOffsetKeyList
-        && offsetSegmentStatus == otherOffsetSegmentStatus
-        && offsetGeneralProgress == otherOffsetGeneralProgress
-        && offsetMainBloomFilter == otherOffsetMainBloomFilter
-        && offsetSegmentBloomFilters == otherOffsetSegmentBloomFilters
-        && offsetOriginalMetadata == otherOffsetOriginalMetadata
-        && offsetOriginalDetails == otherOffsetOriginalDetails
-        && offsetBasicSettings == otherOffsetBasicSettings
-        && segmentCount == otherSegmentCount
-        && totalDataBlocks == otherTotalDataBlocks
-        && totalCheckBlocks == otherTotalCheckBlocks
-        && totalCrossCheckBlocks == otherTotalCrossCheckBlocks
-        && Objects.equals(splitfileType, otherSplitfileType)
-        && Arrays.equals(splitfileSingleCryptoKey, otherSplitfileSingleCryptoKey)
-        && Objects.equals(clientMetadata, otherClientMetadata)
-        && Objects.equals(decompressors, otherDecompressors)
-        && Objects.equals(finalMinCompatMode, otherFinalMinCompatMode)
-        && Objects.equals(settingsStream, otherSettingsStream);
+    return splitfileSingleCryptoAlgorithm == otherSettings.splitfileSingleCryptoAlgorithm
+        && finalLength == otherSettings.finalLength
+        && decompressedLength == otherSettings.decompressedLength
+        && offsetKeyList == otherSettings.offsetKeyList
+        && offsetSegmentStatus == otherSettings.offsetSegmentStatus
+        && offsetGeneralProgress == otherSettings.offsetGeneralProgress
+        && offsetMainBloomFilter == otherSettings.offsetMainBloomFilter
+        && offsetSegmentBloomFilters == otherSettings.offsetSegmentBloomFilters
+        && offsetOriginalMetadata == otherSettings.offsetOriginalMetadata
+        && offsetOriginalDetails == otherSettings.offsetOriginalDetails
+        && offsetBasicSettings == otherSettings.offsetBasicSettings
+        && segmentCount == otherSettings.segmentCount
+        && totalDataBlocks == otherSettings.totalDataBlocks
+        && totalCheckBlocks == otherSettings.totalCheckBlocks
+        && totalCrossCheckBlocks == otherSettings.totalCrossCheckBlocks
+        && Objects.equals(splitfileType, otherSettings.splitfileType)
+        && Arrays.equals(splitfileSingleCryptoKey, otherSettings.splitfileSingleCryptoKey)
+        && Objects.equals(clientMetadata, otherSettings.clientMetadata)
+        && Objects.equals(decompressors, otherSettings.decompressors)
+        && Objects.equals(finalMinCompatMode, otherSettings.finalMinCompatMode)
+        && Objects.equals(settingsStream, otherSettings.settingsStream);
   }
 
   @Override

@@ -581,7 +581,7 @@ public class SplitFileInserter
    */
   @Override
   public void onResume(ClientContext context) throws InsertException, ResumeFailedException {
-    assert (persistent);
+    assert persistent;
     synchronized (this) {
       if (resumed) return;
       resumed = true;

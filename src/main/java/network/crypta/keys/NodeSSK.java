@@ -294,22 +294,20 @@ public class NodeSSK extends Key {
    *     collision is detected with an existing different key.
    */
   public void setPubKey(DSAPublicKey pubKey2) throws SSKVerifyException {
-    if (pubKey == pubKey2) return;
     if (pubKey2 == null) return;
-    if ((pubKey == null) || !pubKey2.equals(pubKey)) {
-      byte[] newPubKeyHash = SHA256.digest(pubKey2.asBytes());
-      if (Arrays.equals(pubKeyHash, newPubKeyHash)) {
-        if (pubKey != null) {
-          // Same hash yet a different key instance: treat as a collision.
-          LOG.error("Found SHA-256 collision or something... WTF?");
-          throw new SSKVerifyException("Invalid new pubkey: " + pubKey2 + " old pubkey: " + pubKey);
-        }
-        // Hash matches and no previous key: accept.
-      } else {
-        throw new SSKVerifyException("New pubkey has invalid hash");
+    if (pubKey2.equals(pubKey)) return;
+    byte[] newPubKeyHash = SHA256.digest(pubKey2.asBytes());
+    if (Arrays.equals(pubKeyHash, newPubKeyHash)) {
+      if (pubKey != null) {
+        // Same hash yet a different key instance: treat as a collision.
+        LOG.error("Found SHA-256 collision or something... WTF?");
+        throw new SSKVerifyException("Invalid new pubkey: " + pubKey2 + " old pubkey: " + pubKey);
       }
-      pubKey = pubKey2;
+      // Hash matches and no previous key: accept.
+    } else {
+      throw new SSKVerifyException("New pubkey has invalid hash");
     }
+    pubKey = pubKey2;
   }
 
   @Override

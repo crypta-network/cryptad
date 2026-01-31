@@ -283,6 +283,7 @@ public class AEADCryptBucket implements Bucket, Serializable {
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
+    assert serialPersistentFields.length > 0;
     // Write fields using the default field block. Include the underlying only when it is
     // Serializable; otherwise fail fast to avoid silently dropping data.
     ObjectOutputStream.PutField fields = out.putFields();

@@ -9,6 +9,7 @@ import java.lang.ref.SoftReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -324,7 +325,7 @@ public class SplitFileFetcherSegmentStorage {
     this.segmentBlockDataOffset = p.segmentDataOffset;
     long sccdo = p.segmentCrossCheckDataOffset;
     if (sccdo == -1) {
-      sccdo = segmentBlockDataOffset + dataBlocks * CHKBlock.DATA_LENGTH;
+      sccdo = segmentBlockDataOffset + dataBlocks * ((long) CHKBlock.DATA_LENGTH);
     }
     this.segmentCrossCheckBlockDataOffset = sccdo;
     this.segmentKeyListOffset = p.segmentKeysOffset;
@@ -553,8 +554,7 @@ public class SplitFileFetcherSegmentStorage {
     }
   }
 
-  private record BlocksBuildResult(
-      ArrayList<SplitFileFetcherBlock> maybeBlocks, int fetchedCount) {}
+  private record BlocksBuildResult(List<SplitFileFetcherBlock> maybeBlocks, int fetchedCount) {}
 
   private BlocksBuildResult buildBlockCandidates(int totalBlocks, byte[][] allBlocks) {
     ArrayList<SplitFileFetcherBlock> maybeBlocks = new ArrayList<>();
@@ -629,7 +629,7 @@ public class SplitFileFetcherSegmentStorage {
   }
 
   private DecodePrep prepareDecodeArrays(
-      ArrayList<SplitFileFetcherBlock> maybeBlocks, SplitFileSegmentKeys keys) {
+      List<SplitFileFetcherBlock> maybeBlocks, SplitFileSegmentKeys keys) {
     int validBlocks = 0;
     int validDataBlocks = 0;
     byte[][] dataBlocksArr = new byte[blocksForDecode()][];
@@ -1429,7 +1429,7 @@ public class SplitFileFetcherSegmentStorage {
    * trigger a read of the keys before they have been persisted.
    */
   void writeKeysWithChecksum(SplitFileSegmentKeys keys) throws IOException {
-    assert (keysCache.get() == keys);
+    assert Objects.equals(keysCache.get(), keys);
     assert (this.dataBlocks + this.crossSegmentCheckBlocks == keys.dataBlocks);
     assert (this.checkBlocks == keys.checkBlocks);
     OutputStream cos = parent.writeChecksummedTo(segmentKeyListOffset, segmentKeyListLength);
@@ -1682,7 +1682,7 @@ public class SplitFileFetcherSegmentStorage {
           ClientCHKBlock block =
               ClientCHKBlock.encodeSplitfileBlock(
                   buf, key.getCryptoKey(), key.getCryptoAlgorithm());
-          if (!(block.getClientKey().equals(key))) {
+          if (!block.getClientKey().equals(key)) {
             LOG.error("Block {} in blocksFound[{}] is not valid!", blockNum, i);
             blockChooser.onUnSuccess(blockNum);
             succeeded = false;

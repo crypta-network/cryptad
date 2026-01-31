@@ -209,18 +209,18 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
       }
       return false;
     }
-    if (msg.getSpec() == DMT.FNPSSKInsertRequestHeaders) {
+    if (DMT.FNPSSKInsertRequestHeaders.equals(msg.getSpec())) {
       headers = ((ShortBuffer) msg.getObject(DMT.BLOCK_HEADERS)).getData();
       return true;
     }
-    if (msg.getSpec() == DMT.FNPSSKInsertRequestData) {
+    if (DMT.FNPSSKInsertRequestData.equals(msg.getSpec())) {
       data = ((ShortBuffer) msg.getObject(DMT.DATA)).getData();
       return true;
     }
-    if (msg.getSpec() == DMT.FNPSSKPubKey) {
+    if (DMT.FNPSSKPubKey.equals(msg.getSpec())) {
       return handlePubKeyMessage(msg);
     }
-    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
+    if (DMT.FNPDataInsertRejected.equals(msg.getSpec())) {
       try {
         source
             .transport()

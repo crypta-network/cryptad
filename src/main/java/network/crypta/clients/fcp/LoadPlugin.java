@@ -2,6 +2,7 @@ package network.crypta.clients.fcp;
 
 import java.io.File;
 import java.net.MalformedURLException;
+import java.util.Locale;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.pluginmanager.PluginInfoWrapper;
@@ -190,7 +191,7 @@ public class LoadPlugin extends FCPMessage {
 
   private String resolveUrlType(Node node) {
     if (urlType != null) {
-      return urlType.toLowerCase();
+      return urlType.toLowerCase(Locale.ROOT);
     }
     if (node.services().pluginManager().isOfficialPlugin(pluginURL) != null) {
       return TYPENAME_OFFICIAL;
@@ -208,16 +209,13 @@ public class LoadPlugin extends FCPMessage {
   }
 
   private PluginInfoWrapper startPlugin(Node node, String type, FCPConnectionHandler handler) {
-    switch (type) {
-      case TYPENAME_OFFICIAL:
-        return node.services().pluginManager().startPluginOfficial(pluginURL, store);
-      case TYPENAME_FILE:
-        return node.services().pluginManager().startPluginFile(pluginURL, store);
-      case TYPENAME_FREENET:
-        return node.services().pluginManager().startPluginFreenet(pluginURL, store);
-      case TYPENAME_URL:
-        return node.services().pluginManager().startPluginURL(pluginURL, store);
-      default:
+    return switch (type) {
+      case TYPENAME_OFFICIAL ->
+          node.services().pluginManager().startPluginOfficial(pluginURL, store);
+      case TYPENAME_FILE -> node.services().pluginManager().startPluginFile(pluginURL, store);
+      case TYPENAME_FREENET -> node.services().pluginManager().startPluginFreenet(pluginURL, store);
+      case TYPENAME_URL -> node.services().pluginManager().startPluginURL(pluginURL, store);
+      default -> {
         LOG.error("This should really not happen!");
         handler.send(
             new ProtocolErrorMessage(
@@ -226,7 +224,8 @@ public class LoadPlugin extends FCPMessage {
                 "This should really not happen! See logs for details.",
                 messageIdentifier,
                 false));
-        return null;
-    }
+        yield null;
+      }
+    };
   }
 }

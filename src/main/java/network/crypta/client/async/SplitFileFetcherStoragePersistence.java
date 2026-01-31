@@ -55,35 +55,60 @@ final class SplitFileFetcherStoragePersistence {
    * coordinates. The {@link Bucket} is intentionally left open so it can be copied later; callers
    * should either close it directly or pass the record to {@link #writePersistentMetadata}, which
    * closes it after copying.
-   *
-   * @param metadataTemp temporary bucket containing encoded metadata and appended hash
-   * @param encodedURI encoded original details plus checksum for persistent layout
-   * @param offsetOriginalDetails byte offset of encoded original details within storage layout
-   * @param offsetBasicSettings byte offset of basic settings block within storage layout
    */
-  record PreparedMetadata(
-      Bucket metadataTemp,
-      byte[] encodedURI,
-      long offsetOriginalDetails,
-      long offsetBasicSettings) {
+  static final class PreparedMetadata {
+    private final Bucket metadataTemp;
+    private final byte[] encodedURI;
+    private final long offsetOriginalDetails;
+    private final long offsetBasicSettings;
+
+    /**
+     * Creates a prepared metadata bundle for the persistent layout.
+     *
+     * @param metadataTemp temporary bucket containing encoded metadata and appended hash
+     * @param encodedURI encoded original details plus checksum for persistent layout
+     * @param offsetOriginalDetails byte offset of encoded original details within storage layout
+     * @param offsetBasicSettings byte offset of basic settings block within storage layout
+     */
+    PreparedMetadata(
+        Bucket metadataTemp,
+        byte[] encodedURI,
+        long offsetOriginalDetails,
+        long offsetBasicSettings) {
+      this.metadataTemp = metadataTemp;
+      this.encodedURI = encodedURI;
+      this.offsetOriginalDetails = offsetOriginalDetails;
+      this.offsetBasicSettings = offsetBasicSettings;
+    }
+
+    Bucket metadataTemp() {
+      return metadataTemp;
+    }
+
+    byte[] encodedURI() {
+      return encodedURI;
+    }
+
+    long offsetOriginalDetails() {
+      return offsetOriginalDetails;
+    }
+
+    long offsetBasicSettings() {
+      return offsetBasicSettings;
+    }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) {
         return true;
       }
-      if (!(o
-          instanceof
-          PreparedMetadata(
-              Bucket otherMetadataTemp,
-              byte[] otherEncodedURI,
-              long otherOffsetOriginalDetails,
-              long otherOffsetBasicSettings))) {
+      if (!(o instanceof PreparedMetadata other)) {
         return false;
       }
-      return offsetOriginalDetails == otherOffsetOriginalDetails
-          && offsetBasicSettings == otherOffsetBasicSettings
-          && Objects.equals(metadataTemp, otherMetadataTemp)
-          && Arrays.equals(encodedURI, otherEncodedURI);
+      return offsetOriginalDetails == other.offsetOriginalDetails
+          && offsetBasicSettings == other.offsetBasicSettings
+          && Objects.equals(metadataTemp, other.metadataTemp)
+          && Arrays.equals(encodedURI, other.encodedURI);
     }
 
     @Override

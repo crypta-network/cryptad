@@ -206,11 +206,13 @@ public class RequestHandler
         return;
       }
       appliedByteCounts = true;
-      if (!((!finalTransferFailed)
-          && rs != null
-          && status != RequestSender.TIMED_OUT
-          && status != RequestSender.GENERATED_REJECTED_OVERLOAD
-          && status != RequestSender.INTERNAL_ERROR)) return;
+      if (finalTransferFailed
+          || rs == null
+          || status == RequestSender.TIMED_OUT
+          || status == RequestSender.GENERATED_REJECTED_OVERLOAD
+          || status == RequestSender.INTERNAL_ERROR) {
+        return;
+      }
     }
     int sent;
     int rcvd;
@@ -543,39 +545,34 @@ public class RequestHandler
   }
 
   private boolean processStatusSimpleCases(int status, RequestSender rs) {
-    switch (status) {
-      case RequestSender.NOT_FINISHED, RequestSender.DATA_NOT_FOUND:
-        {
-          Message dnf = DMT.createFNPDataNotFound(uid);
-          sendTerminal(dnf);
-          return true;
-        }
-      case RequestSender.RECENTLY_FAILED:
-        {
-          Message rf = DMT.createFNPRecentlyFailed(uid, rs.getRecentlyFailedTimeLeft());
-          sendTerminal(rf);
-          return true;
-        }
+    return switch (status) {
+      case RequestSender.NOT_FINISHED, RequestSender.DATA_NOT_FOUND -> {
+        Message dnf = DMT.createFNPDataNotFound(uid);
+        sendTerminal(dnf);
+        yield true;
+      }
+      case RequestSender.RECENTLY_FAILED -> {
+        Message rf = DMT.createFNPRecentlyFailed(uid, rs.getRecentlyFailedTimeLeft());
+        sendTerminal(rf);
+        yield true;
+      }
       case RequestSender.GENERATED_REJECTED_OVERLOAD,
-      RequestSender.TIMED_OUT,
-      RequestSender.INTERNAL_ERROR:
-        {
-          // Locally generated. Propagate back to the source who needs to reduce send rate
-          // @bug: we may not want to translate fatal timeouts into non-fatal timeouts.
-          Message reject = DMT.createFNPRejectedOverload(uid, true);
-          sendTerminal(reject);
-          return true;
-        }
-      case RequestSender.ROUTE_NOT_FOUND:
-        {
-          // Tell source
-          Message rnf = DMT.createFNPRouteNotFound(uid, rs.getHTL());
-          sendTerminal(rnf);
-          return true;
-        }
-      default:
-        return false;
-    }
+          RequestSender.TIMED_OUT,
+          RequestSender.INTERNAL_ERROR -> {
+        // Locally generated. Propagate back to the source who needs to reduce send rate
+        // @bug: we may not want to translate fatal timeouts into non-fatal timeouts.
+        Message reject = DMT.createFNPRejectedOverload(uid, true);
+        sendTerminal(reject);
+        yield true;
+      }
+      case RequestSender.ROUTE_NOT_FOUND -> {
+        // Tell source
+        Message rnf = DMT.createFNPRouteNotFound(uid, rs.getHTL());
+        sendTerminal(rnf);
+        yield true;
+      }
+      default -> false;
+    };
   }
 
   private boolean processStatusSuccessOrFailures(int status, RequestSender rs)
@@ -588,7 +585,7 @@ public class RequestHandler
   private boolean handleSuccess(int status, RequestSender rs) throws NotConnectedException {
     if (status != RequestSender.SUCCESS) return false;
     if (key instanceof NodeSSK) {
-      sendSSK(rs.getHeaders(), rs.getSSKData(), (rs.getSSKBlock().getKey()).getPubKey());
+      sendSSK(rs.getHeaders(), rs.getSSKData(), rs.getSSKBlock().getKey().getPubKey());
     } else {
       maybeCompleteTransfer();
     }
@@ -1203,7 +1200,7 @@ public class RequestHandler
   @Override
   public void onNotStarted(boolean internalError) {
     // Impossible
-    assert (false);
+    assert false;
   }
 
   /**
@@ -1214,6 +1211,6 @@ public class RequestHandler
   @Override
   public void onDataFoundLocally() {
     // Can't happen.
-    assert (false);
+    assert false;
   }
 }

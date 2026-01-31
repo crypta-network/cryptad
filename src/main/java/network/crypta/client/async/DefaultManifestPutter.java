@@ -498,7 +498,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long groupRemainingIntoArchives(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> itemsLeft,
+      Map<String, Object> itemsLeft,
       String defaultName,
       long tmpSize) {
     while (!itemsLeft.isEmpty()) {
@@ -528,7 +528,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   }
 
   private void handleSingleItemLeft(
-      ContainerBuilder containerBuilder, HashMap<String, Object> itemsLeft, String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> itemsLeft, String defaultName) {
     for (Map.Entry<String, Object> entry : itemsLeft.entrySet()) {
       String lname = entry.getKey();
       ManifestElement me = (ManifestElement) entry.getValue();
@@ -548,7 +548,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   }
 
   private void addAllToSingleArchive(
-      ContainerBuilder containerBuilder, HashMap<String, Object> itemsLeft, String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> itemsLeft, String defaultName) {
     ContainerBuilder archive = makeArchive();
     for (Map.Entry<String, Object> entry : itemsLeft.entrySet()) {
       String lname = entry.getKey();
@@ -558,7 +558,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
   }
 
   private void addAllAsExternalElements(
-      ContainerBuilder containerBuilder, HashMap<String, Object> itemsLeft, String defaultName) {
+      ContainerBuilder containerBuilder, Map<String, Object> itemsLeft, String defaultName) {
     for (Map.Entry<String, Object> entry : itemsLeft.entrySet()) {
       String lname = entry.getKey();
       ManifestElement me = (ManifestElement) entry.getValue();
@@ -568,7 +568,7 @@ public class DefaultManifestPutter extends BaseManifestPutter {
 
   private long fillPartialArchive(
       ContainerBuilder containerBuilder,
-      HashMap<String, Object> itemsLeft,
+      Map<String, Object> itemsLeft,
       String defaultName,
       long tmpSize) {
     long archiveLimit = DEFAULT_CONTAINERSIZE_SPARE;

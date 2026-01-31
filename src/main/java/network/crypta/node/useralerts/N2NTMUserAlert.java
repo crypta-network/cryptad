@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
+import java.util.ArrayList;
 import java.util.Locale;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.N2NFeedMessageParams;
@@ -180,7 +181,7 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
               formatTimestamp(sentTime),
               formatTimestamp(receivedTime)
             }));
-    String[] lines = messageText.split("\n");
+    String[] lines = splitLines(messageText);
     for (int i = 0, c = lines.length; i < c; i++) {
       alertNode.addChild("#", lines[i]);
       if (i != lines.length - 1) alertNode.addChild("br");
@@ -214,6 +215,21 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
 
   private static String formatTimestamp(long epochMillis) {
     return MESSAGE_TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
+  }
+
+  private static String[] splitLines(String text) {
+    ArrayList<String> lines = new ArrayList<>();
+    int start = 0;
+    int idx;
+    while ((idx = text.indexOf('\n', start)) >= 0) {
+      lines.add(text.substring(start, idx));
+      start = idx + 1;
+    }
+    lines.add(text.substring(start));
+    while (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
+      lines.remove(lines.size() - 1);
+    }
+    return lines.toArray(new String[0]);
   }
 
   /**

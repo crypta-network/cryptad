@@ -307,8 +307,8 @@ final class NodeStatsFieldSetExporter {
   private static void putTotalAndRecentIOMetrics(
       NodeStats stats, SimpleFieldSet fs, long nodeUptimeSecondsLocal) {
     long[] total = stats.node.network().collector().getTotalIO();
-    long totalOutputRate = (total[0]) / nodeUptimeSecondsLocal;
-    long totalInputRate = (total[1]) / nodeUptimeSecondsLocal;
+    long totalOutputRate = total[0] / nodeUptimeSecondsLocal;
+    long totalInputRate = total[1] / nodeUptimeSecondsLocal;
     long totalPayloadOutput = stats.node.getTotalPayloadSent();
     long totalPayloadOutputRate = totalPayloadOutput / nodeUptimeSecondsLocal;
     int totalPayloadOutputPercent =

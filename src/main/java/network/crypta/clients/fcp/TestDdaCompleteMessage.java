@@ -110,7 +110,7 @@ public class TestDdaCompleteMessage extends FCPMessage {
     boolean isWriteAllowed = false;
 
     if (checkJob.readFilename != null) {
-      isReadAllowed = (checkJob.readContent.equals(readContentFromClient));
+      isReadAllowed = checkJob.readContent.equals(readContentFromClient);
       // cleanup in any case : we created it!... let's hope the client will do the same on its side.
       try {
         Files.deleteIfExists(checkJob.readFilename.toPath());

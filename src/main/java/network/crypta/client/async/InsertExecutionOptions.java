@@ -15,21 +15,64 @@ import org.jetbrains.annotations.NotNull;
  * <p>The {@code forceCryptoKey} array is stored by reference and compared by content for equality.
  * Callers should avoid mutating it after construction if they rely on stable equality or hash
  * semantics.
- *
- * @param dontCompress whether compression is disabled for the insert
- * @param reportMetadataOnly whether to stop after preparing metadata and report it directly
- * @param archiveType optional archive type used when building metadata for redirects or manifests
- * @param forceCryptoKey optional explicit crypto key material; {@code null} to derive or randomize
- * @param cryptoAlgorithm crypto algorithm identifier understood by downstream inserters
- * @param realTimeFlag whether to request real-time scheduling behavior
  */
-public record InsertExecutionOptions(
-    boolean dontCompress,
-    boolean reportMetadataOnly,
-    ARCHIVE_TYPE archiveType,
-    byte[] forceCryptoKey,
-    byte cryptoAlgorithm,
-    boolean realTimeFlag) {
+public final class InsertExecutionOptions {
+  private final boolean dontCompress;
+  private final boolean reportMetadataOnly;
+  private final ARCHIVE_TYPE archiveType;
+  private final byte[] forceCryptoKey;
+  private final byte cryptoAlgorithm;
+  private final boolean realTimeFlag;
+
+  /**
+   * Creates an immutable execution options bundle for inserts.
+   *
+   * @param dontCompress whether compression is disabled for the insert
+   * @param reportMetadataOnly whether to stop after preparing metadata and report it directly
+   * @param archiveType optional archive type used when building metadata for redirects or manifests
+   * @param forceCryptoKey optional explicit crypto key material; {@code null} to derive or
+   *     randomize
+   * @param cryptoAlgorithm crypto algorithm identifier understood by downstream inserters
+   * @param realTimeFlag whether to request real-time scheduling behavior
+   */
+  public InsertExecutionOptions(
+      boolean dontCompress,
+      boolean reportMetadataOnly,
+      ARCHIVE_TYPE archiveType,
+      byte[] forceCryptoKey,
+      byte cryptoAlgorithm,
+      boolean realTimeFlag) {
+    this.dontCompress = dontCompress;
+    this.reportMetadataOnly = reportMetadataOnly;
+    this.archiveType = archiveType;
+    this.forceCryptoKey = forceCryptoKey;
+    this.cryptoAlgorithm = cryptoAlgorithm;
+    this.realTimeFlag = realTimeFlag;
+  }
+
+  public boolean dontCompress() {
+    return dontCompress;
+  }
+
+  public boolean reportMetadataOnly() {
+    return reportMetadataOnly;
+  }
+
+  public ARCHIVE_TYPE archiveType() {
+    return archiveType;
+  }
+
+  public byte[] forceCryptoKey() {
+    return forceCryptoKey;
+  }
+
+  public byte cryptoAlgorithm() {
+    return cryptoAlgorithm;
+  }
+
+  public boolean realTimeFlag() {
+    return realTimeFlag;
+  }
 
   /**
    * Compares two option bundles by value, including array contents.
@@ -40,21 +83,13 @@ public record InsertExecutionOptions(
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!(o
-        instanceof
-        InsertExecutionOptions(
-            boolean otherDontCompress,
-            boolean otherReportMetadataOnly,
-            ARCHIVE_TYPE otherArchiveType,
-            byte[] otherForceCryptoKey,
-            byte otherCryptoAlgorithm,
-            boolean otherRealTimeFlag))) return false;
-    return dontCompress == otherDontCompress
-        && reportMetadataOnly == otherReportMetadataOnly
-        && cryptoAlgorithm == otherCryptoAlgorithm
-        && realTimeFlag == otherRealTimeFlag
-        && archiveType == otherArchiveType
-        && Arrays.equals(forceCryptoKey, otherForceCryptoKey);
+    if (!(o instanceof InsertExecutionOptions other)) return false;
+    return dontCompress == other.dontCompress
+        && reportMetadataOnly == other.reportMetadataOnly
+        && cryptoAlgorithm == other.cryptoAlgorithm
+        && realTimeFlag == other.realTimeFlag
+        && archiveType == other.archiveType
+        && Arrays.equals(forceCryptoKey, other.forceCryptoKey);
   }
 
   /**
