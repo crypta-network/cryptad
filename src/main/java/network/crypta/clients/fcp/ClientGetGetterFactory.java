@@ -6,7 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.Date;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.Objects;
 import network.crypta.client.FetchContext;
@@ -196,8 +196,8 @@ final class ClientGetGetterFactory {
     int fatal = 0;
     int failed = 0;
     // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    Date latestSuccess = new Date();
-    Date latestFailure = null;
+    Instant latestSuccess = Instant.now();
+    Instant latestFailure = null;
     String identifier = snapshot.identifier();
     Persistence persistence = snapshot.persistence();
     boolean started = snapshot.started();

@@ -8,8 +8,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.time.Instant;
-import java.util.Date;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.PeerTooOldException;
@@ -22,7 +24,6 @@ import org.junit.jupiter.api.io.TempDir;
 class DroppedOldPeersUserAlertTest {
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void isEmpty_whenNoAdds_expectTrueAndAfterAddFalse(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert =
@@ -32,7 +33,7 @@ class DroppedOldPeersUserAlertTest {
     assertTrue(alert.isEmpty());
 
     // Act
-    alert.add(new PeerTooOldException("old", 1, new Date(0)), "Alice");
+    alert.add(new PeerTooOldException("old", 1, Instant.EPOCH), "Alice");
 
     // Assert
     assertFalse(alert.isEmpty());
@@ -43,8 +44,8 @@ class DroppedOldPeersUserAlertTest {
     // Arrange
     File peersFile = tmp.resolve("dropped-peers.lst").toFile();
     DroppedOldPeersUserAlert alert = new DroppedOldPeersUserAlert(peersFile);
-    Date d1 = Date.from(Instant.ofEpochSecond(1_000));
-    Date d2 = Date.from(Instant.ofEpochSecond(2_000));
+    Instant d1 = Instant.ofEpochSecond(1_000);
+    Instant d2 = Instant.ofEpochSecond(2_000);
 
     // Act: add a named and an unnamed (null) peer
     alert.add(new PeerTooOldException("too old", 5, d1), "Alice");
@@ -88,13 +89,12 @@ class DroppedOldPeersUserAlertTest {
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void getTitle_whenMultipleBuilds_expectBuildDateFromMaxBuild(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert =
         new DroppedOldPeersUserAlert(tmp.resolve("peers.txt").toFile());
-    Date older = new Date(1_000L);
-    Date newer = new Date(2_000L);
+    Instant older = Instant.ofEpochMilli(1_000L);
+    Instant newer = Instant.ofEpochMilli(2_000L);
 
     // Act: first smaller build (should not win), then larger build (should win)
     alert.add(new PeerTooOldException("x", 1, newer), "P1");
@@ -102,27 +102,29 @@ class DroppedOldPeersUserAlertTest {
 
     // Assert: title includes the date string of the max buildNumber entry (older)
     String title = alert.getTitle();
-    assertTrue(title.contains(older.toString()));
+    String expectedDate =
+        DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)
+            .withZone(ZoneId.systemDefault())
+            .format(older);
+    assertTrue(title.contains(expectedDate));
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void getShortText_whenCalled_expectSameAsTitle(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert = new DroppedOldPeersUserAlert(tmp.resolve("p.txt").toFile());
-    alert.add(new PeerTooOldException("r", 7, new Date(0)), "N");
+    alert.add(new PeerTooOldException("r", 7, Instant.EPOCH), "N");
 
     // Act + Assert
     assertEquals(alert.getTitle(), alert.getShortText());
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void getFCPMessage_whenBuilt_expectFieldsMatchAlert(@TempDir java.nio.file.Path tmp) {
     // Arrange
     DroppedOldPeersUserAlert alert =
         new DroppedOldPeersUserAlert(tmp.resolve("peers.bin").toFile());
-    alert.add(new PeerTooOldException("r", 42, new Date(1234)), "Zed");
+    alert.add(new PeerTooOldException("r", 42, Instant.ofEpochMilli(1234)), "Zed");
 
     // Act
     FCPMessage msg = alert.getFCPMessage();

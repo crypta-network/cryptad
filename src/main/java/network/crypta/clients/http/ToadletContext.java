@@ -3,7 +3,7 @@ package network.crypta.clients.http;
 import java.io.IOException;
 import java.net.URI;
 import java.text.ParseException;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.node.useralerts.UserAlertManager;
@@ -103,7 +103,7 @@ public interface ToadletContext {
       MultiValueTable<String, String> mvt,
       String mimeType,
       long length,
-      Date mTime)
+      Instant mTime)
       throws ToadletContextClosedException, IOException;
 
   /**

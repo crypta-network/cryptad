@@ -5,7 +5,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.Date;
+import java.time.Instant;
 import java.util.WeakHashMap;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
@@ -45,7 +45,6 @@ import org.slf4j.LoggerFactory;
  *
  * @see SendableRequest
  */
-@SuppressWarnings("JavaUtilDate")
 public abstract class ClientRequester implements Serializable, ClientRequestSchedulerGroup {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequester.class);
 
@@ -222,7 +221,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * #getLatestSuccess()} for the precise semantics and defaulting behavior that keeps the user
    * interface sortable even before any blocks complete.
    */
-  protected Date latestSuccess = new Date();
+  protected Instant latestSuccess = Instant.now();
 
   /** Number of blocks which have failed. */
   protected int failedBlocks;
@@ -231,7 +230,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected int fatallyFailedBlocks;
 
   /** Timestamp of the most recent failed or fatally failed block, if any. */
-  protected Date latestFailure = null;
+  protected Instant latestFailure = null;
 
   /** Minimum number of blocks required to succeed for success. */
   protected int minSuccessBlocks;
@@ -265,28 +264,25 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * newly created requests. For very old serialized data that lacks this field the method returns
    * the epoch start.
    *
-   * @return a defensive copy of the last-success timestamp; never {@code null}
+   * @return the last-success timestamp; never {@code null}
    */
-  public Date getLatestSuccess() {
-    // clone() because Date is mutable.
+  public Instant getLatestSuccess() {
     // Null-check for backwards compatibility: Old serialized versions of objects of this
     // class might not have this field yet.
-    return latestSuccess != null ? (Date) latestSuccess.clone() : new Date(0);
+    return latestSuccess != null ? latestSuccess : Instant.EPOCH;
   }
 
   /**
    * Returns the UTC timestamp of the most recent block failure or fatal failure.
    *
-   * <p>When no failure has occurred the value is {@code null}. The returned {@link Date} instance
-   * is a defensive copy because {@code Date} is mutable.
+   * <p>When no failure has occurred the value is {@code null}.
    *
-   * @return a defensive copy of the last-failure timestamp, or {@code null} when no failures
+   * @return the last-failure timestamp, or {@code null} when no failures
    */
-  public Date getLatestFailure() {
-    // clone() because Date is mutable.
+  public Instant getLatestFailure() {
     // Null-check for backwards compatibility: Old serialized versions of objects of this
     // class might not have this field yet.
-    return latestFailure != null ? (Date) latestFailure.clone() : null;
+    return latestFailure;
   }
 
   /**
@@ -299,7 +295,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     totalBlocks = 0;
     successfulBlocks = 0;
     // See ClientRequester.getLatestSuccess() for why this defaults to current time.
-    latestSuccess = new Date();
+    latestSuccess = Instant.now();
     failedBlocks = 0;
     fatallyFailedBlocks = 0;
     latestFailure = null;
@@ -405,7 +401,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     synchronized (this) {
       if (cancelled) return;
       successfulBlocks++;
-      latestSuccess = new Date();
+      latestSuccess = Instant.now();
     }
     if (dontNotify) return;
     notifyClients(context);
@@ -420,7 +416,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   public void failedBlock(boolean dontNotify, ClientContext context) {
     synchronized (this) {
       failedBlocks++;
-      latestFailure = new Date();
+      latestFailure = Instant.now();
     }
     if (!dontNotify) notifyClients(context);
   }
@@ -442,7 +438,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   public void fatallyFailedBlock(ClientContext context) {
     synchronized (this) {
       fatallyFailedBlocks++;
-      latestFailure = new Date();
+      latestFailure = Instant.now();
     }
     notifyClients(context);
   }
@@ -543,7 +539,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     this.sentToNetwork = false;
     this.successfulBlocks = 0;
     // See ClientRequester.getLatestSuccess() for why this defaults to current time.
-    this.latestSuccess = new Date();
+    this.latestSuccess = Instant.now();
     this.totalBlocks = 0;
   }
 

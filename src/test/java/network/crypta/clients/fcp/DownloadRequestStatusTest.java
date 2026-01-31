@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -20,7 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class DownloadRequestStatusTest {
 
@@ -216,7 +216,7 @@ class DownloadRequestStatusTest {
             10,
             5,
             3,
-            new Date(0L),
+            Instant.EPOCH,
             0,
             0,
             null,

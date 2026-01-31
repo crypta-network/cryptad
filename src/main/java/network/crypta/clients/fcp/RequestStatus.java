@@ -1,6 +1,6 @@
 package network.crypta.clients.fcp;
 
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.events.SplitfileProgressEvent;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
@@ -45,12 +45,12 @@ public abstract class RequestStatus {
   private int fetchedBlocks;
 
   /** Timestamp of the most recent successful block or completion event. */
-  private Date latestSuccess;
+  private Instant latestSuccess;
 
   private int fatallyFailedBlocks;
   private int failedBlocks;
   /* @see ClientRequester#latestFailure */
-  private Date latestFailure;
+  private Instant latestFailure;
   private boolean isTotalFinalized;
   private final Persistence persistence;
 
@@ -60,7 +60,7 @@ public abstract class RequestStatus {
    * @param success Did it succeed?
    */
   synchronized void setFinished(boolean success) {
-    this.latestSuccess = new Date();
+    this.latestSuccess = Instant.now();
     this.hasFinished = true;
     this.hasSucceeded = success;
     this.hasStarted = true;
@@ -70,7 +70,7 @@ public abstract class RequestStatus {
   @SuppressWarnings("SameParameterValue")
   synchronized void restart(boolean started) {
     // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    this.latestSuccess = new Date();
+    this.latestSuccess = Instant.now();
     this.hasFinished = false;
     this.hasSucceeded = false;
     this.hasStarted = started;
@@ -98,14 +98,10 @@ public abstract class RequestStatus {
     this.totalBlocks = snapshot.total();
     this.minBlocks = snapshot.min();
     this.fetchedBlocks = snapshot.fetched();
-    // clone() because Date is mutable
-    this.latestSuccess =
-        snapshot.latestSuccess() != null ? (Date) snapshot.latestSuccess().clone() : null;
+    this.latestSuccess = snapshot.latestSuccess();
     this.fatallyFailedBlocks = snapshot.fatal();
     this.failedBlocks = snapshot.failed();
-    // clone() because Date is mutable
-    this.latestFailure =
-        snapshot.latestFailure() != null ? (Date) snapshot.latestFailure().clone() : null;
+    this.latestFailure = snapshot.latestFailure();
     this.isTotalFinalized = snapshot.totalFinalized();
   }
 
@@ -130,10 +126,10 @@ public abstract class RequestStatus {
     this.totalBlocks = source.totalBlocks;
     this.minBlocks = source.minBlocks;
     this.fetchedBlocks = source.fetchedBlocks;
-    this.latestSuccess = source.latestSuccess != null ? (Date) source.latestSuccess.clone() : null;
+    this.latestSuccess = source.latestSuccess;
     this.fatallyFailedBlocks = source.fatallyFailedBlocks;
     this.failedBlocks = source.failedBlocks;
-    this.latestFailure = source.latestFailure != null ? (Date) source.latestFailure.clone() : null;
+    this.latestFailure = source.latestFailure;
     this.isTotalFinalized = source.isTotalFinalized;
   }
 
@@ -256,30 +252,24 @@ public abstract class RequestStatus {
    * Returns a defensive copy of the last success timestamp.
    *
    * <p>The timestamp records the moment when the most recent block, or the whole request,
-   * succeeded. A {@code null} value indicates that no successes have occurred yet. Callers receive
-   * a clone to avoid mutating internal state and may safely retain the returned {@link Date} for
-   * formatting or auditing purposes.
+   * succeeded. A {@code null} value indicates that no successes have occurred yet.
    *
-   * @return cloned {@link Date} of the last success, or {@code null} if none occurred.
+   * @return last success timestamp, or {@code null} if none occurred.
    */
-  public Date getLastSuccess() {
-    // clone() because Date is mutable.
-    return latestSuccess != null ? (Date) latestSuccess.clone() : null;
+  public Instant getLastSuccess() {
+    return latestSuccess;
   }
 
   /**
    * Returns a defensive copy of the most recent failure timestamp.
    *
    * <p>The value is updated whenever {@link #updateStatus(SplitfileProgressEvent)} records a fatal
-   * or transient failure. A {@code null} timestamp indicates a failure-free run so far. The clone
-   * is safe to retain beyond the lifespan of the status object and is suitable for logging or
-   * alerting without additional synchronization.
+   * or transient failure. A {@code null} timestamp indicates a failure-free run so far.
    *
-   * @return cloned {@link Date} representing the last failure, or {@code null} if nothing failed.
+   * @return timestamp representing the last failure, or {@code null} if nothing failed.
    */
-  public Date getLastFailure() {
-    // clone() because Date is mutable.
-    return latestFailure != null ? (Date) latestFailure.clone() : null;
+  public Instant getLastFailure() {
+    return latestFailure;
   }
 
   /**
@@ -403,11 +393,9 @@ public abstract class RequestStatus {
   public synchronized void updateStatus(SplitfileProgressEvent event) {
     this.failedBlocks = event.failedBlocks;
     this.fatallyFailedBlocks = event.fatallyFailedBlocks;
-    // clone() because Date is mutable
-    this.latestFailure = event.latestFailure != null ? (Date) event.latestFailure.clone() : null;
+    this.latestFailure = event.latestFailure;
     this.fetchedBlocks = event.succeedBlocks;
-    // clone() because Date is mutable
-    this.latestSuccess = event.latestSuccess != null ? (Date) event.latestSuccess.clone() : null;
+    this.latestSuccess = event.latestSuccess;
     this.isTotalFinalized = event.finalizedTotal;
     this.minBlocks = event.getMinSuccessfulBlocks();
     this.totalBlocks = event.totalBlocks;

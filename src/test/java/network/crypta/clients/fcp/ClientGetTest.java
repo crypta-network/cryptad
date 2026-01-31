@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -31,7 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class ClientGetTest {
 
@@ -77,7 +77,8 @@ class ClientGetTest {
     SplitfileProgressEvent event =
         new SplitfileProgressEvent(
             new SplitfileProgressCounts(10, 7, 2, 1, 8, 5, true),
-            new SplitfileProgressTimestamps(new Date(1_000L), new Date(2_000L)));
+            new SplitfileProgressTimestamps(
+                Instant.ofEpochMilli(1_000L), Instant.ofEpochMilli(2_000L)));
     SimpleProgressMessage progress = new SimpleProgressMessage("req", false, event);
     setField(clientGet, "progressPending", progress);
 

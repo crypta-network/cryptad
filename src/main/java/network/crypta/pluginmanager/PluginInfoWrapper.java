@@ -2,8 +2,11 @@ package network.crypta.pluginmanager;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Date;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
+import java.util.Locale;
 import network.crypta.clients.http.ConfigToadlet;
 import network.crypta.config.Config;
 import network.crypta.config.FilePersistentConfig;
@@ -42,6 +45,9 @@ import org.slf4j.LoggerFactory;
  */
 public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
   private static final Logger LOG = LoggerFactory.getLogger(PluginInfoWrapper.class);
+  private static final DateTimeFormatter STARTED_FORMATTER =
+      DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)
+          .withZone(ZoneId.systemDefault());
 
   private final String className;
   private Thread thread;
@@ -159,7 +165,12 @@ public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
    */
   @Override
   public String toString() {
-    return "ID: \"" + threadName + "\", Name: " + className + ", Started: " + new Date(start);
+    return "ID: \""
+        + threadName
+        + "\", Name: "
+        + className
+        + ", Started: "
+        + STARTED_FORMATTER.format(Instant.ofEpochMilli(start));
   }
 
   /**

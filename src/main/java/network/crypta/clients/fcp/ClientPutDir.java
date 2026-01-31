@@ -7,7 +7,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.net.MalformedURLException;
-import java.util.Date;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.DefaultMIMETypes;
@@ -723,7 +723,6 @@ public class ClientPutDir extends ClientPutBase {
   }
 
   @Override
-  @SuppressWarnings("JavaUtilDate")
   RequestStatus getStatus() {
     FreenetURI finalURI = getFinalURI();
     InsertExceptionMode failureCode = null;
@@ -739,8 +738,8 @@ public class ClientPutDir extends ClientPutBase {
     int fatal = 0;
     int failed = 0;
     // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    Date latestSuccess = new Date();
-    Date latestFailure = null;
+    Instant latestSuccess = Instant.now();
+    Instant latestFailure = null;
     boolean totalFinalized = false;
 
     if (progressMessage instanceof SimpleProgressMessage msg) {

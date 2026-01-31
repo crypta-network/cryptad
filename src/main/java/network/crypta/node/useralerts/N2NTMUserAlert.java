@@ -1,8 +1,11 @@
 package network.crypta.node.useralerts;
 
 import java.lang.ref.WeakReference;
-import java.text.DateFormat;
-import java.util.Date;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.FormatStyle;
+import java.util.Locale;
 import network.crypta.clients.fcp.FCPMessage;
 import network.crypta.clients.fcp.N2NFeedMessageParams;
 import network.crypta.clients.fcp.TextFeedMessage;
@@ -43,6 +46,10 @@ import network.crypta.support.HTMLNode;
  */
 public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessageUserAlert {
   private static final String L10N_PREFIX = "N2NTMUserAlert.";
+  private static final DateTimeFormatter MESSAGE_TIME_FORMATTER =
+      DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
+          .withLocale(Locale.getDefault())
+          .withZone(ZoneId.systemDefault());
   private final WeakReference<PeerContext> peerRef;
   private final String messageText;
   private final int fileNumber;
@@ -120,8 +127,8 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
    * Returns a localized text body that includes metadata (from/sent/received times) followed by the
    * raw message text.
    *
-   * <p>Date values are formatted with the environment {@link DateFormat} in the current locale.
-   * Newlines embedded in the original message are preserved in the returned string.
+   * <p>Date values are formatted with the environment locale in the current timezone. Newlines
+   * embedded in the original message are preserved in the returned string.
    *
    * @return the full plain-text message body including a localized header; never {@code null}
    */
@@ -132,9 +139,9 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
             new String[] {"from", "composed", "sent", "received"},
             new String[] {
               sourceNodeName,
-              DateFormat.getInstance().format(new Date(composedTime)),
-              DateFormat.getInstance().format(new Date(sentTime)),
-              DateFormat.getInstance().format(new Date(receivedTime))
+              formatTimestamp(composedTime),
+              formatTimestamp(sentTime),
+              formatTimestamp(receivedTime)
             })
         + ": "
         + messageText;
@@ -169,9 +176,9 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
             new String[] {"from", "composed", "sent", "received"},
             new String[] {
               sourceNodeName,
-              DateFormat.getInstance().format(new Date(composedTime)),
-              DateFormat.getInstance().format(new Date(sentTime)),
-              DateFormat.getInstance().format(new Date(receivedTime))
+              formatTimestamp(composedTime),
+              formatTimestamp(sentTime),
+              formatTimestamp(receivedTime)
             }));
     String[] lines = messageText.split("\n");
     for (int i = 0, c = lines.length; i < c; i++) {
@@ -203,6 +210,10 @@ public class N2NTMUserAlert extends AbstractUserAlert implements NodeToNodeMessa
 
   private String l10n(String key, String[] patterns, String[] values) {
     return NodeL10n.getBase().getString(L10N_PREFIX + key, patterns, values);
+  }
+
+  private static String formatTimestamp(long epochMillis) {
+    return MESSAGE_TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis));
   }
 
   /**

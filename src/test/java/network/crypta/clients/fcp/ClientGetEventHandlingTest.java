@@ -15,7 +15,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.PersistenceDisabledException;
@@ -40,7 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
 class ClientGetEventHandlingTest {
   private static final String CLIENT_FIELD = "client";
@@ -386,7 +386,7 @@ class ClientGetEventHandlingTest {
   private static SplitfileProgressEvent newProgressEvent() {
     return new SplitfileProgressEvent(
         new SplitfileProgressCounts(10, 2, 1, 0, 10, 10, true),
-        new SplitfileProgressTimestamps(new Date(0L), new Date(0L)));
+        new SplitfileProgressTimestamps(Instant.EPOCH, Instant.EPOCH));
   }
 
   private static HashResult newSha256Hash() {

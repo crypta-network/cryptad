@@ -8,18 +8,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.time.Instant;
-import java.util.Date;
 import network.crypta.support.TimeUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 class CookieTest {
 
   private static final URI VALID_PATH = URI.create("/Freetalk");
   private static final String VALID_NAME = "SessionID";
   private static final String VALID_VALUE = "abCd12345";
-  private static final Date FUTURE_DATE = Date.from(Instant.parse("2099-01-01T00:00:00Z"));
+  private static final Instant FUTURE_DATE = Instant.parse("2099-01-01T00:00:00Z");
 
   private Cookie cookie;
 
@@ -118,14 +117,14 @@ class CookieTest {
 
   @Test
   void validateExpirationDate_withFutureDate_expectSameInstance() {
-    Date validated = Cookie.validateExpirationDate(FUTURE_DATE);
+    Instant validated = Cookie.validateExpirationDate(FUTURE_DATE);
 
     assertEquals(FUTURE_DATE, validated);
   }
 
   @Test
   void validateExpirationDate_withPastDate_expectException() {
-    Date past = Date.from(Instant.parse("2020-01-01T00:00:00Z"));
+    Instant past = Instant.parse("2020-01-01T00:00:00Z");
 
     assertThrows(IllegalArgumentException.class, () -> Cookie.validateExpirationDate(past));
   }
@@ -195,7 +194,7 @@ class CookieTest {
   @Test
   void encodeToHeaderValue_includesAllAttributesInOrder() {
     String encoded = cookie.encodeToHeaderValue();
-    String expectedExpires = TimeUtil.makeHTTPDate(FUTURE_DATE.getTime());
+    String expectedExpires = TimeUtil.makeHTTPDate(FUTURE_DATE.toEpochMilli());
 
     assertTrue(encoded.startsWith("sessionid=" + VALID_VALUE + ";version=1;"));
     assertTrue(encoded.contains("path=" + VALID_PATH + ";"));

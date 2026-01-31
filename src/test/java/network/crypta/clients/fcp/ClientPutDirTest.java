@@ -13,7 +13,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.lang.reflect.Field;
-import java.util.Date;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import network.crypta.client.InsertException;
@@ -33,7 +33,7 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 class ClientPutDirTest {
 
   @Mock private PersistentRequestClient persistentRequestClient;
@@ -104,7 +104,8 @@ class ClientPutDirTest {
     SplitfileProgressEvent event =
         new SplitfileProgressEvent(
             new SplitfileProgressCounts(50, 10, 4, 2, 20, 5, true),
-            new SplitfileProgressTimestamps(new Date(1000), new Date(2000)));
+            new SplitfileProgressTimestamps(
+                Instant.ofEpochMilli(1000), Instant.ofEpochMilli(2000)));
     setField(
         ClientPutBase.class,
         putDir,

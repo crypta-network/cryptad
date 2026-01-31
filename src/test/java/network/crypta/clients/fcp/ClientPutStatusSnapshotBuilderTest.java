@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.File;
 import java.lang.reflect.Field;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
 import network.crypta.client.InsertContextOptions;
@@ -29,7 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings({"java:S100", "java:S3011", "JavaUtilDate"})
+@SuppressWarnings({"java:S100", "java:S3011"})
 class ClientPutStatusSnapshotBuilderTest {
   private static final String VALID_CHK =
       "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
@@ -85,8 +85,8 @@ class ClientPutStatusSnapshotBuilderTest {
     RandomAccessBucket bucket = mock(RandomAccessBucket.class);
     when(bucket.size()).thenReturn(42L);
     InsertContext context = new InsertContext(InsertContextOptions.builder().build());
-    Date success = new Date(1000L);
-    Date failure = new Date(2000L);
+    Instant success = Instant.ofEpochMilli(1000L);
+    Instant failure = Instant.ofEpochMilli(2000L);
     SplitfileProgressCounts counts = new SplitfileProgressCounts(10, 3, 2, 1, 5, 0, true);
     SplitfileProgressTimestamps timestamps = new SplitfileProgressTimestamps(success, failure);
     SplitfileProgressEvent event = new SplitfileProgressEvent(counts, timestamps);

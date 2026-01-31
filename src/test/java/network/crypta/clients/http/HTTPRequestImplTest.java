@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -217,7 +218,7 @@ class HTTPRequestImplTest {
           MultiValueTable<String, String> mvt,
           String mimeType,
           long length,
-          java.util.Date mTime) {
+          Instant mTime) {
         throw new UnsupportedOperationException();
       }
 

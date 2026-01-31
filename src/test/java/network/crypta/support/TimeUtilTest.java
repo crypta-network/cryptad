@@ -2,12 +2,10 @@ package network.crypta.support;
 
 import static java.util.Calendar.MILLISECOND;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Instant;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -131,9 +129,8 @@ class TimeUtilTest {
     assertThrows(IllegalArgumentException.class, () -> TimeUtil.formatTime(oneForTermLong, 7));
   }
 
-  /** Tests {@link TimeUtil#setTimeToZero(Date)} */
+  /** Tests {@link TimeUtil#setTimeToZero(Instant)} */
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void testSetTimeToZero() {
     // Test whether zeroing doesn't happen when it needs not to.
 
@@ -141,30 +138,23 @@ class TimeUtilTest {
     c.set(2015, Calendar.JANUARY, 1, 0, 0, 0);
     c.set(MILLISECOND, 0);
 
-    Date original = c.getTime();
-    Date zeroed = TimeUtil.setTimeToZero(original);
+    Instant original = c.toInstant();
+    Instant zeroed = TimeUtil.setTimeToZero(original);
 
     assertEquals(original, zeroed);
-    // Date objects are mutable so their recycling is discouraged, check for it
-    assertNotSame(original, zeroed);
-
     // Test whether zeroing happens when it should.
 
     c.set(2014, Calendar.DECEMBER, 31, 23, 59, 59);
     c.set(MILLISECOND, 999);
-    original = c.getTime();
-    Date originalBackup = (Date) original.clone();
+    original = c.toInstant();
 
     c.set(2014, Calendar.DECEMBER, 31, 0, 0, 0);
     c.set(MILLISECOND, 0);
-    Date expected = c.getTime();
+    Instant expected = c.toInstant();
 
     zeroed = TimeUtil.setTimeToZero(original);
 
     assertEquals(expected, zeroed);
-    assertNotSame(original, zeroed);
-    // Check for bogus tampering with original object
-    assertEquals(originalBackup, original);
   }
 
   @Test
@@ -284,7 +274,6 @@ class TimeUtilTest {
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
   void setTimeToZero_whenDefaultTzNotUtc_truncatesByUtcDay() {
     // Arrange
     TimeZone originalTz = TimeZone.getDefault();
@@ -293,18 +282,17 @@ class TimeUtilTest {
       GregorianCalendar c = new GregorianCalendar(TimeZone.getTimeZone("America/Los_Angeles"));
       c.set(2021, Calendar.JULY, 10, 8, 15, 30);
       c.set(MILLISECOND, 123);
-      Date original = c.getTime();
+      Instant original = c.toInstant();
 
       // Compute expected UTC midnight by flooring epoch millis to day length
-      long expectedMs = (original.getTime() / 86_400_000L) * 86_400_000L;
-      Date expected = new Date(expectedMs);
+      long expectedMs = (original.toEpochMilli() / 86_400_000L) * 86_400_000L;
+      Instant expected = Instant.ofEpochMilli(expectedMs);
 
       // Act
-      Date zeroed = TimeUtil.setTimeToZero(original);
+      Instant zeroed = TimeUtil.setTimeToZero(original);
 
       // Assert
       assertEquals(expected, zeroed);
-      assertNotSame(original, zeroed);
     } finally {
       TimeZone.setDefault(originalTz);
     }

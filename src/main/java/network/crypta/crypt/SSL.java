@@ -19,7 +19,7 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.Date;
+import java.time.Instant;
 import javax.net.ServerSocketFactory;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -386,11 +386,16 @@ public class SSL {
     // Build a certificate.
     X500Name issuer = new X500Name("CN=" + CERTIFICATE_CN + ", OU=" + CERTIFICATE_OU);
     BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
-    Date notBefore = new Date(System.currentTimeMillis());
-    Date notAfter = new Date(System.currentTimeMillis() + CERTIFICATE_LIFETIME * 1000);
+    Instant notBefore = Instant.now();
+    Instant notAfter = notBefore.plusSeconds(CERTIFICATE_LIFETIME);
     JcaX509v3CertificateBuilder certBuilder =
         new JcaX509v3CertificateBuilder(
-            issuer, serial, notBefore, notAfter, issuer, keyPair.getPublic());
+            issuer,
+            serial,
+            java.util.Date.from(notBefore),
+            java.util.Date.from(notAfter),
+            issuer,
+            keyPair.getPublic());
     certBuilder.addExtension(
         Extension.extendedKeyUsage, true, new ExtendedKeyUsage(KeyPurposeId.id_kp_timeStamping));
 

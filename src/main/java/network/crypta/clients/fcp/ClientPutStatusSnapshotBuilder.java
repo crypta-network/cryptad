@@ -1,7 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.keys.FreenetURI;
 
@@ -17,8 +17,8 @@ import network.crypta.keys.FreenetURI;
  *
  * <p>The builder does not mutate the request. It reads the current fields, captures counts and
  * timestamps, and returns a new {@link UploadFileRequestStatus} instance that safely encapsulates
- * the snapshot. Any mutable values such as {@link Date} are either cloned by downstream types or
- * copied into immutable records, so callers can keep the result without additional synchronization.
+ * the snapshot. Timestamps are captured as {@link Instant} values so callers can keep the result
+ * without additional synchronization.
  *
  * <ul>
  *   <li>Preserves failure metadata reported by {@link PutFailedMessage} when available.
@@ -99,8 +99,8 @@ final class ClientPutStatusSnapshotBuilder {
     int fatal = 0;
     int failed = 0;
     // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    Date latestSuccess = new Date();
-    Date latestFailure = null;
+    Instant latestSuccess = Instant.now();
+    Instant latestFailure = null;
     boolean totalFinalized = false;
 
     if (request.progressMessage instanceof SimpleProgressMessage msg) {

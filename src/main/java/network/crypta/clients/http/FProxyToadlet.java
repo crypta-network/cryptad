@@ -13,9 +13,9 @@ import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -1217,7 +1217,6 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       context.writeData(data);
     }
 
-    @SuppressWarnings("JavaUtilDate")
     private void sendRangeOrFullResponse(
         ToadletContext context,
         BucketFactory bucketFactory,
@@ -1266,7 +1265,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
 
       retHdr.put(HEADER_X_CONTENT_TYPE_OPTIONS, NOSNIFF);
       if (container.enableCachingForChkAndSskKeys() && (key.isCHK() || key.isSSK())) {
-        context.sendReplyHeadersStatic(200, "OK", retHdr, mimeType, size, new Date());
+        context.sendReplyHeadersStatic(200, "OK", retHdr, mimeType, size, Instant.now());
       } else {
         context.sendReplyHeadersFProxy(200, "OK", retHdr, mimeType, size);
       }

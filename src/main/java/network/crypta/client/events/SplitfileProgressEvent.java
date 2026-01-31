@@ -1,6 +1,6 @@
 package network.crypta.client.events;
 
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.async.ClientRequester;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +21,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Thread-safety: event instances are safely published and read-only. Consumers may freely access
  * the fields without additional synchronization, but should avoid mutating referenced values such
- * as {@link #latestSuccess} and {@link #latestFailure} (defensive copies are used on construction).
+ * as {@link #latestSuccess} and {@link #latestFailure} (immutable instants are stored on
+ * construction).
  *
  * <ul>
  *   <li>Progress accounting: {@link #succeedBlocks}, {@link #failedBlocks}, and {@link
@@ -34,7 +35,6 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.client.async.ClientGetter
  * @see network.crypta.client.async.ClientPutter
  */
-@SuppressWarnings("JavaUtilDate")
 public class SplitfileProgressEvent implements ClientEvent {
   private static final Logger LOG = LoggerFactory.getLogger(SplitfileProgressEvent.class);
 
@@ -56,11 +56,11 @@ public class SplitfileProgressEvent implements ClientEvent {
 
   /**
    * Timestamp of the latest successful block completion. When unavailable, this value is {@code
-   * null}. A defensive copy is stored to prevent external mutation.
+   * null}.
    *
    * @see ClientRequester#getLatestSuccess()
    */
-  public final Date latestSuccess;
+  public final Instant latestSuccess;
 
   /**
    * Number of blocks that have failed but may still be retried by the scheduler. Retries can
@@ -75,12 +75,11 @@ public class SplitfileProgressEvent implements ClientEvent {
   public final int fatallyFailedBlocks;
 
   /**
-   * Timestamp of the latest block failure. When unavailable, this value is {@code null}. A
-   * defensive copy is stored to prevent external mutation.
+   * Timestamp of the latest block failure. When unavailable, this value is {@code null}.
    *
    * @see ClientRequester#getLatestFailure()
    */
-  public final Date latestFailure;
+  public final Instant latestFailure;
 
   /**
    * Minimum number of fetchable blocks for the current split context. This value reflects the
@@ -101,8 +100,7 @@ public class SplitfileProgressEvent implements ClientEvent {
    * Creates a new snapshot of splitfile progress.
    *
    * <p>All counts are non-negative. Timestamp values may be {@code null} when no corresponding
-   * event has occurred. Timestamps are defensively copied to preserve immutability of the event
-   * instance.
+   * event has occurred. Instants are stored directly because they are immutable.
    *
    * @param counts numeric progress counters for the splitfile operation
    * @param timestamps latest success and failure timestamps, or {@code null} values when unknown
@@ -111,14 +109,12 @@ public class SplitfileProgressEvent implements ClientEvent {
       SplitfileProgressCounts counts, SplitfileProgressTimestamps timestamps) {
     this.totalBlocks = counts.totalBlocks();
     this.succeedBlocks = counts.succeedBlocks();
-    Date latestSuccessTimestamp = timestamps.latestSuccess();
-    this.latestSuccess =
-        latestSuccessTimestamp != null ? new Date(latestSuccessTimestamp.getTime()) : null;
+    Instant latestSuccessTimestamp = timestamps.latestSuccess();
+    this.latestSuccess = latestSuccessTimestamp;
     this.failedBlocks = counts.failedBlocks();
     this.fatallyFailedBlocks = counts.fatallyFailedBlocks();
-    Date latestFailureTimestamp = timestamps.latestFailure();
-    this.latestFailure =
-        latestFailureTimestamp != null ? new Date(latestFailureTimestamp.getTime()) : null;
+    Instant latestFailureTimestamp = timestamps.latestFailure();
+    this.latestFailure = latestFailureTimestamp;
     this.minSuccessfulBlocks = counts.minSuccessfulBlocks();
     this.finalizedTotal = counts.finalizedTotal();
     this.minSuccessFetchBlocks = counts.minSuccessFetchBlocks();
@@ -144,7 +140,7 @@ public class SplitfileProgressEvent implements ClientEvent {
     totalBlocks = 0;
     succeedBlocks = 0;
     // See ClientRequester.getLatestSuccess() for why this defaults to current time.
-    latestSuccess = new Date();
+    latestSuccess = Instant.now();
     failedBlocks = 0;
     fatallyFailedBlocks = 0;
     latestFailure = null;

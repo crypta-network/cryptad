@@ -7,13 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Date;
+import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 class SplitfileProgressEventTest {
 
   @Test
@@ -29,27 +29,23 @@ class SplitfileProgressEventTest {
   }
 
   @Test
-  void constructor_whenDatesProvided_makesDefensiveCopies() {
-    Date success = new Date(1_000_000L);
-    Date failure = new Date(2_000_000L);
+  void constructor_whenInstantsProvided_storesValues() {
+    Instant success = Instant.ofEpochMilli(1_000_000L);
+    Instant failure = Instant.ofEpochMilli(2_000_000L);
 
     SplitfileProgressEvent event =
         new SplitfileProgressEvent(
             new SplitfileProgressCounts(1, 0, 0, 0, 1, 0, false),
             new SplitfileProgressTimestamps(success, failure));
 
-    // Mutate the original inputs after construction
-    success.setTime(9_999_999L);
-    failure.setTime(8_888_888L);
-
     assertNotNull(event.latestSuccess);
     assertNotNull(event.latestFailure);
-    assertEquals(1_000_000L, event.latestSuccess.getTime(), "latestSuccess must be copied");
-    assertEquals(2_000_000L, event.latestFailure.getTime(), "latestFailure must be copied");
+    assertEquals(success, event.latestSuccess, "latestSuccess must match input");
+    assertEquals(failure, event.latestFailure, "latestFailure must match input");
   }
 
   @Test
-  void constructor_whenNullDatesProvided_storesNulls() {
+  void constructor_whenNullTimestampsProvided_storesNulls() {
     SplitfileProgressEvent event =
         new SplitfileProgressEvent(
             new SplitfileProgressCounts(0, 0, 0, 0, 1, 0, false),

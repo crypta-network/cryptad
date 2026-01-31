@@ -3,17 +3,17 @@ package network.crypta.clients.fcp;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.client.InsertException.InsertExceptionMode;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.keys.FreenetURI;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings({"java:S100", "JavaUtilDate"})
+@SuppressWarnings("java:S100")
 class UploadDirRequestStatusTest {
 
-  private static final Date SUCCESS_DATE = new Date(5_000L);
-  private static final Date FAILURE_DATE = new Date(10_000L);
+  private static final Instant SUCCESS_DATE = Instant.ofEpochMilli(5_000L);
+  private static final Instant FAILURE_DATE = Instant.ofEpochMilli(10_000L);
 
   @Test
   void constructor_whenInitialized_preservesDirectoryMetadata() {

@@ -1,6 +1,6 @@
 package network.crypta.clients.fcp;
 
-import java.util.Date;
+import java.time.Instant;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 
 /**
@@ -34,9 +34,9 @@ public record RequestStatusSnapshot(
     int total,
     int min,
     int fetched,
-    Date latestSuccess,
+    Instant latestSuccess,
     int fatal,
     int failed,
-    Date latestFailure,
+    Instant latestFailure,
     boolean totalFinalized,
     short priority) {}

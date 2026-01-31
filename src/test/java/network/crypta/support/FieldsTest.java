@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.Locale;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
@@ -622,9 +622,8 @@ class FieldsTest {
   }
 
   @Test
-  @SuppressWarnings("JavaUtilDate")
-  void compareDate_whenNulls_expectZeroAndOrdering() {
-    Date now = new Date();
+  void compareInstant_whenNulls_expectZeroAndOrdering() {
+    Instant now = Instant.now();
     assertEquals(0, Fields.compare(null, null));
     assertEquals(-1, Fields.compare(null, now));
     assertEquals(1, Fields.compare(now, null));
