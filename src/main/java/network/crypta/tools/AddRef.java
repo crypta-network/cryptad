@@ -83,8 +83,7 @@ public class AddRef {
 
   private static void addRef(File reference) {
     try {
-      try (Socket fcpSocket =
-              new Socket(InetAddress.getLoopbackAddress(), FCPServer.DEFAULT_FCP_PORT);
+      try (Socket fcpSocket = openFcpSocket();
           LineReadingInputStream lis = new LineReadingInputStream(fcpSocket.getInputStream());
           OutputStream os = fcpSocket.getOutputStream()) {
         fcpSocket.setSoTimeout(2000);
@@ -101,6 +100,21 @@ public class AddRef {
     } finally {
       sleepAtShutdown();
     }
+  }
+
+  private static Socket openFcpSocket() throws IOException {
+    IOException lastException = null;
+    for (String host : new String[] {"127.0.0.1", "::1"}) {
+      try {
+        return new Socket(InetAddress.getByName(host), FCPServer.DEFAULT_FCP_PORT);
+      } catch (IOException e) {
+        lastException = e;
+      }
+    }
+    if (lastException != null) {
+      throw lastException;
+    }
+    throw new SocketException("No loopback addresses available");
   }
 
   private static void sendClientHelloAndValidateNode(LineReadingInputStream lis, OutputStream os)
