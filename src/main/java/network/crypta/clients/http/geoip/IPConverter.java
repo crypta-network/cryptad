@@ -803,15 +803,22 @@ public class IPConverter {
    * @throws NumberFormatException If the string is not an IP address.
    */
   public long ip2num(String ip) {
-    String[] split = IPV4_SPLITTER.split(ip);
-    if (split.length != 4) throw new NumberFormatException();
     long num = 0;
     long coef = (256 << 16);
-    for (String s : split) {
-      long modulo = Integer.parseInt(s) % 256;
-      num += (modulo * coef);
-      coef >>= 8;
+    int start = 0;
+    int segment = 0;
+    int length = ip.length();
+    for (int i = 0; i <= length; i++) {
+      if (i == length || ip.charAt(i) == '.') {
+        if (i == start || segment >= 4) throw new NumberFormatException();
+        long modulo = Integer.parseInt(ip.substring(start, i)) % 256;
+        num += (modulo * coef);
+        coef >>= 8;
+        segment++;
+        start = i + 1;
+      }
     }
+    if (segment != 4) throw new NumberFormatException();
     return num;
   }
 

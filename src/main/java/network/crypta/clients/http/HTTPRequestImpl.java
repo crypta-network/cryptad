@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
-import java.util.regex.Pattern;
 import javax.naming.SizeLimitExceededException;
 import network.crypta.support.Fields;
 import network.crypta.support.MultiValueTable;
@@ -55,8 +54,6 @@ import org.slf4j.LoggerFactory;
  */
 public class HTTPRequestImpl implements HTTPRequest {
   private static final Logger LOG = LoggerFactory.getLogger(HTTPRequestImpl.class);
-  private static final Pattern SEMICOLON_SPLITTER = Pattern.compile(";");
-  private static final Pattern EQUALS_SPLITTER = Pattern.compile("=");
 
   /**
    * This map is used to store all parameter values.
@@ -349,6 +346,21 @@ public class HTTPRequestImpl implements HTTPRequest {
     return new ParameterNameValue(name, value);
   }
 
+  private static String[] splitOnChar(String input, char delimiter) {
+    ArrayList<String> parts = new ArrayList<>();
+    int start = 0;
+    for (int i = 0; i <= input.length(); i++) {
+      if (i == input.length() || input.charAt(i) == delimiter) {
+        parts.add(input.substring(start, i));
+        start = i + 1;
+      }
+    }
+    for (int i = parts.size() - 1; i >= 0 && parts.get(i).isEmpty(); i--) {
+      parts.remove(i);
+    }
+    return parts.toArray(new String[0]);
+  }
+
   private record ParameterNameValue(String name, String value) {}
 
   /**
@@ -574,7 +586,7 @@ public class HTTPRequestImpl implements HTTPRequest {
 
     if (LOG.isDebugEnabled()) LOG.debug("Uploaded content-type header: {}", contentTypeHeader);
 
-    String[] contentTypeParts = SEMICOLON_SPLITTER.split(contentTypeHeader);
+    String[] contentTypeParts = splitOnChar(contentTypeHeader, ';');
     if (isUrlEncoded(contentTypeParts)) {
       parseUrlEncodedBody();
       return;
@@ -612,7 +624,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   private String extractBoundary(String[] contentTypeParts) {
     String boundary = null;
     for (String contentTypePart : contentTypeParts) {
-      String[] subparts = EQUALS_SPLITTER.split(contentTypePart);
+      String[] subparts = splitOnChar(contentTypePart, '=');
       if ((subparts.length == 2) && subparts[0].trim().equalsIgnoreCase("boundary")) {
         boundary = subparts[1];
       }
@@ -722,7 +734,7 @@ public class HTTPRequestImpl implements HTTPRequest {
   }
 
   private void parseContentDisposition(String headerValue, MutablePartMetadata metadata) {
-    String[] valueparts = SEMICOLON_SPLITTER.split(headerValue);
+    String[] valueparts = splitOnChar(headerValue, ';');
     for (String valuepart : valueparts) {
       String[] subparts = valuepart.split("=", 2);
       if (subparts.length != 2) {

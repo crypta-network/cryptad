@@ -58,6 +58,7 @@ public class InsertFreesiteToadlet extends Toadlet {
    *     written
    * @throws IOException if header emission or HTML streaming fails while writing the reply
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest req, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     PageNode page = ctx.getPageMaker().getPageNode(l10n("title"), ctx);

@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 import network.crypta.clients.http.FProxyFetchInProgress.REFILTER_POLICY;
 import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.crypt.SSL;
@@ -93,7 +92,6 @@ public class ToadletContextImpl implements ToadletContext {
   private static final String METHODS_MUST_HAVE_DATA = "POST";
   private static final String METHODS_CANNOT_HAVE_DATA = "GET";
   private static final String METHODS_RESTRICTED_MODE = "GET POST";
-  private static final Pattern REQUEST_LINE_SPLITTER = Pattern.compile(" ");
 
   private final MultiValueTable<String, String> headers;
   private ArrayList<ReceivedCookie>
@@ -945,18 +943,24 @@ public class ToadletContextImpl implements ToadletContext {
       throws IOException, ParseException {
     if (LOG.isDebugEnabled()) LOG.debug("first line: {}", firstLine);
 
-    String[] split = REQUEST_LINE_SPLITTER.split(firstLine);
-
-    if (split.length != 3) {
-      throw new ParseException(
-          "Could not parse request line (split.length=" + split.length + "): " + firstLine, -1);
+    int firstSpace = firstLine.indexOf(' ');
+    int secondSpace = firstLine.indexOf(' ', firstSpace + 1);
+    if (firstSpace <= 0 || secondSpace <= firstSpace || secondSpace == firstLine.length() - 1) {
+      throw new ParseException("Could not parse request line: " + firstLine, -1);
+    }
+    if (firstLine.indexOf(' ', secondSpace + 1) != -1) {
+      throw new ParseException("Could not parse request line (too many parts): " + firstLine, -1);
     }
 
-    if (!split[2].startsWith("HTTP/1."))
-      throw new ParseException("Unrecognized protocol " + split[2], -1);
+    String method = firstLine.substring(0, firstSpace);
+    String rawUri = firstLine.substring(firstSpace + 1, secondSpace);
+    String protocol = firstLine.substring(secondSpace + 1);
+
+    if (!protocol.startsWith("HTTP/1."))
+      throw new ParseException("Unrecognized protocol " + protocol, -1);
 
     try {
-      URI uri = URIPreEncoder.encodeURI(split[1]).normalize();
+      URI uri = URIPreEncoder.encodeURI(rawUri).normalize();
       if (LOG.isDebugEnabled())
         LOG.debug(
             "URI: {} path {} host {} frag {} port {} query {} scheme {}",
@@ -967,7 +971,7 @@ public class ToadletContextImpl implements ToadletContext {
             uri.getPort(),
             uri.getQuery(),
             uri.getScheme());
-      return new RequestLine(split[0], uri, split[2]);
+      return new RequestLine(method, uri, protocol);
     } catch (URISyntaxException e) {
       sendURIParseError(sock.getOutputStream(), e);
       return null;
