@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -836,7 +837,7 @@ class CSSTokenizerFilter {
   }
 
   private static void register(Map<String, PropertyRule> m, PropertyRule rule, String... names) {
-    for (String n : names) m.put(n.toLowerCase(), rule);
+    for (String n : names) m.put(n.toLowerCase(Locale.ROOT), rule);
   }
 
   private static final Map<String, PropertyRule> RULES = buildRules();
@@ -3205,7 +3206,7 @@ class CSSTokenizerFilter {
    * After the object has been loaded, the property name is removed from allelementVerifier.
    */
   private static void addVerifier(String element) {
-    PropertyRule rule = RULES.get(element.toLowerCase());
+    PropertyRule rule = RULES.get(element.toLowerCase(Locale.ROOT));
     if (rule != null) {
       rule.apply(element);
     }
@@ -3216,7 +3217,7 @@ class CSSTokenizerFilter {
    * Note: Lazy init probably doesn't make sense, but while we are initting lazily, we need to hold a lock here.
    */
   private static synchronized CSSPropertyVerifier getVerifier(String element) {
-    element = element.toLowerCase();
+    element = element.toLowerCase(Locale.ROOT);
     if (elementVerifiers.get(element) != null) return elementVerifiers.get(element);
     else if (allelementVerifiers.contains(element)) {
       addVerifier(element);
@@ -3351,17 +3352,17 @@ class CSSTokenizerFilter {
   private static boolean isElementValid(SelectorParts p) {
     return "*".equals(p.element)
         || "~".equals(p.element)
-        || ElementInfo.isValidHTMLTag(p.element.toLowerCase())
-        || p.element.trim().isEmpty()
+        || ElementInfo.isValidHTMLTag(p.element.toLowerCase(Locale.ROOT))
+        || (p.element.trim().isEmpty()
             && (!p.className.isEmpty()
                 || !p.id.isEmpty()
                 || p.attSelections != null
-                || !p.pseudoClass.isEmpty());
+                || !p.pseudoClass.isEmpty()));
   }
 
   private static boolean validateNames(SelectorParts p) {
-    return !(!p.className.isEmpty() && !ElementInfo.isValidName(p.className)
-        || p.className.isEmpty() && !p.id.isEmpty() && !ElementInfo.isValidName(p.id));
+    return !((!p.className.isEmpty() && !ElementInfo.isValidName(p.className))
+        || (p.className.isEmpty() && !p.id.isEmpty() && !ElementInfo.isValidName(p.id)));
   }
 
   // returns -1 invalid, 0 ok, 1 banned
@@ -3372,7 +3373,7 @@ class CSSTokenizerFilter {
     return 0;
   }
 
-  private static boolean validateAttributeSelections(ArrayList<String> atts) {
+  private static boolean validateAttributeSelections(List<String> atts) {
     if (atts == null) return true;
     for (String attSelection : atts) {
       String[] parts = splitAttributeSelection(attSelection);
@@ -3406,10 +3407,10 @@ class CSSTokenizerFilter {
   private static boolean isValidAttributeName(String name) {
     if (name == null || name.isEmpty()) return false;
     char c = name.charAt(0);
-    if (!(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z')) return false;
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) return false;
     for (int i = 1; i < name.length(); i++) {
       c = name.charAt(i);
-      if (!(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || c == '-')) return false;
+      if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '-')) return false;
     }
     return true;
   }
@@ -3528,7 +3529,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean shouldSetSelector(int i) {
-      return index == -1 || index == i - 1 && selector == ' ';
+      return index == -1 || (index == i - 1 && selector == ' ');
     }
 
     private boolean tryHandleParentheses(char c) {
@@ -3592,7 +3593,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean isHexDigit(char c) {
-      return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F';
+      return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
     private boolean tryHandleHexEscapeDigit(char c) {
@@ -3800,29 +3801,14 @@ class CSSTokenizerFilter {
 
     void handleCurrentStateChar() throws IOException {
       switch (currentState) {
-        case STATE1:
-          handleState1();
-          break;
-        case STATE1INQUOTE:
-          handleState1InQuote();
-          break;
-        case STATE2:
-          handleState2();
-          break;
-        case STATE2INQUOTE:
-          handleState2InQuote();
-          break;
-        case STATE3:
-          handleState3();
-          break;
-        case STATE3INQUOTE:
-          handleState3InQuote();
-          break;
-        case STATECOMMENT:
-          handleStateComment();
-          break;
-        default:
-          break;
+        case STATE1 -> handleState1();
+        case STATE1INQUOTE -> handleState1InQuote();
+        case STATE2 -> handleState2();
+        case STATE2INQUOTE -> handleState2InQuote();
+        case STATE3 -> handleState3();
+        case STATE3INQUOTE -> handleState3InQuote();
+        case STATECOMMENT -> handleStateComment();
+        default -> {}
       }
     }
 
@@ -4136,7 +4122,7 @@ class CSSTokenizerFilter {
     private void writeFilteredImportIfValid() throws IOException {
       if (LOG.isTraceEnabled()) LOG.trace("STATE1 CASE ;statement={}", buffer);
       String strbuffer = buffer.toString().trim();
-      int importIndex = strbuffer.toLowerCase().indexOf("@import");
+      int importIndex = strbuffer.toLowerCase(Locale.ROOT).indexOf("@import");
       if (!isImportAtStart(strbuffer, importIndex)) return;
       ParsedWord[] strparts = split(strbuffer.substring(importIndex + 7), false);
       if (!isValidImportHead(strparts)) return;
@@ -4198,17 +4184,17 @@ class CSSTokenizerFilter {
     void handleState1InQuote() {
       if (LOG.isTraceEnabled()) LOG.trace("STATE1INQUOTE: {}", c);
       switch (c) {
-        case '"':
+        case '"' -> {
           if (currentQuote == '"' && prevc != '\\') currentState = STATE1;
           buffer.append(c);
-          break;
-        case '\'':
+        }
+        case '\'' -> {
           if (currentQuote == '\'' && prevc != '\\') currentState = STATE1;
           buffer.append(c);
-          break;
-        case '\n', '\f', '\r':
+        }
+        case '\n', '\f', '\r' -> {
           if (c == '\n' && prevc == '\r') {
-            break;
+            return;
           }
           if (prevc != '\\') {
             ignoreElementsS1 = true;
@@ -4217,10 +4203,8 @@ class CSSTokenizerFilter {
             // Wipe out the \\ as well.
             buffer.setLength(buffer.length() - 1);
           }
-          break;
-        default:
-          buffer.append(c);
-          break;
+        }
+        default -> buffer.append(c);
       }
     }
 
@@ -4384,17 +4368,17 @@ class CSSTokenizerFilter {
       if (LOG.isTraceEnabled()) LOG.trace("STATE2INQUOTE: {}", c);
       charsetPossible = false;
       switch (c) {
-        case '"':
+        case '"' -> {
           if (currentQuote == '"' && prevc != '\\') currentState = STATE2;
           buffer.append(c);
-          break;
-        case '\'':
+        }
+        case '\'' -> {
           if (currentQuote == '\'' && prevc != '\\') currentState = STATE2;
           buffer.append(c);
-          break;
-        case '\n', '\f', '\r':
+        }
+        case '\n', '\f', '\r' -> {
           if (c == '\n' && prevc == '\r') {
-            break;
+            return;
           }
           if (prevc != '\\') {
             ignoreElementsS2 = true;
@@ -4403,10 +4387,8 @@ class CSSTokenizerFilter {
           } else {
             buffer.setLength(buffer.length() - 1);
           }
-          break;
-        default:
-          buffer.append(c);
-          break;
+        }
+        default -> buffer.append(c);
       }
     }
 
@@ -4663,17 +4645,17 @@ class CSSTokenizerFilter {
       }
       if (LOG.isTraceEnabled()) LOG.trace("STATE3INQUOTE: {}", c);
       switch (c) {
-        case '"':
+        case '"' -> {
           if (currentQuote == '"' && prevc != '\\') currentState = STATE3;
           buffer.append(c);
-          break;
-        case '\'':
+        }
+        case '\'' -> {
           if (currentQuote == '\'' && prevc != '\\') currentState = STATE3;
           buffer.append(c);
-          break;
-        case '\n', '\r', '\f':
+        }
+        case '\n', '\r', '\f' -> {
           if (c == '\n' && prevc == '\r') {
-            break;
+            return;
           }
           if (prevc != '\\') {
             ignoreElementsS3 = true;
@@ -4681,10 +4663,8 @@ class CSSTokenizerFilter {
           } else {
             buffer.setLength(buffer.length() - 1);
           }
-          break;
-        default:
-          buffer.append(c);
-          break;
+        }
+        default -> buffer.append(c);
       }
     }
 
@@ -4784,7 +4764,7 @@ class CSSTokenizerFilter {
           first = false;
           continue;
         }
-        if (!appendFromWord(out, word)) return Collections.emptyList(); // broken: signal to caller
+        if (!appendFromWord(out, word)) return new ArrayList<>(); // broken: signal to caller
       }
       return out;
     }
@@ -4797,7 +4777,7 @@ class CSSTokenizerFilter {
       }
       if (word instanceof SimpleParsedWord) {
         String data = word.original;
-        String[] split = FilterUtils.removeWhiteSpace(data.split(","), false);
+        String[] split = FilterUtils.removeWhiteSpace(FilterUtils.splitOnChar(data, ','), false);
         out.addAll(Arrays.asList(split));
         return true;
       }
@@ -4954,14 +4934,14 @@ class CSSTokenizerFilter {
     @Override
     protected boolean mustEncode(char c, int i, char prevc, boolean unicode) {
       // It is an identifier.
-      if (c >= 'a' && c <= 'z'
-          || c >= 'A' && c <= 'Z'
-          || c >= '0' && c <= '9'
+      if ((c >= 'a' && c <= 'z')
+          || (c >= 'A' && c <= 'Z')
+          || (c >= '0' && c <= '9')
           || c == '-'
           || c == '_'
-          || c >= (char) 0x00A1 && unicode) {
+          || (c >= (char) 0x00A1 && unicode)) {
         // Cannot start with a digit or a hyphen followed by a digit.
-        return i == 0 && c >= '0' && c <= '9' || i == 1 && prevc == '-' && c >= '0' && c <= '9';
+        return (i == 0 && c >= '0' && c <= '9') || (i == 1 && prevc == '-' && c >= '0' && c <= '9');
       }
       return true;
     }
@@ -5000,7 +4980,7 @@ class CSSTokenizerFilter {
       if (c == stringChar)
         // And the quote itself.
         return true;
-      else return c < 32 || c >= (char) 0x0080 && !unicode;
+      else return c < 32 || (c >= (char) 0x0080 && !unicode);
     }
 
     @Override
@@ -5247,7 +5227,8 @@ class CSSTokenizerFilter {
     }
 
     private boolean isDelimiterOutsideBrackets() {
-      return (WS_T_R_N_F.indexOf(c) != -1 || allowCommaDelimiters && c == ',') && bracketCount == 0;
+      return (WS_T_R_N_F.indexOf(c) != -1 || (allowCommaDelimiters && c == ','))
+          && bracketCount == 0;
     }
 
     private void handleDelimiter(int index) {
@@ -5318,7 +5299,7 @@ class CSSTokenizerFilter {
       boolean isAlphaLower = c >= 'a' && c <= 'z';
       boolean isAlphaUpper = c >= 'A' && c <= 'Z';
       boolean allowed =
-          isDigit && !origToken.isEmpty()
+          (isDigit && !origToken.isEmpty())
               || isAlphaLower
               || isAlphaUpper
               || c == '-'
@@ -5334,7 +5315,7 @@ class CSSTokenizerFilter {
     }
 
     private static boolean isHexDigit(char ch) {
-      return ch >= '0' && ch <= '9' || ch >= 'a' && ch <= 'f' || ch >= 'A' && ch <= 'F';
+      return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
     }
 
     private static boolean isLineBreak(char ch) {
@@ -5424,7 +5405,7 @@ class CSSTokenizerFilter {
         decodedToken.append(c);
         return;
       }
-      if (c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+      if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
         escape.append(c);
         return;
       }
@@ -5438,7 +5419,7 @@ class CSSTokenizerFilter {
     }
 
     private void handleStringEscapingContinue() {
-      if (c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+      if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
         escape.append(c);
         if (escape.length() == 6) {
           origToken.append(escape);
@@ -5582,7 +5563,7 @@ class CSSTokenizerFilter {
       String s = origToken.toString();
       if (couldBeIdentifier)
         return new ParsedIdentifier(s, decodedToken.toString(), dontLikeOrigToken);
-      String sl = s.toLowerCase();
+      String sl = s.toLowerCase(Locale.ROOT);
       if (sl.startsWith("url("))
         return parseUrlToken(s, origToken, decodedToken, dontLikeOrigToken);
       if (sl.startsWith("attr("))
@@ -5704,7 +5685,8 @@ class CSSTokenizerFilter {
       strippedOrig = strippedOrig.substring(0, strippedOrig.length() - trailing);
       if (strippedOrig.isEmpty()) return null;
 
-      String[] split = FilterUtils.removeWhiteSpace(strippedOrig.split(","), false);
+      String[] split =
+          FilterUtils.removeWhiteSpace(FilterUtils.splitOnChar(strippedOrig, ','), false);
       if (!isValidCounterPartsCount(split.length, plural)) return null;
 
       ParsedIdentifier ident = makeParsedIdentifier(split[0]);
@@ -5714,7 +5696,7 @@ class CSSTokenizerFilter {
       if (plural && separator == null) return null;
 
       ParsedIdentifier listType = parseCounterListType(plural, split);
-      if ((plural && split.length == 3 || !plural && split.length == 2) && listType == null)
+      if (((plural && split.length == 3) || (!plural && split.length == 2)) && listType == null)
         return null;
       return new ParsedCounter(origToken.toString(), ident, listType, separator);
     }
@@ -5732,7 +5714,7 @@ class CSSTokenizerFilter {
 
     private static ParsedIdentifier parseCounterListType(boolean plural, String[] split) {
       int idx = plural ? 2 : 1;
-      if (plural && split.length == 3 || !plural && split.length == 2) {
+      if ((plural && split.length == 3) || (!plural && split.length == 2)) {
         return makeParsedIdentifier(split[idx]);
       }
       return null;
@@ -5977,50 +5959,21 @@ class CSSTokenizerFilter {
         if (possibleValues == null) return f;
         for (String p : possibleValues) {
           switch (p) {
-            case "in":
-              f.integer = true;
-              break;
-            case "re":
-              f.real = true;
-              break;
-            case "pe":
-              f.percentage = true;
-              break;
-            case "le":
-              f.length = true;
-              break;
-            case "an":
-              f.angle = true;
-              break;
-            case "co":
-              f.color = true;
-              break;
-            case "ur":
-              f.uri = true;
-              break;
-            case "se":
-              f.idSelector = true;
-              break;
-            case "sh":
-              f.shape = true;
-              break;
-            case "st":
-              f.string = true;
-              break;
-            case "id":
-              f.identifier = true;
-              break;
-            case "ti":
-              f.time = true;
-              break;
-            case "fr":
-              f.frequency = true;
-              break;
-            case "tr":
-              f.transform = true;
-              break;
-            default:
-              break;
+            case "in" -> f.integer = true;
+            case "re" -> f.real = true;
+            case "pe" -> f.percentage = true;
+            case "le" -> f.length = true;
+            case "an" -> f.angle = true;
+            case "co" -> f.color = true;
+            case "ur" -> f.uri = true;
+            case "se" -> f.idSelector = true;
+            case "sh" -> f.shape = true;
+            case "st" -> f.string = true;
+            case "id" -> f.identifier = true;
+            case "ti" -> f.time = true;
+            case "fr" -> f.frequency = true;
+            case "tr" -> f.transform = true;
+            default -> {}
           }
         }
         return f;
@@ -6156,7 +6109,7 @@ class CSSTokenizerFilter {
     }
 
     private boolean validateIdentifierDefaults(ParsedIdentifier word) {
-      String lower = word.original.toLowerCase();
+      String lower = word.original.toLowerCase(Locale.ROOT);
       if (allowedValues != null && allowedValues.contains(lower)) return true;
       return isDefaultingKeyword(lower);
     }
@@ -6173,19 +6126,19 @@ class CSSTokenizerFilter {
     }
 
     private boolean matchesNumericTypes(String w) {
-      return isInteger && isIntegerChecker(w)
-          || isReal && isRealChecker(w)
-          || isPercentage && FilterUtils.isPercentage(w)
-          || isLength && FilterUtils.isLength(w, false)
-          || isAngle && FilterUtils.isAngle(w);
+      return (isInteger && isIntegerChecker(w))
+          || (isReal && isRealChecker(w))
+          || (isPercentage && FilterUtils.isPercentage(w))
+          || (isLength && FilterUtils.isLength(w, false))
+          || (isAngle && FilterUtils.isAngle(w));
     }
 
     private boolean matchesOtherTypes(String w) {
-      return isColor && FilterUtils.isColor(w)
-          || isShape && FilterUtils.isValidCSSShape(w)
-          || isFrequency && FilterUtils.isFrequency(w)
-          || isTime && FilterUtils.isTime(w)
-          || isTransform && FilterUtils.isCSSTransform(w);
+      return (isColor && FilterUtils.isColor(w))
+          || (isShape && FilterUtils.isValidCSSShape(w))
+          || (isFrequency && FilterUtils.isFrequency(w))
+          || (isTime && FilterUtils.isTime(w))
+          || (isTransform && FilterUtils.isCSSTransform(w));
     }
 
     private boolean validateIdentifierSpecials(ParsedIdentifier word) {
@@ -6298,7 +6251,7 @@ class CSSTokenizerFilter {
       int endIndex = expression.length();
       for (int j = 0; j < expression.length(); j++) {
         char ch = expression.charAt(j);
-        if (!(ch == 'a' || '0' <= ch && '9' >= ch)) {
+        if (!(ch == 'a' || ('0' <= ch && '9' >= ch))) {
           endIndex = j;
           break;
         }
@@ -6326,7 +6279,7 @@ class CSSTokenizerFilter {
       int endIndex = expression.length();
       for (int j = 0; j < expression.length(); j++) {
         char ch = expression.charAt(j);
-        if (!(ch == 'b' || '0' <= ch && '9' >= ch)) {
+        if (!(ch == 'b' || ('0' <= ch && '9' >= ch))) {
           endIndex = j;
           break;
         }
@@ -6385,7 +6338,7 @@ class CSSTokenizerFilter {
             tokensUpper);
 
       int index = Integer.parseInt(firstPart);
-      String[] strLimits = expression.substring(ltIndex + 1, tindex).split(",");
+      String[] strLimits = FilterUtils.splitOnChar(expression.substring(ltIndex + 1, tindex), ',');
       if (strLimits.length != 2) return false;
       int lowerLimit = Integer.parseInt(strLimits[0]);
       int upperLimit = Integer.parseInt(strLimits[1]);
@@ -6405,7 +6358,7 @@ class CSSTokenizerFilter {
       if (tindex != expression.length() - 1 && expression.charAt(tindex + 1) == '[') {
         int end = expression.indexOf(']');
         if (end > tindex + 1) {
-          String[] limits = expression.substring(tindex + 2, end).split(",");
+          String[] limits = FilterUtils.splitOnChar(expression.substring(tindex + 2, end), ',');
           tokensLower = Integer.parseInt(limits[0]);
           tokensUpper = Integer.parseInt(limits[1]);
           firstIndex = end + 1;
@@ -6425,7 +6378,7 @@ class CSSTokenizerFilter {
      * Takes b-expressions and evaluates them.
      *
      * <p>{@literal &&} means all the expressions must occur in any order.<br>
-     * CSS Grammar {@code list-item &amp;&amp; [ block | nonsense ] &amp;&amp; [ more ]?}<br>
+     * CSS Grammar {@code list-item && [ block | nonsense ] && [ more ]?}<br>
      * Will accept the following inputs as valid:<br>
      * {@code list-item block}<br>
      * {@code block list-item more}<br>
@@ -6572,37 +6525,63 @@ class CSSTokenizerFilter {
       }
     }
 
-    /**
-     * Parameters for verifying parse expressions that use the {@code []} repetition operator.
-     *
-     * @param verifierIndex index into {@code auxilaryVerifiers} for the repeated sub-expression.
-     * @param valueParts token sequence to validate.
-     * @param limits repetition bounds and token consumption limits.
-     * @param secondPart expression to validate after the repeated part.
-     * @param cb callback consulted by nested verifiers when URLs are encountered.
-     */
-    private record VariableOccurrenceParams(
-        int verifierIndex,
-        ParsedWord[] valueParts,
-        VariableOccurrenceLimits limits,
-        String secondPart,
-        FilterCallback cb) {
+    /** Parameters for verifying parse expressions that use the {@code []} repetition operator. */
+    private static final class VariableOccurrenceParams {
+      private final int verifierIndex;
+      private final ParsedWord[] valueParts;
+      private final VariableOccurrenceLimits limits;
+      private final String secondPart;
+      private final FilterCallback cb;
+
+      /**
+       * @param verifierIndex index into {@code auxilaryVerifiers} for the repeated sub-expression.
+       * @param valueParts token sequence to validate.
+       * @param limits repetition bounds and token consumption limits.
+       * @param secondPart expression to validate after the repeated part.
+       * @param cb callback consulted by nested verifiers when URLs are encountered.
+       */
+      private VariableOccurrenceParams(
+          int verifierIndex,
+          ParsedWord[] valueParts,
+          VariableOccurrenceLimits limits,
+          String secondPart,
+          FilterCallback cb) {
+        this.verifierIndex = verifierIndex;
+        this.valueParts = valueParts;
+        this.limits = limits;
+        this.secondPart = secondPart;
+        this.cb = cb;
+      }
+
+      private int verifierIndex() {
+        return verifierIndex;
+      }
+
+      private ParsedWord[] valueParts() {
+        return valueParts;
+      }
+
+      private VariableOccurrenceLimits limits() {
+        return limits;
+      }
+
+      private String secondPart() {
+        return secondPart;
+      }
+
+      private FilterCallback cb() {
+        return cb;
+      }
+
       @Override
       public boolean equals(Object obj) {
         if (this == obj) return true;
-        if (!(obj
-            instanceof
-            VariableOccurrenceParams(
-                int otherVerifierIndex,
-                ParsedWord[] otherValueParts,
-                VariableOccurrenceLimits otherLimits,
-                String otherSecondPart,
-                FilterCallback otherCb))) return false;
-        return verifierIndex == otherVerifierIndex
-            && Arrays.equals(valueParts, otherValueParts)
-            && Objects.equals(limits, otherLimits)
-            && Objects.equals(secondPart, otherSecondPart)
-            && Objects.equals(cb, otherCb);
+        if (!(obj instanceof VariableOccurrenceParams other)) return false;
+        return verifierIndex == other.verifierIndex
+            && Arrays.equals(valueParts, other.valueParts)
+            && Objects.equals(limits, other.limits)
+            && Objects.equals(secondPart, other.secondPart)
+            && Objects.equals(cb, other.cb);
       }
 
       @Override
@@ -7113,7 +7092,7 @@ class CSSTokenizerFilter {
     private StartDecision analyzeStartFromString(ParsedString string) {
       String decoded = string.getDecoded();
       if (LOG.isTraceEnabled()) LOG.trace("decoded: \"{}\"", decoded);
-      String lower = decoded.toLowerCase();
+      String lower = decoded.toLowerCase(Locale.ROOT);
       if (isSpecificFamily(lower) || isGenericFamily(lower)) return StartDecision.continueNext();
       return StartDecision.startWith(decoded);
     }
@@ -7132,7 +7111,7 @@ class CSSTokenizerFilter {
     }
 
     private ProcessResult consumeUnquotedFont(
-        ParsedWord[] value, int startIndex, ArrayList<String> fontWords) {
+        ParsedWord[] value, int startIndex, List<String> fontWords) {
       if (atLastWord(startIndex, value)) return finalizeLastWord(fontWords);
       if (!possiblyValidFontWords(fontWords)) return ProcessResult.returning(false);
       return consumeFollowingFontWords(value, startIndex, fontWords);
@@ -7142,7 +7121,7 @@ class CSSTokenizerFilter {
       return startIndex == value.length - 1;
     }
 
-    private ProcessResult finalizeLastWord(ArrayList<String> fontWords) {
+    private ProcessResult finalizeLastWord(List<String> fontWords) {
       boolean ok = validFontWords(fontWords);
       if (LOG.isDebugEnabled())
         LOG.debug(
@@ -7153,7 +7132,7 @@ class CSSTokenizerFilter {
     }
 
     private ProcessResult consumeFollowingFontWords(
-        ParsedWord[] value, int startIndex, ArrayList<String> fontWords) {
+        ParsedWord[] value, int startIndex, List<String> fontWords) {
       for (int j = startIndex + 1; j < value.length; j++) {
         ParsedWord newWord = value[j];
         if (!isIdentifier(newWord)) return ProcessResult.returning(false);
@@ -7170,7 +7149,7 @@ class CSSTokenizerFilter {
     }
 
     private ProcessResult maybeReturnAtLastIndex(
-        ParsedWord newWord, int j, ParsedWord[] value, ArrayList<String> fontWords) {
+        ParsedWord newWord, int j, ParsedWord[] value, List<String> fontWords) {
       if (!isLastIndex(j, value)) return null;
       if (newWord.postComma && LOG.isTraceEnabled()) LOG.trace("not valid: trailing comma at end");
       if (validFontWords(fontWords)) return ProcessResult.returning(true);
@@ -7187,7 +7166,7 @@ class CSSTokenizerFilter {
       return j == value.length - 1;
     }
 
-    private ProcessResult handleCommaInFontList(ArrayList<String> fontWords, int j) {
+    private ProcessResult handleCommaInFontList(List<String> fontWords, int j) {
       if (validFontWords(fontWords)) {
         fontWords.clear();
         return ProcessResult.continuingFrom(j);
@@ -7238,7 +7217,7 @@ class CSSTokenizerFilter {
       }
     }
 
-    private boolean possiblyValidFontWords(ArrayList<String> fontWords) {
+    private boolean possiblyValidFontWords(List<String> fontWords) {
       if (ElementInfo.DISALLOW_UNKNOWN_SPECIFIC_FONTS) {
         StringBuilder sb = new StringBuilder();
         boolean first = true;
@@ -7247,7 +7226,7 @@ class CSSTokenizerFilter {
           first = false;
           sb.append(s);
         }
-        String s = sb.toString().toLowerCase();
+        String s = sb.toString().toLowerCase(Locale.ROOT);
         return ElementInfo.isWordPrefixOrMatchOfSpecificFontFamily(s);
       } else {
         for (String s : fontWords) if (!isSpecificFamily(s)) return false;
@@ -7255,11 +7234,12 @@ class CSSTokenizerFilter {
       }
     }
 
-    private boolean validFontWords(ArrayList<String> fontWords) {
+    private boolean validFontWords(List<String> fontWords) {
       for (String s : fontWords) {
         if (s == null) throw new NullPointerException();
       }
-      if (fontWords.size() == 1 && isGenericFamily(fontWords.getFirst().toLowerCase())) return true;
+      if (fontWords.size() == 1 && isGenericFamily(fontWords.getFirst().toLowerCase(Locale.ROOT)))
+        return true;
       StringBuilder sb = new StringBuilder();
       boolean first = true;
       for (String s : fontWords) {
@@ -7267,7 +7247,7 @@ class CSSTokenizerFilter {
         first = false;
         sb.append(s);
       }
-      return isSpecificFamily(sb.toString().toLowerCase());
+      return isSpecificFamily(sb.toString().toLowerCase(Locale.ROOT));
     }
 
     /**

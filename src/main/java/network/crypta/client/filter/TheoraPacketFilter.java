@@ -93,35 +93,35 @@ public class TheoraPacketFilter implements CodecPacketFilter {
    * @throws IOException if reading the bitstream fails or the packet cannot be fully consumed due
    *     to I/O problems; malformed content may trigger unchecked exceptions as appropriate.
    */
+  @Override
   public CodecPacket parse(CodecPacket packet) throws IOException {
     // Assemble the Theora packets https://www.theora.org/doc/Theora.pdf
     // https://github.com/xiph/theora/blob/master/doc/spec/spec.tex
     BitInputStream input = new BitInputStream(new ByteArrayInputStream(packet.payload));
-    switch (expectedPacket) {
-      case IDENTIFICATION_HEADER: // must be first
+    return switch (expectedPacket) {
+      case IDENTIFICATION_HEADER -> {
+        // must be first
         LOG.debug("IDENTIFICATION_HEADER");
         verifyIdentificationHeader(input);
         expectedPacket = Packet.COMMENT_HEADER;
-        break;
-
-      case COMMENT_HEADER: // must be second
+        yield packet;
+      }
+      case COMMENT_HEADER -> {
+        // must be second
         LOG.debug("COMMENT_HEADER");
         verifyTypeAndHeader("Comment", input, 0x81); // expected -127
         expectedPacket = Packet.SETUP_HEADER;
-        return constructCommentHeaderWithEmptyVendorStringAndComments();
-
-      case SETUP_HEADER: // must be third
+        yield constructCommentHeaderWithEmptyVendorStringAndComments();
+      }
+      case SETUP_HEADER -> {
+        // must be third
         LOG.debug("SETUP_HEADER");
         verifySetupHeader(input);
         expectedPacket = Packet.FRAME;
-        break;
-
-      case FRAME:
-        // fall-through: frames are passed through unchanged
-        break;
-    }
-
-    return packet;
+        yield packet;
+      }
+      case FRAME -> packet;
+    };
   }
 
   private void verifyIdentificationHeader(BitInputStream input) throws IOException {

@@ -7,6 +7,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.zip.CRC32;
@@ -374,7 +375,7 @@ public class PNGFilter implements ContentDataFilter {
     if (readCRC != computedCRC && LOG.isDebugEnabled()) {
       LOG.debug(
           "CRC of the chunk {} doesn't match ({} but should be {})!",
-          new String(type),
+          new String(type, StandardCharsets.US_ASCII),
           Long.toHexString(readCRC),
           Long.toHexString(computedCRC));
     }
@@ -484,21 +485,17 @@ public class PNGFilter implements ContentDataFilter {
 
   private void throwOnInvalidColour(int bitDepth, int colourType) throws DataFilterException {
     switch (bitDepth) {
-      case 1, 2, 4:
+      case 1, 2, 4 -> {
         if (colourType != 0 && colourType != 3) invalidColourCombo(colourType, bitDepth);
-        break;
-      case 16:
+      }
+      case 16 -> {
         if (colourType == 3) invalidColourCombo(colourType, bitDepth);
-        if (isValidColourType8(colourType)) break;
-        invalidColourCombo(colourType, bitDepth);
-        break;
-      case 8:
-        if (isValidColourType8(colourType)) break;
-        invalidColourCombo(colourType, bitDepth);
-        break;
-      default:
-        invalidColourCombo(colourType, bitDepth);
-        break;
+        if (!isValidColourType8(colourType)) invalidColourCombo(colourType, bitDepth);
+      }
+      case 8 -> {
+        if (!isValidColourType8(colourType)) invalidColourCombo(colourType, bitDepth);
+      }
+      default -> invalidColourCombo(colourType, bitDepth);
     }
   }
 
