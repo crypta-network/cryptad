@@ -952,17 +952,21 @@ public class DefaultMIMETypes {
   }
 
   /** Regular expression for the top‑level type token (for example, {@code text}). */
-  private static final String TOP_LEVEL = "(?>[a-zA-Z-]+)";
+  private static final String TOP_LEVEL = "[a-zA-Z-]++";
 
   /** Regular expression for the subtype and parameter tokens allowed by this parser. */
-  private static final String CHARS = "(?>[a-zA-Z0-9+_.-]+)";
+  private static final String CHARS = "[a-zA-Z0-9+_.-]++";
+
+  /** Regular expression fragment for a quoted parameter value. */
+  private static final String QUOTED = "\"[^\";]*+\"";
 
   /** Regular expression fragment for a single parameter, including optional quoting. */
-  private static final String PARAM = "(?>;\\s*" + CHARS + "=" + "((" + CHARS + ")|(\".*\")))";
+  private static final String PARAM =
+      "(?>;\\s*+" + CHARS + "\\s*+=\\s*+(?:" + CHARS + "|" + QUOTED + ")\\s*+)";
 
   /** Complete pattern for a MIME type with optional parameters; used for plausibility checks. */
   private static final Pattern MIME_TYPE =
-      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*" + PARAM + "*\\s*;?\\s*");
+      Pattern.compile(TOP_LEVEL + "/" + CHARS + "\\s*+" + PARAM + "*+\\s*+;?\\s*+");
 
   /**
    * Compatibility pattern for legacy Infocalypse repositories that encoded a numeric suffix as a
