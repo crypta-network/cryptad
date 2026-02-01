@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  * Configures runtime logging for the node using Logback.
  *
  * <p>This handler wires the node's {@link SubConfig} options to Logback at runtime. It supports
- * enabling/disabling emission, switching the log directory, applying a size-and-time based rolling
+ * enabling/disabling emission, switching the log directory, applying a size-and-time-based rolling
  * policy (including a total on-disk size cap), and per-logger priority overrides. The class
  * interacts with the Logback root logger and expects an {@code ASYNC_FILE} appender with a {@link
  * RollingFileAppender} child to be present in the active configuration. When that structure is
@@ -54,7 +54,7 @@ import org.slf4j.LoggerFactory;
  * application logger is used inside this class to avoid recursion during reconfiguration.
  */
 public class LoggingConfigHandler {
-  // Intentionally no SLF4J logger; use System.err only for guarded errors.
+  // Intentionally, no SLF4J logger; use System.err only for guarded errors.
 
   // String literals used at least 3 times (java:S1192)
   private static final String LVL_TRACE = "TRACE";
@@ -270,10 +270,10 @@ public class LoggingConfigHandler {
           @Override
           public void set(Long val) {
             if (val == null) val = 0L;
-            // Enforce minimum of 50 MiB to keep rolling policy sane relative to maxFileSize.
+            // Enforce a minimum of 50 MiB to keep rolling policy sane relative to maxFileSize.
             if (val < MIN_LOGS_TOTAL_SIZE_CAP_BYTES) val = MIN_LOGS_TOTAL_SIZE_CAP_BYTES;
             logsTotalSizeCap = val;
-            // Apply to Logback rolling policy immediately.
+            // Apply to the Logback rolling policy immediately.
             updateLogbackTotalSizeCap(logsTotalSizeCap);
           }
         },
@@ -343,13 +343,13 @@ public class LoggingConfigHandler {
           @Override
           public void set(String val) {
             logRotateInterval = val;
-            // Apply new interval to Logback rolling pattern immediately.
+            // Apply a new interval to the Logback rolling pattern immediately.
             reconfigureLogbackFileDirectory(logDir);
           }
         });
 
     logRotateInterval = config.getString("interval");
-    // Apply current interval to Logback pattern at startup.
+    // Apply the current interval to the Logback pattern at startup.
     reconfigureLogbackFileDirectory(logDir);
   }
 
@@ -560,7 +560,7 @@ public class LoggingConfigHandler {
     st.stop();
     rfa.stop();
     st.setFileNamePattern(newPattern);
-    // Keep total size cap aligned with configured logsTotalSizeCap
+    // Keep the total size cap aligned with configured logsTotalSizeCap
     st.setTotalSizeCap(new FileSize(logsTotalSizeCap));
 
     // Restart in order: policy then appender
@@ -651,7 +651,7 @@ public class LoggingConfigHandler {
     String s = configured.trim().toUpperCase(Locale.ROOT);
     // Strip optional trailing 'S'
     if (s.endsWith("S")) s = s.substring(0, s.length() - 1);
-    // Extract numeric prefix (we ignore it for Logback granularity)
+    // Extract the numeric prefix (we ignore it for Logback granularity)
     int i = 0;
     while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
     String unit = parseIntervalUnit(s);
@@ -668,7 +668,7 @@ public class LoggingConfigHandler {
   private String parseIntervalUnit(String s) {
     if (s == null || s.isEmpty()) return UNIT_HOUR; // default granularity
     String up = s.toUpperCase(Locale.ROOT);
-    // Accept plural units (e.g. 5MINUTES) by trimming an optional trailing 'S'
+    // Accept plural units (e.g., 5MINUTES) by trimming an optional trailing 'S'
     if (up.endsWith("S")) up = up.substring(0, up.length() - 1);
     int i = 0;
     while (i < up.length() && Character.isDigit(up.charAt(i))) i++;
@@ -705,7 +705,7 @@ public class LoggingConfigHandler {
    * Disables log emission by setting the root level to {@link Level#OFF} and clearing any
    * per-logger overrides so they inherit from root again.
    *
-   * <p>Thread-safety: synchronizes on an internal lock to serialize disable with other state
+   * <p>Thread-safety: synchronizes on an internal lock to serialize "disable" with other state
    * transitions.
    */
   @SuppressWarnings("java:S106")
@@ -721,7 +721,7 @@ public class LoggingConfigHandler {
             logger.setLevel(null);
           }
           appliedLoggerNames.clear();
-          // Set root level to OFF to disable emission
+          // Set the root level to OFF to disable the emission
           ch.qos.logback.classic.Logger root = ctx.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
           root.setLevel(Level.OFF);
         }
@@ -807,26 +807,30 @@ public class LoggingConfigHandler {
     int start = 0;
     int length = raw.length();
     for (int i = 0; i <= length; i++) {
-      if (i == length || raw.charAt(i) == ',') {
-        if (i > start) {
-          String token = raw.substring(start, i);
-          int x = token.indexOf(':');
-          if (x >= 0 && x != token.length() - 1) { // ignore malformed pair silently as before
-            String section = token.substring(0, x);
-            String val = token.substring(x + 1);
-            Level lvl;
-            try {
-              lvl = toLogbackLevel(val);
-            } catch (IllegalArgumentException e) {
-              throw new InvalidConfigValueException(e.getMessage());
-            }
-            result.put(section, lvl);
-          }
-        }
-        start = i + 1;
+      if (i != length && raw.charAt(i) != ',') continue;
+      if (i > start) {
+        parseOverrideToken(raw.substring(start, i), result);
       }
+      start = i + 1;
     }
     return result;
+  }
+
+  private void parseOverrideToken(String token, Map<String, Level> result)
+      throws InvalidConfigValueException {
+    int x = token.indexOf(':');
+    if (x < 0 || x == token.length() - 1) return; // ignore the malformed pair silently as before
+    String section = token.substring(0, x);
+    String val = token.substring(x + 1);
+    result.put(section, parseOverrideLevel(val));
+  }
+
+  private Level parseOverrideLevel(String val) throws InvalidConfigValueException {
+    try {
+      return toLogbackLevel(val);
+    } catch (IllegalArgumentException e) {
+      throw new InvalidConfigValueException(e.getMessage());
+    }
   }
 
   private void removeObsoleteOverrides(LoggerContext ctx, Map<String, Level> newOverrides) {
