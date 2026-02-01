@@ -23,6 +23,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
@@ -384,7 +385,7 @@ class PrioritizedSerialExecutorTest {
         sawWaiting = true;
         break;
       }
-      Thread.yield();
+      LockSupport.parkNanos(1_000_000L);
     }
     assertTrue(sawWaiting);
 
@@ -435,7 +436,7 @@ class PrioritizedSerialExecutorTest {
 
     long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
     while (!ran.get() && System.nanoTime() < deadline) {
-      Thread.yield();
+      LockSupport.parkNanos(1_000_000L);
     }
     assertTrue(ran.get());
 

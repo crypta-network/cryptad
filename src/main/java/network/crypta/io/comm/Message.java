@@ -9,7 +9,6 @@ import java.io.Serial;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import network.crypta.support.ByteBufferInputStream;
 import network.crypta.support.Fields;
@@ -181,7 +180,7 @@ public class Message {
     DataInput dataInput = bb.asDataInput();
     for (String name : mspec.getOrderedFields()) {
       Class<?> type = mspec.getFields().get(name);
-      if (type.equals(LinkedList.class)) {
+      if (type.equals(List.class)) {
         m.set(
             name,
             Serializer.readListFromDataInputStream(

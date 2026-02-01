@@ -9,7 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -170,16 +170,16 @@ class SerializerTest {
     assertThrows(IOException.class, () -> readWithSerializer(float[].class, baos.toByteArray()));
   }
 
-  // ---------- LinkedList / list ----------
+  // ---------- List ----------
 
   @Test
-  void readListFromDataInputStream_whenLinkedListOfStrings_expectRoundTrip() throws IOException {
-    LinkedList<String> list = new LinkedList<>();
+  void readListFromDataInputStream_whenListOfStrings_expectRoundTrip() throws IOException {
+    List<String> list = new ArrayList<>();
     list.add("alpha");
     list.add("beta");
     list.add("gamma");
 
-    // Serialize list using Serializer's LinkedList branch
+    // Serialize list using Serializer's List branch
     byte[] bytes = writeWithSerializer(list);
 
     try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes))) {
@@ -190,7 +190,7 @@ class SerializerTest {
 
   @Test
   void readListFromDataInputStream_whenEmpty_expectEmptyList() throws IOException {
-    LinkedList<String> list = new LinkedList<>();
+    List<String> list = new ArrayList<>();
     byte[] bytes = writeWithSerializer(list);
     try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bytes))) {
       List<Object> read = Serializer.readListFromDataInputStream(String.class, dis);
@@ -239,8 +239,8 @@ class SerializerTest {
   }
 
   @Test
-  void length_whenLinkedList_expectIllegalArgumentException() {
-    assertThrows(IllegalArgumentException.class, () -> Serializer.length(LinkedList.class, 0));
+  void length_whenList_expectIllegalArgumentException() {
+    assertThrows(IllegalArgumentException.class, () -> Serializer.length(List.class, 0));
   }
 
   @Test

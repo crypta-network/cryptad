@@ -1,6 +1,6 @@
 package network.crypta.support;
 
-import java.util.Enumeration;
+import java.util.Iterator;
 
 /**
  * Intrusive doubly linked list interface.
@@ -108,14 +108,14 @@ public interface DoublyLinkedList<T extends DoublyLinkedList.Item<?>> extends It
   boolean isEmpty();
 
   /**
-   * Returns an {@link Enumeration} over items from head to tail.
+   * Returns an {@link Iterator} over items from head to tail.
    *
    * <p>Iteration semantics during concurrent modification are implementation-defined and may vary
    * by implementation.
    *
-   * @return an enumeration of items in forward order
+   * @return an iterator of items in forward order
    */
-  Enumeration<T> elements(); // Provided for consistency with typical Java APIs.
+  Iterator<T> elements(); // Provided for consistency with typical Java APIs.
 
   /**
    * Returns whether the list contains an item equal to {@code item}.

@@ -2,8 +2,8 @@ package network.crypta.node;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.Random;
@@ -239,9 +239,9 @@ public class PeerMessageQueue {
 
     private void addToNonEmptyForward(Items list) {
       if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
-      Enumeration<Items> it = nonEmptyItemsWithID.elements();
-      while (it.hasMoreElements()) {
-        Items compare = it.nextElement();
+      Iterator<Items> it = nonEmptyItemsWithID.elements();
+      while (it.hasNext()) {
+        Items compare = it.next();
         if (compare.timeLastSent >= list.timeLastSent) {
           nonEmptyItemsWithID.insertPrev(compare, list);
           return;
@@ -258,9 +258,9 @@ public class PeerMessageQueue {
 
     private void addToNonEmptyBackward(Items list) {
       if (nonEmptyItemsWithID == null) nonEmptyItemsWithID = new DoublyLinkedListImpl<>();
-      Enumeration<Items> it = nonEmptyItemsWithID.reverseElements();
-      while (it.hasMoreElements()) {
-        Items compare = it.nextElement();
+      Iterator<Items> it = nonEmptyItemsWithID.reverseElements();
+      while (it.hasNext()) {
+        Items compare = it.next();
         if (compare.timeLastSent <= list.timeLastSent) {
           nonEmptyItemsWithID.insertNext(compare, list);
           return;
@@ -271,9 +271,9 @@ public class PeerMessageQueue {
 
     private void addToEmptyBackward(Items list) {
       if (emptyItemsWithID == null) emptyItemsWithID = new DoublyLinkedListImpl<>();
-      Enumeration<Items> it = emptyItemsWithID.reverseElements();
-      while (it.hasMoreElements()) {
-        Items compare = it.nextElement();
+      Iterator<Items> it = emptyItemsWithID.reverseElements();
+      while (it.hasNext()) {
+        Items compare = it.next();
         if (compare.timeLastSent <= list.timeLastSent) {
           emptyItemsWithID.insertNext(compare, list);
           return;

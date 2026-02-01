@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Enumeration;
+import java.util.Iterator;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -70,14 +70,14 @@ class LRUQueueTest {
   private boolean verifyLastElemsOrder(LRUQueue<Object> aLRUQueue, Object nextToLast, Object last) {
     boolean retVal = true;
     int size = aLRUQueue.size();
-    Enumeration<Object> methodEnum = aLRUQueue.elements();
+    Iterator<Object> methodEnum = aLRUQueue.elements();
     int counter = 0;
-    while (methodEnum.hasMoreElements()) {
+    while (methodEnum.hasNext()) {
       // next-to-last object
-      if (counter == size - 2) retVal &= methodEnum.nextElement().equals(nextToLast);
+      if (counter == size - 2) retVal &= methodEnum.next().equals(nextToLast);
       // last object
-      else if (counter == size - 1) retVal &= methodEnum.nextElement().equals(last);
-      else methodEnum.nextElement();
+      else if (counter == size - 1) retVal &= methodEnum.next().equals(last);
+      else methodEnum.next();
       counter++;
     }
     return retVal;
@@ -230,17 +230,17 @@ class LRUQueueTest {
     assertTrue(methodLRUQueue.contains(methodSampleObj));
   }
 
-  /** Tests {@link LRUQueue#elements()} method verifying if the Enumeration provided is correct */
+  /** Tests {@link LRUQueue#elements()} method verifying if the iterator provided is correct */
   @Test
   void elements_whenFilled_yieldsLeastToMostRecentOrder() {
     Object[] sampleObjects = createSampleObjects(SAMPLE_ELEMS_NUMBER);
     LRUQueue<Object> methodLRUQueue = new LRUQueue<>();
     // pushing objects
     for (Object sampleObject : sampleObjects) methodLRUQueue.push(sampleObject);
-    Enumeration<Object> methodEnumeration = methodLRUQueue.elements();
+    Iterator<Object> methodEnumeration = methodLRUQueue.elements();
     int j = 0;
-    while (methodEnumeration.hasMoreElements()) {
-      assertEquals(sampleObjects[j], methodEnumeration.nextElement());
+    while (methodEnumeration.hasNext()) {
+      assertEquals(sampleObjects[j], methodEnumeration.next());
       j++;
     }
   }
@@ -411,8 +411,8 @@ class LRUQueueTest {
   void elements_whenEmpty_hasNoElements() {
     // Arrange
     LRUQueue<Object> q = new LRUQueue<>();
-    Enumeration<Object> e = q.elements();
+    Iterator<Object> e = q.elements();
     // Assert
-    assertFalse(e.hasMoreElements());
+    assertFalse(e.hasNext());
   }
 }

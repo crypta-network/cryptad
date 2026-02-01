@@ -1,9 +1,8 @@
 package network.crypta.support;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 
@@ -24,7 +23,7 @@ import java.util.Objects;
  * operations (e.g., {@link #contains(Object)}, {@link #toArray()}, {@link #toArrayOrdered()},
  * {@link #clear()}, {@link #get(Object)}, and {@link #elements()}) are synchronized. The {@link
  * #size()} method is not synchronized and may observe transient states if other threads mutate the
- * queue concurrently. The enumeration returned by {@link #elements()} is built from a snapshot
+ * queue concurrently. The iterator returned by {@link #elements()} is built from a snapshot
  * captured while holding the monitor; it does not reflect later mutations.
  *
  * <p>Nullability: {@link #push(Object)}, {@link #pushLeast(Object)}, and {@link #remove(Object)}
@@ -150,21 +149,20 @@ public class LRUQueue<T> {
   }
 
   /**
-   * Returns an {@link Enumeration} over the elements from least recently used to most recently
-   * used.
+   * Returns an {@link Iterator} over the elements from least recently used to most recently used.
    *
-   * <p>The enumeration is backed by a snapshot constructed at the time of the call. It does not
+   * <p>The iterator is backed by a snapshot constructed at the time of the call. It does not
    * reflect later mutations and is not fail-fast.
    *
-   * @return enumeration from LRU to MRU
+   * @return iterator from LRU to MRU
    */
-  public synchronized Enumeration<T> elements() {
+  public synchronized Iterator<T> elements() {
     // Build snapshot under lock because DoublyLinkedListImpl is not thread-safe.
     ArrayList<T> snapshot = new ArrayList<>(list.size());
-    for (Enumeration<QItem<T>> e = list.reverseElements(); e.hasMoreElements(); ) {
-      snapshot.add(e.nextElement().obj);
+    for (Iterator<QItem<T>> e = list.reverseElements(); e.hasNext(); ) {
+      snapshot.add(e.next().obj);
     }
-    return Collections.enumeration(snapshot);
+    return snapshot.iterator();
   }
 
   private static class QItem<T> extends DoublyLinkedListImpl.Item<QItem<T>> {
@@ -209,8 +207,8 @@ public class LRUQueue<T> {
   public synchronized Object[] toArrayOrdered() {
     Object[] array = new Object[list.size()];
     int x = 0;
-    for (Enumeration<QItem<T>> e = list.reverseElements(); e.hasMoreElements(); ) {
-      array[x++] = e.nextElement().obj;
+    for (Iterator<QItem<T>> e = list.reverseElements(); e.hasNext(); ) {
+      array[x++] = e.next().obj;
     }
     return array;
   }
@@ -234,8 +232,8 @@ public class LRUQueue<T> {
       throw new IllegalStateException(
           "array.length=" + array.length + " but list.size=" + listSize);
     int x = 0;
-    for (Enumeration<QItem<T>> e = list.reverseElements(); e.hasMoreElements(); ) {
-      array[x++] = castElementForArray(array, e.nextElement().obj);
+    for (Iterator<QItem<T>> e = list.reverseElements(); e.hasNext(); ) {
+      array[x++] = castElementForArray(array, e.next().obj);
     }
     return array;
   }

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Comparator;
-import java.util.Enumeration;
+import java.util.Iterator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -166,37 +166,37 @@ class LRUMapTest {
   }
 
   @Test
-  @DisplayName("keys() enumerates from LRU to MRU")
-  void keys_whenEnumerated_returnsFromLRUToMRU() {
+  @DisplayName("keys() iterates from LRU to MRU")
+  void keys_whenIterated_returnsFromLRUToMRU() {
     // Arrange
     LRUMap<Object, Object> map = createSampleMap(SAMPLE_ELEMS);
 
     // Act
-    Enumeration<Object> keys = map.keys();
+    Iterator<Object> keys = map.keys();
 
     // Assert
     int expected = 0;
-    while (keys.hasMoreElements()) {
-      assertEquals(expected++, keys.nextElement());
+    while (keys.hasNext()) {
+      assertEquals(expected++, keys.next());
     }
     assertEquals(SAMPLE_ELEMS, expected);
   }
 
   @Test
-  @DisplayName("values() enumerates from LRU to MRU")
-  void values_whenEnumerated_returnsFromLRUToMRU() {
+  @DisplayName("values() iterates from LRU to MRU")
+  void values_whenIterated_returnsFromLRUToMRU() {
     // Arrange
     LRUMap<Object, Object> map = createSampleMap(3); // values: V0, V1, V2
 
     // Act
-    Enumeration<Object> vals = map.values();
+    Iterator<Object> vals = map.values();
 
     // Assert
-    assertTrue(vals.hasMoreElements());
-    assertEquals("V0", vals.nextElement());
-    assertEquals("V1", vals.nextElement());
-    assertEquals("V2", vals.nextElement());
-    assertFalse(vals.hasMoreElements());
+    assertTrue(vals.hasNext());
+    assertEquals("V0", vals.next());
+    assertEquals("V1", vals.next());
+    assertEquals("V2", vals.next());
+    assertFalse(vals.hasNext());
   }
 
   @Test

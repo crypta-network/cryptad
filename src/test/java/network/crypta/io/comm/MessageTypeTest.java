@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import network.crypta.support.ShortBuffer;
@@ -108,7 +107,7 @@ class MessageTypeTest {
 
     mt.addLinkedListField("ll", Integer.class);
 
-    assertEquals(LinkedList.class, mt.typeOf("ll"));
+    assertEquals(List.class, mt.typeOf("ll"));
     assertEquals(Integer.class, mt.getLinkedListTypes().get("ll"));
     assertTrue(mt.getOrderedFields().contains("ll"));
   }
@@ -238,12 +237,12 @@ class MessageTypeTest {
   }
 
   @Test
-  void getMaxSize_whenIncludesLinkedList_throwsIllegalArgumentException() {
+  void getMaxSize_whenIncludesList_throwsIllegalArgumentException() {
     String name = findAvailableName("MT_MaxSize_List");
     assertNotNull(name, NAME_NOT_NULL_MSG);
     MessageType mt = new MessageType(name, (short) 2);
     toCleanup.add(mt);
-    mt.addLinkedListField("ll", Integer.class); // Serializer.length() will reject LinkedList
+    mt.addLinkedListField("ll", Integer.class); // Serializer.length() will reject List
 
     assertThrows(IllegalArgumentException.class, () -> mt.getMaxSize(5));
   }

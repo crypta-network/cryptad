@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import network.crypta.support.DoublyLinkedListImpl.Item;
@@ -285,17 +284,17 @@ class DoublyLinkedListImplTest {
     }
     assertNull(t, "t==null");
 
-    Enumeration<T> e = list.elements();
+    Iterator<T> e = list.elements();
     for (int i = 0; i < 5; i++) {
-      assertTrue(e.hasMoreElements(), "hasMoreElements()");
+      assertTrue(e.hasNext(), "hasNext()");
 
-      T n = e.nextElement();
+      T n = e.next();
       assertNotNull(n);
       n.assertV(i);
 
-      assertEquals(i != 4, e.hasMoreElements(), "hasMoreElements()");
+      assertEquals(i != 4, e.hasNext(), "hasNext()");
     }
-    assertThrows(NoSuchElementException.class, e::nextElement);
+    assertThrows(NoSuchElementException.class, e::next);
   }
 
   @Test
@@ -453,13 +452,13 @@ class DoublyLinkedListImplTest {
       list.push(array[i]);
     }
 
-    Enumeration<T> rev = list.reverseElements();
+    Iterator<T> rev = list.reverseElements();
     for (int i = array.length - 1; i >= 0; i--) {
-      assertTrue(rev.hasMoreElements());
-      assertSame(array[i], rev.nextElement());
+      assertTrue(rev.hasNext());
+      assertSame(array[i], rev.next());
     }
-    assertFalse(rev.hasMoreElements());
-    assertThrows(NoSuchElementException.class, rev::nextElement);
+    assertFalse(rev.hasNext());
+    assertThrows(NoSuchElementException.class, rev::next);
   }
 
   @Test

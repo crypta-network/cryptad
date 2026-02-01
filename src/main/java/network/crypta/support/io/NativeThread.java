@@ -252,7 +252,9 @@ public class NativeThread extends Thread {
   // Map Java priority to native nice and apply it when allowed.
   private boolean setNativePriority(int prio) {
     LOG.debug("setNativePriority({})", prio);
-    setPriority(prio);
+    if (prio < Thread.MIN_PRIORITY || prio > Thread.MAX_PRIORITY) {
+      throw new IllegalArgumentException("Thread priority out of range: " + prio);
+    }
     if (SANDBOX_DISABLE_RENICE) {
       if (!sandboxLogOnce) {
         markSandboxLogged();

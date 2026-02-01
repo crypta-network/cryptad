@@ -4,7 +4,6 @@ import java.io.DataInput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 import network.crypta.io.WritableToDataOutputStream;
 import network.crypta.io.comm.Peer;
@@ -19,7 +18,7 @@ import network.crypta.node.NewPacketFormat;
  *
  * <p>This class supports a small, explicit set of types used by the networking and messaging code:
  * boxed primitives ({@link Boolean}, {@link Byte}, {@link Short}, {@link Integer}, {@link Long},
- * {@link Float}, {@link Double}), {@link String}, {@link LinkedList}, {@code double[]} and {@code
+ * {@link Float}, {@link Double}), {@link String}, {@link List}, {@code double[]} and {@code
  * float[]}, several support types ({@link Buffer}, {@link ShortBuffer}, {@link Peer}, {@link
  * BitArray}), and selected key types ({@link NodeCHK}, {@link NodeSSK}, and {@link Key}).
  *
@@ -241,10 +240,9 @@ public class Serializer {
    * Writes a single supported value to a {@link DataOutputStream} using the format recognized by
    * {@link #readFromDataInputStream(Class, DataInput)}.
    *
-   * <p>The {@code object} must be non-{@code null} and of a supported type. For lists, only {@link
-   * LinkedList} is supported here; see {@link #writeLinkedList(List, DataOutputStream)} for
-   * details. Strings are written as a 32-bit length followed by UTF-16 {@code char}s via {@link
-   * DataOutputStream#writeChar(int)}.
+   * <p>The {@code object} must be non-{@code null} and of a supported type. For lists, see {@link
+   * #writeList(List, DataOutputStream)} for details. Strings are written as a 32-bit length
+   * followed by UTF-16 {@code char}s via {@link DataOutputStream#writeChar(int)}.
    *
    * @param object the value to serialize; must be non-{@code null}.
    * @param dos the destination stream; not closed by this method.
@@ -271,8 +269,8 @@ public class Serializer {
       return;
     }
 
-    if (type.equals(LinkedList.class)) {
-      writeLinkedList((LinkedList<?>) object, dos);
+    if (object instanceof List<?> list) {
+      writeList(list, dos);
       return;
     }
 
@@ -346,19 +344,19 @@ public class Serializer {
    * mutation and avoids {@link java.util.ConcurrentModificationException} and length/content
    * mismatches while iterating.
    *
-   * @param ll the list to serialize; elements must be of a type supported by {@link
+   * @param list the list to serialize; elements must be of a type supported by {@link
    *     #writeToDataOutputStream(Object, DataOutputStream)}.
    * @param dos the destination stream; not closed by this method.
    * @throws IOException if an I/O error occurs while writing an element.
    */
   @SuppressWarnings({"java:S2445", "SynchronizationOnLocalVariableOrMethodParameter"})
-  private static void writeLinkedList(final List<?> ll, DataOutputStream dos) throws IOException {
+  private static void writeList(final List<?> list, DataOutputStream dos) throws IOException {
     // Intentionally lock on the list instance so external synchronization on the same
     // object also applies. Snapshot under lock; perform I/O after releasing it to
     // minimize contention.
     final Object[] snapshot;
-    synchronized (ll) {
-      snapshot = ll.toArray();
+    synchronized (list) {
+      snapshot = list.toArray();
     }
     dos.writeInt(snapshot.length);
     for (Object o : snapshot) {
@@ -389,8 +387,8 @@ public class Serializer {
    *
    * <p>For {@link String}, the result is an upper bound computed as {@code 4 + 2 * maxStringLength}
    * (a 32-bit length plus two bytes per character). For types implementing {@link
-   * WritableToDataOutputStream} and for {@link LinkedList}, the size is unknown and this method
-   * throws {@link IllegalArgumentException}.
+   * WritableToDataOutputStream} and for {@link List}, the size is unknown and this method throws
+   * {@link IllegalArgumentException}.
    *
    * @param type the type to measure.
    * @param maxStringLength maximum characters to assume for strings when computing an upper bound.
@@ -412,8 +410,8 @@ public class Serializer {
       throw new IllegalArgumentException("Unknown length for " + type);
     } else if (type.equals(String.class)) {
       return 4 + maxStringLength * 2; // Written as chars
-    } else if (type.equals(LinkedList.class)) {
-      throw new IllegalArgumentException("Unknown length for LinkedList");
+    } else if (List.class.isAssignableFrom(type)) {
+      throw new IllegalArgumentException("Unknown length for List");
     } else if (type.equals(Byte.class)) {
       return 1;
     } else {

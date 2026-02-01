@@ -1853,7 +1853,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
     public Cleaner() {
       super("Store-" + name + "-Cleaner", NativeThread.PriorityLevel.LOW_PRIORITY.value, false);
-      setPriority(NativeThread.PriorityLevel.MIN_PRIORITY.value);
       setDaemon(true);
     }
 
