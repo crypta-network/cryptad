@@ -255,17 +255,18 @@ public class NativeThread extends Thread {
     if (prio < Thread.MIN_PRIORITY || prio > Thread.MAX_PRIORITY) {
       throw new IllegalArgumentException("Thread priority out of range: " + prio);
     }
+    applyJvmPriority(prio);
     if (SANDBOX_DISABLE_RENICE) {
       if (!sandboxLogOnce) {
         markSandboxLogged();
         LOG.info(
-            "Skipping native setpriority in sandbox (Snap/Flatpak/Docker); JVM priority is"
-                + " unchanged by NativeThread.");
+            "Skipping native setpriority in sandbox (Snap/Flatpak/Docker); using JVM priority"
+                + " only.");
       }
       return true; // treat as success to avoid noisy warnings
     }
     if (!LOAD_NATIVE) {
-      LOG.debug("LOAD_NATIVE is false");
+      LOG.debug("LOAD_NATIVE is false; using JVM priority only");
       return true;
     }
     int realPrio = LinuxNativeThread.getpriority(0, 0);
@@ -319,6 +320,11 @@ public class NativeThread extends Thread {
         NATIVE_PRIORITY_BASE,
         this);
     return (LinuxNativeThread.setpriority(0, 0, linuxPriority) > -1);
+  }
+
+  @SuppressWarnings("ThreadPriorityCheck")
+  private void applyJvmPriority(int prio) {
+    setPriority(prio);
   }
 
   /**
