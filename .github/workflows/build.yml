@@ -63,7 +63,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-        run: ./gradlew build sonar
+        run: ./gradlew build sonar --warning-mode all
 
       - name: Build (no Sonar token)
         if: ${{ env.SONAR_TOKEN == '' }}
