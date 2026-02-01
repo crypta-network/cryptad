@@ -151,9 +151,14 @@ val prepareJpackageResources by
 
 // Helper resolving the OS and icon path
 
-private val osNameLower = (System.getProperty("os.name") ?: "").lowercase()
+private val osNameLower = (System.getProperty("os.name") ?: "").lowercase().trim()
 
-fun isWindowsOs(): Boolean = osNameLower.contains("win")
+fun isWindowsOs(): Boolean =
+  osNameLower.startsWith("windows") ||
+    osNameLower.startsWith("cygwin") ||
+    osNameLower.startsWith("mingw") ||
+    osNameLower.startsWith("msys") ||
+    osNameLower == "win"
 
 fun isMacOs(): Boolean = osNameLower.contains("mac") || osNameLower.contains("darwin")
 
