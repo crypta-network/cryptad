@@ -586,6 +586,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     private FetchException fetchException;
     private FProxyFetchResult fetchResult;
     private boolean forceDownloadRequested;
+    private boolean responseCommitted;
 
     GetRequestWorkflow(URI uri, HTTPRequest httprequest, ToadletContext ctx, int recursion) {
       this.uri = uri;
@@ -601,7 +602,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       if (!parseFreenetUri()) return;
       prepareFetchContext();
       performFetchWithProgress();
-      finishResponse();
+      if (!responseCommitted) {
+        finishResponse();
+      }
     }
 
     private void initializeRequestMetadata() {
@@ -993,6 +996,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       MultiValueTable<String, String> retHeaders = new MultiValueTable<>();
       writeHTMLReply(
           ctx, ReplyHeaders.of(200, "OK", "text/html; charset=utf-8", retHeaders), page.generate());
+      responseCommitted = true;
       fetchResult.close();
       fetch.close();
     }
@@ -1004,6 +1008,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         ensureDataIsAvailable();
         sendDownloadResponse();
       } catch (FetchException e) {
+        if (responseCommitted) {
+          return;
+        }
         handleFetchException(e);
       } catch (SocketException e) {
         if ("Broken pipe".equals(e.getMessage())) {
@@ -1013,6 +1020,9 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
         }
         throw e;
       } catch (Exception t) {
+        if (responseCommitted) {
+          return;
+        }
         writeInternalError(t, ctx);
       } finally {
         if (fetchResult == null && data != null) data.free();
