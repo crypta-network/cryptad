@@ -27,6 +27,7 @@ sonar {
     property("sonar.testExecutionReportPaths", "build/sonar-test-results/test-execution.xml")
     property("sonar.tests", "src/test/java,src/test/kotlin")
     property("sonar.test.inclusions", "src/test/java/**,src/test/kotlin/**")
+    property("sonar.exclusions", "**/doc-files/**")
 
     // Read token from environment if provided to avoid passing on CLI (modern scanners read
     // sonar.token)
@@ -51,6 +52,8 @@ extensions.configure<SonarLintSettings>("sonarLint") {
     // Use Sonar's standard inclusions property so the engine narrows the scope
     sonarProperty("sonar.inclusions", value)
   }
+
+  sonarProperty("sonar.exclusions", "**/doc-files/**")
 
   val fileProp = providers.gradleProperty("sonarlint.file").orElse(providers.gradleProperty("file"))
   fileProp.orNull?.let { value ->
