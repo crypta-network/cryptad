@@ -28,6 +28,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * @see SessionKey
  */
+@SuppressWarnings("java:S6206")
 public final class SessionKeyCryptoMaterial {
   private final BlockCipher outgoingCipher;
   private final byte[] outgoingKey;

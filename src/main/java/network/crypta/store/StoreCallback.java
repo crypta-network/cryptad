@@ -183,6 +183,7 @@ public abstract class StoreCallback<T extends StorableBlock> {
    * unavailable, but they should enforce their own preconditions by throwing {@link
    * KeyVerifyException} as needed.
    */
+  @SuppressWarnings("java:S6206")
   public static final class BlockPayload {
     private final byte[] data;
     private final byte[] headers;

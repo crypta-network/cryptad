@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
  * <p>This record groups the optional private URI alongside retry and compression settings that are
  * reused by both single-file and directory persistent put messages.
  */
+@SuppressWarnings("java:S6206")
 public final class PersistentPutRequestMetadata {
   private final FreenetURI privateURI;
   private final boolean started;

@@ -363,6 +363,7 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
     return new Compressed(finalData, compressionAlgorithm);
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class CompressionPrep {
     private final byte[] cbuf;
     private final short algorithm;

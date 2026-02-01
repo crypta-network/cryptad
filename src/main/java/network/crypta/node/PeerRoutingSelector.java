@@ -111,6 +111,7 @@ public class PeerRoutingSelector {
     }
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class CloserPeerContextData {
     private final PeerNode[] peers;
     private final Key key;

@@ -425,6 +425,7 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
     }
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class StepAcceptanceContext {
     private final FirstOrderDifferentialEquations equations;
     private final double t;

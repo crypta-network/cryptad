@@ -10,6 +10,7 @@ import org.jetbrains.annotations.NotNull;
  * <p>This value object bundles the canonical type string with any alternate type aliases and
  * filename extensions so callers can pass a single immutable object when registering handlers.
  */
+@SuppressWarnings("java:S6206")
 public final class FilterMIMETypeNames {
   private final String primaryMimeType;
   private final String primaryExtension;

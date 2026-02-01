@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
  * cloned during integration. Instances are simple data carriers; they do not copy the coefficient
  * arrays and therefore rely on the caller to treat those arrays as immutable.
  */
+@SuppressWarnings("java:S6206")
 public final class RungeKuttaFehlbergMethod {
   private final boolean fsal;
   private final double[] c;

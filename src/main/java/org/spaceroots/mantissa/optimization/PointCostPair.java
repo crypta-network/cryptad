@@ -28,6 +28,7 @@ import org.jetbrains.annotations.NotNull;
  * @version $Id: PointCostPair.java 1709 2006-12-03 21:16:50Z luc $
  * @see CostFunction
  */
+@SuppressWarnings("java:S6206")
 public final class PointCostPair {
   private final double[] point;
   private final double cost;

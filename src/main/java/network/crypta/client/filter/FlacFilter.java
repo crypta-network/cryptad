@@ -57,6 +57,7 @@ public class FlacFilter implements ContentDataFilter {
     STREAM_FINISHED
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class AudioReadResult {
     private final byte[] payload;
     private final short nextFrameHeader;

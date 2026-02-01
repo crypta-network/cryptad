@@ -251,14 +251,12 @@ class ClientCHKBlockTest {
     MessageDigest md = network.crypta.crypt.SHA256.getMessageDigest();
     ClientCHKEncodeParams params =
         new ClientCHKEncodeParams(
-            data,
-            /* dataLength= */ 0,
-            md,
-            encKey,
-            /* asMetadata= */ false,
-            (short) -1,
-            Key.ALGO_AES_PCFB_256_SHA256,
-            KeyBlock.HASH_SHA256);
+            new ClientCHKEncodePayload(data, /* dataLength= */ 0, md, encKey),
+            new ClientCHKEncodeAlgorithms(
+                /* asMetadata= */ false,
+                (short) -1,
+                Key.ALGO_AES_PCFB_256_SHA256,
+                KeyBlock.HASH_SHA256));
     assertThrows(IllegalArgumentException.class, () -> ClientCHKBlock.encodeNew(params));
   }
 
@@ -271,14 +269,12 @@ class ClientCHKBlockTest {
     byte[] encKey = new byte[Node.SYMMETRIC_KEY_LENGTH];
     ClientCHKBlock.innerEncode(
         new ClientCHKEncodeParams(
-            data,
-            /* dataLength= */ 123,
-            md,
-            encKey,
-            /* asMetadata= */ false,
-            (short) -1,
-            Key.ALGO_AES_PCFB_256_SHA256,
-            KeyBlock.HASH_SHA256));
+            new ClientCHKEncodePayload(data, /* dataLength= */ 123, md, encKey),
+            new ClientCHKEncodeAlgorithms(
+                /* asMetadata= */ false,
+                (short) -1,
+                Key.ALGO_AES_PCFB_256_SHA256,
+                KeyBlock.HASH_SHA256)));
     // Ensure the original input array was not mutated
     assertArrayEquals(original, data);
   }

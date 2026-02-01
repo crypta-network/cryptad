@@ -33,6 +33,7 @@ import org.jetbrains.annotations.NotNull;
  * @see MetadataRedirectTarget
  * @see SplitfilePayload
  */
+@SuppressWarnings("java:S6206")
 public final class MetadataTopLayerInfo {
   private final long origDataLength;
   private final long origCompressedDataLength;

@@ -16,6 +16,7 @@ import org.jetbrains.annotations.NotNull;
  * Callers should avoid mutating it after construction if they rely on stable equality or hash
  * semantics.
  */
+@SuppressWarnings("java:S6206")
 public final class InsertExecutionOptions {
   private final boolean dontCompress;
   private final boolean reportMetadataOnly;

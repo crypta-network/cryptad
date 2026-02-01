@@ -1177,6 +1177,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       return false;
     }
 
+    @SuppressWarnings("java:S6206")
     private static final class RedirectResult {
       private final Metadata meta;
       private final byte[] bytes;

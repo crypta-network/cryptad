@@ -29,6 +29,7 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Supports content-based equality for the optional crypto key.
  * </ul>
  */
+@SuppressWarnings("java:S6206")
 public final class ManifestPutterParams {
   private final ClientPutCallback clientCallback;
   private final Map<String, Object> manifestElements;

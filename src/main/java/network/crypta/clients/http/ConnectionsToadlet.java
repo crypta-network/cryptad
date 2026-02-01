@@ -1095,6 +1095,7 @@ public abstract class ConnectionsToadlet extends Toadlet {
       FRIEND_TRUST trust,
       FRIEND_VISIBILITY visibility) {}
 
+  @SuppressWarnings("java:S6206")
   private static final class RenderContext {
     private final ToadletContext ctx;
     private final String path;

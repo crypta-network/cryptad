@@ -38,6 +38,7 @@ import org.jetbrains.annotations.NotNull;
  * writer.write(out.data());
  * }</pre>
  */
+@SuppressWarnings("java:S6206")
 final class CompressionOutput {
   private final RandomAccessBucket data;
   private final COMPRESSOR_TYPE bestCodec;
