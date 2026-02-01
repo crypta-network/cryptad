@@ -444,9 +444,8 @@ public class PeerRoutingSelector {
     return false;
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private boolean isOrigin(PeerNode p, PeerNode origin) {
-    if (p == origin) {
+    if (java.util.Objects.equals(p, origin)) {
       if (LOG.isDebugEnabled()) LOG.debug("Skipping (req came from): {}", p.getPeer());
       return true;
     }
@@ -702,7 +701,6 @@ public class PeerRoutingSelector {
     return new BestCandidate(best, bestDistance);
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private PeerNode maybeHandleRecentlyFailed(
       PeerRoutingSelectionParams params,
       CloserPeerContext ctx,
@@ -713,7 +711,7 @@ public class PeerRoutingSelector {
     if (choice == null) return best;
     long until = computeUntil(choice.firstTime, choice.secondTime, ctx.st, params.now());
     long check =
-        best == ctx.st.closestNotBackedOff
+        java.util.Objects.equals(best, ctx.st.closestNotBackedOff)
             ? Long.MAX_VALUE
             : checkBackoffsForRecentlyFailed(ctx, best, bestDistance, params);
     if (check < until) {
@@ -867,7 +865,6 @@ public class PeerRoutingSelector {
     return overallWakeup;
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private long wakeupTimeIfBetterAlternative(
       PeerNode p,
       PeerNode best,
@@ -875,7 +872,7 @@ public class PeerRoutingSelector {
       PeerRoutingSelectionParams params,
       Set<Double> excludeLocations,
       TimedOutNodesList entry) {
-    if (p == best || !p.isRoutable()) return Long.MIN_VALUE;
+    if (java.util.Objects.equals(p, best) || !p.isRoutable()) return Long.MIN_VALUE;
     DiffInfo d = computeDiffInfo(p, params.target(), params.outgoingHTL(), excludeLocations);
     if (d.diff >= bestDistance) return Long.MIN_VALUE;
     long wakeup = computeWakeupDeadline(entry, params.outgoingHTL(), params.now(), p);

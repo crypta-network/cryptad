@@ -87,8 +87,8 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
   /**
    * Constructs a new file-backed bucket.
    *
-   * <p>The {@code file} is resolved to its absolute form. When identical to the original reference,
-   * a distinct {@link File} instance pointing to the same path is created so the file can be safely
+   * <p>The {@code file} is resolved to its absolute form. When it resolves to the same path, a
+   * distinct {@link File} instance pointing to that path is created so the file can be safely
    * deleted without impacting the caller’s instance.
    *
    * @param file backing file path; resolved to an absolute path (must be non-{@code null})
@@ -102,7 +102,6 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
    * @param deleteOnFree when {@code true}, {@link #free()} attempts to delete the underlying file
    * @throws NullPointerException if {@code file} is {@code null}
    */
-  @SuppressWarnings("ReferenceEquality")
   public FileBucket(
       File file,
       boolean readOnly,
@@ -113,7 +112,7 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
     Objects.requireNonNull(file, "file");
     File absFile = file.getAbsoluteFile();
     // Copy it so we can safely delete it.
-    if (file == absFile) absFile = new File(absFile.getPath());
+    if (file.equals(absFile)) absFile = new File(absFile.getPath());
     this.readOnly = readOnly;
     this.createFileOnlyFlag = createFileOnly;
     this.file = absFile;

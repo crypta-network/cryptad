@@ -218,12 +218,11 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     return tryProcessAuthAnonReply(buf, offset, length, opn, peer);
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private boolean tryPeersAuthExcept(
       byte[] buf, int offset, int length, Peer peer, PeerNode exclude) {
     PeerNode[] peers = crypto.getPeerNodes();
     for (PeerNode pn : peers) {
-      if (pn == exclude) continue;
+      if (java.util.Objects.equals(pn, exclude)) continue;
       if (LOG.isTraceEnabled()) LOG.trace("Trying auth with {}", pn);
       if (tryProcessAuth(buf, offset, length, pn, peer, false)) return true;
       if (pn.handshakeUnknownInitiator() && tryProcessAuthAnonReply(buf, offset, length, pn, peer))
@@ -292,13 +291,12 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     }
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private boolean checkAnonAuthChangeIP(
       PeerNode opn, byte[] buf, int offset, int length, Peer peer) {
     PeerNode[] anonPeers = crypto.getAnonSetupPeerNodes();
     if (length > Node.SYMMETRIC_KEY_LENGTH /* iv */ + HASH_LENGTH + 3) {
       for (PeerNode pn : anonPeers) {
-        if (pn == opn) continue;
+        if (java.util.Objects.equals(pn, opn)) continue;
         if (tryProcessAuthAnonReply(buf, offset, length, pn, peer)) {
           return true;
         }
