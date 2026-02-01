@@ -9,17 +9,17 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Carries top-layer sizing, compatibility, and hash details for {@link Metadata}.
  *
- * <p>This record groups the fields that describe how the outermost metadata layer should be
+ * <p>This value object groups the fields that describe how the outermost metadata layer should be
  * interpreted: the original and compressed byte lengths, the number of required and total blocks,
  * the top-layer compression preference, and any hashes that apply to the final data or just the
  * current layer. It is typically constructed alongside {@link MetadataRedirectTarget} or {@link
  * SplitfilePayload} and then supplied to {@link Metadata} constructors that need to serialize or
- * validate top-layer information. The record preserves inputs exactly as provided, allowing the
+ * validate top-layer information. The instance preserves inputs exactly as provided, allowing the
  * metadata encoder to remain focused on formatting and validation rather than value synthesis.
  *
  * <p>Instances are immutable, but array components are not copied. Callers should treat the
  * referenced arrays as stable for the duration of metadata construction and avoid mutating them
- * after passing this record to any encoder. All numeric values represent byte counts or block
+ * after passing this instance to any encoder. All numeric values represent byte counts or block
  * counts and are expected to be non-negative; consistency between sizes and block totals is the
  * caller's responsibility.
  *
@@ -29,28 +29,82 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Separates final-data hashes from optional layer-local hashes.
  * </ul>
  *
- * @param origDataLength original uncompressed byte length for the top layer; zero when unknown.
- * @param origCompressedDataLength original compressed byte length; zero when unknown or unused.
- * @param requiredBlocks minimum blocks required to reconstruct the final data; non-negative.
- * @param totalBlocks total blocks inserted for the final data; non-negative and >= required.
- * @param topDontCompress whether top-layer compression was intentionally disabled by the caller.
- * @param topCompatibilityMode declared compatibility mode for the insert; never {@code null}.
- * @param hashes hashes of the final/original data; may be {@code null} or empty.
- * @param hashThisLayerOnly hash of only this metadata layer; may be {@code null}.
  * @see Metadata
  * @see MetadataRedirectTarget
  * @see SplitfilePayload
  */
-@SuppressWarnings("ArrayRecordComponent")
-public record MetadataTopLayerInfo(
-    long origDataLength,
-    long origCompressedDataLength,
-    int requiredBlocks,
-    int totalBlocks,
-    boolean topDontCompress,
-    CompatibilityMode topCompatibilityMode,
-    HashResult[] hashes,
-    byte[] hashThisLayerOnly) {
+public final class MetadataTopLayerInfo {
+  private final long origDataLength;
+  private final long origCompressedDataLength;
+  private final int requiredBlocks;
+  private final int totalBlocks;
+  private final boolean topDontCompress;
+  private final CompatibilityMode topCompatibilityMode;
+  private final HashResult[] hashes;
+  private final byte[] hashThisLayerOnly;
+
+  /**
+   * Creates a top-layer metadata info bundle.
+   *
+   * @param origDataLength original uncompressed byte length for the top layer; zero when unknown.
+   * @param origCompressedDataLength original compressed byte length; zero when unknown or unused.
+   * @param requiredBlocks minimum blocks required to reconstruct the final data; non-negative.
+   * @param totalBlocks total blocks inserted for the final data; non-negative and >= required.
+   * @param topDontCompress whether top-layer compression was intentionally disabled by the caller.
+   * @param topCompatibilityMode declared compatibility mode for the insert; never {@code null}.
+   * @param hashes hashes of the final/original data; may be {@code null} or empty.
+   * @param hashThisLayerOnly hash of only this metadata layer; may be {@code null}.
+   */
+  public MetadataTopLayerInfo(
+      long origDataLength,
+      long origCompressedDataLength,
+      int requiredBlocks,
+      int totalBlocks,
+      boolean topDontCompress,
+      CompatibilityMode topCompatibilityMode,
+      HashResult[] hashes,
+      byte[] hashThisLayerOnly) {
+    this.origDataLength = origDataLength;
+    this.origCompressedDataLength = origCompressedDataLength;
+    this.requiredBlocks = requiredBlocks;
+    this.totalBlocks = totalBlocks;
+    this.topDontCompress = topDontCompress;
+    this.topCompatibilityMode = topCompatibilityMode;
+    this.hashes = hashes;
+    this.hashThisLayerOnly = hashThisLayerOnly;
+  }
+
+  public long origDataLength() {
+    return origDataLength;
+  }
+
+  public long origCompressedDataLength() {
+    return origCompressedDataLength;
+  }
+
+  public int requiredBlocks() {
+    return requiredBlocks;
+  }
+
+  public int totalBlocks() {
+    return totalBlocks;
+  }
+
+  public boolean topDontCompress() {
+    return topDontCompress;
+  }
+
+  public CompatibilityMode topCompatibilityMode() {
+    return topCompatibilityMode;
+  }
+
+  public HashResult[] hashes() {
+    return hashes;
+  }
+
+  public byte[] hashThisLayerOnly() {
+    return hashThisLayerOnly;
+  }
 
   /**
    * Returns an instance representing the absence of any top-layer sizing or hash data.
@@ -74,8 +128,8 @@ public record MetadataTopLayerInfo(
    * <p>The comparison checks all scalar components and uses {@link Arrays#equals(Object[],
    * Object[]) Arrays.equals} for array components, treating {@code null} arrays as equal only to
    * {@code null} arrays. This method performs a shallow comparison of array elements and does not
-   * clone or normalize inputs. It is appropriate when the arrays supplied to the record are stable
-   * for the duration of comparison and should not be used if callers mutate arrays after
+   * clone or normalize inputs. It is appropriate when the arrays supplied to the instance are
+   * stable for the duration of comparison and should not be used if callers mutate arrays after
    * construction.
    *
    * @param o object to compare against; may be {@code null} or of another type.
@@ -84,27 +138,17 @@ public record MetadataTopLayerInfo(
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!(o
-        instanceof
-        MetadataTopLayerInfo(
-            long otherOrigDataLength,
-            long otherOrigCompressedDataLength,
-            int otherRequiredBlocks,
-            int otherTotalBlocks,
-            boolean otherTopDontCompress,
-            CompatibilityMode otherTopCompatibilityMode,
-            HashResult[] otherHashes,
-            byte[] otherHashThisLayerOnly))) {
+    if (!(o instanceof MetadataTopLayerInfo other)) {
       return false;
     }
-    return origDataLength == otherOrigDataLength
-        && origCompressedDataLength == otherOrigCompressedDataLength
-        && requiredBlocks == otherRequiredBlocks
-        && totalBlocks == otherTotalBlocks
-        && topDontCompress == otherTopDontCompress
-        && topCompatibilityMode == otherTopCompatibilityMode
-        && Arrays.equals(hashes, otherHashes)
-        && Arrays.equals(hashThisLayerOnly, otherHashThisLayerOnly);
+    return origDataLength == other.origDataLength
+        && origCompressedDataLength == other.origCompressedDataLength
+        && requiredBlocks == other.requiredBlocks
+        && totalBlocks == other.totalBlocks
+        && topDontCompress == other.topDontCompress
+        && topCompatibilityMode == other.topCompatibilityMode
+        && Arrays.equals(hashes, other.hashes)
+        && Arrays.equals(hashThisLayerOnly, other.hashThisLayerOnly);
   }
 
   /**
@@ -113,7 +157,7 @@ public record MetadataTopLayerInfo(
    * <p>The hash combines scalar components with {@link Arrays#hashCode(Object[])} for array fields,
    * producing a shallow hash that depends on the current contents of the arrays. This makes the
    * hash code suitable for use as a map key only when callers do not mutate the arrays after
-   * construction. The method performs no copying and assumes the record's components are stable.
+   * construction. The method performs no copying and assumes the instance's fields are stable.
    *
    * @return a hash code derived from all components, including array contents.
    */

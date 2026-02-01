@@ -1985,14 +1985,6 @@ public class StatisticsToadlet extends Toadlet {
       this.totalCount = totalCount;
     }
 
-    int[] histogram() {
-      return histogram;
-    }
-
-    int totalCount() {
-      return totalCount;
-    }
-
     @Override
     public boolean equals(Object o) {
       if (!(o instanceof HistogramComputationResult other)) {

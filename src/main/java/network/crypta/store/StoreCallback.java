@@ -176,22 +176,52 @@ public abstract class StoreCallback<T extends StorableBlock> {
   /**
    * Packages raw block bytes and optional key material for reconstruction.
    *
-   * <p>This record is a value carrier used when constructing blocks via {@link
-   * #construct(BlockPayload, ConstructOptions, DSAPublicKey)}. The byte arrays are not defensively
-   * copied; callers should treat them as read-only views of store buffers or caller-managed byte
-   * arrays. Implementations may accept {@code null} for {@code routingKey} or {@code fullKey} when
-   * the key material is unavailable, but they should enforce their own preconditions by throwing
-   * {@link KeyVerifyException} as needed.
-   *
-   * @param data raw payload bytes of length {@link #dataLength()}; may be {@code null} if
-   *     reconstruction is expected to fail fast.
-   * @param headers raw header bytes of length {@link #headerLength()}; may be {@code null} if the
-   *     implementation validates presence at construction time.
-   * @param routingKey routing key bytes, or {@code null} when unavailable or not required.
-   * @param fullKey full key bytes, or {@code null} when unavailable or not required.
+   * <p>This value object is used when constructing blocks via {@link #construct(BlockPayload,
+   * ConstructOptions, DSAPublicKey)}. The byte arrays are not defensively copied; callers should
+   * treat them as read-only views of store buffers or caller-managed byte arrays. Implementations
+   * may accept {@code null} for {@code routingKey} or {@code fullKey} when the key material is
+   * unavailable, but they should enforce their own preconditions by throwing {@link
+   * KeyVerifyException} as needed.
    */
-  @SuppressWarnings("ArrayRecordComponent")
-  public record BlockPayload(byte[] data, byte[] headers, byte[] routingKey, byte[] fullKey) {
+  public static final class BlockPayload {
+    private final byte[] data;
+    private final byte[] headers;
+    private final byte[] routingKey;
+    private final byte[] fullKey;
+
+    /**
+     * Creates a payload bundle containing raw block bytes and optional key material.
+     *
+     * @param data raw payload bytes of length {@link #dataLength()}; may be {@code null} if
+     *     reconstruction is expected to fail fast.
+     * @param headers raw header bytes of length {@link #headerLength()}; may be {@code null} if the
+     *     implementation validates presence at construction time.
+     * @param routingKey routing key bytes, or {@code null} when unavailable or not required.
+     * @param fullKey full key bytes, or {@code null} when unavailable or not required.
+     */
+    public BlockPayload(byte[] data, byte[] headers, byte[] routingKey, byte[] fullKey) {
+      this.data = data;
+      this.headers = headers;
+      this.routingKey = routingKey;
+      this.fullKey = fullKey;
+    }
+
+    public byte[] data() {
+      return data;
+    }
+
+    public byte[] headers() {
+      return headers;
+    }
+
+    public byte[] routingKey() {
+      return routingKey;
+    }
+
+    public byte[] fullKey() {
+      return fullKey;
+    }
+
     /**
      * Compares payloads by array contents rather than reference identity.
      *
@@ -207,19 +237,13 @@ public abstract class StoreCallback<T extends StorableBlock> {
       if (this == obj) {
         return true;
       }
-      if (!(obj
-          instanceof
-          BlockPayload(
-              byte[] otherData,
-              byte[] otherHeaders,
-              byte[] otherRoutingKey,
-              byte[] otherFullKey))) {
+      if (!(obj instanceof BlockPayload other)) {
         return false;
       }
-      return java.util.Arrays.equals(data, otherData)
-          && java.util.Arrays.equals(headers, otherHeaders)
-          && java.util.Arrays.equals(routingKey, otherRoutingKey)
-          && java.util.Arrays.equals(fullKey, otherFullKey);
+      return java.util.Arrays.equals(data, other.data)
+          && java.util.Arrays.equals(headers, other.headers)
+          && java.util.Arrays.equals(routingKey, other.routingKey)
+          && java.util.Arrays.equals(fullKey, other.fullKey);
     }
 
     /**

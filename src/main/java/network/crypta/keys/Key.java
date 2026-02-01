@@ -363,16 +363,36 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
     return new Compressed(finalData, compressionAlgorithm);
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record CompressionPrep(byte[] cbuf, short algorithm, long headerSourceLength) {
+  private static final class CompressionPrep {
+    private final byte[] cbuf;
+    private final short algorithm;
+    private final long headerSourceLength;
+
+    private CompressionPrep(byte[] cbuf, short algorithm, long headerSourceLength) {
+      this.cbuf = cbuf;
+      this.algorithm = algorithm;
+      this.headerSourceLength = headerSourceLength;
+    }
+
+    private byte[] cbuf() {
+      return cbuf;
+    }
+
+    private short algorithm() {
+      return algorithm;
+    }
+
+    private long headerSourceLength() {
+      return headerSourceLength;
+    }
+
     @Override
     public boolean equals(Object obj) {
       if (this == obj) return true;
-      if (!(obj instanceof CompressionPrep(var otherCbuf, var otherAlgorithm, var otherHeader)))
-        return false;
-      return algorithm == otherAlgorithm
-          && headerSourceLength == otherHeader
-          && Arrays.equals(cbuf, otherCbuf);
+      if (!(obj instanceof CompressionPrep other)) return false;
+      return algorithm == other.algorithm
+          && headerSourceLength == other.headerSourceLength
+          && Arrays.equals(cbuf, other.cbuf);
     }
 
     @Override
@@ -448,16 +468,24 @@ public abstract class Key implements WritableToDataOutputStream, Comparable<Key>
     return finalData;
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record CompressedChoice(byte[] data, short algorithm, long sourceLength) {
+  private static final class CompressedChoice {
+    private final byte[] data;
+    private final short algorithm;
+    private final long sourceLength;
+
+    private CompressedChoice(byte[] data, short algorithm, long sourceLength) {
+      this.data = data;
+      this.algorithm = algorithm;
+      this.sourceLength = sourceLength;
+    }
+
     @Override
     public boolean equals(Object obj) {
       if (this == obj) return true;
-      if (!(obj instanceof CompressedChoice(var otherData, var otherAlgorithm, var otherLen)))
-        return false;
-      return algorithm == otherAlgorithm
-          && sourceLength == otherLen
-          && Arrays.equals(data, otherData);
+      if (!(obj instanceof CompressedChoice other)) return false;
+      return algorithm == other.algorithm
+          && sourceLength == other.sourceLength
+          && Arrays.equals(data, other.data);
     }
 
     @Override

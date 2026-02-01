@@ -8,16 +8,16 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Bundles the inputs required to decode and optionally decompress block data.
  *
- * <p>This record acts as a compact carrier for the flags, buffers, and limits that shape a single
- * decompression attempt. It is typically assembled close to the call site that already has the raw
- * bytes, then passed into {@link Key#decompress(DecompressionParams)} to keep method signatures
- * concise and consistent across call paths. The record is shallowly immutable, but it holds a
- * mutable {@code byte[]} reference; callers should treat the array as read-only for the lifetime of
- * the decode operation to avoid surprising results.
+ * <p>This value object acts as a compact carrier for the flags, buffers, and limits that shape a
+ * single decompression attempt. It is typically assembled close to the call site that already has
+ * the raw bytes, then passed into {@link Key#decompress(DecompressionParams)} to keep method
+ * signatures concise and consistent across call paths. The instance is shallowly immutable, but it
+ * holds a mutable {@code byte[]} reference; callers should treat the array as read-only for the
+ * lifetime of the decode operation to avoid surprising results.
  *
  * <p>Instances are inexpensive to allocate and intended to be short-lived. The values capture size
  * constraints, codec identifiers, and header sizing behavior so that the decompressor can validate
- * bounds consistently across different key types. The record itself performs no validation; all
+ * bounds consistently across different key types. The instance performs no validation; all
  * preconditions are enforced by the decode method that consumes it.
  *
  * <ul>
@@ -26,28 +26,78 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Centralizes bounds and codec metadata for consistent error handling.
  * </ul>
  *
- * @param isCompressed whether the payload uses compression for this decode operation
- * @param input raw input bytes to read from; the array is not copied and should be treated as
- *     immutable while decoding
- * @param inputLength number of bytes from {@code input} that are valid for this decoding, in bytes
- * @param bf bucket factory used to allocate the decoded output bucket; may be reused by callers
- * @param maxLength upper bound on the decompressed output size, in bytes; the decoder rejects
- *     negative values
- * @param compressionAlgorithm compression codec identifier expected by the decoder; negative values
- *     mean no compression
- * @param shortLength whether the precompressed-length header uses 2 bytes instead of 4 for this
- *     payload
  * @see Key#decompress(DecompressionParams)
  */
-@SuppressWarnings("ArrayRecordComponent")
-public record DecompressionParams(
-    boolean isCompressed,
-    byte[] input,
-    int inputLength,
-    BucketFactory bf,
-    long maxLength,
-    short compressionAlgorithm,
-    boolean shortLength) {
+public final class DecompressionParams {
+  private final boolean isCompressed;
+  private final byte[] input;
+  private final int inputLength;
+  private final BucketFactory bf;
+  private final long maxLength;
+  private final short compressionAlgorithm;
+  private final boolean shortLength;
+
+  /**
+   * Creates a parameter bundle for a single decompression attempt.
+   *
+   * @param isCompressed whether the payload uses compression for this decode operation
+   * @param input raw input bytes to read from; the array is not copied and should be treated as
+   *     immutable while decoding
+   * @param inputLength number of bytes from {@code input} that are valid for this decoding, in
+   *     bytes
+   * @param bf bucket factory used to allocate the decoded output bucket; may be reused by callers
+   * @param maxLength upper bound on the decompressed output size, in bytes; the decoder rejects
+   *     negative values
+   * @param compressionAlgorithm compression codec identifier expected by the decoder; negative
+   *     values mean no compression
+   * @param shortLength whether the precompressed-length header uses 2 bytes instead of 4 for this
+   *     payload
+   */
+  public DecompressionParams(
+      boolean isCompressed,
+      byte[] input,
+      int inputLength,
+      BucketFactory bf,
+      long maxLength,
+      short compressionAlgorithm,
+      boolean shortLength) {
+    this.isCompressed = isCompressed;
+    this.input = input;
+    this.inputLength = inputLength;
+    this.bf = bf;
+    this.maxLength = maxLength;
+    this.compressionAlgorithm = compressionAlgorithm;
+    this.shortLength = shortLength;
+  }
+
+  public boolean isCompressed() {
+    return isCompressed;
+  }
+
+  public byte[] input() {
+    return input;
+  }
+
+  public int inputLength() {
+    return inputLength;
+  }
+
+  public BucketFactory bf() {
+    return bf;
+  }
+
+  public long maxLength() {
+    return maxLength;
+  }
+
+  public short compressionAlgorithm() {
+    return compressionAlgorithm;
+  }
+
+  public boolean shortLength() {
+    return shortLength;
+  }
+
   /**
    * Compares this parameter bundle with another for structural equality.
    *
@@ -55,7 +105,7 @@ public record DecompressionParams(
    * Arrays#equals(byte[], byte[])} rather than reference equality. All scalar fields are compared
    * directly, while {@code bf} is compared using {@link Objects#equals(Object, Object)} so that a
    * {@code null} factory is handled consistently. This method performs no validation; it simply
-   * reflects the values stored in the record components at the time of comparison.
+   * reflects the values stored in the fields at the time of comparison.
    *
    * @param obj the object to compare against; may be {@code null} or of another type
    * @return {@code true} when all fields, including the byte contents, match exactly
@@ -63,23 +113,14 @@ public record DecompressionParams(
   @Override
   public boolean equals(Object obj) {
     if (this == obj) return true;
-    if (!(obj
-        instanceof
-        DecompressionParams(
-            boolean otherIsCompressed,
-            byte[] otherInput,
-            int otherInputLength,
-            BucketFactory otherBf,
-            long otherMaxLength,
-            short otherCompressionAlgorithm,
-            boolean otherShortLength))) return false;
-    return isCompressed == otherIsCompressed
-        && inputLength == otherInputLength
-        && maxLength == otherMaxLength
-        && compressionAlgorithm == otherCompressionAlgorithm
-        && shortLength == otherShortLength
-        && Objects.equals(bf, otherBf)
-        && Arrays.equals(input, otherInput);
+    if (!(obj instanceof DecompressionParams other)) return false;
+    return isCompressed == other.isCompressed
+        && inputLength == other.inputLength
+        && maxLength == other.maxLength
+        && compressionAlgorithm == other.compressionAlgorithm
+        && shortLength == other.shortLength
+        && Objects.equals(bf, other.bf)
+        && Arrays.equals(input, other.input);
   }
 
   /**

@@ -8,9 +8,9 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Groups the ciphers and key bytes used by a {@link SessionKey}.
  *
- * <p>This record represents the negotiated packet-encryption material for a peer session. It is
- * typically assembled during handshake processing and then passed as a single unit when a {@code
- * SessionKey} is created. The record is a simple carrier: it performs no validation and does not
+ * <p>This value object represents the negotiated packet-encryption material for a peer session. It
+ * is typically assembled during handshake processing and then passed as a single unit when a {@code
+ * SessionKey} is created. The instance is a simple carrier: it performs no validation and does not
  * derive new keys, so callers are responsible for ensuring the material is consistent and ready for
  * use. Array components are stored by reference rather than copied. This keeps construction
  * lightweight, but it means callers must treat the arrays as mutable, shared state. Mutating the
@@ -26,24 +26,73 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Bundles the material for reuse across constructors and tests.
  * </ul>
  *
- * @param outgoingCipher cipher used to encrypt outgoing packets; may be {@code null} in tests.
- * @param outgoingKey raw key bytes for {@code outgoingCipher}; stored by reference and mutable.
- * @param incommingCipher cipher used to decrypt incoming packets; may be {@code null} in tests.
- * @param incommingKey raw key bytes for {@code incommingCipher}; stored by reference and mutable.
- * @param ivCipher cipher used to derive per-packet IV material; may be {@code null} in tests.
- * @param ivNonce base nonce bytes paired with {@code ivCipher}; stored by reference and mutable.
- * @param hmacKey key bytes for message authentication; stored by reference and mutable.
  * @see SessionKey
  */
-@SuppressWarnings("ArrayRecordComponent")
-public record SessionKeyCryptoMaterial(
-    BlockCipher outgoingCipher,
-    byte[] outgoingKey,
-    BlockCipher incommingCipher,
-    byte[] incommingKey,
-    BlockCipher ivCipher,
-    byte[] ivNonce,
-    byte[] hmacKey) {
+public final class SessionKeyCryptoMaterial {
+  private final BlockCipher outgoingCipher;
+  private final byte[] outgoingKey;
+  private final BlockCipher incommingCipher;
+  private final byte[] incommingKey;
+  private final BlockCipher ivCipher;
+  private final byte[] ivNonce;
+  private final byte[] hmacKey;
+
+  /**
+   * Creates a session key material bundle.
+   *
+   * @param outgoingCipher cipher used to encrypt outgoing packets; may be {@code null} in tests.
+   * @param outgoingKey raw key bytes for {@code outgoingCipher}; stored by reference and mutable.
+   * @param incommingCipher cipher used to decrypt incoming packets; may be {@code null} in tests.
+   * @param incommingKey raw key bytes for {@code incommingCipher}; stored by reference and mutable.
+   * @param ivCipher cipher used to derive per-packet IV material; may be {@code null} in tests.
+   * @param ivNonce base nonce bytes paired with {@code ivCipher}; stored by reference and mutable.
+   * @param hmacKey key bytes for message authentication; stored by reference and mutable.
+   */
+  public SessionKeyCryptoMaterial(
+      BlockCipher outgoingCipher,
+      byte[] outgoingKey,
+      BlockCipher incommingCipher,
+      byte[] incommingKey,
+      BlockCipher ivCipher,
+      byte[] ivNonce,
+      byte[] hmacKey) {
+    this.outgoingCipher = outgoingCipher;
+    this.outgoingKey = outgoingKey;
+    this.incommingCipher = incommingCipher;
+    this.incommingKey = incommingKey;
+    this.ivCipher = ivCipher;
+    this.ivNonce = ivNonce;
+    this.hmacKey = hmacKey;
+  }
+
+  public BlockCipher outgoingCipher() {
+    return outgoingCipher;
+  }
+
+  public byte[] outgoingKey() {
+    return outgoingKey;
+  }
+
+  public BlockCipher incommingCipher() {
+    return incommingCipher;
+  }
+
+  public byte[] incommingKey() {
+    return incommingKey;
+  }
+
+  public BlockCipher ivCipher() {
+    return ivCipher;
+  }
+
+  public byte[] ivNonce() {
+    return ivNonce;
+  }
+
+  public byte[] hmacKey() {
+    return hmacKey;
+  }
+
   /**
    * Determines whether another object represents the same cryptographic material.
    *
@@ -59,23 +108,14 @@ public record SessionKeyCryptoMaterial(
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!(o
-        instanceof
-        SessionKeyCryptoMaterial(
-            var otherOutgoingCipher,
-            var otherOutgoingKey,
-            var otherIncommingCipher,
-            var otherIncommingKey,
-            var otherIvCipher,
-            var otherIvNonce,
-            var otherHmacKey))) return false;
-    return Objects.equals(outgoingCipher, otherOutgoingCipher)
-        && Arrays.equals(outgoingKey, otherOutgoingKey)
-        && Objects.equals(incommingCipher, otherIncommingCipher)
-        && Arrays.equals(incommingKey, otherIncommingKey)
-        && Objects.equals(ivCipher, otherIvCipher)
-        && Arrays.equals(ivNonce, otherIvNonce)
-        && Arrays.equals(hmacKey, otherHmacKey);
+    if (!(o instanceof SessionKeyCryptoMaterial other)) return false;
+    return Objects.equals(outgoingCipher, other.outgoingCipher)
+        && Arrays.equals(outgoingKey, other.outgoingKey)
+        && Objects.equals(incommingCipher, other.incommingCipher)
+        && Arrays.equals(incommingKey, other.incommingKey)
+        && Objects.equals(ivCipher, other.ivCipher)
+        && Arrays.equals(ivNonce, other.ivNonce)
+        && Arrays.equals(hmacKey, other.hmacKey);
   }
 
   /**
