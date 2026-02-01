@@ -599,55 +599,87 @@ public class SplitFileFetcherStorage {
       int blocksPerSegment,
       int checkBlocksPerSegment,
       int splitfileCheckBlocks)
-      throws FetchException, MetadataParseException {
+      throws FetchException {
+    CompatibilityMode minCompatMode = metadata.getMinCompatMode();
+
+    validateNonRedundantCheckBlocks(splitfileCheckBlocks);
+
+    return switch (splitfileType) {
+      case NONREDUNDANT -> minCompatMode;
+      case ONION_STANDARD ->
+          resolveOnionStandardCompatibility(
+              metadata,
+              topDontCompress,
+              topCompatibilityMode,
+              origFetchContext,
+              blocksPerSegment,
+              checkBlocksPerSegment);
+    };
+  }
+
+  private void validateNonRedundantCheckBlocks(int splitfileCheckBlocks) throws FetchException {
+    if (splitfileType != SplitfileAlgorithm.NONREDUNDANT || splitfileCheckBlocks <= 0) {
+      return;
+    }
+    LOG.error(
+        "Splitfile type is SPLITFILE_NONREDUNDANT yet {} check blocks found!! : {}",
+        splitfileCheckBlocks,
+        this);
+    throw new FetchException(
+        FetchExceptionMode.INVALID_METADATA,
+        "Splitfile type is non-redundant yet have " + splitfileCheckBlocks + " check blocks");
+  }
+
+  private CompatibilityMode resolveOnionStandardCompatibility(
+      Metadata metadata,
+      boolean topDontCompress,
+      short topCompatibilityMode,
+      FetchContext origFetchContext,
+      int blocksPerSegment,
+      int checkBlocksPerSegment)
+      throws FetchException {
     CompatibilityMode minCompatMode = metadata.getMinCompatMode();
     CompatibilityMode maxCompatMode = metadata.getMaxCompatMode();
+    boolean dontCompress = decompressors.isEmpty();
+    boolean hasTopCompatibilityMode = topCompatibilityMode != 0;
+    CompatibilityMode resolvedMin = minCompatMode;
+    CompatibilityMode resolvedMax = maxCompatMode;
+    if (hasTopCompatibilityMode) {
+      ensureTopCompatibilityModeAllowed(minCompatMode, maxCompatMode, topCompatibilityMode);
+      CompatibilityMode forced = CompatibilityMode.byCode(topCompatibilityMode);
+      resolvedMin = forced;
+      resolvedMax = forced;
+      dontCompress = topDontCompress;
+    }
+    byte[] customKey = metadata.getCustomSplitfileKey();
+    fetcher.onSplitfileCompatibilityMode(
+        resolvedMin,
+        resolvedMax,
+        (customKey == null || customKey.length == 0) ? null : customKey,
+        dontCompress,
+        true,
+        hasTopCompatibilityMode);
+    validateBlocksPerSegmentLimit(origFetchContext, blocksPerSegment, checkBlocksPerSegment);
+    return resolvedMin;
+  }
 
-    if (splitfileType == SplitfileAlgorithm.NONREDUNDANT && splitfileCheckBlocks > 0) {
-      LOG.error(
-          "Splitfile type is SPLITFILE_NONREDUNDANT yet {} check blocks found!! : {}",
-          splitfileCheckBlocks,
-          this);
-      throw new FetchException(
-          FetchExceptionMode.INVALID_METADATA,
-          "Splitfile type is non-redundant yet have " + splitfileCheckBlocks + " check blocks");
+  private void ensureTopCompatibilityModeAllowed(
+      CompatibilityMode minCompatMode, CompatibilityMode maxCompatMode, short topCompatibilityMode)
+      throws FetchException {
+    if (!CompatibilityMode.hasCode(topCompatibilityMode)) {
+      throw incompatibleTopCompatibilityMode();
     }
-    switch (splitfileType) {
-      case NONREDUNDANT -> {
-        // ok
-      }
-      case ONION_STANDARD -> {
-        boolean dontCompress = decompressors.isEmpty();
-        if (topCompatibilityMode != 0) {
-          if (minCompatMode == CompatibilityMode.COMPAT_UNKNOWN
-              || !(minCompatMode.code > topCompatibilityMode
-                  || maxCompatMode.code < topCompatibilityMode)) {
-            if (!CompatibilityMode.hasCode(topCompatibilityMode)) {
-              throw new FetchException(
-                  FetchExceptionMode.INVALID_METADATA,
-                  "Top compatibility mode is incompatible with detected compatibility mode");
-            }
-            minCompatMode = maxCompatMode = CompatibilityMode.byCode(topCompatibilityMode);
-            dontCompress = topDontCompress;
-          } else {
-            throw new FetchException(
-                FetchExceptionMode.INVALID_METADATA,
-                "Top compatibility mode is incompatible with detected compatibility mode");
-          }
-        }
-        byte[] customKey = metadata.getCustomSplitfileKey();
-        fetcher.onSplitfileCompatibilityMode(
-            minCompatMode,
-            maxCompatMode,
-            (customKey == null || customKey.length == 0) ? null : customKey,
-            dontCompress,
-            true,
-            topCompatibilityMode != 0);
-        validateBlocksPerSegmentLimit(origFetchContext, blocksPerSegment, checkBlocksPerSegment);
-      }
-      default -> throw new MetadataParseException("Unknown splitfile format: " + splitfileType);
+    if (minCompatMode != CompatibilityMode.COMPAT_UNKNOWN
+        && (minCompatMode.code > topCompatibilityMode
+            || maxCompatMode.code < topCompatibilityMode)) {
+      throw incompatibleTopCompatibilityMode();
     }
-    return minCompatMode;
+  }
+
+  private static FetchException incompatibleTopCompatibilityMode() {
+    return new FetchException(
+        FetchExceptionMode.INVALID_METADATA,
+        "Top compatibility mode is incompatible with detected compatibility mode");
   }
 
   private static void validateBlocksPerSegmentLimit(
