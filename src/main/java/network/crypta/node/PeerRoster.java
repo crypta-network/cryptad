@@ -3,6 +3,7 @@ package network.crypta.node;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import org.slf4j.Logger;
@@ -33,7 +34,6 @@ import org.slf4j.LoggerFactory;
  * @see PeerManager
  * @see PeerNode
  */
-@SuppressWarnings("ReferenceEquality")
 public class PeerRoster {
   private static final Logger LOG = LoggerFactory.getLogger(PeerRoster.class);
 
@@ -94,9 +94,9 @@ public class PeerRoster {
   /**
    * Returns whether the given peer instance is present in the roster by identity.
    *
-   * <p>This method performs a reference-equality check against the current roster snapshot. It does
-   * not consult peer identity fields or keys, and it does not modify any roster state. The check is
-   * performed under the shared lock to provide a consistent view of the array.
+   * <p>This method performs an equality check against the current roster snapshot. It does not
+   * modify any roster state. The check is performed under the shared lock to provide a consistent
+   * view of the array.
    *
    * @param peer the peer instance to test for presence; if {@code null} this returns {@code false}.
    * @return {@code true} if the exact instance is present, otherwise {@code false}.
@@ -104,7 +104,7 @@ public class PeerRoster {
   public boolean havePeer(PeerNode peer) {
     synchronized (lock) {
       for (PeerNode existing : myPeers) {
-        if (existing == peer) return true;
+        if (Objects.equals(existing, peer)) return true;
       }
       return false;
     }
@@ -145,7 +145,7 @@ public class PeerRoster {
   }
 
   /**
-   * Removes the given peer from the roster by identity.
+   * Removes the given peer from the roster by equality.
    *
    * <p>The method checks whether the exact peer instance is present, updates the roster snapshot,
    * and rebuilds the connected-peers snapshot from the remaining routable real connections. If the
@@ -161,7 +161,7 @@ public class PeerRoster {
     synchronized (lock) {
       boolean isInPeers = false;
       for (PeerNode existing : myPeers) {
-        if (existing == peer) {
+        if (Objects.equals(existing, peer)) {
           isInPeers = true;
           break;
         }
@@ -199,14 +199,14 @@ public class PeerRoster {
   private void rebuildPeerArraysOnRemove(PeerNode peer) {
     ArrayList<PeerNode> connected = new ArrayList<>();
     for (PeerNode mp : myPeers) {
-      if (mp != peer && mp.isConnected() && mp.isRealConnection()) connected.add(mp);
+      if (!Objects.equals(mp, peer) && mp.isConnected() && mp.isRealConnection()) connected.add(mp);
     }
     connectedPeers = connected.toArray(new PeerNode[0]);
 
     PeerNode[] newMyPeers = new PeerNode[myPeers.length - 1];
     int position = 0;
     for (PeerNode mp : myPeers) {
-      if (mp != peer) {
+      if (!Objects.equals(mp, peer)) {
         newMyPeers[position++] = mp;
       }
     }
@@ -228,7 +228,7 @@ public class PeerRoster {
     synchronized (lock) {
       boolean isInPeers = false;
       for (PeerNode connectedPeer : connectedPeers) {
-        if (connectedPeer == peer) {
+        if (Objects.equals(connectedPeer, peer)) {
           isInPeers = true;
           break;
         }
@@ -236,7 +236,7 @@ public class PeerRoster {
       if (!isInPeers) return false;
       ArrayList<PeerNode> peers = new ArrayList<>();
       for (PeerNode mp : myPeers) {
-        if (mp != peer && mp.isRoutable()) peers.add(mp);
+        if (!Objects.equals(mp, peer) && mp.isRoutable()) peers.add(mp);
       }
       connectedPeers = peers.toArray(new PeerNode[0]);
     }
@@ -249,7 +249,7 @@ public class PeerRoster {
    * <p>The method rejects non-real or disconnected peers early and returns {@code false} without
    * modifying any state. When the peer is eligible, it verifies that the peer exists in the roster;
    * if not, it logs a diagnostic and invokes the provided {@link PeerAdder} to add it. The
-   * connected snapshot is then updated under the shared lock using identity equality.
+   * connected snapshot is then updated under the shared lock using equality checks.
    *
    * @param peer the peer to consider for inclusion in the connected snapshot.
    * @param peerAdder callback used to insert the peer if missing from the roster.
@@ -266,7 +266,7 @@ public class PeerRoster {
     }
     synchronized (lock) {
       for (PeerNode connectedPeer : connectedPeers) {
-        if (connectedPeer == peer) {
+        if (Objects.equals(connectedPeer, peer)) {
           if (LOG.isDebugEnabled()) LOG.debug("Already connected: {}", peer);
           return false;
         }
@@ -283,7 +283,7 @@ public class PeerRoster {
   private void ensurePeerPresent(PeerNode peer, PeerAdder peerAdder) {
     boolean inMyPeers = false;
     for (PeerNode mp : myPeers) {
-      if (mp == peer) {
+      if (Objects.equals(mp, peer)) {
         inMyPeers = true;
         break;
       }
@@ -334,13 +334,14 @@ public class PeerRoster {
     PeerNode[] peerList = myPeers();
     for (PeerNode pn : peerList) {
       if (pn.isDisabled()) continue;
-      if (pn.matchesPeerAndPort(peer) && pn.getOutgoingMangler() == mangler) return pn;
+      if (pn.matchesPeerAndPort(peer) && Objects.equals(pn.getOutgoingMangler(), mangler))
+        return pn;
     }
     FreenetInetAddress addr = peer.getFreenetAddress();
     for (PeerNode pn : peerList) {
       if (pn.isDisabled()) continue;
-      if (PeerNodeAddressManager.matchesIP(pn, addr, false) && pn.getOutgoingMangler() == mangler)
-        return pn;
+      if (PeerNodeAddressManager.matchesIP(pn, addr, false)
+          && Objects.equals(pn.getOutgoingMangler(), mangler)) return pn;
     }
     return null;
   }
@@ -429,7 +430,7 @@ public class PeerRoster {
   private PeerNode attemptRandomRoutable(PeerNode exclude) {
     for (int i = 0; i < 5; i++) {
       PeerNode pn = connectedPeers[node.bootstrap().random().nextInt(connectedPeers.length)];
-      if (pn == exclude) continue;
+      if (Objects.equals(pn, exclude)) continue;
       if (pn.isRoutable()) return pn;
     }
     return null;
@@ -438,7 +439,7 @@ public class PeerRoster {
   private int rebuildConnectedPeersExcluding(PeerNode exclude) {
     ArrayList<PeerNode> v = new ArrayList<>(connectedPeers.length);
     for (PeerNode pn : myPeers) {
-      if (pn == exclude) continue;
+      if (Objects.equals(pn, exclude)) continue;
       if (pn.isRoutable()) v.add(pn);
       else if (LOG.isDebugEnabled()) LOG.debug("Excluding {}; disconnected", pn);
     }
@@ -643,7 +644,7 @@ public class PeerRoster {
     PeerNode[] peers = myPeers();
     for (PeerNode p : peers) {
       boolean skip =
-          p == peer
+          Objects.equals(p, peer)
               || !p.isConnected()
               || !p.isRealConnection()
               || (p.isDarknet() && !peer.isDarknet());

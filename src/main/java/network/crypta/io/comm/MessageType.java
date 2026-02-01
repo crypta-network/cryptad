@@ -161,20 +161,17 @@ public class MessageType {
   }
 
   /**
-   * Compares by {@code name} reference identity.
+   * Compares by {@code name} value equality.
    *
-   * <p>Equality relies on registration behavior that typically yields a single instance per logical
-   * name.
+   * <p>Message types are registered by name; value equality keeps comparisons stable even if two
+   * instances reference distinct but equal strings.
    */
   @Override
-  @SuppressWarnings("ReferenceEquality")
   public boolean equals(Object o) {
     if (!(o instanceof MessageType other)) {
       return false;
     }
-    // Intentionally use reference equality for the name based on registration semantics.
-    //noinspection StringEquality
-    return other.name == name;
+    return java.util.Objects.equals(other.name, name);
   }
 
   /**

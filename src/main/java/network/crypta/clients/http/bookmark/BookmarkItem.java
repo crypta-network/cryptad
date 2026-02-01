@@ -3,6 +3,7 @@ package network.crypta.clients.http.bookmark;
 import java.net.MalformedURLException;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
 import network.crypta.l10n.NodeL10n;
@@ -52,6 +53,7 @@ public class BookmarkItem extends Bookmark {
 
   private static final String L10N_KEY_PREFIX = "BookmarkItem.";
   private static final String L10N_INLINE_PREFIX = "l10n:";
+  private static final AtomicLong INSTANCE_COUNTER = new AtomicLong();
 
   private final BookmarkManager manager;
   private FreenetURI key;
@@ -59,6 +61,7 @@ public class BookmarkItem extends Bookmark {
   private boolean hasAnActivelink;
   private final BookmarkUpdatedUserAlert alert;
   private final UserAlertManager alerts;
+  private final long instanceId = INSTANCE_COUNTER.incrementAndGet();
 
   /**
    * The persisted description value for this bookmark, possibly {@code null}.
@@ -287,6 +290,10 @@ public class BookmarkItem extends Bookmark {
    */
   public String getKey() {
     return key.toString();
+  }
+
+  long instanceId() {
+    return instanceId;
   }
 
   /**
