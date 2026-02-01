@@ -117,7 +117,9 @@ tasks.register("prepareKotlinTestReports") {
 
     val reportDir = testResultsDir.get().asFile
     val outputDir = kotlinTestReportDir.get().asFile
-    project.delete(outputDir)
+    if (outputDir.exists()) {
+      outputDir.deleteRecursively()
+    }
     outputDir.mkdirs()
 
     val reportNames =
@@ -140,6 +142,8 @@ tasks.register("prepareTestExecutionReport") {
   dependsOn(tasks.withType<Test>())
   inputs.dir(testResultsDir)
   outputs.file(testExecutionReportFile)
+
+  val projectPath = project.projectDir.toPath()
 
   doLast {
     data class TestCase(
@@ -232,7 +236,13 @@ tasks.register("prepareTestExecutionReport") {
                           .firstOrNull { srcDir -> File(srcDir, relativePath).isFile }
                           ?.let { srcDir -> File(srcDir, relativePath) }
                       } ?: continue
-                    val sonarPath = project.relativePath(sourceFile)
+                    val sourcePath = sourceFile.toPath()
+                    val sonarPath =
+                      if (sourcePath.startsWith(projectPath)) {
+                        projectPath.relativize(sourcePath).toString()
+                      } else {
+                        sourceFile.absolutePath
+                      }
                     byFile
                       .getOrPut(sonarPath) { mutableListOf() }
                       .add(TestCase(name, durationMs, status, messageText))
