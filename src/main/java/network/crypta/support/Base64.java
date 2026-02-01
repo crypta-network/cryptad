@@ -125,7 +125,6 @@ public class Base64 {
   }
 
   /* Core encoder used by both alphabets. {@code equalsPad} toggles '=' padding. */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static String encode(byte[] in, boolean equalsPad, char[] alphabet) {
     char[] out = new char[((in.length + 2) / 3) * 4];
     int rem = in.length % 3;
@@ -140,17 +139,12 @@ public class Base64 {
       out[o++] = alphabet[(val >> 6) & 0x3F];
       out[o++] = alphabet[val & 0x3F];
     }
-    int outLen = out.length;
-    switch (rem) {
-      case 1:
-        outLen -= 2;
-        break;
-      case 2:
-        outLen -= 1;
-        break;
-      default:
-        break;
-    }
+    int outLen =
+        switch (rem) {
+          case 1 -> out.length - 2;
+          case 2 -> out.length - 1;
+          default -> out.length;
+        };
     // Pad with '=' signs up to a multiple of four if requested.
     if (equalsPad) while (outLen < out.length) out[outLen++] = '=';
     return new String(out, 0, outLen);
@@ -203,7 +197,6 @@ public class Base64 {
    * value in the selected alphabet yields an IllegalBase64Exception. When the (unpadded) length
    * mod 4 == 1, the length is illegal and an exception is thrown.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static byte[] decode(String inStr, byte[] reverseAlphabet) throws IllegalBase64Exception {
     try {
       char[] in = inStr.toCharArray();
@@ -217,19 +210,13 @@ public class Base64 {
       // wholeInLen/wholeOutLen exclude any partial block at the end.
       int wholeInLen = blocks * 4;
       int wholeOutLen = blocks * 3;
-      int outLen = wholeOutLen;
-      switch (remainder) {
-        case 1:
-          throw new IllegalBase64Exception("illegal Base64 length");
-        case 2:
-          outLen = wholeOutLen + 1;
-          break;
-        case 3:
-          outLen = wholeOutLen + 2;
-          break;
-        default:
-          break;
-      }
+      int outLen =
+          switch (remainder) {
+            case 1 -> throw new IllegalBase64Exception("illegal Base64 length");
+            case 2 -> wholeOutLen + 1;
+            case 3 -> wholeOutLen + 2;
+            default -> wholeOutLen;
+          };
       byte[] out = new byte[outLen];
       int o = 0;
       int i = 0;
@@ -247,32 +234,26 @@ public class Base64 {
         i += 4;
         o += 3;
       }
-      int orValue;
-      switch (remainder) {
-        case 2:
-          {
-            int in1 = reverseAlphabet[in[i]];
-            int in2 = reverseAlphabet[in[i + 1]];
-            orValue = in1 | in2;
-            int outVal = (in1 << 18) | (in2 << 12);
-            out[o] = (byte) (outVal >> 16);
-          }
-          break;
-        case 3:
-          {
-            int in1 = reverseAlphabet[in[i]];
-            int in2 = reverseAlphabet[in[i + 1]];
-            int in3 = reverseAlphabet[in[i + 2]];
-            orValue = in1 | in2 | in3;
-            int outVal = (in1 << 18) | (in2 << 12) | (in3 << 6);
-            out[o] = (byte) (outVal >> 16);
-            out[o + 1] = (byte) (outVal >> 8);
-          }
-          break;
-        default:
-          // Keep compiler happy
-          orValue = 0;
-      }
+      int orValue =
+          switch (remainder) {
+            case 2 -> {
+              int in1 = reverseAlphabet[in[i]];
+              int in2 = reverseAlphabet[in[i + 1]];
+              int outVal = (in1 << 18) | (in2 << 12);
+              out[o] = (byte) (outVal >> 16);
+              yield in1 | in2;
+            }
+            case 3 -> {
+              int in1 = reverseAlphabet[in[i]];
+              int in2 = reverseAlphabet[in[i + 1]];
+              int in3 = reverseAlphabet[in[i + 2]];
+              int outVal = (in1 << 18) | (in2 << 12) | (in3 << 6);
+              out[o] = (byte) (outVal >> 16);
+              out[o + 1] = (byte) (outVal >> 8);
+              yield in1 | in2 | in3;
+            }
+            default -> 0;
+          };
       if ((orValue & 0x80) != 0) throw new IllegalBase64Exception("illegal Base64 character");
       return out;
     }

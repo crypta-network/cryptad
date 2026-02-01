@@ -170,33 +170,20 @@ class FlacMetadataBlock extends FlacPacket {
    *
    * @param type the target metadata category; unsupported values are ignored safely
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public void setMetadataBlockType(BlockType type) {
-    switch (type) {
-      case STREAMINFO:
-        this.header.blockType = 0;
-        break;
-      case PADDING:
-        this.header.blockType = 1;
-        break;
-      case APPLICATION:
-        this.header.blockType = 2;
-        break;
-      case SEEKTABLE:
-        this.header.blockType = 3;
-        break;
-      case VORBIS_COMMENT:
-        this.header.blockType = 4;
-        break;
-      case CUESHEET:
-        this.header.blockType = 5;
-        break;
-      case PICTURE:
-        this.header.blockType = 6;
-        break;
-      default:
-        // No action for UNKNOWN/INVALID types
-        break;
+    byte blockType =
+        switch (type) {
+          case STREAMINFO -> 0;
+          case PADDING -> 1;
+          case APPLICATION -> 2;
+          case SEEKTABLE -> 3;
+          case VORBIS_COMMENT -> 4;
+          case CUESHEET -> 5;
+          case PICTURE -> 6;
+          default -> -1;
+        };
+    if (blockType >= 0) {
+      this.header.blockType = blockType;
     }
   }
 

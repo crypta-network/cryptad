@@ -164,27 +164,22 @@ public class TempRaf extends FilterRAF {
    *
    * @throws IOException if closing the delegate RAF fails or underlying I/O errors occur.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   @Override
   public synchronized void close() throws IOException {
 
-    // keep as a switch statement for readability.
     switch (keepPolicy) {
-      case NEVER:
-        deleteOnClose();
-        break;
-      case RENAMED:
+      case NEVER -> deleteOnClose();
+      case RENAMED -> {
         if (!renamedFlag) {
           deleteOnClose();
         }
-        break;
-      case RENAMED_AND_DONE_WRITING:
+      }
+      case RENAMED_AND_DONE_WRITING -> {
         if (!renamedFlag || !getMode().equals("r")) {
           deleteOnClose();
         }
-        break;
-      default:
-        break;
+      }
+      case ALWAYS -> {}
     }
 
     super.close();

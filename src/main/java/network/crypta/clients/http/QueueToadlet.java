@@ -4201,72 +4201,49 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void addHeaderCell(HTMLNode headerRow, QueueColumn column) {
     switch (column) {
-      case IDENTIFIER:
-        headerRow
-            .addChild("th")
-            .addChild("a", "href", (isReversed ? "?sortBy=id" : "?sortBy=id&reversed"))
-            .addChild("#", l10n("identifier"));
-        break;
-      case SIZE:
-        headerRow
-            .addChild("th")
-            .addChild("a", "href", (isReversed ? "?sortBy=size" : "?sortBy=size&reversed"))
-            .addChild("#", l10n("size"));
-        break;
-      case MIME_TYPE:
-        headerRow.addChild("th", l10n("mimeType"));
-        break;
-      case PERSISTENCE:
-        headerRow.addChild("th", l10n("persistence"));
-        break;
-      case KEY:
-        headerRow.addChild("th", l10n("key"));
-        break;
-      case FILENAME:
-        headerRow.addChild("th", l10n("fileName"));
-        break;
-      case PRIORITY:
-        headerRow.addChild("th", l10n(PRIORITY));
-        break;
-      case FILES:
-        headerRow.addChild("th", l10n("files"));
-        break;
-      case TOTAL_SIZE:
-        headerRow.addChild("th", l10n("totalSize"));
-        break;
-      case PROGRESS:
-        headerRow
-            .addChild("th")
-            .addChild("a", "href", (isReversed ? "?sortBy=progress" : "?sortBy=progress&reversed"))
-            .addChild("#", l10n("progress"));
-        break;
-      case REASON:
-        headerRow.addChild("th", l10n("reason"));
-        break;
-      case LAST_ACTIVITY:
-        headerRow
-            .addChild("th")
-            .addChild(
-                "a",
-                "href",
-                (isReversed ? "?sortBy=lastActivity" : "?sortBy=lastActivity&reversed"),
-                l10n("lastActivity"));
-        break;
-      case LAST_FAILURE:
-        headerRow
-            .addChild("th")
-            .addChild(
-                "a",
-                "href",
-                (isReversed ? "?sortBy=lastFailure" : "?sortBy=lastFailure&reversed"),
-                l10n("lastFailure"));
-        break;
-      case COMPAT_MODE:
-        headerRow.addChild("th", l10n(COMPATIBILITY_MODE_FIELD));
-        break;
+      case IDENTIFIER ->
+          headerRow
+              .addChild("th")
+              .addChild("a", "href", (isReversed ? "?sortBy=id" : "?sortBy=id&reversed"))
+              .addChild("#", l10n("identifier"));
+      case SIZE ->
+          headerRow
+              .addChild("th")
+              .addChild("a", "href", (isReversed ? "?sortBy=size" : "?sortBy=size&reversed"))
+              .addChild("#", l10n("size"));
+      case MIME_TYPE -> headerRow.addChild("th", l10n("mimeType"));
+      case PERSISTENCE -> headerRow.addChild("th", l10n("persistence"));
+      case KEY -> headerRow.addChild("th", l10n("key"));
+      case FILENAME -> headerRow.addChild("th", l10n("fileName"));
+      case PRIORITY -> headerRow.addChild("th", l10n(PRIORITY));
+      case FILES -> headerRow.addChild("th", l10n("files"));
+      case TOTAL_SIZE -> headerRow.addChild("th", l10n("totalSize"));
+      case PROGRESS ->
+          headerRow
+              .addChild("th")
+              .addChild(
+                  "a", "href", (isReversed ? "?sortBy=progress" : "?sortBy=progress&reversed"))
+              .addChild("#", l10n("progress"));
+      case REASON -> headerRow.addChild("th", l10n("reason"));
+      case LAST_ACTIVITY ->
+          headerRow
+              .addChild("th")
+              .addChild(
+                  "a",
+                  "href",
+                  (isReversed ? "?sortBy=lastActivity" : "?sortBy=lastActivity&reversed"),
+                  l10n("lastActivity"));
+      case LAST_FAILURE ->
+          headerRow
+              .addChild("th")
+              .addChild(
+                  "a",
+                  "href",
+                  (isReversed ? "?sortBy=lastFailure" : "?sortBy=lastFailure&reversed"),
+                  l10n("lastFailure"));
+      case COMPAT_MODE -> headerRow.addChild("th", l10n(COMPATIBILITY_MODE_FIELD));
     }
   }
 

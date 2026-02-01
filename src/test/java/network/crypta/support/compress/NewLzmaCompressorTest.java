@@ -96,23 +96,21 @@ class NewLzmaCompressorTest {
         Arguments.of(1024, PATTERN_RANDOM));
   }
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static byte[] buildPayload(int size, String pattern) {
     byte[] data = new byte[size];
-    switch (pattern) {
-      case PATTERN_ZEROS:
-        // already zero-initialized
-        return data;
-      case PATTERN_ONES:
+    return switch (pattern) {
+      case PATTERN_ZEROS -> data;
+      case PATTERN_ONES -> {
         Arrays.fill(data, (byte) 1);
-        return data;
-      case PATTERN_RANDOM:
+        yield data;
+      }
+      case PATTERN_RANDOM -> {
         SplittableRandom r = new SplittableRandom(0xC0FFEE); // deterministic, not java.util.Random
         r.nextBytes(data);
-        return data;
-      default:
-        throw new IllegalArgumentException("unknown pattern: " + pattern);
-    }
+        yield data;
+      }
+      default -> throw new IllegalArgumentException("unknown pattern: " + pattern);
+    };
   }
 
   // -------------------------------------------------------------------------------------

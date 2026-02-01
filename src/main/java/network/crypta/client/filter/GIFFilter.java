@@ -220,25 +220,20 @@ public class GIFFilter implements ContentDataFilter {
     }
 
     /** Looks for data blocks and filters them according to their type. */
-    @SuppressWarnings("StatementSwitchToExpressionSwitch")
     private void filterData() throws IOException {
       boolean imageSeen = false;
       boolean terminated = false;
       int lastByte;
       while (!terminated && (lastByte = input.read()) != -1) {
         switch (lastByte) {
-          case IMAGE_SEPARATOR:
-            imageSeen |= filterImage();
-            break;
-          case GIF_TERMINATOR:
-            // If we have seen at least one image, encountering the terminator ends the stream.
-            terminated = imageSeen;
-            break;
-          case EXTENSION_INTRODUCER:
-            filterExtensionBlock();
-            break;
-          default:
+          case IMAGE_SEPARATOR -> imageSeen |= filterImage();
+          case GIF_TERMINATOR ->
+              // If we have seen at least one image, encountering the terminator ends the stream.
+              terminated = imageSeen;
+          case EXTENSION_INTRODUCER -> filterExtensionBlock();
+          default -> {
             // The specification expects us to skip other data; we can simply omit it.
+          }
         }
       }
       if (!imageSeen) {
@@ -461,19 +456,13 @@ public class GIFFilter implements ContentDataFilter {
       new GIF89aValidator(input, output).filter();
     }
 
-    @SuppressWarnings("StatementSwitchToExpressionSwitch")
     @Override
     protected void filterExtensionBlock() throws IOException {
       int label = readByte();
       switch (label) {
-        case GRAPHIC_CONTROL_LABEL:
-          readGraphicControl();
-          break;
-        case APPLICATION_LABEL:
-          filterApplicationBlock();
-          break;
-        default:
-          skipSubBlocks();
+        case GRAPHIC_CONTROL_LABEL -> readGraphicControl();
+        case APPLICATION_LABEL -> filterApplicationBlock();
+        default -> skipSubBlocks();
       }
     }
 
