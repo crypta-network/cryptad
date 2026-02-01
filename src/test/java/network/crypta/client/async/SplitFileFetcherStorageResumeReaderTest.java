@@ -281,14 +281,29 @@ class SplitFileFetcherStorageResumeReaderTest {
     return raf;
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record ResumeLayout(
-      byte[] data,
-      long rafLength,
-      int basicSettingsLength,
-      int checksumLength,
-      long basicSettingsOffset,
-      byte payloadSignature) {
+  private static final class ResumeLayout {
+    private final byte[] data;
+    private final long rafLength;
+    private final int basicSettingsLength;
+    private final int checksumLength;
+    private final long basicSettingsOffset;
+    private final byte payloadSignature;
+
+    private ResumeLayout(
+        byte[] data,
+        long rafLength,
+        int basicSettingsLength,
+        int checksumLength,
+        long basicSettingsOffset,
+        byte payloadSignature) {
+      this.data = data;
+      this.rafLength = rafLength;
+      this.basicSettingsLength = basicSettingsLength;
+      this.checksumLength = checksumLength;
+      this.basicSettingsOffset = basicSettingsOffset;
+      this.payloadSignature = payloadSignature;
+    }
+
     private static ResumeLayout create(
         long rafLength,
         int basicSettingsLength,

@@ -98,11 +98,18 @@ class BitprintTest {
     tigerTree.update(data, offset, length);
     byte[] tigerBytes = tigerTree.digest();
 
-    return new DigestComponents(
-        shaBytes, tigerBytes, Base32.encode(shaBytes), Base32.encode(tigerBytes));
+    return new DigestComponents(shaBytes, Base32.encode(shaBytes), Base32.encode(tigerBytes));
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record DigestComponents(
-      byte[] shaBytes, byte[] tigerBytes, String shaBase32, String tigerBase32) {}
+  private static final class DigestComponents {
+    private final byte[] shaBytes;
+    private final String shaBase32;
+    private final String tigerBase32;
+
+    private DigestComponents(byte[] shaBytes, String shaBase32, String tigerBase32) {
+      this.shaBytes = shaBytes;
+      this.shaBase32 = shaBase32;
+      this.tigerBase32 = tigerBase32;
+    }
+  }
 }

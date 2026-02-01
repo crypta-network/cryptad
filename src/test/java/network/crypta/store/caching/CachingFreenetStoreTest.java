@@ -1400,8 +1400,15 @@ class CachingFreenetStoreTest {
   // ------------------------------------------------------------
 
   // Simple concrete block used by the Mockito-focused tests in this class
-  @SuppressWarnings("ArrayRecordComponent")
-  record TestBlock(byte[] routingKey, byte[] fullKey) implements StorableBlock {
+  private static final class TestBlock implements StorableBlock {
+    private final byte[] routingKey;
+    private final byte[] fullKey;
+
+    private TestBlock(byte[] routingKey, byte[] fullKey) {
+      this.routingKey = routingKey;
+      this.fullKey = fullKey;
+    }
+
     @Override
     public byte[] getRoutingKey() {
       return routingKey;
