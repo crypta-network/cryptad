@@ -1,5 +1,4 @@
 import java.io.ByteArrayOutputStream
-import org.gradle.kotlin.dsl.support.serviceOf
 
 plugins { java }
 
@@ -138,8 +137,7 @@ val computeJlinkModules by
     // Toolchain + baseline
     javaLanguageVersion.set(25)
     // Resolve the toolchain at configuration time and pass JDK home path as input
-    val toolchains = project.serviceOf<JavaToolchainService>()
-    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
+    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
     javaHomePath.set(launcher.map { it.metadata.installationPath.asFile.absolutePath })
     baselineModules.set(
       listOf(
@@ -164,12 +162,10 @@ val createJreImage by
     description = "Creates a minimal JRE with jlink into build/jre"
     dependsOn(computeJlinkModules)
     // Resolve toolchain and static inputs at configuration time to avoid Task.project access
-    val toolchains = project.serviceOf<JavaToolchainService>()
-    val launcher = toolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
+    val launcher = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) }
     val javaHomePath = launcher.map { it.metadata.installationPath.asFile.absolutePath }
     val jreDirProvider = layout.buildDirectory.dir("jre")
     val modulesFileProvider = layout.buildDirectory.dir("jlink").map { it.file("modules.list") }
-    val execOps = project.serviceOf<ExecOperations>()
     doLast {
       val javaHome = File(javaHomePath.get())
       val jlink =
@@ -203,7 +199,11 @@ val createJreImage by
         )
 
       println("Executing jlink: ${args.joinToString(" ")}")
-      execOps.exec { commandLine(args) }
+      val process = ProcessBuilder(args).inheritIO().start()
+      val exit = process.waitFor()
+      if (exit != 0) {
+        throw GradleException("jlink failed with exit code $exit")
+      }
     }
   }
 

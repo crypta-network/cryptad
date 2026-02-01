@@ -151,22 +151,26 @@ val prepareJpackageResources by
 
 // Helper resolving the OS and icon path
 
+private val osNameLower = (System.getProperty("os.name") ?: "").lowercase()
+
+fun isWindowsOs(): Boolean = osNameLower.contains("win")
+
+fun isMacOs(): Boolean = osNameLower.contains("mac") || osNameLower.contains("darwin")
+
 /** Detects the current OS as a stable token: mac|win|linux. */
-fun currentOs(): String {
-  val os = org.gradle.internal.os.OperatingSystem.current()
-  return when {
-    os.isMacOsX -> "mac"
-    os.isWindows -> "win"
+fun currentOs(): String =
+  when {
+    isMacOs() -> "mac"
+    isWindowsOs() -> "win"
     else -> "linux"
   }
-}
 
 /** Checks if an executable exists on PATH using the platform-appropriate command. */
 fun hasExe(name: String): Boolean =
   try {
     val pb =
       ProcessBuilder(
-        if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+        if (isWindowsOs()) {
           listOf("where", name)
         } else {
           listOf("which", name)
@@ -233,7 +237,7 @@ fun resolveJpackageExecutable(): File {
   val exe =
     javaHome.resolve(
       "bin/jpackage" +
-        if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+        if (isWindowsOs()) {
           ".exe"
         } else {
           ""
@@ -571,8 +575,10 @@ val enrichAppImageWithDist by
         when (os) {
           // macOS: cfg lives under Contents/app
           "mac" -> appDir.resolve("$appName.cfg")
+
           // Windows: cfg lives under app/
           "win" -> appDir.resolve("$appName.cfg")
+
           // Linux: cfg lives under lib/app
           else -> imageRoot.resolve("lib/app/$appName.cfg")
         }
