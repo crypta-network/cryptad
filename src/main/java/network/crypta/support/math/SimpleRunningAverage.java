@@ -87,27 +87,39 @@ public final class SimpleRunningAverage implements RunningAverage {
     return new Snapshot(curLen, initValue, nextSlotPtr, refs.clone(), total, totalReports);
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record Snapshot(
-      int curLen,
-      double initValue,
-      int nextSlotPtr,
-      double[] refs,
-      double total,
-      int totalReports) {
+  private static final class Snapshot {
+    private final int curLen;
+    private final double initValue;
+    private final int nextSlotPtr;
+    private final double[] refs;
+    private final double total;
+    private final int totalReports;
+
+    private Snapshot(
+        int curLen,
+        double initValue,
+        int nextSlotPtr,
+        double[] refs,
+        double total,
+        int totalReports) {
+      this.curLen = curLen;
+      this.initValue = initValue;
+      this.nextSlotPtr = nextSlotPtr;
+      this.refs = refs;
+      this.total = total;
+      this.totalReports = totalReports;
+    }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
-      if (!(o
-          instanceof
-          Snapshot(int cLen, double iInit, int nPtr, double[] rRefs, double tTotal, int tReports)))
-        return false;
-      return curLen == cLen
-          && nextSlotPtr == nPtr
-          && totalReports == tReports
-          && Double.compare(initValue, iInit) == 0
-          && Double.compare(total, tTotal) == 0
-          && Arrays.equals(refs, rRefs);
+      if (!(o instanceof Snapshot snapshot)) return false;
+      return curLen == snapshot.curLen
+          && nextSlotPtr == snapshot.nextSlotPtr
+          && totalReports == snapshot.totalReports
+          && Double.compare(initValue, snapshot.initValue) == 0
+          && Double.compare(total, snapshot.total) == 0
+          && Arrays.equals(refs, snapshot.refs);
     }
 
     @Override

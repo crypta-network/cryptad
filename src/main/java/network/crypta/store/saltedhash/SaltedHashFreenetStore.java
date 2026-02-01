@@ -1361,18 +1361,36 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
   private record CacheState(int cache, boolean valid, boolean likelyMatch) {}
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record KeyContext(byte[] digestedKey, byte[] routingKey, byte[] fullKey) {
+  private static final class KeyContext {
+    private final byte[] digestedKey;
+    private final byte[] routingKey;
+    private final byte[] fullKey;
+
+    private KeyContext(byte[] digestedKey, byte[] routingKey, byte[] fullKey) {
+      this.digestedKey = digestedKey;
+      this.routingKey = routingKey;
+      this.fullKey = fullKey;
+    }
+
+    private byte[] digestedKey() {
+      return digestedKey;
+    }
+
+    private byte[] routingKey() {
+      return routingKey;
+    }
+
+    private byte[] fullKey() {
+      return fullKey;
+    }
+
     @Override
     public boolean equals(Object other) {
       if (this == other) return true;
-      if (!(other
-          instanceof
-          KeyContext(byte[] otherDigestedKey, byte[] otherRoutingKey, byte[] otherFullKey)))
-        return false;
-      return Arrays.equals(digestedKey, otherDigestedKey)
-          && Arrays.equals(routingKey, otherRoutingKey)
-          && Arrays.equals(fullKey, otherFullKey);
+      if (!(other instanceof KeyContext keyContext)) return false;
+      return Arrays.equals(digestedKey, keyContext.digestedKey)
+          && Arrays.equals(routingKey, keyContext.routingKey)
+          && Arrays.equals(fullKey, keyContext.fullKey);
     }
 
     @Override
@@ -1395,13 +1413,28 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record EntryData(byte[] header, byte[] data) {
+  private static final class EntryData {
+    private final byte[] header;
+    private final byte[] data;
+
+    private EntryData(byte[] header, byte[] data) {
+      this.header = header;
+      this.data = data;
+    }
+
+    private byte[] header() {
+      return header;
+    }
+
+    private byte[] data() {
+      return data;
+    }
+
     @Override
     public boolean equals(Object other) {
       if (this == other) return true;
-      if (!(other instanceof EntryData(byte[] otherHeader, byte[] otherData))) return false;
-      return Arrays.equals(header, otherHeader) && Arrays.equals(data, otherData);
+      if (!(other instanceof EntryData entryData)) return false;
+      return Arrays.equals(header, entryData.header) && Arrays.equals(data, entryData.data);
     }
 
     @Override
