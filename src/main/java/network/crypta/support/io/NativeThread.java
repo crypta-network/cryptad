@@ -259,8 +259,8 @@ public class NativeThread extends Thread {
       if (!sandboxLogOnce) {
         markSandboxLogged();
         LOG.info(
-            "Skipping native setpriority in sandbox (Snap/Flatpak/Docker); using JVM priority"
-                + " only.");
+            "Skipping native setpriority in sandbox (Snap/Flatpak/Docker); JVM priority is"
+                + " unchanged by NativeThread.");
       }
       return true; // treat as success to avoid noisy warnings
     }
