@@ -1,3 +1,4 @@
+import java.util.Locale
 import java.util.jar.JarOutputStream as JJarOutputStream
 import java.util.jar.Manifest as JManifest
 
@@ -151,7 +152,7 @@ val prepareJpackageResources by
 
 // Helper resolving the OS and icon path
 
-private val osNameLower = (System.getProperty("os.name") ?: "").lowercase().trim()
+private val osNameLower = (System.getProperty("os.name") ?: "").lowercase(Locale.ROOT).trim()
 
 fun isWindowsOs(): Boolean =
   osNameLower.startsWith("windows") ||
