@@ -25,16 +25,4 @@ import java.time.Instant;
  * @param latestSuccess time of the most recent successful block, or {@code null} if none yet
  * @param latestFailure time of the most recent failure, or {@code null} if none yet
  */
-public record SplitfileProgressTimestamps(Instant latestSuccess, Instant latestFailure) {
-  /**
-   * Creates a snapshot of the latest success and failure timestamps.
-   *
-   * <p>This constructor stores the supplied {@link Instant} instances directly. It performs no
-   * validation beyond null handling. Passing {@code null} for either argument leaves that component
-   * unset in the snapshot, which callers can interpret as “no event yet.”
-   *
-   * @param latestSuccess time of the most recent successful block, or {@code null} if absent
-   * @param latestFailure time of the most recent failure, or {@code null} if absent
-   */
-  public SplitfileProgressTimestamps {}
-}
+public record SplitfileProgressTimestamps(Instant latestSuccess, Instant latestFailure) {}

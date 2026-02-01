@@ -330,6 +330,8 @@ class FirstTimeWizardNewToadletTest {
     }
 
     @Override
-    protected void writeTemporaryRedirect(ToadletContext ctx, String msg, String location) {}
+    protected void writeTemporaryRedirect(ToadletContext ctx, String msg, String location) {
+      // Intentionally no-op in tests; we only assert that redirects were requested.
+    }
   }
 }

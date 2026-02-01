@@ -19,10 +19,11 @@ import java.util.logging.Logger;
  * <p>The dispatcher maintains a daemon thread that repeatedly removes queued {@code EventObject}
  * instances, looks up listeners that registered interest in the originating event source and the
  * supplied method name, and invokes that method with the event as its sole argument. Listener look-
- * * ups and queue mutations are synchronized on the dispatcher instance, allowing multiple producer
+ * * ups and queue mutations are synchronized in the dispatcher instance, allowing multiple producer
  * threads to submit events while the consumer thread drains the queue. Method lookups are cached to
- * avoid repeated reflective discovery, but execution order remains FIFO for submitted events. When
- * no listeners are registered for a given method name and source, the event is silently skipped.
+ * avoid repeated reflective discovery, but the execution order remains FIFO for submitted events.
+ * When no listeners are registered for a given method name and source, the event is silently
+ * skipped.
  *
  * <p>Use this class when you need a lightweight, per-source event bus without committing to a
  * broader framework. Typical usage registers listeners tied to a particular publisher object and
@@ -46,11 +47,11 @@ public class ReflectiveEventDispatch implements Runnable {
 
   private static final Logger LOGGER = Logger.getLogger(ReflectiveEventDispatch.class.getName());
 
-  private final Thread thread;
   private final Map<Tuple, Method> methodCache = new HashMap<>();
   private final Map<Object, Map<String, Set<EventListener>>> listeners = new HashMap<>();
   // Holds either Tuple(event, methodName) or a sentinel (this) to signal shutdown
   private final ArrayDeque<Object> eventQueue = new ArrayDeque<>();
+  private final Thread thread;
   private ExceptionHandler handler;
 
   /**
@@ -62,20 +63,10 @@ public class ReflectiveEventDispatch implements Runnable {
    * required.
    */
   public ReflectiveEventDispatch() {
-    thread = new Thread(this, "Reflective Dispatch#" + hashCode());
-    thread.setDaemon(true);
-    thread.start();
+    this.thread = new Thread(this, "Reflective Dispatch#" + hashCode());
+    this.thread.setDaemon(true);
+    this.thread.start();
   }
-
-  /**
-   * Accepts a requested priority for API compatibility.
-   *
-   * <p>Thread priority adjustments are intentionally ignored; the dispatch thread runs at the
-   * JVM-default priority.
-   *
-   * @param priority requested thread priority (ignored)
-   */
-  public void setPriority(int priority) {}
 
   /**
    * Registers an exception handler that receives failures raised during listener invocation.
@@ -83,7 +74,7 @@ public class ReflectiveEventDispatch implements Runnable {
    * <p>When set, the handler is invoked with an {@link ExceptionEvent} every time reflective
    * invocation of a listener method throws an exception. Passing {@code null} restores the default
    * behavior, which logs the exception at {@link Level#SEVERE}. The handler runs on the dispatch
-   * thread, so heavy processing may delay subsequent event delivery.
+   * thread, so heavy processing may delay further event delivery.
    *
    * @param h handler invoked for dispatch-time exceptions; may be {@code null} to disable custom
    *     handling.
@@ -133,10 +124,10 @@ public class ReflectiveEventDispatch implements Runnable {
    *     case-sensitive.
    */
   public synchronized void addListener(Object source, EventListener el, String[] methodNames) {
-    Map<String, Set<EventListener>> hm = listeners.computeIfAbsent(source, k -> new HashMap<>());
+    Map<String, Set<EventListener>> hm = listeners.computeIfAbsent(source, _ -> new HashMap<>());
 
     for (String methodName : methodNames) {
-      hm.computeIfAbsent(methodName, k -> new HashSet<>()).add(el);
+      hm.computeIfAbsent(methodName, _ -> new HashSet<>()).add(el);
     }
   }
 
@@ -217,7 +208,7 @@ public class ReflectiveEventDispatch implements Runnable {
    * The method is idempotent but does not interrupt a listener currently executing.
    */
   public synchronized void close() {
-    // Place this on the queue to signify that we are done.
+    // Place this in the queue to signify that we are done.
     eventQueue.add(this);
     this.notifyAll();
   }
