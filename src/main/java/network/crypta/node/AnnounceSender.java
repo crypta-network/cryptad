@@ -140,41 +140,64 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private void realRun() {
-    if (!initialHandshakeAndMaybeTransfer()) return;
+    if (!initialHandshakeAndMaybeTransfer()) {
+      return;
+    }
 
-    HashSet<PeerNode> nodesRoutedTo = new HashSet<>();
-    PeerNode last = null;
-    boolean hasForwarded = false;
+    RoutingState state = new RoutingState();
+    boolean keepRunning = true;
+    while (keepRunning) {
+      keepRunning = processNextHop(state);
+    }
+  }
 
-    while (true) {
-      if (LOG.isDebugEnabled()) LOG.debug("htl={}", htl);
+  private static final class RoutingState {
+    private final Set<PeerNode> nodesRoutedTo = new HashSet<>();
+    private PeerNode last;
+    private boolean hasForwarded;
+  }
 
-      updateHtl(hasForwarded, last);
+  private boolean processNextHop(RoutingState state) {
+    if (LOG.isDebugEnabled()) LOG.debug("htl={}", htl);
 
-      if (shouldCompleteNow()) {
-        complete();
-        return;
-      }
+    updateHtl(state.hasForwarded, state.last);
 
-      PeerNode next = chooseNextNode(nodesRoutedTo);
-      if (next == null) {
-        if (onlyNode == null) rnf(null);
-        return; // rnf() may already have been sent when appropriate
-      }
+    if (shouldCompleteNow()) {
+      complete();
+      return false;
+    }
 
-      NodeProcessResult result = routeOnce(nodesRoutedTo, next);
-      if (result == NodeProcessResult.TERMINATE) {
-        return;
-      }
-      if (result == NodeProcessResult.CONTINUE_FORWARDED) {
-        hasForwarded = true;
-        last = next;
-      } else if (result == NodeProcessResult.CONTINUE_NO_FORWARD) {
+    PeerNode next = chooseNextNode(state.nodesRoutedTo);
+    if (next == null) {
+      handleNoNextNode();
+      return false;
+    }
+
+    NodeProcessResult result = routeOnce(state.nodesRoutedTo, next);
+    return applyRouteResult(state, next, result);
+  }
+
+  private void handleNoNextNode() {
+    if (onlyNode == null) {
+      rnf(null);
+    }
+  }
+
+  private boolean applyRouteResult(RoutingState state, PeerNode next, NodeProcessResult result) {
+    switch (result) {
+      case TERMINATE:
+        return false;
+      case CONTINUE_FORWARDED:
+        state.hasForwarded = true;
+        state.last = next;
+        return true;
+      case CONTINUE_NO_FORWARD:
         // Track the attempted peer even if we failed to send/forward.
         // This keeps HTL decrement attribution consistent with the peer we just tried.
-        last = next;
-      }
-      // else: no forward this iteration, keep the previous 'last' and hasForwarded
+        state.last = next;
+        return true;
+      default:
+        return true;
     }
   }
 
