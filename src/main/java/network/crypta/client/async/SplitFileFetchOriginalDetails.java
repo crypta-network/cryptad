@@ -8,25 +8,55 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Bundles the original request details persisted for splitfile fetch recovery.
  *
- * <p>This record groups the current key, original key, client detail bytes, and the final-fetch
- * flag so persistence helpers can pass a single parameter object instead of long argument lists.
- * The client detail bytes are stored by reference; callers should not mutate the array after
- * construction if they rely on stable serialization output.
+ * <p>This value object groups the current key, original key, client detail bytes, and the
+ * final-fetch flag so persistence helpers can pass a single parameter object instead of long
+ * argument lists. The client detail bytes are stored by reference; callers should not mutate the
+ * array after construction if they rely on stable serialization output.
  *
  * <ul>
  *   <li>Captures the current and original request keys used for persistence.
  *   <li>Stores client detail bytes verbatim for later replay.
  *   <li>Includes whether the fetch is considered final.
  * </ul>
- *
- * @param thisKey key of the fetch currently being persisted
- * @param origKey original request key that seeded the fetch
- * @param clientDetails client detail bytes written verbatim to storage
- * @param isFinalFetch true when the request is a final-fetch operation
  */
-@SuppressWarnings("ArrayRecordComponent")
-public record SplitFileFetchOriginalDetails(
-    FreenetURI thisKey, FreenetURI origKey, byte[] clientDetails, boolean isFinalFetch) {
+public final class SplitFileFetchOriginalDetails {
+  private final FreenetURI thisKey;
+  private final FreenetURI origKey;
+  private final byte[] clientDetails;
+  private final boolean isFinalFetch;
+
+  /**
+   * Creates a persisted details bundle for splitfile fetch recovery.
+   *
+   * @param thisKey key of the fetch currently being persisted
+   * @param origKey original request key that seeded the fetch
+   * @param clientDetails client detail bytes written verbatim to storage
+   * @param isFinalFetch true when the request is a final-fetch operation
+   */
+  public SplitFileFetchOriginalDetails(
+      FreenetURI thisKey, FreenetURI origKey, byte[] clientDetails, boolean isFinalFetch) {
+    this.thisKey = thisKey;
+    this.origKey = origKey;
+    this.clientDetails = clientDetails;
+    this.isFinalFetch = isFinalFetch;
+  }
+
+  public FreenetURI thisKey() {
+    return thisKey;
+  }
+
+  public FreenetURI origKey() {
+    return origKey;
+  }
+
+  public byte[] clientDetails() {
+    return clientDetails;
+  }
+
+  public boolean isFinalFetch() {
+    return isFinalFetch;
+  }
+
   /**
    * Compares this instance to another by value, including the client detail bytes.
    *
@@ -38,19 +68,13 @@ public record SplitFileFetchOriginalDetails(
     if (this == o) {
       return true;
     }
-    if (!(o
-        instanceof
-        SplitFileFetchOriginalDetails(
-            FreenetURI otherThisKey,
-            FreenetURI otherOrigKey,
-            byte[] otherClientDetails,
-            boolean otherIsFinalFetch))) {
+    if (!(o instanceof SplitFileFetchOriginalDetails other)) {
       return false;
     }
-    return isFinalFetch == otherIsFinalFetch
-        && Objects.equals(thisKey, otherThisKey)
-        && Objects.equals(origKey, otherOrigKey)
-        && Arrays.equals(clientDetails, otherClientDetails);
+    return isFinalFetch == other.isFinalFetch
+        && Objects.equals(thisKey, other.thisKey)
+        && Objects.equals(origKey, other.origKey)
+        && Arrays.equals(clientDetails, other.clientDetails);
   }
 
   /**

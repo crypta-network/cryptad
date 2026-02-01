@@ -621,7 +621,6 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     }
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private SendableRequest maybePreferRecentSuccess(
       SendableRequest req,
       int choosenPriorityClass,
@@ -631,7 +630,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
     if (isInsertScheduler) return req;
     BaseSendableGet altReq = pollRecentSuccessMaybe(random);
     if (!isAltValid(altReq, context, now)) return req;
-    if (altReq == req) return req;
+    if (altReq.equals(req)) return req;
     return decideBetweenAltAndReq(req, choosenPriorityClass, altReq);
   }
 
@@ -766,7 +765,6 @@ public class ClientRequestSelector implements KeysFetchingLocally {
    * @return {@code true} if the key is already fetching locally; otherwise {@code false}
    */
   @Override
-  @SuppressWarnings("ReferenceEquality")
   public boolean hasKey(Key key, BaseSendableGet getterWaiting) {
     if (keysFetching == null) {
       throw new NullPointerException();
@@ -784,7 +782,7 @@ public class ClientRequestSelector implements KeysFetchingLocally {
           transientRequestsWaitingForKeysFetching.put(key, single);
         } else {
           for (WeakReference<BaseSendableGet> ref : waiting) {
-            if (ref.get() == getterWaiting) return true;
+            if (Objects.equals(ref.get(), getterWaiting)) return true;
           }
           WeakReference<BaseSendableGet>[] newWaiting = Arrays.copyOf(waiting, waiting.length + 1);
           newWaiting[waiting.length] = new WeakReference<>(getterWaiting);

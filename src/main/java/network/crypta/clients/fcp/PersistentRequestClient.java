@@ -388,7 +388,6 @@ public class PersistentRequestClient {
    * @throws IdentifierCollisionException if another request with the same identifier already exists
    *     in the mapping.
    */
-  @SuppressWarnings("ReferenceEquality")
   public void register(ClientRequest cg) throws IdentifierCollisionException {
     if (cg.persistence != persistence) {
       throw new IllegalArgumentException("Persistence mismatch for request " + cg.getIdentifier());
@@ -397,7 +396,7 @@ public class PersistentRequestClient {
     synchronized (this) {
       String ident = cg.getIdentifier();
       ClientRequest old = clientRequestsByIdentifier.get(ident);
-      if ((old != null) && (old != cg)) throw new IdentifierCollisionException();
+      if (old != null && !old.equals(cg)) throw new IdentifierCollisionException();
       if (cg.hasFinished()) {
         completedUnackedRequests.add(cg);
       } else {
@@ -884,20 +883,20 @@ public class PersistentRequestClient {
    * @throws IllegalArgumentException if the identifier already maps to a different request
    *     instance.
    */
-  @SuppressWarnings("ReferenceEquality")
   public void resume(ClientRequest clientRequest) {
     if (clientRequest.hasFinished()) completedUnackedRequests.add(clientRequest);
     else runningPersistentRequests.add(clientRequest);
     String identifier = clientRequest.identifier;
-    if (clientRequestsByIdentifier.get(identifier) != null) {
-      if (clientRequest != clientRequestsByIdentifier.get(identifier))
+    ClientRequest existing = clientRequestsByIdentifier.get(identifier);
+    if (existing != null) {
+      if (!clientRequest.equals(existing))
         throw new IllegalArgumentException(
             "Adding new client request "
                 + clientRequest
                 + " with same name \""
                 + identifier
                 + "\" as "
-                + clientRequestsByIdentifier.get(identifier));
+                + existing);
       else {
         LOG.error("Adding the same identifier twice: {}", identifier);
       }

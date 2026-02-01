@@ -11,9 +11,9 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.LinkedList;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
@@ -1921,8 +1921,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private final class ResizeProcessor implements BatchProcessor<T> {
       private final long previousStoreSize;
 
-      @SuppressWarnings("JdkObsolete")
-      private final Deque<Entry> oldEntryList = new LinkedList<>();
+      private final Deque<Entry> oldEntryList = new ArrayDeque<>(RESIZE_MEMORY_ENTRIES);
 
       private int i = 0;
 

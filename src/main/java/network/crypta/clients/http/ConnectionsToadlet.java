@@ -1095,20 +1095,76 @@ public abstract class ConnectionsToadlet extends Toadlet {
       FRIEND_TRUST trust,
       FRIEND_VISIBILITY visibility) {}
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record RenderContext(
-      ToadletContext ctx,
-      String path,
-      PeerNodeStatus[] peerNodeStatuses,
-      boolean drawMessageTypes,
-      DecimalFormat percentageFormat,
-      boolean advancedMode,
-      HTMLNode contentNode,
-      long now,
-      PeerStatusCounts counts) {
+  private static final class RenderContext {
+    private final ToadletContext ctx;
+    private final String path;
+    private final PeerNodeStatus[] peerNodeStatuses;
+    private final boolean drawMessageTypes;
+    private final DecimalFormat percentageFormat;
+    private final boolean advancedMode;
+    private final HTMLNode contentNode;
+    private final long now;
+    private final PeerStatusCounts counts;
+
+    private RenderContext(
+        ToadletContext ctx,
+        String path,
+        PeerNodeStatus[] peerNodeStatuses,
+        boolean drawMessageTypes,
+        DecimalFormat percentageFormat,
+        boolean advancedMode,
+        HTMLNode contentNode,
+        long now,
+        PeerStatusCounts counts) {
+      this.ctx = ctx;
+      this.path = path;
+      this.peerNodeStatuses = peerNodeStatuses;
+      this.drawMessageTypes = drawMessageTypes;
+      this.percentageFormat = percentageFormat;
+      this.advancedMode = advancedMode;
+      this.contentNode = contentNode;
+      this.now = now;
+      this.counts = counts;
+    }
+
+    ToadletContext ctx() {
+      return ctx;
+    }
+
+    String path() {
+      return path;
+    }
+
+    PeerNodeStatus[] peerNodeStatuses() {
+      return peerNodeStatuses;
+    }
+
+    boolean drawMessageTypes() {
+      return drawMessageTypes;
+    }
+
+    DecimalFormat percentageFormat() {
+      return percentageFormat;
+    }
+
+    boolean advancedMode() {
+      return advancedMode;
+    }
+
+    HTMLNode contentNode() {
+      return contentNode;
+    }
+
+    long now() {
+      return now;
+    }
+
+    PeerStatusCounts counts() {
+      return counts;
+    }
+
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
       if (!(o instanceof RenderContext that)) return false;
       return drawMessageTypes == that.drawMessageTypes
           && advancedMode == that.advancedMode
