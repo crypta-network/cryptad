@@ -6,7 +6,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import network.crypta.node.PeerTransport;
 import network.crypta.support.ShortBuffer;
@@ -71,7 +71,7 @@ class MessageTest {
   // No Mockito mocks needed; use a minimal stub PeerContext below.
 
   @Test
-  @SuppressWarnings({"java:S100", "JdkObsolete"}) // method naming per test naming convention
+  @SuppressWarnings("java:S100") // method naming per test naming convention
   void setGet_whenAllSupportedTypes_expectRoundTripViaAccessors() {
     Message msg = new Message(SIMPLE_SPEC);
 
@@ -86,7 +86,7 @@ class MessageTest {
     final float[] floatArrayVal =
         new float[] {Float.parseFloat("1234.5678"), Float.parseFloat("912345.6789")};
     final String strVal = "hello";
-    final LinkedList<Integer> listVal = new LinkedList<>(List.of(1, 2, 3));
+    final List<Integer> listVal = new ArrayList<>(List.of(1, 2, 3));
 
     msg.set(BOOLEAN, booleanVal);
     msg.set(BYTE, byteVal);

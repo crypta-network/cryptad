@@ -41,20 +41,20 @@ class URLEncoderDecoderTest {
   URLEncoderDecoderTest() {}
 
   /** Printable US-ASCII sample used to validate safe-path encoding and decoding. */
-  static final String PRINTABLE_ASCII = new String(UTFUtil.PRINTABLE_ASCII);
+  static final String PRINTABLE_ASCII = new String(UTFUtil.printableAscii());
 
   /** Stress sample containing non-ASCII characters to exercise UTF-8 percent encoding paths. */
-  static final String STRESSED_UTF_8_CHARS = new String(UTFUtil.STRESSED_UTF);
+  static final String STRESSED_UTF_8_CHARS = new String(UTFUtil.stressedUtf());
 
   /**
    * Full Unicode sample with the null character removed, used to ensure round-trip safety in strict
    * decoding mode.
    */
   static final String ALL_CHARS_EXCEPT_NULL =
-      new String(UTFUtil.ALL_CHARACTERS).replace("\u0000", "");
+      new String(UTFUtil.allCharacters()).replace("\u0000", "");
 
   /** Full Unicode sample including null, used when testing URI acceptance of encoded output. */
-  static final String ALL_CHARS = new String(UTFUtil.ALL_CHARACTERS);
+  static final String ALL_CHARS = new String(UTFUtil.allCharacters());
 
   /**
    * Encodes a full Unicode sample without the null character and validates strict and tolerant

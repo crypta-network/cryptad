@@ -1,6 +1,5 @@
 package network.crypta.support;
 
-import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import org.jetbrains.annotations.NotNull;
@@ -20,8 +19,8 @@ import org.jetbrains.annotations.NotNull;
  * <p>Nullability: Methods such as {@link #head()} and {@link #tail()} return {@code null} for an
  * empty list. Accessors on {@link Item} may also return {@code null} at the boundaries.
  *
- * <p>Iteration: {@link #elements()} and {@link #reverseElements()} return simple enumerations over
- * the current structure. They are not fail-fast and have unspecified behavior if the list is
+ * <p>Iteration: {@link #elements()} and {@link #reverseElements()} return simple iterators over the
+ * current structure. They are not fail-fast and have unspecified behavior if the list is
  * structurally modified during iteration.
  *
  * @param <T> concrete intrusive item type stored in this list
@@ -107,10 +106,10 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
     return size == 0;
   }
 
-  /** Returns a forward {@link Enumeration} over list items. See {@link #forwardElements()}. */
+  /** Returns a forward {@link Iterator} over list items. See {@link #forwardIterator()}. */
   @Override
-  public final Enumeration<T> elements() {
-    return forwardElements();
+  public final Iterator<T> elements() {
+    return forwardIterator();
   }
 
   /**
@@ -445,44 +444,56 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
 
   // === Walkable implementation ==============================================
 
-  /** Returns an {@link Enumeration} over items from head to tail. */
-  @SuppressWarnings("JdkObsolete")
-  private Enumeration<T> forwardElements() {
-    return new Enumeration<>() {
+  /** Returns an {@link Iterator} over items from head to tail. */
+  private Iterator<T> forwardIterator() {
+    return new Iterator<>() {
       private T next = firstItem;
 
       @Override
-      public boolean hasMoreElements() {
+      public boolean hasNext() {
         return next != null;
       }
 
       @Override
-      public T nextElement() {
+      public T next() {
         if (next == null) throw new NoSuchElementException();
         T result = next;
         next = next.getNext();
         return result;
       }
+
+      @Override
+      public void remove() {
+        throw new UnsupportedOperationException();
+      }
     };
   }
 
-  /** Returns an {@link Enumeration} over items from tail to head. */
-  @SuppressWarnings("JdkObsolete")
-  public Enumeration<T> reverseElements() {
-    return new Enumeration<>() {
+  /** Returns an {@link Iterator} over items from tail to head. */
+  public Iterator<T> reverseElements() {
+    return reverseIterator();
+  }
+
+  private Iterator<T> reverseIterator() {
+    return new Iterator<>() {
       private T next = lastItem;
 
       @Override
-      public boolean hasMoreElements() {
+      public boolean hasNext() {
         return next != null;
       }
 
       @Override
-      public T nextElement() {
+      public T next() {
         if (next == null) throw new NoSuchElementException();
         T result = next;
         next = next.getPrev();
         return result;
+      }
+
+      @Override
+      public void remove() {
+        throw new UnsupportedOperationException();
       }
     };
   }
@@ -595,25 +606,6 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
   /** Returns an {@link Iterator} that traverses from head to tail. */
   @Override
   public @NotNull Iterator<T> iterator() {
-    final Enumeration<T> e = forwardElements();
-    return new Iterator<>() {
-      @Override
-      public boolean hasNext() {
-        return e.hasMoreElements();
-      }
-
-      @Override
-      public T next() {
-        if (!hasNext()) {
-          throw new NoSuchElementException();
-        }
-        return e.nextElement();
-      }
-
-      @Override
-      public void remove() {
-        throw new UnsupportedOperationException();
-      }
-    };
+    return forwardIterator();
   }
 }

@@ -11,7 +11,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.DefaultMIMETypes;
@@ -93,6 +92,11 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   private static final String LOG_PUT_COMPLETED = "event=put-complete item='{}' handler={}";
   private static final String DEBUG_STRING = "debug";
 
+  private enum RunningMapTarget {
+    CONTAINER,
+    RUNNING
+  }
+
   @Override
   @SuppressWarnings("RedundantMethodOverride")
   public boolean equals(Object obj) {
@@ -122,7 +126,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         String name,
         Map<String, Object> data,
         FreenetURI insertURI) {
-      super(bmp, parent, name, null, containerPutHandlers);
+      super(bmp, parent, name, null, RunningMapTarget.CONTAINER);
       InsertExecutionOptions execOptions =
           new InsertExecutionOptions(
               false, false, ARCHIVE_TYPE.TAR, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
@@ -189,8 +193,8 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         String name,
         Map<String, Object> data,
         FreenetURI insertURI,
-        Set<PutHandler> runningMap) {
-      super(bmp, parent, name, null, runningMap);
+        RunningMapTarget runningMapTarget) {
+      super(bmp, parent, name, null, runningMapTarget);
       InsertExecutionOptions execOptions =
           new InsertExecutionOptions(
               false, false, ARCHIVE_TYPE.TAR, forceCryptoKey, cryptoAlgorithm, realTimeFlag);
@@ -248,7 +252,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         String name,
         RandomAccessBucket data,
         ClientMetadata cm2) {
-      super(bmp, parent, name, cm2, runningPutHandlers);
+      super(bmp, parent, name, cm2, RunningMapTarget.RUNNING);
       InsertBlock block = new InsertBlock(data, cm, FreenetURI.EMPTY_CHK_URI);
       InsertExecutionOptions execOptions =
           new InsertExecutionOptions(
@@ -392,7 +396,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     private MetaPutHandler(
         BaseManifestPutter smp, PutHandler parent, Metadata toResolve, BucketFactory bf)
         throws MetadataUnresolvedException, IOException {
-      super(smp, parent, null, null, runningPutHandlers);
+      super(smp, parent, null, null, RunningMapTarget.RUNNING);
       RandomAccessBucket b = toResolve.toBucket(bf);
       metadata = toResolve;
       // Treat as a splitfile for purposes of determining the number of reinserting.
@@ -496,7 +500,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         PutHandler parent,
         String name,
         ClientMetadata cm,
-        Set<PutHandler> runningMap) {
+        RunningMapTarget runningMapTarget) {
       super(bmp.priorityClass, bmp.cb.getRequestClient());
       this.persistent = bmp.persistent();
       this.cm = cm;
@@ -504,7 +508,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       metadata = null;
       parentPutHandler = parent;
 
-      if (runningMap != null) registerInRunningMap(runningMap);
+      if (runningMapTarget != null) registerInRunningMap(runningMapTarget);
 
       synchronized (putHandlerWaitingForBlockSets) {
         if (putHandlerWaitingForBlockSets.contains(this)) {
@@ -523,10 +527,9 @@ public abstract class BaseManifestPutter extends ManifestPutter {
       }
     }
 
-    @SuppressWarnings("ReferenceEquality")
-    private void registerInRunningMap(Set<PutHandler> runningMap) {
+    private void registerInRunningMap(RunningMapTarget runningMapTarget) {
       // Avoid synchronizing on a local variable; synchronize on the owning field directly.
-      if (runningMap == containerPutHandlers) {
+      if (runningMapTarget == RunningMapTarget.CONTAINER) {
         synchronized (containerPutHandlers) {
           if (containerPutHandlers.contains(this)) {
             LOG.warn("Duplicate registration in containerPutHandlers: {}", containerPutHandlers);
@@ -534,7 +537,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
             containerPutHandlers.add(this);
           }
         }
-      } else { // runningMap == runningPutHandlers
+      } else { // runningMapTarget == RunningMapTarget.RUNNING
         synchronized (runningPutHandlers) {
           if (runningPutHandlers.contains(this)) {
             LOG.warn("Duplicate registration in runningPutHandlers: {}", runningPutHandlers);
@@ -1922,7 +1925,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
                 name,
                 rootDirMap,
                 (isRoot ? BaseManifestPutter.this.targetURI : FreenetURI.EMPTY_CHK_URI),
-                (isRoot ? null : containerPutHandlers));
+                (isRoot ? null : RunningMapTarget.CONTAINER));
       currentDir = rootDirMap;
       if (isRoot) {
         if (selfHandle instanceof ContainerPutHandler cph) {

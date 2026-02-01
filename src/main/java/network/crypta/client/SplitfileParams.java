@@ -9,12 +9,12 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Bundles splitfile layout and crypto parameters used when building metadata.
  *
- * <p>This record groups the splitfile configuration required to describe a multi-block payload in
- * {@link Metadata}. It is typically constructed alongside {@link SplitfilePayload} and {@link
- * MetadataTopLayerInfo} and then passed to {@link Metadata#Metadata(SplitfileParams,
- * SplitfilePayload, MetadataTopLayerInfo)} as a simple carrier object. The record does not validate
- * values or normalize inputs; it preserves exactly the values supplied by the caller so that
- * serialization remains predictable.
+ * <p>This value object groups the splitfile configuration required to describe a multi-block
+ * payload in {@link Metadata}. It is typically constructed alongside {@link SplitfilePayload} and
+ * {@link MetadataTopLayerInfo} and then passed to {@link Metadata#Metadata(SplitfileParams,
+ * SplitfilePayload, MetadataTopLayerInfo)} as a simple carrier object. The instance does not
+ * validate values or normalize inputs; it preserves exactly the values supplied by the caller so
+ * that serialization remains predictable.
  *
  * <p>Instances are immutable, but array components are not copied. Callers should treat the array
  * contents as stable for the lifetime of metadata construction to avoid inconsistent serialization
@@ -28,33 +28,103 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Separates layout parameters from payload and top-layer details.
  * </ul>
  *
- * @param splitfileAlgorithm splitfile algorithm identifier; must match the intended encoding path.
- * @param dataURIs data block keys in block order; may be empty but not {@code null}.
- * @param checkURIs check block keys in block order; may be empty but not {@code null}.
- * @param segmentSize data blocks per typical segment, excluding cross-segment blocks; non-negative.
- * @param checkSegmentSize check blocks per typical segment, excluding cross-segment blocks.
- * @param deductBlocksFromSegments count of trailing segments with one fewer data block;
- *     non-negative.
- * @param crossSegmentBlocks cross-segment parity blocks per segment; zero when not used.
- * @param splitfileCryptoAlgorithm algorithm code applied to splitfile block encryption or routing.
- * @param splitfileCryptoKey splitfile-wide crypto key bytes; may be {@code null} for legacy modes.
- * @param specifySplitfileKey whether the crypto key is explicitly specified rather than derived.
  * @see Metadata
  * @see SplitfilePayload
  * @see MetadataTopLayerInfo
  */
-@SuppressWarnings("ArrayRecordComponent")
-public record SplitfileParams(
-    SplitfileAlgorithm splitfileAlgorithm,
-    ClientCHK[] dataURIs,
-    ClientCHK[] checkURIs,
-    int segmentSize,
-    int checkSegmentSize,
-    int deductBlocksFromSegments,
-    int crossSegmentBlocks,
-    byte splitfileCryptoAlgorithm,
-    byte[] splitfileCryptoKey,
-    boolean specifySplitfileKey) {
+public final class SplitfileParams {
+  private final SplitfileAlgorithm splitfileAlgorithm;
+  private final ClientCHK[] dataURIs;
+  private final ClientCHK[] checkURIs;
+  private final int segmentSize;
+  private final int checkSegmentSize;
+  private final int deductBlocksFromSegments;
+  private final int crossSegmentBlocks;
+  private final byte splitfileCryptoAlgorithm;
+  private final byte[] splitfileCryptoKey;
+  private final boolean specifySplitfileKey;
+
+  /**
+   * Creates a splitfile parameter bundle.
+   *
+   * @param splitfileAlgorithm splitfile algorithm identifier; must match the intended encoding
+   *     path.
+   * @param dataURIs data block keys in block order; may be empty but not {@code null}.
+   * @param checkURIs check block keys in block order; may be empty but not {@code null}.
+   * @param segmentSize data blocks per typical segment, excluding cross-segment blocks;
+   *     non-negative.
+   * @param checkSegmentSize check blocks per typical segment, excluding cross-segment blocks.
+   * @param deductBlocksFromSegments count of trailing segments with one fewer data block;
+   *     non-negative.
+   * @param crossSegmentBlocks cross-segment parity blocks per segment; zero when not used.
+   * @param splitfileCryptoAlgorithm algorithm code applied to splitfile block encryption or
+   *     routing.
+   * @param splitfileCryptoKey splitfile-wide crypto key bytes; may be {@code null} for legacy
+   *     modes.
+   * @param specifySplitfileKey whether the crypto key is explicitly specified rather than derived.
+   */
+  public SplitfileParams(
+      SplitfileAlgorithm splitfileAlgorithm,
+      ClientCHK[] dataURIs,
+      ClientCHK[] checkURIs,
+      int segmentSize,
+      int checkSegmentSize,
+      int deductBlocksFromSegments,
+      int crossSegmentBlocks,
+      byte splitfileCryptoAlgorithm,
+      byte[] splitfileCryptoKey,
+      boolean specifySplitfileKey) {
+    this.splitfileAlgorithm = splitfileAlgorithm;
+    this.dataURIs = dataURIs;
+    this.checkURIs = checkURIs;
+    this.segmentSize = segmentSize;
+    this.checkSegmentSize = checkSegmentSize;
+    this.deductBlocksFromSegments = deductBlocksFromSegments;
+    this.crossSegmentBlocks = crossSegmentBlocks;
+    this.splitfileCryptoAlgorithm = splitfileCryptoAlgorithm;
+    this.splitfileCryptoKey = splitfileCryptoKey;
+    this.specifySplitfileKey = specifySplitfileKey;
+  }
+
+  public SplitfileAlgorithm splitfileAlgorithm() {
+    return splitfileAlgorithm;
+  }
+
+  public ClientCHK[] dataURIs() {
+    return dataURIs;
+  }
+
+  public ClientCHK[] checkURIs() {
+    return checkURIs;
+  }
+
+  public int segmentSize() {
+    return segmentSize;
+  }
+
+  public int checkSegmentSize() {
+    return checkSegmentSize;
+  }
+
+  public int deductBlocksFromSegments() {
+    return deductBlocksFromSegments;
+  }
+
+  public int crossSegmentBlocks() {
+    return crossSegmentBlocks;
+  }
+
+  public byte splitfileCryptoAlgorithm() {
+    return splitfileCryptoAlgorithm;
+  }
+
+  public byte[] splitfileCryptoKey() {
+    return splitfileCryptoKey;
+  }
+
+  public boolean specifySplitfileKey() {
+    return specifySplitfileKey;
+  }
 
   /**
    * Compares this instance to another by value, including array contents.
@@ -70,31 +140,19 @@ public record SplitfileParams(
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!(o
-        instanceof
-        SplitfileParams(
-            SplitfileAlgorithm otherSplitfileAlgorithm,
-            ClientCHK[] otherDataURIs,
-            ClientCHK[] otherCheckURIs,
-            int otherSegmentSize,
-            int otherCheckSegmentSize,
-            int otherDeductBlocksFromSegments,
-            int otherCrossSegmentBlocks,
-            byte otherSplitfileCryptoAlgorithm,
-            byte[] otherSplitfileCryptoKey,
-            boolean otherSpecifySplitfileKey))) {
+    if (!(o instanceof SplitfileParams other)) {
       return false;
     }
-    return splitfileAlgorithm == otherSplitfileAlgorithm
-        && segmentSize == otherSegmentSize
-        && checkSegmentSize == otherCheckSegmentSize
-        && deductBlocksFromSegments == otherDeductBlocksFromSegments
-        && crossSegmentBlocks == otherCrossSegmentBlocks
-        && splitfileCryptoAlgorithm == otherSplitfileCryptoAlgorithm
-        && specifySplitfileKey == otherSpecifySplitfileKey
-        && Arrays.equals(dataURIs, otherDataURIs)
-        && Arrays.equals(checkURIs, otherCheckURIs)
-        && Arrays.equals(splitfileCryptoKey, otherSplitfileCryptoKey);
+    return splitfileAlgorithm == other.splitfileAlgorithm
+        && segmentSize == other.segmentSize
+        && checkSegmentSize == other.checkSegmentSize
+        && deductBlocksFromSegments == other.deductBlocksFromSegments
+        && crossSegmentBlocks == other.crossSegmentBlocks
+        && splitfileCryptoAlgorithm == other.splitfileCryptoAlgorithm
+        && specifySplitfileKey == other.specifySplitfileKey
+        && Arrays.equals(dataURIs, other.dataURIs)
+        && Arrays.equals(checkURIs, other.checkURIs)
+        && Arrays.equals(splitfileCryptoKey, other.splitfileCryptoKey);
   }
 
   /**

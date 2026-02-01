@@ -2,7 +2,7 @@ package network.crypta.store;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Enumeration;
+import java.util.Iterator;
 import network.crypta.keys.KeyVerifyException;
 import network.crypta.node.stats.StoreAccessStats;
 import network.crypta.node.useralerts.UserAlertManager;
@@ -285,9 +285,9 @@ public class RAMFreenetStore<T extends StorableBlock> implements FreenetStore<T>
    * @throws IOException if the target store rejects the writing with an I/O failure
    */
   public void migrateTo(StoreCallback<T> target, boolean canReadClientCache) throws IOException {
-    Enumeration<ByteArrayWrapper> keys = blocksByRoutingKey.keys();
-    while (keys.hasMoreElements()) {
-      ByteArrayWrapper routingKeyWrapped = keys.nextElement();
+    Iterator<ByteArrayWrapper> keys = blocksByRoutingKey.keys();
+    while (keys.hasNext()) {
+      ByteArrayWrapper routingKeyWrapped = keys.next();
       byte[] routingKey = routingKeyWrapped.get();
       Block block = blocksByRoutingKey.get(routingKeyWrapped);
 

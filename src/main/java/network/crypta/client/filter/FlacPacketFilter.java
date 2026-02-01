@@ -86,14 +86,13 @@ public class FlacPacketFilter implements CodecPacketFilter {
    * @throws IOException if reading the packet payload fails due to truncated or malformed data
    *     while extracting STREAMINFO fields or rewriting metadata content.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   @Override
   public CodecPacket parse(CodecPacket packet) throws IOException {
     if (!streamValid) return null;
     boolean logMINOR = LOG.isDebugEnabled();
     DataInputStream input = new DataInputStream(new ByteArrayInputStream(packet.toArray()));
     switch (currentState) {
-      case UNINITIALIZED:
+      case UNINITIALIZED -> {
         // Cast intentionally throws ClassCastException when first packet isn't metadata (test
         // expects this). Any metadata type is treated as STREAMINFO for field extraction.
         @SuppressWarnings("unused")
@@ -114,30 +113,28 @@ public class FlacPacketFilter implements CodecPacketFilter {
         input.readFully(hash);
         md5sum = new HashResult(HashType.MD5, hash);
         currentState = State.STREAMINFO_FOUND;
-        break;
-      case STREAMINFO_FOUND:
+      }
+      case STREAMINFO_FOUND -> {
         if (packet instanceof FlacMetadataBlock block2) {
           if (block2.isLastMetadataBlock()) currentState = State.METADATA_FOUND;
-          byte[] payload;
-          FlacMetadataBlockHeader header;
           switch (block2.getMetadataBlockType()) {
-            case APPLICATION, VORBIS_COMMENT, PICTURE:
-              payload = new byte[packet.payload.length];
+            case APPLICATION, VORBIS_COMMENT, PICTURE -> {
+              byte[] payload = new byte[packet.payload.length];
               Arrays.fill(payload, (byte) 0);
-              header = block2.getHeader();
+              FlacMetadataBlockHeader header = block2.getHeader();
               packet = new FlacMetadataBlock(header.toInt(), payload);
               ((FlacMetadataBlock) packet).setMetadataBlockType(BlockType.PADDING);
-              break;
-            default:
-              // No change for other block types
-              break;
+            }
+            default -> {
+              // No change for other block types.
+            }
           }
         }
         // Non-metadata packets (audio frames) pass through unchanged in this state.
-        break;
-      case METADATA_FOUND:
+      }
+      case METADATA_FOUND -> {
         // Audio frames and any subsequent packets pass through unchanged.
-        break;
+      }
     }
     if (packet instanceof FlacMetadataBlock block && logMINOR)
       LOG.debug("Returning packet of type {}", block.getMetadataBlockType());

@@ -2,7 +2,6 @@ package network.crypta.io.comm;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import network.crypta.support.Serializer;
@@ -82,7 +81,7 @@ public class MessageType {
   }
 
   /**
-   * Adds a field of type {@link LinkedList} and records the element type for that list field.
+   * Adds a field of type {@link List} and records the element type for that list field.
    *
    * <p>The field name is also appended to the ordered field list.
    *
@@ -91,7 +90,7 @@ public class MessageType {
    */
   public void addLinkedListField(String name, Class<?> parameter) {
     linkedListTypes.put(name, parameter);
-    addField(name, LinkedList.class);
+    addField(name, List.class);
   }
 
   /**
@@ -161,20 +160,17 @@ public class MessageType {
   }
 
   /**
-   * Compares by {@code name} reference identity.
+   * Compares by {@code name} value equality.
    *
-   * <p>Equality relies on registration behavior that typically yields a single instance per logical
-   * name.
+   * <p>Message types are registered by name; value equality keeps comparisons stable even if two
+   * instances reference distinct but equal strings.
    */
   @Override
-  @SuppressWarnings("ReferenceEquality")
   public boolean equals(Object o) {
     if (!(o instanceof MessageType other)) {
       return false;
     }
-    // Intentionally use reference equality for the name based on registration semantics.
-    //noinspection StringEquality
-    return other.name == name;
+    return java.util.Objects.equals(other.name, name);
   }
 
   /**
@@ -236,7 +232,7 @@ public class MessageType {
   }
 
   /**
-   * Returns element types for fields declared as {@link LinkedList}.
+   * Returns element types for fields declared as {@link List}.
    *
    * <p>The map keys are field names; values are the corresponding element {@link Class} objects.
    * The returned map is backed by this instance and is mutable.
@@ -274,7 +270,7 @@ public class MessageType {
    *
    * <p>This mirrors {@code Message.encodeToPacket}. It sums the fixed sizes for known field types
    * and uses {@code 4 + 2*maxStringLength} for strings. This method is not suitable for complex
-   * structures such as nested collections beyond {@link LinkedList} placeholders.
+   * structures such as nested collections beyond {@link List} placeholders.
    *
    * @param maxStringLength maximum number of characters assumed for string fields
    * @return upper bound on the encoded size in bytes

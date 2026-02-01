@@ -260,16 +260,15 @@ final class PeerNodeAddressManager {
   /**
    * Returns whether a nominal peer duplicates the detected peer by value.
    *
-   * <p>Identity comparison is excluded so that a distinct {@link Peer} instance can still be
-   * considered a duplicate if it represents the same address and port.
+   * <p>Equality is based on address and port, so both identical instances and distinct instances
+   * representing the same endpoint are treated as duplicates.
    *
    * @param p nominal peer candidate to compare.
    * @param localDetectedPeer detected peer address; may be {@code null}.
    * @return {@code true} if {@code p} is a value-equal duplicate of the detected peer.
    */
-  @SuppressWarnings("ReferenceEquality")
   private boolean isDuplicateLocalDetectedPeer(Peer p, Peer localDetectedPeer) {
-    return localDetectedPeer != null && (p != localDetectedPeer) && p.equals(localDetectedPeer);
+    return localDetectedPeer != null && p.equals(localDetectedPeer);
   }
 
   /**

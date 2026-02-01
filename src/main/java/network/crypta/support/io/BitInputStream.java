@@ -135,7 +135,6 @@ public class BitInputStream implements Closeable {
    * @throws EOFException if there is not enough data to satisfy the read.
    * @throws IOException if an I/O error occurs while reading from the underlying stream.
    */
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   public int readInt(int length, ByteOrder bitOrder) throws IOException {
     if (length == 0) {
       return 0;
@@ -146,18 +145,13 @@ public class BitInputStream implements Closeable {
     }
 
     if (bitsLeft == 0) {
-      switch (length) {
-        case 8:
-          return readByteStrict();
-        case 16:
-          return readTwoBytes(bitOrder);
-        case 24:
-          return readThreeBytes(bitOrder);
-        case 32:
-          return readFourBytes(bitOrder);
-        default:
-          // fall through to bitwise path below
-      }
+      return switch (length) {
+        case 8 -> readByteStrict();
+        case 16 -> readTwoBytes(bitOrder);
+        case 24 -> readThreeBytes(bitOrder);
+        case 32 -> readFourBytes(bitOrder);
+        default -> readIntBitwise(length, bitOrder);
+      };
     }
 
     return readIntBitwise(length, bitOrder);

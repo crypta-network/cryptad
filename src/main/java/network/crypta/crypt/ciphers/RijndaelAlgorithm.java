@@ -1234,29 +1234,37 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record KeyScheduleCtx(
-      int[][] ke, int[][] kd, int rounds, int bcShift, int bc, int kc, int roundKeyCount) {
+  private static final class KeyScheduleCtx {
+    private final int[][] ke;
+    private final int[][] kd;
+    private final int rounds;
+    private final int bcShift;
+    private final int bc;
+    private final int kc;
+    private final int roundKeyCount;
+
+    private KeyScheduleCtx(
+        int[][] ke, int[][] kd, int rounds, int bcShift, int bc, int kc, int roundKeyCount) {
+      this.ke = ke;
+      this.kd = kd;
+      this.rounds = rounds;
+      this.bcShift = bcShift;
+      this.bc = bc;
+      this.kc = kc;
+      this.roundKeyCount = roundKeyCount;
+    }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
-      if (!(o
-          instanceof
-          KeyScheduleCtx(
-              int[][] ke1,
-              int[][] kd1,
-              int rounds1,
-              int shift,
-              int bc1,
-              int kc1,
-              int keyCount))) return false;
-      return rounds == rounds1
-          && bcShift == shift
-          && bc == bc1
-          && kc == kc1
-          && roundKeyCount == keyCount
-          && Arrays.deepEquals(ke, ke1)
-          && Arrays.deepEquals(kd, kd1);
+      if (!(o instanceof KeyScheduleCtx ctx)) return false;
+      return rounds == ctx.rounds
+          && bcShift == ctx.bcShift
+          && bc == ctx.bc
+          && kc == ctx.kc
+          && roundKeyCount == ctx.roundKeyCount
+          && Arrays.deepEquals(ke, ctx.ke)
+          && Arrays.deepEquals(kd, ctx.kd);
     }
 
     @Override

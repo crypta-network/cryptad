@@ -493,11 +493,11 @@ public class BookmarkManager implements RequestClient {
     }
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private boolean wantUSK(USK u, BookmarkItem ignore) {
     List<BookmarkItem> items = MAIN_CATEGORY.getAllItems();
     for (BookmarkItem item : items) {
-      if (item == ignore || !"USK".equals(item.getKeyType())) continue;
+      if (ignore != null && item.instanceId() == ignore.instanceId()) continue;
+      if (!"USK".equals(item.getKeyType())) continue;
 
       try {
         FreenetURI furi = new FreenetURI(item.getKey());

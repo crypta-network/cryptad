@@ -677,18 +677,28 @@ public final class PeerNodeLoadTracker {
       }
     }
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record PreGrabResult(
-        PeerNode[] all, PeerNode ret, boolean grabbed, SlotWaiterFailedException f) {
+    private static final class PreGrabResult {
+      private final PeerNode[] all;
+      private final PeerNode ret;
+      private final boolean grabbed;
+      private final SlotWaiterFailedException f;
+
+      private PreGrabResult(
+          PeerNode[] all, PeerNode ret, boolean grabbed, SlotWaiterFailedException f) {
+        this.all = all;
+        this.ret = ret;
+        this.grabbed = grabbed;
+        this.f = f;
+      }
+
       @Override
       public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof PreGrabResult(var otherAll, var otherRet, var otherGrabbed, var otherF)))
-          return false;
-        return grabbed == otherGrabbed
-            && java.util.Objects.equals(ret, otherRet)
-            && java.util.Objects.equals(f, otherF)
-            && java.util.Arrays.equals(all, otherAll);
+        if (!(o instanceof PreGrabResult result)) return false;
+        return grabbed == result.grabbed
+            && java.util.Objects.equals(ret, result.ret)
+            && java.util.Objects.equals(f, result.f)
+            && java.util.Arrays.equals(all, result.all);
       }
 
       @Override
@@ -714,14 +724,21 @@ public final class PeerNodeLoadTracker {
 
     private record EarlyResult(boolean anyValid, PeerNode accepted) {}
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record WaitOutcome(PeerNode ret, PeerNode[] toUnregister) {
+    private static final class WaitOutcome {
+      private final PeerNode ret;
+      private final PeerNode[] toUnregister;
+
+      private WaitOutcome(PeerNode ret, PeerNode[] toUnregister) {
+        this.ret = ret;
+        this.toUnregister = toUnregister;
+      }
+
       @Override
       public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof WaitOutcome(var otherRet, var otherToUnregister))) return false;
-        return java.util.Objects.equals(ret, otherRet)
-            && java.util.Arrays.equals(toUnregister, otherToUnregister);
+        if (!(o instanceof WaitOutcome outcome)) return false;
+        return java.util.Objects.equals(ret, outcome.ret)
+            && java.util.Arrays.equals(toUnregister, outcome.toUnregister);
       }
 
       @Override
@@ -1022,8 +1039,14 @@ public final class PeerNodeLoadTracker {
       return true;
     }
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record QueueResult(boolean queued, PeerNode[] toUnregister) {
+    private static final class QueueResult {
+      private final boolean queued;
+      private final PeerNode[] toUnregister;
+
+      private QueueResult(boolean queued, PeerNode[] toUnregister) {
+        this.queued = queued;
+        this.toUnregister = toUnregister;
+      }
 
       boolean wokeUpImmediately() {
         return toUnregister.length > 0;
@@ -1032,8 +1055,9 @@ public final class PeerNodeLoadTracker {
       @Override
       public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof QueueResult(var otherQueued, var otherToUnregister))) return false;
-        return queued == otherQueued && java.util.Arrays.equals(toUnregister, otherToUnregister);
+        if (!(o instanceof QueueResult result)) return false;
+        return queued == result.queued
+            && java.util.Arrays.equals(toUnregister, result.toUnregister);
       }
 
       @Override
@@ -1156,12 +1180,11 @@ public final class PeerNodeLoadTracker {
       return current;
     }
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record Decision(
-        SlotWaiter slot,
-        RequestLikelyAcceptedState acceptState,
-        PeerNode[] peersForSuccessfulSlot,
-        boolean foundOne) {
+    private static final class Decision {
+      private final SlotWaiter slot;
+      private final RequestLikelyAcceptedState acceptState;
+      private final PeerNode[] peersForSuccessfulSlot;
+      private final boolean foundOne;
 
       private Decision(
           SlotWaiter slot,
@@ -1178,17 +1201,11 @@ public final class PeerNodeLoadTracker {
       @Override
       public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o
-            instanceof
-            Decision(
-                var otherSlot,
-                var otherAcceptState,
-                var otherPeersForSuccessfulSlot,
-                var otherFoundOne))) return false;
-        return foundOne == otherFoundOne
-            && java.util.Objects.equals(slot, otherSlot)
-            && acceptState == otherAcceptState
-            && java.util.Arrays.equals(peersForSuccessfulSlot, otherPeersForSuccessfulSlot);
+        if (!(o instanceof Decision decision)) return false;
+        return foundOne == decision.foundOne
+            && java.util.Objects.equals(slot, decision.slot)
+            && acceptState == decision.acceptState
+            && java.util.Arrays.equals(peersForSuccessfulSlot, decision.peersForSuccessfulSlot);
       }
 
       @Override
@@ -1266,14 +1283,21 @@ public final class PeerNodeLoadTracker {
       return false;
     }
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record SlotWakeResult(SlotWaiter slot, PeerNode[] peersForSuccessfulSlot) {
+    private static final class SlotWakeResult {
+      private final SlotWaiter slot;
+      private final PeerNode[] peersForSuccessfulSlot;
+
+      private SlotWakeResult(SlotWaiter slot, PeerNode[] peersForSuccessfulSlot) {
+        this.slot = slot;
+        this.peersForSuccessfulSlot = peersForSuccessfulSlot;
+      }
+
       @Override
       public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof SlotWakeResult(var otherSlot, var otherPeers))) return false;
-        return java.util.Objects.equals(slot, otherSlot)
-            && java.util.Arrays.equals(peersForSuccessfulSlot, otherPeers);
+        if (!(o instanceof SlotWakeResult result)) return false;
+        return java.util.Objects.equals(slot, result.slot)
+            && java.util.Arrays.equals(peersForSuccessfulSlot, result.peersForSuccessfulSlot);
       }
 
       @Override

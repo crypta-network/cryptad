@@ -1976,15 +1976,21 @@ public class StatisticsToadlet extends Toadlet {
     return HEIGHT_PREFIX + fix3pctUS.format(fraction) + WIDTH_100;
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record HistogramComputationResult(int[] histogram, int totalCount) {
+  private static final class HistogramComputationResult {
+    private final int[] histogram;
+    private final int totalCount;
+
+    private HistogramComputationResult(int[] histogram, int totalCount) {
+      this.histogram = histogram;
+      this.totalCount = totalCount;
+    }
+
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o instanceof HistogramComputationResult(var thatHistogram, var thatTotalCount))) {
+      if (!(o instanceof HistogramComputationResult other)) {
         return false;
       }
-      return totalCount == thatTotalCount && Arrays.equals(histogram, thatHistogram);
+      return totalCount == other.totalCount && Arrays.equals(histogram, other.histogram);
     }
 
     @Override

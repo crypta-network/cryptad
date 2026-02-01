@@ -68,20 +68,14 @@ public class ReflectiveEventDispatch implements Runnable {
   }
 
   /**
-   * Updates the priority of the background dispatch thread.
+   * Accepts a requested priority for API compatibility.
    *
-   * <p>Invoking this method after construction allows callers to align the dispatch thread's
-   * scheduling priority with surrounding application threads. The priority change takes effect
-   * immediately for subsequent scheduling decisions made by the JVM, and it does not interrupt any
-   * in-flight dispatch work.
+   * <p>Thread priority adjustments are intentionally ignored; the dispatch thread runs at the
+   * JVM-default priority.
    *
-   * @param priority new thread priority in the platform-dependent {@link Thread} range; values
-   *     outside the allowed range are subject to JVM clamping.
+   * @param priority requested thread priority (ignored)
    */
-  @SuppressWarnings("ThreadPriorityCheck")
-  public void setPriority(int priority) {
-    thread.setPriority(priority);
-  }
+  public void setPriority(int priority) {}
 
   /**
    * Registers an exception handler that receives failures raised during listener invocation.

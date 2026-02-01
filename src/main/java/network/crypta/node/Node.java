@@ -1675,20 +1675,33 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record MasterKeyState(byte[] clientCacheKey, MasterSecret persistentSecret) {
+  private static final class MasterKeyState {
+    private final byte[] clientCacheKey;
+    private final MasterSecret persistentSecret;
+
+    private MasterKeyState(byte[] clientCacheKey, MasterSecret persistentSecret) {
+      this.clientCacheKey = clientCacheKey;
+      this.persistentSecret = persistentSecret;
+    }
+
+    private byte[] clientCacheKey() {
+      return clientCacheKey;
+    }
+
+    private MasterSecret persistentSecret() {
+      return persistentSecret;
+    }
+
     @Override
     public boolean equals(Object o) {
       if (o == this) {
         return true;
       }
-      if (!(o
-          instanceof
-          MasterKeyState(byte[] otherClientCacheKey, MasterSecret otherPersistentSecret))) {
+      if (!(o instanceof MasterKeyState state)) {
         return false;
       }
-      return Arrays.equals(clientCacheKey, otherClientCacheKey)
-          && Objects.equals(persistentSecret, otherPersistentSecret);
+      return Arrays.equals(clientCacheKey, state.clientCacheKey)
+          && Objects.equals(persistentSecret, state.persistentSecret);
     }
 
     @Override

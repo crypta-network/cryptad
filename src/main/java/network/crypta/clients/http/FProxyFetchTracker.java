@@ -115,14 +115,12 @@ public class FProxyFetchTracker implements Runnable {
     return progress.getWaiter();
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private FProxyFetchCriteria resolveCriteria(FProxyFetchCriteria criteria) {
-    FetchContext resolvedContext =
-        criteria.fetchContext() != null ? criteria.fetchContext() : this.fctx;
-    if (resolvedContext == criteria.fetchContext()) {
+    FetchContext fetchContext = criteria.fetchContext();
+    if (fetchContext != null) {
       return criteria;
     }
-    return new FProxyFetchCriteria(criteria.key(), criteria.maxSize(), resolvedContext);
+    return new FProxyFetchCriteria(criteria.key(), criteria.maxSize(), this.fctx);
   }
 
   void removeFetcher(FProxyFetchInProgress progress) {

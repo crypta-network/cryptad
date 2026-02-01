@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
-import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import network.crypta.crypt.Util;
@@ -1368,8 +1368,8 @@ public class OpennetManager {
    */
   public synchronized int getSize(LinkLengthClass distance) {
     int x = 0;
-    for (Enumeration<OpennetPeerNode> e = lruQueue(distance).elements(); e.hasMoreElements(); ) {
-      OpennetPeerNode pn = e.nextElement();
+    for (Iterator<OpennetPeerNode> e = lruQueue(distance).elements(); e.hasNext(); ) {
+      OpennetPeerNode pn = e.next();
       if (!pn.isUnroutableOlderVersion()) x++;
     }
     return x;

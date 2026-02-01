@@ -6,13 +6,14 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Immutable bundle of optional settings for constructing a {@link ClientPutter}.
  *
- * <p>This record carries opt-in configuration that is read by client putter creation logic but does
- * not itself perform validation or normalization. Callers typically construct an instance with the
- * desired values and pass it to the relevant {@link ClientPutter} entry point, or they start from
- * {@link #defaults()} and replace individual components. Each component is stored exactly as
- * provided, which preserves legacy constructor behavior and keeps this type free of side effects.
+ * <p>This value object carries opt-in configuration that is read by client putter creation logic
+ * but does not itself perform validation or normalization. Callers typically construct an instance
+ * with the desired values and pass it to the relevant {@link ClientPutter} entry point, or they
+ * start from {@link #defaults()} and replace individual components. Each component is stored
+ * exactly as provided, which preserves legacy constructor behavior and keeps this type free of side
+ * effects.
  *
- * <p>The record is effectively immutable in terms of its component references, but callers should
+ * <p>The instance is effectively immutable in terms of its component references, but callers should
  * treat the {@code overrideSplitfileCrypto} array as shared mutable state: its contents are not
  * copied, so later mutations will be observed by equality checks and by any consumer that reads the
  * array. For stable behavior across threads, keep the array content fixed after construction or
@@ -24,18 +25,49 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Splitfile crypto override key stored verbatim without validation.
  *   <li>Metadata size threshold for compact metadata responses.
  * </ul>
- *
- * @param targetFilename optional manifest filename for single-file inserts; may be null.
- * @param binaryBlob whether to use the binary-blob insertion path.
- * @param overrideSplitfileCrypto optional 32-byte key to override random splitfile key generation.
- * @param metadataThreshold byte threshold for compact metadata; non-positive disables optimization.
  */
-@SuppressWarnings("ArrayRecordComponent")
-public record ClientPutterOptions(
-    String targetFilename,
-    boolean binaryBlob,
-    byte[] overrideSplitfileCrypto,
-    long metadataThreshold) {
+public final class ClientPutterOptions {
+  private final String targetFilename;
+  private final boolean binaryBlob;
+  private final byte[] overrideSplitfileCrypto;
+  private final long metadataThreshold;
+
+  /**
+   * Creates an options bundle with the supplied component values.
+   *
+   * @param targetFilename optional manifest filename for single-file inserts; may be null.
+   * @param binaryBlob whether to use the binary-blob insertion path.
+   * @param overrideSplitfileCrypto optional 32-byte key to override random splitfile key
+   *     generation.
+   * @param metadataThreshold byte threshold for compact metadata; non-positive disables
+   *     optimization.
+   */
+  public ClientPutterOptions(
+      String targetFilename,
+      boolean binaryBlob,
+      byte[] overrideSplitfileCrypto,
+      long metadataThreshold) {
+    this.targetFilename = targetFilename;
+    this.binaryBlob = binaryBlob;
+    this.overrideSplitfileCrypto = overrideSplitfileCrypto;
+    this.metadataThreshold = metadataThreshold;
+  }
+
+  public String targetFilename() {
+    return targetFilename;
+  }
+
+  public boolean binaryBlob() {
+    return binaryBlob;
+  }
+
+  public byte[] overrideSplitfileCrypto() {
+    return overrideSplitfileCrypto;
+  }
+
+  public long metadataThreshold() {
+    return metadataThreshold;
+  }
 
   /**
    * Creates default options with all optional settings disabled.
@@ -43,14 +75,14 @@ public record ClientPutterOptions(
    * <p>The returned instance sets {@code targetFilename} and {@code overrideSplitfileCrypto} to
    * {@code null}, {@code binaryBlob} to {@code false}, and {@code metadataThreshold} to {@code -1}
    * to indicate that no compact-metadata threshold is active. This method is idempotent and always
-   * allocates a new record instance, so callers may hold onto it or create fresh defaults without
+   * allocates a new instance, so callers may hold onto it or create fresh defaults without
    * affecting other call sites.
    *
    * <pre>{@code
    * ClientPutterOptions options = ClientPutterOptions.defaults();
    * }</pre>
    *
-   * @return a new options record containing the standard default component values.
+   * @return a new options instance containing the standard default component values.
    */
   public static ClientPutterOptions defaults() {
     return new ClientPutterOptions(null, false, null, -1);
@@ -73,19 +105,13 @@ public record ClientPutterOptions(
     if (this == other) {
       return true;
     }
-    if (!(other
-        instanceof
-        ClientPutterOptions(
-            String otherTargetFilename,
-            boolean otherBinaryBlob,
-            byte[] otherOverrideSplitfileCrypto,
-            long otherMetadataThreshold))) {
+    if (!(other instanceof ClientPutterOptions options)) {
       return false;
     }
-    return binaryBlob == otherBinaryBlob
-        && metadataThreshold == otherMetadataThreshold
-        && java.util.Objects.equals(targetFilename, otherTargetFilename)
-        && Arrays.equals(overrideSplitfileCrypto, otherOverrideSplitfileCrypto);
+    return binaryBlob == options.binaryBlob
+        && metadataThreshold == options.metadataThreshold
+        && java.util.Objects.equals(targetFilename, options.targetFilename)
+        && Arrays.equals(overrideSplitfileCrypto, options.overrideSplitfileCrypto);
   }
 
   /**

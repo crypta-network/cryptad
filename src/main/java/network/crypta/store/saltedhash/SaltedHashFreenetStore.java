@@ -11,9 +11,9 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
+import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.LinkedList;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
@@ -1361,18 +1361,36 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
   private record CacheState(int cache, boolean valid, boolean likelyMatch) {}
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record KeyContext(byte[] digestedKey, byte[] routingKey, byte[] fullKey) {
+  private static final class KeyContext {
+    private final byte[] digestedKey;
+    private final byte[] routingKey;
+    private final byte[] fullKey;
+
+    private KeyContext(byte[] digestedKey, byte[] routingKey, byte[] fullKey) {
+      this.digestedKey = digestedKey;
+      this.routingKey = routingKey;
+      this.fullKey = fullKey;
+    }
+
+    private byte[] digestedKey() {
+      return digestedKey;
+    }
+
+    private byte[] routingKey() {
+      return routingKey;
+    }
+
+    private byte[] fullKey() {
+      return fullKey;
+    }
+
     @Override
     public boolean equals(Object other) {
       if (this == other) return true;
-      if (!(other
-          instanceof
-          KeyContext(byte[] otherDigestedKey, byte[] otherRoutingKey, byte[] otherFullKey)))
-        return false;
-      return Arrays.equals(digestedKey, otherDigestedKey)
-          && Arrays.equals(routingKey, otherRoutingKey)
-          && Arrays.equals(fullKey, otherFullKey);
+      if (!(other instanceof KeyContext keyContext)) return false;
+      return Arrays.equals(digestedKey, keyContext.digestedKey)
+          && Arrays.equals(routingKey, keyContext.routingKey)
+          && Arrays.equals(fullKey, keyContext.fullKey);
     }
 
     @Override
@@ -1395,13 +1413,28 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record EntryData(byte[] header, byte[] data) {
+  private static final class EntryData {
+    private final byte[] header;
+    private final byte[] data;
+
+    private EntryData(byte[] header, byte[] data) {
+      this.header = header;
+      this.data = data;
+    }
+
+    private byte[] header() {
+      return header;
+    }
+
+    private byte[] data() {
+      return data;
+    }
+
     @Override
     public boolean equals(Object other) {
       if (this == other) return true;
-      if (!(other instanceof EntryData(byte[] otherHeader, byte[] otherData))) return false;
-      return Arrays.equals(header, otherHeader) && Arrays.equals(data, otherData);
+      if (!(other instanceof EntryData entryData)) return false;
+      return Arrays.equals(header, entryData.header) && Arrays.equals(data, entryData.data);
     }
 
     @Override
@@ -1818,10 +1851,8 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private volatile boolean isRebuilding;
     private volatile boolean isResizing;
 
-    @SuppressWarnings("ThreadPriorityCheck")
     public Cleaner() {
       super("Store-" + name + "-Cleaner", NativeThread.PriorityLevel.LOW_PRIORITY.value, false);
-      setPriority(NativeThread.PriorityLevel.MIN_PRIORITY.value);
       setDaemon(true);
     }
 
@@ -1921,8 +1952,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private final class ResizeProcessor implements BatchProcessor<T> {
       private final long previousStoreSize;
 
-      @SuppressWarnings("JdkObsolete")
-      private final Deque<Entry> oldEntryList = new LinkedList<>();
+      private final Deque<Entry> oldEntryList = new ArrayDeque<>(RESIZE_MEMORY_ENTRIES);
 
       private int i = 0;
 
@@ -2628,7 +2658,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * @return a map of {@code offset → Condition} for each acquired lock; empty when acquisition did
    *     not get all required locks
    */
-  @SuppressWarnings("MixedMutabilityReturnType")
   private Map<Long, Condition> lockDigestedKey(byte[] digestedKey, boolean usePrevStoreSize) {
     // use a set to prevent duplicated offsets,
     // a sorted set to prevent deadlocks
@@ -2649,12 +2678,12 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
     if (locked.size() == offsets.size()) {
       return locked;
-    } else {
-      // failed, remove the locks
-      for (Map.Entry<Long, Condition> e : locked.entrySet())
-        lockManager.unlockEntry(e.getKey(), e.getValue());
-      return java.util.Collections.emptyMap();
     }
+    // failed, remove the locks
+    for (Map.Entry<Long, Condition> e : locked.entrySet())
+      lockManager.unlockEntry(e.getKey(), e.getValue());
+    locked.clear();
+    return locked;
   }
 
   private void unlockDigestedKey(

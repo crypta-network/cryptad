@@ -586,43 +586,51 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     updateRejectionStatus(status, status.reject);
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record IntegrationContext(
-      FirstOrderDifferentialEquations equations,
-      double targetTime,
-      double[] y,
-      boolean forward,
-      double[] scale,
-      AbstractStepInterpolator interpolator,
-      WorkingState workingState,
-      StepStatus status) {
+  private static final class IntegrationContext {
+    private final FirstOrderDifferentialEquations equations;
+    private final double targetTime;
+    private final double[] y;
+    private final boolean forward;
+    private final double[] scale;
+    private final AbstractStepInterpolator interpolator;
+    private final WorkingState workingState;
+    private final StepStatus status;
+
+    private IntegrationContext(
+        FirstOrderDifferentialEquations equations,
+        double targetTime,
+        double[] y,
+        boolean forward,
+        double[] scale,
+        AbstractStepInterpolator interpolator,
+        WorkingState workingState,
+        StepStatus status) {
+      this.equations = equations;
+      this.targetTime = targetTime;
+      this.y = y;
+      this.forward = forward;
+      this.scale = scale;
+      this.interpolator = interpolator;
+      this.workingState = workingState;
+      this.status = status;
+    }
 
     @Override
     public boolean equals(Object other) {
       if (this == other) {
         return true;
       }
-      if (!(other
-          instanceof
-          IntegrationContext(
-              FirstOrderDifferentialEquations otherEquations,
-              double otherTargetTime,
-              double[] otherY,
-              boolean otherForward,
-              double[] otherScale,
-              AbstractStepInterpolator otherInterpolator,
-              WorkingState otherWorkingState,
-              StepStatus otherStatus))) {
+      if (!(other instanceof IntegrationContext context)) {
         return false;
       }
-      return otherForward == forward
-          && Double.doubleToLongBits(otherTargetTime) == Double.doubleToLongBits(targetTime)
-          && Objects.equals(otherEquations, equations)
-          && Arrays.equals(otherY, y)
-          && Arrays.equals(otherScale, scale)
-          && Objects.equals(otherInterpolator, interpolator)
-          && Objects.equals(otherWorkingState, workingState)
-          && Objects.equals(otherStatus, status);
+      return context.forward == forward
+          && Double.doubleToLongBits(context.targetTime) == Double.doubleToLongBits(targetTime)
+          && Objects.equals(context.equations, equations)
+          && Arrays.equals(context.y, y)
+          && Arrays.equals(context.scale, scale)
+          && Objects.equals(context.interpolator, interpolator)
+          && Objects.equals(context.workingState, workingState)
+          && Objects.equals(context.status, status);
     }
 
     @Override
@@ -656,49 +664,59 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record ModifiedMidpointContext(
-      FirstOrderDifferentialEquations equations,
-      double t0,
-      double[] y0,
-      double step,
-      int k,
-      double[] scale,
-      double[][] f,
-      double[] yMiddle,
-      double[] yEnd,
-      double[] yTmp) {
+  private static final class ModifiedMidpointContext {
+    private final FirstOrderDifferentialEquations equations;
+    private final double t0;
+    private final double[] y0;
+    private final double step;
+    private final int k;
+    private final double[] scale;
+    private final double[][] f;
+    private final double[] yMiddle;
+    private final double[] yEnd;
+    private final double[] yTmp;
+
+    private ModifiedMidpointContext(
+        FirstOrderDifferentialEquations equations,
+        double t0,
+        double[] y0,
+        double step,
+        int k,
+        double[] scale,
+        double[][] f,
+        double[] yMiddle,
+        double[] yEnd,
+        double[] yTmp) {
+      this.equations = equations;
+      this.t0 = t0;
+      this.y0 = y0;
+      this.step = step;
+      this.k = k;
+      this.scale = scale;
+      this.f = f;
+      this.yMiddle = yMiddle;
+      this.yEnd = yEnd;
+      this.yTmp = yTmp;
+    }
 
     @Override
     public boolean equals(Object other) {
       if (this == other) {
         return true;
       }
-      if (!(other
-          instanceof
-          ModifiedMidpointContext(
-              FirstOrderDifferentialEquations otherEquations,
-              double otherT0,
-              double[] otherY0,
-              double otherStep,
-              int otherK,
-              double[] otherScale,
-              double[][] otherF,
-              double[] otherYMiddle,
-              double[] otherYEnd,
-              double[] otherYTmp))) {
+      if (!(other instanceof ModifiedMidpointContext context)) {
         return false;
       }
-      return otherK == k
-          && Double.doubleToLongBits(otherT0) == Double.doubleToLongBits(t0)
-          && Double.doubleToLongBits(otherStep) == Double.doubleToLongBits(step)
-          && Objects.equals(otherEquations, equations)
-          && Arrays.equals(otherY0, y0)
-          && Arrays.equals(otherScale, scale)
-          && Arrays.deepEquals(otherF, f)
-          && Arrays.equals(otherYMiddle, yMiddle)
-          && Arrays.equals(otherYEnd, yEnd)
-          && Arrays.equals(otherYTmp, yTmp);
+      return context.k == k
+          && Double.doubleToLongBits(context.t0) == Double.doubleToLongBits(t0)
+          && Double.doubleToLongBits(context.step) == Double.doubleToLongBits(step)
+          && Objects.equals(context.equations, equations)
+          && Arrays.equals(context.y0, y0)
+          && Arrays.equals(context.scale, scale)
+          && Arrays.deepEquals(context.f, f)
+          && Arrays.equals(context.yMiddle, yMiddle)
+          && Arrays.equals(context.yEnd, yEnd)
+          && Arrays.equals(context.yTmp, yTmp);
     }
 
     @Override

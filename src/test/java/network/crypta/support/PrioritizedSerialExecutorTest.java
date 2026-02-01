@@ -23,6 +23,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import network.crypta.node.NodeStats;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
@@ -326,7 +327,6 @@ class PrioritizedSerialExecutorTest {
 
   @Test
   @DisplayName("runningAndWaitingThreads_whenJobActiveThenIdle_expectCounts")
-  @SuppressWarnings("ThreadPriorityCheck")
   void runningAndWaitingThreads_whenJobActiveThenIdle_expectCounts() throws Exception {
     // Use runner priority within [0..9] to match internal indexing
     int runnerPrio = NativeThread.PriorityLevel.NORM_PRIORITY.value; // 5
@@ -385,7 +385,7 @@ class PrioritizedSerialExecutorTest {
         sawWaiting = true;
         break;
       }
-      Thread.yield();
+      LockSupport.parkNanos(1_000_000L);
     }
     assertTrue(sawWaiting);
 
@@ -397,7 +397,6 @@ class PrioritizedSerialExecutorTest {
 
   @Test
   @DisplayName("statistics_whenJobRuns_reportsExecutionTimeWithJobString")
-  @SuppressWarnings("ThreadPriorityCheck")
   void statistics_whenJobRuns_reportsExecutionTimeWithJobString() throws Exception {
     NodeStats stats = mock(NodeStats.class);
     AtomicBoolean ran = new AtomicBoolean(false);
@@ -437,7 +436,7 @@ class PrioritizedSerialExecutorTest {
 
     long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
     while (!ran.get() && System.nanoTime() < deadline) {
-      Thread.yield();
+      LockSupport.parkNanos(1_000_000L);
     }
     assertTrue(ran.get());
 

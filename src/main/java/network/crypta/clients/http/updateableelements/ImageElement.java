@@ -427,13 +427,12 @@ public class ImageElement extends BaseUpdatableElement {
     return maxSize;
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private void logUpdateState() {
     if (!LOG.isDebugEnabled()) {
       return;
     }
     String originalSuffix = "";
-    if (origKey == key) {
+    if (java.util.Objects.equals(origKey, key)) {
       originalSuffix = " originally " + origKey;
     }
     LOG.debug("Updating ImageElement for url:{}{}", key, originalSuffix);

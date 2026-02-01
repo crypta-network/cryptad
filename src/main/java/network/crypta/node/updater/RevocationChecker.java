@@ -191,7 +191,6 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    * @return {@code true} if a previous fetch was running and was not already replaced by an
    *     aggressive one; {@code false} otherwise.
    */
-  @SuppressWarnings("ReferenceEquality")
   public boolean start(boolean aggressive, boolean reset) {
     if (manager.isBlown()) {
       LOG.error("Not starting revocation checker: key already blown!");
@@ -219,7 +218,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         manager.blow("Cannot start fetch for the auto-update revocation key: " + e, true);
       }
       synchronized (this) {
-        if (revocationGetter == cg) {
+        if (java.util.Objects.equals(revocationGetter, cg)) {
           revocationGetter = null;
         }
       }
@@ -426,12 +425,10 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     }
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private void verifyExpectedBlobFile(Bucket tmpBlob) {
     if (tmpBlob instanceof FileBucket bucket) {
       File f = bucket.getFile();
       synchronized (this) {
-        if (f == blobFile) return;
         if (f.equals(blobFile)) return;
         if (FileUtil.getCanonicalFile(f).equals(FileUtil.getCanonicalFile(blobFile))) return;
       }

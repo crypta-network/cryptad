@@ -425,40 +425,75 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record StepAcceptanceContext(
-      FirstOrderDifferentialEquations equations,
-      double t,
-      double[] y,
-      boolean forward,
-      int stages,
-      StepContext context,
-      AbstractStepInterpolator interpolator) {
+  private static final class StepAcceptanceContext {
+    private final FirstOrderDifferentialEquations equations;
+    private final double t;
+    private final double[] y;
+    private final boolean forward;
+    private final int stages;
+    private final StepContext context;
+    private final AbstractStepInterpolator interpolator;
+
+    private StepAcceptanceContext(
+        FirstOrderDifferentialEquations equations,
+        double t,
+        double[] y,
+        boolean forward,
+        int stages,
+        StepContext context,
+        AbstractStepInterpolator interpolator) {
+      this.equations = equations;
+      this.t = t;
+      this.y = y;
+      this.forward = forward;
+      this.stages = stages;
+      this.context = context;
+      this.interpolator = interpolator;
+    }
+
+    private FirstOrderDifferentialEquations equations() {
+      return equations;
+    }
+
+    private double t() {
+      return t;
+    }
+
+    private double[] y() {
+      return y;
+    }
+
+    private boolean forward() {
+      return forward;
+    }
+
+    private int stages() {
+      return stages;
+    }
+
+    private StepContext context() {
+      return context;
+    }
+
+    private AbstractStepInterpolator interpolator() {
+      return interpolator;
+    }
 
     @Override
     public boolean equals(Object other) {
       if (this == other) {
         return true;
       }
-      if (!(other
-          instanceof
-          StepAcceptanceContext(
-              FirstOrderDifferentialEquations otherEquations,
-              double otherT,
-              double[] otherY,
-              boolean otherForward,
-              int otherStages,
-              StepContext otherContext,
-              AbstractStepInterpolator otherInterpolator))) {
+      if (!(other instanceof StepAcceptanceContext acceptance)) {
         return false;
       }
-      return otherForward == forward
-          && otherStages == stages
-          && Double.doubleToLongBits(otherT) == Double.doubleToLongBits(t)
-          && Objects.equals(otherEquations, equations)
-          && Objects.equals(otherContext, context)
-          && Objects.equals(otherInterpolator, interpolator)
-          && Arrays.equals(otherY, y);
+      return acceptance.forward == forward
+          && acceptance.stages == stages
+          && Double.doubleToLongBits(acceptance.t) == Double.doubleToLongBits(t)
+          && Objects.equals(acceptance.equations, equations)
+          && Objects.equals(acceptance.context, context)
+          && Objects.equals(acceptance.interpolator, interpolator)
+          && Arrays.equals(acceptance.y, y);
     }
 
     @Override

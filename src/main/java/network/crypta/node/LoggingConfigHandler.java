@@ -802,24 +802,28 @@ public class LoggingConfigHandler {
     appliedLoggerNames.clear();
   }
 
-  @SuppressWarnings("StringSplitter")
   private Map<String, Level> parseOverrides(String raw) throws InvalidConfigValueException {
     Map<String, Level> result = new HashMap<>();
-    String[] tokens = raw.split(",");
-    for (String token : tokens) {
-      if (token != null && !token.isEmpty()) {
-        int x = token.indexOf(':');
-        if (x >= 0 && x != token.length() - 1) { // ignore malformed pair silently as before
-          String section = token.substring(0, x);
-          String val = token.substring(x + 1);
-          Level lvl;
-          try {
-            lvl = toLogbackLevel(val);
-          } catch (IllegalArgumentException e) {
-            throw new InvalidConfigValueException(e.getMessage());
+    int start = 0;
+    int length = raw.length();
+    for (int i = 0; i <= length; i++) {
+      if (i == length || raw.charAt(i) == ',') {
+        if (i > start) {
+          String token = raw.substring(start, i);
+          int x = token.indexOf(':');
+          if (x >= 0 && x != token.length() - 1) { // ignore malformed pair silently as before
+            String section = token.substring(0, x);
+            String val = token.substring(x + 1);
+            Level lvl;
+            try {
+              lvl = toLogbackLevel(val);
+            } catch (IllegalArgumentException e) {
+              throw new InvalidConfigValueException(e.getMessage());
+            }
+            result.put(section, lvl);
           }
-          result.put(section, lvl);
         }
+        start = i + 1;
       }
     }
     return result;

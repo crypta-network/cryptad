@@ -1,10 +1,9 @@
 package network.crypta.support;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
-import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
@@ -268,38 +267,38 @@ public class LRUMap<K, V> {
   }
 
   /**
-   * Returns a snapshot {@link Enumeration} of keys in LRU→MRU order.
+   * Returns a snapshot {@link Iterator} of keys in LRU→MRU order.
    *
    * <p>The snapshot is built under synchronization and is not affected by subsequent changes.
    *
-   * @return enumeration of keys from least- to most-recently-used
+   * @return iterator of keys from least- to most-recently-used
    */
-  public Enumeration<K> keys() {
+  public Iterator<K> keys() {
     synchronized (this) {
       ArrayList<K> out = new ArrayList<>(list.size());
-      Enumeration<QItem<K, V>> e = list.reverseElements();
-      while (e.hasMoreElements()) {
-        out.add(e.nextElement().getObj());
+      Iterator<QItem<K, V>> e = list.reverseElements();
+      while (e.hasNext()) {
+        out.add(e.next().getObj());
       }
-      return Collections.enumeration(out);
+      return out.iterator();
     }
   }
 
   /**
-   * Returns a snapshot {@link Enumeration} of values in LRU→MRU order.
+   * Returns a snapshot {@link Iterator} of values in LRU→MRU order.
    *
    * <p>The snapshot is built under synchronization and is not affected by subsequent changes.
    *
-   * @return enumeration of values from least- to most-recently-used
+   * @return iterator of values from least- to most-recently-used
    */
-  public Enumeration<V> values() {
+  public Iterator<V> values() {
     synchronized (this) {
       ArrayList<V> out = new ArrayList<>(list.size());
-      Enumeration<QItem<K, V>> e = list.reverseElements();
-      while (e.hasMoreElements()) {
-        out.add(e.nextElement().getValue());
+      Iterator<QItem<K, V>> e = list.reverseElements();
+      while (e.hasNext()) {
+        out.add(e.next().getValue());
       }
-      return Collections.enumeration(out);
+      return out.iterator();
     }
   }
 
@@ -373,9 +372,9 @@ public class LRUMap<K, V> {
    * @param entries destination array in which values are written from index 0 upward
    */
   public synchronized void valuesToArray(V[] entries) {
-    Enumeration<V> values = values();
+    Iterator<V> values = values();
     int i = 0;
-    while (values.hasMoreElements()) entries[i++] = values.nextElement();
+    while (values.hasNext()) entries[i++] = values.next();
   }
 
   /**

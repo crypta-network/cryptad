@@ -406,16 +406,42 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     throw new MalformedURLException("Invalid key type: " + kt);
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record MetaParse(String docName, String[] meta, long edition, String base) {
+  private static final class MetaParse {
+    private final String docName;
+    private final String[] meta;
+    private final long edition;
+    private final String base;
+
+    private MetaParse(String docName, String[] meta, long edition, String base) {
+      this.docName = docName;
+      this.meta = meta;
+      this.edition = edition;
+      this.base = base;
+    }
+
+    String docName() {
+      return docName;
+    }
+
+    String[] meta() {
+      return meta;
+    }
+
+    long edition() {
+      return edition;
+    }
+
+    String base() {
+      return base;
+    }
+
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o instanceof MetaParse(var d, var m, var e, var b))) return false;
-      return edition == e
-          && Objects.equals(docName, d)
-          && Objects.equals(base, b)
-          && Arrays.equals(meta, m);
+      if (!(o instanceof MetaParse other)) return false;
+      return edition == other.edition
+          && Objects.equals(docName, other.docName)
+          && Objects.equals(base, other.base)
+          && Arrays.equals(meta, other.meta);
     }
 
     @Override
@@ -509,15 +535,35 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return meta;
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record KeyParts(byte[] routingKey, byte[] cryptoKey, byte[] extra) {
+  private static final class KeyParts {
+    private final byte[] routingKey;
+    private final byte[] cryptoKey;
+    private final byte[] extra;
+
+    private KeyParts(byte[] routingKey, byte[] cryptoKey, byte[] extra) {
+      this.routingKey = routingKey;
+      this.cryptoKey = cryptoKey;
+      this.extra = extra;
+    }
+
+    byte[] routingKey() {
+      return routingKey;
+    }
+
+    byte[] cryptoKey() {
+      return cryptoKey;
+    }
+
+    byte[] extra() {
+      return extra;
+    }
+
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o instanceof KeyParts(var rk, var ck, var ex))) return false;
-      return Arrays.equals(routingKey, rk)
-          && Arrays.equals(cryptoKey, ck)
-          && Arrays.equals(extra, ex);
+      if (!(o instanceof KeyParts other)) return false;
+      return Arrays.equals(routingKey, other.routingKey)
+          && Arrays.equals(cryptoKey, other.cryptoKey)
+          && Arrays.equals(extra, other.extra);
     }
 
     @Override

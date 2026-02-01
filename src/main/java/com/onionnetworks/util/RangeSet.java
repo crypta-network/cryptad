@@ -542,28 +542,27 @@ public class RangeSet {
     }
   }
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private static LoopResult processInput(BufferedReader br, RangeSet current, String input)
       throws IOException, ParseException {
     if (input.isEmpty()) {
       return new LoopResult(current, false);
     }
     char command = input.charAt(0);
-    switch (command) {
-      case '~':
-        return new LoopResult(current.complement(), false);
-      case 'i':
+    return switch (command) {
+      case '~' -> new LoopResult(current.complement(), false);
+      case 'i' -> {
         String intersectWith = br.readLine();
         if (intersectWith == null) {
-          return new LoopResult(current, true);
+          yield new LoopResult(current, true);
         }
-        return new LoopResult(current.intersect(RangeSet.parse(intersectWith)), false);
-      case 'q':
-        return new LoopResult(current, true);
-      default:
+        yield new LoopResult(current.intersect(RangeSet.parse(intersectWith)), false);
+      }
+      case 'q' -> new LoopResult(current, true);
+      default -> {
         current.add(RangeSet.parse(input));
-        return new LoopResult(current, false);
-    }
+        yield new LoopResult(current, false);
+      }
+    };
   }
 
   private record LoopResult(RangeSet rangeSet, boolean exit) {}

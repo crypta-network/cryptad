@@ -181,6 +181,27 @@ public class DefaultMIMETypes {
     mimeTypesByExtension.put(ext, number);
   }
 
+  private static String[] splitExtensions(String extensions) {
+    int length = extensions.length();
+    if (length == 0) {
+      return new String[] {""};
+    }
+    ArrayList<String> parts = new ArrayList<>();
+    int start = 0;
+    for (int i = 0; i < length; i++) {
+      if (extensions.charAt(i) == ' ') {
+        parts.add(extensions.substring(start, i));
+        start = i + 1;
+      }
+    }
+    parts.add(extensions.substring(start));
+    int end = parts.size();
+    while (end > 1 && parts.get(end - 1).isEmpty()) {
+      end--;
+    }
+    return parts.subList(0, end).toArray(new String[0]);
+  }
+
   /**
    * Add a MIME type, with extensions separated by spaces. This is more or less the format in
    * /etc/mime-types.
@@ -190,9 +211,8 @@ public class DefaultMIMETypes {
    * @param extensions space‑separated list of extensions without dots; the first token becomes the
    *     primary extension
    */
-  @SuppressWarnings("StringSplitter")
   protected static synchronized void addMIMEType(short number, String type, String extensions) {
-    String[] split = extensions.split(" ");
+    String[] split = splitExtensions(extensions);
     addMIMEType(number, type, split, split[0]);
   }
 
@@ -205,10 +225,9 @@ public class DefaultMIMETypes {
    * @param extensions space‑separated list of extensions without dots
    * @param outExtension explicit primary extension to prefer when multiple extensions are supplied
    */
-  @SuppressWarnings("StringSplitter")
   protected static synchronized void addMIMEType(
       short number, String type, String extensions, String outExtension) {
-    addMIMEType(number, type, extensions.split(" "), outExtension);
+    addMIMEType(number, type, splitExtensions(extensions), outExtension);
   }
 
   /**

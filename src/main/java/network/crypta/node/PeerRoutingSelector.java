@@ -111,43 +111,89 @@ public class PeerRoutingSelector {
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record CloserPeerContextData(
-      PeerNode[] peers,
-      Key key,
-      double myLoc,
-      double maxDiff,
-      double prevLoc,
-      TimedOutNodesList entry,
-      SelectionRates selection,
-      boolean enableFOAFMitigationHack,
-      Set<Double> excludeLocations) {
+  private static final class CloserPeerContextData {
+    private final PeerNode[] peers;
+    private final Key key;
+    private final double myLoc;
+    private final double maxDiff;
+    private final double prevLoc;
+    private final TimedOutNodesList entry;
+    private final SelectionRates selection;
+    private final boolean enableFOAFMitigationHack;
+    private final Set<Double> excludeLocations;
+
+    private CloserPeerContextData(
+        PeerNode[] peers,
+        Key key,
+        double myLoc,
+        double maxDiff,
+        double prevLoc,
+        TimedOutNodesList entry,
+        SelectionRates selection,
+        boolean enableFOAFMitigationHack,
+        Set<Double> excludeLocations) {
+      this.peers = peers;
+      this.key = key;
+      this.myLoc = myLoc;
+      this.maxDiff = maxDiff;
+      this.prevLoc = prevLoc;
+      this.entry = entry;
+      this.selection = selection;
+      this.enableFOAFMitigationHack = enableFOAFMitigationHack;
+      this.excludeLocations = excludeLocations;
+    }
+
+    private PeerNode[] peers() {
+      return peers;
+    }
+
+    private Key key() {
+      return key;
+    }
+
+    private double myLoc() {
+      return myLoc;
+    }
+
+    private double maxDiff() {
+      return maxDiff;
+    }
+
+    private double prevLoc() {
+      return prevLoc;
+    }
+
+    private TimedOutNodesList entry() {
+      return entry;
+    }
+
+    private SelectionRates selection() {
+      return selection;
+    }
+
+    private boolean enableFOAFMitigationHack() {
+      return enableFOAFMitigationHack;
+    }
+
+    private Set<Double> excludeLocations() {
+      return excludeLocations;
+    }
+
     @Override
     public boolean equals(Object obj) {
       if (this == obj) return true;
-      if (!(obj
-          instanceof
-          CloserPeerContextData(
-              PeerNode[] otherPeers,
-              Key otherKey,
-              double otherMyLoc,
-              double otherMaxDiff,
-              double otherPrevLoc,
-              TimedOutNodesList otherEntry,
-              SelectionRates otherSelection,
-              boolean otherEnableFOAFMitigationHack,
-              Set<Double> otherExcludeLocations))) {
+      if (!(obj instanceof CloserPeerContextData data)) {
         return false;
       }
-      return Arrays.equals(peers, otherPeers)
-          && java.util.Objects.equals(key, otherKey)
-          && Double.compare(myLoc, otherMyLoc) == 0
-          && Double.compare(maxDiff, otherMaxDiff) == 0
-          && Double.compare(prevLoc, otherPrevLoc) == 0
-          && java.util.Objects.equals(entry, otherEntry)
-          && java.util.Objects.equals(selection, otherSelection)
-          && enableFOAFMitigationHack == otherEnableFOAFMitigationHack
-          && java.util.Objects.equals(excludeLocations, otherExcludeLocations);
+      return Arrays.equals(peers, data.peers)
+          && java.util.Objects.equals(key, data.key)
+          && Double.compare(myLoc, data.myLoc) == 0
+          && Double.compare(maxDiff, data.maxDiff) == 0
+          && Double.compare(prevLoc, data.prevLoc) == 0
+          && java.util.Objects.equals(entry, data.entry)
+          && java.util.Objects.equals(selection, data.selection)
+          && enableFOAFMitigationHack == data.enableFOAFMitigationHack
+          && java.util.Objects.equals(excludeLocations, data.excludeLocations);
     }
 
     @Override
@@ -398,9 +444,8 @@ public class PeerRoutingSelector {
     return false;
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private boolean isOrigin(PeerNode p, PeerNode origin) {
-    if (p == origin) {
+    if (java.util.Objects.equals(p, origin)) {
       if (LOG.isDebugEnabled()) LOG.debug("Skipping (req came from): {}", p.getPeer());
       return true;
     }
@@ -656,7 +701,6 @@ public class PeerRoutingSelector {
     return new BestCandidate(best, bestDistance);
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private PeerNode maybeHandleRecentlyFailed(
       PeerRoutingSelectionParams params,
       CloserPeerContext ctx,
@@ -667,7 +711,7 @@ public class PeerRoutingSelector {
     if (choice == null) return best;
     long until = computeUntil(choice.firstTime, choice.secondTime, ctx.st, params.now());
     long check =
-        best == ctx.st.closestNotBackedOff
+        java.util.Objects.equals(best, ctx.st.closestNotBackedOff)
             ? Long.MAX_VALUE
             : checkBackoffsForRecentlyFailed(ctx, best, bestDistance, params);
     if (check < until) {
@@ -821,7 +865,6 @@ public class PeerRoutingSelector {
     return overallWakeup;
   }
 
-  @SuppressWarnings("ReferenceEquality")
   private long wakeupTimeIfBetterAlternative(
       PeerNode p,
       PeerNode best,
@@ -829,7 +872,7 @@ public class PeerRoutingSelector {
       PeerRoutingSelectionParams params,
       Set<Double> excludeLocations,
       TimedOutNodesList entry) {
-    if (p == best || !p.isRoutable()) return Long.MIN_VALUE;
+    if (java.util.Objects.equals(p, best) || !p.isRoutable()) return Long.MIN_VALUE;
     DiffInfo d = computeDiffInfo(p, params.target(), params.outgoingHTL(), excludeLocations);
     if (d.diff >= bestDistance) return Long.MIN_VALUE;
     long wakeup = computeWakeupDeadline(entry, params.outgoingHTL(), params.now(), p);

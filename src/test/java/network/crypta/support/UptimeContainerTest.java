@@ -94,7 +94,7 @@ class UptimeContainerTest {
   static class UptimeContainerSubclass extends UptimeContainer {}
 
   @Test
-  void equals_whenSubclassWithSameFields_expectAsymmetricBehavior() {
+  void equals_whenSubclassWithSameFields_expectSymmetricEquality() {
     // Arrange
     UptimeContainer base = new UptimeContainer();
     base.setCreationTime(7L);
@@ -104,9 +104,8 @@ class UptimeContainerTest {
     sub.setCreationTime(7L);
     sub.setTotalUptime(9L);
 
-    // Act & Assert — current implementation compares 'o.getClass()' only,
-    // leading to asymmetry: base.equals(sub) is false, sub.equals(base) is true.
-    assertNotEquals(base, sub);
+    // Act & Assert
+    assertEquals(base, sub);
     assertEquals(sub, base);
   }
 

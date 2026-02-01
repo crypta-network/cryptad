@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
@@ -88,11 +89,10 @@ public class DatastoreChecker implements PrioRunnable {
     }
 
     @Override
-    @SuppressWarnings("ReferenceEquality")
     public boolean equals(Object o) {
       // Hack to make queue.remove() work, see removeRequest() below.
       if (!(o instanceof QueueItem queueItem)) return false;
-      return getter == queueItem.getter;
+      return Objects.equals(getter, queueItem.getter);
     }
 
     @Override

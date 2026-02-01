@@ -18,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
@@ -164,7 +165,6 @@ class NodeDataRequestHandlerTest {
   }
 
   @Test
-  @SuppressWarnings("ReferenceEquality")
   void innerHandleDataRequest_whenOverloadedSoft_expectRejectOverloadWithSoftSubMessage()
       throws Exception {
     PeerNode source = org.mockito.Mockito.mock(PeerNode.class);
@@ -194,7 +194,7 @@ class NodeDataRequestHandlerTest {
                         && !context.mode().isSSK()
                         && !context.mode().isLocal()
                         && !context.mode().isOfferReply()
-                        && context.source() == source
+                        && Objects.equals(context.source(), source)
                         && !context.hasInStore()
                         && !context.preferInsert()
                         && !context.mode().realTimeFlag()

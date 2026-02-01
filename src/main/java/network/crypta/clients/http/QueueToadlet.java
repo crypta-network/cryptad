@@ -941,34 +941,72 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     private record BulkDownloadResult(List<String> success, List<String> failure) {}
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record InsertUploadContext(
-        FreenetURI insertURI,
-        HTTPUploadedFile file,
-        boolean compress,
-        String identifier,
-        CompatibilityMode cmode,
-        byte[] overrideSplitfileKey,
-        String filenameForKey) {
+    private static final class InsertUploadContext {
+      private final FreenetURI insertURI;
+      private final HTTPUploadedFile file;
+      private final boolean compress;
+      private final String identifier;
+      private final CompatibilityMode cmode;
+      private final byte[] overrideSplitfileKey;
+      private final String filenameForKey;
+
+      private InsertUploadContext(
+          FreenetURI insertURI,
+          HTTPUploadedFile file,
+          boolean compress,
+          String identifier,
+          CompatibilityMode cmode,
+          byte[] overrideSplitfileKey,
+          String filenameForKey) {
+        this.insertURI = insertURI;
+        this.file = file;
+        this.compress = compress;
+        this.identifier = identifier;
+        this.cmode = cmode;
+        this.overrideSplitfileKey = overrideSplitfileKey;
+        this.filenameForKey = filenameForKey;
+      }
+
+      FreenetURI insertURI() {
+        return insertURI;
+      }
+
+      HTTPUploadedFile file() {
+        return file;
+      }
+
+      boolean compress() {
+        return compress;
+      }
+
+      String identifier() {
+        return identifier;
+      }
+
+      CompatibilityMode cmode() {
+        return cmode;
+      }
+
+      byte[] overrideSplitfileKey() {
+        return overrideSplitfileKey;
+      }
+
+      String filenameForKey() {
+        return filenameForKey;
+      }
+
       @Override
       public boolean equals(Object o) {
-        return o
-                instanceof
-                InsertUploadContext(
-                    var otherInsertURI,
-                    var otherFile,
-                    var otherCompress,
-                    var otherIdentifier,
-                    var otherCmode,
-                    var otherOverrideSplitfileKey,
-                    var otherFilenameForKey)
-            && compress == otherCompress
-            && Objects.equals(insertURI, otherInsertURI)
-            && Objects.equals(file, otherFile)
-            && Objects.equals(identifier, otherIdentifier)
-            && cmode == otherCmode
-            && Arrays.equals(overrideSplitfileKey, otherOverrideSplitfileKey)
-            && Objects.equals(filenameForKey, otherFilenameForKey);
+        if (!(o instanceof InsertUploadContext other)) {
+          return false;
+        }
+        return compress == other.compress
+            && Objects.equals(insertURI, other.insertURI)
+            && Objects.equals(file, other.file)
+            && Objects.equals(identifier, other.identifier)
+            && cmode == other.cmode
+            && Arrays.equals(overrideSplitfileKey, other.overrideSplitfileKey)
+            && Objects.equals(filenameForKey, other.filenameForKey);
       }
 
       @Override
@@ -1000,22 +1038,45 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record InsertOptions(
-        boolean compress, CompatibilityMode cmode, byte[] overrideSplitfileKey, String target) {
+    private static final class InsertOptions {
+      private final boolean compress;
+      private final CompatibilityMode cmode;
+      private final byte[] overrideSplitfileKey;
+      private final String target;
+
+      private InsertOptions(
+          boolean compress, CompatibilityMode cmode, byte[] overrideSplitfileKey, String target) {
+        this.compress = compress;
+        this.cmode = cmode;
+        this.overrideSplitfileKey = overrideSplitfileKey;
+        this.target = target;
+      }
+
+      boolean compress() {
+        return compress;
+      }
+
+      CompatibilityMode cmode() {
+        return cmode;
+      }
+
+      byte[] overrideSplitfileKey() {
+        return overrideSplitfileKey;
+      }
+
+      String target() {
+        return target;
+      }
+
       @Override
       public boolean equals(Object o) {
-        return o
-                instanceof
-                InsertOptions(
-                    var otherCompress,
-                    var otherCmode,
-                    var otherOverrideSplitfileKey,
-                    var otherTarget)
-            && compress == otherCompress
-            && cmode == otherCmode
-            && Arrays.equals(overrideSplitfileKey, otherOverrideSplitfileKey)
-            && Objects.equals(target, otherTarget);
+        if (!(o instanceof InsertOptions other)) {
+          return false;
+        }
+        return compress == other.compress
+            && cmode == other.cmode
+            && Arrays.equals(overrideSplitfileKey, other.overrideSplitfileKey)
+            && Objects.equals(target, other.target);
       }
 
       @Override
@@ -1100,31 +1161,64 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
-    @SuppressWarnings("ArrayRecordComponent")
-    private record LocalDirInsertParams(
-        File file,
-        String identifier,
-        FreenetURI uri,
-        boolean compress,
-        CompatibilityMode cmode,
-        byte[] overrideSplitfileKey) {
+    private static final class LocalDirInsertParams {
+      private final File file;
+      private final String identifier;
+      private final FreenetURI uri;
+      private final boolean compress;
+      private final CompatibilityMode cmode;
+      private final byte[] overrideSplitfileKey;
+
+      private LocalDirInsertParams(
+          File file,
+          String identifier,
+          FreenetURI uri,
+          boolean compress,
+          CompatibilityMode cmode,
+          byte[] overrideSplitfileKey) {
+        this.file = file;
+        this.identifier = identifier;
+        this.uri = uri;
+        this.compress = compress;
+        this.cmode = cmode;
+        this.overrideSplitfileKey = overrideSplitfileKey;
+      }
+
+      File file() {
+        return file;
+      }
+
+      String identifier() {
+        return identifier;
+      }
+
+      FreenetURI uri() {
+        return uri;
+      }
+
+      boolean compress() {
+        return compress;
+      }
+
+      CompatibilityMode cmode() {
+        return cmode;
+      }
+
+      byte[] overrideSplitfileKey() {
+        return overrideSplitfileKey;
+      }
+
       @Override
       public boolean equals(Object o) {
-        return o
-                instanceof
-                LocalDirInsertParams(
-                    var otherFile,
-                    var otherIdentifier,
-                    var otherUri,
-                    var otherCompress,
-                    var otherCmode,
-                    var otherOverrideSplitfileKey)
-            && compress == otherCompress
-            && cmode == otherCmode
-            && Objects.equals(file, otherFile)
-            && Objects.equals(identifier, otherIdentifier)
-            && Objects.equals(uri, otherUri)
-            && Arrays.equals(overrideSplitfileKey, otherOverrideSplitfileKey);
+        if (!(o instanceof LocalDirInsertParams other)) {
+          return false;
+        }
+        return compress == other.compress
+            && cmode == other.cmode
+            && Objects.equals(file, other.file)
+            && Objects.equals(identifier, other.identifier)
+            && Objects.equals(uri, other.uri)
+            && Arrays.equals(overrideSplitfileKey, other.overrideSplitfileKey);
       }
 
       @Override
@@ -2451,29 +2545,48 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     };
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record RequestTableContext(
-      PageMaker pageMaker,
-      ToadletContext ctx,
-      String[] priorityClasses,
-      boolean advancedModeEnabled) {
+  private static final class RequestTableContext {
+    private final PageMaker pageMaker;
+    private final ToadletContext ctx;
+    private final String[] priorityClasses;
+    private final boolean advancedModeEnabled;
+
+    private RequestTableContext(
+        PageMaker pageMaker,
+        ToadletContext ctx,
+        String[] priorityClasses,
+        boolean advancedModeEnabled) {
+      this.pageMaker = pageMaker;
+      this.ctx = ctx;
+      this.priorityClasses = priorityClasses;
+      this.advancedModeEnabled = advancedModeEnabled;
+    }
+
+    PageMaker pageMaker() {
+      return pageMaker;
+    }
+
+    ToadletContext ctx() {
+      return ctx;
+    }
+
+    String[] priorityClasses() {
+      return priorityClasses;
+    }
+
+    boolean advancedModeEnabled() {
+      return advancedModeEnabled;
+    }
 
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o
-          instanceof
-          RequestTableContext(
-              var otherPageMaker,
-              var otherCtx,
-              var otherPriorityClasses,
-              var otherAdvancedModeEnabled))) {
+      if (!(o instanceof RequestTableContext other)) {
         return false;
       }
-      return advancedModeEnabled == otherAdvancedModeEnabled
-          && Objects.equals(pageMaker, otherPageMaker)
-          && Objects.equals(ctx, otherCtx)
-          && Arrays.equals(priorityClasses, otherPriorityClasses);
+      return advancedModeEnabled == other.advancedModeEnabled
+          && Objects.equals(pageMaker, other.pageMaker)
+          && Objects.equals(ctx, other.ctx)
+          && Arrays.equals(priorityClasses, other.priorityClasses);
     }
 
     @Override
@@ -2499,19 +2612,30 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record FailureColumns(
-      QueueColumn[] advancedModeColumns, QueueColumn[] simpleModeColumns) {
+  private static final class FailureColumns {
+    private final QueueColumn[] advancedModeColumns;
+    private final QueueColumn[] simpleModeColumns;
+
+    private FailureColumns(QueueColumn[] advancedModeColumns, QueueColumn[] simpleModeColumns) {
+      this.advancedModeColumns = advancedModeColumns;
+      this.simpleModeColumns = simpleModeColumns;
+    }
+
+    QueueColumn[] advancedModeColumns() {
+      return advancedModeColumns;
+    }
+
+    QueueColumn[] simpleModeColumns() {
+      return simpleModeColumns;
+    }
 
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o
-          instanceof FailureColumns(var otherAdvancedModeColumns, var otherSimpleModeColumns))) {
+      if (!(o instanceof FailureColumns other)) {
         return false;
       }
-      return Arrays.equals(advancedModeColumns, otherAdvancedModeColumns)
-          && Arrays.equals(simpleModeColumns, otherSimpleModeColumns);
+      return Arrays.equals(advancedModeColumns, other.advancedModeColumns)
+          && Arrays.equals(simpleModeColumns, other.simpleModeColumns);
     }
 
     @Override
@@ -2532,32 +2656,56 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record RowRenderContext(
-      ToadletContext ctx,
-      String[] priorityClasses,
-      boolean advancedModeEnabled,
-      long now,
-      QueueType queueType) {
+  private static final class RowRenderContext {
+    private final ToadletContext ctx;
+    private final String[] priorityClasses;
+    private final boolean advancedModeEnabled;
+    private final long now;
+    private final QueueType queueType;
+
+    private RowRenderContext(
+        ToadletContext ctx,
+        String[] priorityClasses,
+        boolean advancedModeEnabled,
+        long now,
+        QueueType queueType) {
+      this.ctx = ctx;
+      this.priorityClasses = priorityClasses;
+      this.advancedModeEnabled = advancedModeEnabled;
+      this.now = now;
+      this.queueType = queueType;
+    }
+
+    ToadletContext ctx() {
+      return ctx;
+    }
+
+    String[] priorityClasses() {
+      return priorityClasses;
+    }
+
+    boolean advancedModeEnabled() {
+      return advancedModeEnabled;
+    }
+
+    long now() {
+      return now;
+    }
+
+    QueueType queueType() {
+      return queueType;
+    }
 
     @Override
     public boolean equals(Object o) {
-      if (this == o) return true;
-      if (!(o
-          instanceof
-          RowRenderContext(
-              var otherCtx,
-              var otherPriorityClasses,
-              var otherAdvancedModeEnabled,
-              var otherNow,
-              var otherQueueType))) {
+      if (!(o instanceof RowRenderContext other)) {
         return false;
       }
-      return advancedModeEnabled == otherAdvancedModeEnabled
-          && now == otherNow
-          && Objects.equals(ctx, otherCtx)
-          && Arrays.equals(priorityClasses, otherPriorityClasses)
-          && queueType == otherQueueType;
+      return advancedModeEnabled == other.advancedModeEnabled
+          && now == other.now
+          && Objects.equals(ctx, other.ctx)
+          && Arrays.equals(priorityClasses, other.priorityClasses)
+          && queueType == other.queueType;
     }
 
     @Override
@@ -4201,72 +4349,49 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
-  @SuppressWarnings("StatementSwitchToExpressionSwitch")
   private void addHeaderCell(HTMLNode headerRow, QueueColumn column) {
     switch (column) {
-      case IDENTIFIER:
-        headerRow
-            .addChild("th")
-            .addChild("a", "href", (isReversed ? "?sortBy=id" : "?sortBy=id&reversed"))
-            .addChild("#", l10n("identifier"));
-        break;
-      case SIZE:
-        headerRow
-            .addChild("th")
-            .addChild("a", "href", (isReversed ? "?sortBy=size" : "?sortBy=size&reversed"))
-            .addChild("#", l10n("size"));
-        break;
-      case MIME_TYPE:
-        headerRow.addChild("th", l10n("mimeType"));
-        break;
-      case PERSISTENCE:
-        headerRow.addChild("th", l10n("persistence"));
-        break;
-      case KEY:
-        headerRow.addChild("th", l10n("key"));
-        break;
-      case FILENAME:
-        headerRow.addChild("th", l10n("fileName"));
-        break;
-      case PRIORITY:
-        headerRow.addChild("th", l10n(PRIORITY));
-        break;
-      case FILES:
-        headerRow.addChild("th", l10n("files"));
-        break;
-      case TOTAL_SIZE:
-        headerRow.addChild("th", l10n("totalSize"));
-        break;
-      case PROGRESS:
-        headerRow
-            .addChild("th")
-            .addChild("a", "href", (isReversed ? "?sortBy=progress" : "?sortBy=progress&reversed"))
-            .addChild("#", l10n("progress"));
-        break;
-      case REASON:
-        headerRow.addChild("th", l10n("reason"));
-        break;
-      case LAST_ACTIVITY:
-        headerRow
-            .addChild("th")
-            .addChild(
-                "a",
-                "href",
-                (isReversed ? "?sortBy=lastActivity" : "?sortBy=lastActivity&reversed"),
-                l10n("lastActivity"));
-        break;
-      case LAST_FAILURE:
-        headerRow
-            .addChild("th")
-            .addChild(
-                "a",
-                "href",
-                (isReversed ? "?sortBy=lastFailure" : "?sortBy=lastFailure&reversed"),
-                l10n("lastFailure"));
-        break;
-      case COMPAT_MODE:
-        headerRow.addChild("th", l10n(COMPATIBILITY_MODE_FIELD));
-        break;
+      case IDENTIFIER ->
+          headerRow
+              .addChild("th")
+              .addChild("a", "href", (isReversed ? "?sortBy=id" : "?sortBy=id&reversed"))
+              .addChild("#", l10n("identifier"));
+      case SIZE ->
+          headerRow
+              .addChild("th")
+              .addChild("a", "href", (isReversed ? "?sortBy=size" : "?sortBy=size&reversed"))
+              .addChild("#", l10n("size"));
+      case MIME_TYPE -> headerRow.addChild("th", l10n("mimeType"));
+      case PERSISTENCE -> headerRow.addChild("th", l10n("persistence"));
+      case KEY -> headerRow.addChild("th", l10n("key"));
+      case FILENAME -> headerRow.addChild("th", l10n("fileName"));
+      case PRIORITY -> headerRow.addChild("th", l10n(PRIORITY));
+      case FILES -> headerRow.addChild("th", l10n("files"));
+      case TOTAL_SIZE -> headerRow.addChild("th", l10n("totalSize"));
+      case PROGRESS ->
+          headerRow
+              .addChild("th")
+              .addChild(
+                  "a", "href", (isReversed ? "?sortBy=progress" : "?sortBy=progress&reversed"))
+              .addChild("#", l10n("progress"));
+      case REASON -> headerRow.addChild("th", l10n("reason"));
+      case LAST_ACTIVITY ->
+          headerRow
+              .addChild("th")
+              .addChild(
+                  "a",
+                  "href",
+                  (isReversed ? "?sortBy=lastActivity" : "?sortBy=lastActivity&reversed"),
+                  l10n("lastActivity"));
+      case LAST_FAILURE ->
+          headerRow
+              .addChild("th")
+              .addChild(
+                  "a",
+                  "href",
+                  (isReversed ? "?sortBy=lastFailure" : "?sortBy=lastFailure&reversed"),
+                  l10n("lastFailure"));
+      case COMPAT_MODE -> headerRow.addChild("th", l10n(COMPATIBILITY_MODE_FIELD));
     }
   }
 

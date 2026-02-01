@@ -195,20 +195,28 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     private boolean firstIteration = true;
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record LmWorkArrays(double[] work1, double[] work2, double[] work3) {
+  private static final class LmWorkArrays {
+    private final double[] work1;
+    private final double[] work2;
+    private final double[] work3;
+
+    private LmWorkArrays(double[] work1, double[] work2, double[] work3) {
+      this.work1 = work1;
+      this.work2 = work2;
+      this.work3 = work3;
+    }
+
     @Override
     public boolean equals(Object obj) {
       if (this == obj) {
         return true;
       }
-      if (!(obj
-          instanceof LmWorkArrays(double[] otherWork1, double[] otherWork2, double[] otherWork3))) {
+      if (!(obj instanceof LmWorkArrays arrays)) {
         return false;
       }
-      return Arrays.equals(work1, otherWork1)
-          && Arrays.equals(work2, otherWork2)
-          && Arrays.equals(work3, otherWork3);
+      return Arrays.equals(work1, arrays.work1)
+          && Arrays.equals(work2, arrays.work2)
+          && Arrays.equals(work3, arrays.work3);
     }
 
     @Override
@@ -231,24 +239,28 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record IterationWorkspace(double[] diag, double[] oldX, LmWorkArrays workArrays) {
+  private static final class IterationWorkspace {
+    private final double[] diag;
+    private final double[] oldX;
+    private final LmWorkArrays workArrays;
+
+    private IterationWorkspace(double[] diag, double[] oldX, LmWorkArrays workArrays) {
+      this.diag = diag;
+      this.oldX = oldX;
+      this.workArrays = workArrays;
+    }
+
     @Override
     public boolean equals(Object obj) {
       if (this == obj) {
         return true;
       }
-      if (!(obj
-          instanceof
-          IterationWorkspace(
-              double[] otherDiag,
-              double[] otherOldX,
-              LmWorkArrays otherWorkArrays))) {
+      if (!(obj instanceof IterationWorkspace workspace)) {
         return false;
       }
-      return Arrays.equals(diag, otherDiag)
-          && Arrays.equals(oldX, otherOldX)
-          && workArrays.equals(otherWorkArrays);
+      return Arrays.equals(diag, workspace.diag)
+          && Arrays.equals(oldX, workspace.oldX)
+          && workArrays.equals(workspace.workArrays);
     }
 
     @Override
@@ -271,27 +283,31 @@ public class LevenbergMarquardtEstimator implements Serializable, Estimator {
     }
   }
 
-  @SuppressWarnings("ArrayRecordComponent")
-  private record LmParameterContext(
-      double[] qy, double delta, double[] diag, LmWorkArrays workArrays) {
+  private static final class LmParameterContext {
+    private final double[] qy;
+    private final double delta;
+    private final double[] diag;
+    private final LmWorkArrays workArrays;
+
+    private LmParameterContext(double[] qy, double delta, double[] diag, LmWorkArrays workArrays) {
+      this.qy = qy;
+      this.delta = delta;
+      this.diag = diag;
+      this.workArrays = workArrays;
+    }
+
     @Override
     public boolean equals(Object obj) {
       if (this == obj) {
         return true;
       }
-      if (!(obj
-          instanceof
-          LmParameterContext(
-              double[] otherQy,
-              double otherDelta,
-              double[] otherDiag,
-              LmWorkArrays otherWorkArrays))) {
+      if (!(obj instanceof LmParameterContext context)) {
         return false;
       }
-      return Double.compare(delta, otherDelta) == 0
-          && Arrays.equals(qy, otherQy)
-          && Arrays.equals(diag, otherDiag)
-          && workArrays.equals(otherWorkArrays);
+      return Double.compare(delta, context.delta) == 0
+          && Arrays.equals(qy, context.qy)
+          && Arrays.equals(diag, context.diag)
+          && workArrays.equals(context.workArrays);
     }
 
     @Override

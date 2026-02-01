@@ -5,7 +5,6 @@ package network.crypta.test;
  *
  * @author Alberto Bacchelli &lt;sback@freenetproject.org&gt;
  */
-@SuppressWarnings("MutablePublicArray")
 public final class UTFUtil {
 
   /**
@@ -13,7 +12,7 @@ public final class UTFUtil {
    * characters and constructing strings with them will cause the JRE to replace them with the
    * default replacement character). Even 0x0000 is included.
    */
-  public static final char[] ALL_CHARACTERS;
+  private static final char[] ALL_CHARACTERS;
 
   static {
     ALL_CHARACTERS = new char[Character.MAX_VALUE - Character.MIN_VALUE + 1];
@@ -31,13 +30,13 @@ public final class UTFUtil {
   }
 
   // printable ascii symbols
-  public static final char[] PRINTABLE_ASCII = {
+  private static final char[] PRINTABLE_ASCII = {
     ' ', '!', '@', '#', '$', '%', '^', '&', '(', ')', '+', '=', '{', '}', '[', ']', ':', ';', '\\',
     '\"', '\'', ',', '<', '>', '.', '?', '~', '`'
   };
 
   // stressed UTF chars values
-  public static final char[] STRESSED_UTF = {
+  private static final char[] STRESSED_UTF = {
     // ÉâûĔĭņşÊãüĕĮŇŠËäýĖįňšÌåþėİŉŢÍæÿĘıŊţÎçĀęĲŋŤÏèāĚĳŌťÐéĂěĴōŦÑêăĜĵŎŧ
     'É',
     'â',
@@ -222,7 +221,7 @@ public final class UTFUtil {
    * HTML entities ISO-88591
    * see for reference http://www.w3.org/TR/html4/sgml/entities.html#iso-88591
    */
-  public static final String[][] HTML_ENTITIES_UTF = {
+  private static final String[][] HTML_ENTITIES_UTF = {
     // ISO 8859-1 Symbol Entities
     {"¡", "&iexcl;"},
     {"¢", "&cent;"},
@@ -482,4 +481,28 @@ public final class UTFUtil {
     {"›", "&rsaquo;"},
     {"€", "&euro;"}
   };
+
+  /** Returns a defensive copy of the full Unicode character sample. */
+  public static char[] allCharacters() {
+    return ALL_CHARACTERS.clone();
+  }
+
+  /** Returns a defensive copy of printable ASCII characters used in tests. */
+  public static char[] printableAscii() {
+    return PRINTABLE_ASCII.clone();
+  }
+
+  /** Returns a defensive copy of stressed UTF characters used in tests. */
+  public static char[] stressedUtf() {
+    return STRESSED_UTF.clone();
+  }
+
+  /** Returns a defensive copy of HTML entity mappings used in tests. */
+  public static String[][] htmlEntitiesUtf() {
+    String[][] copy = new String[HTML_ENTITIES_UTF.length][];
+    for (int i = 0; i < HTML_ENTITIES_UTF.length; i++) {
+      copy[i] = HTML_ENTITIES_UTF[i].clone();
+    }
+    return copy;
+  }
 }
