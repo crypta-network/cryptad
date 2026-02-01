@@ -16,9 +16,8 @@ import java.io.Serializable;
  * <p>Overflow: All counters are {@code long}. Arithmetic follows two's-complement semantics and may
  * wrap on overflow; no saturation or checks are performed.
  *
- * <p>Equality: {@link #equals(Object)} compares the three fields and requires the argument to be of
- * the exact same runtime class (no {@code instanceof} check). As a result, equality can be
- * asymmetric with subclasses.
+ * <p>Equality: {@link #equals(Object)} compares the three fields. Subclasses that add state should
+ * override {@link #equals(Object)} and {@link #hashCode()} to keep equality symmetric.
  */
 public class BandwidthStatsContainer implements Serializable {
   @Serial private static final long serialVersionUID = 1L;
@@ -30,28 +29,23 @@ public class BandwidthStatsContainer implements Serializable {
   /**
    * Indicates whether some other object is equal to this one.
    *
-   * <p>Two containers are equal when and only when the other object is a {@code
-   * BandwidthStatsContainer} (exact runtime class match) and their {@code creationTime}, {@code
-   * totalBytesIn}, and {@code totalBytesOut} fields are all equal.
+   * <p>Two containers are equal when the other object is a {@code BandwidthStatsContainer} and
+   * their {@code creationTime}, {@code totalBytesIn}, and {@code totalBytesOut} fields are all
+   * equal.
    *
-   * <p>Note: The strict class check ({@code o.getClass() == BandwidthStatsContainer.class}) means a
-   * subclass instance is not considered equal to a base instance, even if all field values match.
-   * Consequently, equality may be asymmetric with respect to subclasses.
+   * <p>Note: Subclasses that introduce additional state should override {@link #equals(Object)} and
+   * {@link #hashCode()} to avoid ignoring that state.
    *
    * @param o object to compare against; may be {@code null}
    * @return {@code true} if {@code o} is an equal {@code BandwidthStatsContainer}; {@code false}
    *     otherwise
    */
   @Override
-  @SuppressWarnings("EqualsGetClass")
   public boolean equals(Object o) {
-    if (o == null) return false;
-    if (o.getClass() == BandwidthStatsContainer.class) {
-      BandwidthStatsContainer oB = (BandwidthStatsContainer) o;
-      return (oB.creationTime == this.creationTime)
-          && (oB.totalBytesIn == this.totalBytesIn)
-          && (oB.totalBytesOut == this.totalBytesOut);
-    } else return false;
+    if (!(o instanceof BandwidthStatsContainer oB)) return false;
+    return (oB.creationTime == this.creationTime)
+        && (oB.totalBytesIn == this.totalBytesIn)
+        && (oB.totalBytesOut == this.totalBytesOut);
   }
 
   /**

@@ -99,7 +99,8 @@ class HTMLDecoderTest {
 
   @Test
   void decode_allSupportedNamedEntities_viaUTFUtilData() {
-    for (String[] pair : UTFUtil.HTML_ENTITIES_UTF) {
+    String[][] entities = UTFUtil.htmlEntitiesUtf();
+    for (String[] pair : entities) {
       String decoded = HTMLDecoder.decode(pair[1]);
       assertEquals(pair[0], decoded, () -> "Failed for entity: " + pair[1]);
     }
@@ -107,9 +108,10 @@ class HTMLDecoderTest {
 
   @Test
   void decode_appendedEntities_viaUTFUtilData() {
+    String[][] entities = UTFUtil.htmlEntitiesUtf();
     StringBuilder encoded = new StringBuilder();
     StringBuilder expected = new StringBuilder();
-    for (String[] pair : UTFUtil.HTML_ENTITIES_UTF) {
+    for (String[] pair : entities) {
       expected.append(pair[0]);
       encoded.append(pair[1]);
     }

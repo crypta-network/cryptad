@@ -65,15 +65,13 @@ class BandwidthStatsContainerTest {
   static class BWSubclass extends BandwidthStatsContainer {}
 
   @Test
-  void equalsWhenComparedWithSubclassExpectAsymmetricEquality() {
+  void equalsWhenComparedWithSubclassExpectSymmetricEquality() {
     // Arrange
     BandwidthStatsContainer a = new BandwidthStatsContainer();
     BandwidthStatsContainer sub = new BWSubclass();
 
     // Act & Assert
-    // equals checks the argument's runtime class against BandwidthStatsContainer.class.
-    // Therefore a.equals(sub) is false, but sub.equals(a) becomes true (asymmetric).
-    assertNotEquals(a, sub);
+    assertEquals(a, sub);
     assertEquals(sub, a);
   }
 

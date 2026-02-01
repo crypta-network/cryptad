@@ -326,7 +326,6 @@ class PrioritizedSerialExecutorTest {
 
   @Test
   @DisplayName("runningAndWaitingThreads_whenJobActiveThenIdle_expectCounts")
-  @SuppressWarnings("ThreadPriorityCheck")
   void runningAndWaitingThreads_whenJobActiveThenIdle_expectCounts() throws Exception {
     // Use runner priority within [0..9] to match internal indexing
     int runnerPrio = NativeThread.PriorityLevel.NORM_PRIORITY.value; // 5
@@ -397,7 +396,6 @@ class PrioritizedSerialExecutorTest {
 
   @Test
   @DisplayName("statistics_whenJobRuns_reportsExecutionTimeWithJobString")
-  @SuppressWarnings("ThreadPriorityCheck")
   void statistics_whenJobRuns_reportsExecutionTimeWithJobString() throws Exception {
     NodeStats stats = mock(NodeStats.class);
     AtomicBoolean ran = new AtomicBoolean(false);

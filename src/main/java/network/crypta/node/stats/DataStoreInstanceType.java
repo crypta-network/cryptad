@@ -62,12 +62,10 @@ public class DataStoreInstanceType {
   }
 
   /** {@inheritDoc} */
-  @SuppressWarnings("EqualsGetClass")
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
-    DataStoreInstanceType that = (DataStoreInstanceType) o;
+    if (!(o instanceof DataStoreInstanceType that)) return false;
     return key == that.key && store == that.store;
   }
 

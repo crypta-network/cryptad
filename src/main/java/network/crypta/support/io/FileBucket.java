@@ -295,18 +295,13 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
 
   /** {@inheritDoc} */
   @Override
-  @SuppressWarnings("EqualsGetClass")
   public boolean equals(Object obj) {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof FileBucket other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    FileBucket other = (FileBucket) obj;
     if (createFileOnlyFlag != other.createFileOnlyFlag) {
       return false;
     }

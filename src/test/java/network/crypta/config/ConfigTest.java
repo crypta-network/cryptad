@@ -40,11 +40,13 @@ class ConfigTest {
   void testRegister() {
     /* test if we can register */
     StringBuilder sb = new StringBuilder();
-    for (int i = 0; i < UTFUtil.PRINTABLE_ASCII.length; i++) {
-      sb.append(UTFUtil.PRINTABLE_ASCII[i]);
+    char[] printableAscii = UTFUtil.printableAscii();
+    for (int i = 0; i < printableAscii.length; i++) {
+      sb.append(printableAscii[i]);
     }
-    for (int i = 0; i < UTFUtil.STRESSED_UTF.length; i++) {
-      sb.append(UTFUtil.STRESSED_UTF[i]);
+    char[] stressedUtf = UTFUtil.stressedUtf();
+    for (int i = 0; i < stressedUtf.length; i++) {
+      sb.append(stressedUtf[i]);
     }
     assertNotNull(conf.createSubConfig(sb.toString()));
 

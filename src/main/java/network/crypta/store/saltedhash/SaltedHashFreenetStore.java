@@ -1851,7 +1851,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private volatile boolean isRebuilding;
     private volatile boolean isResizing;
 
-    @SuppressWarnings("ThreadPriorityCheck")
     public Cleaner() {
       super("Store-" + name + "-Cleaner", NativeThread.PriorityLevel.LOW_PRIORITY.value, false);
       setPriority(NativeThread.PriorityLevel.MIN_PRIORITY.value);
@@ -2660,7 +2659,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    * @return a map of {@code offset → Condition} for each acquired lock; empty when acquisition did
    *     not get all required locks
    */
-  @SuppressWarnings("MixedMutabilityReturnType")
   private Map<Long, Condition> lockDigestedKey(byte[] digestedKey, boolean usePrevStoreSize) {
     // use a set to prevent duplicated offsets,
     // a sorted set to prevent deadlocks
@@ -2681,12 +2679,12 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
     if (locked.size() == offsets.size()) {
       return locked;
-    } else {
-      // failed, remove the locks
-      for (Map.Entry<Long, Condition> e : locked.entrySet())
-        lockManager.unlockEntry(e.getKey(), e.getValue());
-      return java.util.Collections.emptyMap();
     }
+    // failed, remove the locks
+    for (Map.Entry<Long, Condition> e : locked.entrySet())
+      lockManager.unlockEntry(e.getKey(), e.getValue());
+    locked.clear();
+    return locked;
   }
 
   private void unlockDigestedKey(

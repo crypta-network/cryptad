@@ -286,18 +286,13 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   }
 
   @Override
-  @SuppressWarnings("EqualsGetClass")
   public boolean equals(Object obj) {
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof TempFileBucket other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    TempFileBucket other = (TempFileBucket) obj;
     if (deleteOnFree != other.deleteOnFree) {
       return false;
     }

@@ -22,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
+import java.util.Objects;
 import network.crypta.crypt.HMAC;
 import network.crypta.crypt.RandomSource;
 import network.crypta.io.comm.DMT;
@@ -194,7 +195,6 @@ class NodeOfferMessageHandlerTest {
   }
 
   @Test
-  @SuppressWarnings("ReferenceEquality")
   void handle_whenGetOfferedKeyRejectedSoft_sendsOverloadWithSoftMarker() throws Exception {
     Key key = mock(Key.class);
     byte[] keyBytes = new byte[] {5, 6, 7, 8};
@@ -218,7 +218,7 @@ class NodeOfferMessageHandlerTest {
                         && !context.mode().isSSK()
                         && !context.mode().isLocal()
                         && context.mode().isOfferReply()
-                        && context.source() == peer
+                        && Objects.equals(context.source(), peer)
                         && !context.hasInStore()
                         && !context.preferInsert()
                         && !context.mode().realTimeFlag()
@@ -240,7 +240,6 @@ class NodeOfferMessageHandlerTest {
   }
 
   @Test
-  @SuppressWarnings("ReferenceEquality")
   void handle_whenGetOfferedKeyAccepted_callsSendOfferedKeyWithTag() throws Exception {
     NodeSSK key = mock(NodeSSK.class);
     byte[] keyBytes = new byte[] {9, 10, 11, 12};
@@ -261,7 +260,7 @@ class NodeOfferMessageHandlerTest {
                         && context.mode().isSSK()
                         && !context.mode().isLocal()
                         && context.mode().isOfferReply()
-                        && context.source() == peer
+                        && Objects.equals(context.source(), peer)
                         && !context.hasInStore()
                         && !context.preferInsert()
                         && context.mode().realTimeFlag()
@@ -282,7 +281,6 @@ class NodeOfferMessageHandlerTest {
   }
 
   @Test
-  @SuppressWarnings("ReferenceEquality")
   void start_whenNewStatsProvided_updatesShouldRejectRequestTarget() throws Exception {
     NodeStats replacementStats = mock(NodeStats.class);
     handler.start(replacementStats);
@@ -309,7 +307,7 @@ class NodeOfferMessageHandlerTest {
                         && !context.mode().isSSK()
                         && !context.mode().isLocal()
                         && context.mode().isOfferReply()
-                        && context.source() == peer
+                        && Objects.equals(context.source(), peer)
                         && !context.hasInStore()
                         && !context.preferInsert()
                         && !context.mode().realTimeFlag()
@@ -328,7 +326,7 @@ class NodeOfferMessageHandlerTest {
                         && !context.mode().isSSK()
                         && !context.mode().isLocal()
                         && context.mode().isOfferReply()
-                        && context.source() == peer
+                        && Objects.equals(context.source(), peer)
                         && !context.hasInStore()
                         && !context.preferInsert()
                         && !context.mode().realTimeFlag()

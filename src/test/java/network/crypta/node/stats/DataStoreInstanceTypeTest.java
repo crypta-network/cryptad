@@ -58,9 +58,8 @@ class DataStoreInstanceTypeTest {
     assertNotEquals(null, instance);
   }
 
-  // Note: The "different class" behavior is covered by the subclass test below
-  // (equals uses getClass() check). A direct equals comparison with a String/Object
-  // is avoided to keep SonarLint clean (inconvertible types warning).
+  // Note: A direct equals comparison with a String/Object is avoided to keep SonarLint clean
+  // (inconvertible types warning).
 
   private static class SubType extends DataStoreInstanceType {
     SubType(DataStoreKeyType key, DataStoreType store) {
@@ -69,16 +68,16 @@ class DataStoreInstanceTypeTest {
   }
 
   @Test
-  @DisplayName("equals_whenSubclassSameFields_expectFalseDueToClassCheck")
-  void equals_whenSubclassSameFields_expectFalseDueToClassCheck() {
+  @DisplayName("equals_whenSubclassSameFields_expectTrue")
+  void equals_whenSubclassSameFields_expectTrue() {
     // Arrange
     DataStoreInstanceType base =
         new DataStoreInstanceType(DataStoreKeyType.CHK, DataStoreType.STORE);
     DataStoreInstanceType sub = new SubType(DataStoreKeyType.CHK, DataStoreType.STORE);
 
     // Act & Assert
-    assertNotEquals(base, sub);
-    assertNotEquals(sub, base);
+    assertEquals(base, sub);
+    assertEquals(sub, base);
   }
 
   static Stream<Arguments> allStoreKeyPairs() {

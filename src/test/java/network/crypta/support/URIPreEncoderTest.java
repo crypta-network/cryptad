@@ -20,9 +20,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 @SuppressWarnings("java:S100")
 class URIPreEncoderTest {
 
-  private static final String ALL_CHARS = new String(UTFUtil.ALL_CHARACTERS);
-  private final String printableAscii = new String(UTFUtil.PRINTABLE_ASCII);
-  private final String stressedUtfChars = new String(UTFUtil.STRESSED_UTF);
+  private static final String ALL_CHARS = new String(UTFUtil.allCharacters());
+  private final String printableAscii = new String(UTFUtil.printableAscii());
+  private final String stressedUtfChars = new String(UTFUtil.stressedUtf());
 
   @Test
   void encode_whenMixedAsciiAndUtf8_expectOnlyAllowedChars() {

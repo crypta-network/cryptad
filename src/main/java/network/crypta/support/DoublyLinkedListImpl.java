@@ -446,7 +446,6 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
   // === Walkable implementation ==============================================
 
   /** Returns an {@link Enumeration} over items from head to tail. */
-  @SuppressWarnings("JdkObsolete")
   private Enumeration<T> forwardElements() {
     return new Enumeration<>() {
       private T next = firstItem;
@@ -467,7 +466,6 @@ public class DoublyLinkedListImpl<T extends DoublyLinkedList.Item<T>>
   }
 
   /** Returns an {@link Enumeration} over items from tail to head. */
-  @SuppressWarnings("JdkObsolete")
   public Enumeration<T> reverseElements() {
     return new Enumeration<>() {
       private T next = lastItem;

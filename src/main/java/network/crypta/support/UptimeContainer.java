@@ -39,13 +39,9 @@ public class UptimeContainer implements Serializable {
    *     {@code false}
    */
   @Override
-  @SuppressWarnings("EqualsGetClass")
   public boolean equals(Object o) {
-    if (o == null) return false;
-    if (o.getClass() == UptimeContainer.class) {
-      UptimeContainer oB = (UptimeContainer) o;
-      return (oB.creationTime == this.creationTime) && (oB.totalUptime == this.totalUptime);
-    } else return false;
+    if (!(o instanceof UptimeContainer oB)) return false;
+    return (oB.creationTime == this.creationTime) && (oB.totalUptime == this.totalUptime);
   }
 
   /**
