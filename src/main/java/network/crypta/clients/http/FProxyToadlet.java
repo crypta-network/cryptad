@@ -229,7 +229,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    * Sets the maximum payload length, in bytes, permitted when progress feedback is presented.
    *
    * <p>Callers should provide a positive value that reflects available memory and user experience
-   * goals; values are applied globally for subsequent requests. No synchronization is performed, so
+   * goals; values are applied globally for later requests. No synchronization is performed, so
    * concurrent updates should be avoided.
    *
    * @param length new allowed size in bytes for progress-enabled transfers.
@@ -297,7 +297,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    * and leaves other POST targets untouched.
    *
    * @param uri incoming request URI whose path determines redirect handling.
-   * @param req parsed HTTP request object supplying parameters and headers.
+   * @param req the parsed HTTP request object supplying parameters and headers.
    * @param ctx toadlet context for issuing redirects and access checks.
    * @throws RedirectException if the request should be redirected to another path.
    */
@@ -520,7 +520,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
    * Resolves a localized string within the FProxy domain.
    *
    * @param msg localization key suffix to be prefixed with {@code FProxyToadlet.}.
-   * @return resolved localized text, or a placeholder if no translation exists.
+   * @return resolved localized text or a placeholder if no translation exists.
    */
   public static String l10n(String msg) {
     return NodeL10n.getBase().getString(L10N_PREFIX + msg);
@@ -529,7 +529,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   /**
    * Checks whether the first 512 bytes resemble an RSS document as detected by Firefox’s sniffer.
    * This blacklist-style probe is a defensive workaround used before applying stricter MIME
-   * handling, and may be removed once a whitelist is available. REDFLAG: expect future tightening.
+   * handling and may be removed once a whitelist is available. REDFLAG: expect future tightening.
    *
    * @param data bucket containing the fetched payload; only the first 512 bytes are inspected.
    * @return {@code true} when the leading bytes match Firefox’s RSS sniffing heuristics.
@@ -1004,29 +1004,59 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     private void finishResponse()
         throws ToadletContextClosedException, IOException, RedirectException {
       try {
-        if (LOG.isDebugEnabled()) LOG.debug("FProxy fetching {} ({})", key, maxSize);
+        logFetchStart();
         ensureDataIsAvailable();
         sendDownloadResponse();
       } catch (FetchException e) {
-        if (responseCommitted) {
-          return;
-        }
-        handleFetchException(e);
+        handleFetchExceptionIfNeeded(e);
       } catch (SocketException e) {
-        if ("Broken pipe".equals(e.getMessage())) {
-          if (LOG.isDebugEnabled()) LOG.debug("Caught {} while handling GET", e.getMessage(), e);
-        } else {
-          LOG.info("Caught {}", e.getMessage(), e);
-        }
+        logSocketException(e);
         throw e;
       } catch (Exception t) {
-        if (responseCommitted) {
-          return;
-        }
-        writeInternalError(t, ctx);
+        handleUnexpectedExceptionIfNeeded(t);
       } finally {
-        if (fetchResult == null && data != null) data.free();
-        if (fetchResult != null) fetchResult.close();
+        closeFetchResources();
+      }
+    }
+
+    private void logFetchStart() {
+      if (LOG.isDebugEnabled()) LOG.debug("FProxy fetching {} ({})", key, maxSize);
+    }
+
+    private void handleFetchExceptionIfNeeded(FetchException e)
+        throws ToadletContextClosedException, IOException, RedirectException {
+      if (responseCommitted) {
+        return;
+      }
+      handleFetchException(e);
+    }
+
+    private void logSocketException(SocketException e) {
+      if (isBrokenPipe(e)) {
+        if (LOG.isDebugEnabled()) LOG.debug("Caught {} while handling GET", e.getMessage(), e);
+        return;
+      }
+      LOG.info("Caught {}", e.getMessage(), e);
+    }
+
+    private boolean isBrokenPipe(SocketException e) {
+      return "Broken pipe".equals(e.getMessage());
+    }
+
+    private void handleUnexpectedExceptionIfNeeded(Exception t)
+        throws ToadletContextClosedException, IOException {
+      if (responseCommitted) {
+        return;
+      }
+      writeInternalError(t, ctx);
+    }
+
+    private void closeFetchResources() {
+      if (fetchResult == null && data != null) {
+        data.free();
+      }
+      if (fetchResult != null) {
+        fetchResult.close();
       }
     }
 
@@ -1869,7 +1899,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
   }
 
   /**
-   * Get expected filename for a file.
+   * Get the expected filename for a file.
    *
    * @param uri The original URI.
    * @param expectedMimeType The expected MIME type.
@@ -1883,7 +1913,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     long[] result = new long[2];
     try {
       String[] units = hdrrange.split("=", 2);
-      // If additional units (e.g. MBytes) should be supported, adjust parsing and normalize to
+      // If additional units (e.g., MBytes) should be supported, adjust parsing and normalize to
       // bytes
       // here.
       if (!"bytes".equals(units[0])) {
