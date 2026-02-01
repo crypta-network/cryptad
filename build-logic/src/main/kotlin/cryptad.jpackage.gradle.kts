@@ -446,6 +446,18 @@ val enrichAppImageWithDist by
     group = "jpackage"
     description = "Copies cryptad-dist into the jpackage image (mac: Contents/app; linux: lib/app)"
     dependsOn(jpackageImageCryptad)
+    val serviceSrc =
+      project.layout.projectDirectory.file("src/jpackage/linux/cryptad.service").asFile
+    val helperUnitSrc =
+      project.layout.projectDirectory
+        .file("src/jpackage/linux/cryptad-core-install@.service")
+        .asFile
+    val helperScriptSrc =
+      project.layout.projectDirectory.file("src/jpackage/linux/cryptad-core-install.sh").asFile
+    val polkitSrc =
+      project.layout.projectDirectory
+        .file("src/jpackage/linux/polkit-1/60-cryptad-core-install.rules")
+        .asFile
     doLast {
       val os = currentOs()
       val root = jpackageOutDir.get().asFile
@@ -513,7 +525,6 @@ val enrichAppImageWithDist by
         // Also, stage systemd units and helper artifacts under lib/ so installers and
         // post-install scripts can find them inside the app image.
         try {
-          val serviceSrc = project.file("src/jpackage/linux/cryptad.service")
           if (serviceSrc.isFile) {
             val serviceDst = imageRoot.resolve("lib/systemd/system/cryptad.service")
             serviceDst.parentFile.mkdirs()
@@ -528,7 +539,6 @@ val enrichAppImageWithDist by
 
         // Stage headless core installer template unit
         try {
-          val helperUnitSrc = project.file("src/jpackage/linux/cryptad-core-install@.service")
           if (helperUnitSrc.isFile) {
             val helperUnitDst =
               imageRoot.resolve("lib/systemd/system/cryptad-core-install@.service")
@@ -544,7 +554,6 @@ val enrichAppImageWithDist by
 
         // Stage headless core installer script
         try {
-          val helperScriptSrc = project.file("src/jpackage/linux/cryptad-core-install.sh")
           if (helperScriptSrc.isFile) {
             val helperScriptDst = imageRoot.resolve("lib/cryptad-core-install.sh")
             helperScriptDst.parentFile.mkdirs()
@@ -560,7 +569,6 @@ val enrichAppImageWithDist by
 
         // Stage polkit rule to allow controlled start of the oneshot helper
         try {
-          val polkitSrc = project.file("src/jpackage/linux/polkit-1/60-cryptad-core-install.rules")
           if (polkitSrc.isFile) {
             val polkitDst = imageRoot.resolve("lib/polkit-1/60-cryptad-core-install.rules")
             polkitDst.parentFile.mkdirs()
