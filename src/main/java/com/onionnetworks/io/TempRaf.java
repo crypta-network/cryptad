@@ -1,7 +1,8 @@
 package com.onionnetworks.io;
 
-import com.onionnetworks.util.*;
-import java.io.*;
+import com.onionnetworks.util.FileUtil;
+import java.io.File;
+import java.io.IOException;
 
 /**
  * Temporary {@link RAF}-backed random access file that lives in a scratch location until a keep
@@ -79,7 +80,7 @@ public class TempRaf extends FilterRAF {
   }
 
   /**
-   * Create a temporary RAF that cleans up according to a caller-provided keep policy.
+   * Create a temporary RAF that cleans up, according to a caller-provided keep policy.
    *
    * <p>The constructor allocates a new scratch file, opens it in read/write mode, and installs the
    * supplied keep policy so {@link #close()} can decide whether to delete or retain the file. Use
@@ -104,12 +105,12 @@ public class TempRaf extends FilterRAF {
 
   /**
    * Wrap an existing {@link RAF} using {@link #DEFAULT_KEEP_POLICY} so the temporary file is
-   * removed on {@link #close()} regardless of subsequent renames.
+   * removed on {@link #close()} regardless of later renames.
    *
    * <p>Use this overload when an external component has already provisioned a suitable scratch
    * file, but the caller still wants deterministic cleanup semantics enforced by this wrapper.
    *
-   * @param raf underlying random access file to wrap; must reference a temporary file path.
+   * @param raf the underlying random access file to wrap; must reference a temporary file path.
    */
   @SuppressWarnings("unused")
   public TempRaf(RAF raf) {
@@ -123,7 +124,7 @@ public class TempRaf extends FilterRAF {
    * and registers a JVM shutdown hook via {@link File#deleteOnExit()} unless deletion is disabled
    * by {@link #ALWAYS}. This ensures that temporary files do not linger after abrupt termination.
    *
-   * @param raf underlying random access file that represents the temporary storage location.
+   * @param raf the underlying random access file that represents the temporary storage location.
    * @param keepPolicy deletion strategy constant controlling cleanup when {@link #close()} runs.
    */
   public TempRaf(RAF raf, int keepPolicy) {
@@ -138,14 +139,14 @@ public class TempRaf extends FilterRAF {
 
   /**
    * Rename the underlying temporary file to a caller-specified destination and record that a rename
-   * occurred for subsequent cleanup decisions.
+   * occurred for later cleanup decisions.
    *
    * <p>The rename flag allows {@link #close()} to distinguish between temporary files that were
    * staged but never persisted and those intentionally promoted to a final location. The method is
    * synchronized to serialize concurrent rename attempts with closing.
    *
    * @param newFile destination file path to which the temporary file should be moved.
-   * @throws IOException if the delegate rename fails or the target cannot be written or replaced.
+   * @throws IOException if the delegate rename fails, or the target cannot be written or replaced.
    */
   @Override
   public synchronized void renameTo(File newFile) throws IOException {
@@ -166,20 +167,12 @@ public class TempRaf extends FilterRAF {
    */
   @Override
   public synchronized void close() throws IOException {
-
-    switch (keepPolicy) {
-      case NEVER -> deleteOnClose();
-      case RENAMED -> {
-        if (!renamedFlag) {
-          deleteOnClose();
-        }
-      }
-      case RENAMED_AND_DONE_WRITING -> {
-        if (!renamedFlag || !getMode().equals("r")) {
-          deleteOnClose();
-        }
-      }
-      case ALWAYS -> {}
+    boolean shouldDelete = keepPolicy == NEVER;
+    shouldDelete |= keepPolicy == RENAMED && !renamedFlag;
+    shouldDelete |=
+        keepPolicy == RENAMED_AND_DONE_WRITING && (!renamedFlag || !getMode().equals("r"));
+    if (shouldDelete) {
+      deleteOnClose();
     }
 
     super.close();
