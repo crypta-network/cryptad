@@ -165,6 +165,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
    * @return an unbuffered stream for encrypted writes
    * @throws IOException if the wrapper is read-only or the underlying bucket rejects the request
    */
+  @Override
   public OutputStream getOutputStreamUnbuffered() throws IOException {
     if (readOnly) throw new IOException("Read only");
     OutputStream os = bucket.getOutputStreamUnbuffered();

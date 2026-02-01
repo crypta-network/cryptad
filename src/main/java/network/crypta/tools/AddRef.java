@@ -9,6 +9,7 @@ import ch.qos.logback.core.spi.FilterReply;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import network.crypta.clients.fcp.AddPeer;
@@ -64,7 +65,7 @@ public class AddRef {
    * @param args command-line arguments where {@code args[0]} is a readable reference file path
    *     suitable for {@link SimpleFieldSet#readFrom(File, boolean, boolean)}.
    */
-  static void main(String[] args) {
+  public static void main(String[] args) {
     configureStandaloneConsoleLogging();
     if (args.length < 1) {
       LOG.error("Please provide a file name as the first argument.");
@@ -82,7 +83,7 @@ public class AddRef {
 
   private static void addRef(File reference) {
     try {
-      try (Socket fcpSocket = new Socket("127.0.0.1", FCPServer.DEFAULT_FCP_PORT);
+      try (Socket fcpSocket = openFcpSocket();
           LineReadingInputStream lis = new LineReadingInputStream(fcpSocket.getInputStream());
           OutputStream os = fcpSocket.getOutputStream()) {
         fcpSocket.setSoTimeout(2000);
@@ -99,6 +100,21 @@ public class AddRef {
     } finally {
       sleepAtShutdown();
     }
+  }
+
+  private static Socket openFcpSocket() throws IOException {
+    IOException lastException = null;
+    for (String host : new String[] {"127.0.0.1", "::1"}) {
+      try {
+        return new Socket(InetAddress.getByName(host), FCPServer.DEFAULT_FCP_PORT);
+      } catch (IOException e) {
+        lastException = e;
+      }
+    }
+    if (lastException != null) {
+      throw lastException;
+    }
+    throw new SocketException("No loopback addresses available");
   }
 
   private static void sendClientHelloAndValidateNode(LineReadingInputStream lis, OutputStream os)

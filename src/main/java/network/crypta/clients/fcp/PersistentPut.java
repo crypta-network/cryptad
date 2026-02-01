@@ -1,6 +1,7 @@
 package network.crypta.clients.fcp;
 
 import java.io.File;
+import java.util.Locale;
 import network.crypta.client.InsertContext;
 import network.crypta.clients.fcp.ClientPutBase.UploadFrom;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
@@ -122,8 +123,8 @@ public class PersistentPut extends FCPMessage {
     if (privateURI != null) fs.putSingle("PrivateURI", privateURI.toString(false, false));
     fs.put("Verbosity", verbosity);
     fs.put("PriorityClass", priorityClass);
-    fs.putSingle("UploadFrom", uploadFrom.toString().toLowerCase());
-    fs.putSingle("Persistence", persistence.toString().toLowerCase());
+    fs.putSingle("UploadFrom", uploadFrom.toString().toLowerCase(Locale.ROOT));
+    fs.putSingle("Persistence", persistence.toString().toLowerCase(Locale.ROOT));
     if (origFilename != null) fs.putSingle("Filename", origFilename.getAbsolutePath());
     if (targetURI != null) fs.putSingle("TargetURI", targetURI.toString());
     if (mimeType != null) fs.putSingle("Metadata.ContentType", mimeType);

@@ -191,19 +191,21 @@ public final class BinaryBlob {
       short blobVer = dis.readShort();
 
       switch (blobType) {
-        case BLOB_END:
+        case BLOB_END -> {
           dis.close();
           return;
-        case BLOB_BLOCK:
+        }
+        case BLOB_BLOCK -> {
           KeyBlock block = readBlock(dis, blobLength, blobVer);
           blocks.add(block);
-          break;
-        default:
+        }
+        default -> {
           if (tolerant) {
             FileUtil.skipFully(dis, blobLength);
           } else {
             throw new BinaryBlobFormatException("Unknown blob type: " + blobType);
           }
+        }
       }
     }
   }

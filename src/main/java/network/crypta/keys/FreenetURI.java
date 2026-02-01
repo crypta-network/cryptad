@@ -449,7 +449,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return new MetaParse(de.docName(), meta, de.edition(), segs.base());
   }
 
-  private record Segments(ArrayList<String> list, String base) {}
+  private record Segments(List<String> list, String base) {}
 
   private static Segments decodeSegments(String remainder, boolean isKSK)
       throws MalformedURLException {
@@ -472,7 +472,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   private record DocEdition(String docName, long edition) {}
 
   private static DocEdition deriveDocAndEdition(
-      ArrayList<String> segments, String keyType, boolean isUSK, boolean isSSK, boolean isKSK)
+      List<String> segments, String keyType, boolean isUSK, boolean isSSK, boolean isKSK)
       throws MalformedURLException {
     if (segments.isEmpty() && (isUSK || isKSK))
       throw new MalformedURLException("No docname for " + keyType);
@@ -489,8 +489,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return new DocEdition(docName, edition);
   }
 
-  private static long parseUskEditionOrThrow(ArrayList<String> segments)
-      throws MalformedURLException {
+  private static long parseUskEditionOrThrow(List<String> segments) throws MalformedURLException {
     if (segments.isEmpty()) throw new MalformedURLException("No suggested edition number for USK");
     try {
       return Long.parseLong(segments.removeLast());
@@ -500,7 +499,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     }
   }
 
-  private static String[] toMetaArray(ArrayList<String> segments) {
+  private static String[] toMetaArray(List<String> segments) {
     if (segments.isEmpty()) return new String[0];
     String[] meta = new String[segments.size()];
     for (int i = 0; i < meta.length; i++) {
@@ -1007,7 +1006,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * @throws IOException On I/O errors.
    */
   @SuppressWarnings("unused")
-  public static void writeFullBinaryKeyWithLength(FreenetURI uri, DataOutputStream dos)
+  public static void writeNullableFullBinaryKeyWithLength(FreenetURI uri, DataOutputStream dos)
       throws IOException {
     if (uri == null) dos.writeShort((short) 0);
     else uri.writeFullBinaryKeyWithLength(dos);
@@ -1190,7 +1189,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * you must insert a directory to create a directory structure.
    */
   @SuppressWarnings("unused")
-  public static void checkInsertURI(FreenetURI uri) throws InsertException {
+  public static void checkInsertURIOrThrow(FreenetURI uri) throws InsertException {
     uri.checkInsertURI();
   }
 

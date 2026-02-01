@@ -555,13 +555,9 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
     if (this == obj) {
       return true;
     }
-    if (obj == null) {
+    if (!(obj instanceof EncryptedRandomAccessBucket other)) {
       return false;
     }
-    if (getClass() != obj.getClass()) {
-      return false;
-    }
-    EncryptedRandomAccessBucket other = (EncryptedRandomAccessBucket) obj;
     if (type != other.type) {
       return false;
     }
@@ -594,6 +590,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
+    assert serialPersistentFields.length > 0;
     // Persist core fields via the default field block. Include the underlying only when it is
     // Serializable; otherwise fail fast to avoid silently dropping data on checkpoint.
     PutField fields = out.putFields();

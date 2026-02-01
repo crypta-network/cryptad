@@ -507,6 +507,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
+    assert serialPersistentFields.length > 0;
     PutField fields = out.putFields();
     fields.put(FIELD_TYPE, type);
     fields.put(FIELD_VERSION, version);

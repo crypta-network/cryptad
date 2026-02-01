@@ -37,25 +37,48 @@ import org.jetbrains.annotations.NotNull;
  * var out = new CompressionOutput(bucket, codec, hashes);
  * writer.write(out.data());
  * }</pre>
- *
- * @param data the {@link RandomAccessBucket} containing the bytes produced by compression; never
- *     wrapped or copied, and may reference uncompressed data when no codec is selected
- * @param bestCodec the {@link network.crypta.support.compress.Compressor.COMPRESSOR_TYPE} selected
- *     as most effective for this content, or {@code null} when compression was not applied
- * @param hashes an optional array of {@link HashResult} values describing computed content digests;
- *     may be {@code null} or empty, and is stored without defensive copying
  */
-record CompressionOutput(RandomAccessBucket data, COMPRESSOR_TYPE bestCodec, HashResult[] hashes) {
+final class CompressionOutput {
+  private final RandomAccessBucket data;
+  private final COMPRESSOR_TYPE bestCodec;
+  private final HashResult[] hashes;
+
+  /**
+   * Creates a compression output bundle.
+   *
+   * @param data the {@link RandomAccessBucket} containing the bytes produced by compression; never
+   *     wrapped or copied, and may reference uncompressed data when no codec is selected
+   * @param bestCodec the {@link network.crypta.support.compress.Compressor.COMPRESSOR_TYPE}
+   *     selected as most effective for this content, or {@code null} when compression was not
+   *     applied
+   * @param hashes an optional array of {@link HashResult} values describing computed content
+   *     digests; may be {@code null} or empty, and is stored without defensive copying
+   */
+  CompressionOutput(RandomAccessBucket data, COMPRESSOR_TYPE bestCodec, HashResult[] hashes) {
+    this.data = data;
+    this.bestCodec = bestCodec;
+    this.hashes = hashes;
+  }
+
+  RandomAccessBucket data() {
+    return data;
+  }
+
+  COMPRESSOR_TYPE bestCodec() {
+    return bestCodec;
+  }
+
+  HashResult[] hashes() {
+    return hashes;
+  }
 
   @Override
   public boolean equals(Object o) {
     if (o == this) return true;
-    return (o
-            instanceof
-            CompressionOutput(RandomAccessBucket od, COMPRESSOR_TYPE oc, HashResult[] oh))
-        && Objects.equals(this.data, od)
-        && this.bestCodec == oc
-        && Arrays.equals(this.hashes, oh);
+    if (!(o instanceof CompressionOutput other)) return false;
+    return Objects.equals(this.data, other.data)
+        && this.bestCodec == other.bestCodec
+        && Arrays.equals(this.hashes, other.hashes);
   }
 
   @Override

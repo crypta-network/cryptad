@@ -1854,15 +1854,14 @@ public class DMT {
    * Creates a probe response to a query for identifier.
    *
    * @param uid Probe UID.
-   * @param probeIdentifier Endpoint identifier.
+   * @param probeId Endpoint identifier.
    * @param uptimePercentage 7-day uptime percentage.
    * @return Message with requested attributes.
    */
-  public static Message createProbeIdentifier(
-      long uid, long probeIdentifier, byte uptimePercentage) {
+  public static Message createProbeIdentifier(long uid, long probeId, byte uptimePercentage) {
     Message msg = new Message(ProbeIdentifier);
     msg.set(UID, uid);
-    msg.set(PROBE_IDENTIFIER, probeIdentifier);
+    msg.set(PROBE_IDENTIFIER, probeId);
     msg.set(UPTIME_PERCENT, uptimePercentage);
     return msg;
   }

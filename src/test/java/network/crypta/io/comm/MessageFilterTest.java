@@ -80,7 +80,7 @@ class MessageFilterTest {
     m.set("i", 3);
     m.set("l", 4L);
 
-    assertEquals(MessageFilter.MATCHED.MATCHED, f.match(m, System.currentTimeMillis()));
+    assertEquals(MessageFilter.MATCHED.FOUND, f.match(m, System.currentTimeMillis()));
   }
 
   @Test
@@ -118,7 +118,7 @@ class MessageFilterTest {
     msg.set("id", 1L);
 
     MessageFilter.MATCHED res = left.match(msg, System.currentTimeMillis());
-    assertEquals(MessageFilter.MATCHED.MATCHED, res);
+    assertEquals(MessageFilter.MATCHED.FOUND, res);
   }
 
   @Test
@@ -193,7 +193,7 @@ class MessageFilterTest {
 
     // Because noTimeout=true, shouldTimeout() must not be consulted.
     MessageFilter.MATCHED res = f.match(m, /* noTimeout= */ true, System.currentTimeMillis());
-    assertEquals(MessageFilter.MATCHED.MATCHED, res);
+    assertEquals(MessageFilter.MATCHED.FOUND, res);
     verifyNoInteractions(cb);
 
     // Without noTimeout and with an immediate-timeout signal, we should see TIMED_OUT_AND_MATCHED.

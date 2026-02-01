@@ -20,10 +20,12 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import network.crypta.crypt.DSAPublicKey;
+import network.crypta.crypt.Global;
 import network.crypta.crypt.SHA256;
 import network.crypta.store.BlockMetadata;
 import network.crypta.store.GetPubkey;
@@ -209,10 +211,9 @@ class NodeSSKTest {
   @Test
   void hasPubKey_getPubKey_and_setPubKey_happyPath() throws SSKVerifyException {
     byte[] eh = bytes(NodeSSK.E_H_DOCNAME_SIZE, 0x70);
-    byte[] pubBytes = "pub-for-hash".getBytes(StandardCharsets.US_ASCII);
+    DSAPublicKey pub = new DSAPublicKey(Global.DSAgroupBigA, BigInteger.valueOf(7L));
+    byte[] pubBytes = pub.asBytes();
     byte[] pkh = sha256(pubBytes);
-    DSAPublicKey pub = org.mockito.Mockito.mock(DSAPublicKey.class);
-    doReturn(pubBytes).when(pub).asBytes();
 
     NodeSSK key = new NodeSSK(pkh, eh, Key.ALGO_AES_PCFB_256_SHA256);
     assertFalse(key.hasPubKey());

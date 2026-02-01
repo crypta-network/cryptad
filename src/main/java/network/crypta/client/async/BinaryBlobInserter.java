@@ -222,24 +222,18 @@ public class BinaryBlobInserter implements ClientPutState {
         return;
       }
       switch (e.code) {
-        case LowLevelPutException.COLLISION:
-          fail(false, context);
-          break;
-        case LowLevelPutException.INTERNAL_ERROR:
-          errors.inc(InsertExceptionMode.INTERNAL_ERROR);
-          break;
-        case LowLevelPutException.REJECTED_OVERLOAD:
-          errors.inc(InsertExceptionMode.REJECTED_OVERLOAD);
-          break;
-        case LowLevelPutException.ROUTE_NOT_FOUND:
-          errors.inc(InsertExceptionMode.ROUTE_NOT_FOUND);
-          break;
-        case LowLevelPutException.ROUTE_REALLY_NOT_FOUND:
-          errors.inc(InsertExceptionMode.ROUTE_REALLY_NOT_FOUND);
-          break;
-        default:
+        case LowLevelPutException.COLLISION -> fail(false, context);
+        case LowLevelPutException.INTERNAL_ERROR -> errors.inc(InsertExceptionMode.INTERNAL_ERROR);
+        case LowLevelPutException.REJECTED_OVERLOAD ->
+            errors.inc(InsertExceptionMode.REJECTED_OVERLOAD);
+        case LowLevelPutException.ROUTE_NOT_FOUND ->
+            errors.inc(InsertExceptionMode.ROUTE_NOT_FOUND);
+        case LowLevelPutException.ROUTE_REALLY_NOT_FOUND ->
+            errors.inc(InsertExceptionMode.ROUTE_REALLY_NOT_FOUND);
+        default -> {
           LOG.error("Unknown LowLevelPutException code: {}", e.code);
           errors.inc(InsertExceptionMode.INTERNAL_ERROR);
+        }
       }
       if (e.code == LowLevelPutException.ROUTE_NOT_FOUND) {
         consecutiveRNFs++;

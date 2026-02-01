@@ -553,9 +553,7 @@ public class SplitFileSegmentKeys implements Serializable {
   @Override
   public boolean equals(Object obj) {
     if (this == obj) return true;
-    if (obj == null) return false;
-    if (getClass() != obj.getClass()) return false;
-    SplitFileSegmentKeys other = (SplitFileSegmentKeys) obj;
+    if (!(obj instanceof SplitFileSegmentKeys other)) return false;
     if (checkBlocks != other.checkBlocks) return false;
     if (!Arrays.equals(commonDecryptKey, other.commonDecryptKey)) return false;
     if (!Arrays.equals(commonExtraBytes, other.commonExtraBytes)) return false;

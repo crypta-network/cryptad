@@ -5,7 +5,9 @@ import java.time.ZoneOffset;
 import java.time.temporal.TemporalField;
 import java.time.temporal.WeekFields;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.Locale;
+import java.util.Map;
 import network.crypta.keys.ClientSSK;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.InsertableUSK;
@@ -194,6 +196,23 @@ public class USKDateHint {
     return Arrays.stream(Type.values())
         .map(type -> key.getSSK(getDocName(key, type)))
         .toArray(ClientSSK[]::new);
+  }
+
+  /**
+   * Compute request-capable SSK URIs for each precision variant keyed by {@link Type}.
+   *
+   * <p>The returned map preserves {@link Type#values()} order via {@link EnumMap} and provides a
+   * direct association between precision levels and their corresponding request URIs.
+   *
+   * @param key the USK used to derive per-precision SSK request URIs; must not be {@code null}.
+   * @return a map of precision types to request URIs, never {@code null}.
+   */
+  public Map<Type, ClientSSK> getRequestURIsByType(USK key) {
+    EnumMap<Type, ClientSSK> result = new EnumMap<>(Type.class);
+    for (Type type : Type.values()) {
+      result.put(type, key.getSSK(getDocName(key, type)));
+    }
+    return result;
   }
 
   private String getDocName(USK key, Type type) {

@@ -263,7 +263,7 @@ public final class MessageFilter {
   /** Outcome of {@link #match(Message, long)}. */
   public enum MATCHED {
     /** The message matches all constraints and is within the timeout window. */
-    MATCHED,
+    FOUND,
     /** The filter has expired without a match. */
     TIMED_OUT,
     /** The message matches but the filter expired by the time it was checked. */
@@ -288,7 +288,7 @@ public final class MessageFilter {
    *
    * <p>When {@code noTimeout} is {@code false}, a message that matches after the filter has expired
    * yields {@link MATCHED#TIMED_OUT_AND_MATCHED}. When {@code true}, the method reports only {@link
-   * MATCHED#MATCHED} or a non-match/timeout result from the preliminary checks.
+   * MATCHED#FOUND} or a non-match/timeout result from the preliminary checks.
    *
    * @param m message to evaluate
    * @param noTimeout if {@code true}, skip the "matched but expired" check
@@ -316,7 +316,7 @@ public final class MessageFilter {
       if (LOG.isDebugEnabled()) LOG.debug("Matched but timed out: {}", this);
       return MATCHED.TIMED_OUT_AND_MATCHED;
     }
-    return MATCHED.MATCHED;
+    return MATCHED.FOUND;
   }
 
   private boolean isTypeOrSourceMismatch(Message m) {

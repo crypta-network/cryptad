@@ -9,7 +9,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import network.crypta.clients.http.StaticToadlet;
 import network.crypta.support.HTMLNode;
 import org.slf4j.Logger;
@@ -588,8 +590,7 @@ public class IPConverter {
     /** GeoIP code {@code EU} ({@code European Union}). */
     EU("European Union");
     private final String name;
-    private boolean hasFlag;
-    private boolean checkedHasFlag;
+    private static final ConcurrentHashMap<Country, Boolean> FLAG_CACHE = new ConcurrentHashMap<>();
 
     Country(String name) {
       this.name = name;
@@ -640,7 +641,7 @@ public class IPConverter {
 
     /** Does not check whether it exists. Relative to the top of static files. */
     private String flagIconPath() {
-      return "icon/flags/" + toString().toLowerCase() + ".png";
+      return "icon/flags/" + toString().toLowerCase(Locale.ROOT) + ".png";
     }
 
     /**
@@ -653,17 +654,23 @@ public class IPConverter {
      */
     public String getFlagIconPath() {
       String flagPath = flagIconPath();
-      synchronized (this) {
-        if (!checkedHasFlag) {
-          hasFlag = StaticToadlet.haveFile(flagPath);
-          checkedHasFlag = true;
-        }
-        return hasFlag ? flagPath : null;
+      boolean hasFlag =
+          FLAG_CACHE.computeIfAbsent(this, country -> StaticToadlet.haveFile(flagPath));
+      return hasFlag ? flagPath : null;
+    }
+  }
+
+  private static final Map<Short, Country> COUNTRIES_BY_CODE;
+
+  static {
+    Map<Short, Country> byCode = new HashMap<>();
+    for (Country country : Country.values()) {
+      short encoded = encodeCountryCode(country.name());
+      if (byCode.put(encoded, country) != null) {
+        throw new IllegalStateException("Duplicate country code: " + country.name());
       }
     }
-
-    /** cached values(). Never modify or pass this array to outside code! */
-    private static final Country[] values = values();
+    COUNTRIES_BY_CODE = Map.copyOf(byCode);
   }
 
   // Base85 Decoding table
@@ -717,14 +724,25 @@ public class IPConverter {
     return instance;
   }
 
-  private static short countryOrdinalOrUnknown(String code) {
+  private static short countryCodeOrUnknown(String code) {
     try {
-      return (short) Country.valueOf(code).ordinal();
+      short encoded = encodeCountryCode(code);
+      if (COUNTRIES_BY_CODE.containsKey(encoded)) {
+        return encoded;
+      }
     } catch (IllegalArgumentException _) {
-      // Does not invalidate the whole file, just means the country list is out of date.
-      LOG.error("Country not in list: {}", code);
-      return (short) -1;
+      // fall through to log and return unknown
     }
+    // Does not invalidate the whole file, just means the country list is out of date.
+    LOG.error("Country not in list: {}", code);
+    return (short) -1;
+  }
+
+  private static short encodeCountryCode(String code) {
+    if (code == null || code.length() != 2) {
+      throw new IllegalArgumentException("Invalid country code: " + code);
+    }
+    return (short) ((code.charAt(0) << 8) | code.charAt(1));
   }
 
   /**
@@ -756,7 +774,7 @@ public class IPConverter {
         // Ip
         String ipcode = line.substring(offset + 2, offset + 7);
         long ip = decodeBase85(ipcode.getBytes(StandardCharsets.ISO_8859_1));
-        codes[i] = countryOrdinalOrUnknown(code);
+        codes[i] = countryCodeOrUnknown(code);
         ips[i] = (int) ip;
       }
       return new Cache(codes, ips);
@@ -785,15 +803,22 @@ public class IPConverter {
    * @throws NumberFormatException If the string is not an IP address.
    */
   public long ip2num(String ip) {
-    String[] split = ip.split("\\.");
-    if (split.length != 4) throw new NumberFormatException();
     long num = 0;
     long coef = (256 << 16);
-    for (String s : split) {
-      long modulo = Integer.parseInt(s) % 256;
-      num += (modulo * coef);
-      coef >>= 8;
+    int start = 0;
+    int segment = 0;
+    int length = ip.length();
+    for (int i = 0; i <= length; i++) {
+      if (i == length || ip.charAt(i) == '.') {
+        if (i == start || segment >= 4) throw new NumberFormatException();
+        long modulo = Integer.parseInt(ip.substring(start, i)) % 256;
+        num += (modulo * coef);
+        coef >>= 8;
+        segment++;
+        start = i + 1;
+      }
     }
+    if (segment != 4) throw new NumberFormatException();
     return num;
   }
 
@@ -902,9 +927,10 @@ public class IPConverter {
         start = midpos;
       }
     }
-    short countryOrdinal = codes[last];
-    if (countryOrdinal < 0) return null;
-    Country country = Country.values[countryOrdinal];
+    short countryCode = codes[last];
+    if (countryCode < 0) return null;
+    Country country = COUNTRIES_BY_CODE.get(countryCode);
+    if (country == null) return null;
     cache.put((int) longip, country);
     return country;
   }

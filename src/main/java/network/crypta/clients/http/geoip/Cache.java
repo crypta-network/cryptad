@@ -5,9 +5,9 @@ package network.crypta.clients.http.geoip;
  *
  * <p>This class is a lightweight container for two parallel primitive arrays used during IPv4
  * lookups: an {@code int[]} of table entries (often interpreted as unsigned 32-bit values) and a
- * {@code short[]} of country identifiers stored as {@link IPConverter.Country} ordinals. The data
- * is typically produced by parsing a downloaded database file once and then re-used for many
- * lookups without allocating per-query objects.
+ * {@code short[]} of country identifiers stored as encoded two-character codes. The data is
+ * typically produced by parsing a downloaded database file once and then re-used for many lookups
+ * without allocating per-query objects.
  *
  * <p>The constructor stores references to the provided arrays directly, and the getters return the
  * same live backing arrays. This avoids copies, but it also means callers must maintain the
@@ -25,7 +25,7 @@ package network.crypta.clients.http.geoip;
  *
  * <pre>{@code
  * Cache table = new Cache(codes, ips);
- * short[] countryOrdinals = table.getCodes();
+ * short[] countryCodes = table.getCodes();
  * int[] ipTable = table.getIps();
  * }</pre>
  *
@@ -43,8 +43,8 @@ public class Cache {
    * #getIps()}. Mutating either array after construction will therefore be observed through this
    * instance, which is convenient for tests but usually undesirable in production usage.
    *
-   * @param codes array of country ordinals aligned by index with {@code ips}; may be {@code null}
-   *     to represent an intentionally absent table.
+   * @param codes array of encoded country codes aligned by index with {@code ips}; may be {@code
+   *     null} to represent an intentionally absent table.
    * @param ips array of IPv4 table entries aligned by index with {@code codes}; may be {@code null}
    *     to represent an intentionally absent table.
    */
@@ -57,11 +57,12 @@ public class Cache {
    * Returns the country code table associated with this cache.
    *
    * <p>The returned array is the live backing {@code short[]} provided to the constructor; it is
-   * not a defensive copy. Each element is typically an {@link IPConverter.Country} ordinal, with
+   * not a defensive copy. Each element is typically an encoded two-character country code, with
    * negative values sometimes used by callers to indicate "unknown". Treat the array as read-only
    * once the cache is in use, especially if it may be accessed concurrently.
    *
-   * @return the live backing {@code short[]} of country ordinals, or {@code null} if none exists.
+   * @return the live backing {@code short[]} of encoded country codes, or {@code null} if none
+   *     exists.
    */
   public short[] getCodes() {
     return codes;

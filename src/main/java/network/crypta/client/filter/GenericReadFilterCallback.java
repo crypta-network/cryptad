@@ -6,6 +6,7 @@ import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 import network.crypta.client.filter.HTMLFilter.ParsedTag;
@@ -450,7 +451,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
     if (method == null) {
       method = "GET";
     }
-    method = method.toUpperCase();
+    method = method.toUpperCase(Locale.ROOT);
     if (!(method.equals("POST") || method.equals("GET"))) {
       return null; // no irregular form sending methods
     }
@@ -776,7 +777,7 @@ public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
       sb.append(strippedBaseURI.getScheme());
       sb.append("://");
       sb.append(strippedBaseURI.getAuthority());
-      assert (path.startsWith("/"));
+      assert path.startsWith("/");
     }
     sb.append(path);
     if (typeOverride != null) {

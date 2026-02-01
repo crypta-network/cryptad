@@ -9,6 +9,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import network.crypta.node.NodeInitException;
 import network.crypta.support.io.FileUtil;
@@ -114,10 +115,10 @@ public class WrapperConfig {
       throws IOException {
     try (FileInputStream fis = new FileInputStream(oldConfig);
         BufferedInputStream bis = new BufferedInputStream(fis);
-        InputStreamReader isr = new InputStreamReader(bis);
+        InputStreamReader isr = new InputStreamReader(bis, StandardCharsets.UTF_8);
         BufferedReader br = new BufferedReader(isr);
         FileOutputStream fos = new FileOutputStream(newConfig);
-        OutputStreamWriter osw = new OutputStreamWriter(fos);
+        OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
         BufferedWriter bw = new BufferedWriter(osw)) {
 
       String line;

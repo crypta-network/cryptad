@@ -195,7 +195,7 @@ public class JPEGFilter implements ContentDataFilter {
 
   private int readBlockLength(int markerType, DataInputStream dis, DataOutputStream dos)
       throws IOException {
-    if (markerType == MARKER_EOI || markerType >= MARKER_RST0 && markerType <= MARKER_RST7) {
+    if (markerType == MARKER_EOI || (markerType >= MARKER_RST0 && markerType <= MARKER_RST7)) {
       return 0;
     }
     int blockLength = dis.readUnsignedShort();

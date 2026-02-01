@@ -38,6 +38,7 @@ abstract class AbstractCompressor implements Compressor {
    * @throws IOException on I/O errors; the specific subclass {@link CompressionOutputSizeException}
    *     may be thrown if {@code maxWriteLength} is exceeded
    */
+  @Override
   public long compress(
       InputStream input, OutputStream output, long maxReadLength, long maxWriteLength)
       throws IOException {

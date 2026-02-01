@@ -153,7 +153,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
       return;
     }
 
-    if (msg.getSpec() == DMT.FNPDataInsertRejected) {
+    if (DMT.FNPDataInsertRejected.equals(msg.getSpec())) {
       forwardDataInsertRejected(msg);
       return;
     }
@@ -293,23 +293,19 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   }
 
   private void handleTerminalStatus(int status) {
-    switch (status) {
-      case CHKInsertSender.TIMED_OUT,
-      CHKInsertSender.GENERATED_REJECTED_OVERLOAD,
-      CHKInsertSender.INTERNAL_ERROR:
-        handleFatalOverload(status);
-        break;
-      case CHKInsertSender.ROUTE_NOT_FOUND, CHKInsertSender.ROUTE_REALLY_NOT_FOUND:
-        handleRouteNotFound(status);
-        break;
-      case CHKInsertSender.RECEIVE_FAILED:
-        handleReceiveFailed();
-        break;
-      case CHKInsertSender.SUCCESS:
-        handleSuccess(status);
-        break;
-      default:
-        handleUnknownStatus();
+    if (status == CHKInsertSender.TIMED_OUT
+        || status == CHKInsertSender.GENERATED_REJECTED_OVERLOAD
+        || status == CHKInsertSender.INTERNAL_ERROR) {
+      handleFatalOverload(status);
+    } else if (status == CHKInsertSender.ROUTE_NOT_FOUND
+        || status == CHKInsertSender.ROUTE_REALLY_NOT_FOUND) {
+      handleRouteNotFound(status);
+    } else if (status == CHKInsertSender.RECEIVE_FAILED) {
+      handleReceiveFailed();
+    } else if (status == CHKInsertSender.SUCCESS) {
+      handleSuccess(status);
+    } else {
+      handleUnknownStatus();
     }
   }
 
@@ -533,7 +529,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
     Message m = awaitDownstreamAndBuildCompletionMsg(sentCompletionWasSet, transferTimeout);
 
-    if ((sender == null) && (!sentCompletionWasSet) && (canCommit)) {
+    if (sender == null && !sentCompletionWasSet && canCommit) {
       // There are no downstream senders, but we stored the data locally, report successful
       // transfer. Note that this is done even if the verifying fails.
       m = DMT.createFNPInsertTransfersCompleted(uid, false /* no timeouts */);

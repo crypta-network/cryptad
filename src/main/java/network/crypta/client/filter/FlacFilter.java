@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import network.crypta.l10n.NodeL10n;
@@ -56,12 +57,33 @@ public class FlacFilter implements ContentDataFilter {
     STREAM_FINISHED
   }
 
-  private record AudioReadResult(byte[] payload, short nextFrameHeader, boolean streamFinished) {
+  private static final class AudioReadResult {
+    private final byte[] payload;
+    private final short nextFrameHeader;
+    private final boolean streamFinished;
+
+    private AudioReadResult(byte[] payload, short nextFrameHeader, boolean streamFinished) {
+      this.payload = payload;
+      this.nextFrameHeader = nextFrameHeader;
+      this.streamFinished = streamFinished;
+    }
+
+    private byte[] payload() {
+      return payload;
+    }
+
+    private short nextFrameHeader() {
+      return nextFrameHeader;
+    }
+
+    private boolean streamFinished() {
+      return streamFinished;
+    }
+
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
-      AudioReadResult that = (AudioReadResult) o;
+      if (!(o instanceof AudioReadResult that)) return false;
       return nextFrameHeader == that.nextFrameHeader
           && streamFinished == that.streamFinished
           && Arrays.equals(payload, that.payload);
@@ -111,12 +133,12 @@ public class FlacFilter implements ContentDataFilter {
     return block;
   }
 
-  private static void addFrameHeaderBytes(ArrayList<Byte> buffer, short frameHeader) {
+  private static void addFrameHeaderBytes(List<Byte> buffer, short frameHeader) {
     buffer.add((byte) ((frameHeader & 0xFF00) >>> 8));
     buffer.add((byte) (frameHeader & 0x00FF));
   }
 
-  private static byte[] toByteArray(ArrayList<Byte> buffer) {
+  private static byte[] toByteArray(List<Byte> buffer) {
     byte[] payload = new byte[buffer.size()];
     for (int i = 0; i < buffer.size(); i++) {
       payload[i] = buffer.get(i);
@@ -224,6 +246,7 @@ public class FlacFilter implements ContentDataFilter {
    * @throws IOException if an I/O error occurs while reading from {@code input} or writing to
    *     {@code output}; partial output may already be written when the exception is thrown
    */
+  @Override
   public void readFilter(
       InputStream input,
       OutputStream output,

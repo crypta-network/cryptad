@@ -99,14 +99,15 @@ class PeerPersistence {
   private String oldOpennetPeersStringCache = null;
 
   /** Periodic write runnable that writes peers and re-schedules itself. */
-  private final Runnable writePeersRunnable =
-      () -> {
-        try {
-          writePeersNow();
-        } finally {
-          scheduleWritePeersNextRun();
-        }
-      };
+  private final Runnable writePeersRunnable = this::writePeersAndReschedule;
+
+  private void writePeersAndReschedule() {
+    try {
+      writePeersNow();
+    } finally {
+      scheduleWritePeersNextRun();
+    }
+  }
 
   /**
    * Create a new persistence helper bound to a node and its peer manager.

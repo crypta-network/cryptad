@@ -132,7 +132,7 @@ class FNPPacketManglerTest {
     DECODED result = mangler.process(packet, 0, packet.length, loopbackPeer, null);
 
     // Assert
-    assertSame(DECODED.DECODED, result);
+    assertSame(DECODED.SUCCESS, result);
   }
 
   @Test

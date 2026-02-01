@@ -182,6 +182,7 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
       }
     }
 
+    @Override
     public String toString() {
       return "TrivialPaddedBucketOutputStream:" + out + "(" + PaddedRandomAccessBucket.this + ")";
     }
@@ -468,6 +469,7 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
+    assert serialPersistentFields.length > 0;
     ObjectOutputStream.PutField fields = out.putFields();
     fields.put(FIELD_SIZE, size);
     fields.put(FIELD_READ_ONLY, readOnly);

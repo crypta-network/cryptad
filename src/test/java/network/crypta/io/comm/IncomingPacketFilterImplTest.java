@@ -96,7 +96,7 @@ class IncomingPacketFilterImplTest {
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);
 
-    assertSame(DECODED.DECODED, result);
+    assertSame(DECODED.SUCCESS, result);
     // Should gather timer entropy with the expected bias
     verify(randomSource, times(1)).acceptTimerEntropy(any(), eq(0.25d));
     // Mangler should not be invoked if the owning PeerNode handled the packet
@@ -109,11 +109,11 @@ class IncomingPacketFilterImplTest {
     when(node.network().peers()).thenReturn(peerManager);
     when(peerManager.roster()).thenReturn(roster);
     when(roster.getByPeer(peer, mangler)).thenReturn(null);
-    when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.DECODED);
+    when(mangler.process(buf, 0, buf.length, peer, null)).thenReturn(DECODED.SUCCESS);
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);
 
-    assertSame(DECODED.DECODED, result);
+    assertSame(DECODED.SUCCESS, result);
     verify(randomSource, times(1)).acceptTimerEntropy(any(), eq(0.25d));
     verify(mangler, times(1)).process(buf, 0, buf.length, peer, null);
   }
@@ -137,7 +137,7 @@ class IncomingPacketFilterImplTest {
 
     DECODED result = filter.process(buf, 0, buf.length, peer, now);
 
-    assertSame(DECODED.DECODED, result);
+    assertSame(DECODED.SUCCESS, result);
     verify(pn1, times(1)).handleReceivedPacket(buf, 0, buf.length, now, peer);
     verify(pn2, times(1)).handleReceivedPacket(buf, 0, buf.length, now, peer);
   }

@@ -68,6 +68,7 @@ public class UserAlertsToadlet extends Toadlet {
    *     completes writing.
    * @throws IOException if the response cannot be generated or sent to the client successfully.
    */
+  @Override
   public void handleMethodGET(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
     if (!ctx.checkFullAccess(this)) return;

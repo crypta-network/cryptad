@@ -1,6 +1,8 @@
 package network.crypta.node;
 
 import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -161,18 +163,16 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       }
 
       NodeProcessResult result = routeOnce(nodesRoutedTo, next);
-      switch (result) {
-        case TERMINATE:
-          return;
-        case CONTINUE_FORWARDED:
-          hasForwarded = true;
-          last = next;
-          break;
-        case CONTINUE_NO_FORWARD:
-          // Track the attempted peer even if we failed to send/forward.
-          // This keeps HTL decrement attribution consistent with the peer we just tried.
-          last = next;
-          break;
+      if (result == NodeProcessResult.TERMINATE) {
+        return;
+      }
+      if (result == NodeProcessResult.CONTINUE_FORWARDED) {
+        hasForwarded = true;
+        last = next;
+      } else if (result == NodeProcessResult.CONTINUE_NO_FORWARD) {
+        // Track the attempted peer even if we failed to send/forward.
+        // This keeps HTL decrement attribution consistent with the peer we just tried.
+        last = next;
       }
       // else: no forward this iteration, keep the previous 'last' and hasForwarded
     }
@@ -184,7 +184,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     CONTINUE_FORWARDED
   }
 
-  private NodeProcessResult routeOnce(HashSet<PeerNode> nodesRoutedTo, PeerNode next) {
+  private NodeProcessResult routeOnce(Set<PeerNode> nodesRoutedTo, PeerNode next) {
     if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
     if (onlyNode == null)
       PeerNodeRoutingReporter.reportRoutedTo(
@@ -228,7 +228,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
     }
   }
 
-  private PeerNode chooseNextNode(HashSet<PeerNode> routed) {
+  private PeerNode chooseNextNode(Set<PeerNode> routed) {
     if (onlyNode == null) {
       return node.network()
           .peers()
@@ -334,16 +334,17 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       if (LOG.isDebugEnabled()) LOG.debug("Accepted wait timed out");
       return AcceptWaitOutcome.TRY_ANOTHER;
     }
-    if (msg.getSpec() == DMT.FNPRejectedLoop) {
+    MessageType spec = msg.getSpec();
+    if (DMT.FNPRejectedLoop.equals(spec)) {
       if (LOG.isDebugEnabled()) LOG.debug("Accepted rejected: loop");
       return AcceptWaitOutcome.TRY_ANOTHER;
-    } else if (msg.getSpec() == DMT.FNPRejectedOverload) {
+    } else if (DMT.FNPRejectedOverload.equals(spec)) {
       if (LOG.isDebugEnabled()) LOG.debug("Accepted rejected: overload");
       return AcceptWaitOutcome.TRY_ANOTHER;
-    } else if (msg.getSpec() == DMT.FNPOpennetDisabled) {
+    } else if (DMT.FNPOpennetDisabled.equals(spec)) {
       if (LOG.isDebugEnabled()) LOG.debug("Accepted rejected: opennet disabled");
       return AcceptWaitOutcome.TRY_ANOTHER;
-    } else if (msg.getSpec() == DMT.FNPAccepted) {
+    } else if (DMT.FNPAccepted.equals(spec)) {
       return AcceptWaitOutcome.ACCEPTED;
     }
     LOG.error("Unrecognized accepted-wait message: {}", msg);
@@ -373,19 +374,18 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
       if (LOG.isDebugEnabled()) LOG.debug("Final response received {}", msg);
 
       FinalOutcome outcome = evaluateFinalMessage(msg, next);
-      switch (outcome) {
-        case TERMINATE:
-          return Flow.TERMINATE;
-        case CONTINUE:
-          // Exit the final-response wait loop and try another peer.
-          return Flow.CONTINUE;
-        case COMPLETED:
-          handleCompletedSequence(next);
-          return Flow.TERMINATE;
-        case KEEP_WAITING:
-          // Keep waiting on this peer for more replies or completion.
-          break;
+      if (outcome == FinalOutcome.TERMINATE) {
+        return Flow.TERMINATE;
       }
+      if (outcome == FinalOutcome.CONTINUE) {
+        // Exit the final-response wait loop and try another peer.
+        return Flow.CONTINUE;
+      }
+      if (outcome == FinalOutcome.COMPLETED) {
+        handleCompletedSequence(next);
+        return Flow.TERMINATE;
+      }
+      // KEEP_WAITING: loop again
     }
   }
 
@@ -464,13 +464,15 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
   private java.util.function.BiFunction<Message, PeerNode, FinalOutcome> handlerFor(
       MessageType spec) {
-    if (spec == DMT.FNPOpennetNoderefRejected) return this::handleNoderefRejected;
-    if (spec == DMT.FNPOpennetAnnounceCompleted) return (_, _) -> FinalOutcome.COMPLETED;
-    if (spec == DMT.FNPRouteNotFound) return this::handleRouteNotFound;
-    if (spec == DMT.FNPRejectedOverload) return this::handleRejectedOverload;
-    if (spec == DMT.FNPOpennetDisabled) return this::handleOpennetDisabled;
-    if (spec == DMT.FNPOpennetAnnounceReply) return this::handleAnnounceReply;
-    if (spec == DMT.FNPOpennetAnnounceNodeNotWanted) return (_, _) -> handleNodeNotWanted();
+    if (Objects.equals(spec, DMT.FNPOpennetNoderefRejected)) return this::handleNoderefRejected;
+    if (Objects.equals(spec, DMT.FNPOpennetAnnounceCompleted))
+      return (_, _) -> FinalOutcome.COMPLETED;
+    if (Objects.equals(spec, DMT.FNPRouteNotFound)) return this::handleRouteNotFound;
+    if (Objects.equals(spec, DMT.FNPRejectedOverload)) return this::handleRejectedOverload;
+    if (Objects.equals(spec, DMT.FNPOpennetDisabled)) return this::handleOpennetDisabled;
+    if (Objects.equals(spec, DMT.FNPOpennetAnnounceReply)) return this::handleAnnounceReply;
+    if (Objects.equals(spec, DMT.FNPOpennetAnnounceNodeNotWanted))
+      return (_, _) -> handleNodeNotWanted();
     return null;
   }
 
@@ -567,11 +569,12 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
   private boolean processCompletionFollowup(Message msg, PeerNode next) {
     if (msg == null) return false;
-    if (msg.getSpec() == DMT.FNPOpennetAnnounceReply) {
+    MessageType spec = msg.getSpec();
+    if (DMT.FNPOpennetAnnounceReply.equals(spec)) {
       validateForwardReply(msg, next);
       return true; // keep waiting; there may be more
     }
-    if (msg.getSpec() == DMT.FNPOpennetAnnounceNodeNotWanted) {
+    if (DMT.FNPOpennetAnnounceNodeNotWanted.equals(spec)) {
       if (cb != null) cb.nodeNotWanted();
       if (source != null) {
         try {

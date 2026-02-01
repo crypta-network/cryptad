@@ -20,7 +20,6 @@ import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
  *
  * @see SplitFileInserterStorage
  * @see SplitFileInserterStorageRuntimeParams
- * @hidden
  */
 public final class SplitFileInserterStorageInitParams {
   LockableRandomAccessBuffer originalData;
@@ -51,8 +50,6 @@ public final class SplitFileInserterStorageInitParams {
    * Fluent builder for {@link SplitFileInserterStorageInitParams}.
    *
    * <p>The builder stores references as-is and performs no validation.
-   *
-   * @hidden
    */
   public static final class Builder {
     private LockableRandomAccessBuffer originalData;

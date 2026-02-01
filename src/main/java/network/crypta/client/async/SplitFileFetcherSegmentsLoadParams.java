@@ -25,36 +25,122 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Holds the stream and segment array that will be mutated during reconstruction.
  * </ul>
  *
- * @param parent owning storage that supplies layout constants and retry behavior.
- * @param totalDataBlocks total number of data blocks across all segments; non-negative count.
- * @param totalCheckBlocks total number of check blocks across all segments; non-negative count.
- * @param totalCrossCheckBlocks total number of cross-check blocks across all segments; non-negative
- *     count.
- * @param dis input stream positioned at the start of segment metadata; read in-order.
- * @param completeViaTruncation whether completion is recorded via file truncation semantics.
- * @param keysFetching optional helper for tracking locally fetched keys; may be {@code null}.
- * @param segments mutable segment array to populate with reconstructed storage objects.
- * @param checksumLength checksum length in bytes used for persisted checksummed blocks.
- * @param hasSplitfileSingleCryptoKey whether a single splitfile crypto key is present.
- * @param offsetKeyList byte offset of the persisted key list section in the storage layout.
- * @param offsetSegmentStatus byte offset of the persisted segment status section.
- * @param rafLength total length of the backing storage buffer in bytes.
  * @see SplitFileFetcherSegmentsBuilder#initSegmentsFromStream(SplitFileFetcherSegmentsLoadParams)
  */
-record SplitFileFetcherSegmentsLoadParams(
-    SplitFileFetcherStorage parent,
-    int totalDataBlocks,
-    int totalCheckBlocks,
-    int totalCrossCheckBlocks,
-    DataInputStream dis,
-    boolean completeViaTruncation,
-    KeysFetchingLocally keysFetching,
-    SplitFileFetcherSegmentStorage[] segments,
-    int checksumLength,
-    boolean hasSplitfileSingleCryptoKey,
-    long offsetKeyList,
-    long offsetSegmentStatus,
-    long rafLength) {
+final class SplitFileFetcherSegmentsLoadParams {
+  private final SplitFileFetcherStorage parent;
+  private final int totalDataBlocks;
+  private final int totalCheckBlocks;
+  private final int totalCrossCheckBlocks;
+  private final DataInputStream dis;
+  private final boolean completeViaTruncation;
+  private final KeysFetchingLocally keysFetching;
+  private final SplitFileFetcherSegmentStorage[] segments;
+  private final int checksumLength;
+  private final boolean hasSplitfileSingleCryptoKey;
+  private final long offsetKeyList;
+  private final long offsetSegmentStatus;
+  private final long rafLength;
+
+  /**
+   * Creates a bundle of parameters for rebuilding segments from persisted storage.
+   *
+   * @param parent owning storage that supplies layout constants and retry behavior.
+   * @param totalDataBlocks total number of data blocks across all segments; non-negative count.
+   * @param totalCheckBlocks total number of check blocks across all segments; non-negative count.
+   * @param totalCrossCheckBlocks total number of cross-check blocks across all segments;
+   *     non-negative count.
+   * @param dis input stream positioned at the start of segment metadata; read in-order.
+   * @param completeViaTruncation whether completion is recorded via file truncation semantics.
+   * @param keysFetching optional helper for tracking locally fetched keys; may be {@code null}.
+   * @param segments mutable segment array to populate with reconstructed storage objects.
+   * @param checksumLength checksum length in bytes used for persisted checksummed blocks.
+   * @param hasSplitfileSingleCryptoKey whether a single splitfile crypto key is present.
+   * @param offsetKeyList byte offset of the persisted key list section in the storage layout.
+   * @param offsetSegmentStatus byte offset of the persisted segment status section.
+   * @param rafLength total length of the backing storage buffer in bytes.
+   */
+  SplitFileFetcherSegmentsLoadParams(
+      SplitFileFetcherStorage parent,
+      int totalDataBlocks,
+      int totalCheckBlocks,
+      int totalCrossCheckBlocks,
+      DataInputStream dis,
+      boolean completeViaTruncation,
+      KeysFetchingLocally keysFetching,
+      SplitFileFetcherSegmentStorage[] segments,
+      int checksumLength,
+      boolean hasSplitfileSingleCryptoKey,
+      long offsetKeyList,
+      long offsetSegmentStatus,
+      long rafLength) {
+    this.parent = parent;
+    this.totalDataBlocks = totalDataBlocks;
+    this.totalCheckBlocks = totalCheckBlocks;
+    this.totalCrossCheckBlocks = totalCrossCheckBlocks;
+    this.dis = dis;
+    this.completeViaTruncation = completeViaTruncation;
+    this.keysFetching = keysFetching;
+    this.segments = segments;
+    this.checksumLength = checksumLength;
+    this.hasSplitfileSingleCryptoKey = hasSplitfileSingleCryptoKey;
+    this.offsetKeyList = offsetKeyList;
+    this.offsetSegmentStatus = offsetSegmentStatus;
+    this.rafLength = rafLength;
+  }
+
+  SplitFileFetcherStorage parent() {
+    return parent;
+  }
+
+  int totalDataBlocks() {
+    return totalDataBlocks;
+  }
+
+  int totalCheckBlocks() {
+    return totalCheckBlocks;
+  }
+
+  int totalCrossCheckBlocks() {
+    return totalCrossCheckBlocks;
+  }
+
+  DataInputStream dis() {
+    return dis;
+  }
+
+  boolean completeViaTruncation() {
+    return completeViaTruncation;
+  }
+
+  KeysFetchingLocally keysFetching() {
+    return keysFetching;
+  }
+
+  SplitFileFetcherSegmentStorage[] segments() {
+    return segments;
+  }
+
+  int checksumLength() {
+    return checksumLength;
+  }
+
+  boolean hasSplitfileSingleCryptoKey() {
+    return hasSplitfileSingleCryptoKey;
+  }
+
+  long offsetKeyList() {
+    return offsetKeyList;
+  }
+
+  long offsetSegmentStatus() {
+    return offsetSegmentStatus;
+  }
+
+  long rafLength() {
+    return rafLength;
+  }
+
   /**
    * Compares this bundle to another, including array contents for segments.
    *
@@ -70,37 +156,22 @@ record SplitFileFetcherSegmentsLoadParams(
     if (this == other) {
       return true;
     }
-    if (!(other
-        instanceof
-        SplitFileFetcherSegmentsLoadParams(
-            var otherParent,
-            var otherTotalDataBlocks,
-            var otherTotalCheckBlocks,
-            var otherTotalCrossCheckBlocks,
-            var otherDis,
-            var otherCompleteViaTruncation,
-            var otherKeysFetching,
-            var otherSegments,
-            var otherChecksumLength,
-            var otherHasSplitfileSingleCryptoKey,
-            var otherOffsetKeyList,
-            var otherOffsetSegmentStatus,
-            var otherRafLength))) {
+    if (!(other instanceof SplitFileFetcherSegmentsLoadParams otherParams)) {
       return false;
     }
-    return completeViaTruncation == otherCompleteViaTruncation
-        && totalDataBlocks == otherTotalDataBlocks
-        && totalCheckBlocks == otherTotalCheckBlocks
-        && totalCrossCheckBlocks == otherTotalCrossCheckBlocks
-        && checksumLength == otherChecksumLength
-        && hasSplitfileSingleCryptoKey == otherHasSplitfileSingleCryptoKey
-        && offsetKeyList == otherOffsetKeyList
-        && offsetSegmentStatus == otherOffsetSegmentStatus
-        && rafLength == otherRafLength
-        && parent == otherParent
-        && dis == otherDis
-        && keysFetching == otherKeysFetching
-        && Arrays.equals(segments, otherSegments);
+    return completeViaTruncation == otherParams.completeViaTruncation
+        && totalDataBlocks == otherParams.totalDataBlocks
+        && totalCheckBlocks == otherParams.totalCheckBlocks
+        && totalCrossCheckBlocks == otherParams.totalCrossCheckBlocks
+        && checksumLength == otherParams.checksumLength
+        && hasSplitfileSingleCryptoKey == otherParams.hasSplitfileSingleCryptoKey
+        && offsetKeyList == otherParams.offsetKeyList
+        && offsetSegmentStatus == otherParams.offsetSegmentStatus
+        && rafLength == otherParams.rafLength
+        && parent == otherParams.parent
+        && dis == otherParams.dis
+        && keysFetching == otherParams.keysFetching
+        && Arrays.equals(segments, otherParams.segments);
   }
 
   /**

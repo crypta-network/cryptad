@@ -131,6 +131,7 @@ public class UriFilterProxyHeaderParser {
      *
      * @return a URI-like string consisting of the scheme, {@code ://}, and the stored host.
      */
+    @Override
     public String toString() {
       return scheme + "://" + host;
     }

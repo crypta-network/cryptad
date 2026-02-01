@@ -299,7 +299,7 @@ public class SplitFileInserterStorage {
     InsertContext ctx = params.ctx;
     byte[] providedSplitfileCryptoKey = params.splitfileCryptoKey;
     cmode = ctx.getCompatibilityMode();
-    if (cmode.ordinal() < CompatibilityMode.COMPAT_1255.ordinal()) {
+    if (cmode.code < CompatibilityMode.COMPAT_1255.code) {
       this.hashes = null;
       providedSplitfileCryptoKey = null;
     } else {
@@ -661,7 +661,7 @@ public class SplitFileInserterStorage {
   private int calculateDeductBlocks(
       int totalDataBlocks, int segmentSize, int segs, CompatibilityMode cmode) {
     if (cmode == CompatibilityMode.COMPAT_CURRENT
-        || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal()) {
+        || cmode.code >= CompatibilityMode.COMPAT_1255.code) {
       int lastSegmentSize = totalDataBlocks - (segmentSize * (segs - 1));
       return segmentSize - lastSegmentSize;
     }
@@ -672,7 +672,7 @@ public class SplitFileInserterStorage {
     // Cross-segment splitfile redundancy becomes useful at 20 segments.
     if (segs >= 20
         && (cmode == CompatibilityMode.COMPAT_CURRENT
-            || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal())) {
+            || cmode.code >= CompatibilityMode.COMPAT_1255.code)) {
       return 3; // Optimal number of cross-check blocks per segment
     }
     return 0;
@@ -766,7 +766,7 @@ public class SplitFileInserterStorage {
         dos.write(splitfileCryptoKey);
       }
       dos.writeInt(keyLength);
-      dos.writeInt(cmode.ordinal());
+      dos.writeInt(cmode.code);
       // hasPaddedLastBlock will be recomputed.
       dos.writeInt(deductBlocksFromSegments);
       dos.writeInt(maxRetries);
@@ -866,9 +866,10 @@ public class SplitFileInserterStorage {
   private CompatibilityMode readCompatibilityModeChecked(DataInputStream dis)
       throws IOException, StorageFormatException {
     int compatMode = dis.readInt();
-    if (compatMode < 0 || compatMode > CompatibilityMode.values().length)
+    short compatCode = (short) compatMode;
+    if (!CompatibilityMode.hasCode(compatCode))
       throw new StorageFormatException("Invalid compatibility mode " + compatMode);
-    return CompatibilityMode.values()[compatMode];
+    return CompatibilityMode.byCode(compatCode);
   }
 
   @SuppressWarnings("java:S1168")
@@ -1129,7 +1130,7 @@ public class SplitFileInserterStorage {
     if (providedKey != null) {
       return new CryptoInit(providedKey, true);
     } else if (cmode == CompatibilityMode.COMPAT_CURRENT
-        || cmode.ordinal() >= CompatibilityMode.COMPAT_1255.ordinal()) {
+        || cmode.code >= CompatibilityMode.COMPAT_1255.code) {
       byte[] key =
           (hashThisLayerOnly != null)
               ? Metadata.getCryptoKey(hashThisLayerOnly)

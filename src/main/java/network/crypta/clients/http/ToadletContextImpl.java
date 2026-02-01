@@ -139,7 +139,7 @@ public class ToadletContextImpl implements ToadletContext {
    * @param services Shared request-handling services bundled by the HTTP listener.
    * @param uri Fully parsed and normalized request URI associated with the incoming HTTP request
    *     line.
-   * @param uniqueID Monotonic identifier supplied by the container to correlate logs and responses
+   * @param uniqueId Monotonic identifier supplied by the container to correlate logs and responses
    *     across asynchronous callbacks.
    * @throws IOException If the socket output stream cannot be obtained for later replies.
    */
@@ -149,7 +149,7 @@ public class ToadletContextImpl implements ToadletContext {
       BucketFactory bf,
       ToadletRequestServices services,
       URI uri,
-      long uniqueID)
+      long uniqueId)
       throws IOException {
     this.headers = headers;
     this.cookies = null;
@@ -165,7 +165,7 @@ public class ToadletContextImpl implements ToadletContext {
     this.userAlertManager = services.userAlertManager();
     this.bookmarkManager = services.bookmarkManager();
     // Generate a unique id
-    uniqueId = String.valueOf(uniqueID);
+    this.uniqueId = String.valueOf(uniqueId);
   }
 
   private void close() {
@@ -286,6 +286,7 @@ public class ToadletContextImpl implements ToadletContext {
    *     output.
    * @throws IOException If writing to the underlying socket output stream fails.
    */
+  @Override
   public void sendReplyHeaders(
       int code, String desc, MultiValueTable<String, String> mvt, String mimeType, long length)
       throws ToadletContextClosedException, IOException {
@@ -313,6 +314,7 @@ public class ToadletContextImpl implements ToadletContext {
    *     output.
    * @throws IOException If writing to the underlying socket output stream fails.
    */
+  @Override
   public void sendReplyHeaders(
       int code,
       String desc,
@@ -322,7 +324,7 @@ public class ToadletContextImpl implements ToadletContext {
       boolean forceDisableJavascript)
       throws ToadletContextClosedException, IOException {
     ReplyHeaders replyHeaders = ReplyHeaders.of(code, desc, mimeType, mvt, forceDisableJavascript);
-    boolean enableJavascript = (!forceDisableJavascript) && container.isFProxyJavascriptEnabled();
+    boolean enableJavascript = !forceDisableJavascript && container.isFProxyJavascriptEnabled();
     ReplyHeaderOptions options =
         new ReplyHeaderOptions(length, null, shouldDisconnect, enableJavascript, false);
     sendReplyHeaders(replyHeaders, options);
@@ -343,6 +345,7 @@ public class ToadletContextImpl implements ToadletContext {
    * @throws ToadletContextClosedException If the context is already closed and cannot send data.
    * @throws IOException If the socket output stream rejects the header bytes.
    */
+  @Override
   public void sendReplyHeadersStatic(
       int replyCode,
       String replyDescription,
@@ -632,7 +635,7 @@ public class ToadletContextImpl implements ToadletContext {
       return null;
     }
 
-    name = name.toLowerCase();
+    name = name.toLowerCase(Locale.ROOT);
 
     for (ReceivedCookie cookie : cookies) {
       try {
@@ -940,18 +943,24 @@ public class ToadletContextImpl implements ToadletContext {
       throws IOException, ParseException {
     if (LOG.isDebugEnabled()) LOG.debug("first line: {}", firstLine);
 
-    String[] split = firstLine.split(" ");
-
-    if (split.length != 3) {
-      throw new ParseException(
-          "Could not parse request line (split.length=" + split.length + "): " + firstLine, -1);
+    int firstSpace = firstLine.indexOf(' ');
+    int secondSpace = firstLine.indexOf(' ', firstSpace + 1);
+    if (firstSpace <= 0 || secondSpace <= firstSpace || secondSpace == firstLine.length() - 1) {
+      throw new ParseException("Could not parse request line: " + firstLine, -1);
+    }
+    if (firstLine.indexOf(' ', secondSpace + 1) != -1) {
+      throw new ParseException("Could not parse request line (too many parts): " + firstLine, -1);
     }
 
-    if (!split[2].startsWith("HTTP/1."))
-      throw new ParseException("Unrecognized protocol " + split[2], -1);
+    String method = firstLine.substring(0, firstSpace);
+    String rawUri = firstLine.substring(firstSpace + 1, secondSpace);
+    String protocol = firstLine.substring(secondSpace + 1);
+
+    if (!protocol.startsWith("HTTP/1."))
+      throw new ParseException("Unrecognized protocol " + protocol, -1);
 
     try {
-      URI uri = URIPreEncoder.encodeURI(split[1]).normalize();
+      URI uri = URIPreEncoder.encodeURI(rawUri).normalize();
       if (LOG.isDebugEnabled())
         LOG.debug(
             "URI: {} path {} host {} frag {} port {} query {} scheme {}",
@@ -962,7 +971,7 @@ public class ToadletContextImpl implements ToadletContext {
             uri.getPort(),
             uri.getQuery(),
             uri.getScheme());
-      return new RequestLine(split[0], uri, split[2]);
+      return new RequestLine(method, uri, protocol);
     } catch (URISyntaxException e) {
       sendURIParseError(sock.getOutputStream(), e);
       return null;
@@ -985,7 +994,7 @@ public class ToadletContextImpl implements ToadletContext {
       if (index < 0) {
         throw new ParseException("Missing ':' in request header field", -1);
       }
-      String before = line.substring(0, index).toLowerCase();
+      String before = line.substring(0, index).toLowerCase(Locale.ROOT);
       String after = line.substring(index + 1).trim();
       headers.put(before, after);
     }
@@ -1024,7 +1033,7 @@ public class ToadletContextImpl implements ToadletContext {
       return DataReadResult.stop();
     }
 
-    if (allowPost && ((!container.publicGatewayMode()) || ctx.isAllowedFullAccess())) {
+    if (allowPost && (!container.publicGatewayMode() || ctx.isAllowedFullAccess())) {
       Bucket data = bf.makeBucket(length);
       BucketTools.copyFrom(data, is, length);
       return DataReadResult.success(data);

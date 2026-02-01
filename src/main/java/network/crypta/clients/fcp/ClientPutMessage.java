@@ -184,14 +184,14 @@ public class ClientPutMessage extends DataCarryingMessage {
         cmode = InsertContext.CompatibilityMode.valueOf(s);
       } catch (IllegalArgumentException _) {
         try {
-          cmode = InsertContext.CompatibilityMode.values()[Integer.parseInt(s)];
+          cmode = InsertContext.CompatibilityMode.byCode((short) Integer.parseInt(s));
         } catch (NumberFormatException _) {
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_FIELD,
               "Invalid CompatibilityMode (not a name and not a number)",
               identifier,
               global);
-        } catch (ArrayIndexOutOfBoundsException _) {
+        } catch (IllegalArgumentException _) {
           throw new MessageInvalidException(
               ProtocolErrorMessage.INVALID_FIELD,
               "Invalid CompatibilityMode (not a valid number)",

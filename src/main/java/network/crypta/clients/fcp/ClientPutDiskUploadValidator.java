@@ -206,13 +206,33 @@ final class ClientPutDiskUploadValidator {
  * <p>When no hash was supplied, callers use {@link #empty()} to get a shared instance with {@code
  * null} components. Downstream checks can call {@link #hasSalt()} to determine whether verification
  * should occur.
- *
- * @param salt per-request salt string used when computing the digest, or {@code null} when absent.
- * @param saltedHash hash bytes computed by the client, or {@code null} when not provided.
  */
-record DiskUploadContext(String salt, byte[] saltedHash) {
+final class DiskUploadContext {
+  private final String salt;
+  private final byte[] saltedHash;
+
+  /**
+   * Creates a new disk-upload context with optional salted hash data.
+   *
+   * @param salt per-request salt string used when computing the digest, or {@code null} when
+   *     absent.
+   * @param saltedHash hash bytes computed by the client, or {@code null} when not provided.
+   */
+  DiskUploadContext(String salt, byte[] saltedHash) {
+    this.salt = salt;
+    this.saltedHash = saltedHash;
+  }
+
   /** Shared empty context used when no salted hash was supplied. */
   private static final DiskUploadContext EMPTY = new DiskUploadContext(null, null);
+
+  String salt() {
+    return salt;
+  }
+
+  byte[] saltedHash() {
+    return saltedHash;
+  }
 
   /**
    * Returns a shared empty context that indicates no salted hash is available.
@@ -236,8 +256,8 @@ record DiskUploadContext(String salt, byte[] saltedHash) {
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (!(o instanceof DiskUploadContext(String otherSalt, byte[] otherHash))) return false;
-    return Objects.equals(salt, otherSalt) && Arrays.equals(saltedHash, otherHash);
+    if (!(o instanceof DiskUploadContext other)) return false;
+    return Objects.equals(salt, other.salt) && Arrays.equals(saltedHash, other.saltedHash);
   }
 
   /** {@inheritDoc} */

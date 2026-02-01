@@ -21,12 +21,30 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Leaves lifecycle and threading guarantees to the caller and referenced wrapper.
  * </ul>
  *
- * @param fragmentData payload bytes of this fragment; used for size and transmission
- * @param wrapper originating wrapper when sending; {@code null} when created by a receiver
  * @see MessageFragment
  * @see MessageWrapper
  */
-record MessageFragmentPayload(byte[] fragmentData, MessageWrapper wrapper) {
+final class MessageFragmentPayload {
+  private final byte[] fragmentData;
+  private final MessageWrapper wrapper;
+
+  /**
+   * @param fragmentData payload bytes of this fragment; used for size and transmission
+   * @param wrapper originating wrapper when sending; {@code null} when created by a receiver
+   */
+  MessageFragmentPayload(byte[] fragmentData, MessageWrapper wrapper) {
+    this.fragmentData = fragmentData;
+    this.wrapper = wrapper;
+  }
+
+  byte[] fragmentData() {
+    return fragmentData;
+  }
+
+  MessageWrapper wrapper() {
+    return wrapper;
+  }
+
   /**
    * Compares this payload to another object using buffer contents and wrapper identity.
    *
@@ -45,11 +63,10 @@ record MessageFragmentPayload(byte[] fragmentData, MessageWrapper wrapper) {
     if (this == obj) {
       return true;
     }
-    if (!(obj
-        instanceof MessageFragmentPayload(byte[] otherFragmentData, MessageWrapper otherWrapper))) {
+    if (!(obj instanceof MessageFragmentPayload other)) {
       return false;
     }
-    return Arrays.equals(fragmentData, otherFragmentData) && wrapper == otherWrapper;
+    return Arrays.equals(fragmentData, other.fragmentData) && wrapper == other.wrapper;
   }
 
   /**

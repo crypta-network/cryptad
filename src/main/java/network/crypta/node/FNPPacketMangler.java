@@ -189,18 +189,18 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
       LOG.trace("AnonAuth change IP permitted");
     }
 
-    if (tryExactPeerMatch(buf, offset, length, peer, opn)) return DECODED.DECODED;
+    if (tryExactPeerMatch(buf, offset, length, peer, opn)) return DECODED.SUCCESS;
 
     if (node.isStopping()) return DECODED.SHUTTING_DOWN;
 
-    if (tryPeersAuthOrAnon(buf, offset, length, peer, opn, wantAnonAuth)) return DECODED.DECODED;
+    if (tryPeersAuthOrAnon(buf, offset, length, peer, opn, wantAnonAuth)) return DECODED.SUCCESS;
 
     if (maybeHandleAnonAuthChangeIPCombined(wantAnonAuth, opn, buf, offset, length, peer))
-      return DECODED.DECODED;
+      return DECODED.SUCCESS;
 
     // Try legacy/old opennet peers. If one succeeds, return DECODED immediately.
     OldOpennetTryResult oldOpennetResult = tryOldOpennetPeers(buf, offset, length, peer);
-    if (oldOpennetResult == OldOpennetTryResult.SUCCEEDED) return DECODED.DECODED;
+    if (oldOpennetResult == OldOpennetTryResult.SUCCEEDED) return DECODED.SUCCESS;
     boolean didntTryOldOpennetPeers = oldOpennetResult == OldOpennetTryResult.DIDNT_TRY;
 
     // peers/anon already tried; no additional anon-auth checks needed here

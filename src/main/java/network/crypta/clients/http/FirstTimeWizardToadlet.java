@@ -524,11 +524,13 @@ public class FirstTimeWizardToadlet extends Toadlet {
 
     // First pages for the presets
     if (preset == WIZARD_PRESET.HIGH) {
-      switch (currentStep) {
-        case SECURITY_NETWORK, SECURITY_PHYSICAL:
-          return WIZARD_STEP.WELCOME;
-        default:
-          // do nothing
+      WIZARD_STEP previous =
+          switch (currentStep) {
+            case SECURITY_NETWORK, SECURITY_PHYSICAL -> WIZARD_STEP.WELCOME;
+            default -> null;
+          };
+      if (previous != null) {
+        return previous;
       }
     } else if (preset == WIZARD_PRESET.LOW
         && Objects.requireNonNull(currentStep) == WIZARD_STEP.DATASTORE_SIZE) {

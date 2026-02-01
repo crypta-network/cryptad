@@ -343,6 +343,7 @@ public class SplitFileFetcher
    *
    * @param e reason for failure to report to the client; must not be {@code null}
    */
+  @Override
   public void fail(FetchException e) {
     synchronized (this) {
       if (succeeded || failed) return;
@@ -432,6 +433,7 @@ public class SplitFileFetcher
    *
    * @return a priority identifier; higher values may imply lower scheduling priority
    */
+  @Override
   public short getPriorityClass() {
     return this.parent.getPriorityClass();
   }

@@ -156,7 +156,7 @@ class UdpSocketHandlerTest {
     // Prepare filter and wire it into the handler before starting the thread.
     IncomingPacketFilter filter = Mockito.mock(IncomingPacketFilter.class);
     when(filter.process(any(byte[].class), anyInt(), anyInt(), any(Peer.class), anyLong()))
-        .thenReturn(IncomingPacketFilter.DECODED.DECODED);
+        .thenReturn(IncomingPacketFilter.DECODED.SUCCESS);
     // Build a fresh handler bound to a specific free UDP port to avoid reflection.
     if (handler != null) handler.close();
     int freePort = findFreeUdpPort();

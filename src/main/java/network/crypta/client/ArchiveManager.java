@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.zip.GZIPInputStream;
 import network.crypta.client.async.ClientContext;
 import network.crypta.keys.FreenetURI;
@@ -74,16 +75,16 @@ public class ArchiveManager {
     /** ZIP archives; common MIME aliases are supported. */
     ZIP(
         (short) 0,
-        new String[] {
-          "application/zip", "application/x-zip"
-        }), /* eventually get rid of ZIP support at some point */
+        mimeTypes(
+            "application/zip",
+            "application/x-zip")), /* eventually get rid of ZIP support at some point */
     /** TAR archives; a standard TAR MIME type is supported. */
-    TAR((short) 1, new String[] {"application/x-tar"});
+    TAR((short) 1, mimeTypes("application/x-tar"));
 
     /** Stable numeric identifier for this type used in serialized metadata and messages. */
     public final short metadataID;
 
-    private final String[] mimeTypes;
+    private final String mimeTypes;
 
     /** Cached values(). Never modify or pass this array to outside code! */
     private static final ARCHIVE_TYPE[] values = values();
@@ -94,9 +95,16 @@ public class ArchiveManager {
      * @param metadataID stable, persisted identifier for this archive type
      * @param mimeTypes recognized MIME aliases, compared case-insensitively
      */
-    ARCHIVE_TYPE(short metadataID, String[] mimeTypes) {
+    ARCHIVE_TYPE(short metadataID, String mimeTypes) {
       this.metadataID = metadataID;
       this.mimeTypes = mimeTypes;
+    }
+
+    private static String mimeTypes(String... values) {
+      if (values.length == 0) {
+        return "";
+      }
+      return String.join(",", values);
     }
 
     /**
@@ -118,8 +126,7 @@ public class ArchiveManager {
      * @return {@code true} if the MIME maps to one of the supported types; else {@code false}
      */
     public static boolean isUsableArchiveType(String type) {
-      for (ARCHIVE_TYPE current : values)
-        for (String ctype : current.mimeTypes) if (ctype.equalsIgnoreCase(type)) return true;
+      for (ARCHIVE_TYPE current : values) if (current.matchesMimeType(type)) return true;
       return false;
     }
 
@@ -130,8 +137,7 @@ public class ArchiveManager {
      * @return matching {@link ARCHIVE_TYPE}, or {@code null} if unsupported
      */
     public static ARCHIVE_TYPE getArchiveType(String type) {
-      for (ARCHIVE_TYPE current : values)
-        for (String ctype : current.mimeTypes) if (ctype.equalsIgnoreCase(type)) return current;
+      for (ARCHIVE_TYPE current : values) if (current.matchesMimeType(type)) return current;
       return null;
     }
 
@@ -161,7 +167,19 @@ public class ArchiveManager {
      * @return non-null MIME string suitable for labelling responses
      */
     public String defaultMimeType() {
-      return mimeTypes[0];
+      int commaIndex = mimeTypes.indexOf(',');
+      return commaIndex == -1 ? mimeTypes : mimeTypes.substring(0, commaIndex);
+    }
+
+    private boolean matchesMimeType(String type) {
+      if (type == null) return false;
+      StringTokenizer tokenizer = new StringTokenizer(mimeTypes, ",");
+      while (tokenizer.hasMoreTokens()) {
+        if (tokenizer.nextToken().equalsIgnoreCase(type)) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 

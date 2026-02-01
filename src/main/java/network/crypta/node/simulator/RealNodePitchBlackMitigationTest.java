@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import java.io.File;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import network.crypta.crypt.DummyRandomSource;
@@ -236,7 +237,7 @@ public class RealNodePitchBlackMitigationTest extends RealNodeTest {
 
     // set the time yesterday to have pitch black information
     LocationManager.setClockForTesting(
-        Clock.offset(Clock.systemDefaultZone(), Duration.ofDays(-1)));
+        Clock.offset(Clock.system(ZoneId.systemDefault()), Duration.ofDays(-1)));
     // shift forward one day per 5 minutes
     Runnable dayIncrementingJob =
         new Runnable() {

@@ -20,6 +20,8 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Random;
 import network.crypta.client.DefaultMIMETypes;
 import network.crypta.node.NodeStarter;
@@ -232,33 +234,35 @@ public final class FileUtil {
   private static OperatingSystem detectOperatingSystem() { // Now delegates to AppEnv first
     try {
       network.crypta.fs.AppEnv env = new network.crypta.fs.AppEnv();
-      switch (env.osKind()) {
-        case WINDOWS:
-          return OperatingSystem.WINDOWS;
-        case MAC:
-          return OperatingSystem.MAC_OS;
-        case LINUX:
-          // AppEnv groups all non-Windows/non-macOS here, which includes FreeBSD and other Unix.
-          // Only return LINUX when the JVM reports actual Linux; otherwise fall through, so
-          // FreeBSD keeps its legacy mapping.
-          // Keep the legacy os.name fallback until AppEnv distinguishes BSD variants to avoid
-          // misclassifying FreeBSD as Linux.
-          {
-            final String n = String.valueOf(System.getProperty("os.name")).toLowerCase();
-            if (n.contains("linux")) return OperatingSystem.LINUX;
-            // fall through to legacy fallback for FreeBSD/Generic Unix
-            break;
-          }
-        default:
-          // fall through to legacy fallback for other/unrecognized variants
-          break;
+      OperatingSystem detected =
+          switch (env.osKind()) {
+            case WINDOWS -> OperatingSystem.WINDOWS;
+            case MAC -> OperatingSystem.MAC_OS;
+            case LINUX -> {
+              // AppEnv groups all non-Windows/non-macOS here, which includes FreeBSD and other
+              // Unix.
+              // Only return LINUX when the JVM reports actual Linux; otherwise fall through, so
+              // FreeBSD keeps its legacy mapping.
+              // Keep the legacy os.name fallback until AppEnv distinguishes BSD variants to avoid
+              // misclassifying FreeBSD as Linux.
+              final String n =
+                  String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
+              if (n.contains("linux")) {
+                yield OperatingSystem.LINUX;
+              }
+              yield null;
+            }
+            default -> null;
+          };
+      if (detected != null) {
+        return detected;
       }
     } catch (Exception e) {
       // If AppEnv is unavailable (e.g., restricted env), fall back to legacy detection below
       LOG.error("Operating system detection via AppEnv failed", e);
     }
     // Legacy fallback to preserve FreeBSD/GenericUnix behavior and work in restricted envs
-    final String name = String.valueOf(System.getProperty("os.name")).toLowerCase();
+    final String name = String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
     if (name.contains("freebsd")) return OperatingSystem.FREE_BSD;
     if (name.contains("linux")) return OperatingSystem.LINUX;
     if (name.contains("unix")) return OperatingSystem.GENERIC_UNIX;
@@ -278,7 +282,7 @@ public final class FileUtil {
       LOG.error("CPU architecture detection via AppEnv failed", e);
     }
     try {
-      final String name = System.getProperty("os.arch").toLowerCase();
+      final String name = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
       if (name.equals("x86") || name.equals("i386") || name.matches("i[3-9]86"))
         return CPUArchitecture.X86;
       if (name.equals("amd64")
@@ -348,7 +352,7 @@ public final class FileUtil {
     // issues observed with some persistence layers.
     String name = file.getPath();
     if (File.pathSeparatorChar == '\\') {
-      name = name.toLowerCase();
+      name = name.toLowerCase(Locale.ROOT);
     }
     file = new File(name);
     File result;
@@ -807,8 +811,8 @@ public final class FileUtil {
    * @return {@code true} if both refer to the same canonical path
    */
   public static boolean equals(File a, File b) {
-    if (a == b) return true;
-    if (a.equals(b)) return true;
+    if (Objects.equals(a, b)) return true;
+    if (a == null || b == null) return false;
     a = getCanonicalFile(a);
     b = getCanonicalFile(b);
     return a.equals(b);
