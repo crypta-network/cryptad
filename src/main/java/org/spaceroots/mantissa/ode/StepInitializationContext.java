@@ -26,6 +26,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * @see AdaptiveStepsizeIntegrator#initializeStep(StepInitializationContext)
  */
+@SuppressWarnings("java:S6206")
 public final class StepInitializationContext {
   private final FirstOrderDifferentialEquations equations;
   private final boolean forward;

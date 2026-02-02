@@ -1361,6 +1361,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
   private record CacheState(int cache, boolean valid, boolean likelyMatch) {}
 
+  @SuppressWarnings("java:S6206")
   private static final class KeyContext {
     private final byte[] digestedKey;
     private final byte[] routingKey;
@@ -1413,6 +1414,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class EntryData {
     private final byte[] header;
     private final byte[] data;

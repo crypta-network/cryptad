@@ -13,6 +13,7 @@ import org.jetbrains.annotations.NotNull;
  * <p>This value object complements {@link RequestStatusSnapshot} by packaging fields that are
  * unique to {@link DownloadRequestStatus}.
  */
+@SuppressWarnings("java:S6206")
 public final class DownloadRequestStatusDetails {
   private final DownloadOutcomeInfo outcome;
   private final File destFilename;

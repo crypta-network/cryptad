@@ -32,6 +32,7 @@ import org.jetbrains.annotations.NotNull;
  * @see SplitfilePayload
  * @see MetadataTopLayerInfo
  */
+@SuppressWarnings("java:S6206")
 public final class SplitfileParams {
   private final SplitfileAlgorithm splitfileAlgorithm;
   private final ClientCHK[] dataURIs;

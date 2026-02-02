@@ -56,6 +56,7 @@ final class SplitFileFetcherStoragePersistence {
    * should either close it directly or pass the record to {@link #writePersistentMetadata}, which
    * closes it after copying.
    */
+  @SuppressWarnings("java:S6206")
   static final class PreparedMetadata {
     private final Bucket metadataTemp;
     private final byte[] encodedURI;

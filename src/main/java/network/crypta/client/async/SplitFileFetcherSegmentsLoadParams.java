@@ -27,6 +27,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * @see SplitFileFetcherSegmentsBuilder#initSegmentsFromStream(SplitFileFetcherSegmentsLoadParams)
  */
+@SuppressWarnings("java:S6206")
 final class SplitFileFetcherSegmentsLoadParams {
   private final SplitFileFetcherStorage parent;
   private final int totalDataBlocks;

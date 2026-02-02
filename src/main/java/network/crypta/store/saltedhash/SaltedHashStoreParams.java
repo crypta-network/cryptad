@@ -33,6 +33,7 @@ import org.jetbrains.annotations.NotNull;
 ///
 ///
 /// @param <T> concrete [StorableBlock] type produced by the callback.
+@SuppressWarnings("java:S6206")
 public final class SaltedHashStoreParams<T extends StorableBlock> {
   private final File baseDir;
   private final String name;

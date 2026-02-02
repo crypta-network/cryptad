@@ -406,6 +406,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     throw new MalformedURLException("Invalid key type: " + kt);
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class MetaParse {
     private final String docName;
     private final String[] meta;
@@ -535,6 +536,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return meta;
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class KeyParts {
     private final byte[] routingKey;
     private final byte[] cryptoKey;

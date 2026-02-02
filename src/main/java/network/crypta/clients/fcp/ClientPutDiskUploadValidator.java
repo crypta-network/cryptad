@@ -207,6 +207,7 @@ final class ClientPutDiskUploadValidator {
  * null} components. Downstream checks can call {@link #hasSalt()} to determine whether verification
  * should occur.
  */
+@SuppressWarnings("java:S6206")
 final class DiskUploadContext {
   private final String salt;
   private final byte[] saltedHash;

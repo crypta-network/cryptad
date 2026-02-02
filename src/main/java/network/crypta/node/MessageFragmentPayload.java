@@ -24,6 +24,7 @@ import org.jetbrains.annotations.NotNull;
  * @see MessageFragment
  * @see MessageWrapper
  */
+@SuppressWarnings("java:S6206")
 final class MessageFragmentPayload {
   private final byte[] fragmentData;
   private final MessageWrapper wrapper;

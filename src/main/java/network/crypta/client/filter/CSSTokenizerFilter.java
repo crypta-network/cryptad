@@ -6526,6 +6526,7 @@ class CSSTokenizerFilter {
     }
 
     /** Parameters for verifying parse expressions that use the {@code []} repetition operator. */
+    @SuppressWarnings("java:S6206")
     private static final class VariableOccurrenceParams {
       private final int verifierIndex;
       private final ParsedWord[] valueParts;

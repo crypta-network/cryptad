@@ -26,6 +26,7 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Metadata size threshold for compact metadata responses.
  * </ul>
  */
+@SuppressWarnings("java:S6206")
 public final class ClientPutterOptions {
   private final String targetFilename;
   private final boolean binaryBlob;

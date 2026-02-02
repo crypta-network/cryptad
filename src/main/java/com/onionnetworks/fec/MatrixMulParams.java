@@ -3,6 +3,7 @@ package com.onionnetworks.fec;
 import org.jetbrains.annotations.NotNull;
 
 /** Parameter carrier for finite-field matrix multiplication slices. */
+@SuppressWarnings("java:S6206")
 public final class MatrixMulParams {
   private final char[] a;
   private final int aStart;

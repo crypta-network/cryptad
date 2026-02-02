@@ -1675,6 +1675,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class MasterKeyState {
     private final byte[] clientCacheKey;
     private final MasterSecret persistentSecret;

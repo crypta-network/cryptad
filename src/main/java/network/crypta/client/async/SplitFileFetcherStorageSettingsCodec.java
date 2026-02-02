@@ -385,6 +385,7 @@ public final class SplitFileFetcherStorageSettingsCodec {
  * <p>The {@code settingsStream} remains open and positioned at the first byte after the parsed
  * fields so callers can continue reading segment metadata without reparsing the buffer.
  */
+@SuppressWarnings("java:S6206")
 final class ParsedBasicSettings {
   private final SplitfileAlgorithm splitfileType;
   private final byte splitfileSingleCryptoAlgorithm;

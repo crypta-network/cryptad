@@ -475,14 +475,9 @@ public class ClientCHKBlock implements ClientKeyBlock {
     }
     ClientCHKEncodeParams encodeParams =
         new ClientCHKEncodeParams(
-            data,
-            CHKBlock.DATA_LENGTH,
-            md256,
-            cryptoKey,
-            false,
-            (short) -1,
-            cryptoAlgorithm,
-            KeyBlock.HASH_SHA256);
+            new ClientCHKEncodePayload(data, CHKBlock.DATA_LENGTH, md256, cryptoKey),
+            new ClientCHKEncodeAlgorithms(
+                false, (short) -1, cryptoAlgorithm, KeyBlock.HASH_SHA256));
     if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256) return innerEncode(encodeParams);
     else if (cryptoAlgorithm != Key.ALGO_AES_CTR_256_SHA256)
       throw new IllegalArgumentException("Unknown crypto algorithm: " + cryptoAlgorithm);
@@ -559,14 +554,9 @@ public class ClientCHKBlock implements ClientKeyBlock {
     }
     ClientCHKEncodeParams encodeParams =
         new ClientCHKEncodeParams(
-            data,
-            dataLength,
-            md256,
-            encKey,
-            asMetadata,
-            compressionAlgorithm,
-            cryptoAlgorithm,
-            KeyBlock.HASH_SHA256);
+            new ClientCHKEncodePayload(data, dataLength, md256, encKey),
+            new ClientCHKEncodeAlgorithms(
+                asMetadata, compressionAlgorithm, cryptoAlgorithm, KeyBlock.HASH_SHA256));
     if (cryptoAlgorithm == Key.ALGO_AES_PCFB_256_SHA256) return innerEncode(encodeParams);
     if (Rijndael.getAesCtrProvider() == null || forceNoJCA) return encodeNewNoJCA(encodeParams);
     return encodeNew(encodeParams);

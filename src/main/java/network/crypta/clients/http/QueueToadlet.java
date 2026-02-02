@@ -941,6 +941,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
 
     private record BulkDownloadResult(List<String> success, List<String> failure) {}
 
+    @SuppressWarnings("java:S6206")
     private static final class InsertUploadContext {
       private final FreenetURI insertURI;
       private final HTTPUploadedFile file;
@@ -1038,6 +1039,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
+    @SuppressWarnings("java:S6206")
     private static final class InsertOptions {
       private final boolean compress;
       private final CompatibilityMode cmode;
@@ -1161,6 +1163,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
       }
     }
 
+    @SuppressWarnings("java:S6206")
     private static final class LocalDirInsertParams {
       private final File file;
       private final String identifier;
@@ -2545,6 +2548,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     };
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class RequestTableContext {
     private final PageMaker pageMaker;
     private final ToadletContext ctx;
@@ -2612,6 +2616,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class FailureColumns {
     private final QueueColumn[] advancedModeColumns;
     private final QueueColumn[] simpleModeColumns;
@@ -2656,6 +2661,7 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
     }
   }
 
+  @SuppressWarnings("java:S6206")
   private static final class RowRenderContext {
     private final ToadletContext ctx;
     private final String[] priorityClasses;

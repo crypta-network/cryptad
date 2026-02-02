@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
  * fetchers and subscriptions. It is shared across callbacks to avoid long parameter lists and to
  * keep related data coherent during async handoff.
  */
+@SuppressWarnings("java:S6206")
 public final class USKFoundEdition {
   private final long edition;
   private final USK key;
