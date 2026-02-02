@@ -178,21 +178,15 @@ class SplitFileFetcherSegmentsBuilderTest {
     DataInputStream dis = new DataInputStream(new ByteArrayInputStream(bos.toByteArray()));
     SplitFileFetcherSegmentStorage[] segments = new SplitFileFetcherSegmentStorage[1];
     SplitFileFetcherStorage parent = newMinimalParent(segments, 0L, 0L);
+    ParsedBasicSettings settings = newParsedSettings(1, 1, dis, segments.length);
 
     SplitFileFetcherSegmentsLoadParams params =
         new SplitFileFetcherSegmentsLoadParams(
             parent,
-            2,
-            1,
-            1,
-            dis,
+            settings,
             false,
             Mockito.mock(KeysFetchingLocally.class),
             segments,
-            4,
-            false,
-            0L,
-            0L,
             3L * CHKBlock.DATA_LENGTH + 1);
 
     SplitFileFetcherSegmentsInit init =
@@ -213,22 +207,11 @@ class SplitFileFetcherSegmentsBuilderTest {
 
     SplitFileFetcherSegmentStorage[] segments = new SplitFileFetcherSegmentStorage[1];
     SplitFileFetcherStorage parent = newMinimalParent(segments, 0L, 0L);
+    ParsedBasicSettings settings = newParsedSettings(0, 0, dis, segments.length);
 
     SplitFileFetcherSegmentsLoadParams params =
         new SplitFileFetcherSegmentsLoadParams(
-            parent,
-            2,
-            0,
-            0,
-            dis,
-            false,
-            null,
-            segments,
-            4,
-            false,
-            0L,
-            0L,
-            CHKBlock.DATA_LENGTH * 2L);
+            parent, settings, false, null, segments, CHKBlock.DATA_LENGTH * 2L);
 
     StorageFormatException ex =
         assertThrows(
@@ -243,10 +226,11 @@ class SplitFileFetcherSegmentsBuilderTest {
 
     SplitFileFetcherSegmentStorage[] segments = new SplitFileFetcherSegmentStorage[1];
     SplitFileFetcherStorage parent = newMinimalParent(segments, 0L, 0L);
+    ParsedBasicSettings settings = newParsedSettings(0, 1, dis, segments.length);
 
     SplitFileFetcherSegmentsLoadParams params =
         new SplitFileFetcherSegmentsLoadParams(
-            parent, 2, 0, 1, dis, false, null, segments, 4, false, 0L, 0L, CHKBlock.DATA_LENGTH);
+            parent, settings, false, null, segments, CHKBlock.DATA_LENGTH);
 
     StorageFormatException ex =
         assertThrows(
@@ -287,6 +271,38 @@ class SplitFileFetcherSegmentsBuilderTest {
     } catch (Exception e) {
       throw new AssertionError("Failed to set final field '" + fieldName + "'", e);
     }
+  }
+
+  private static ParsedBasicSettings newParsedSettings(
+      int totalCheckBlocks,
+      int totalCrossCheckBlocks,
+      DataInputStream settingsStream,
+      int segmentCount) {
+    int totalDataBlocks = 2;
+    long offsetKeyList = 0L;
+    long offsetSegmentStatus = 0L;
+    return new ParsedBasicSettings(
+        null,
+        (byte) 0,
+        null,
+        0L,
+        0L,
+        null,
+        null,
+        offsetKeyList,
+        offsetSegmentStatus,
+        0L,
+        0L,
+        0L,
+        0L,
+        0L,
+        0L,
+        null,
+        segmentCount,
+        totalDataBlocks,
+        totalCheckBlocks,
+        totalCrossCheckBlocks,
+        settingsStream);
   }
 
   private static SplitFileSegmentKeys newSegmentKeys(int dataBlocks, int checkBlocks)
