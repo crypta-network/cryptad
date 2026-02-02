@@ -281,28 +281,15 @@ class SplitFileFetcherSegmentsBuilderTest {
     int totalDataBlocks = 2;
     long offsetKeyList = 0L;
     long offsetSegmentStatus = 0L;
-    return new ParsedBasicSettings(
-        null,
-        (byte) 0,
-        null,
-        0L,
-        0L,
-        null,
-        null,
-        offsetKeyList,
-        offsetSegmentStatus,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        0L,
-        null,
-        segmentCount,
-        totalDataBlocks,
-        totalCheckBlocks,
-        totalCrossCheckBlocks,
-        settingsStream);
+    SplitFileFetcherBasicSettingsHeader header =
+        new SplitFileFetcherBasicSettingsHeader(null, (byte) 0, null, 0L, 0L, null, null);
+    SplitFileFetcherStorageOffsets offsets =
+        new SplitFileFetcherStorageOffsets(
+            offsetKeyList, offsetSegmentStatus, 0L, 0L, 0L, 0L, 0L, 0L);
+    SplitFileFetcherCompatCounts compatCounts =
+        new SplitFileFetcherCompatCounts(
+            null, segmentCount, totalDataBlocks, totalCheckBlocks, totalCrossCheckBlocks);
+    return new ParsedBasicSettings(header, offsets, compatCounts, settingsStream);
   }
 
   private static SplitFileSegmentKeys newSegmentKeys(int dataBlocks, int checkBlocks)
