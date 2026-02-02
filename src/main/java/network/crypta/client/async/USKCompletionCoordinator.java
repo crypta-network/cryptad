@@ -178,7 +178,9 @@ final class USKCompletionCoordinator {
         else
           c.onFoundEdition(
               new USKFoundEdition(
-                  ed, origUSK.copy(ed), context, metadata, codec, data, false, false));
+                  new USKFoundEditionPayload(ed, origUSK.copy(ed), metadata, codec, data),
+                  context,
+                  new USKFoundEditionProgress(false, false)));
       } catch (Exception e) {
         LOG.error(
             "An exception occurred while dealing with a callback:{}\n{}", c, e.getMessage(), e);

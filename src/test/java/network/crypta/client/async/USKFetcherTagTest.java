@@ -289,7 +289,7 @@ class USKFetcherTagTest {
 
     // Assert
     USK used = uskCap.getValue();
-    // For persistent=true, USK is copied even if edition is unchanged
+    // For persistent=true, USK is copied even if the edition is unchanged
     assertNotSame(used, usk, "Persistent start should pass a copy of the USK");
     assertEquals(used, usk, "Copied USK should be equal to the original");
     ClientRequester wrapper = reqCap.getValue();
@@ -397,7 +397,7 @@ class USKFetcherTagTest {
     when(cb.getPollingPriorityProgress()).thenReturn((short) 9);
     USKFetcherTag tag = newTag(cb, true, false, false, false, 2);
 
-    // jobRunner.queue should immediately run the job with provided context
+    // jobRunner.queue should immediately run the job with the provided context
     doAnswer(
             inv -> {
               PersistentJob job = inv.getArgument(0);
@@ -450,7 +450,9 @@ class USKFetcherTagTest {
     // Act
     tag.onFoundEdition(
         new USKFoundEdition(
-            edition, usk.copy(edition), mockContext, false, codec, data, true, true));
+            new USKFoundEditionPayload(edition, usk.copy(edition), false, codec, data),
+            mockContext,
+            new USKFoundEditionProgress(true, true)));
 
     // Assert
     verify(cb, times(1)).setTag(tag, mockContext);
@@ -469,7 +471,9 @@ class USKFetcherTagTest {
     // Calling again should be ignored because finished
     tag.onFoundEdition(
         new USKFoundEdition(
-            edition + 1, usk.copy(edition + 1), mockContext, false, codec, data, true, true));
+            new USKFoundEditionPayload(edition + 1, usk.copy(edition + 1), false, codec, data),
+            mockContext,
+            new USKFoundEditionProgress(true, true)));
     verify(cb, times(1)).onFoundEdition(any(USKFoundEdition.class));
   }
 
@@ -540,7 +544,7 @@ class USKFetcherTagTest {
     tag.onCancelled(mockContext); // mark finished
 
     tag.onResume(mockContext);
-    // No interactions expected since finished prevents restart
+    // No interactions expected since finished prevent restart
     verify(uskManager, times(0))
         .getFetcher(
             any(USK.class),

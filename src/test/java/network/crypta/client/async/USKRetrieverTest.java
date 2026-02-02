@@ -335,7 +335,7 @@ class USKRetrieverTest {
   @Test
   void onSuccess_happyPath_writesToBucket_updatesKnownGood_andNotifiesCallback() throws Exception {
     // Arrange minimal context whose temp bucket factory produces ArrayBucket instances
-    when(tbf.makeBucket(anyLong())).thenAnswer(inv -> new ArrayBucket());
+    when(tbf.makeBucket(anyLong())).thenAnswer(_ -> new ArrayBucket());
     ClientContext ctx =
         minimalContext(
             jobRunner,
@@ -372,7 +372,7 @@ class USKRetrieverTest {
     // Assert: uskManager updated
     verify(uskManager, times(1)).updateKnownGood(usk, 77L, ctx);
 
-    // Assert: callback notified with correct result
+    // Assert: callback notified with the correct result
     ArgumentCaptor<FetchResult> cap = ArgumentCaptor.forClass(FetchResult.class);
     verify(callback, times(1)).onFound(eq(usk), eq(77L), cap.capture());
     FetchResult res = cap.getValue();
@@ -389,7 +389,7 @@ class USKRetrieverTest {
 
   @Test
   void onSuccess_whenStreamGeneratorThrows_callsOnFailureWithInternalError() throws Exception {
-    when(tbf.makeBucket(anyLong())).thenAnswer(inv -> new ArrayBucket());
+    when(tbf.makeBucket(anyLong())).thenAnswer(_ -> new ArrayBucket());
     ClientContext ctx =
         minimalContext(
             jobRunner,
@@ -407,7 +407,7 @@ class USKRetrieverTest {
 
     StreamGenerator generator = Mockito.mock(StreamGenerator.class);
     doAnswer(
-            inv -> {
+            _ -> {
               throw new IOException("boom");
             })
         .when(generator)
@@ -494,13 +494,19 @@ class USKRetrieverTest {
     assertDoesNotThrow(
         () ->
             retriever.onFoundEdition(
-                new USKFoundEdition(-1L, usk, ctx, false, (short) -1, null, false, false)));
+                new USKFoundEdition(
+                    new USKFoundEditionPayload(-1L, usk, false, (short) -1, null),
+                    ctx,
+                    new USKFoundEditionProgress(false, false))));
 
     // Lower than requested (origUSK.suggestedEdition == 100): early return
     assertDoesNotThrow(
         () ->
             retriever.onFoundEdition(
-                new USKFoundEdition(50L, usk, ctx, false, (short) -1, null, false, false)));
+                new USKFoundEdition(
+                    new USKFoundEditionPayload(50L, usk, false, (short) -1, null),
+                    ctx,
+                    new USKFoundEditionProgress(false, false))));
   }
 
   @Test

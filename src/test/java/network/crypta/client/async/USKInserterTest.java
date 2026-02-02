@@ -355,10 +355,13 @@ class USKInserterTest {
         newInserter(
             data, (short) 3, insertUri, ic, new InserterCfg(false, false, true, false, false));
 
-    // Act: Found matching edition with identical data
+    // Act: Found a matching edition with identical data
     long foundEdition = 7L;
     inserter.onFoundEdition(
-        new USKFoundEdition(foundEdition, publicUSK, context, false, (short) 3, bytes, true, true));
+        new USKFoundEdition(
+            new USKFoundEditionPayload(foundEdition, publicUSK, false, (short) 3, bytes),
+            context,
+            new USKFoundEditionProgress(true, true)));
 
     // Assert: parent and callback methods invoked; success path without date hints
     verify(parent, times(1)).completedBlock(true, context);
@@ -571,7 +574,7 @@ class USKInserterTest {
         .thenReturn(fetcherTag);
     inserter.schedule(context);
 
-    // Act: first call should notify; second call should be ignored
+    // Act: the first call should notify; the second call should be ignored
     inserter.onResume(context);
     inserter.onResume(context);
 

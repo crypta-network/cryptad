@@ -2241,7 +2241,9 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
         try {
           onFoundEdition(
               new USKFoundEdition(
-                  usk.suggestedEdition, usk, context, false, (short) -1, null, false, false));
+                  new USKFoundEditionPayload(usk.suggestedEdition, usk, false, (short) -1, null),
+                  context,
+                  new USKFoundEditionProgress(false, false)));
           return;
         } catch (Exception t) {
           e = new FetchException(FetchExceptionMode.INTERNAL_ERROR, t);
