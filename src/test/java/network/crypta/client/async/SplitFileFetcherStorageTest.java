@@ -1,7 +1,13 @@
 package network.crypta.client.async;
 
 import static network.crypta.testsupport.TestRandomData.fillBucketWithRandom;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.DataInputStream;
 import java.io.IOException;
@@ -26,6 +32,8 @@ import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.OnionFECCodec;
 import network.crypta.client.SplitfileParams;
 import network.crypta.client.SplitfilePayload;
+import network.crypta.client.TopLayerBlockInfo;
+import network.crypta.client.TopLayerHashInfo;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.crypt.CRCChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
@@ -142,7 +150,7 @@ class SplitFileFetcherStorageTest {
     // Arrange
     // 2 data blocks.
     // We don't test this case because it just copies the data block to the check blocks.
-    // Which breaks some of the scripts here.
+    // Which breaks some scripts here.
     // Act + Assert
     testSingleSegment(2, 1, BLOCK_SIZE * 2L);
     testSingleSegment(2, 1, BLOCK_SIZE + 1L);
@@ -170,7 +178,7 @@ class SplitFileFetcherStorageTest {
     // to some degree.
 
     // Act + Assert
-    // Simplest case: Same number of blocks in each segment.
+    // the simplest case: Same number of blocks in each segment.
     // 2 blocks in each of 2 segments.
     testMultiSegment(32768L * 4, new int[] {2, 2}, new int[] {3, 3}, 2, 3, 0);
     testMultiSegment(32768L * 4 - 1, new int[] {2, 2}, new int[] {3, 3}, 2, 3, 0);
@@ -183,10 +191,10 @@ class SplitFileFetcherStorageTest {
 
     // Sharp truncation. This is how we used to handle non-divisible numbers...
     testMultiSegment(32768L * 9 - 1, new int[] {7, 2}, new int[] {7, 2}, 7, 7, 0);
-    // Still COMPAT_1416 because has crypto key etc.
+    // Still COMPAT_1416 because has a crypto key etc.
 
     // Note: legacy splitfiles are not covered here (tracked separately).
-    // Note: very old splitfiles where last data block is not padded are not covered.
+    // Note: very old splitfiles where the last data block is not padded are not covered.
     // Note: non-redundant legacy splitfile support is not covered.
   }
 
@@ -714,7 +722,7 @@ class SplitFileFetcherStorageTest {
     SplitFileFetcherStorage storage = test.createStorage(cb);
 
     try {
-      int blockIndex = 1; // within first (and only) segment
+      int blockIndex = 1; // within the first (and only) segment
       int segmentNumber = 0;
       SplitFileFetcherStorage.SplitFileFetcherStorageKey skey =
           new SplitFileFetcherStorage.SplitFileFetcherStorageKey(
@@ -723,7 +731,7 @@ class SplitFileFetcherStorageTest {
       // Act
       var clientKey = storage.getKey(skey);
 
-      // Assert: node key should match metadata
+      // Assert: the node key should match metadata
       assertNotNull(clientKey);
       assertEquals(test.getCHK(blockIndex), clientKey.getNodeKey(false));
     } finally {
@@ -733,7 +741,7 @@ class SplitFileFetcherStorageTest {
 
   @Test
   void setHasCheckedStore_whenCalled_marksFlagTrue() throws Exception {
-    // Arrange (persistent to exercise write path, though not asserted here)
+    // Arrange (persistent to exercise the writing path, though not asserted here)
     TestSplitfile test = TestSplitfile.constructSingleSegment(BLOCK_SIZE * 2L, 1, true);
     StorageCallback cb = test.createStorageCallback();
     SplitFileFetcherStorage storage = test.createStorage(cb);
@@ -1254,7 +1262,7 @@ class SplitFileFetcherStorageTest {
     public int segmentFor(int block) {
       int total = 0;
       // Must be consistent with the getCHK() counting etc.
-      // Count data blocks first then check blocks.
+      // Count data blocks first, then check blocks.
       for (int i = 0; i < segmentDataBlockCount.length; i++) {
         total += segmentDataBlockCount[i];
         if (block < total) {
@@ -1308,16 +1316,11 @@ class SplitFileFetcherStorageTest {
               cryptoKey,
               true);
       SplitfilePayload payload = new SplitfilePayload(cm, size, null, null, size, false);
-      MetadataTopLayerInfo topLayer =
-          new MetadataTopLayerInfo(
-              size,
-              size,
-              dataBlocks,
-              dataBlocks + checkBlocks,
-              false,
-              COMPATIBILITY_MODE,
-              null,
-              null);
+      TopLayerBlockInfo blockInfo =
+          new TopLayerBlockInfo(
+              size, size, dataBlocks, dataBlocks + checkBlocks, false, COMPATIBILITY_MODE);
+      TopLayerHashInfo hashInfo = new TopLayerHashInfo(null, null);
+      MetadataTopLayerInfo topLayer = new MetadataTopLayerInfo(blockInfo, hashInfo);
       Metadata m = new Metadata(params, payload, topLayer);
       // Make sure the metadata is reusable.
       // Note: ensures metadata is reusable; the above constructor doesn't set segments.
@@ -1346,7 +1349,7 @@ class SplitFileFetcherStorageTest {
     /**
      * Create a multi-segment test splitfile. The main complication with multi-segment is that we
      * can't choose the number of blocks in each segment arbitrarily; that depends on the metadata
-     * format; the caller must ensure that the number are consistent.
+     * format; the caller must ensure that the number is consistent.
      *
      * @param size Total size of the test data in bytes
      * @param segmentDataBlockCount The actual number of data blocks in each segment. Must be
@@ -1364,7 +1367,7 @@ class SplitFileFetcherStorageTest {
      * @throws IOException if random test data or buckets cannot be created
      * @throws CHKEncodeException if block keys cannot be encoded for the generated data
      * @throws MetadataUnresolvedException if test metadata cannot be fully resolved/constructed
-     * @throws MetadataParseException if constructed metadata cannot be serialized or parsed back
+     * @throws MetadataParseException if constructed, metadata cannot be serialized or parsed back
      */
     static TestSplitfile constructMultipleSegments(
         long size,
@@ -1423,16 +1426,16 @@ class SplitFileFetcherStorageTest {
               cryptoKey,
               true /* uses single-key splitfiles for tests */);
       SplitfilePayload payload = new SplitfilePayload(cm, size, null, null, size, false);
-      MetadataTopLayerInfo topLayer =
-          new MetadataTopLayerInfo(
+      TopLayerBlockInfo blockInfo =
+          new TopLayerBlockInfo(
               size,
               size,
               dataBlocks,
               dataBlocks + checkBlocks,
               false,
-              InsertContext.CompatibilityMode.COMPAT_1416,
-              null,
-              null);
+              InsertContext.CompatibilityMode.COMPAT_1416);
+      TopLayerHashInfo hashInfo = new TopLayerHashInfo(null, null);
+      MetadataTopLayerInfo topLayer = new MetadataTopLayerInfo(blockInfo, hashInfo);
       Metadata m = new Metadata(params, payload, topLayer);
       // Make sure the metadata is reusable.
       // Note: ensures metadata is reusable; the above constructor doesn't set segments.

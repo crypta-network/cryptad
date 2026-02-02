@@ -19,6 +19,8 @@ import network.crypta.client.Metadata.DocumentType;
 import network.crypta.client.MetadataRedirectTarget;
 import network.crypta.client.MetadataTopLayerInfo;
 import network.crypta.client.MetadataUnresolvedException;
+import network.crypta.client.TopLayerBlockInfo;
+import network.crypta.client.TopLayerHashInfo;
 import network.crypta.client.events.ExpectedHashesEvent;
 import network.crypta.client.events.FinishedCompressionEvent;
 import network.crypta.client.events.StartedCompressionEvent;
@@ -48,7 +50,7 @@ import org.slf4j.LoggerFactory;
  * selecting and applying a compression codec when beneficial, and then delegating to either a
  * {@code SingleBlockInserter} (for small payloads) or a {@code SplitFileInserter} (for larger
  * payloads). Compression may be performed off the calling thread; after compression, this instance
- * coordinates subsequent steps and emits progress via a {@link PutCompletionCallback}.
+ * coordinates further steps and emits progress via a {@link PutCompletionCallback}.
  *
  * <p>Typical usage is: construct an instance with the desired {@link InsertContext} and {@link
  * InsertBlock}, call {@link #start(ClientContext)} to begin preprocessing, and allow it to drive
@@ -85,7 +87,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
   final ARCHIVE_TYPE archiveType;
 
   /**
-   * If true, we are not the top level request, and should not update our parent to point to us as
+   * If true, we are not the top level request and should not update our parent to point to us as
    * current put-stage.
    */
   private final boolean reportMetadataOnly;
@@ -121,11 +123,11 @@ class SingleFileInserter implements ClientPutState, Serializable {
 
   /**
    * When positive, means we will return metadata rather than a URI, once the metadata is under this
-   * length. If it is too short it is still possible to return a URI, but we won't return both.
+   * length. If it is too short, it is still possible to return a URI, but we won't return both.
    */
   private final long metadataThreshold;
 
-  // A persistent hashCode is helpful in debugging, and also means we can put
+  // A persistent hashCode is helpful in debugging and also means we can put
   // these objects into sets etc. when we need to.
 
   private final int hashCode;
@@ -238,7 +240,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     boolean isCHK = key.isCHK;
     boolean isUSK = key.isUSK;
 
-    // Compressed data ; now insert it
+    // Compressed data; now insert it
     // We do NOT need to switch threads here: the actual compression is done by InsertCompressor on
     // the RealCompressor thread,
     // which then switches either to the database thread or to a new executable to run this method.
@@ -272,6 +274,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     handleSplitfile(data, origSize, bestCodec, hashThisLayerOnly, hashes, shouldFreeData, context);
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static class HashProcess {
     final HashResult[] hashes;
     final byte[] hashThisLayerOnly;
@@ -322,7 +325,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
    * provided {@link CompressionOutput} is intentionally not closed in this method. Ownership of the
    * bucket is transferred to downstream inserters, which will free/close it according to the {@code
    * shouldFreeData} flag and insertion flow. Closing it here would prematurely release the
-   * underlying storage and break subsequent processing.
+   * underlying storage and break later processing.
    */
   @SuppressWarnings({"resource"})
   private DataPrep prepareData(CompressionOutput output, long origSize) {
@@ -594,7 +597,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       ClientContext context)
       throws InsertException {
 
-    // Otherwise the file is too big to fit into one block
+    // Otherwise the file is too big to fit into one block.
     // We therefore must make a splitfile
     // Job of SplitHandler: when the splitinserter has the metadata,
     // insert it. Then when the splitinserter has finished, and the
@@ -765,7 +768,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       // If the user requests it, calculate the others for small files.
       // The thresholds could be made configurable in the future.
       if (size >= 1024 * 1024 && !metadata) {
-        // SHA1 is common and MD5 is cheap.
+        // SHA1 is common and MD5 is inexpensive.
         wantHashes |= HashType.SHA1.bitmask;
         wantHashes |= HashType.MD5.bitmask;
       }
@@ -838,8 +841,10 @@ class SingleFileInserter implements ClientPutState, Serializable {
       data = origDataLength;
       compressed = origCompressedDataLength;
     }
-    return new MetadataTopLayerInfo(
-        data, compressed, req, total, topDontCompress, topCompatibilityMode, hashes, null);
+    TopLayerBlockInfo blockInfo =
+        new TopLayerBlockInfo(data, compressed, req, total, topDontCompress, topCompatibilityMode);
+    TopLayerHashInfo hashInfo = new TopLayerHashInfo(hashes, null);
+    return new MetadataTopLayerInfo(blockInfo, hashInfo);
   }
 
   /**
@@ -931,7 +936,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     final long origCompressedDataLength;
     private transient boolean resumed;
 
-    // A persistent hashCode is helpful in debugging, and also means we can put
+    // A persistent hashCode is helpful in debugging and also means we can put
     // these objects into sets etc. when we need to.
 
     private final int hashCode;
@@ -974,7 +979,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     @Serial
     private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
       in.defaultReadObject();
-      // Only fix when callback is absent or points to the parent putter (unsafe fallback).
+      // Only fix when the callback is absent or points to the parent putter (unsafe fallback).
       if (metadataPutter instanceof SingleFileInserter childSfi
           && (childSfi.cb == null || childSfi.cb == parent)) {
         childSfi.cb = this;
@@ -1098,7 +1103,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
     /**
      * Handles metadata production and decides whether to inline or insert separately.
      *
-     * <p>Small metadata (under threshold) is returned directly to the caller. Otherwise, a new
+     * <p>Small metadata (under the threshold) is returned directly to the caller. Otherwise, a new
      * metadata inserter is created and started when policy permits. Duplicate notifications from
      * the splitfile are ignored once metadata handling has begun.
      *
@@ -1177,7 +1182,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       return false;
     }
 
-    @SuppressWarnings("java:S6206")
+    @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
     private static final class RedirectResult {
       private final Metadata meta;
       private final byte[] bytes;
@@ -1421,7 +1426,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       if (oldMetadataPutter != null) oldMetadataPutter.cancel(context);
 
       // In other cases (fail() and onSuccess()), we only free when we set finished.
-      // Here we free defensively to avoid leaking, even if callbacks also free.
+      // Here we free defensively to avoid leaking, even if callbacks are also free.
       if (freeData) {
         block.free();
       } else {
@@ -1702,7 +1707,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
               @Override
               public void onFailure(
                   InsertException e, ClientPutState state, ClientContext context) {
-                // Intentionally no-op: see rationale above. Failures are observed upstream when
+                // Intentionally no-op: see the rationale above. Failures are observed upstream when
                 // a real callback exists; this stub avoids crashing on legacy resumes.
               }
 
