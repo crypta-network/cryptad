@@ -56,7 +56,10 @@ class CipherManagerTest {
     Random weak = new Random(1234);
     // Minimal store, not started; used only to instantiate Entry via reflection.
     return SaltedHashFreenetStore.construct(
-        tmp, name, cb, weak, 2, false, SemiOrderedShutdownHook.get(), false, false, null);
+        SaltedHashStoreParams.of(
+            new SaltedHashStoreLocation(tmp, name),
+            new SaltedHashStoreDependencies<>(cb, weak, SemiOrderedShutdownHook.get(), null),
+            new SaltedHashStoreSizing(2, false, false, false)));
   }
 
   private SaltedHashFreenetStore<StubBlock>.Entry newEntry(

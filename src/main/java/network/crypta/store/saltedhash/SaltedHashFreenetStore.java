@@ -226,16 +226,9 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       throws IOException {
     return construct(
         SaltedHashStoreParams.of(
-            baseDir,
-            name,
-            callback,
-            random,
-            maxKeys,
-            useSlotFilter,
-            shutdownHook,
-            preallocate,
-            resizeOnStart,
-            masterKey));
+            new SaltedHashStoreLocation(baseDir, name),
+            new SaltedHashStoreDependencies<>(callback, random, shutdownHook, masterKey),
+            new SaltedHashStoreSizing(maxKeys, useSlotFilter, preallocate, resizeOnStart)));
   }
 
   private SaltedHashFreenetStore(SaltedHashStoreParams<T> params) throws IOException {

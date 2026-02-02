@@ -63,6 +63,10 @@ import network.crypta.store.caching.CachingFreenetStore;
 import network.crypta.store.caching.CachingFreenetStoreTracker;
 import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
 import network.crypta.store.saltedhash.SaltedHashFreenetStore;
+import network.crypta.store.saltedhash.SaltedHashStoreDependencies;
+import network.crypta.store.saltedhash.SaltedHashStoreLocation;
+import network.crypta.store.saltedhash.SaltedHashStoreParams;
+import network.crypta.store.saltedhash.SaltedHashStoreSizing;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.io.DatastoreUtil;
 import org.slf4j.Logger;
@@ -2006,18 +2010,17 @@ public final class NodeStorageSubsystem {
       throws IOException {
     LOG.info("Initializing {} Data{} ({} keys)", type, store, maxStoreKeys);
 
-    SaltedHashFreenetStore<T> fs =
-        SaltedHashFreenetStore.construct(
-            getStoreDir(),
-            type + "-" + store,
-            cb,
-            node.bootstrap().random(),
-            maxKeys,
-            storeUseSlotFilters,
-            SemiOrderedShutdownHook.get(),
-            storePreallocate,
-            storeSaltHashResizeOnStart && !lateStart,
-            clientCacheMasterKey);
+    SaltedHashStoreParams<T> params =
+        SaltedHashStoreParams.of(
+            new SaltedHashStoreLocation(getStoreDir(), type + "-" + store),
+            new SaltedHashStoreDependencies<>(
+                cb, node.bootstrap().random(), SemiOrderedShutdownHook.get(), clientCacheMasterKey),
+            new SaltedHashStoreSizing(
+                maxKeys,
+                storeUseSlotFilters,
+                storePreallocate,
+                storeSaltHashResizeOnStart && !lateStart));
+    SaltedHashFreenetStore<T> fs = SaltedHashFreenetStore.construct(params);
     if (cachingFreenetStoreMaxSize > 0) {
       new CachingFreenetStore<>(cb, fs, cachingFreenetStoreTracker);
       // CachingFreenetStore constructor calls cb.setStore(this)

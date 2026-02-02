@@ -167,16 +167,11 @@ class SaltedHashSlotFilterTest {
     int falsePositives;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, true, true, true)))) {
       saltStore.start(null, true);
 
       falsePositives = populateStore(store, saltStore, TEST_COUNT);
@@ -187,16 +182,11 @@ class SaltedHashSlotFilterTest {
     int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, true, true, true)))) {
       saltStore.start(null, true);
 
       verifiedKeys = checkStore(store, saltStore, TEST_COUNT, false);
@@ -216,16 +206,11 @@ class SaltedHashSlotFilterTest {
     int falsePositives;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, true, true, true)))) {
       saltStore.start(null, true);
 
       falsePositives = populateStore(store, saltStore, TEST_COUNT);
@@ -236,16 +221,11 @@ class SaltedHashSlotFilterTest {
     int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, true, true, true)))) {
       saltStore.start(null, true);
 
       verifiedKeys = checkStore(store, saltStore, TEST_COUNT, false);
@@ -268,16 +248,11 @@ class SaltedHashSlotFilterTest {
     int falsePositives;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, false, true, true)))) {
       saltStore.start(null, true);
 
       falsePositives = populateStore(store, saltStore, TEST_COUNT);
@@ -288,16 +263,11 @@ class SaltedHashSlotFilterTest {
     int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, true, true, true)))) {
       saltStore.start(null, true);
 
       verifiedKeys = checkStore(store, saltStore, TEST_COUNT, false);
@@ -324,16 +294,11 @@ class SaltedHashSlotFilterTest {
     int falsePositives;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, false, true, true)))) {
       saltStore.start(null, true);
 
       falsePositives = populateStore(store, saltStore, TEST_COUNT);
@@ -345,16 +310,11 @@ class SaltedHashSlotFilterTest {
     int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            STORE_SIZE,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(STORE_SIZE, true, true, true)))) {
       saltStore.start(null, true);
       saltStore.testingWaitForCleanerDone();
 
@@ -429,16 +389,11 @@ class SaltedHashSlotFilterTest {
     int verifiedKeys;
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            storeSize,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(storeSize, true, true, true)))) {
       saltStore.start(null, true);
 
       falsePositives = populateStore(store, saltStore, testCount);
