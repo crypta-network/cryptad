@@ -325,16 +325,13 @@ class MetadataTest {
     SplitfileParams params =
         new SplitfileParams(
             SplitfileAlgorithm.NONREDUNDANT,
-            data,
-            check,
-            1,
-            0,
-            0,
-            0,
-            Key.ALGO_AES_PCFB_256_SHA256,
-            // splitfileCryptoKey must be null for version 0; pass non-null to trigger exception
-            new byte[32],
-            false);
+            new SplitfileBlockKeys(data, check),
+            new SplitfileSegmentLayout(1, 0, 0, 0),
+            new SplitfileCryptoParams(
+                Key.ALGO_AES_PCFB_256_SHA256,
+                // splitfileCryptoKey must be null for version 0; pass non-null to trigger exception
+                new byte[32],
+                false));
     SplitfilePayload payload = new SplitfilePayload(cm, 1L, null, null, 1L, false);
     MetadataTopLayerInfo topLayer =
         new MetadataTopLayerInfo(
@@ -375,15 +372,16 @@ class MetadataTest {
     return new Metadata(
         new SplitfileParams(
             SplitfileAlgorithm.NONREDUNDANT,
-            dataURIs,
-            checkURIs,
-            /* segmentSize= */ 1,
-            /* checkSegmentSize= */ 0,
-            /* deductBlocksFromSegments= */ 0,
-            /* crossSegmentBlocks= */ 0,
-            /* splitfileCryptoAlgorithm= */ Key.ALGO_AES_CTR_256_SHA256,
-            /* splitfileCryptoKey= */ splitKey,
-            /* specifySplitfileKey= */ true),
+            new SplitfileBlockKeys(dataURIs, checkURIs),
+            new SplitfileSegmentLayout(
+                /* segmentSize= */ 1,
+                /* checkSegmentSize= */ 0,
+                /* deductBlocksFromSegments= */ 0,
+                /* crossSegmentBlocks= */ 0),
+            new SplitfileCryptoParams(
+                /* splitfileCryptoAlgorithm= */ Key.ALGO_AES_CTR_256_SHA256,
+                /* splitfileCryptoKey= */ splitKey,
+                /* specifySplitfileKey= */ true)),
         new SplitfilePayload(
             /* clientMetadata= */ null,
             /* dataLength= */ 1024L,

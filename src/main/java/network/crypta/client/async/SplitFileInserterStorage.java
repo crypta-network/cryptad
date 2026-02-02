@@ -24,8 +24,11 @@ import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
 import network.crypta.client.MetadataParseException;
 import network.crypta.client.MetadataTopLayerInfo;
+import network.crypta.client.SplitfileBlockKeys;
+import network.crypta.client.SplitfileCryptoParams;
 import network.crypta.client.SplitfileParams;
 import network.crypta.client.SplitfilePayload;
+import network.crypta.client.SplitfileSegmentLayout;
 import network.crypta.client.TopLayerBlockInfo;
 import network.crypta.client.TopLayerHashInfo;
 import network.crypta.client.async.SplitFileInserterSegmentStorage.BlockInsert;
@@ -1874,15 +1877,11 @@ public class SplitFileInserterStorage {
     SplitfileParams params =
         new SplitfileParams(
             splitfileType,
-            dataKeys,
-            checkKeys,
-            segmentSize,
-            checkSegmentSize,
-            deductBlocksFromSegments,
-            crossCheckBlocks,
-            splitfileCryptoAlgorithm,
-            splitfileCryptoKey,
-            specifySplitfileKeyInMetadata);
+            new SplitfileBlockKeys(dataKeys, checkKeys),
+            new SplitfileSegmentLayout(
+                segmentSize, checkSegmentSize, deductBlocksFromSegments, crossCheckBlocks),
+            new SplitfileCryptoParams(
+                splitfileCryptoAlgorithm, splitfileCryptoKey, specifySplitfileKeyInMetadata));
     SplitfilePayload payload =
         new SplitfilePayload(
             clientMetadata,

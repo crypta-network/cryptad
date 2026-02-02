@@ -30,8 +30,11 @@ import network.crypta.client.MetadataParseException;
 import network.crypta.client.MetadataTopLayerInfo;
 import network.crypta.client.MetadataUnresolvedException;
 import network.crypta.client.OnionFECCodec;
+import network.crypta.client.SplitfileBlockKeys;
+import network.crypta.client.SplitfileCryptoParams;
 import network.crypta.client.SplitfileParams;
 import network.crypta.client.SplitfilePayload;
+import network.crypta.client.SplitfileSegmentLayout;
 import network.crypta.client.TopLayerBlockInfo;
 import network.crypta.client.TopLayerHashInfo;
 import network.crypta.client.events.SimpleEventProducer;
@@ -1306,15 +1309,9 @@ class SplitFileFetcherStorageTest {
       SplitfileParams params =
           new SplitfileParams(
               SplitfileAlgorithm.ONION_STANDARD,
-              dataKeys,
-              checkKeys,
-              dataBlocks,
-              checkBlocks,
-              0,
-              0,
-              cryptoAlgorithm,
-              cryptoKey,
-              true);
+              new SplitfileBlockKeys(dataKeys, checkKeys),
+              new SplitfileSegmentLayout(dataBlocks, checkBlocks, 0, 0),
+              new SplitfileCryptoParams(cryptoAlgorithm, cryptoKey, true));
       SplitfilePayload payload = new SplitfilePayload(cm, size, null, null, size, false);
       TopLayerBlockInfo blockInfo =
           new TopLayerBlockInfo(
@@ -1416,15 +1413,11 @@ class SplitFileFetcherStorageTest {
       SplitfileParams params =
           new SplitfileParams(
               SplitfileAlgorithm.ONION_STANDARD,
-              dataKeys,
-              checkKeys,
-              segmentSize,
-              checkSegmentSize,
-              deductBlocksFromSegments,
-              0,
-              cryptoAlgorithm,
-              cryptoKey,
-              true /* uses single-key splitfiles for tests */);
+              new SplitfileBlockKeys(dataKeys, checkKeys),
+              new SplitfileSegmentLayout(
+                  segmentSize, checkSegmentSize, deductBlocksFromSegments, 0),
+              new SplitfileCryptoParams(
+                  cryptoAlgorithm, cryptoKey, true /* uses single-key splitfiles for tests */));
       SplitfilePayload payload = new SplitfilePayload(cm, size, null, null, size, false);
       TopLayerBlockInfo blockInfo =
           new TopLayerBlockInfo(
