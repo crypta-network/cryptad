@@ -213,19 +213,21 @@ public class ClientPut extends ClientPutBase {
       throws IdentifierCollisionException, MessageInvalidException, IOException {
     FcpInsertOptions options =
         new FcpInsertOptions(
-            message.getCHKOnly,
-            message.dontCompress,
-            message.localRequestOnly,
-            message.maxRetries,
-            message.earlyEncode,
-            message.canWriteClientCache,
-            message.forkOnCacheable,
-            message.compressorDescriptor,
-            message.extraInsertsSingleBlock,
-            message.extraInsertsSplitfileHeaderBlock,
-            message.realTimeFlag,
-            message.compatibilityMode,
-            message.ignoreUSKDatehints,
+            new FcpInsertBehaviorOptions(
+                message.getCHKOnly,
+                message.dontCompress,
+                message.localRequestOnly,
+                message.maxRetries,
+                message.earlyEncode,
+                message.realTimeFlag,
+                message.ignoreUSKDatehints),
+            new FcpInsertTuningOptions(
+                message.canWriteClientCache,
+                message.forkOnCacheable,
+                message.compressorDescriptor,
+                message.extraInsertsSingleBlock,
+                message.extraInsertsSplitfileHeaderBlock,
+                message.compatibilityMode),
             message.overrideSplitfileCryptoKey);
     ClientRequestParams requestParams =
         new ClientRequestParams(
