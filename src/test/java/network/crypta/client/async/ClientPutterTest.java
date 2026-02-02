@@ -74,12 +74,13 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback,
+                    FreenetURI.EMPTY_CHK_URI,
+                    insertContextCurrent,
+                    /*priorityClass*/ (short) 0),
                 /*data*/ null,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata("text/plain"),
-                insertContextCurrent,
-                /*priorityClass*/ (short) 0,
                 /*isMetadata*/ false),
             new ClientPutterOptions(
                 /*targetFilename*/ null,
@@ -105,12 +106,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, badOverride, 0L));
 
@@ -149,12 +148,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, null, 0L));
 
@@ -174,12 +171,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, new FreenetURI("SSK", "doc"), insertContextCurrent, (short) 0),
                 data,
-                new FreenetURI("SSK", "doc"),
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, override, 0L));
 
@@ -219,12 +214,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions("file.txt", false, null, 0L));
 
@@ -252,12 +245,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, null, 0L));
 
@@ -279,12 +270,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, null, 0L));
 
@@ -308,12 +297,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, null, 0L));
 
@@ -337,12 +324,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, null, 0L));
 
@@ -359,12 +344,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                clientCallback,
+                new InsertRequestParams(
+                    clientCallback, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, null, 0L));
 
@@ -408,12 +391,10 @@ class ClientPutterTest {
     ClientPutter putter =
         new ClientPutter(
             new ClientPutterRequest(
-                multiCb,
+                new InsertRequestParams(
+                    multiCb, FreenetURI.EMPTY_CHK_URI, insertContextCurrent, (short) 0),
                 data,
-                FreenetURI.EMPTY_CHK_URI,
                 new ClientMetadata(),
-                insertContextCurrent,
-                (short) 0,
                 false),
             new ClientPutterOptions(null, false, null, 0L));
 

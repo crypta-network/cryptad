@@ -18,6 +18,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.ContainerInserter;
 import network.crypta.client.async.DefaultManifestPutter;
+import network.crypta.client.async.InsertRequestParams;
 import network.crypta.client.async.ManifestPutter;
 import network.crypta.client.async.ManifestPutterParams;
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -402,12 +403,9 @@ public class ClientPutDir extends ClientPutBase {
     putter =
         new DefaultManifestPutter(
             new ManifestPutterParams(
-                this,
+                new InsertRequestParams(this, uri, ctx, priorityClass),
                 manifestElements,
-                priorityClass,
-                uri,
                 defaultName,
-                ctx,
                 overrideSplitfileCryptoKey,
                 context),
             persistence == Persistence.FOREVER);

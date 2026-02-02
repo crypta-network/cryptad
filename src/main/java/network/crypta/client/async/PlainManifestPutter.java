@@ -62,7 +62,9 @@ public class PlainManifestPutter extends BaseManifestPutter {
    * Map<String, Object> root = new HashMap<>();
    * root.put("dir", sub);
    * root.put("readme.txt", elementReadme);
-   * var params = new ManifestPutterParams(cb, root, prio, target, "index.html", ctx, key, context);
+   * var params =
+   *     new ManifestPutterParams(
+   *         new InsertRequestParams(cb, target, ctx, prio), root, "index.html", key, context);
    * var putter = new PlainManifestPutter(params);
    * }</pre>
    *

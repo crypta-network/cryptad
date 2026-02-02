@@ -13,6 +13,7 @@ import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.DefaultManifestPutter;
+import network.crypta.client.async.InsertRequestParams;
 import network.crypta.client.async.ManifestPutterParams;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -477,12 +478,9 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     ClientPutter put =
         new ClientPutter(
             new ClientPutterRequest(
-                pw,
+                new InsertRequestParams(pw, insert.desiredURI, ctx, priority),
                 insert.getData(),
-                insert.desiredURI,
                 insert.clientMetadata,
-                ctx,
-                priority,
                 isMetadata),
             new ClientPutterOptions(filenameHint, false, forceCryptoKey, -1));
     try {
@@ -516,12 +514,9 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
     ClientPutter put =
         new ClientPutter(
             new ClientPutterRequest(
-                cb,
+                new InsertRequestParams(cb, insert.desiredURI, ctx, priority),
                 insert.getData(),
-                insert.desiredURI,
                 insert.clientMetadata,
-                ctx,
-                priority,
                 isMetadata),
             new ClientPutterOptions(filenameHint, false, null, -1));
     try {
@@ -607,12 +602,9 @@ public class HighLevelSimpleClientImpl implements HighLevelSimpleClient, Request
       putter =
           new DefaultManifestPutter(
               new ManifestPutterParams(
-                  pw,
+                  new InsertRequestParams(pw, insertURI, getInsertContext(true), priorityClass),
                   BaseManifestPutter.bucketsByNameToManifestEntries(bucketsByName),
-                  priorityClass,
-                  insertURI,
                   defaultName,
-                  getInsertContext(true),
                   forceCryptoKey,
                   core.getClientContext()),
               false);

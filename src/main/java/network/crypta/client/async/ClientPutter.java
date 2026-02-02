@@ -165,13 +165,15 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    *     standard behavior.
    */
   public ClientPutter(ClientPutterRequest request, ClientPutterOptions options) {
-    super(request.priorityClass(), request.callback().getRequestClient());
+    super(
+        request.requestParams().priorityClass(),
+        request.requestParams().callback().getRequestClient());
     this.cm = request.clientMetadata();
     this.isMetadata = request.isMetadata();
-    this.callback = request.callback();
+    this.callback = request.requestParams().callback();
     this.data = request.data();
-    this.targetURI = request.targetURI();
-    this.ctx = request.insertContext();
+    this.targetURI = request.requestParams().targetURI();
+    this.ctx = request.requestParams().insertContext();
     this.finished = false;
     this.cancelled = false;
     this.targetFilename = options.targetFilename();

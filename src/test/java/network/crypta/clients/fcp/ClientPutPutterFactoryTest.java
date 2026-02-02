@@ -15,6 +15,7 @@ import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
+import network.crypta.client.async.InsertRequestParams;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
 import network.crypta.support.io.ArrayBucket;
@@ -41,7 +42,10 @@ class ClientPutPutterFactoryTest {
     InsertContext insertContext = new InsertContext(InsertContextOptions.builder().build());
     ClientPutterRequest request =
         new ClientPutterRequest(
-            callback, data, targetUri, metadata, insertContext, (short) 3, true);
+            new InsertRequestParams(callback, targetUri, insertContext, (short) 3),
+            data,
+            metadata,
+            true);
     byte[] overrideCrypto = new byte[] {1, 2, 3};
     ClientPutterOptions options = new ClientPutterOptions("file.txt", true, overrideCrypto, 42L);
 
