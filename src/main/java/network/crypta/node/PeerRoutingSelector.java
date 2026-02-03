@@ -11,24 +11,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Selects routing peers based on location closeness and peer status signals.
+ * Selects the most appropriate routing peer for a request.
  *
- * <p>This class centralizes the peer-selection policy that was previously spread across {@link
- * PeerManager}. Callers provide the candidate set and routing context, and the selector evaluates
- * peer distance, routing backoff state, timeouts, and optional recently failed handling to produce
+ * <p>This class centralizes peer-selection policy that was previously spread across {@link
+ * PeerManager}. Callers supply the current candidate set and routing context, and the selector
+ * evaluates peer distance, backoff state, timeout history, and load-management signals to choose
  * the single best peer. The selector does not mutate peer state directly; instead it reports
  * selection statistics and returns the chosen {@link PeerNode} for the caller to route to.
+ * Selection is deterministic for a given snapshot of inputs and is intended to be invoked once per
+ * routing decision.
  *
- * <p>Selection is stateful only within a single call and is safe for repeated use as long as
- * callers provide consistent inputs. The implementation assumes that the provided peer roster and
- * status book are kept up to date by the surrounding node lifecycle. Thread safety is delegated to
- * those collaborators; this class itself is immutable after construction.
+ * <p>State is scoped to a single call and derived entirely from input parameters and the current
+ * node services. Thread safety is delegated to {@link Node}, {@link PeerRoster}, and {@link
+ * PeerStatusBook}; this class itself is immutable after construction and safe to share. When
+ * recently failed handling is enabled, the selector may advise callers to delay invoking the
+ * provided callback instead of returning a peer.
  *
  * <p>Responsibilities include:
  *
  * <ul>
  *   <li>Filtering peers by eligibility (version, backoff, routing status).
- *   <li>Computing distance and load-based weighting.
+ *   <li>Computing distance and load-based weighting for viable candidates.
  *   <li>Optionally incorporating recently failed retry timing.
  * </ul>
  */
@@ -43,13 +46,14 @@ public class PeerRoutingSelector {
    * Creates a selector that draws candidates from the provided node services.
    *
    * <p>The selector keeps references to the node, roster, and status book so it can evaluate peer
-   * availability, distance, and routing backoff state during selection. The constructor does not
-   * validate these collaborators beyond storing them, so callers should ensure they are non-null
-   * and fully initialized before invoking selection methods.
+   * availability, distance, and routing backoff state during selection. The constructor performs no
+   * validation or defensive copying; it simply stores the provided collaborators for later queries.
+   * Callers should ensure the inputs are non-null and fully initialized before making selection
+   * calls. Instances are lightweight and can be reused across many routing decisions.
    *
-   * @param node owning node used for configuration and statistics reporting
-   * @param roster source of the currently connected peer set
-   * @param statusBook snapshot provider for peer routing status counts
+   * @param node the owning node providing configuration, stats, and routing services
+   * @param roster source of connected peers used during selection
+   * @param statusBook peer-status snapshot provider used for backoff reporting
    */
   public PeerRoutingSelector(Node node, PeerRoster roster, PeerStatusBook statusBook) {
     this.node = node;
@@ -62,12 +66,19 @@ public class PeerRoutingSelector {
    *
    * <p>This method evaluates all connected peers against distance, routing backoff, timeout, and
    * load-management constraints to produce the single best candidate. It can optionally integrate
-   * recently failed information to delay retries until an appropriate wake-up time. The selection
-   * is deterministic for the given inputs and does not mutate peers; callers remain responsible for
-   * updating per-request state and for respecting a {@code null} result.
+   * recently failed information to delay retries until an appropriate wake-up time, in which case
+   * it may call {@link RecentlyFailedReturn#fail(long)} and return {@code null}. The selection is
+   * deterministic for the given inputs, runs in time proportional to the number of connected peers,
+   * and does not mutate peers directly. Callers remain responsible for updating per-request state
+   * and for respecting a {@code null} result.
    *
-   * @param params routing selection parameters describing the request and policy
-   * @return the selected peer, or {@code null} if none qualifies
+   * <pre>{@code
+   * PeerRoutingSelectionParams params = ...;
+   * PeerNode nextHop = selector.closerPeer(params);
+   * </pre>
+   *
+   * @param params routing selection inputs and policy flags; must not be null
+   * @return best eligible peer, or null when no candidate qualifies
    */
   public PeerNode closerPeer(PeerRoutingSelectionParams params) {
     CloserPeerContext ctx = initCloserPeerContext(params);
@@ -96,6 +107,7 @@ public class PeerRoutingSelector {
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class SelectionRates {
     private final double[] rates;
     private final double total;
@@ -112,7 +124,7 @@ public class PeerRoutingSelector {
   }
 
   @SuppressWarnings("java:S6206")
-  private static final class CloserPeerContextData {
+  private final class CloserPeerContextData {
     private final PeerNode[] peers;
     private final Key key;
     private final double myLoc;
@@ -123,25 +135,51 @@ public class PeerRoutingSelector {
     private final boolean enableFOAFMitigationHack;
     private final Set<Double> excludeLocations;
 
-    private CloserPeerContextData(
-        PeerNode[] peers,
-        Key key,
-        double myLoc,
-        double maxDiff,
-        double prevLoc,
-        TimedOutNodesList entry,
-        SelectionRates selection,
-        boolean enableFOAFMitigationHack,
-        Set<Double> excludeLocations) {
-      this.peers = peers;
-      this.key = key;
-      this.myLoc = myLoc;
-      this.maxDiff = maxDiff;
-      this.prevLoc = prevLoc;
-      this.entry = entry;
-      this.selection = selection;
-      this.enableFOAFMitigationHack = enableFOAFMitigationHack;
-      this.excludeLocations = excludeLocations;
+    private CloserPeerContextData(PeerRoutingSelectionParams params) {
+      PeerNode[] connectedPeers = roster.connectedPeers();
+      Key effectiveKey = node.isEnablePerNodeFailureTables() ? params.key() : null;
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "Choosing closest peer (connectedPeers={}, key={})",
+            connectedPeers.length,
+            effectiveKey);
+      }
+
+      double localLocation = node.network().location();
+      double maxDistanceFromSelf =
+          params.ignoreSelf()
+              ? Double.MAX_VALUE
+              : Location.distance(localLocation, params.target());
+      double previousLocation = params.origin() != null ? params.origin().getLocation() : -1.0;
+      TimedOutNodesList timedOutEntry =
+          effectiveKey != null
+              ? node.routing().failureTable().getTimedOutNodesList(effectiveKey)
+              : null;
+      SelectionRates selectionRates = computeSelectionRates(connectedPeers);
+      boolean enableFOAF =
+          connectedPeers.length >= PeerNode.SELECTION_MIN_PEERS && selectionRates.total > 0.0;
+      Set<Double> exclude =
+          buildExcludeLocations(localLocation, previousLocation, params.routedTo());
+
+      this.peers = connectedPeers;
+      this.key = effectiveKey;
+      this.myLoc = localLocation;
+      this.maxDiff = maxDistanceFromSelf;
+      this.prevLoc = previousLocation;
+      this.entry = timedOutEntry;
+      this.selection = selectionRates;
+      this.enableFOAFMitigationHack = enableFOAF;
+      this.excludeLocations = exclude;
+    }
+
+    private SelectionRates computeSelectionRates(PeerNode[] peers) {
+      double[] rates = new double[peers.length];
+      double total = 0.0;
+      for (int i = 0; i < peers.length; i++) {
+        rates[i] = peers[i].selectionRate();
+        total += rates[i];
+      }
+      return new SelectionRates(rates, total);
     }
 
     private PeerNode[] peers() {
@@ -289,37 +327,8 @@ public class PeerRoutingSelector {
   }
 
   private CloserPeerContext initCloserPeerContext(PeerRoutingSelectionParams params) {
-    PeerNode[] peers = roster.connectedPeers();
-    Key effectiveKey = node.isEnablePerNodeFailureTables() ? params.key() : null;
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Choosing closest peer (connectedPeers={}, key={})", peers.length, effectiveKey);
-    }
-
-    double myLoc = node.network().location();
-    double maxDiff =
-        params.ignoreSelf() ? Double.MAX_VALUE : Location.distance(myLoc, params.target());
-    double prevLoc = params.origin() != null ? params.origin().getLocation() : -1.0;
-    TimedOutNodesList entry =
-        effectiveKey != null
-            ? node.routing().failureTable().getTimedOutNodesList(effectiveKey)
-            : null;
-    SelectionRates selection = computeSelectionRates(peers);
-    boolean enableFOAF = peers.length >= PeerNode.SELECTION_MIN_PEERS && selection.total > 0.0;
-    Set<Double> exclude = buildExcludeLocations(myLoc, prevLoc, params.routedTo());
-    CloserPeerContextData data =
-        new CloserPeerContextData(
-            peers, effectiveKey, myLoc, maxDiff, prevLoc, entry, selection, enableFOAF, exclude);
+    CloserPeerContextData data = new CloserPeerContextData(params);
     return new CloserPeerContext(data);
-  }
-
-  private SelectionRates computeSelectionRates(PeerNode[] peers) {
-    double[] rates = new double[peers.length];
-    double total = 0.0;
-    for (int i = 0; i < peers.length; i++) {
-      rates[i] = peers[i].selectionRate();
-      total += rates[i];
-    }
-    return new SelectionRates(rates, total);
   }
 
   private void evaluateCandidatesInContext(
@@ -359,15 +368,7 @@ public class PeerRoutingSelector {
     private double leastRecentlyTimedOutBackedOffDistance = Double.MAX_VALUE;
   }
 
-  private static final class BestCandidate {
-    private final PeerNode best;
-    private final double bestDistance;
-
-    private BestCandidate(PeerNode best, double bestDistance) {
-      this.best = best;
-      this.bestDistance = bestDistance;
-    }
-  }
+  private record BestCandidate(PeerNode best, double bestDistance) {}
 
   private Set<Double> buildExcludeLocations(double myLoc, double prevLoc, Set<PeerNode> routedTo) {
     Set<Double> excludeLocations = new HashSet<>();
@@ -516,15 +517,7 @@ public class PeerRoutingSelector {
     return false;
   }
 
-  private static final class TimeoutInfo {
-    private final boolean timedOut;
-    private final long timeoutFT;
-
-    private TimeoutInfo(boolean timedOut, long timeoutFT) {
-      this.timedOut = timedOut;
-      this.timeoutFT = timeoutFT;
-    }
-  }
+  private record TimeoutInfo(boolean timedOut, long timeoutFT) {}
 
   private TimeoutInfo computeTimeoutInfo(CandidateEvaluationContext ctx, PeerNode p) {
     long timeoutRF;
@@ -541,19 +534,7 @@ public class PeerRoutingSelector {
     return new TimeoutInfo(timedOut, timeoutFT);
   }
 
-  private static final class DiffInfo {
-    private final double loc;
-    private final double diff;
-    private final double realDiff;
-    private final boolean direct;
-
-    private DiffInfo(double loc, double diff, double realDiff, boolean direct) {
-      this.loc = loc;
-      this.diff = diff;
-      this.realDiff = realDiff;
-      this.direct = direct;
-    }
-  }
+  private record DiffInfo(double loc, double diff, double realDiff, boolean direct) {}
 
   private DiffInfo computeDiffInfo(CandidateEvaluationContext ctx, PeerNode p) {
     return computeDiffInfo(p, ctx.params.target(), ctx.params.outgoingHTL(), ctx.excludeLocations);
@@ -760,15 +741,7 @@ public class PeerRoutingSelector {
     return key != null && node.routing().failureTable().hadAnyOffers(key) ? -1L : decidedUntil;
   }
 
-  private static final class FirstSecondChoice {
-    private final long firstTime;
-    private final long secondTime;
-
-    private FirstSecondChoice(long firstTime, long secondTime) {
-      this.firstTime = firstTime;
-      this.secondTime = secondTime;
-    }
-  }
+  private record FirstSecondChoice(long firstTime, long secondTime) {}
 
   private FirstSecondChoice computeFirstSecondChoice(
       PeerRoutingSelectionParams params, TimedOutNodesList entry) {

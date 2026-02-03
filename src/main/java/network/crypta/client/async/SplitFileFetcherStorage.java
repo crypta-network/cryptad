@@ -501,19 +501,7 @@ public class SplitFileFetcherStorage {
     SplitFileFetcherSegmentsInit segmentsInit =
         SplitFileFetcherSegmentsBuilder.initSegmentsFromStream(
             new SplitFileFetcherSegmentsLoadParams(
-                this,
-                parsed.getTotalDataBlocks(),
-                parsed.getTotalCheckBlocks(),
-                parsed.getTotalCrossCheckBlocks(),
-                parsed.getSettingsStream(),
-                p.completeViaTruncation,
-                p.keysFetching,
-                this.segments,
-                checksumLength,
-                splitfileSingleCryptoKey != null,
-                offsetKeyList,
-                offsetSegmentStatus,
-                rafLength));
+                this, parsed, p.completeViaTruncation, p.keysFetching, this.segments, rafLength));
     this.crossSegments = segmentsInit.crossSegments;
     this.keyListener =
         new SplitFileFetcherKeyListener(

@@ -32,7 +32,6 @@ import org.jetbrains.annotations.NotNull;
  * @see SplitfilePayload
  * @see MetadataTopLayerInfo
  */
-@SuppressWarnings("java:S6206")
 public final class SplitfileParams {
   private final SplitfileAlgorithm splitfileAlgorithm;
   private final ClientCHK[] dataURIs;
@@ -50,41 +49,25 @@ public final class SplitfileParams {
    *
    * @param splitfileAlgorithm splitfile algorithm identifier; must match the intended encoding
    *     path.
-   * @param dataURIs data block keys in block order; may be empty but not {@code null}.
-   * @param checkURIs check block keys in block order; may be empty but not {@code null}.
-   * @param segmentSize data blocks per typical segment, excluding cross-segment blocks;
-   *     non-negative.
-   * @param checkSegmentSize check blocks per typical segment, excluding cross-segment blocks.
-   * @param deductBlocksFromSegments count of trailing segments with one fewer data block;
-   *     non-negative.
-   * @param crossSegmentBlocks cross-segment parity blocks per segment; zero when not used.
-   * @param splitfileCryptoAlgorithm algorithm code applied to splitfile block encryption or
-   *     routing.
-   * @param splitfileCryptoKey splitfile-wide crypto key bytes; may be {@code null} for legacy
-   *     modes.
-   * @param specifySplitfileKey whether the crypto key is explicitly specified rather than derived.
+   * @param blockKeys data and check block keys in block order; may be empty but not {@code null}.
+   * @param layout splitfile layout sizing and redundancy counts.
+   * @param crypto crypto parameters applied to splitfile block encryption or routing.
    */
   public SplitfileParams(
       SplitfileAlgorithm splitfileAlgorithm,
-      ClientCHK[] dataURIs,
-      ClientCHK[] checkURIs,
-      int segmentSize,
-      int checkSegmentSize,
-      int deductBlocksFromSegments,
-      int crossSegmentBlocks,
-      byte splitfileCryptoAlgorithm,
-      byte[] splitfileCryptoKey,
-      boolean specifySplitfileKey) {
+      SplitfileBlockKeys blockKeys,
+      SplitfileSegmentLayout layout,
+      SplitfileCryptoParams crypto) {
     this.splitfileAlgorithm = splitfileAlgorithm;
-    this.dataURIs = dataURIs;
-    this.checkURIs = checkURIs;
-    this.segmentSize = segmentSize;
-    this.checkSegmentSize = checkSegmentSize;
-    this.deductBlocksFromSegments = deductBlocksFromSegments;
-    this.crossSegmentBlocks = crossSegmentBlocks;
-    this.splitfileCryptoAlgorithm = splitfileCryptoAlgorithm;
-    this.splitfileCryptoKey = splitfileCryptoKey;
-    this.specifySplitfileKey = specifySplitfileKey;
+    this.dataURIs = blockKeys.dataURIs();
+    this.checkURIs = blockKeys.checkURIs();
+    this.segmentSize = layout.segmentSize();
+    this.checkSegmentSize = layout.checkSegmentSize();
+    this.deductBlocksFromSegments = layout.deductBlocksFromSegments();
+    this.crossSegmentBlocks = layout.crossSegmentBlocks();
+    this.splitfileCryptoAlgorithm = crypto.splitfileCryptoAlgorithm();
+    this.splitfileCryptoKey = crypto.splitfileCryptoKey();
+    this.specifySplitfileKey = crypto.specifySplitfileKey();
   }
 
   public SplitfileAlgorithm splitfileAlgorithm() {

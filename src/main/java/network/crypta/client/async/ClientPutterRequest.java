@@ -1,14 +1,12 @@
 package network.crypta.client.async;
 
 import network.crypta.client.ClientMetadata;
-import network.crypta.client.InsertContext;
-import network.crypta.keys.FreenetURI;
 import network.crypta.support.api.RandomAccessBucket;
 
 /**
  * Immutable bundle of inputs for a single-file {@link ClientPutter} request.
  *
- * <p>This record captures the callback, payload source, destination URI, metadata, and scheduling
+ * <p>This record captures the request context, payload source, destination metadata, and scheduling
  * configuration needed to construct a putter. Callers typically create one instance per insert,
  * populate it with the desired references, and hand it to the relevant {@link ClientPutter} entry
  * point. The record performs no validation and stores references verbatim, which preserves legacy
@@ -25,21 +23,15 @@ import network.crypta.support.api.RandomAccessBucket;
  *   <li>Provides a stable, reusable container for scheduling parameters.
  * </ul>
  *
- * @param callback callback receiving progress and completion events; may be {@code null}.
+ * @param requestParams shared request context including callback, target URI, and priority.
  * @param data payload bucket to insert; must remain readable for insert lifetime.
- * @param targetURI destination URI for the insert; should be insert-capable.
  * @param clientMetadata optional client-visible metadata such as MIME type; may be {@code null}.
- * @param insertContext insert configuration controlling splitfile strategy and scheduling.
- * @param priorityClass scheduling priority class; smaller values represent higher priority.
  * @param isMetadata whether the payload represents metadata rather than user content.
  * @see ClientPutter
  * @see ClientPutterOptions
  */
 public record ClientPutterRequest(
-    ClientPutCallback callback,
+    InsertRequestParams requestParams,
     RandomAccessBucket data,
-    FreenetURI targetURI,
     ClientMetadata clientMetadata,
-    InsertContext insertContext,
-    short priorityClass,
     boolean isMetadata) {}

@@ -711,14 +711,9 @@ public class USKManager {
                 () ->
                     callback.onFoundEdition(
                         new USKFoundEdition(
-                            number,
-                            usk, // non-persistent
+                            new USKFoundEditionPayload(number, usk, false, (short) -1, null),
                             context,
-                            false,
-                            (short) -1,
-                            null,
-                            true,
-                            newSlotToo)),
+                            new USKFoundEditionProgress(true, newSlotToo))),
                 "USKManager callback executor for " + callback);
     }
   }
@@ -754,14 +749,9 @@ public class USKManager {
                 () ->
                     callback.onFoundEdition(
                         new USKFoundEdition(
-                            number,
-                            usk, // non-persistent
+                            new USKFoundEditionPayload(number, usk, false, (short) -1, null),
                             context,
-                            false,
-                            (short) -1,
-                            null,
-                            false,
-                            false)),
+                            new USKFoundEditionProgress(false, false))),
                 "USKManager callback executor for " + callback);
     }
   }
@@ -838,11 +828,15 @@ public class USKManager {
     if (goodEd > ed)
       cb.onFoundEdition(
           new USKFoundEdition(
-              goodEd, origUSK.copy(curEd), context, false, (short) -1, null, true, curEd > ed));
+              new USKFoundEditionPayload(goodEd, origUSK.copy(curEd), false, (short) -1, null),
+              context,
+              new USKFoundEditionProgress(true, curEd > ed)));
     else if (curEd > ed)
       cb.onFoundEdition(
           new USKFoundEdition(
-              curEd, origUSK.copy(curEd), context, false, (short) -1, null, false, false));
+              new USKFoundEditionPayload(curEd, origUSK.copy(curEd), false, (short) -1, null),
+              context,
+              new USKFoundEditionProgress(false, false)));
 
     final USKFetcher fetcher = plan.toSchedule;
     if (fetcher != null) {

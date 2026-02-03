@@ -1430,25 +1430,24 @@ public class ClientGet extends ClientRequest {
 
   @Override
   synchronized RequestStatus getStatus() {
-    return ClientGetGetterFactory.buildStatus(
-        new ClientGetStatusSnapshot(
-            identifier,
-            persistence,
-            started,
-            finished,
-            succeeded,
-            progressPending,
-            getFailedMessage,
-            foundDataMimeType,
-            foundDataLength,
-            getDestFilename(),
-            getBucket(),
+    RequestStatusSnapshot statusSnapshot =
+        ClientGetStatusSnapshot.buildRequestStatusSnapshot(
+            identifier, persistence, started, finished, succeeded, progressPending, priorityClass);
+    DownloadProgressSnapshot progressSnapshot =
+        new DownloadProgressSnapshot(progressPending, getFailedMessage);
+    DownloadDataSnapshot dataSnapshot =
+        new DownloadDataSnapshot(
+            foundDataMimeType, foundDataLength, getDestFilename(), getBucket());
+    DownloadContextSnapshot contextSnapshot =
+        new DownloadContextSnapshot(
             fctx,
-            priorityClass,
             getCompatibilityMode(),
             getOverriddenSplitfileCryptoKey(),
             getURI(),
-            getDontCompress()));
+            getDontCompress());
+    return ClientGetGetterFactory.buildStatus(
+        new ClientGetStatusSnapshot(
+            statusSnapshot, progressSnapshot, dataSnapshot, contextSnapshot));
   }
 
   private static final long CLIENT_DETAIL_MAGIC = 0x67145b675d2e22f4L;

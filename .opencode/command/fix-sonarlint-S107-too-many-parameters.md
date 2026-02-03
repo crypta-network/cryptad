@@ -19,7 +19,7 @@ Refactor **`$1`** to eliminate **SonarLint `java:S107`** issues by reducing exce
 ## Do this
 
 ### 0) Repo conventions
-1. Read and follow `AGENTS.md` (and any formatting/linting conventions) if present.
+1. Read and follow `AGENTS.md` (and any formatting/linting conventions) if present. Use $cryptad-build-tooling skill.
 2. Keep changes minimal and localized unless call sites require updates.
 3. Prefer consistent naming/location patterns already used in the repo (e.g., `*Params`, `*Request`, `*Options`, `Context`, `Paging`, etc.).
 

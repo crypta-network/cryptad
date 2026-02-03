@@ -380,17 +380,14 @@ public abstract class ConnectionsToadlet extends Toadlet {
       contentNode.addChild(ctx.getAlertManager().createSummary());
     }
 
+    RenderMode renderMode = new RenderMode(advancedMode, drawMessageTypes);
+    RenderTiming renderTiming = new RenderTiming(now, percentageFormat);
     RenderContext renderContext =
         new RenderContext(
-            ctx,
-            path,
-            peerNodeStatuses,
-            drawMessageTypes,
-            percentageFormat,
-            advancedMode,
-            contentNode,
-            now,
-            counts);
+            new RenderPageContext(ctx, path, contentNode),
+            new RenderPeerSnapshot(peerNodeStatuses, counts),
+            renderMode,
+            renderTiming);
     renderContent(renderContext);
 
     if (peerNodeStatuses.length == 0) {
@@ -939,6 +936,8 @@ public abstract class ConnectionsToadlet extends Toadlet {
       boolean advancedMode,
       long now) {
     double totalSelectionRate = 0.0;
+    RenderMode renderMode = new RenderMode(advancedMode, drawMessageTypes);
+    RenderTiming renderTiming = new RenderTiming(now, percentageFormat);
     PeerNodeStatus[] allPeerNodeStatuses =
         node.network().peers().statusBook().getPeerNodeStatuses(true);
     for (PeerNodeStatus status : allPeerNodeStatuses) {
@@ -947,16 +946,13 @@ public abstract class ConnectionsToadlet extends Toadlet {
     for (PeerNodeStatus peerNodeStatus : peerNodeStatuses) {
       RowContext rowContext =
           new RowContext(
-              peerTableContext.peerTable(),
-              peerNodeStatus,
-              advancedMode,
-              node.isFProxyJavascriptEnabled(),
-              now,
-              peerTableContext.peerForm() != null,
-              peerTableContext.endCols(),
-              drawMessageTypes,
-              totalSelectionRate,
-              percentageFormat);
+              new PeerRowContext(
+                  peerTableContext.peerTable(), peerNodeStatus, peerTableContext.endCols()),
+              renderMode,
+              new PeerRowFlags(
+                  node.isFProxyJavascriptEnabled(), peerTableContext.peerForm() != null),
+              renderTiming,
+              new PeerSelectionStats(totalSelectionRate));
       drawRow(rowContext);
     }
 
@@ -1095,102 +1091,99 @@ public abstract class ConnectionsToadlet extends Toadlet {
       FRIEND_TRUST trust,
       FRIEND_VISIBILITY visibility) {}
 
-  @SuppressWarnings("java:S6206")
-  private static final class RenderContext {
-    private final ToadletContext ctx;
-    private final String path;
+  private record RenderPageContext(ToadletContext ctx, String path, HTMLNode contentNode) {}
+
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
+  private static final class RenderPeerSnapshot {
     private final PeerNodeStatus[] peerNodeStatuses;
-    private final boolean drawMessageTypes;
-    private final DecimalFormat percentageFormat;
-    private final boolean advancedMode;
-    private final HTMLNode contentNode;
-    private final long now;
     private final PeerStatusCounts counts;
 
-    private RenderContext(
-        ToadletContext ctx,
-        String path,
-        PeerNodeStatus[] peerNodeStatuses,
-        boolean drawMessageTypes,
-        DecimalFormat percentageFormat,
-        boolean advancedMode,
-        HTMLNode contentNode,
-        long now,
-        PeerStatusCounts counts) {
-      this.ctx = ctx;
-      this.path = path;
+    private RenderPeerSnapshot(PeerNodeStatus[] peerNodeStatuses, PeerStatusCounts counts) {
       this.peerNodeStatuses = peerNodeStatuses;
-      this.drawMessageTypes = drawMessageTypes;
-      this.percentageFormat = percentageFormat;
-      this.advancedMode = advancedMode;
-      this.contentNode = contentNode;
-      this.now = now;
       this.counts = counts;
-    }
-
-    ToadletContext ctx() {
-      return ctx;
-    }
-
-    String path() {
-      return path;
     }
 
     PeerNodeStatus[] peerNodeStatuses() {
       return peerNodeStatuses;
     }
 
+    PeerStatusCounts counts() {
+      return counts;
+    }
+  }
+
+  private record RenderMode(boolean advancedModeEnabled, boolean drawMessageTypes) {}
+
+  private record RenderTiming(long now, DecimalFormat percentageFormat) {}
+
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
+  private static final class RenderContext {
+    private final RenderPageContext pageContext;
+    private final RenderPeerSnapshot peerSnapshot;
+    private final RenderMode renderMode;
+    private final RenderTiming renderTiming;
+
+    private RenderContext(
+        RenderPageContext pageContext,
+        RenderPeerSnapshot peerSnapshot,
+        RenderMode renderMode,
+        RenderTiming renderTiming) {
+      this.pageContext = pageContext;
+      this.peerSnapshot = peerSnapshot;
+      this.renderMode = renderMode;
+      this.renderTiming = renderTiming;
+    }
+
+    ToadletContext ctx() {
+      return pageContext.ctx();
+    }
+
+    String path() {
+      return pageContext.path();
+    }
+
+    PeerNodeStatus[] peerNodeStatuses() {
+      return peerSnapshot.peerNodeStatuses();
+    }
+
     boolean drawMessageTypes() {
-      return drawMessageTypes;
+      return renderMode.drawMessageTypes();
     }
 
     DecimalFormat percentageFormat() {
-      return percentageFormat;
+      return renderTiming.percentageFormat();
     }
 
     boolean advancedMode() {
-      return advancedMode;
+      return renderMode.advancedModeEnabled();
     }
 
     HTMLNode contentNode() {
-      return contentNode;
+      return pageContext.contentNode();
     }
 
     long now() {
-      return now;
+      return renderTiming.now();
     }
 
     PeerStatusCounts counts() {
-      return counts;
+      return peerSnapshot.counts();
     }
 
     @Override
     public boolean equals(Object o) {
       if (!(o instanceof RenderContext that)) return false;
-      return drawMessageTypes == that.drawMessageTypes
-          && advancedMode == that.advancedMode
-          && now == that.now
-          && Objects.equals(ctx, that.ctx)
-          && Objects.equals(path, that.path)
-          && Arrays.equals(peerNodeStatuses, that.peerNodeStatuses)
-          && Objects.equals(percentageFormat, that.percentageFormat)
-          && Objects.equals(contentNode, that.contentNode)
-          && Objects.equals(counts, that.counts);
+      return Objects.equals(pageContext, that.pageContext)
+          && Objects.equals(renderMode, that.renderMode)
+          && Objects.equals(renderTiming, that.renderTiming)
+          && Objects.equals(peerSnapshot.counts(), that.peerSnapshot.counts())
+          && Arrays.equals(peerSnapshot.peerNodeStatuses(), that.peerSnapshot.peerNodeStatuses());
     }
 
     @Override
     public int hashCode() {
-      int result =
-          Objects.hash(
-              ctx,
-              path,
-              drawMessageTypes,
-              percentageFormat,
-              advancedMode,
-              contentNode,
-              now,
-              counts);
-      result = 31 * result + Arrays.hashCode(peerNodeStatuses);
+      int result = Objects.hash(pageContext, renderMode, renderTiming, peerSnapshot.counts());
+      result = 31 * result + Arrays.hashCode(peerSnapshot.peerNodeStatuses());
       return result;
     }
 
@@ -1198,39 +1191,41 @@ public abstract class ConnectionsToadlet extends Toadlet {
     public @NotNull String toString() {
       return "RenderContext{"
           + "ctx="
-          + ctx
+          + pageContext.ctx()
           + ", path='"
-          + path
+          + pageContext.path()
           + '\''
           + ", peerNodeStatuses="
-          + Arrays.toString(peerNodeStatuses)
+          + Arrays.toString(peerSnapshot.peerNodeStatuses())
           + ", drawMessageTypes="
-          + drawMessageTypes
+          + renderMode.drawMessageTypes()
           + ", percentageFormat="
-          + percentageFormat
+          + renderTiming.percentageFormat()
           + ", advancedMode="
-          + advancedMode
+          + renderMode.advancedModeEnabled()
           + ", contentNode="
-          + contentNode
+          + pageContext.contentNode()
           + ", now="
-          + now
+          + renderTiming.now()
           + ", counts="
-          + counts
+          + peerSnapshot.counts()
           + '}';
     }
   }
 
+  private record PeerRowContext(
+      HTMLNode peerTable, PeerNodeStatus peerNodeStatus, List<SimpleColumn> endCols) {}
+
+  private record PeerRowFlags(boolean fProxyJavascriptEnabled, boolean enablePeerActions) {}
+
+  private record PeerSelectionStats(double totalSelectionRate) {}
+
   private record RowContext(
-      HTMLNode peerTable,
-      PeerNodeStatus peerNodeStatus,
-      boolean advancedModeEnabled,
-      boolean fProxyJavascriptEnabled,
-      long now,
-      boolean enablePeerActions,
-      List<SimpleColumn> endCols,
-      boolean drawMessageTypes,
-      double totalSelectionRate,
-      DecimalFormat percentageFormat) {}
+      PeerRowContext peerRowContext,
+      RenderMode renderMode,
+      PeerRowFlags peerRowFlags,
+      RenderTiming renderTiming,
+      PeerSelectionStats selectionStats) {}
 
   /**
    * Indicates whether noderef POST submissions are accepted for this toadlet.
@@ -1855,12 +1850,12 @@ public abstract class ConnectionsToadlet extends Toadlet {
   protected abstract SimpleFieldSet getNoderef();
 
   private void drawRow(RowContext rowContext) {
-    PeerNodeStatus peerNodeStatus = rowContext.peerNodeStatus();
-    double totalSelectionRate = rowContext.totalSelectionRate();
-    DecimalFormat fix1 = rowContext.percentageFormat();
-    HTMLNode peerTable = rowContext.peerTable();
-    boolean advancedModeEnabled = rowContext.advancedModeEnabled();
-    boolean enablePeerActions = rowContext.enablePeerActions();
+    PeerNodeStatus peerNodeStatus = rowContext.peerRowContext().peerNodeStatus();
+    double totalSelectionRate = rowContext.selectionStats().totalSelectionRate();
+    DecimalFormat fix1 = rowContext.renderTiming().percentageFormat();
+    HTMLNode peerTable = rowContext.peerRowContext().peerTable();
+    boolean advancedModeEnabled = rowContext.renderMode().advancedModeEnabled();
+    boolean enablePeerActions = rowContext.peerRowFlags().enablePeerActions();
     int peerSelectionPercentage = calculateSelectionPercentage(totalSelectionRate, peerNodeStatus);
     HTMLNode peerRow =
         peerTable.addChild(
@@ -1885,14 +1880,15 @@ public abstract class ConnectionsToadlet extends Toadlet {
 
     if (advancedModeEnabled) {
       addLocationColumn(peerRow, peerNodeStatus);
-      addBackoffColumns(peerRow, peerNodeStatus, rowContext.now(), fix1);
+      addBackoffColumns(peerRow, peerNodeStatus, rowContext.renderTiming().now(), fix1);
       addPRejectColumn(peerRow, peerNodeStatus, fix1);
     }
 
-    addIdleColumn(peerRow, peerNodeStatus, rowContext.now());
+    addIdleColumn(peerRow, peerNodeStatus, rowContext.renderTiming().now());
 
     if (hasPrivateNoteColumn()) {
-      drawPrivateNoteColumn(peerRow, peerNodeStatus, rowContext.fProxyJavascriptEnabled());
+      drawPrivateNoteColumn(
+          peerRow, peerNodeStatus, rowContext.peerRowFlags().fProxyJavascriptEnabled());
     }
 
     if (advancedModeEnabled) {
@@ -1900,9 +1896,9 @@ public abstract class ConnectionsToadlet extends Toadlet {
           peerRow, peerNodeStatus, fix1, peerSelectionPercentage, totalSelectionRate);
     }
 
-    addEndColumns(peerRow, peerNodeStatus, rowContext.endCols());
+    addEndColumns(peerRow, peerNodeStatus, rowContext.peerRowContext().endCols());
 
-    if (rowContext.drawMessageTypes()) {
+    if (rowContext.renderMode().drawMessageTypes()) {
       drawMessageTypes(peerTable, peerNodeStatus);
     }
   }

@@ -280,18 +280,12 @@ public abstract class RungeKuttaFehlbergIntegrator extends AdaptiveStepsizeInteg
     }
 
     double[] scale = (vecAbsoluteTolerance != null) ? vecAbsoluteTolerance : buildScalarScale(y);
-    context.hNew =
-        initializeStep(
-            new StepInitializationContext(
-                equations,
-                forward,
-                getOrder(),
-                scale,
-                stepStart,
-                y,
-                context.yDotK[0],
-                context.yTmp,
-                context.yDotK[1]));
+    StepInitializationInputs inputs =
+        new StepInitializationInputs(
+            equations, forward, getOrder(), scale, stepStart, y, context.yDotK[0]);
+    StepInitializationWorkspace workspace =
+        new StepInitializationWorkspace(context.yTmp, context.yDotK[1]);
+    context.hNew = initializeStep(new StepInitializationContext(inputs, workspace));
     context.firstTime = false;
   }
 

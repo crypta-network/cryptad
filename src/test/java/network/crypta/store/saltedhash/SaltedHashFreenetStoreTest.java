@@ -227,40 +227,25 @@ class SaltedHashFreenetStoreTest {
 
     try (SaltedHashFreenetStore<TestBlock> a =
             SaltedHashFreenetStore.construct(
-                aDir,
-                "a",
-                cb,
-                rnd,
-                4,
-                true,
-                SemiOrderedShutdownHook.get(),
-                false,
-                true,
-                new byte[32]);
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(aDir, "a"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(4, true, false, true)));
         SaltedHashFreenetStore<TestBlock> b =
             SaltedHashFreenetStore.construct(
-                bDir,
-                "b",
-                cb,
-                rnd,
-                4,
-                true,
-                SemiOrderedShutdownHook.get(),
-                false,
-                true,
-                new byte[32]);
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(bDir, "b"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(4, true, false, true)));
         SaltedHashFreenetStore<TestBlock> c =
             SaltedHashFreenetStore.construct(
-                cDir,
-                "c",
-                cb,
-                rnd,
-                4,
-                true,
-                SemiOrderedShutdownHook.get(),
-                false,
-                true,
-                new byte[32])) {
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(cDir, "c"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(4, true, false, true)))) {
 
       a.start(ticker, true);
       b.start(ticker, true);
@@ -376,28 +361,18 @@ class SaltedHashFreenetStoreTest {
 
     try (SaltedHashFreenetStore<TestBlock> a =
             SaltedHashFreenetStore.construct(
-                aDir,
-                "a",
-                cb,
-                rnd,
-                1,
-                false,
-                SemiOrderedShutdownHook.get(),
-                false,
-                true,
-                new byte[32]);
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(aDir, "a"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(1, false, false, true)));
         SaltedHashFreenetStore<TestBlock> b =
             SaltedHashFreenetStore.construct(
-                bDir,
-                "b",
-                cb,
-                rnd,
-                1,
-                false,
-                SemiOrderedShutdownHook.get(),
-                false,
-                true,
-                new byte[32])) {
+                SaltedHashStoreParams.of(
+                    new SaltedHashStoreLocation(bDir, "b"),
+                    new SaltedHashStoreDependencies<>(
+                        cb, rnd, SemiOrderedShutdownHook.get(), new byte[32]),
+                    new SaltedHashStoreSizing(1, false, false, true)))) {
 
       a.start(ticker, true);
       b.start(ticker, true);

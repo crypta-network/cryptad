@@ -75,12 +75,9 @@ class PlainManifestPutterTest {
     PlainManifestPutter putter =
         new PlainManifestPutter(
             new ManifestPutterParams(
-                cb,
+                new InsertRequestParams(cb, FreenetURI.EMPTY_CHK_URI, ctx, /*prioClass*/ (short) 0),
                 root,
-                /*prioClass*/ (short) 0,
-                FreenetURI.EMPTY_CHK_URI,
                 /*defaultName*/ "index.html",
-                ctx,
                 forceKey,
                 /*context*/ mock(ClientContext.class)));
 
@@ -118,12 +115,9 @@ class PlainManifestPutterTest {
         throws TooManyFilesInsertException {
       super(
           new ManifestPutterParams(
-              cb,
+              new InsertRequestParams(cb, FreenetURI.EMPTY_CHK_URI, ctx, /*prioClass*/ (short) 0),
               manifest,
-              /*prioClass*/ (short) 0,
-              FreenetURI.EMPTY_CHK_URI,
               /*defaultName*/ "index.html",
-              ctx,
               forceKey,
               context));
     }
@@ -271,12 +265,9 @@ class PlainManifestPutterTest {
     PlainManifestPutter putter =
         new PlainManifestPutter(
             new ManifestPutterParams(
-                cb,
+                new InsertRequestParams(cb, FreenetURI.EMPTY_CHK_URI, ctx, /*prioClass*/ (short) 0),
                 new HashMap<>(),
-                /*prioClass*/ (short) 0,
-                FreenetURI.EMPTY_CHK_URI,
                 /*defaultName*/ "index.html",
-                ctx,
                 forceKey,
                 mock(ClientContext.class)));
 

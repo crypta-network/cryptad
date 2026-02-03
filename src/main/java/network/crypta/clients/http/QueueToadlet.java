@@ -52,8 +52,10 @@ import network.crypta.clients.fcp.ClientRequest;
 import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.clients.fcp.DownloadRequestStatus;
 import network.crypta.clients.fcp.FCPServer;
+import network.crypta.clients.fcp.FcpInsertBehaviorOptions;
 import network.crypta.clients.fcp.FcpInsertOptions;
 import network.crypta.clients.fcp.FcpInsertRequest;
+import network.crypta.clients.fcp.FcpInsertTuningOptions;
 import network.crypta.clients.fcp.IdentifierCollisionException;
 import network.crypta.clients.fcp.NotAllowedException;
 import network.crypta.clients.fcp.PersistentGlobalRequestParams;
@@ -1482,19 +1484,15 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
               null,
               true),
           new FcpInsertOptions(
-              false,
-              !params.compress(),
-              false,
-              -1,
-              false,
-              false,
-              Node.FORK_ON_CACHEABLE_DEFAULT,
-              null,
-              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-              false,
-              params.cmode(),
-              false,
+              new FcpInsertBehaviorOptions(
+                  false, !params.compress(), false, -1, false, false, false),
+              new FcpInsertTuningOptions(
+                  false,
+                  Node.FORK_ON_CACHEABLE_DEFAULT,
+                  null,
+                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+                  params.cmode()),
               params.overrideSplitfileKey()),
           new ClientPutUpload(
               UploadFrom.DIRECT,
@@ -1687,19 +1685,15 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
               null,
               true),
           new FcpInsertOptions(
-              false,
-              !params.compress(),
-              false,
-              -1,
-              false,
-              false,
-              Node.FORK_ON_CACHEABLE_DEFAULT,
-              null,
-              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-              false,
-              params.cmode(),
-              false,
+              new FcpInsertBehaviorOptions(
+                  false, !params.compress(), false, -1, false, false, false),
+              new FcpInsertTuningOptions(
+                  false,
+                  Node.FORK_ON_CACHEABLE_DEFAULT,
+                  null,
+                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+                  params.cmode()),
               params.overrideSplitfileKey()),
           new ClientPutUpload(
               UploadFrom.DISK,
@@ -1847,19 +1841,15 @@ public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
               null,
               true),
           new FcpInsertOptions(
-              false,
-              !params.compress(),
-              false,
-              -1,
-              false,
-              false,
-              Node.FORK_ON_CACHEABLE_DEFAULT,
-              null,
-              HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
-              HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
-              false,
-              params.cmode(),
-              false,
+              new FcpInsertBehaviorOptions(
+                  false, !params.compress(), false, -1, false, false, false),
+              new FcpInsertTuningOptions(
+                  false,
+                  Node.FORK_ON_CACHEABLE_DEFAULT,
+                  null,
+                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK,
+                  HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER,
+                  params.cmode()),
               params.overrideSplitfileKey()),
           params.file(),
           null,

@@ -80,7 +80,7 @@ public class USKSparseProxyCallback implements USKProgressCallback {
    * <p>Within a polling round the proxy remembers only the newest observed edition and whether it
    * also advanced the highest known-good value. Updates for older editions are dropped unless they
    * contribute a known-good advance. The wrapped callback is invoked immediately only after a phase
-   * boundary has been signalled; otherwise the information is retained and may be forwarded later
+   * boundary has been signaled; otherwise the information is retained and may be forwarded later
    * from {@link #onSendingToNetwork(ClientContext)} or {@link #onRoundFinished(ClientContext)}.
    *
    * @param foundEdition The payload describing the discovered edition and its metadata.
@@ -185,6 +185,9 @@ public class USKSparseProxyCallback implements USKProgressCallback {
     }
     // At this point, either we returned above or ed is guaranteed != -1
     target.onFoundEdition(
-        new USKFoundEdition(ed, key, context, meta, codec, data, wasKnownGood, wasKnownGood));
+        new USKFoundEdition(
+            new USKFoundEditionPayload(ed, key, meta, codec, data),
+            context,
+            new USKFoundEditionProgress(wasKnownGood, wasKnownGood)));
   }
 }

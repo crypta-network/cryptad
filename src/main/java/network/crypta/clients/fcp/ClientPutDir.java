@@ -18,6 +18,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequester;
 import network.crypta.client.async.ContainerInserter;
 import network.crypta.client.async.DefaultManifestPutter;
+import network.crypta.client.async.InsertRequestParams;
 import network.crypta.client.async.ManifestPutter;
 import network.crypta.client.async.ManifestPutterParams;
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -120,19 +121,21 @@ public class ClientPutDir extends ClientPutBase {
       throws MalformedURLException, TooManyFilesInsertException {
     FcpInsertOptions options =
         new FcpInsertOptions(
-            message.getCHKOnly,
-            message.dontCompress,
-            message.localRequestOnly,
-            message.maxRetries,
-            message.earlyEncode,
-            message.canWriteClientCache,
-            message.forkOnCacheable,
-            message.compressorDescriptor,
-            message.extraInsertsSingleBlock,
-            message.extraInsertsSplitfileHeaderBlock,
-            message.realTimeFlag,
-            message.compatibilityMode,
-            message.ignoreUSKDatehints,
+            new FcpInsertBehaviorOptions(
+                message.getCHKOnly,
+                message.dontCompress,
+                message.localRequestOnly,
+                message.maxRetries,
+                message.earlyEncode,
+                message.realTimeFlag,
+                message.ignoreUSKDatehints),
+            new FcpInsertTuningOptions(
+                message.canWriteClientCache,
+                message.forkOnCacheable,
+                message.compressorDescriptor,
+                message.extraInsertsSingleBlock,
+                message.extraInsertsSplitfileHeaderBlock,
+                message.compatibilityMode),
             message.overrideSplitfileCryptoKey);
     ClientRequestParams requestParams =
         new ClientRequestParams(
@@ -189,19 +192,14 @@ public class ClientPutDir extends ClientPutBase {
    *         new FcpInsertRequest(
    *             client, uri, "upload", 1, null, priority, Persistence.CONNECTION, token, false),
    *         new FcpInsertOptions(
-   *             false,
-   *             false,
-   *             false,
-   *             3,
-   *             false,
-   *             true,
-   *             false,
-   *             null,
-   *             0,
-   *             0,
-   *             false,
-   *             InsertContext.CompatibilityMode.COMPAT_DEFAULT,
-   *             false,
+   *             new FcpInsertBehaviorOptions(false, false, false, 3, false, false, false),
+   *             new FcpInsertTuningOptions(
+   *                 true,
+   *                 false,
+   *                 null,
+   *                 0,
+   *                 0,
+   *                 InsertContext.CompatibilityMode.COMPAT_DEFAULT),
    *             null),
    *         new File("site"),
    *         "index.html",
@@ -402,12 +400,9 @@ public class ClientPutDir extends ClientPutBase {
     putter =
         new DefaultManifestPutter(
             new ManifestPutterParams(
-                this,
+                new InsertRequestParams(this, uri, ctx, priorityClass),
                 manifestElements,
-                priorityClass,
-                uri,
                 defaultName,
-                ctx,
                 overrideSplitfileCryptoKey,
                 context),
             persistence == Persistence.FOREVER);

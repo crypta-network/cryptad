@@ -72,12 +72,9 @@ class DefaultManifestPutterTest {
     ClientContext context = mock(ClientContext.class);
     ManifestPutterParams params =
         new ManifestPutterParams(
-            cb,
+            new InsertRequestParams(cb, FreenetURI.EMPTY_CHK_URI, ctx, /*prioClass*/ (short) 0),
             root,
-            /*prioClass*/ (short) 0,
-            FreenetURI.EMPTY_CHK_URI,
             /*defaultName*/ "index.html",
-            ctx,
             /*forceCryptoKey*/ null,
             context);
 
@@ -102,7 +99,12 @@ class DefaultManifestPutterTest {
         ClientContext context)
         throws TooManyFilesInsertException {
       super(
-          new ManifestPutterParams(cb, manifest, prio, target, defaultName, ctx, forceKey, context),
+          new ManifestPutterParams(
+              new InsertRequestParams(cb, target, ctx, prio),
+              manifest,
+              defaultName,
+              forceKey,
+              context),
           persistent);
     }
 

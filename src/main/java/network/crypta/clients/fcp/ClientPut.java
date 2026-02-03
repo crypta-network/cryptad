@@ -15,6 +15,7 @@ import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
 import network.crypta.client.async.ClientRequester;
+import network.crypta.client.async.InsertRequestParams;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.NodeClientCore;
@@ -172,7 +173,10 @@ public class ClientPut extends ClientPutBase {
 
     ClientPutterRequest putterRequest =
         new ClientPutterRequest(
-            this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata());
+            new InsertRequestParams(this, this.uri, ctx, priorityClass),
+            data,
+            cm,
+            preparedData.isMetadata());
     ClientPutterOptions putterOptions =
         new ClientPutterOptions(
             this.uri.getDocName() == null ? uploadTargetFilename : null,
@@ -209,19 +213,21 @@ public class ClientPut extends ClientPutBase {
       throws IdentifierCollisionException, MessageInvalidException, IOException {
     FcpInsertOptions options =
         new FcpInsertOptions(
-            message.getCHKOnly,
-            message.dontCompress,
-            message.localRequestOnly,
-            message.maxRetries,
-            message.earlyEncode,
-            message.canWriteClientCache,
-            message.forkOnCacheable,
-            message.compressorDescriptor,
-            message.extraInsertsSingleBlock,
-            message.extraInsertsSplitfileHeaderBlock,
-            message.realTimeFlag,
-            message.compatibilityMode,
-            message.ignoreUSKDatehints,
+            new FcpInsertBehaviorOptions(
+                message.getCHKOnly,
+                message.dontCompress,
+                message.localRequestOnly,
+                message.maxRetries,
+                message.earlyEncode,
+                message.realTimeFlag,
+                message.ignoreUSKDatehints),
+            new FcpInsertTuningOptions(
+                message.canWriteClientCache,
+                message.forkOnCacheable,
+                message.compressorDescriptor,
+                message.extraInsertsSingleBlock,
+                message.extraInsertsSplitfileHeaderBlock,
+                message.compatibilityMode),
             message.overrideSplitfileCryptoKey);
     ClientRequestParams requestParams =
         new ClientRequestParams(
@@ -267,7 +273,10 @@ public class ClientPut extends ClientPutBase {
     if (LOG.isDebugEnabled()) LOG.debug(MESSAGE_UPLOAD_LOG_TEMPLATE, data, uploadFrom);
     ClientPutterRequest putterRequest =
         new ClientPutterRequest(
-            this, data, this.uri, cm, ctx, priorityClass, preparedData.isMetadata());
+            new InsertRequestParams(this, this.uri, ctx, priorityClass),
+            data,
+            cm,
+            preparedData.isMetadata());
     ClientPutterOptions putterOptions =
         new ClientPutterOptions(
             this.uri.getDocName() == null ? targetFilename : null,

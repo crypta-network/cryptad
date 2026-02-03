@@ -237,10 +237,10 @@ class USKSparseProxyCallbackTest {
     // Assert: no call yet
     verify(target, never()).onFoundEdition(any(USKFoundEdition.class));
 
-    // Act: finish the round; should flush a single latest notification (edition 2)
+    // Act: finish the round; should flush the single latest notification (edition 2)
     proxy.onRoundFinished(context);
 
-    // Assert: exactly once with latest values and knownGood propagated
+    // Assert: exactly once with the latest values and knownGood propagated
     verify(target, times(1))
         .onFoundEdition(foundEdition(2L, usk, context, false, (short) 9, data345, true, true));
 
@@ -294,9 +294,10 @@ class USKSparseProxyCallbackTest {
     USKSparseProxyCallback proxy = new USKSparseProxyCallback(target, usk);
     byte[] data1 = new byte[] {1};
     proxy.onFoundEdition(foundEdition(5L, usk, context, false, (short) 0, data1, false, false));
-    proxy.onRoundFinished(context); // finish the round so subsequent older edition may pass through
+    proxy.onRoundFinished(
+        context); // finish the round so the following older edition may pass through
 
-    // Act: older edition but newKnownGood=true should call through immediately
+    // Act: the older edition but newKnownGood=true should call through immediately
     byte[] data9 = new byte[] {9};
     proxy.onFoundEdition(foundEdition(4L, usk, context, true, (short) 2, data9, true, false));
 
@@ -313,7 +314,7 @@ class USKSparseProxyCallbackTest {
     // Arrange
     USKSparseProxyCallback proxy = new USKSparseProxyCallback(target, usk);
 
-    // Act: first store the edition (knownGood=false), then mark same edition as knownGood
+    // Act: first store the edition (knownGood=false), then mark the same edition as knownGood
     byte[] data23 = new byte[] {2, 3};
     proxy.onFoundEdition(foundEdition(7L, usk, context, true, (short) 11, data23, false, false));
     proxy.onFoundEdition(foundEdition(7L, usk, context, true, (short) 11, data23, true, false));
@@ -346,6 +347,8 @@ class USKSparseProxyCallbackTest {
       boolean newKnownGood,
       boolean newSlotToo) {
     return new USKFoundEdition(
-        edition, key, context, metadata, codec, data, newKnownGood, newSlotToo);
+        new USKFoundEditionPayload(edition, key, metadata, codec, data),
+        context,
+        new USKFoundEditionProgress(newKnownGood, newSlotToo));
   }
 }

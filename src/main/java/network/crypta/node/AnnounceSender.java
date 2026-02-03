@@ -184,21 +184,20 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private boolean applyRouteResult(RoutingState state, PeerNode next, NodeProcessResult result) {
-    switch (result) {
-      case TERMINATE:
-        return false;
-      case CONTINUE_FORWARDED:
+    return switch (result) {
+      case TERMINATE -> false;
+      case CONTINUE_FORWARDED -> {
         state.hasForwarded = true;
         state.last = next;
-        return true;
-      case CONTINUE_NO_FORWARD:
+        yield true;
+      }
+      case CONTINUE_NO_FORWARD -> {
         // Track the attempted peer even if we failed to send/forward.
         // This keeps HTL decrement attribution consistent with the peer we just tried.
         state.last = next;
-        return true;
-      default:
-        return true;
-    }
+        yield true;
+      }
+    };
   }
 
   private enum NodeProcessResult {

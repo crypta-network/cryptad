@@ -47,11 +47,11 @@ import org.slf4j.LoggerFactory;
  * <p>Typical usage follows a parse → inspect → act pattern during fetches, and a build → serialize
  * → insert pattern during inserts. The class exposes helpers to read the header, manifest entries,
  * and splitfile layout, while keeping low‑level binary details encapsulated. After parsing, some
- * derived fields (for example segment counts) are computed from the serialized parameters to match
+ * derived fields (for example, segment counts) are computed from the serialized parameters to match
  * the historical format expected by fetchers.
  *
  * <p>Thread-safety and mutability: a {@code Metadata} instance is mutable during construction and
- * parsing. Once populated it is commonly treated as effectively immutable by callers. No internal
+ * parsing. Once populated, it is commonly treated as effectively immutable by callers. No internal
  * synchronization is provided; publish safely if sharing across threads or prefer per‑thread
  * instances. Larger structures (such as segment keys) may be shared read‑most after construction.
  *
@@ -73,7 +73,7 @@ public class Metadata implements Serializable {
   static final long FREENET_METADATA_MAGIC = 0xf053b2842d91482bL;
   static final int MAX_SPLITFILE_PARAMS_LENGTH = 32768;
 
-  /** Soft limit, to avoid memory DoS */
+  /** Soft limit to avoid memory DoS */
   static final int MAX_SPLITFILE_BLOCKS = 1000 * 1000;
 
   /** Splitfile parameters: segmenting without any special deductions. */
@@ -179,14 +179,6 @@ public class Metadata implements Serializable {
     return new HeaderState(compressed, hasTopBlocks);
   }
 
-  private record TopInfo(
-      long size,
-      long compressedSize,
-      int blocksRequired,
-      int blocksTotal,
-      boolean dontCompress,
-      CompatibilityMode compatMode) {}
-
   /** Holder for initializing final top-layer fields inside constructors. */
   private record TopLayerInit(
       long size,
@@ -197,7 +189,7 @@ public class Metadata implements Serializable {
       CompatibilityMode compatMode,
       short parsedVersion) {}
 
-  private TopInfo readTopBlocksInfo(DataInputStream dis, boolean hasTopBlocks)
+  private TopLayerBlockInfo readTopBlocksInfo(DataInputStream dis, boolean hasTopBlocks)
       throws IOException, MetadataParseException {
     if (hasTopBlocks) {
       long size = dis.readLong();
@@ -207,9 +199,10 @@ public class Metadata implements Serializable {
       boolean dont = dis.readBoolean();
       short code = dis.readShort();
       CompatibilityMode compat = parseTopCompatibility(code, size);
-      return new TopInfo(size, comp, req, tot, dont, compat);
+      return new TopLayerBlockInfo(size, comp, req, tot, dont, compat);
     } else {
-      return new TopInfo(0, 0, 0, 0, false, InsertContext.CompatibilityMode.COMPAT_UNKNOWN);
+      return new TopLayerBlockInfo(
+          0, 0, 0, 0, false, InsertContext.CompatibilityMode.COMPAT_UNKNOWN);
     }
   }
 
@@ -578,7 +571,7 @@ public class Metadata implements Serializable {
   short parsedVersion;
 
   // 2 bytes of flags
-  /** Is a splitfile */
+  /** Is a splitfile? */
   boolean splitfile;
 
   /** Is a DBR */
@@ -607,7 +600,8 @@ public class Metadata implements Serializable {
   static final short FLAGS_COMPRESSED = 128;
   static final short FLAGS_TOP_SIZE = 256;
   static final short FLAGS_HASHES = 512;
-  // If parsed version = 1 and splitfile is set and hashes exist, we create the splitfile key from
+  // If the parsed version = 1 and splitfile is set and hashes exist, we create the splitfile key
+  // from
   // the hashes.
   // This flag overrides this behavior and reads a key anyway.
   static final short FLAGS_SPECIFY_SPLITFILE_KEY = 1024;
@@ -642,7 +636,7 @@ public class Metadata implements Serializable {
   String mimeType;
 
   /**
-   * The compressed MIME type - lookup index for the MIME types table. Must be between 0 and 32767.
+   * The compressed MIME type - lookup index for the MIME types table. Must be between 0 and 32,767.
    */
   short compressedMIMEValue;
 
@@ -714,7 +708,9 @@ public class Metadata implements Serializable {
   /** Used if splitfile single crypto key is enabled */
   byte splitfileSingleCryptoAlgorithm;
 
-  /** Common crypto key applied to all blocks when parsed version ≥ 1; otherwise {@code null}. */
+  /**
+   * Common crypto key applied to all blocks when the parsed version ≥ 1; otherwise {@code null}.
+   */
   byte[] splitfileSingleCryptoKey;
 
   /** If false, the splitfile key can be computed from hashes; if true, it must be specified. */
@@ -732,7 +728,7 @@ public class Metadata implements Serializable {
   /** Number of segments computed from the layout parameters. */
   int segmentCount;
 
-  /** How many trailing segments lose one data block for balancing. */
+  /** How many trailing segments lose one data block for balancing? */
   int deductBlocksFromSegments;
 
   /** Number of cross‑segment parity blocks per segment (0 when not used). */
@@ -751,7 +747,7 @@ public class Metadata implements Serializable {
   /** Manifest entries by name */
   HashMap<String, Metadata> manifestEntries;
 
-  /** Archive internal redirect: name of file in archive SympolicShortLink: Target name */
+  /** Archive internal redirect: name of the file in archive SympolicShortLink: Target name */
   String targetName;
 
   /** Client metadata such as MIME type; may be {@code null}. */
@@ -956,7 +952,7 @@ public class Metadata implements Serializable {
    *     closed by this method; must not be {@code null}.
    * @param length total number of bytes available for the metadata payload from {@code dis}; used
    *     for bounds checking and manifest parsing decisions.
-   * @throws IOException if an I/O error occurs or the stream cannot supply the required bytes.
+   * @throws IOException if an I/O error occurs, or the stream cannot supply the required bytes.
    * @throws MetadataParseException if the payload is structurally invalid or uses an unsupported
    *     version or document type.
    */
@@ -965,13 +961,13 @@ public class Metadata implements Serializable {
     readMagicVersionAndDocType(dis);
 
     HeaderState header = readFlagsAndHashes(dis);
-    TopInfo top = readTopBlocksInfo(dis, header.hasTopBlocks);
-    this.topSize = top.size;
-    this.topCompressedSize = top.compressedSize;
-    this.topBlocksRequired = top.blocksRequired;
-    this.topBlocksTotal = top.blocksTotal;
-    this.topDontCompress = top.dontCompress;
-    this.topCompatibilityMode = top.compatMode;
+    TopLayerBlockInfo top = readTopBlocksInfo(dis, header.hasTopBlocks);
+    this.topSize = top.size();
+    this.topCompressedSize = top.compressedSize();
+    this.topBlocksRequired = top.blocksRequired();
+    this.topBlocksTotal = top.blocksTotal();
+    this.topDontCompress = top.dontCompress();
+    this.topCompatibilityMode = top.compatMode();
 
     readArchiveTypeIfNeeded(dis);
 
@@ -1019,9 +1015,10 @@ public class Metadata implements Serializable {
    * @return a 32‑byte key bytes array suitable for splitfile encryption.
    */
   public static byte[] getCryptoKey(byte[] hash) {
-    // This is exactly the same algorithm used by e.g. JFK for generating multiple session keys from
+    // This is exactly the same algorithm used by e.g., JFK for generating multiple session keys
+    // from
     // a single generated value.
-    // The only difference is we use a constant of more than one byte's length here, to avoid having
+    // The only difference is we use a constant of more than one byte's length here to avoid having
     // to keep a registry.
     MessageDigest md = SHA256.getMessageDigest();
     md.update(hash);
@@ -1057,9 +1054,10 @@ public class Metadata implements Serializable {
    * @return seed bytes for cross‑segment parity; never {@code null}.
    */
   public static byte[] getCrossSegmentSeed(byte[] hash) {
-    // This is exactly the same algorithm used by e.g. JFK for generating multiple session keys from
+    // This is exactly the same algorithm used by e.g., JFK for generating multiple session keys
+    // from
     // a single generated value.
-    // The only difference is we use a constant of more than one byte's length here, to avoid having
+    // The only difference is we use a constant of more than one byte's length here to avoid having
     // to keep a registry.
     MessageDigest md = SHA256.getMessageDigest();
     md.update(hash);
@@ -1085,7 +1083,7 @@ public class Metadata implements Serializable {
    *
    * @param dir A map of names (string) to either files (same string) or directories (more
    *     HashMap's)
-   * @throws MalformedURLException One of the URI:s were malformed
+   * @throws MalformedURLException One of the URI:s was malformed
    */
   private void addRedirectionManifest(Map<String, Object> dir) throws MalformedURLException {
     // Simple manifest - contains actual redirects.
@@ -1128,7 +1126,7 @@ public class Metadata implements Serializable {
 
   /**
    * Create a Metadata object and add manifest entries from the given map. The map can contain
-   * either string -> Metadata, or string -> map, the latter indicating subdirs.
+   * either string -> Metadata or string -> map, the latter indicating subdirs.
    *
    * @param dir a map from entry names to either {@link Metadata} (files/redirects) or nested maps
    *     (sub‑directories). Names must not contain {@code '/'}.
@@ -1270,10 +1268,10 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Create a Metadata redircet object that points to resolved metadata inside container. docType =
-   * ARCHIVE_METADATA_REDIRECT
+   * Create a Metadata redirect object that points to resolved metadata inside the container.
+   * docType = ARCHIVE_METADATA_REDIRECT
    *
-   * @param name the filename in the archive to read from, must be ".metadata-N" scheme.
+   * @param name the filename in the archive to read from must be a ".metadata-N" scheme.
    */
   private Metadata(DocumentType docType, String name) {
     hashCode = System.identityHashCode(this);
@@ -1466,7 +1464,7 @@ public class Metadata implements Serializable {
     }
   }
 
-  // Top fields are final; compute values then assign once in constructors.
+  // Top fields are final; compute values, then assign once in constructors.
 
   private void buildSplitfileParamsBytes(SplitfileParams params) {
     int segmentSize = params.segmentSize();
@@ -1577,7 +1575,7 @@ public class Metadata implements Serializable {
   /**
    * Read a key using the current settings.
    *
-   * @throws IOException if the stream cannot supply enough bytes for a full key or an I/O error
+   * @throws IOException if the stream cannot supply enough bytes for a full key, or an I/O error
    *     occurs while reading.
    * @throws MalformedURLException If the key could not be read due to an error in parsing the key.
    *     REDFLAG: May want to recover from these in the future, hence the short length.
@@ -1654,7 +1652,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * The default document is the one which has an empty name.
+   * The default document is the one that has an empty name.
    *
    * @return the {@code Metadata} document mapped to the empty name within this manifest, or {@code
    *     null} when no default is set.
@@ -2050,12 +2048,12 @@ public class Metadata implements Serializable {
     int dataIdx = 0;
     int checkIdx = 0;
     for (int s = 0; s < segmentCount; s++) {
-      // Base data blocks for this segment, accounting for "deduct last N segments by 1" rule.
+      // Base data blocks for this segment, accounting for the "deduct last N segments by 1" rule.
       int baseDataPerSeg =
           blocksPerSegment - (s >= (segmentCount - Math.max(0, deductBlocksFromSegments)) ? 1 : 0);
       // In cross-segment mode, each segment also carries crossCheckBlocks additional data-like
       // blocks
-      // that participate in segment-level decode. Include them in the data-per-segment target.
+      // that participate in segment-level decoding. Include them in the data-per-segment target.
       int nominalDps = baseDataPerSeg + Math.max(0, crossCheckBlocks);
       int remainingData = splitfileDataKeys != null ? (splitfileDataKeys.length - dataIdx) : 0;
       int dps = Math.clamp(remainingData, 0, nominalDps);
@@ -2098,6 +2096,7 @@ public class Metadata implements Serializable {
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class ManifestEntryData {
     final byte[] data;
 
@@ -2350,7 +2349,7 @@ public class Metadata implements Serializable {
 
     private Metadata m;
 
-    /** Create a new compose helper (an empty dir) */
+    /** Create a new composition helper (an empty dir) */
     public SimpleManifestComposer() {
       m = new Metadata();
       m.documentType = DocumentType.SIMPLE_MANIFEST;
@@ -2378,7 +2377,7 @@ public class Metadata implements Serializable {
      * @return the composed metadata object
      */
     public Metadata getMetadata() {
-      // after handing off the metadata object it is read only.
+      // after handing off the metadata object, it is read-only.
       Metadata result = m;
       m = null;
       return result;
@@ -2599,7 +2598,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Returns number of cross‑segment parity blocks per segment (0 when not used).
+   * Returns the number of cross‑segment parity blocks per segment (0 when not used).
    *
    * @return count of cross‑segment parity blocks.
    */
@@ -2608,7 +2607,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Returns number of check/parity blocks per segment.
+   * Returns the number of check/parity blocks per segment.
    *
    * @return parity/check blocks per segment.
    */
@@ -2617,7 +2616,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Returns number of data blocks per segment (not including cross‑segment blocks).
+   * Returns the number of data blocks per segment (not including cross‑segment blocks).
    *
    * @return data blocks per segment.
    */
@@ -2684,7 +2683,7 @@ public class Metadata implements Serializable {
   }
 
   /**
-   * Return a best‑guess compatibility mode, guaranteed not to be {@code COMPAT_UNKNOWN} or {@code
+   * Return the best‑guess compatibility mode, guaranteed not to be {@code COMPAT_UNKNOWN} or {@code
    * COMPAT_CURRENT}.
    *
    * @return the most appropriate {@link CompatibilityMode} for this metadata when an exact top mode

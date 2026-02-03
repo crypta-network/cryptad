@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.Objects;
 import network.crypta.client.FetchContext;
@@ -22,7 +21,6 @@ import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientGetterOptions;
 import network.crypta.client.async.ClientGetterRequest;
 import network.crypta.client.async.PersistentClientCallback;
-import network.crypta.clients.fcp.ClientRequest.Persistence;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.HashResult;
 import network.crypta.keys.FreenetURI;
@@ -98,6 +96,7 @@ final class ClientGetGetterFactory {
    * so persistent requests can resume and serialize details through a single delegate. The only
    * state retained is the request instance provided at construction time.
    */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class CallbackAdapter
       implements ClientGetCallback, PersistentClientCallback, Serializable {
     /** Serialization identifier for the adapter; no evolving state is persisted. */
@@ -189,45 +188,19 @@ final class ClientGetGetterFactory {
    */
   @SuppressWarnings("resource")
   static RequestStatus buildStatus(ClientGetStatusSnapshot snapshot) {
-    boolean totalFinalized = false;
-    int total = 0;
-    int min = 0;
-    int fetched = 0;
-    int fatal = 0;
-    int failed = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
-    Instant latestSuccess = Instant.now();
-    Instant latestFailure = null;
-    String identifier = snapshot.identifier();
-    Persistence persistence = snapshot.persistence();
-    boolean started = snapshot.started();
-    boolean finished = snapshot.finished();
-    boolean succeeded = snapshot.succeeded();
-    SimpleProgressMessage progressPending = snapshot.progressPending();
+    RequestStatusSnapshot statusSnapshot = snapshot.statusSnapshot();
+    boolean finished = statusSnapshot.finished();
+    boolean succeeded = statusSnapshot.success();
     GetFailedMessage failedMessage = snapshot.failedMessage();
     String foundDataMimeType = snapshot.foundDataMimeType();
     long foundDataLength = snapshot.foundDataLength();
     File destinationFile = snapshot.destinationFile();
     Bucket dataBucket = snapshot.dataBucket();
     FetchContext fetchContext = snapshot.fetchContext();
-    short priorityClass = snapshot.priorityClass();
     InsertContext.CompatibilityMode[] compatModes = snapshot.compatModes();
     byte[] splitfileKey = snapshot.splitfileKey();
     FreenetURI uri = snapshot.uri();
     boolean dontCompress = snapshot.dontCompress();
-
-    if (progressPending != null) {
-      totalFinalized = progressPending.isTotalFinalized();
-      // The progress API reports doubles to preserve partial block counts from the splitter.
-      total = (int) progressPending.getTotalBlocks();
-      min = (int) progressPending.getMinBlocks();
-      fetched = (int) progressPending.getFetchedBlocks();
-      latestSuccess = progressPending.getLatestSuccess();
-      fatal = (int) progressPending.getFatalyFailedBlocks();
-      failed = (int) progressPending.getFailedBlocks();
-      latestFailure = progressPending.getLatestFailure();
-    }
-    if (finished && succeeded) totalFinalized = true;
     FetchExceptionMode failureCode = null;
     String failureReasonShort = null;
     String failureReasonLong = null;
@@ -257,22 +230,6 @@ final class ClientGetGetterFactory {
     boolean overriddenDataType =
         fetchContext.getOverrideMIME() != null || fetchContext.getCharset() != null;
 
-    RequestStatusSnapshot statusSnapshot =
-        new RequestStatusSnapshot(
-            identifier,
-            persistence,
-            started,
-            finished,
-            succeeded,
-            total,
-            min,
-            fetched,
-            latestSuccess,
-            fatal,
-            failed,
-            latestFailure,
-            totalFinalized,
-            priorityClass);
     DownloadOutcomeInfo outcome =
         new DownloadOutcomeInfo(
             foundDataLength,
@@ -438,7 +395,7 @@ final class ClientGetGetterFactory {
   /**
    * Creates a disk-backed bucket intended to receive the final download output.
    *
-   * <p>The bucket is configured so the file must not pre-exist on first write, helping prevent
+   * <p>The bucket is configured so the file must not pre-exist on first writing, helping prevent
    * accidental overwrites. The bucket is writable by default and does not register for
    * delete-on-exit or delete-on-free behavior.
    *

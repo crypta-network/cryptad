@@ -32,6 +32,10 @@ import network.crypta.keys.Key;
 import network.crypta.node.SemiOrderedShutdownHook;
 import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
 import network.crypta.store.saltedhash.SaltedHashFreenetStore;
+import network.crypta.store.saltedhash.SaltedHashStoreDependencies;
+import network.crypta.store.saltedhash.SaltedHashStoreLocation;
+import network.crypta.store.saltedhash.SaltedHashStoreParams;
+import network.crypta.store.saltedhash.SaltedHashStoreSizing;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
 import network.crypta.support.Ticker;
@@ -308,16 +312,11 @@ class RAMSaltMigrationTest {
     File f = getStorePath(testName);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       saltStore.start(null, true);
 
       for (int i = 0; i < 5; i++) {
@@ -348,16 +347,11 @@ class RAMSaltMigrationTest {
     List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<>(keycount);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       saltStore.start(null, true);
 
       List<String> dummyValueInsertedList = new ArrayList<>(keycount);
@@ -381,16 +375,11 @@ class RAMSaltMigrationTest {
     store = new CHKStore();
     try (var _ =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       checkStandardTestBlocks(store, dummyValueActuallyStoredList, blockActuallyStoredList, true);
     }
   }
@@ -431,16 +420,11 @@ class RAMSaltMigrationTest {
     CHKStore store = new CHKStore();
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            10,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, true, true, true)))) {
       saltStore.start(ticker, true);
 
       // Make sure it's clear.
@@ -454,16 +438,11 @@ class RAMSaltMigrationTest {
     store = new CHKStore();
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            10,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, true, true, true)))) {
       saltStore.start(ticker, true);
       if (forceValidEmpty) saltStore.forceValidEmpty();
 
@@ -623,16 +602,11 @@ class RAMSaltMigrationTest {
     File f = getStorePath(testName);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            size,
-            useSlotFilter,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(size, useSlotFilter, true, true)))) {
       saltStore.start(null, true);
 
       List<String> dummyValueInsertedList = new ArrayList<>(keycount);
@@ -764,16 +738,11 @@ class RAMSaltMigrationTest {
     List<ClientCHKBlock> blockActuallyStoredList = new ArrayList<>(keycount);
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            size,
-            useSlotFilter,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(size, useSlotFilter, true, true)))) {
       saltStore.start(ticker, true);
 
       List<String> dummyValueInsertedList = new ArrayList<>(keycount);
@@ -799,16 +768,12 @@ class RAMSaltMigrationTest {
     store = new CHKStore();
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            store,
-            weakPRNG,
-            openNewSize ? newSize : size,
-            useSlotFilter,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(
+                    openNewSize ? newSize : size, useSlotFilter, true, true)))) {
       saltStore.start(ticker, true);
 
       // If we did open the new size, we expect all previously matched keys to be present.
@@ -845,16 +810,11 @@ class RAMSaltMigrationTest {
     File f = getStorePath("migrate_whenRAMStoreMigrated_expectBlockReadableInNewStore");
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            newStore,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    newStore, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       saltStore.start(null, true);
 
       ramStore.migrateTo(newStore, false);
@@ -893,16 +853,11 @@ class RAMSaltMigrationTest {
     File f = getStorePath("migrate_whenKeyedRAMStoreMigrated_expectBlockReadableInNewStore");
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            STORE_NAME,
-            newStore,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            storeKey)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, STORE_NAME),
+                new SaltedHashStoreDependencies<>(
+                    newStore, weakPRNG, SemiOrderedShutdownHook.get(), storeKey),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       saltStore.start(null, true);
 
       ramStore.migrateTo(newStore, false);

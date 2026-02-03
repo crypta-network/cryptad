@@ -7,137 +7,160 @@ import network.crypta.node.KeysFetchingLocally;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Bundles parameters needed to load splitfile segments from persisted storage.
+ * Bundles resume-time parameters used to load splitfile segments from persisted storage.
  *
- * <p>This record captures the resume-time inputs that {@link SplitFileFetcherSegmentsBuilder} needs
- * when rehydrating segment storage from a settings stream. Callers populate the full set of
- * metadata, offsets, and sizing information once, then pass the record to the builder, which
- * consumes the {@link DataInputStream} in-order and reconstructs per-segment offsets.
+ * <p>This class captures the inputs that {@link SplitFileFetcherSegmentsBuilder} expects when
+ * rehydrating segment storage from a settings stream. Callers supply parsed settings, offsets, and
+ * totals once, then pass the instance to the builder, which consumes the {@link DataInputStream} in
+ * order and reconstructs per-segment offsets. The bundle itself is a simple carrier; it does not
+ * validate values or normalize units, and it assumes the supplied data describes a coherent layout
+ * consistent with the persisted footer.
  *
- * <p>The record is immutable but refers to mutable collaborators such as the backing buffer and
- * segment array. It does not perform validation and assumes the supplied values describe a coherent
- * layout consistent with the persisted footer. Construct a fresh instance for each resume attempt
- * and avoid reusing it across threads because the stream is stateful.
+ * <p>Instances are immutable but hold references to mutable collaborators such as the backing
+ * stream and the segment array that will be populated. Use a fresh instance per resume attempt and
+ * avoid sharing across threads, because the stream position is stateful and the segment array is
+ * mutated during reconstruction.
  *
  * <ul>
- *   <li>Stores the expected block totals and checksum sizing used for validation.
- *   <li>Captures the offsets into the storage layout for key lists and segment status blocks.
- *   <li>Holds the stream and segment array that will be mutated during reconstruction.
+ *   <li>Holds expected block totals used later to validate reconstructed segments.
+ *   <li>Captures storage offsets for key lists and segment status sections.
+ *   <li>Provides the settings stream and segment array to be consumed and filled.
  * </ul>
  *
  * @see SplitFileFetcherSegmentsBuilder#initSegmentsFromStream(SplitFileFetcherSegmentsLoadParams)
  */
-@SuppressWarnings("java:S6206")
 final class SplitFileFetcherSegmentsLoadParams {
+  /** Owning storage that provides layout constants and derived values. */
   private final SplitFileFetcherStorage parent;
+
+  /** Total number of data blocks across all segments; non-negative count. */
   private final int totalDataBlocks;
+
+  /** Total number of check blocks across all segments; non-negative count. */
   private final int totalCheckBlocks;
+
+  /** Total number of cross-check blocks across all segments; non-negative count. */
   private final int totalCrossCheckBlocks;
+
+  /** Settings stream positioned at the start of segment metadata; read in order. */
   private final DataInputStream dis;
+
+  /** Whether completion is recorded by truncating the backing storage file. */
   private final boolean completeViaTruncation;
+
+  /** Optional helper for tracking locally fetched keys; may be {@code null}. */
   private final KeysFetchingLocally keysFetching;
+
+  /** Mutable segment array that will be populated with reconstructed storage objects. */
   private final SplitFileFetcherSegmentStorage[] segments;
-  private final int checksumLength;
-  private final boolean hasSplitfileSingleCryptoKey;
+
+  /** Byte offset of the persisted key list section in the storage layout. */
   private final long offsetKeyList;
+
+  /** Byte offset of the persisted segment status section in the storage layout. */
   private final long offsetSegmentStatus;
+
+  /** Total length of the backing storage buffer in bytes. */
   private final long rafLength;
 
   /**
    * Creates a bundle of parameters for rebuilding segments from persisted storage.
    *
-   * @param parent owning storage that supplies layout constants and retry behavior.
-   * @param totalDataBlocks total number of data blocks across all segments; non-negative count.
-   * @param totalCheckBlocks total number of check blocks across all segments; non-negative count.
-   * @param totalCrossCheckBlocks total number of cross-check blocks across all segments;
-   *     non-negative count.
-   * @param dis input stream positioned at the start of segment metadata; read in-order.
+   * <p>This constructor copies totals, offsets, and the settings stream reference out of {@code
+   * settings}, and retains references to runtime collaborators such as {@code parent} and {@code
+   * segments}. It performs no validation and does not advance the stream. Callers are responsible
+   * for ensuring the stream is positioned at the start of segment metadata, and that the supplied
+   * offsets and totals match the persisted layout. The segment array is filled later by the builder
+   * and must be mutable for the duration of reconstruction.
+   *
+   * @param parent owning storage that supplies layout constants and derived values.
+   * @param settings parsed settings with totals, offsets, and settings stream.
    * @param completeViaTruncation whether completion is recorded via file truncation semantics.
    * @param keysFetching optional helper for tracking locally fetched keys; may be {@code null}.
    * @param segments mutable segment array to populate with reconstructed storage objects.
-   * @param checksumLength checksum length in bytes used for persisted checksummed blocks.
-   * @param hasSplitfileSingleCryptoKey whether a single splitfile crypto key is present.
-   * @param offsetKeyList byte offset of the persisted key list section in the storage layout.
-   * @param offsetSegmentStatus byte offset of the persisted segment status section.
    * @param rafLength total length of the backing storage buffer in bytes.
    */
   SplitFileFetcherSegmentsLoadParams(
       SplitFileFetcherStorage parent,
-      int totalDataBlocks,
-      int totalCheckBlocks,
-      int totalCrossCheckBlocks,
-      DataInputStream dis,
+      ParsedBasicSettings settings,
       boolean completeViaTruncation,
       KeysFetchingLocally keysFetching,
       SplitFileFetcherSegmentStorage[] segments,
-      int checksumLength,
-      boolean hasSplitfileSingleCryptoKey,
-      long offsetKeyList,
-      long offsetSegmentStatus,
       long rafLength) {
     this.parent = parent;
-    this.totalDataBlocks = totalDataBlocks;
-    this.totalCheckBlocks = totalCheckBlocks;
-    this.totalCrossCheckBlocks = totalCrossCheckBlocks;
-    this.dis = dis;
+    this.totalDataBlocks = settings.getTotalDataBlocks();
+    this.totalCheckBlocks = settings.getTotalCheckBlocks();
+    this.totalCrossCheckBlocks = settings.getTotalCrossCheckBlocks();
+    this.dis = settings.getSettingsStream();
     this.completeViaTruncation = completeViaTruncation;
     this.keysFetching = keysFetching;
     this.segments = segments;
-    this.checksumLength = checksumLength;
-    this.hasSplitfileSingleCryptoKey = hasSplitfileSingleCryptoKey;
-    this.offsetKeyList = offsetKeyList;
-    this.offsetSegmentStatus = offsetSegmentStatus;
+    this.offsetKeyList = settings.getOffsetKeyList();
+    this.offsetSegmentStatus = settings.getOffsetSegmentStatus();
     this.rafLength = rafLength;
   }
 
+  /** Returns the owning storage that provides layout constants and derived values. */
   SplitFileFetcherStorage parent() {
     return parent;
   }
 
+  /** Returns the expected total number of data blocks across all segments. */
   int totalDataBlocks() {
     return totalDataBlocks;
   }
 
+  /** Returns the expected total number of check blocks across all segments. */
   int totalCheckBlocks() {
     return totalCheckBlocks;
   }
 
+  /** Returns the expected total number of cross-check blocks across all segments. */
   int totalCrossCheckBlocks() {
     return totalCrossCheckBlocks;
   }
 
+  /** Returns the settings stream positioned at the start of segment metadata. */
   DataInputStream dis() {
     return dis;
   }
 
+  /** Returns {@code true} when completion is recorded by truncating the backing storage file. */
   boolean completeViaTruncation() {
     return completeViaTruncation;
   }
 
+  /** Returns the optional helper used to track locally fetched keys, or {@code null}. */
   KeysFetchingLocally keysFetching() {
     return keysFetching;
   }
 
+  /** Returns the mutable segment array to be populated by the builder. */
   SplitFileFetcherSegmentStorage[] segments() {
     return segments;
   }
 
+  /** Returns the checksum length in bytes as provided by the owning storage. */
   int checksumLength() {
-    return checksumLength;
+    return parent.checksumLength;
   }
 
+  /** Returns {@code true} if the splitfile has a single shared crypto key. */
   boolean hasSplitfileSingleCryptoKey() {
-    return hasSplitfileSingleCryptoKey;
+    return parent.splitfileSingleCryptoKey != null;
   }
 
+  /** Returns the byte offset of the persisted key list section. */
   long offsetKeyList() {
     return offsetKeyList;
   }
 
+  /** Returns the byte offset of the persisted segment status section. */
   long offsetSegmentStatus() {
     return offsetSegmentStatus;
   }
 
+  /** Returns the total length of the backing storage buffer in bytes. */
   long rafLength() {
     return rafLength;
   }
@@ -147,7 +170,9 @@ final class SplitFileFetcherSegmentsLoadParams {
    *
    * <p>The comparison uses reference equality for collaborators such as {@code parent} and {@code
    * dis}, because they represent runtime services, while {@code segments} is compared by content to
-   * reflect the array's elements rather than its identity.
+   * reflect the array's elements rather than its identity. The comparison does not attempt to
+   * compare stream positions or external storage state; it only compares the values stored in this
+   * instance and the references it holds.
    *
    * @param other object to compare against; may be {@code null}.
    * @return {@code true} when all scalar fields match and segment arrays contain equal entries.
@@ -164,8 +189,8 @@ final class SplitFileFetcherSegmentsLoadParams {
         && totalDataBlocks == otherParams.totalDataBlocks
         && totalCheckBlocks == otherParams.totalCheckBlocks
         && totalCrossCheckBlocks == otherParams.totalCrossCheckBlocks
-        && checksumLength == otherParams.checksumLength
-        && hasSplitfileSingleCryptoKey == otherParams.hasSplitfileSingleCryptoKey
+        && checksumLength() == otherParams.checksumLength()
+        && hasSplitfileSingleCryptoKey() == otherParams.hasSplitfileSingleCryptoKey()
         && offsetKeyList == otherParams.offsetKeyList
         && offsetSegmentStatus == otherParams.offsetSegmentStatus
         && rafLength == otherParams.rafLength
@@ -179,7 +204,9 @@ final class SplitFileFetcherSegmentsLoadParams {
    * Computes a hash code that reflects scalar fields and the segment array contents.
    *
    * <p>The segment array is hashed with {@link Arrays#hashCode(Object[])}, while the remaining
-   * components use {@link Objects#hash(Object...)} to preserve the record's usual behavior.
+   * components use {@link Objects#hash(Object...)}. This matches the equality contract used by
+   * {@link #equals(Object)} and ensures that instances used as keys in hash-based collections
+   * remain consistent with their contained values and references.
    *
    * @return hash code suitable for hash-based collections.
    */
@@ -194,8 +221,8 @@ final class SplitFileFetcherSegmentsLoadParams {
             dis,
             completeViaTruncation,
             keysFetching,
-            checksumLength,
-            hasSplitfileSingleCryptoKey,
+            checksumLength(),
+            hasSplitfileSingleCryptoKey(),
             offsetKeyList,
             offsetSegmentStatus,
             rafLength);
@@ -206,8 +233,10 @@ final class SplitFileFetcherSegmentsLoadParams {
   /**
    * Returns a human-readable string that includes the segment array contents.
    *
-   * <p>The output mirrors the record component order, formatting the {@code segments} array with
-   * {@link Arrays#toString(Object[])} so that its elements are visible in logs and diagnostics.
+   * <p>The output mirrors the component order of this bundle, formatting the {@code segments} array
+   * with {@link Arrays#toString(Object[])} so that its elements are visible in logs and
+   * diagnostics. The resulting string is intended for debugging and should not be parsed or relied
+   * upon for stable serialization.
    *
    * @return non-null textual representation of the parameter bundle.
    */
@@ -231,9 +260,9 @@ final class SplitFileFetcherSegmentsLoadParams {
         + ", segments="
         + Arrays.toString(segments)
         + ", checksumLength="
-        + checksumLength
+        + checksumLength()
         + ", hasSplitfileSingleCryptoKey="
-        + hasSplitfileSingleCryptoKey
+        + hasSplitfileSingleCryptoKey()
         + ", offsetKeyList="
         + offsetKeyList
         + ", offsetSegmentStatus="

@@ -21,7 +21,7 @@ import java.util.logging.Logger;
  *
  * <ul>
  *   <li>Create an instance with the desired field width.
- *   <li>Call {@link #createEncodeMatrix(int, int)} to obtain a systematic generator matrix.
+ *   <li>Call {@link #createEncodeMatrix(int, int)} to get a systematic generator matrix.
  *   <li>Use {@link #createDecodeMatrix(char[], int[], int, int)} with available symbol indexes to
  *       reconstruct a decoding matrix.
  *   <li>Apply {@link #addMul(char[], int, char[], int, char, int)} or the byte overload to combine
@@ -36,7 +36,7 @@ public class FECMath {
 
   /**
    * The following parameter defines how many bits are used for field elements. This probably only
-   * supports 8 and 16 bit codes at this time because Java lacks a typedef construct. This code
+   * supports 8 and 16-bit codes at this time because Java lacks a typedef construct. This code
    * should perhaps be redone with some sort of template language/ precompiler for Java.
    */
 
@@ -50,7 +50,7 @@ public class FECMath {
    * The first part of the file implements linear algebra in GF.
    *
    * gf is the type used to store an element of the Galois Field.
-   * Must constain at least gfBits bits.
+   * Must contain at least gfBits bits.
    */
   // 2^n-1 = the number of elements in this extension field
   private final int gfSize; // powers of alpha
@@ -101,7 +101,7 @@ public class FECMath {
    * <p>USE_GF_MULC, GF_MULC0(c) and GF_ADDMULC(x) can be used when multiplying many numbers by the
    * same constant. In this case the first call sets the constant, and others perform the
    * multiplications. A value related to the multiplication is held in a local variable declared
-   * with USE_GF_MULC . See usage in addMul1().
+   * with USE_GF_MULC. See usage in addMul1().
    */
   private char[][] gfMulTable;
 
@@ -142,7 +142,7 @@ public class FECMath {
   /**
    * Returns the number of bits that define this Galois field, e.g., {@code 8} for GF(256).
    *
-   * @return bit width used to derive field size and primitive polynomial
+   * @return the bit width used to derive field size and primitive polynomial
    */
   @SuppressWarnings("unused")
   public int getGfBits() {
@@ -182,7 +182,7 @@ public class FECMath {
 
   /**
    * Generates logarithm, exponent, and inverse lookup tables for the configured field. The routine
-   * walks the primitive polynomial bits to enumerate powers of the generator and derives inverse
+   * walks the primitive polynomial bits to list powers of the generator and derives inverse
    * elements for every non-zero value. It is invoked during construction and should not be called
    * concurrently with mutation of the same instance.
    *
@@ -200,8 +200,8 @@ public class FECMath {
     gfExp[gfBits] = 0; // will be updated at the end of the 1st loop
     /*
      * first, generate the (polynomial representation of) powers of \alpha,
-     * which are stored in gfExp[i] = \alpha ** i .
-     * At the same time build gfLog[gfExp[i]] = i .
+     * which are stored in gfExp[i] = \alpha ** i
+     * At the same time, build gfLog[gfExp[i]] = i
      * The first gfBits powers are simply bits shifted to the left.
      */
     for (i = 0; i < gfBits; i++, mask = (char) (mask << 1)) {
@@ -239,7 +239,7 @@ public class FECMath {
      * log(0) is not defined, so use a special value
      */
     gfLog[0] = gfSize;
-    // set the extended gfExp values for fast multiply
+    // set the extended gfExp values for fast multiplying
     for (i = 0; i < gfSize; i++) {
       gfExp[i + gfSize] = gfExp[i];
     }
@@ -280,7 +280,7 @@ public class FECMath {
   }
 
   /**
-   * Computes {@code x mod gfSize} using bit folding instead of division. This helper keeps loop
+   * Computes {@code x mod gfSize} using a bit folding instead of division. This helper keeps loop
    * indices within the field order when accumulating exponents during multiplication.
    *
    * @param x value to be reduced; negative values are not supported and produce unspecified results
@@ -361,7 +361,7 @@ public class FECMath {
     int lim = dstPos + len;
 
     if (gfBits <= 8) { // use our multiplication table.
-      // Instead of doing gfMulTable[c,x] for multiply, we'll save
+      // Instead of doing gfMulTable[c,x] for multiplying, we'll save
       // the gfMulTable[c] to a local variable since it is going to
       // be used many times.
       char[] gfMulc = gfMulTable[c];
@@ -418,7 +418,7 @@ public class FECMath {
   /**
    * Byte-array variant of {@link #addMul(char[], int, char[], int, char, int)} that operates on
    * unsigned byte values encoded in two's complement. The multiplication constant and inputs are
-   * widened to {@code char} during arithmetic and narrowed back on write.
+   * widened to {@code char} during arithmetic and narrowed back on writing.
    *
    * @param dst destination byte buffer mutated in place; must accommodate {@code len} updates from
    *     {@code dstPos}
@@ -440,7 +440,7 @@ public class FECMath {
     int lim = dstPos + len;
 
     // use our multiplication table.
-    // Instead of doing gfMulTable[c,x] for multiply, we'll save
+    // Instead of doing gfMulTable[c,x] for multiplying, we'll save
     // the gfMulTable[c] to a local variable since it is going to
     // be used many times.
     char[] gfMulc = gfMulTable[c & 0xff];
@@ -493,7 +493,12 @@ public class FECMath {
    * @param m number of columns in {@code b} and {@code c}
    */
   public final void matMul(char[] a, char[] b, char[] c, int n, int k, int m) {
-    matMul(new MatrixMulParams(a, 0, b, 0, c, 0, n, k, m));
+    matMul(
+        new MatrixMulParams(
+            new MatrixSlice(a, 0),
+            new MatrixSlice(b, 0),
+            new MatrixSlice(c, 0),
+            new MatrixMulDimensions(n, k, m)));
   }
 
   /*
@@ -634,9 +639,9 @@ public class FECMath {
       throw new IllegalArgumentException("singular matrix 2");
     }
     if (pivotValue != 1) {
-      /* otherwhise this is a NOP */
+      /* otherwise this is a NOP */
       /*
-       * this is done often , but optimizing is not so
+       * this is often done, but optimizing is not so
        * fruitful, at least in the obvious ways (unrolling)
        */
       char scaledPivot = inverse[pivotValue];
@@ -715,7 +720,7 @@ public class FECMath {
      */
     c[k - 1] = p[0]; /* really -p(0), but x = -x in GF(2^m) */
     for (int i = 1; i < k; i++) {
-      char pElement = p[i]; /* see above comment */
+      char pElement = p[i]; /* see the above comment */
       for (int j = k - 1 - (i - 1); j < k - 1; j++) {
         c[j] ^= mul(pElement, c[j + 1]);
       }
@@ -745,7 +750,7 @@ public class FECMath {
    * enabling direct use with {@link #addMul(char[], int, char[], int, char, int)} during encoding.
    *
    * @param k number of data symbols; must be {@code <= n} and not exceed {@code gfSize + 1}
-   * @param n total symbols (data + parity) to generate; must be {@code <= gfSize + 1}
+   * @param n total symbols (data and parity) to generate; must be {@code <= gfSize + 1}
    * @return newly allocated encoding matrix in row-major order
    * @throws IllegalArgumentException if the requested dimensions exceed the field capacity or
    *     {@code k > n}
@@ -759,7 +764,7 @@ public class FECMath {
     char[] encMatrix = createGFMatrix(n, k);
 
     /*
-     * The encoding matrix is computed starting with a Vandermonde matrix,
+     * The encoding matrix is computed starting with a Vandermonde matrix
      * and then transforming it into a systematic matrix.
      *
      * fill the matrix with powers of field elements, starting from 0.
@@ -768,7 +773,7 @@ public class FECMath {
     char[] tmpMatrix = createGFMatrix(n, k);
 
     tmpMatrix[0] = 1;
-    // first row should be 0's, fill in the rest.
+    // the first row should be 0's, fill in the rest.
     for (int pos = k, row = 0; row < n - 1; row++, pos += k) {
       for (int col = 0; col < k; col++) {
         tmpMatrix[pos + col] = gfExp[modnn(row * col)];
@@ -782,10 +787,15 @@ public class FECMath {
      */
     // much faster than invertMatrix
     invertVandermonde(tmpMatrix, k);
-    matMul(new MatrixMulParams(tmpMatrix, k * k, tmpMatrix, 0, encMatrix, k * k, n - k, k, k));
+    matMul(
+        new MatrixMulParams(
+            new MatrixSlice(tmpMatrix, k * k),
+            new MatrixSlice(tmpMatrix, 0),
+            new MatrixSlice(encMatrix, k * k),
+            new MatrixMulDimensions(n - k, k, k)));
 
     /*
-     * the upper matrix is I so do not bother with a slow multiply
+     * the upper matrix is I so do not bother with a slow multiplying
      */
     Util.bzero(encMatrix, 0, k * k);
     for (int i = 0, col = 0; col < k; col++, i += k + 1) {

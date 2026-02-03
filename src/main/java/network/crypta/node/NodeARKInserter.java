@@ -14,6 +14,7 @@ import network.crypta.client.async.ClientPutCallback;
 import network.crypta.client.async.ClientPutter;
 import network.crypta.client.async.ClientPutterOptions;
 import network.crypta.client.async.ClientPutterRequest;
+import network.crypta.client.async.InsertRequestParams;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.PeerParseException;
@@ -192,13 +193,10 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
     inserter =
         new ClientPutter(
             new ClientPutterRequest(
-                this,
+                new InsertRequestParams(this, uri, ctx, RequestStarter.INTERACTIVE_PRIORITY_CLASS),
                 b,
-                uri,
                 null, // Modern ARKs fit in ~1 KiB so use pure SSKs (no MIME type) to improve
                 // fetchability
-                ctx,
-                RequestStarter.INTERACTIVE_PRIORITY_CLASS,
                 false),
             ClientPutterOptions.defaults());
 

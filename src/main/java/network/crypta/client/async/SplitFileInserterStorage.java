@@ -24,8 +24,13 @@ import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
 import network.crypta.client.MetadataParseException;
 import network.crypta.client.MetadataTopLayerInfo;
+import network.crypta.client.SplitfileBlockKeys;
+import network.crypta.client.SplitfileCryptoParams;
 import network.crypta.client.SplitfileParams;
 import network.crypta.client.SplitfilePayload;
+import network.crypta.client.SplitfileSegmentLayout;
+import network.crypta.client.TopLayerBlockInfo;
+import network.crypta.client.TopLayerHashInfo;
 import network.crypta.client.async.SplitFileInserterSegmentStorage.BlockInsert;
 import network.crypta.client.async.SplitFileInserterSegmentStorage.MissingKeyException;
 import network.crypta.crypt.ChecksumChecker;
@@ -1115,6 +1120,7 @@ public class SplitFileInserterStorage {
     return passed;
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class CryptoInit {
     final byte[] key;
     final boolean specifyInMetadata;
@@ -1154,6 +1160,7 @@ public class SplitFileInserterStorage {
         + (crossSegmentSettings == null ? 0 : crossSegmentSettings.size());
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class OffsetArrays {
     final long[] offsetCrossSegmentBlocks;
     final long[] offsetSegmentCheckBlocks;
@@ -1184,6 +1191,7 @@ public class SplitFileInserterStorage {
     return new OffsetArrays(ocb, osc, oss, ocs, osk);
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class PersistenceInit {
     final byte[] header;
     final int offsetsLength;
@@ -1869,15 +1877,11 @@ public class SplitFileInserterStorage {
     SplitfileParams params =
         new SplitfileParams(
             splitfileType,
-            dataKeys,
-            checkKeys,
-            segmentSize,
-            checkSegmentSize,
-            deductBlocksFromSegments,
-            crossCheckBlocks,
-            splitfileCryptoAlgorithm,
-            splitfileCryptoKey,
-            specifySplitfileKeyInMetadata);
+            new SplitfileBlockKeys(dataKeys, checkKeys),
+            new SplitfileSegmentLayout(
+                segmentSize, checkSegmentSize, deductBlocksFromSegments, crossCheckBlocks),
+            new SplitfileCryptoParams(
+                splitfileCryptoAlgorithm, splitfileCryptoKey, specifySplitfileKeyInMetadata));
     SplitfilePayload payload =
         new SplitfilePayload(
             clientMetadata,
@@ -1886,16 +1890,16 @@ public class SplitFileInserterStorage {
             compressionCodec,
             decompressedLength,
             isMetadata);
-    MetadataTopLayerInfo topLayer =
-        new MetadataTopLayerInfo(
+    TopLayerBlockInfo blockInfo =
+        new TopLayerBlockInfo(
             origDataSize,
             origCompressedDataSize,
             topRequiredBlocks,
             topTotalBlocks,
             topDontCompress,
-            cmode,
-            hashes,
-            hashThisLayerOnly);
+            cmode);
+    TopLayerHashInfo hashInfo = new TopLayerHashInfo(hashes, hashThisLayerOnly);
+    MetadataTopLayerInfo topLayer = new MetadataTopLayerInfo(blockInfo, hashInfo);
     return new Metadata(params, payload, topLayer);
   }
 

@@ -64,6 +64,10 @@ import network.crypta.store.StoreCallback;
 import network.crypta.store.WriteBlockableFreenetStore;
 import network.crypta.store.saltedhash.ResizablePersistentIntBuffer;
 import network.crypta.store.saltedhash.SaltedHashFreenetStore;
+import network.crypta.store.saltedhash.SaltedHashStoreDependencies;
+import network.crypta.store.saltedhash.SaltedHashStoreLocation;
+import network.crypta.store.saltedhash.SaltedHashStoreParams;
+import network.crypta.store.saltedhash.SaltedHashStoreSizing;
 import network.crypta.support.Fields;
 import network.crypta.support.PooledExecutor;
 import network.crypta.support.SimpleReadOnlyArrayBucket;
@@ -220,16 +224,11 @@ class CachingFreenetStoreTest {
 
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreCHK",
-            store,
-            weakPRNG,
-            howManyBlocks * 5L,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreCHK"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(howManyBlocks * 5L, false, true, true)))) {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
@@ -304,16 +303,11 @@ class CachingFreenetStoreTest {
       File f = getStorePath("testCollisionsOverMaximumSize");
       try (SaltedHashFreenetStore<SSKBlock> saltStore =
           SaltedHashFreenetStore.construct(
-              f,
-              TEST_CACHING_FREENET_STORE_SSK,
-              store,
-              weakPRNG,
-              20,
-              true,
-              SemiOrderedShutdownHook.get(),
-              true,
-              true,
-              null)) {
+              SaltedHashStoreParams.of(
+                  new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_SSK),
+                  new SaltedHashStoreDependencies<>(
+                      store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                  new SaltedHashStoreSizing(20, true, true, true)))) {
         WaitableCachingFreenetStoreTracker tracker =
             new WaitableCachingFreenetStoreTracker(
                 (sskBlockSize * 3L) / 2, cachingFreenetStorePeriod, ticker);
@@ -450,16 +444,11 @@ class CachingFreenetStoreTest {
       File f = getStorePath("testSimpleManualWrite");
       try (SaltedHashFreenetStore<SSKBlock> saltStore =
           SaltedHashFreenetStore.construct(
-              f,
-              TEST_CACHING_FREENET_STORE_SSK,
-              store,
-              weakPRNG,
-              20,
-              true,
-              SemiOrderedShutdownHook.get(),
-              true,
-              true,
-              null)) {
+              SaltedHashStoreParams.of(
+                  new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_SSK),
+                  new SaltedHashStoreDependencies<>(
+                      store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                  new SaltedHashStoreSizing(20, true, true, true)))) {
         CachingFreenetStoreTracker tracker =
             new CachingFreenetStoreTracker((sskBlockSize * 3L), cachingFreenetStorePeriod, ticker);
         try (CachingFreenetStore<SSKBlock> cachingStore =
@@ -544,16 +533,11 @@ class CachingFreenetStoreTest {
     File f = getStorePath("testManualWriteCollision");
     try (SaltedHashFreenetStore<SSKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            TEST_CACHING_FREENET_STORE_SSK,
-            store,
-            weakPRNG,
-            20,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_SSK),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(20, true, true, true)))) {
       // Don't let the writing complete until we say so...
       WriteBlockableFreenetStore<SSKBlock> delayStore =
           new WriteBlockableFreenetStore<>(saltStore, true);
@@ -686,16 +670,11 @@ class CachingFreenetStoreTest {
     File f = getStorePath("testSimpleSSK");
     try (SaltedHashFreenetStore<SSKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            TEST_CACHING_FREENET_STORE_SSK,
-            store,
-            weakPRNG,
-            20,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_SSK),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(20, true, true, true)))) {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
@@ -741,16 +720,11 @@ class CachingFreenetStoreTest {
 
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreOnClose",
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreOnClose"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -778,16 +752,11 @@ class CachingFreenetStoreTest {
     store = new CHKStore();
     try (SaltedHashFreenetStore<CHKBlock> saltStore2 =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreOnClose",
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreOnClose"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore2, tracker)) {
         cachingStore.start(null, true);
@@ -838,16 +807,11 @@ class CachingFreenetStoreTest {
     CHKStore store = new CHKStore();
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            "testCachingFreenetStoreTimeExpire",
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, "testCachingFreenetStoreTimeExpire"),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
@@ -937,16 +901,11 @@ class CachingFreenetStoreTest {
 
     try (SaltedHashFreenetStore<SSKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK,
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       try (CachingFreenetStore<SSKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -973,16 +932,11 @@ class CachingFreenetStoreTest {
 
     try (SaltedHashFreenetStore<SSKBlock> saltStore2 =
         SaltedHashFreenetStore.construct(
-            f,
-            TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK,
-            store,
-            weakPRNG,
-            10,
-            false,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, false, true, true)))) {
       try (CachingFreenetStore<SSKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore2, tracker)) {
         cachingStore.start(null, true);
@@ -1043,16 +997,11 @@ class CachingFreenetStoreTest {
 
     try (SaltedHashFreenetStore<SSKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK,
-            store,
-            weakPRNG,
-            10,
-            true,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, true, true, true)))) {
       WaitableCachingFreenetStoreTracker tracker =
           new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, 100, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
@@ -1150,17 +1099,13 @@ class CachingFreenetStoreTest {
   // Common helper with constants used by the simple CHK tests
   private <T extends StorableBlock> SaltedHashFreenetStore<T> newSaltedHashStore(
       File dir, StoreCallback<T> frontStore) throws IOException {
-    return SaltedHashFreenetStore.construct(
-        dir,
-        "testCachingFreenetStoreCHK",
-        frontStore,
-        weakPRNG,
-        10L,
-        false,
-        SemiOrderedShutdownHook.get(),
-        true,
-        true,
-        null);
+    SaltedHashStoreParams<T> params =
+        SaltedHashStoreParams.of(
+            new SaltedHashStoreLocation(dir, "testCachingFreenetStoreCHK"),
+            new SaltedHashStoreDependencies<>(
+                frontStore, weakPRNG, SemiOrderedShutdownHook.get(), null),
+            new SaltedHashStoreSizing(10L, false, true, true));
+    return SaltedHashFreenetStore.construct(params);
   }
 
   private CachingFreenetStoreTracker newTracker(long maxSize) {
@@ -1211,16 +1156,11 @@ class CachingFreenetStoreTest {
 
     try (SaltedHashFreenetStore<SSKBlock> saltStore =
         SaltedHashFreenetStore.construct(
-            f,
-            TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK,
-            store,
-            weakPRNG,
-            10,
-            useSlotFilter,
-            SemiOrderedShutdownHook.get(),
-            true,
-            true,
-            null)) {
+            SaltedHashStoreParams.of(
+                new SaltedHashStoreLocation(f, TEST_CACHING_FREENET_STORE_ON_CLOSE_SSK),
+                new SaltedHashStoreDependencies<>(
+                    store, weakPRNG, SemiOrderedShutdownHook.get(), null),
+                new SaltedHashStoreSizing(10, useSlotFilter, true, true)))) {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);

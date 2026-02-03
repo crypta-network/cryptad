@@ -161,7 +161,7 @@ class MetadataTest {
   @Test
   void mkRedirectionManifestWithMetadata_whenSlashInKey_throws() {
     HashMap<String, Object> bad = new HashMap<>();
-    // Value type here must be either Metadata or HashMap; provide a valid leaf Metadata
+    // The value type here must be either Metadata or HashMap; provide a valid leaf Metadata
     bad.put(
         "a/b",
         new Metadata(
@@ -255,7 +255,7 @@ class MetadataTest {
   void forceMap_behavior_copiesOrCasts_andRejectsBadKeysOrTypes() {
     HashMap<String, Object> original = new HashMap<>();
     original.put("x", "y");
-    // Returns same instance for HashMap
+    // Returns the same instance for HashMap
     Map<String, Object> same = Metadata.forceMap(original);
     assertSame(original, same);
 
@@ -274,7 +274,7 @@ class MetadataTest {
 
   @Test
   void guessCompatibilityMode_usesTopOrFallsBackToMax() throws Exception {
-    // Build a SIMPLE_REDIRECT with non-zero top fields but COMPAT_UNKNOWN in header.
+    // Build a SIMPLE_REDIRECT with non-zero top fields but COMPAT_UNKNOWN in the header.
     FreenetURI uri = FreenetURI.generateRandomCHK(new Random(0x0A141E28L));
     byte[] bytes = topHeaderUnknownBytes(uri);
 
@@ -302,15 +302,15 @@ class MetadataTest {
             new MetadataRedirectTarget(
                 DocumentType.SIMPLE_REDIRECT, null, null, uri, new ClientMetadata(MIME_TEXT)),
             new MetadataTopLayerInfo(
-                1234L, // topSize
-                1200L, // topCompressedSize
-                10, // topBlocksRequired
-                12, // topBlocksTotal
-                false,
-                CompatibilityMode
-                    .COMPAT_UNKNOWN, // write unknown into header alongside non-zero fields
-                null,
-                null));
+                new TopLayerBlockInfo(
+                    1234L, // topSize
+                    1200L, // topCompressedSize
+                    10, // topBlocksRequired
+                    12, // topBlocksTotal
+                    false,
+                    CompatibilityMode
+                        .COMPAT_UNKNOWN), // write unknown into the header alongside non-zero fields
+                new TopLayerHashInfo(null, null)));
     return writer.writeToByteArray();
   }
 
@@ -325,27 +325,19 @@ class MetadataTest {
     SplitfileParams params =
         new SplitfileParams(
             SplitfileAlgorithm.NONREDUNDANT,
-            data,
-            check,
-            1,
-            0,
-            0,
-            0,
-            Key.ALGO_AES_PCFB_256_SHA256,
-            // splitfileCryptoKey must be null for version 0; pass non-null to trigger exception
-            new byte[32],
-            false);
+            new SplitfileBlockKeys(data, check),
+            new SplitfileSegmentLayout(1, 0, 0, 0),
+            new SplitfileCryptoParams(
+                Key.ALGO_AES_PCFB_256_SHA256,
+                // splitfileCryptoKey must be null for version 0; pass non-null to trigger exception
+                new byte[32],
+                false));
     SplitfilePayload payload = new SplitfilePayload(cm, 1L, null, null, 1L, false);
     MetadataTopLayerInfo topLayer =
         new MetadataTopLayerInfo(
-            0L,
-            0L,
-            0,
-            0,
-            false,
-            CompatibilityMode.COMPAT_1250, // < 1255 → parsedVersion 0
-            null,
-            null);
+            new TopLayerBlockInfo(
+                0L, 0L, 0, 0, false, CompatibilityMode.COMPAT_1250), // < 1255 → parsedVersion 0
+            new TopLayerHashInfo(null, null));
 
     assertThrows(IllegalArgumentException.class, () -> new Metadata(params, payload, topLayer));
   }
@@ -362,7 +354,7 @@ class MetadataTest {
         new ClientCHK(routingKey, splitKey, false, Key.ALGO_AES_CTR_256_SHA256, (short) -1);
     Metadata meta = getMetadata(dataKey, splitKey);
 
-    // Assert: version remains 1 and crypto parameters are preserved.
+    // Assert: the version remains 1 and crypto parameters are preserved.
     assertEquals(1, meta.getParsedVersion(), "parsedVersion should be 1");
     assertEquals(
         Key.ALGO_AES_CTR_256_SHA256,
@@ -376,19 +368,20 @@ class MetadataTest {
     ClientCHK[] dataURIs = new ClientCHK[] {dataKey};
     ClientCHK[] checkURIs = new ClientCHK[] {};
 
-    // Act: build splitfile with compat >= 1255 (requires metadata v1) but no top section.
+    // Act: build a splitfile with compat >= 1255 (requires metadata v1) but no top section.
     return new Metadata(
         new SplitfileParams(
             SplitfileAlgorithm.NONREDUNDANT,
-            dataURIs,
-            checkURIs,
-            /* segmentSize= */ 1,
-            /* checkSegmentSize= */ 0,
-            /* deductBlocksFromSegments= */ 0,
-            /* crossSegmentBlocks= */ 0,
-            /* splitfileCryptoAlgorithm= */ Key.ALGO_AES_CTR_256_SHA256,
-            /* splitfileCryptoKey= */ splitKey,
-            /* specifySplitfileKey= */ true),
+            new SplitfileBlockKeys(dataURIs, checkURIs),
+            new SplitfileSegmentLayout(
+                /* segmentSize= */ 1,
+                /* checkSegmentSize= */ 0,
+                /* deductBlocksFromSegments= */ 0,
+                /* crossSegmentBlocks= */ 0),
+            new SplitfileCryptoParams(
+                /* splitfileCryptoAlgorithm= */ Key.ALGO_AES_CTR_256_SHA256,
+                /* splitfileCryptoKey= */ splitKey,
+                /* specifySplitfileKey= */ true)),
         new SplitfilePayload(
             /* clientMetadata= */ null,
             /* dataLength= */ 1024L,
@@ -397,13 +390,13 @@ class MetadataTest {
             /* decompressedLength= */ 0L,
             /* isMetadata= */ false),
         new MetadataTopLayerInfo(
-            /* origDataLength= */ 0L,
-            /* origCompressedDataLength= */ 0L,
-            /* requiredBlocks= */ 0,
-            /* totalBlocks= */ 0,
-            /* topDontCompress= */ false,
-            /* topCompatibilityMode= */ CompatibilityMode.COMPAT_1255,
-            /* hashes= */ null,
-            /* hashThisLayerOnly= */ null));
+            new TopLayerBlockInfo(
+                /* size= */ 0L,
+                /* compressedSize= */ 0L,
+                /* blocksRequired= */ 0,
+                /* blocksTotal= */ 0,
+                /* dontCompress= */ false,
+                /* compatMode= */ CompatibilityMode.COMPAT_1255),
+            new TopLayerHashInfo(/* hashes= */ null, /* hashThisLayerOnly= */ null)));
   }
 }

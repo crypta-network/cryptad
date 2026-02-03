@@ -56,29 +56,7 @@ class SplitFileFetcherStorageResumeReaderTest {
     when(checksumChecker.checkChecksum(any(byte[].class), anyInt(), anyInt(), any(byte[].class)))
         .thenReturn(true);
 
-    ParsedBasicSettings expected =
-        new ParsedBasicSettings(
-            SplitfileAlgorithm.ONION_STANDARD,
-            (byte) 0,
-            null,
-            100L,
-            200L,
-            new ClientMetadata("text/plain"),
-            List.of(COMPRESSOR_TYPE.GZIP),
-            10L,
-            20L,
-            30L,
-            40L,
-            50L,
-            60L,
-            70L,
-            80L,
-            CompatibilityMode.COMPAT_1250,
-            2,
-            3,
-            4,
-            0,
-            new DataInputStream(new ByteArrayInputStream(new byte[0])));
+    ParsedBasicSettings expected = expectedParsedSettings();
 
     try (MockedStatic<SplitFileFetcherStorageSettingsCodec> mocked =
         mockStatic(SplitFileFetcherStorageSettingsCodec.class)) {
@@ -281,6 +259,25 @@ class SplitFileFetcherStorageResumeReaderTest {
     return raf;
   }
 
+  private static ParsedBasicSettings expectedParsedSettings() {
+    SplitFileFetcherBasicSettingsHeader header =
+        new SplitFileFetcherBasicSettingsHeader(
+            SplitfileAlgorithm.ONION_STANDARD,
+            (byte) 0,
+            null,
+            100L,
+            200L,
+            new ClientMetadata("text/plain"),
+            List.of(COMPRESSOR_TYPE.GZIP));
+    SplitFileFetcherStorageOffsets offsets =
+        new SplitFileFetcherStorageOffsets(10L, 20L, 30L, 40L, 50L, 60L, 70L, 80L);
+    SplitFileFetcherCompatCounts compatCounts =
+        new SplitFileFetcherCompatCounts(CompatibilityMode.COMPAT_1250, 2, 3, 4, 0);
+    return new ParsedBasicSettings(
+        header, offsets, compatCounts, new DataInputStream(new ByteArrayInputStream(new byte[0])));
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class ResumeLayout {
     private final byte[] data;
     private final long rafLength;
