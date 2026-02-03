@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * {@link #setAsyncCallback(AsyncMessageFilterCallback, ByteCounter)}.
  *
  * <p>Thread safety: instances synchronize on {@code this}. Waiting and signaling use the same
- * monitor so waiters are reliably woken when a match, disconnect, or restart occurs.
+ * monitor, so waiters are reliably woken when a match, disconnect, or restart occurs.
  */
 public final class MessageFilter {
   private static final Logger LOG = LoggerFactory.getLogger(MessageFilter.class);
@@ -81,7 +81,7 @@ public final class MessageFilter {
   }
 
   /**
-   * Set whether the timeout is relative to the creation of the filter, or the start of waitFor().
+   * Set whether the timeout is relative to the creation of the filter or the start of waitFor().
    *
    * @param b If true, the timeout is relative to the time at which setTimeout() was called, if
    *     false, it's relative to the start of waitFor().
@@ -93,7 +93,7 @@ public final class MessageFilter {
   }
 
   /**
-   * Sets an absolute expiry relative to now.
+   * Sets absolute expiry relative now.
    *
    * <p>When multiple filters match the same message, the filter with the earlier expiry is favored.
    *
@@ -211,7 +211,7 @@ public final class MessageFilter {
   }
 
   /**
-   * Adds an alternative filter that is evaluated before this one.
+   * Adds an alternative filter evaluated before this one.
    *
    * <p>The resulting chain matches if either the alternate filter or this filter matches. Nest
    * multiple alternates: {@code f1.or(f2.or(f3))}. The right-most filter is tested first; place the
@@ -266,7 +266,7 @@ public final class MessageFilter {
     FOUND,
     /** The filter has expired without a match. */
     TIMED_OUT,
-    /** The message matches but the filter expired by the time it was checked. */
+    /** The message matches, but the filter expired by the time it was checked. */
     TIMED_OUT_AND_MATCHED,
     /** No match; the filter remains active. */
     NONE
@@ -556,7 +556,7 @@ public final class MessageFilter {
       msg = message;
       cb = callback;
       ctr = byteCounter;
-      // Clear matched before calling callback in case we are re-added.
+      // Clear the matched before calling callback in case we are re-added.
       if (callback != null) clearMatched();
     }
     if (cb != null) {
@@ -624,7 +624,7 @@ public final class MessageFilter {
 
   /**
    * Block on this filter's monitor until a message is matched, the peer is dropped/restarted, or
-   * the filter times out. This encapsulates the wait/notify pattern so callers don't need to
+   * the filter times out. This encapsulates the wait/notify pattern, so callers don't need to
    * synchronize on the filter reference directly.
    *
    * <p>Threading: Uses this filter instance as the monitor. Matching and connection events call
@@ -637,14 +637,19 @@ public final class MessageFilter {
     synchronized (this) {
       try {
         long now;
-        while (true) {
+        boolean waiting = true;
+        while (waiting) {
           now = System.currentTimeMillis();
           if (matchedFlag || droppedConnection != null || reallyTimedOut(now)) {
-            break;
+            waiting = false;
+          } else {
+            long wait = timeout - now;
+            if (wait > 0) {
+              this.wait(wait);
+            } else {
+              waiting = false;
+            }
           }
-          long wait = timeout - now;
-          if (wait <= 0) break;
-          this.wait(wait);
         }
         if (droppedConnection != null) throw new DisconnectedException();
       } catch (InterruptedException _) {

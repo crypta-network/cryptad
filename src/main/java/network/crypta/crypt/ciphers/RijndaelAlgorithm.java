@@ -35,6 +35,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class RijndaelAlgorithm // implicit no-argument constructor
  {
+  private RijndaelAlgorithm() {}
+
   private static final Logger LOG = LoggerFactory.getLogger(RijndaelAlgorithm.class);
 
   //	Debugging methods and variables
@@ -1234,6 +1236,7 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class KeyScheduleCtx {
     private final int[][] ke;
     private final int[][] kd;

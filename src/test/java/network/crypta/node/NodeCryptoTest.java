@@ -77,7 +77,7 @@ class NodeCryptoTest {
     } catch (UnsupportedCipherException e) {
       throw new RuntimeException(e);
     }
-    // Needed for synchronized section inside exportPublicFieldSet
+    // Needed for the synchronized section inside exportPublicFieldSet
     setField(nc, "referenceSync", new Object());
     return nc;
   }
@@ -209,7 +209,7 @@ class NodeCryptoTest {
 
     SimpleFieldSet fs = nc.exportPublicCryptoFieldSet(false, false);
 
-    // identity present and matches
+    // identity presents and matches
     assertEquals(Base64.encode(nc.getMyIdentity()), fs.get("identity"));
     // auth.negTypes present and contains the negotiated values
     assertArrayEquals(new String[] {"1", "2"}, fs.getAll("auth.negTypes"));
@@ -226,7 +226,7 @@ class NodeCryptoTest {
   }
 
   @Test
-  void exportPublicFieldSet_addsIPsLocationAndSignature() throws Exception {
+  void exportPublicFieldSet_addsIPsLocationAndSignature() {
     NodeCrypto nc = bare(node, true);
     nc.initCrypto();
 

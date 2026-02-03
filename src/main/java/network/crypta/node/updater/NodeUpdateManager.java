@@ -360,6 +360,7 @@ public class NodeUpdateManager {
       }
     }
 
+    @SuppressWarnings("java:S1905")
     private void sleepWithBackoff(int i) {
       try {
         Thread.sleep(
