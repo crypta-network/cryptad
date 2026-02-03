@@ -5,21 +5,17 @@ import java.util.Objects;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Gragg–Bulirsch–Stoer integrator for non-stiff Ordinary Differential Equations with dense output
- * support.
+ * Adaptive Gragg-Bulirsch-Stoer integrator for non-stiff first-order ODEs with dense output.
  *
- * <p>This implementation follows the Richardson extrapolation scheme popularized by Hairer and
- * Wanner: it advances the solution with a modified midpoint method, refines the step through
- * polynomial extrapolation, and selects both the order and step size dynamically to minimize the
- * total number of derivative evaluations. It is aimed at smooth problems where very high accuracy
- * is desirable; in practice it surpasses embedded Runge–Kutta methods once the required tolerance
- * falls in the {@code 1e-6} to {@code 1e-11} range depending on problem sensitivity. Dense output
- * and switching functions are handled so callers can sample the solution or trigger events between
- * accepted steps. The integrator is not thread-safe; each instance manages mutable buffers that are
- * reused across calls to {@link #integrate(FirstOrderDifferentialEquations, double, double[],
- * double, double[])}. Typical usage creates one instance per ODE problem, configures optional
- * stability and interpolation controls, then integrates forward or backward in time while providing
- * a {@link StepHandler} for results.
+ * <p>This integrator advances the state with a modified midpoint scheme, then refines it using
+ * Richardson extrapolation and a polynomial tableau. It dynamically selects both step size and
+ * extrapolation to reduce total derivative evaluations while meeting accuracy goals. Typical usage
+ * creates a new instance per problem, configures stability and interpolation controls as needed,
+ * registers a {@link StepHandler} and any switching functions, then calls {@link
+ * #integrate(FirstOrderDifferentialEquations, double, double[], double, double[])}. The
+ * implementation stores working buffers across steps, so it is not thread-safe and should be reused
+ * only for sequential integrations. It is most effective on smooth problems requiring high
+ * accuracy; coarse steps on rough dynamics may trigger stability reductions.
  *
  * <ul>
  *   <li><strong>Responsibilities:</strong> adaptive order/step selection, error estimation, dense
@@ -32,7 +28,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p><strong>License (Hairer/Wanner original odex code, summarized):</strong> redistribution and
  * use in source and binary forms, with or without modification, are permitted provided copyright
- * and disclaimer notices are preserved; the software is supplied “as is” without warranty and with
+ * and disclaimer notices are preserved; the software is supplied "as is" without warranty and with
  * no liability for damages.
  *
  * @author E. Hairer and G. Wanner (fortran version)
@@ -48,20 +44,18 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   /**
    * Create an integrator with scalar tolerances and default control settings.
    *
-   * <p>Use this constructor when a single absolute/relative tolerance pair applies to every state
-   * component. The integrator allocates internal work buffers sized for the problem dimension,
-   * enables dense output automatically when the configured {@link StepHandler} or any switching
-   * function requires it, and initializes stability, step-size, order, and interpolation control to
-   * values recommended in the Hairer–Wanner literature. Step handlers can be replaced later via
-   * {@link #setStepHandler(StepHandler)}; stability and order settings can be tuned after
-   * construction. The initial and maximum steps must be strictly positive; backward integration is
-   * handled by negating the direction internally.
+   * <p>Choose this constructor when a single absolute/relative tolerance pair applies to every
+   * state component. The integrator allocates internal work buffers sized for the problem dimension
+   * and enables dense output automatically when the configured {@link StepHandler} or any switching
+   * function requires it. Stability checks, step-size control, order control, and interpolation
+   * control are initialized to the recommended defaults, and you may adjust them later via the
+   * corresponding setters. Both step bounds must be strictly positive; backward integration is
+   * handled by internally negating the direction and step size as needed.
    *
-   * @param minStep minimal step size in integration variable; must be positive but the final step
-   *     may be smaller
-   * @param maxStep maximal step size allowed (positive even for backward runs)
-   * @param scalAbsoluteTolerance absolute tolerance applied uniformly to every state entry
-   * @param scalRelativeTolerance relative tolerance applied uniformly to every state entry
+   * @param minStep minimal step size in integration time units; must be positive
+   * @param maxStep maximal step size magnitude permitted; positive even for backward runs
+   * @param scalAbsoluteTolerance absolute tolerance applied uniformly to each state component
+   * @param scalRelativeTolerance relative tolerance applied uniformly to each state component
    */
   public GraggBulirschStoerIntegrator(
       double minStep, double maxStep, double scalAbsoluteTolerance, double scalRelativeTolerance) {
@@ -76,16 +70,18 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   /**
    * Create an integrator with per-component tolerances and default control settings.
    *
-   * <p>Choose this constructor when each state component requires its own absolute and relative
-   * tolerance. Vector tolerances must match the dimension returned by the supplied equations. All
-   * other defaults mirror the scalar constructor: stability checks are enabled, conservative
-   * step-size control, and dense output if any listener requires it. The integrator copies no user
-   * buffers, so callers retain ownership of the tolerance arrays.
+   * <p>Use this constructor when each state component needs its own absolute and relative tolerance
+   * values. The tolerance arrays must match the dimension returned by the supplied equations and be
+   * used directly, so callers retain ownership of the buffers. As with the scalar constructor,
+   * stability checks are enabled, conservative step-size control is selected, and dense output is
+   * automatically enabled when a handler or switching function requires it. Both step bounds must
+   * be strictly positive; backward integration is handled internally by negating the step
+   * direction.
    *
-   * @param minStep minimal step size in integration variable; must be strictly positive
-   * @param maxStep maximal step size allowed; must be strictly positive
-   * @param vecAbsoluteTolerance absolute tolerances per state entry; length equals state dimension
-   * @param vecRelativeTolerance relative tolerances per state entry; length equals state dimension
+   * @param minStep minimal step size in integration time units; must be positive
+   * @param maxStep maximal step size magnitude permitted; must be positive
+   * @param vecAbsoluteTolerance absolute tolerances per state entry; length equals dimension
+   * @param vecRelativeTolerance relative tolerances per state entry; length equals dimension
    */
   @SuppressWarnings("unused")
   public GraggBulirschStoerIntegrator(
@@ -107,16 +103,15 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * <p>For each candidate step the integrator compares the first derivative with later midpoint
    * derivatives to detect rapidly growing modes. If the check fails, the step is rejected, and the
    * trial step size is reduced by the supplied factor. Checks are limited to the first few
-   * extrapolation iterations to avoid excessive cost. Passing negative or zero limits restores the
-   * defaults ({@code maxIter=2}, {@code maxChecks=1}, {@code stabilityReduction=0.5}). This setting
+   * extrapolation iterations to avoid excessive cost. Passing non-positive limits restores defaults
+   * ({@code maxIter=2}, {@code maxChecks=1}, {@code stabilityReduction=0.5}). This setting
    * primarily guards against divergence on coarse steps or poorly scaled problems.
    *
-   * @param performTest {@code true} to enable stability checks, {@code false} to skip them entirely
-   * @param maxIter maximum extrapolation iterations to probe; non-positive values revert to default
-   * @param maxChecks maximum derivative comparisons per iteration; non-positive values revert to
-   *     default
-   * @param stabilityReduction multiplicative factor applied to the next trial step after a failure;
-   *     outside {@code [0.0001, 0.9999]} reverts to the default
+   * @param performTest {@code true} to enable checks; {@code false} disables all checks
+   * @param maxIter maximum extrapolation iterations to probe; non-positive restores default
+   * @param maxChecks maximum derivative comparisons per iteration; non-positive restores default
+   * @param stabilityReduction multiplicative factor for next trial step after failure; out of range
+   *     restores default
    */
   public void setStabilityCheck(
       boolean performTest, int maxIter, int maxChecks, double stabilityReduction) {
@@ -151,15 +146,15 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * }</pre>
    *
    * <p>Values outside the accepted ranges revert to defaults ({@code stepControl1=0.65}, {@code
-   * stepControl2=0.94}, {@code stepControl3=0.02}, {@code stepControl4=4.0}).
+   * stepControl2=0.94}, {@code stepControl3=0.02}, {@code stepControl4=4.0}). These coefficients
+   * influence how aggressively the method grows or shrinks step sizes after each accepted step.
    *
-   * @param stepControl1 numerator tolerance scale; outside {@code [0.0001, 0.9999]} resets to
+   * @param stepControl1 numerator tolerance scale; outside {@code [0.0001, 0.9999]} resets default
+   * @param stepControl2 multiplicative growth factor; outside {@code [0.0001, 0.9999]} resets
    *     default
-   * @param stepControl2 multiplicative growth factor; outside {@code [0.0001, 0.9999]} resets to
+   * @param stepControl3 clamp base for relative change; outside {@code [0.0001, 0.9999]} resets
    *     default
-   * @param stepControl3 clamp base for relative change; outside {@code [0.0001, 0.9999]} resets to
-   *     default
-   * @param stepControl4 clamp divisor limiting growth; outside {@code [1.0001, 999.9]} resets to
+   * @param stepControl4 clamp divisor limiting growth; outside {@code [1.0001, 999.9]} resets
    *     default
    */
   public void setStepsizeControl(
@@ -202,14 +197,13 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * increase order if w(k)     <= w(k - 1) * orderControl2
    * }</pre>
    *
-   * Orders below {@code 6} or odd values revert to the default maximum of {@code 18} (nine table
+   * <p>Orders below {@code 6} or odd values revert to the default maximum of {@code 18} (nine table
    * columns). Control factors outside {@code [0.0001, 0.9999]} revert to defaults of {@code 0.8}
-   * and {@code 0.9}.
+   * and {@code 0.9}. Use this method when tuning performance for a specific accuracy target.
    *
-   * @param maxOrder highest extrapolation order allowed; non-even or {@code <= 6} values reset to
-   *     the default maximum
-   * @param orderControl1 threshold to favor reducing order; outside range reverts to default
-   * @param orderControl2 threshold to favor increasing order; outside range reverts to default
+   * @param maxOrder highest extrapolation order allowed; non-even or {@code <= 6} resets default
+   * @param orderControl1 threshold favoring order reduction; outside range resets default
+   * @param orderControl2 threshold favoring order increase; outside range resets default
    */
   public void setOrderControl(int maxOrder, double orderControl1, double orderControl2) {
 
@@ -236,12 +230,14 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   /**
    * Install the step handler invoked after each accepted step.
    *
-   * <p>The handler receives dense interpolators when dense output is enabled, otherwise a dummy
+   * <p>The handler receives a dense interpolator when dense output is enabled, otherwise a dummy
    * interpolator exposing only end-of-step values. Replacing the handler triggers reallocation of
    * internal buffers because dense output requirements may change. Passing a handler that requests
-   * dense output increases memory and CPU usage but enables intermediate sampling.
+   * dense output increases memory and CPU usage but enables intermediate sampling and event
+   * processing between accepted steps. The supplied handler must be non-null and be used
+   * immediately for later integration calls.
    *
-   * @param handler recipient of accepted steps; must not be {@code null}
+   * @param handler recipient of accepted steps; must be non-null and retained by this instance
    */
   @Override
   public void setStepHandler(StepHandler handler) {
@@ -256,13 +252,14 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   /**
    * Register a switching function (event detector) evaluated during integration.
    *
-   * <p>The detector is polled at most every {@code maxCheckInterval} units to avoid missing sign
-   * changes; when a root is bracketed, a root-finding phase refines the event time using the given
-   * convergence threshold. Adding the first switching function enables dense output internally so
-   * the solver can sample the solution between steps.
+   * <p>The detector is polled at most every {@code maxCheckInterval} units of integration time to
+   * avoid missing sign changes; when a root is bracketed, a root-finding phase refines the event
+   * time using the given convergence threshold. Adding the first switching function enables dense
+   * output internally so the solver can sample the solution between steps. The function is retained
+   * until removed by the base class API or the integrator instance is discarded.
    *
-   * @param function function whose sign changes trigger events; must not be {@code null}
-   * @param maxCheckInterval maximum gap between event checks; large values risk missed events
+   * @param function function whose sign changes trigger events; must be non-null
+   * @param maxCheckInterval maximum time gap between event checks; large values risk missed events
    * @param convergence absolute time accuracy sought when locating the event instant
    */
   @Override
@@ -325,12 +322,12 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * k - mudif + 1}, where {@code k} is the last successful extrapolation column. When {@code
    * useInterpolationError} is {@code true}, the interpolator’s error estimate participates in
    * step-size control; otherwise only end-point errors drive adaptation. Values of {@code mudif}
-   * outside {@code [1, 6]} revert to the default of {@code 4}.
+   * outside {@code [1, 6]} revert to the default of {@code 4}. This setting affects the cost and
+   * accuracy of dense output without changing the accepted end-point solution.
    *
-   * @param useInterpolationError {@code true} to include interpolation error in step-size control;
-   *     {@code false} to ignore it
-   * @param mudif interpolation order control offset; values {@code <= 0} or {@code >= 7} reset to
-   *     the default of four
+   * @param useInterpolationError {@code true} to include interpolation error in step-size control
+   * @param mudif interpolation order control offset; values {@code <= 0} or {@code >= 7} reset
+   *     default
    */
   public void setInterpolationControl(boolean useInterpolationError, int mudif) {
 
@@ -346,7 +343,12 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   /**
    * Get the human-readable name of this integration method.
    *
-   * @return the constant string {@code "Gragg-Bulirsch-Stoer"}; callers must not mutate it
+   * <p>The returned value is a stable identifier for logging and reporting. It does not depend on
+   * runtime configuration and is safe to compare using string equality. Callers can use this value
+   * when presenting solver choices to users or when tagging diagnostic output for later analysis.
+   * The value never changes during the lifetime of the process.
+   *
+   * @return constant string {@code "Gragg-Bulirsch-Stoer"} identifying this integrator
    */
   @Override
   public String getName() {
@@ -500,14 +502,14 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
    * array {@code y} is used both as input (initial state) and output (final state); it may be the
    * same instance as {@code y0}. The method validates dimensional consistency and rejects
    * zero-length time spans. Step handlers and switching functions configured on the integrator are
-   * invoked during the process.
+   * invoked during the process, and dense output is used when required by those handlers.
    *
-   * @param equations system of differential equations; its dimension must match {@code y0}
-   * @param t0 initial integration time (independent variable value)
+   * @param equations system of differential equations; dimension must match {@code y0} length
+   * @param t0 initial integration time in problem units; may be any finite value
    * @param y0 initial state vector at {@code t0}; length must equal problem dimension
-   * @param t target time to reach; may be before {@code t0} for backward integration
+   * @param t target time to reach; may be before {@code t0} for backward runs
    * @param y array receiving the computed state at {@code t}; may alias {@code y0}
-   * @throws DerivativeException if user-supplied derivative computation fails
+   * @throws DerivativeException if the derivative computation fails during evaluation
    * @throws IntegratorException if dimensions mismatch or the step size becomes unusable
    */
   @Override
@@ -534,8 +536,10 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     handler.reset();
     costPerTimeUnit[0] = 0;
 
+    IntegrationState integrationState =
+        new IntegrationState(y, scale, interpolator, workingState, status);
     IntegrationContext integrationContext =
-        new IntegrationContext(equations, t, y, forward, scale, interpolator, workingState, status);
+        new IntegrationContext(equations, t, forward, integrationState);
     runIntegrationLoop(integrationContext);
   }
 
@@ -550,31 +554,26 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   private void performSingleStep(IntegrationContext context)
       throws DerivativeException, IntegratorException {
 
-    FirstOrderDifferentialEquations equations = context.equations;
     double targetTime = context.targetTime;
-    double[] y = context.y;
     boolean forward = context.forward;
-    double[] scale = context.scale;
-    AbstractStepInterpolator interpolator = context.interpolator;
-    WorkingState w = context.workingState;
     StepStatus status = context.status;
 
     status.reject = false;
     status.loopExit = false;
-    prepareNewStep(equations, y, forward, scale, interpolator, w, status);
+    prepareNewStep(context);
 
     stepSize = status.hNew;
     status.lastStep = adjustStepForTarget(targetTime, forward);
 
-    int k = runExtrapolationIterations(equations, y, scale, w, status);
+    int k = runExtrapolationIterations(context);
 
     double hInt = getMaxStep();
     if (denseOutput && !status.reject) {
-      hInt = handleDenseOutput(equations, y, scale, interpolator, w, k, status);
+      hInt = handleDenseOutput(context, k);
     }
 
     if (!status.reject) {
-      finalizeAcceptedStep(y, interpolator, w, k, status);
+      finalizeAcceptedStep(context, k);
     }
 
     status.hNew = Math.min(status.hNew, hInt);
@@ -584,6 +583,28 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
     status.firstTime = false;
     updateRejectionStatus(status, status.reject);
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class IntegrationState {
+    private final double[] y;
+    private final double[] scale;
+    private final AbstractStepInterpolator interpolator;
+    private final WorkingState workingState;
+    private final StepStatus status;
+
+    private IntegrationState(
+        double[] y,
+        double[] scale,
+        AbstractStepInterpolator interpolator,
+        WorkingState workingState,
+        StepStatus status) {
+      this.y = y;
+      this.scale = scale;
+      this.interpolator = interpolator;
+      this.workingState = workingState;
+      this.status = status;
+    }
   }
 
   private static final class IntegrationContext {
@@ -599,20 +620,16 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     private IntegrationContext(
         FirstOrderDifferentialEquations equations,
         double targetTime,
-        double[] y,
         boolean forward,
-        double[] scale,
-        AbstractStepInterpolator interpolator,
-        WorkingState workingState,
-        StepStatus status) {
+        IntegrationState state) {
       this.equations = equations;
       this.targetTime = targetTime;
-      this.y = y;
       this.forward = forward;
-      this.scale = scale;
-      this.interpolator = interpolator;
-      this.workingState = workingState;
-      this.status = status;
+      this.y = state.y;
+      this.scale = state.scale;
+      this.interpolator = state.interpolator;
+      this.workingState = state.workingState;
+      this.status = state.status;
     }
 
     @Override
@@ -664,6 +681,39 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class ModifiedMidpointState {
+    private final double t0;
+    private final double[] y0;
+    private final double step;
+    private final int k;
+
+    private ModifiedMidpointState(double t0, double[] y0, double step, int k) {
+      this.t0 = t0;
+      this.y0 = y0;
+      this.step = step;
+      this.k = k;
+    }
+  }
+
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class ModifiedMidpointBuffers {
+    private final double[] scale;
+    private final double[][] f;
+    private final double[] yMiddle;
+    private final double[] yEnd;
+    private final double[] yTmp;
+
+    private ModifiedMidpointBuffers(
+        double[] scale, double[][] f, double[] yMiddle, double[] yEnd, double[] yTmp) {
+      this.scale = scale;
+      this.f = f;
+      this.yMiddle = yMiddle;
+      this.yEnd = yEnd;
+      this.yTmp = yTmp;
+    }
+  }
+
   private static final class ModifiedMidpointContext {
     private final FirstOrderDifferentialEquations equations;
     private final double t0;
@@ -678,25 +728,18 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
     private ModifiedMidpointContext(
         FirstOrderDifferentialEquations equations,
-        double t0,
-        double[] y0,
-        double step,
-        int k,
-        double[] scale,
-        double[][] f,
-        double[] yMiddle,
-        double[] yEnd,
-        double[] yTmp) {
+        ModifiedMidpointState state,
+        ModifiedMidpointBuffers buffers) {
       this.equations = equations;
-      this.t0 = t0;
-      this.y0 = y0;
-      this.step = step;
-      this.k = k;
-      this.scale = scale;
-      this.f = f;
-      this.yMiddle = yMiddle;
-      this.yEnd = yEnd;
-      this.yTmp = yTmp;
+      this.t0 = state.t0;
+      this.y0 = state.y0;
+      this.step = state.step;
+      this.k = state.k;
+      this.scale = buffers.scale;
+      this.f = buffers.f;
+      this.yMiddle = buffers.yMiddle;
+      this.yEnd = buffers.yEnd;
+      this.yTmp = buffers.yTmp;
     }
 
     @Override
@@ -761,18 +804,19 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
   /**
    * Store results for an accepted step, notify handlers, and prepare the next trial size/order.
    *
-   * @param y caller-owned state array updated with the accepted end state
-   * @param interpolator step interpolator already primed with start state; will store end time here
-   * @param w working buffers holding extrapolated end state and derivatives
+   * @param context integration context carrying state, interpolator, and working buffers
    * @param k last successful extrapolation column
-   * @param status mutable step status tracking rejection history and next targets
    * @throws DerivativeException if switching functions require additional derivative evaluations
    * @throws IntegratorException if event processing or handler logic raises integration-level
    *     errors
    */
-  private void finalizeAcceptedStep(
-      double[] y, AbstractStepInterpolator interpolator, WorkingState w, int k, StepStatus status)
+  private void finalizeAcceptedStep(IntegrationContext context, int k)
       throws DerivativeException, IntegratorException {
+
+    double[] y = context.y;
+    AbstractStepInterpolator interpolator = context.interpolator;
+    WorkingState w = context.workingState;
+    StepStatus status = context.status;
 
     stepStart += stepSize;
     System.arraycopy(w.y1, 0, y, 0, y.length);
@@ -803,15 +847,15 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     }
   }
 
-  private void prepareNewStep(
-      FirstOrderDifferentialEquations equations,
-      double[] y,
-      boolean forward,
-      double[] scale,
-      AbstractStepInterpolator interpolator,
-      WorkingState w,
-      StepStatus status)
-      throws DerivativeException {
+  private void prepareNewStep(IntegrationContext context) throws DerivativeException {
+
+    FirstOrderDifferentialEquations equations = context.equations;
+    double[] y = context.y;
+    boolean forward = context.forward;
+    double[] scale = context.scale;
+    AbstractStepInterpolator interpolator = context.interpolator;
+    WorkingState w = context.workingState;
+    StepStatus status = context.status;
 
     status.reject = false;
     if (!status.newStep) {
@@ -853,26 +897,22 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     return forward ? (nextT >= targetTime) : (nextT <= targetTime);
   }
 
-  private int runExtrapolationIterations(
-      FirstOrderDifferentialEquations equations,
-      double[] y,
-      double[] scale,
-      WorkingState w,
-      StepStatus status)
+  private int runExtrapolationIterations(IntegrationContext context)
       throws DerivativeException, IntegratorException {
 
+    StepStatus status = context.status;
     int k = -1;
     boolean shouldContinue;
     do {
       status.loopExit = false;
       ++k;
-      if (!tryCurrentSubStep(equations, y, scale, w, k, status)) {
+      if (!tryCurrentSubStep(context, k)) {
         break;
       }
 
       shouldContinue = k == 0;
       if (!shouldContinue) {
-        computeExtrapolationAndError(y, scale, w, k, status);
+        computeExtrapolationAndError(context, k);
         shouldContinue = !(status.reject || status.loopExit);
       }
     } while (shouldContinue);
@@ -880,27 +920,24 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     return k;
   }
 
-  private boolean tryCurrentSubStep(
-      FirstOrderDifferentialEquations equations,
-      double[] y,
-      double[] scale,
-      WorkingState w,
-      int k,
-      StepStatus status)
+  private boolean tryCurrentSubStep(IntegrationContext context, int k)
       throws DerivativeException, IntegratorException {
 
-    if (tryStep(
-        new ModifiedMidpointContext(
-            equations,
-            stepStart,
-            y,
-            stepSize,
-            k,
+    FirstOrderDifferentialEquations equations = context.equations;
+    double[] y = context.y;
+    double[] scale = context.scale;
+    WorkingState w = context.workingState;
+    StepStatus status = context.status;
+
+    ModifiedMidpointState stepState = new ModifiedMidpointState(stepStart, y, stepSize, k);
+    ModifiedMidpointBuffers buffers =
+        new ModifiedMidpointBuffers(
             scale,
             w.fk[k],
             (k == 0) ? w.yMidDots[0] : w.diagonal[k - 1],
             (k == 0) ? w.y1 : w.y1Diag[k - 1],
-            w.yTmp))) {
+            w.yTmp);
+    if (tryStep(new ModifiedMidpointContext(equations, stepState, buffers))) {
       return true;
     }
 
@@ -910,9 +947,13 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     return false;
   }
 
-  private void computeExtrapolationAndError(
-      double[] y, double[] scale, WorkingState w, int k, StepStatus status)
+  private void computeExtrapolationAndError(IntegrationContext context, int k)
       throws IntegratorException {
+
+    double[] y = context.y;
+    double[] scale = context.scale;
+    WorkingState w = context.workingState;
+    StepStatus status = context.status;
 
     extrapolate(0, k, w.y1Diag, w.y1);
     rescale(y, w.y1, scale);
@@ -1022,15 +1063,13 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     status.reject = true;
   }
 
-  private double handleDenseOutput(
-      FirstOrderDifferentialEquations equations,
-      double[] y,
-      double[] scale,
-      AbstractStepInterpolator interpolator,
-      WorkingState w,
-      int k,
-      StepStatus status)
-      throws DerivativeException {
+  private double handleDenseOutput(IntegrationContext context, int k) throws DerivativeException {
+
+    FirstOrderDifferentialEquations equations = context.equations;
+    double[] y = context.y;
+    AbstractStepInterpolator interpolator = context.interpolator;
+    WorkingState w = context.workingState;
+    StepStatus status = context.status;
 
     for (int j = 1; j <= k; ++j) {
       extrapolate(0, j, w.diagonal, w.yMidDots[0]);
@@ -1042,7 +1081,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
 
     double hInt = getMaxStep();
     if (mu >= 0) {
-      hInt = applyInterpolationErrorControl(scale, interpolator, mu, hInt, status);
+      hInt = applyInterpolationErrorControl(context, mu, hInt);
       if (!status.reject) {
         handleSwitchingFunctions(interpolator, status);
       }
@@ -1107,12 +1146,11 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     }
   }
 
-  private double applyInterpolationErrorControl(
-      double[] scale,
-      AbstractStepInterpolator interpolator,
-      int mu,
-      double hInt,
-      StepStatus status) {
+  private double applyInterpolationErrorControl(IntegrationContext context, int mu, double hInt) {
+
+    double[] scale = context.scale;
+    AbstractStepInterpolator interpolator = context.interpolator;
+    StepStatus status = context.status;
 
     GraggBulirschStoerStepInterpolator gbsInterpolator =
         (GraggBulirschStoerStepInterpolator) interpolator;
