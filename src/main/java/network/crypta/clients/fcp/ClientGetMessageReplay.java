@@ -65,11 +65,11 @@ final class ClientGetMessageReplay {
     if (!onlyData) {
       FCPMessage msg = request.persistentTagMessage();
       handler.handler.send(FCPMessage.withListRequestIdentifier(msg, listRequestIdentifier));
-      SimpleProgressMessage progress = request.progressPendingForReplay();
+      SimpleProgressMessage progress = request.state().getProgressPending();
       if (progress != null) {
         handler.handler.send(FCPMessage.withListRequestIdentifier(progress, listRequestIdentifier));
       }
-      if (request.sentToNetworkForReplay()) {
+      if (request.state().hasSentToNetwork()) {
         handler.handler.send(
             FCPMessage.withListRequestIdentifier(
                 new SendingToNetworkMessage(request.identifier, request.global),
@@ -98,19 +98,19 @@ final class ClientGetMessageReplay {
     ExpectedHashes hashesMessage;
     ExpectedMIME mimeMsg = null;
     ExpectedDataLength lengthMsg = null;
-    synchronized (request) {
+    synchronized (request.persistenceLock()) {
+      ClientGetState state = request.state();
       cmsg =
-          new CompatibilityMode(request.identifier, request.global, request.compatModeForReplay());
-      hashesMessage = request.expectedHashesForReplay();
-      if (request.foundDataMimeTypeForReplay() != null) {
+          new CompatibilityMode(
+              request.identifier, request.global, state.getCompatibilityAnalyser());
+      hashesMessage = state.getExpectedHashes();
+      if (state.getFoundDataMimeType() != null) {
         mimeMsg =
-            new ExpectedMIME(
-                request.identifier, request.global, request.foundDataMimeTypeForReplay());
+            new ExpectedMIME(request.identifier, request.global, state.getFoundDataMimeType());
       }
-      if (request.foundDataLengthForReplay() > 0) {
+      if (state.getFoundDataLength() > 0) {
         lengthMsg =
-            new ExpectedDataLength(
-                request.identifier, request.global, request.foundDataLengthForReplay());
+            new ExpectedDataLength(request.identifier, request.global, state.getFoundDataLength());
       }
     }
     handler.handler.send(FCPMessage.withListRequestIdentifier(cmsg, listRequestIdentifier));
@@ -164,19 +164,19 @@ final class ClientGetMessageReplay {
 
     // Don't need to lock. succeeded is only ever set, never unset.
     // and succeeded and getFailedMessage are both atomic.
-    if (request.hasSucceededForReplay()) {
+    if (request.state().hasSucceeded()) {
       // Mirrors AllDataMessage so connection-scoped clients receive DataFound with consistent
       // timestamps even if completionTime was not set by finish().
       msg =
           new DataFoundMessage(
-              request.foundDataLengthForReplay(),
-              request.foundDataMimeTypeForReplay(),
+              request.state().getFoundDataLength(),
+              request.state().getFoundDataMimeType(),
               request.identifier,
               request.global,
               request.startupTime,
               request.completionTime != 0 ? request.completionTime : System.currentTimeMillis());
     } else {
-      msg = request.getFailedMessageForReplay();
+      msg = request.state().getFailedMessage();
     }
 
     if (handler == null && request.persistence == ClientRequest.Persistence.CONNECTION) {
@@ -237,9 +237,10 @@ final class ClientGetMessageReplay {
     Bucket bucket;
     String mimeType;
     long completionTime;
-    synchronized (request) {
-      bucket = request.returnBucketDirectForReplay();
-      mimeType = request.foundDataMimeTypeForReplay();
+    synchronized (request.persistenceLock()) {
+      ClientGetState state = request.state();
+      bucket = state.getReturnBucketDirect();
+      mimeType = state.getFoundDataMimeType();
       completionTime = request.completionTime;
     }
     AllDataMessage msg =

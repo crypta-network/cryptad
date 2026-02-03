@@ -623,7 +623,7 @@ final class FcpServerPersistentOps implements DownloadCache {
             spec.realTimeFlag(),
             false);
     final ClientGet cg =
-        new ClientGet(
+        ClientGetFactory.fromGlobal(
             spec.persistRebootOnly() ? globalRebootClient : globalForeverClient,
             spec.fetchURI(),
             requestConfig,

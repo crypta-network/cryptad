@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serial;
+import java.io.Serializable;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -13,7 +14,6 @@ import network.crypta.client.InsertContext;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientRequester;
-import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.clients.fcp.RequestIdentifier.RequestType;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
@@ -34,11 +34,10 @@ import org.slf4j.LoggerFactory;
  * bucket, disk file, chunked stream, or acknowledgement only). The class therefore acts as the
  * boundary between long-lived persistent jobs and transient FCP sessions.
  *
- * <p>The implementation is largely thread-safe through fine-grained {@code synchronized} sections.
- * State transitions such as success, failure, cancellation, or restart update cached progress
- * snapshots and immediately propagate notifications to any registered listeners. During restarts,
- * it rehydrates buckets, metadata, and compatibility hints from the serialized form before
- * delegating back to {@link ClientGetter}.
+ * <p>The request behaves as a long-lived, mutable state machine. Mutable fields and persistence
+ * snapshots are guarded by a single request lock, so lifecycle updates, replay, and serialization
+ * observe a consistent state. Accessors return point-in-time views; callers should avoid mutating
+ * returned objects or assuming immediate cross-thread visibility without synchronization.
  *
  * <p>Typical usage is to construct the request from a {@link ClientGetMessage}, register it with
  * the owning client queue, and then invoke {@link #start(ClientContext)}. The request may persist
@@ -78,9 +77,11 @@ public class ClientGet extends ClientRequest {
   /** Destination file when {@link ReturnType#DISK} is in effect; {@code null} otherwise. */
   private final File targetFile;
 
-  /** Bucket returned when the request was completed, if returnType == RETURN_TYPE_DIRECT. */
-  @SuppressWarnings("java:S1948")
-  private Bucket returnBucketDirect;
+  /** Holds mutable state such as progress snapshots and cached buckets. */
+  private final ClientGetState state;
+
+  /** Stable lock used for persistence-related synchronization. */
+  private final PersistenceLock persistenceLock = new PersistenceLock();
 
   /** Indicates that the caller expects the result as a BinaryBlob stream rather than a bucket. */
   private final boolean binaryBlob;
@@ -95,6 +96,8 @@ public class ClientGet extends ClientRequest {
   private transient ClientGetMessageReplay messageReplay;
   private transient ClientGetLifecycle lifecycle;
   private transient ClientGetStatusSnapshotBuilder statusSnapshotBuilder;
+  private transient ClientGetRestartCoordinator restartCoordinator;
+  private transient ClientGetStatusReporter statusReporter;
 
   // Verbosity bitmasks
   static final int VERBOSITY_SPLITFILE_PROGRESS = 1;
@@ -104,44 +107,6 @@ public class ClientGet extends ClientRequest {
   static final int VERBOSITY_EXPECTED_TYPE = 32;
   static final int VERBOSITY_EXPECTED_SIZE = 64;
   static final int VERBOSITY_ENTER_FINITE_COOLDOWN = 128;
-
-  // Stuff waiting for reconnection
-  /** Did the request succeed? Valid if finished. */
-  private boolean succeeded;
-
-  /**
-   * Length of the found data. Will be updated from ClientGetter in onResume(), but we persist it
-   * anyway.
-   */
-  private long foundDataLength = -1;
-
-  /**
-   * MIME type of the found data. Will be updated from ClientGetter in onResume(), but we persist it
-   * anyway.
-   */
-  private String foundDataMimeType;
-
-  /** Details of the request failure. */
-  private GetFailedMessage getFailedMessage;
-
-  /** Last progress message. Not persistently, ClientGetter will update on onResume(). */
-  private transient SimpleProgressMessage progressPending;
-
-  /** Have we received a SendingToNetworkEvent? */
-  private boolean sentToNetwork;
-
-  /**
-   * Current compatibility mode. This is updated over time as the request progresses and can be used
-   * e.g., to reinsert the file. This is NOT transient, as the ClientGetter does not retain this
-   * information.
-   */
-  private CompatibilityAnalyser compatMode;
-
-  /**
-   * Expected hashes of the final data. Will be updated from ClientGetter in onResume(), but we
-   * persist it anyway.
-   */
-  private ExpectedHashes expectedHashes;
 
   // Legacy threshold callback removed.
 
@@ -206,9 +171,12 @@ public class ClientGet extends ClientRequest {
      * request pipeline. Unknown codes indicate corrupt persistence data or an incompatible sender
      * and are rejected immediately to avoid ambiguous delivery behavior.
      *
-     * @param x numeric tag emitted by persistent storage or remote clients to decode.
-     * @return matching {@link ReturnType} describing the expected delivery semantics.
-     * @throws IllegalArgumentException if the provided code does not map to a known constant.
+     * <p>This method is pure and has no side effects. It should be used whenever decoding persisted
+     * state or remote inputs so that return-type semantics remain centralized and consistent.
+     *
+     * @param x numeric tag from persistence or FCP messages; expected range 0-3.
+     * @return matching {@link ReturnType} describing the delivery semantics for the code.
+     * @throws IllegalArgumentException if the code is outside the recognized return-type range.
      */
     public static ReturnType getByCode(short x) {
       return switch (x) {
@@ -236,22 +204,23 @@ public class ClientGet extends ClientRequest {
    *   <li>Behavior flags: datastore reachability, filtering, and cache-write preferences.
    * </ul>
    *
-   * @param dsOnly true to confine fetching to the local datastore only.
-   * @param ignoreDS bypasses the datastore entirely when evaluating availability hints.
-   * @param filterData applies MIME filtering before writing or returning data.
-   * @param maxSplitfileRetries maximum block retries for splitfile reconstruction attempts.
-   * @param maxNonSplitfileRetries retry the ceiling for non-splitfile requests before failing.
-   * @param maxOutputLength upper bound in bytes for payload and temporary storage usage.
-   * @param returnType delivery strategy describing whether bytes stream, persist, or skip.
-   * @param persistRebootOnly true to persist only across reboots instead of forever.
-   * @param identifier application-supplied identifier echoed through FCP status events.
-   * @param verbosity bitmask controlling which progress events get forwarded back.
-   * @param prioClass priority class guiding scheduler fairness and bandwidth allocation.
-   * @param returnFilename destination filesystem path used solely when disk output requested.
-   * @param charset legacy charset hint ignored but retained for compatibility logging.
-   * @param writeToClientCache allows writing the payload into the client HTTP cache.
-   * @param realTimeFlag true when the request participates in the realtime scheduler lane.
-   * @param binaryBlob enables BinaryBlob writer semantics instead of classic bucket delivery.
+   * @param dsOnly true to restrict fetches to the local datastore only.
+   * @param ignoreDS true to bypass datastore reads when evaluating availability hints.
+   * @param filterData true to apply content filtering before delivery or disk write.
+   * @param maxSplitfileRetries maximum retry count per splitfile block; must be non-negative.
+   * @param maxNonSplitfileRetries maximum retry count for non-splitfile requests; must be
+   *     non-negative.
+   * @param maxOutputLength maximum bytes allowed for payload and temporary storage.
+   * @param returnType delivery mode describing how payload bytes are surfaced.
+   * @param persistRebootOnly true to persist across reboots, false for forever.
+   * @param identifier caller-supplied identifier echoed in progress and status messages.
+   * @param verbosity bitmask controlling which progress events are emitted.
+   * @param prioClass priority class guiding scheduler ordering and bandwidth share.
+   * @param returnFilename disk destination path used only when ReturnType.DISK applies.
+   * @param charset legacy charset hint; ignored but preserved for compatibility logging.
+   * @param writeToClientCache true to allow writing the payload into the client cache.
+   * @param realTimeFlag true for realtime scheduler lane, false for bulk queue.
+   * @param binaryBlob true to return BinaryBlob output instead of a raw bucket.
    */
   public record GlobalRequestConfig(
       boolean dsOnly,
@@ -271,173 +240,57 @@ public class ClientGet extends ClientRequest {
       boolean realTimeFlag,
       boolean binaryBlob) {}
 
-  /**
-   * Builds a persistent GET request for callers that enqueue work outside live FCP sessions.
-   *
-   * <p>This constructor clones the node's default {@link FetchContext}, wires up event listeners,
-   * normalizes retry limits, and resolves the return path before handing everything to a dedicated
-   * {@link ClientGetter}. It is typically used by built-in services that want their requests to be
-   * restartable across reboots and obey the global queue semantics rather than the per-connection
-   * queue. The supplied {@link GlobalRequestConfig} controls datastore reachability, filtering,
-   * cache writes, and the maximum size of the temporary buckets allocated for the request. The
-   * resulting instance is ready to register and start once constructed.
-   *
-   * @param globalClient persistent client facade owning the global queue slot.
-   * @param uri FreenetURI describing the content key and optional metadata.
-   * @param requestConfig configuration bundle describing retry limits and return handling.
-   * @param core node client core providing factories, permission checks, and trackers.
-   * @throws IdentifierCollisionException identifier already present on the owning persistent
-   *     client.
-   * @throws NotAllowedException download target rejected by DDA or security policy.
-   * @throws IOException filesystem errors while preparing disk buckets or output locations.
-   */
-  public ClientGet(
-      PersistentRequestClient globalClient,
-      FreenetURI uri,
-      GlobalRequestConfig requestConfig,
-      NodeClientCore core)
-      throws IdentifierCollisionException, NotAllowedException, IOException {
-    super(
-        new ClientRequestParams(
-            uri,
-            requestConfig.identifier(),
-            requestConfig.verbosity(),
-            requestConfig.prioClass(),
-            (requestConfig.persistRebootOnly() ? Persistence.REBOOT : Persistence.FOREVER),
-            requestConfig.realTimeFlag(),
-            null,
-            true),
-        null,
-        globalClient);
+  /** Bundles construction inputs to keep request constructors compact. */
+  record ClientGetSetup(
+      FetchContext fetchContext,
+      ClientGetReturnPlanner.ReturnSetup returnSetup,
+      ReturnType returnType,
+      boolean binaryBlob,
+      Bucket initialMetadata,
+      NodeClientCore core) {}
 
-    ensureGlobalIdentifierAvailable(globalClient, requestConfig.identifier());
-    fctx = core.getClientContext().getDefaultPersistentFetchContext();
+  /**
+   * Creates a new request that has already been validated and configured by {@link
+   * ClientGetFactory}.
+   *
+   * <p>Callers are expected to supply an initialized {@link FetchContext}, return routing data, and
+   * any initial metadata buckets. The constructor wires up request state, event listeners, and the
+   * underlying {@link ClientGetter} but performs no validation on the inputs.
+   */
+  ClientGet(ClientRequestParams params, PersistentRequestClient globalClient, ClientGetSetup setup)
+      throws IOException {
+    super(params, null, globalClient);
+    state = new ClientGetState(this);
+    fctx = setup.fetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
-    fctx.setLocalRequestOnly(requestConfig.dsOnly());
-    fctx.setIgnoreStore(requestConfig.ignoreDS());
-    fctx.setMaxNonSplitfileRetries(requestConfig.maxNonSplitfileRetries());
-    fctx.setMaxSplitfileBlockRetries(requestConfig.maxSplitfileRetries());
-    fctx.setFilterData(requestConfig.filterData());
-    fctx.setMaxOutputLength(requestConfig.maxOutputLength());
-    fctx.setMaxTempLength(requestConfig.maxOutputLength());
-    fctx.setCanWriteClientCache(requestConfig.writeToClientCache());
-    compatMode = new CompatibilityAnalyser();
-    // USK date hints are configured explicitly for FCP messages.
-    this.returnType = requestConfig.returnType();
-    this.binaryBlob = requestConfig.binaryBlob();
-    if (requestConfig.charset() != null && LOG.isDebugEnabled()) {
-      LOG.debug(
-          "Charset parameter is ignored for ClientGet global queue requests: {}",
-          requestConfig.charset());
-    }
-    ClientGetReturnPlanner.ReturnSetup setup =
-        ClientGetGetterFactory.planReturnForGlobal(
-            identifier,
-            global,
-            fctx,
-            returnType,
-            requestConfig.returnFilename(),
-            requestConfig.filterData(),
-            core);
-    Bucket returnBucket = setup.bucket();
-    this.targetFile = setup.targetFile();
-    this.extensionCheck = setup.extension();
-    this.initialMetadata = null;
-    getter = makeGetter(core, returnBucket);
+    this.returnType = setup.returnType();
+    this.binaryBlob = setup.binaryBlob();
+    ClientGetReturnPlanner.ReturnSetup returnSetup = setup.returnSetup();
+    this.targetFile = returnSetup.targetFile();
+    this.extensionCheck = returnSetup.extension();
+    this.initialMetadata = setup.initialMetadata();
+    getter = makeGetter(setup.core(), returnSetup.bucket());
     initHelpers();
   }
 
   /**
-   * Creates a {@code ClientGet} sourced from an incoming {@link ClientGetMessage} on an FCP link.
-   *
-   * <p>This path mirrors the caller's parameters as closely as possible: it validates DDA
-   * permissions, copies {@link FetchContext} overrides, seeds allowed MIME lists, and prepares any
-   * disk buckets before instantiating the {@link ClientGetter}. Identifiers can be scoped either to
-   * the connection or to the global queue, so both handler-level and persistent collision checks
-   * are performed before the request becomes visible to other components. The resulting request is
-   * ready to register and start immediately.
-   *
-   * @param handler connection handler responsible for per-client identifiers and DDA checks.
-   * @param message parsed message containing caller preferences, flags, and return settings.
-   * @param core node client core granting fetch contexts, caches, and permission evaluators.
-   * @throws IdentifierCollisionException identifier already active on this handler or its client.
-   * @throws MessageInvalidException message failed validation or violated configured DDA policies.
+   * Creates a connection-scoped request that has already been validated and configured by {@link
+   * ClientGetFactory}.
    */
-  public ClientGet(FCPConnectionHandler handler, ClientGetMessage message, NodeClientCore core)
-      throws IdentifierCollisionException, MessageInvalidException {
-    super(
-        new ClientRequestParams(
-            message.uri,
-            message.identifier,
-            message.verbosity,
-            message.priorityClass,
-            message.persistence,
-            message.realTimeFlag,
-            message.clientToken,
-            message.global),
-        handler);
-    if (message.persistence == Persistence.CONNECTION) {
-      ensureConnectionIdentifierAvailable(handler, message.identifier);
-    }
-    // Create a Fetcher directly to get more fine-grained control,
-    // since the client may override a few context elements.
-    fctx = core.getClientContext().getDefaultPersistentFetchContext();
+  ClientGet(ClientRequestParams params, FCPConnectionHandler handler, ClientGetSetup setup)
+      throws IOException {
+    super(params, handler);
+    state = new ClientGetState(this);
+    fctx = setup.fetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
-    // ignoreDS
-    fctx.setLocalRequestOnly(message.dsOnly);
-    fctx.setIgnoreStore(message.ignoreDS);
-    fctx.setMaxNonSplitfileRetries(message.maxRetries);
-    fctx.setMaxSplitfileBlockRetries(message.maxRetries);
-    // Verbosity has already been validated upstream.
-    fctx.setMaxOutputLength(message.maxSize);
-    fctx.setMaxTempLength(message.maxTempSize);
-    fctx.setCanWriteClientCache(message.shouldWriteToClientCache());
-    fctx.setFilterData(message.filterData);
-    fctx.setIgnoreUSKDatehints(message.ignoreUSKDatehints);
-    compatMode = new CompatibilityAnalyser();
-
-    ClientGetGetterFactory.applyAllowedMimeTypes(fctx, message.allowedMIMETypes);
-
-    this.returnType = message.returnType;
-    this.binaryBlob = message.binaryBlob;
-    ClientGetReturnPlanner.ReturnSetup setup =
-        ClientGetGetterFactory.planReturnForMessage(
-            identifier, global, fctx, message, core, handler);
-    Bucket returnBucket = setup.bucket();
-    this.targetFile = setup.targetFile();
-    this.extensionCheck = setup.extension();
-    initialMetadata = message.getInitialMetadata();
-    try {
-      getter = makeGetter(core, returnBucket);
-    } catch (IOException e) {
-      throw bucketCreationFailure(e);
-    }
+    this.returnType = setup.returnType();
+    this.binaryBlob = setup.binaryBlob();
+    ClientGetReturnPlanner.ReturnSetup returnSetup = setup.returnSetup();
+    this.targetFile = returnSetup.targetFile();
+    this.extensionCheck = returnSetup.extension();
+    this.initialMetadata = setup.initialMetadata();
+    getter = makeGetter(setup.core(), returnSetup.bucket());
     initHelpers();
-  }
-
-  private MessageInvalidException bucketCreationFailure(IOException e) {
-    MessageInvalidException mie =
-        new MessageInvalidException(
-            ProtocolErrorMessage.INTERNAL_ERROR,
-            "Cannot create bucket for temporary storage (out of disk space?): " + e,
-            identifier,
-            global);
-    mie.initCause(e);
-    return mie;
-  }
-
-  private void ensureGlobalIdentifierAvailable(PersistentRequestClient client, String identifier)
-      throws IdentifierCollisionException {
-    if (client != null && client.getRequest(identifier) != null) {
-      throw new IdentifierCollisionException();
-    }
-  }
-
-  private void ensureConnectionIdentifierAvailable(FCPConnectionHandler handler, String identifier)
-      throws IdentifierCollisionException {
-    if (handler != null && handler.requestsByIdentifier.containsKey(identifier)) {
-      throw new IdentifierCollisionException();
-    }
   }
 
   private ClientGetter makeGetter(Bucket ret) throws IOException {
@@ -446,6 +299,10 @@ public class ClientGet extends ClientRequest {
 
   private ClientGetter makeGetter(NodeClientCore core, Bucket ret) throws IOException {
     return ClientGetGetterFactory.createGetterForRequest(this, ret, core);
+  }
+
+  ClientGetter makeGetterForPersistence(Bucket ret) throws IOException {
+    return makeGetter(ret);
   }
 
   /**
@@ -460,6 +317,7 @@ public class ClientGet extends ClientRequest {
    */
   protected ClientGet() {
     // For serialization.
+    state = new ClientGetState(this);
     fctx = null;
     getter = null;
     returnType = null;
@@ -479,6 +337,12 @@ public class ClientGet extends ClientRequest {
     if (statusSnapshotBuilder == null) {
       statusSnapshotBuilder = new ClientGetStatusSnapshotBuilder(this);
     }
+    if (restartCoordinator == null) {
+      restartCoordinator = new ClientGetRestartCoordinator(this);
+    }
+    if (statusReporter == null) {
+      statusReporter = new ClientGetStatusReporter(this);
+    }
   }
 
   private ClientGetMessageReplay messageReplay() {
@@ -494,6 +358,44 @@ public class ClientGet extends ClientRequest {
   private ClientGetStatusSnapshotBuilder statusSnapshotBuilder() {
     initHelpers();
     return statusSnapshotBuilder;
+  }
+
+  private ClientGetRestartCoordinator restartCoordinator() {
+    initHelpers();
+    return restartCoordinator;
+  }
+
+  private ClientGetStatusReporter statusReporter() {
+    initHelpers();
+    return statusReporter;
+  }
+
+  ClientGetState state() {
+    return state;
+  }
+
+  Object persistenceLock() {
+    return persistenceLock;
+  }
+
+  /**
+   * Returns the lock that guards shared request lifecycle state.
+   *
+   * <p>The base request class mutates the started and finished flags under this lock, and this
+   * subclass uses the same lock for persistence snapshots and replay data. Using a single lock
+   * establishes a consistent happens-before relationship across lifecycle updates and
+   * serialization. Callers should synchronize only for short, state-centric operations and should
+   * not expose this lock outside the request.
+   *
+   * @return stable lock object shared by base and subclass state transitions.
+   */
+  @Override
+  protected Object requestLock() {
+    return persistenceLock;
+  }
+
+  private static final class PersistenceLock implements Serializable {
+    @Serial private static final long serialVersionUID = 1L;
   }
 
   /**
@@ -539,7 +441,7 @@ public class ClientGet extends ClientRequest {
   @Override
   public void start(ClientContext context) {
     try {
-      synchronized (this) {
+      synchronized (persistenceLock) {
         if (finished) return;
       }
       getter.start(context);
@@ -547,7 +449,7 @@ public class ClientGet extends ClientRequest {
         FCPMessage msg = persistentTagMessage();
         client.queueClientRequestMessage(msg, 0);
       }
-      synchronized (this) {
+      synchronized (persistenceLock) {
         started = true;
       }
       if (client != null) {
@@ -557,12 +459,12 @@ public class ClientGet extends ClientRequest {
         }
       }
     } catch (FetchException e) {
-      synchronized (this) {
+      synchronized (persistenceLock) {
         started = true;
       } // before the failure handler
       onFailure(e);
     } catch (Exception t) {
-      synchronized (this) {
+      synchronized (persistenceLock) {
         started = true;
       }
       onFailure(new FetchException(FetchExceptionMode.INTERNAL_ERROR, t));
@@ -570,7 +472,7 @@ public class ClientGet extends ClientRequest {
   }
 
   private boolean shouldSendPersistentTag() {
-    synchronized (this) {
+    synchronized (persistenceLock) {
       return persistence != Persistence.CONNECTION && !finished;
     }
   }
@@ -737,118 +639,8 @@ public class ClientGet extends ClientRequest {
     super.requestWasRemoved(context);
   }
 
-  synchronized void markSentToNetwork() {
-    sentToNetwork = true;
-  }
-
-  synchronized void recordSplitfileProgress(SimpleProgressMessage message) {
-    progressPending = message;
-  }
-
-  synchronized boolean trySetExpectedHashes(ExpectedHashes message) {
-    if (expectedHashes != null) {
-      LOG.warn("Got a new ExpectedHashes");
-      return false;
-    }
-    expectedHashes = message;
-    return true;
-  }
-
-  synchronized void recordExpectedMimeType(String mimeType) {
-    foundDataMimeType = mimeType;
-  }
-
-  synchronized void recordExpectedDataLength(long length) {
-    foundDataLength = length;
-  }
-
-  void mergeCompatibilityMode(
-      InsertContext.CompatibilityMode minCompatibilityMode,
-      InsertContext.CompatibilityMode maxCompatibilityMode,
-      byte[] splitfileCryptoKey,
-      boolean dontCompress,
-      boolean bottomLayer) {
-    compatMode.merge(
-        minCompatibilityMode, maxCompatibilityMode, splitfileCryptoKey, dontCompress, bottomLayer);
-    if (client != null) {
-      RequestStatusCache cache = client.getRequestStatusCache();
-      if (cache != null) {
-        cache.updateDetectedCompatModes(
-            identifier,
-            compatMode.getModes(),
-            compatMode.getCryptoKey(),
-            compatMode.dontCompress());
-      }
-    }
-    if ((verbosity & VERBOSITY_COMPATIBILITY_MODE) != 0) {
-      queueProgressMessageInner(
-          new CompatibilityMode(identifier, global, compatMode), VERBOSITY_COMPATIBILITY_MODE);
-    }
-  }
-
   ReturnType returnTypeForReplay() {
     return returnType;
-  }
-
-  Bucket returnBucketDirectForReplay() {
-    return returnBucketDirect;
-  }
-
-  void setReturnBucketDirect(Bucket bucket) {
-    returnBucketDirect = bucket;
-  }
-
-  boolean hasSucceededForReplay() {
-    return succeeded;
-  }
-
-  void setSucceeded(boolean succeeded) {
-    this.succeeded = succeeded;
-  }
-
-  long foundDataLengthForReplay() {
-    return foundDataLength;
-  }
-
-  void setFoundDataLength(long foundDataLength) {
-    this.foundDataLength = foundDataLength;
-  }
-
-  String foundDataMimeTypeForReplay() {
-    return foundDataMimeType;
-  }
-
-  void setFoundDataMimeType(String foundDataMimeType) {
-    this.foundDataMimeType = foundDataMimeType;
-  }
-
-  SimpleProgressMessage progressPendingForReplay() {
-    return progressPending;
-  }
-
-  @SuppressWarnings("SameParameterValue")
-  void setProgressPending(SimpleProgressMessage progressPending) {
-    this.progressPending = progressPending;
-  }
-
-  boolean sentToNetworkForReplay() {
-    return sentToNetwork;
-  }
-
-  CompatibilityAnalyser compatModeForReplay() {
-    return compatMode;
-  }
-
-  ExpectedHashes expectedHashesForReplay() {
-    return expectedHashes;
-  }
-
-  GetFailedMessage getFailedMessageForReplay() {
-    return getFailedMessage;
-  }
-
-  void setFailedMessage(GetFailedMessage message) {
-    getFailedMessage = message;
   }
 
   File targetFileForLifecycle() {
@@ -882,12 +674,11 @@ public class ClientGet extends ClientRequest {
   protected void freeData() {
     // We don't remove the data if written to a file.
     Bucket data;
-    synchronized (this) {
-      data = returnBucketDirect;
-      returnBucketDirect = null;
+    synchronized (persistenceLock) {
+      data = state.takeReturnBucketDirect();
     }
     if (data != null) {
-      data.free();
+      data.close();
     }
     if (initialMetadata != null) initialMetadata.free();
   }
@@ -908,7 +699,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public boolean hasSucceeded() {
-    return succeeded;
+    return state.hasSucceeded();
   }
 
   /**
@@ -961,7 +752,7 @@ public class ClientGet extends ClientRequest {
   /**
    * Exposes the fetch context for package-local helpers.
    *
-   * @return live {@link FetchContext} backing this request.
+   * @return live {@link FetchContext} backing this request for internal helper access.
    */
   FetchContext fetchContextForGetter() {
     return fctx;
@@ -970,7 +761,7 @@ public class ClientGet extends ClientRequest {
   /**
    * Exposes the metadata bucket associated with this request.
    *
-   * @return initial metadata bucket, or {@code null} when unset.
+   * @return initial metadata bucket, or {@code null} when no metadata is provided.
    */
   Bucket initialMetadataBucket() {
     return initialMetadata;
@@ -988,7 +779,7 @@ public class ClientGet extends ClientRequest {
   /**
    * Returns the configured delivery strategy for the request.
    *
-   * @return configured {@link ReturnType} for result delivery.
+   * @return configured {@link ReturnType} used to decide how results are delivered.
    */
   ReturnType returnTypeForGetter() {
     return returnType;
@@ -997,7 +788,7 @@ public class ClientGet extends ClientRequest {
   /**
    * Indicates whether Binary Blob recording is enabled for this request.
    *
-   * @return {@code true} when Binary Blob output is expected.
+   * @return {@code true} when Binary Blob output is expected for this request.
    */
   boolean binaryBlobRequested() {
     return binaryBlob;
@@ -1017,7 +808,7 @@ public class ClientGet extends ClientRequest {
    * @return recorded payload length in bytes, or {@code -1} when unknown.
    */
   public long getDataSize() {
-    if (foundDataLength > 0) return foundDataLength;
+    if (state.getFoundDataLength() > 0) return state.getFoundDataLength();
     return -1;
   }
 
@@ -1035,7 +826,7 @@ public class ClientGet extends ClientRequest {
    * @return MIME type reported for the payload, or {@code null} if undetermined.
    */
   public String getMIMEType() {
-    if (foundDataMimeType != null) return foundDataMimeType;
+    if (state.getFoundDataMimeType() != null) return state.getFoundDataMimeType();
     return null;
   }
 
@@ -1058,18 +849,16 @@ public class ClientGet extends ClientRequest {
   /**
    * Returns the fraction of splitfile blocks downloaded successfully.
    *
-   * <p>The metric reflects the most recent {@code SplitfileProgressEvent} cached via {@link
-   * #progressPending}, making it useful for dashboards that prefer percentages to raw block counts.
-   * When no progress has been recorded it returns {@code -1} to signal an unknown fraction. The
-   * value is a snapshot and may lag behind the underlying fetcher in highly concurrent flows.
+   * <p>The metric reflects the most recent {@code SplitfileProgressEvent} cached by the request,
+   * making it useful for dashboards that prefer percentages to raw block counts. When no progress
+   * has been recorded it returns {@code -1} to signal an unknown fraction. The value is a snapshot
+   * and may lag behind the underlying fetcher in highly concurrent flows.
    *
    * @return value between {@code 0.0} and {@code 1.0}, or {@code -1} when unavailable.
    */
   @Override
   public double getSuccessFraction() {
-    if (progressPending != null) {
-      return progressPending.getFraction();
-    } else return -1;
+    return statusReporter().getSuccessFraction();
   }
 
   /**
@@ -1083,9 +872,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public double getTotalBlocks() {
-    if (progressPending != null) {
-      return progressPending.getTotalBlocks();
-    } else return 1;
+    return statusReporter().getTotalBlocks();
   }
 
   /**
@@ -1099,9 +886,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public double getMinBlocks() {
-    if (progressPending != null) {
-      return progressPending.getMinBlocks();
-    } else return 1;
+    return statusReporter().getMinBlocks();
   }
 
   /**
@@ -1115,9 +900,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public double getFailedBlocks() {
-    if (progressPending != null) {
-      return progressPending.getFailedBlocks();
-    } else return 0;
+    return statusReporter().getFailedBlocks();
   }
 
   /**
@@ -1131,9 +914,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public double getFatalyFailedBlocks() {
-    if (progressPending != null) {
-      return progressPending.getFatalyFailedBlocks();
-    } else return 0;
+    return statusReporter().getFatalyFailedBlocks();
   }
 
   /**
@@ -1148,9 +929,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public double getFetchedBlocks() {
-    if (progressPending != null) {
-      return progressPending.getFetchedBlocks();
-    } else return 0;
+    return statusReporter().getFetchedBlocks();
   }
 
   /**
@@ -1164,7 +943,7 @@ public class ClientGet extends ClientRequest {
    * @return array of compatibility modes; may be empty but never {@code null}.
    */
   public InsertContext.CompatibilityMode[] getCompatibilityMode() {
-    return compatMode.getModes();
+    return state.getCompatibilityMode();
   }
 
   /**
@@ -1179,7 +958,7 @@ public class ClientGet extends ClientRequest {
    * @return {@code true} when compression should not be applied to later insert contexts.
    */
   public boolean getDontCompress() {
-    return compatMode.dontCompress();
+    return state.getDontCompress();
   }
 
   /**
@@ -1192,7 +971,7 @@ public class ClientGet extends ClientRequest {
    * @return copy of the crypto key bytes, or {@code null} when no override was observed.
    */
   public byte[] getOverriddenSplitfileCryptoKey() {
-    return compatMode.getCryptoKey();
+    return state.getOverriddenSplitfileCryptoKey();
   }
 
   /**
@@ -1211,16 +990,11 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public String getFailureReason(boolean longDescription) {
-    if (getFailedMessage == null) return null;
-    String s = getFailedMessage.getShortFailedMessage();
-    if (longDescription && getFailedMessage.extraDescription != null)
-      s += ": " + getFailedMessage.extraDescription;
-    return s;
+    return statusReporter().getFailureReason(longDescription);
   }
 
   GetFailedMessage getFailureMessage() {
-    if (getFailedMessage == null) return null;
-    return getFailedMessage;
+    return state.getFailedMessage();
   }
 
   /**
@@ -1236,8 +1010,7 @@ public class ClientGet extends ClientRequest {
    * @return failure classification mode, or {@code null} when no failure exists.
    */
   public FetchExceptionMode getFailureReasonCode() {
-    if (getFailedMessage == null) return null;
-    return getFailedMessage.failureMode;
+    return statusReporter().getFailureReasonCode();
   }
 
   /**
@@ -1254,11 +1027,7 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   public boolean isTotalFinalized() {
-    if (finished && succeeded) return true;
-    if (progressPending == null) return false;
-    else {
-      return progressPending.isTotalFinalized();
-    }
+    return statusReporter().isTotalFinalized();
   }
 
   /**
@@ -1277,11 +1046,11 @@ public class ClientGet extends ClientRequest {
     return makeBucket(true);
   }
 
-  private Bucket makeBucket(boolean readOnly) {
+  Bucket makeBucket(boolean readOnly) {
     return switch (returnType) {
       case DIRECT -> {
-        synchronized (this) {
-          yield returnBucketDirect;
+        synchronized (persistenceLock) {
+          yield state.getReturnBucketDirect();
         }
       }
       case DISK -> ClientGetGetterFactory.diskBucket(targetFile, readOnly);
@@ -1300,19 +1069,11 @@ public class ClientGet extends ClientRequest {
    * <p>This method does not modify the state; it is intended for UI or scheduler decisions before
    * initiating a restart.
    *
-   * @return {@code true} when {@link #restart(ClientContext, boolean)} may be invoked.
+   * @return {@code true} when the request is finished, failed, and restartable.
    */
   @Override
   public boolean canRestart() {
-    if (!finished) {
-      LOG.debug("Cannot restart because not finished for {}", identifier);
-      return false;
-    }
-    if (succeeded) {
-      LOG.debug("Cannot restart because succeeded for {}", identifier);
-      return false;
-    }
-    return getter.canRestart();
+    return restartCoordinator().canRestart();
   }
 
   /**
@@ -1329,68 +1090,11 @@ public class ClientGet extends ClientRequest {
    *
    * @param context client context providing schedulers and bucket factories for restart logic.
    * @param disableFilterData {@code true} to disable filtering for the next attempt.
-   * @return {@code true} when the restart was initiated successfully.
+   * @return {@code true} when the restart is accepted and scheduled by the getter.
    */
   @Override
   public boolean restart(ClientContext context, final boolean disableFilterData) {
-    if (!canRestart()) return false;
-    FreenetURI redirect = resetStateForRestart(disableFilterData);
-    notifyCacheAboutRedirect(redirect);
-    try {
-      if (getter.restart(redirect, fctx.getFilterData(), context)) {
-        markRestarted(redirect);
-      }
-      notifyCacheStartedFlag();
-      return true;
-    } catch (FetchException e) {
-      onFailure(e);
-      return false;
-    }
-  }
-
-  private FreenetURI resetStateForRestart(boolean disableFilterData) {
-    synchronized (this) {
-      finished = false;
-      FreenetURI redirect = getFailedMessage == null ? null : getFailedMessage.redirectURI;
-      getFailedMessage = null;
-      progressPending = null;
-      compatMode = new CompatibilityAnalyser();
-      expectedHashes = null;
-      started = false;
-      if (disableFilterData) {
-        fctx.setFilterData(false);
-      }
-      return redirect;
-    }
-  }
-
-  private void markRestarted(FreenetURI redirect) {
-    synchronized (this) {
-      if (redirect != null) {
-        this.uri = redirect;
-      }
-      started = true;
-    }
-  }
-
-  private void notifyCacheAboutRedirect(FreenetURI redirect) {
-    if (client == null) {
-      return;
-    }
-    RequestStatusCache cache = client.getRequestStatusCache();
-    if (cache != null) {
-      cache.updateStarted(identifier, redirect);
-    }
-  }
-
-  private void notifyCacheStartedFlag() {
-    if (client == null) {
-      return;
-    }
-    RequestStatusCache cache = client.getRequestStatusCache();
-    if (cache != null) {
-      cache.updateStarted(identifier, true);
-    }
+    return restartCoordinator().restart(context, disableFilterData);
   }
 
   /**
@@ -1405,10 +1109,10 @@ public class ClientGet extends ClientRequest {
    *
    * <p>Callers should treat the result as a hint rather than a definitive redirect requirement.
    *
-   * @return {@code true} when {@link GetFailedMessage#redirectURI} is non-null.
+   * @return {@code true} when a permanent redirect URI is stored in failure state.
    */
   public synchronized boolean hasPermRedirect() {
-    return getFailedMessage != null && getFailedMessage.redirectURI != null;
+    return restartCoordinator().hasPermRedirect();
   }
 
   /**
@@ -1429,29 +1133,11 @@ public class ClientGet extends ClientRequest {
   }
 
   @Override
-  synchronized RequestStatus getStatus() {
-    RequestStatusSnapshot statusSnapshot =
-        ClientGetStatusSnapshot.buildRequestStatusSnapshot(
-            identifier, persistence, started, finished, succeeded, progressPending, priorityClass);
-    DownloadProgressSnapshot progressSnapshot =
-        new DownloadProgressSnapshot(progressPending, getFailedMessage);
-    DownloadDataSnapshot dataSnapshot =
-        new DownloadDataSnapshot(
-            foundDataMimeType, foundDataLength, getDestFilename(), getBucket());
-    DownloadContextSnapshot contextSnapshot =
-        new DownloadContextSnapshot(
-            fctx,
-            getCompatibilityMode(),
-            getOverriddenSplitfileCryptoKey(),
-            getURI(),
-            getDontCompress());
-    return ClientGetGetterFactory.buildStatus(
-        new ClientGetStatusSnapshot(
-            statusSnapshot, progressSnapshot, dataSnapshot, contextSnapshot));
+  RequestStatus getStatus() {
+    synchronized (persistenceLock()) {
+      return statusReporter().getStatus();
+    }
   }
-
-  private static final long CLIENT_DETAIL_MAGIC = 0x67145b675d2e22f4L;
-  private static final int CLIENT_DETAIL_VERSION = 1;
 
   /**
    * Serializes the request state for persistence so that it can be resumed later.
@@ -1462,8 +1148,8 @@ public class ClientGet extends ClientRequest {
    * so restarts can resume without re-downloading already verified blocks. Callers should provide a
    * stream already framed by the persistence layer.
    *
-   * <p>The serialization format is versioned; if it changes, the version constants in this class
-   * must be updated in lockstep with the restore logic.
+   * <p>The serialization format is versioned; if it changes, the version constants in {@link
+   * ClientGetPersistenceCodec} must be updated in lockstep with the restore logic.
    *
    * @param dos destination stream receiving the serialized form with checksums embedded.
    * @param checker checksum helper that wraps streams to guard against corruption.
@@ -1473,61 +1159,7 @@ public class ClientGet extends ClientRequest {
   public void getClientDetail(DataOutputStream dos, ChecksumChecker checker) throws IOException {
     if (persistence != Persistence.FOREVER) return;
     super.getClientDetail(dos, checker);
-    dos.writeLong(CLIENT_DETAIL_MAGIC);
-    dos.writeInt(CLIENT_DETAIL_VERSION);
-    dos.writeUTF(uri.toString());
-    // Basic details needed for restarting the request.
-    dos.writeShort(returnType.code);
-    if (returnType == ReturnType.DISK) {
-      dos.writeUTF(targetFile.toString());
-    }
-    dos.writeBoolean(binaryBlob);
-    try (DataOutputStream ctxStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-      fctx.writeTo(ctxStream);
-    }
-    if (extensionCheck != null) {
-      dos.writeBoolean(true);
-      dos.writeUTF(extensionCheck);
-    } else {
-      dos.writeBoolean(false);
-    }
-    if (initialMetadata != null) {
-      dos.writeBoolean(true);
-      try (DataOutputStream metadataStream =
-          ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-        initialMetadata.storeTo(metadataStream);
-      }
-    } else {
-      dos.writeBoolean(false);
-    }
-    synchronized (this) {
-      if (finished) {
-        dos.writeBoolean(succeeded);
-        writeTransientProgressFields(dos);
-        if (succeeded) {
-          if (returnType == ReturnType.DIRECT) {
-            try (DataOutputStream bucketStream =
-                ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-              returnBucketDirect.storeTo(bucketStream);
-            }
-          }
-        } else {
-          try (DataOutputStream failureStream =
-              ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-            getFailedMessage.writeTo(failureStream);
-          }
-        }
-        return;
-      }
-    }
-    // Not finished, or was recently not finished.
-    // Don't hold the lock while calling getter.
-    // If it's just finished, we get a race and restart. That's okay.
-    try (DataOutputStream progressStream = ClientGetGetterFactory.checksummedWriter(dos, checker)) {
-      if (getter.writeTrivialProgress(progressStream)) {
-        writeTransientProgressFields(progressStream);
-      }
-    }
+    ClientGetPersistenceCodec.writeClientDetail(this, dos, checker);
   }
 
   /**
@@ -1545,134 +1177,45 @@ public class ClientGet extends ClientRequest {
    * @param reqID identifier tuple describing the owner and reference type.
    * @param context client context supplying factories used during restoration.
    * @param checker checksum helper verifying the integrity of embedded buckets.
-   * @return fully reconstructed {@link ClientRequest} instance ready for resumption.
+   * @return fully reconstructed {@link ClientRequest} instance ready for registration and
+   *     resumption.
    * @throws StorageFormatException when serialized data fails validation or version checks.
    * @throws IOException when stream IO fails while reading buckets or metadata.
    * @throws ResumeFailedException when the request must restart due to inconsistencies.
    */
+  @SuppressWarnings("unused")
   public static ClientRequest restartFrom(
       DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
-    return new ClientGet(dis, reqID, context, checker);
+    return ClientGetPersistenceCodec.restartFrom(dis, reqID, context, checker);
   }
 
-  private ClientGet(
+  ClientGet(
       DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {
     super(dis, reqID, context);
-    validateClientDetailHeader(dis);
-    uri = parseUri(dis.readUTF());
-    returnType = parseReturnType(dis.readShort());
-    targetFile = returnType == ReturnType.DISK ? new File(dis.readUTF()) : null;
-    binaryBlob = dis.readBoolean();
-    this.fctx = ClientGetGetterFactory.readFetchContextOrDefault(dis, context, checker);
-    fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
-    extensionCheck = dis.readBoolean() ? dis.readUTF() : null;
-    initialMetadata = ClientGetGetterFactory.readInitialMetadata(dis, context, checker);
-    ClientGetter restoredGetter = restoreState(dis, reqID, context, checker);
-    if (compatMode == null) {
-      compatMode = new CompatibilityAnalyser();
-    }
+    state = new ClientGetState(this);
+    ClientGetPersistenceCodec.BasicRestoreData restoreData =
+        ClientGetPersistenceCodec.readBasicRestoreData(this, dis, context, checker);
+    uri = restoreData.uri();
+    returnType = restoreData.returnType();
+    targetFile = restoreData.targetFile();
+    binaryBlob = restoreData.binaryBlob();
+    fctx = restoreData.fetchContext();
+    extensionCheck = restoreData.extensionCheck();
+    initialMetadata = restoreData.initialMetadata();
+    ClientGetter restoredGetter =
+        ClientGetPersistenceCodec.restoreState(this, dis, reqID, context, checker);
+    state.ensureCompatibilityMode();
     if (restoredGetter == null) {
-      restoredGetter = makeGetter(makeBucket(false));
+      restoredGetter = makeGetterForPersistence(makeBucket(false));
     }
-    this.getter = restoredGetter;
+    getter = restoredGetter;
     initHelpers();
   }
 
-  private void validateClientDetailHeader(DataInputStream dis)
-      throws IOException, StorageFormatException {
-    long magic = dis.readLong();
-    if (magic != CLIENT_DETAIL_MAGIC) {
-      throw new StorageFormatException("Bad magic for request");
-    }
-    int version = dis.readInt();
-    if (version != CLIENT_DETAIL_VERSION) {
-      throw new StorageFormatException("Bad version " + version);
-    }
-  }
-
-  private FreenetURI parseUri(String serializedUri) throws StorageFormatException {
-    try {
-      return new FreenetURI(serializedUri);
-    } catch (Exception _) {
-      throw new StorageFormatException("Bad URI");
-    }
-  }
-
-  private ReturnType parseReturnType(short code) throws StorageFormatException {
-    try {
-      return ReturnType.getByCode(code);
-    } catch (IllegalArgumentException _) {
-      throw new StorageFormatException("Bad return type " + code);
-    }
-  }
-
-  private ClientGetter restoreState(
-      DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
-      throws IOException, StorageFormatException, ResumeFailedException {
-    if (finished) {
-      restoreFinishedState(dis, reqID, context, checker);
-      return null;
-    }
-    ClientGetter inProgressGetter = makeGetter(makeBucket(false));
-    ClientGetGetterFactory.restoreInProgressState(dis, context, checker, inProgressGetter, this);
-    return inProgressGetter;
-  }
-
-  private void restoreFinishedState(
-      DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
-      throws IOException, StorageFormatException, ResumeFailedException {
-    succeeded = dis.readBoolean();
-    readTransientProgressFields(dis);
-    if (succeeded) {
-      if (returnType == ReturnType.DIRECT) {
-        Bucket restoredBucket =
-            ClientGetGetterFactory.restoreCompletedDirectBucketOrNull(dis, context, checker);
-        if (restoredBucket != null) {
-          returnBucketDirect = restoredBucket;
-        } else {
-          returnBucketDirect = null;
-          succeeded = false;
-          finished = false;
-        }
-      }
-    } else {
-      GetFailedMessage restoredMessage =
-          ClientGetGetterFactory.restoreFailureMessageOrNull(
-              dis, reqID, foundDataLength, foundDataMimeType, context, checker);
-      if (restoredMessage != null) {
-        getFailedMessage = restoredMessage;
-        started = true;
-      } else {
-        finished = false;
-        getFailedMessage = null;
-      }
-    }
-  }
-
-  void readTransientProgressFields(DataInputStream dis) throws IOException, StorageFormatException {
-    foundDataLength = dis.readLong();
-    if (dis.readBoolean()) foundDataMimeType = dis.readUTF();
-    else foundDataMimeType = null;
-    compatMode = new CompatibilityAnalyser(dis);
-    expectedHashes = ClientGetGetterFactory.readExpectedHashes(dis, identifier, global);
-  }
-
-  private synchronized void writeTransientProgressFields(DataOutputStream dos) throws IOException {
-    dos.writeLong(foundDataLength);
-    if (foundDataMimeType != null) {
-      dos.writeBoolean(true);
-      dos.writeUTF(foundDataMimeType);
-    } else {
-      dos.writeBoolean(false);
-    }
-    compatMode.writeTo(dos);
-    ClientGetGetterFactory.writeExpectedHashes(dos, expectedHashes);
-  }
-
   /**
-   * Rehydrates transient state after a persistent resume has restored core fields.
+   * Rehydrates transient state after a persistent resuming has restored core fields.
    *
    * <p>This hook is invoked by the base resume flow once serialization has recreated the request
    * and the {@link ClientGetter}. It forwards the resume signal to any retained buckets and then
@@ -1687,11 +1230,11 @@ public class ClientGet extends ClientRequest {
    */
   @Override
   protected void innerResume(ClientContext context) throws ResumeFailedException {
-    if (returnBucketDirect != null) returnBucketDirect.onResume(context);
+    if (state.getReturnBucketDirect() != null) state.getReturnBucketDirect().onResume(context);
     if (initialMetadata != null) initialMetadata.onResume(context);
     // We might already have these if we've just restored.
-    if (foundDataLength <= 0) this.foundDataLength = getter.expectedSize();
-    if (foundDataMimeType == null) this.foundDataMimeType = getter.expectedMIME();
+    if (state.getFoundDataLength() <= 0) state.setFoundDataLength(getter.expectedSize());
+    if (state.getFoundDataMimeType() == null) state.setFoundDataMimeType(getter.expectedMIME());
   }
 
   @Override
@@ -1709,7 +1252,7 @@ public class ClientGet extends ClientRequest {
    *
    * <p>The method has no side effects and should be safe to call repeatedly.
    *
-   * @return {@code true} when {@link ClientGetter#resumedFetcher()} confirms a valid resume.
+   * @return {@code true} when the getter reports a valid, fully resumed fetcher.
    */
   @Override
   public boolean fullyResumed() {
@@ -1722,6 +1265,10 @@ public class ClientGet extends ClientRequest {
    * <p>Equality is defined by {@link ClientRequest} and typically reflects request identity rather
    * than mutable progress state. This override exists to preserve the base semantics while keeping
    * the contract explicit in this subtype. The comparison is side-effect-free.
+   *
+   * <p>Because the result is identity-based, two requests with identical progress snapshots may
+   * still compare as unequal. This method does not synchronize; callers that need a stable view of
+   * the mutable state should take a snapshot under the request lock separately.
    *
    * @param obj object to compare against, possibly {@code null}.
    * @return {@code true} when the base implementation considers the objects equal.
@@ -1738,7 +1285,11 @@ public class ClientGet extends ClientRequest {
    * incorporate mutable progress state. This makes the value suitable for hash-based collections
    * that store requests by identity. The computation has no side effects.
    *
-   * @return hash code derived from {@link ClientRequest} identity fields.
+   * <p>Callers should not cache the value across serialization boundaries unless the identifier is
+   * known to remain constant. The method avoids synchronization because identity fields are
+   * immutable after construction.
+   *
+   * @return hash code derived from {@link ClientRequest} identity fields and stability rules.
    */
   @Override
   public int hashCode() {

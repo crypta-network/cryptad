@@ -64,13 +64,13 @@ class ClientGetMessageReplayTest {
             fetchContext,
             requestClient,
             ReturnType.DIRECT);
-    setField(request, "progressPending", progressMessage);
-    setField(request, "sentToNetwork", true);
+    request.state().setProgressPending(progressMessage);
+    request.state().markSentToNetwork();
     setField(request, "finished", false);
-    setField(request, "compatMode", new CompatibilityAnalyser());
-    setField(request, "expectedHashes", expectedHashes);
-    setField(request, "foundDataMimeType", "text/plain");
-    setField(request, "foundDataLength", 64L);
+    request.state().setCompatibilityAnalyser(new CompatibilityAnalyser());
+    request.state().setExpectedHashes(expectedHashes);
+    request.state().setFoundDataMimeType("text/plain");
+    request.state().setFoundDataLength(64L);
     ClientGetMessageReplay replay = new ClientGetMessageReplay(request);
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);
     FCPConnectionOutputHandler outputHandler = new FCPConnectionOutputHandler(handler);
@@ -173,9 +173,9 @@ class ClientGetMessageReplayTest {
     setField(request, "origHandler", origHandler);
     setField(request, "startupTime", 5L);
     setField(request, "completionTime", 12L);
-    setField(request, "foundDataLength", 99L);
-    setField(request, "foundDataMimeType", "text/plain");
-    setField(request, "succeeded", true);
+    request.state().setFoundDataLength(99L);
+    request.state().setFoundDataMimeType("text/plain");
+    request.state().setSucceeded(true);
     ClientGetMessageReplay replay = new ClientGetMessageReplay(request);
     ArgumentCaptor<FCPMessage> captor = ArgumentCaptor.forClass(FCPMessage.class);
 
@@ -206,8 +206,8 @@ class ClientGetMessageReplayTest {
     setField(request, "global", true);
     setField(request, "persistence", Persistence.REBOOT);
     setField(request, "client", client);
-    setField(request, "succeeded", false);
-    setField(request, "getFailedMessage", failedMessage);
+    request.state().setSucceeded(false);
+    request.state().setFailedMessage(failedMessage);
     ClientGetMessageReplay replay = new ClientGetMessageReplay(request);
 
     // Act
@@ -230,9 +230,9 @@ class ClientGetMessageReplayTest {
     setField(request, "global", false);
     setField(request, "startupTime", 1L);
     setField(request, "completionTime", 2L);
-    setField(request, "foundDataMimeType", "application/octet-stream");
+    request.state().setFoundDataMimeType("application/octet-stream");
     setField(request, "returnType", ReturnType.DIRECT);
-    setField(request, "returnBucketDirect", bucket);
+    request.state().setReturnBucketDirect(bucket);
     setField(request, "persistence", Persistence.REBOOT);
     ClientGetMessageReplay replay = new ClientGetMessageReplay(request);
     FCPConnectionHandler handler = Mockito.mock(FCPConnectionHandler.class);

@@ -42,7 +42,7 @@ class ClientGetTest {
   void getBucket_whenReturnTypeDirect_returnsSameBucket() {
     ClientGet clientGet = newClientGet();
     setField(clientGet, "returnType", ReturnType.DIRECT);
-    setField(clientGet, "returnBucketDirect", directBucket);
+    clientGet.state().setReturnBucketDirect(directBucket);
 
     Bucket bucket = clientGet.getBucket();
 
@@ -80,7 +80,7 @@ class ClientGetTest {
             new SplitfileProgressTimestamps(
                 Instant.ofEpochMilli(1_000L), Instant.ofEpochMilli(2_000L)));
     SimpleProgressMessage progress = new SimpleProgressMessage("req", false, event);
-    setField(clientGet, "progressPending", progress);
+    clientGet.state().setProgressPending(progress);
 
     assertEquals(0.7, clientGet.getSuccessFraction());
     assertEquals(10, clientGet.getTotalBlocks());
@@ -94,9 +94,9 @@ class ClientGetTest {
   @Test
   void progressAccessors_whenProgressMissing_returnDefaultValues() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "progressPending", null);
+    clientGet.state().setProgressPending(null);
     setField(clientGet, "finished", false);
-    setField(clientGet, "succeeded", false);
+    clientGet.state().setSucceeded(false);
 
     assertEquals(-1, clientGet.getSuccessFraction());
     assertEquals(1, clientGet.getTotalBlocks());
@@ -113,7 +113,7 @@ class ClientGetTest {
     FetchException exception =
         new FetchException(FetchExceptionMode.ALL_DATA_NOT_FOUND, "explanation");
     GetFailedMessage message = new GetFailedMessage(exception, "req", false);
-    setField(clientGet, "getFailedMessage", message);
+    clientGet.state().setFailedMessage(message);
 
     String result = clientGet.getFailureReason(true);
 
@@ -125,7 +125,7 @@ class ClientGetTest {
     ClientGet clientGet = newClientGet();
     FetchException exception = new FetchException(FetchExceptionMode.ALL_DATA_NOT_FOUND, "details");
     GetFailedMessage message = new GetFailedMessage(exception, "req", false);
-    setField(clientGet, "getFailedMessage", message);
+    clientGet.state().setFailedMessage(message);
 
     assertEquals(message.getShortFailedMessage(), clientGet.getFailureReason(false));
   }
@@ -133,7 +133,7 @@ class ClientGetTest {
   @Test
   void getFailureReason_whenNoFailureRecorded_returnsNull() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "getFailedMessage", null);
+    clientGet.state().setFailedMessage(null);
 
     assertNull(clientGet.getFailureReason(true));
   }
@@ -143,7 +143,7 @@ class ClientGetTest {
     ClientGet clientGet = newClientGet();
     FetchException exception = new FetchException(FetchExceptionMode.INTERNAL_ERROR, "boom");
     GetFailedMessage message = new GetFailedMessage(exception, "req", false);
-    setField(clientGet, "getFailedMessage", message);
+    clientGet.state().setFailedMessage(message);
 
     assertEquals(FetchExceptionMode.INTERNAL_ERROR, clientGet.getFailureReasonCode());
   }
@@ -155,7 +155,7 @@ class ClientGetTest {
     FetchException exception =
         new FetchException(FetchExceptionMode.PERMANENT_REDIRECT, "redirecting", redirect);
     GetFailedMessage message = new GetFailedMessage(exception, "req", false);
-    setField(clientGet, "getFailedMessage", message);
+    clientGet.state().setFailedMessage(message);
 
     assertTrue(clientGet.hasPermRedirect());
   }
@@ -163,7 +163,7 @@ class ClientGetTest {
   @Test
   void hasPermRedirect_whenFailureMissing_returnsFalse() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "getFailedMessage", null);
+    clientGet.state().setFailedMessage(null);
 
     assertFalse(clientGet.hasPermRedirect());
   }
@@ -174,7 +174,7 @@ class ClientGetTest {
     CompatibilityAnalyser analyser = new CompatibilityAnalyser();
     byte[] key = new byte[] {1, 2, 3, 4};
     analyser.merge(CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468, key, false, false);
-    setField(clientGet, "compatMode", analyser);
+    clientGet.state().setCompatibilityAnalyser(analyser);
 
     assertArrayEquals(
         new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
@@ -194,7 +194,7 @@ class ClientGetTest {
   @Test
   void getDataSize_whenLengthProvided_returnsValue() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "foundDataLength", 42L);
+    clientGet.state().setFoundDataLength(42L);
 
     assertEquals(42L, clientGet.getDataSize());
   }
@@ -202,7 +202,7 @@ class ClientGetTest {
   @Test
   void getDataSize_whenLengthMissing_returnsNegativeOne() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "foundDataLength", 0L);
+    clientGet.state().setFoundDataLength(0L);
 
     assertEquals(-1L, clientGet.getDataSize());
   }
@@ -210,7 +210,7 @@ class ClientGetTest {
   @Test
   void getMimeType_whenValueProvided_returnsIt() {
     ClientGet clientGet = newClientGet();
-    setField(clientGet, "foundDataMimeType", "text/plain");
+    clientGet.state().setFoundDataMimeType("text/plain");
 
     assertEquals("text/plain", clientGet.getMIMEType());
   }
@@ -235,7 +235,7 @@ class ClientGetTest {
 
   private ClientGet newClientGet() {
     ClientGet clientGet = new ClientGet();
-    setField(clientGet, "compatMode", new CompatibilityAnalyser());
+    clientGet.state().setCompatibilityAnalyser(new CompatibilityAnalyser());
     setField(clientGet, "fctx", fetchContext);
     return clientGet;
   }

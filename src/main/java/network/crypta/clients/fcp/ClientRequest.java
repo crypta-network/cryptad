@@ -710,7 +710,7 @@ public abstract class ClientRequest implements Serializable {
   @SuppressWarnings("unused")
   public void restartAsync(final FCPServer server, final boolean disableFilterData)
       throws PersistenceDisabledException {
-    synchronized (this) {
+    synchronized (requestLock()) {
       this.started = false;
     }
     if (client != null) {
@@ -760,6 +760,16 @@ public abstract class ClientRequest implements Serializable {
               },
               "Restart request");
     }
+  }
+
+  /**
+   * Lock used to guard shared request state such as {@link #started} and {@link #finished}.
+   *
+   * <p>Subclasses may override to supply a dedicated lock that is used consistently across request
+   * lifecycle updates.
+   */
+  protected Object requestLock() {
+    return this;
   }
 
   /**
@@ -970,7 +980,9 @@ public abstract class ClientRequest implements Serializable {
   public static ClientRequest restartFrom(
       DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
       throws StorageFormatException, IOException, ResumeFailedException {
-    return reqID.type == GET ? ClientGet.restartFrom(dis, reqID, context, checker) : null;
+    return reqID.type == GET
+        ? ClientGetPersistenceCodec.restartFrom(dis, reqID, context, checker)
+        : null;
   }
 
   /**
