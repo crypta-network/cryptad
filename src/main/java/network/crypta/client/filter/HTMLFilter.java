@@ -459,7 +459,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         case INTAGCOMMENT -> w.write("<!-- truncated page: deleted unfinished comment -->");
         case INTAGCOMMENTCLOSING ->
             w.write("<!-- truncated page: deleted unfinished comment, might be closing -->");
-        default -> {}
+        default -> {
+          // Intentionally ignore unknown tokenizer mode.
+        }
       }
     }
 
@@ -494,7 +496,9 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
         case INTAGCOMMENT -> handleCommentMode();
         case INTAGCOMMENTCLOSING -> handleCommentClosingMode();
         case INTAGWHITESPACE -> handleWhitespaceMode();
-        default -> {}
+        default -> {
+          // Intentionally ignore unknown tokenizer mode.
+        }
       }
     }
 
@@ -813,22 +817,6 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
       return errorTag;
     }
     return tagContent;
-  }
-
-  private static String[] splitOnComma(String input) {
-    ArrayList<String> parts = new ArrayList<>();
-    int start = 0;
-    for (int i = 0; i < input.length(); i++) {
-      if (input.charAt(i) == ',') {
-        parts.add(input.substring(start, i));
-        start = i + 1;
-      }
-    }
-    parts.add(input.substring(start));
-    for (int i = parts.size() - 1; i >= 0 && parts.get(i).isEmpty(); i--) {
-      parts.remove(i);
-    }
-    return parts.toArray(new String[0]);
   }
 
   /**
@@ -3844,6 +3832,22 @@ public class HTMLFilter implements ContentDataFilter, CharsetExtractor {
     static {
       validRobotsValues = new HashSet<>();
       validRobotsValues.addAll(Arrays.asList(validRobotsValue));
+    }
+
+    private static String[] splitOnComma(String input) {
+      ArrayList<String> parts = new ArrayList<>();
+      int start = 0;
+      for (int i = 0; i < input.length(); i++) {
+        if (input.charAt(i) == ',') {
+          parts.add(input.substring(start, i));
+          start = i + 1;
+        }
+      }
+      parts.add(input.substring(start));
+      for (int i = parts.size() - 1; i >= 0 && parts.get(i).isEmpty(); i--) {
+        parts.remove(i);
+      }
+      return parts.toArray(new String[0]);
     }
 
     MetaTagVerifier() {

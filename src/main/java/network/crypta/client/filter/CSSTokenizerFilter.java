@@ -3808,7 +3808,9 @@ class CSSTokenizerFilter {
         case STATE3 -> handleState3();
         case STATE3INQUOTE -> handleState3InQuote();
         case STATECOMMENT -> handleStateComment();
-        default -> {}
+        default -> {
+          // Intentionally ignore unknown state.
+        }
       }
     }
 
@@ -5973,7 +5975,9 @@ class CSSTokenizerFilter {
             case "ti" -> f.time = true;
             case "fr" -> f.frequency = true;
             case "tr" -> f.transform = true;
-            default -> {}
+            default -> {
+              // Intentionally ignore unknown type token.
+            }
           }
         }
         return f;
@@ -6526,7 +6530,7 @@ class CSSTokenizerFilter {
     }
 
     /** Parameters for verifying parse expressions that use the {@code []} repetition operator. */
-    @SuppressWarnings("java:S6206")
+    @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
     private static final class VariableOccurrenceParams {
       private final int verifierIndex;
       private final ParsedWord[] valueParts;
