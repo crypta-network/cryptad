@@ -1290,6 +1290,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return node.network().inputBandwidthLimit() * (double) limit;
   }
 
+  @SuppressWarnings("java:S1905")
   private double getNonOverheadFraction(long now) {
 
     long[] total = node.network().collector().getTotalIO();
@@ -1301,7 +1302,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // Consider using a shorter average; evaluate behavior when bwlimit changes
 
     double totalCouldSend =
-        Math.max(totalSent, (node.network().outputBandwidthLimit() * uptime) / 1000.0);
+        Math.max((double) totalSent, (node.network().outputBandwidthLimit() * uptime) / 1000.0);
     double nonOverheadFraction = (totalCouldSend - totalOverhead) / totalCouldSend;
     long timeFirstAnyConnections = peers.timeFirstAnyConnections;
     if (timeFirstAnyConnections > 0) {

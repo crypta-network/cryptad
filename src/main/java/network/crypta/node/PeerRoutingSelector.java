@@ -72,7 +72,7 @@ public class PeerRoutingSelector {
    * and does not mutate peers directly. Callers remain responsible for updating per-request state
    * and for respecting a {@code null} result.
    *
-   * <pre>{@code
+   * <pre>
    * PeerRoutingSelectionParams params = ...;
    * PeerNode nextHop = selector.closerPeer(params);
    * </pre>
