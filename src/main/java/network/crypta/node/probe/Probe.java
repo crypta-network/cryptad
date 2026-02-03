@@ -71,8 +71,6 @@ import org.slf4j.LoggerFactory;
 public class Probe implements ByteCounter {
   private static final Logger LOG = LoggerFactory.getLogger(Probe.class);
 
-  // SLF4J-level guard used instead of legacy logWARNING flag.
-
   private static final String SOURCE_DISCONNECT =
       "Previous step in probe chain no longer connected.";
 
@@ -101,7 +99,7 @@ public class Probe implements ByteCounter {
    * Probability that HTL decrements at {@code HTL==1} rather than forwarding.
    *
    * <p>This small chance protects the responding node by avoiding deterministic behavior at the
-   * final hop while keeping overall walk length distribution stable.
+   * final hop while keeping the overall walk length distribution stable.
    */
   public static final float DECREMENT_PROBABILITY = 0.2f;
 
@@ -147,16 +145,17 @@ public class Probe implements ByteCounter {
   public static final int COUNTER_MAX_PEER = 10;
 
   /**
-   * Maximum number of probes started locally in the past minute. This is the maximum conceivable
-   * value; the probes should be used with a number of requests per minute closer to the per-peer
-   * limit times the minimum expected number of peers. Around this value, and certainly above it,
-   * remote OVERLOADs may start coming in, which are not useful. The Metropolis-Hastings correction
-   * makes behavior potentially inconsistent, so keeping an eye on remote OVERLOADs is wise.
+   * The maximum number of probes started locally in the past minute. This is the maximum
+   * conceivable value; the probes should be used with a number of requests per minute closer to the
+   * per-peer limit times the minimum expected number of peers. Around this value, and certainly
+   * above it, remote OVERLOADs may start coming in, which are not useful. The Metropolis-Hastings
+   * correction makes behavior potentially inconsistent, so keeping an eye on remote OVERLOADs is
+   * wise.
    */
   public static final int COUNTER_MAX_LOCAL =
       COUNTER_MAX_PEER * OpennetManager.MAX_PEERS_FOR_SCALING;
 
-  /** Number of accepted probes in the last minute, keyed by peer. */
+  /** Number of accepted probes at the last minute, keyed by peer. */
   private final Map<PeerNode, Counter> accepted;
 
   private final Node node;
@@ -420,7 +419,7 @@ public class Probe implements ByteCounter {
     probeIdentifier = nodeConfig.getLong(IDENTIFIER_KEY);
 
     /*
-     * set() is not used when setting up an option with its default value, so do so manually to avoid using
+     * set() is not used when setting up an option with its default value, thus do so manually to avoid using
      * an identifier of -1.
      */
     try {
@@ -593,8 +592,8 @@ public class Probe implements ByteCounter {
   }
 
   /**
-   * Attempts to route the message to a peer. If the maximum number of send attempts is exceeded,
-   * fails with the error CANNOT_FORWARD.
+   * Attempts to route the message to a peer. If the maximum number of sending attempts is exceeded,
+   * it fails with the error CANNOT_FORWARD.
    *
    * @return True if no further action needed; false if HTL decremented to zero and a local response
    *     is needed.
@@ -620,7 +619,7 @@ public class Probe implements ByteCounter {
         if (trySendToCandidate(candidate, type, uid, htl, message, listener)) {
           return true;
         }
-        // Else: candidate disconnected during send/filter; try again.
+        // Else: the candidate disconnected during send/filter; try again.
       } else {
         htl = probabilisticDecrement(htl);
         if (htl == 0) return false;
@@ -670,7 +669,7 @@ public class Probe implements ByteCounter {
    * @param type probe result type requested.
    * @param candidate node to filter for response from.
    * @param uid probe request uid, also to be used in any result.
-   * @param htl current probe HTL; used to calculate timeout.
+   * @param htl the current probe HTL; used to calculate timeout.
    * @return filter for the requested result type, probe error, and probe refusal.
    */
   private static MessageFilter createResponseFilter(
@@ -707,7 +706,7 @@ public class Probe implements ByteCounter {
   }
 
   /**
-   * Depending on node settings, sends a message to source containing either a refusal or the
+   * Depending on node settings, sends a message to the source containing either a refusal or the
    * requested result.
    */
   private void respond(final Type type, final Listener listener) {
@@ -718,34 +717,34 @@ public class Probe implements ByteCounter {
     }
 
     /*
-     * This adds noise to the results to make information less identifiable. The goal is making it difficult
+     * This adds noise to the results to make information less identifiable. The goal is to make it difficult
      * to determine which value a node actually has; that any given value could mean a small range of common
      * values. Different result types have different sigma values such that one sigma contains multiple
      * reasonable values.
      */
     switch (type) {
-      case BANDWIDTH -> {
-        /*
-         * 5% noise:
-         * Reasonable output bandwidth limit is 20 KiB and people are likely to set limits in increments
-         * of 1 KiB. 1 KiB / 20 KiB = 0.05 sigma.
-         * 1,024 (2^10) bytes per KiB.
-         */
-        listener.onOutputBandwidth(
-            (float) randomNoise((double) node.network().outputBandwidthLimit() / (1 << 10), 0.05));
-      }
+      /*
+       * 5% noise:
+       * Reasonable output bandwidth limit is 20 KiB, and people are likely to set limits in increments
+       * of 1 KiB. 1 KiB / 20 KiB = 0.05 sigma.
+       * 1,024 (2^10) bytes per KiB.
+       */
+      case BANDWIDTH ->
+          listener.onOutputBandwidth(
+              (float)
+                  randomNoise((double) node.network().outputBandwidthLimit() / (1 << 10), 0.05));
       case BUILD -> listener.onBuild(node.services().nodeUpdater().getMainVersion());
       case IDENTIFIER -> {
         /*
          * 5% noise:
          * Reasonable uptime percentage is at least ~40 hours a week, or ~20%. This uptime is
-         * quantized so only something above a full percentage point (0.01 * 168 hours = 1.68 hours) of
+         *  quantized, so only something above a full percentage point (0.01 * 168 hours = 1.68 hours) of
          * change will be guaranteed (from a percentage with a decimal component close to zero) to be
          * reflected. 1% / 20% = 0.05 sigma.
          *
          * 7-day uptime with random noise, then quantized. Quantization is to make it very, very
          * difficult to get useful information out of any given result because it is included with an
-         * identifier,
+         * identifier.
          */
         long percent =
             Math.round(randomNoise(100 * node.network().uptimeEstimator().getUptimeWeek(), 0.05));
@@ -777,34 +776,31 @@ public class Probe implements ByteCounter {
         listener.onLinkLengths(linkLengths);
       }
       case LOCATION -> listener.onLocation((float) node.network().location());
-      case STORE_SIZE -> {
-        /*
-         * 5% noise:
-         * Reasonable datastore size is 20 GiB, and size is likely set in, at most, increments of 1 GiB.
-         * 1 GiB / 20 GiB = 0.05 sigma.
-         * 1,073,741,824 bytes (2^30) per GiB.
-         */
-        listener.onStoreSize((float) randomNoise((double) node.getStoreSize() / (1 << 30), 0.05));
-      }
-      case UPTIME_48H -> {
-        /*
-         * 8% noise:
-         * Continuing with the assumption that reasonable weekly uptime is around 40 hours, this allows
-         * for 6 hours per day, 12 hours per 48 hours, or 25%. A half-hour seems a sufficient amount of
-         * ambiguity, so 0.5 hours / 48 hours ~= 1%, and 1% / 25% = 0.04 sigma.
-         */
-        listener.onUptime(
-            (float) randomNoise(100 * node.network().uptimeEstimator().getUptime(), 0.04));
-      }
-      case UPTIME_7D -> {
-        /*
-         * 2.4% noise:
-         * As a 168-hour uptime covers a longer period 1 hour of ambiguity seems sufficient.
-         * 1 hour / 168 hours ~= 0.6%, and 0.6% / 20% = 0.03 sigma.
-         */
-        listener.onUptime(
-            (float) randomNoise(100 * node.network().uptimeEstimator().getUptimeWeek(), 0.03));
-      }
+      /*
+       * 5% noise:
+       * Reasonable datastore size is 20 GiB, and size is likely set in, at most, increments of 1 GiB.
+       * 1 GiB / 20 GiB = 0.05 sigma.
+       * 1,073,741,824 bytes (2^30) per GiB.
+       */
+      case STORE_SIZE ->
+          listener.onStoreSize((float) randomNoise((double) node.getStoreSize() / (1 << 30), 0.05));
+      /*
+       * 8% noise:
+       * Continuing with the assumption that reasonable weekly uptime is around 40 hours, this allows
+       * for 6 hours per day, 12 hours per 48 hours, or 25%. A half-hour seems enough
+       * ambiguity, so 0.5 hours / 48 hours ~= 1%, and 1% / 25% = 0.04 sigma.
+       */
+      case UPTIME_48H ->
+          listener.onUptime(
+              (float) randomNoise(100 * node.network().uptimeEstimator().getUptime(), 0.04));
+      /*
+       * 2.4% noise:
+       * As a 168-hour uptime covers a longer period, 1 hour of ambiguity seems enough.
+       * 1 hour / 168 hours ~= 0.6%, and 0.6% / 20% = 0.03 sigma.
+       */
+      case UPTIME_7D ->
+          listener.onUptime(
+              (float) randomNoise(100 * node.network().uptimeEstimator().getUptimeWeek(), 0.03));
       case REJECT_STATS -> {
         byte[] stats = node.network().stats().getNoisyRejectStats();
         listener.onRejectStats(stats);
@@ -854,6 +850,7 @@ public class Probe implements ByteCounter {
    * Filter listener which determines the type of result and calls the appropriate probe listener
    * method.
    */
+  @SuppressWarnings("ClassCanBeRecord")
   private static class ResultListener implements AsyncMessageFilterCallback {
 
     private final Listener listener;
@@ -872,7 +869,8 @@ public class Probe implements ByteCounter {
     }
 
     /**
-     * Parses provided message and calls appropriate Probe.Listener method for the type of result.
+     * Parses provided a message and called the appropriate "Probe.Listener" method for the type of
+     * result.
      *
      * @param message Probe result.
      */
@@ -934,9 +932,9 @@ public class Probe implements ByteCounter {
 
   /**
    * Listener which relays responses to the node specified during construction. Used for received
-   * probe requests. This leads to reconstructing the messages, but removes potentially harmful
+   * probe requests. This leads to reconstructing the messages but removes potentially harmful
    * sub-messages and also removes the need for duplicate message sending code elsewhere, If the
-   * result includes a trace this would be the place to add local results to it.
+   * result includes a trace, this would be the place to add local results to it.
    */
   private class ResultRelay implements Listener {
 
@@ -945,7 +943,7 @@ public class Probe implements ByteCounter {
 
     /**
      * @param source peer from which the request was received and to which send the response.
-     * @throws IllegalArgumentException if source is null.
+     * @throws IllegalArgumentException if a source is null.
      */
     public ResultRelay(PeerNode source, Long uid) {
       this.source = source;

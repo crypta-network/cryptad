@@ -369,7 +369,7 @@ public class NodeUpdateManager {
                     .nextInt(
                         (int)
                             SECONDS.toMillis(
-                                (long) Math.min(Math.pow(2, i), (double) MINUTES.toSeconds(15)))));
+                                (long) Math.min(Math.pow(2, i), MINUTES.toSeconds(15)))));
       } catch (InterruptedException _) {
         Thread.currentThread().interrupt();
       }

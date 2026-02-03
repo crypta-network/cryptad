@@ -111,23 +111,22 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   /** Histogram for request locations. */
-  private static class RequestsByLocation {
-    private final AtomicIntegerArray bins;
+  private record RequestsByLocation(AtomicIntegerArray bins) {
 
     /** Constructs a request location histogram with the given number of bins. */
     RequestsByLocation(int numBins) {
-      bins = new AtomicIntegerArray(numBins);
+      this(new AtomicIntegerArray(numBins));
     }
 
     /** Update the request counts with a request for the given location. */
-    final void report(final double loc) {
+    void report(final double loc) {
       assert loc >= 0 && loc < 1.0;
       int bin = (int) Math.floor(loc * bins.length());
       bins.incrementAndGet(bin);
     }
 
     /** Get the request count bins. */
-    final int[] getCounts() {
+    int[] getCounts() {
       int[] counts = new int[bins.length()];
       for (int i = 0; i < counts.length; i++) {
         counts[i] = bins.get(i);
@@ -141,6 +140,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    *
    * <p>Each bucket maintains a running average of reported values.
    */
+  @SuppressWarnings("ClassCanBeRecord")
   private static class SuccessRateHistogram {
     private final double max;
     private final RunningAverage[] bars;
@@ -1301,7 +1301,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // Consider using a shorter average; evaluate behavior when bwlimit changes
 
     double totalCouldSend =
-        Math.max((double) totalSent, (node.network().outputBandwidthLimit() * uptime) / 1000.0);
+        Math.max(totalSent, (node.network().outputBandwidthLimit() * uptime) / 1000.0);
     double nonOverheadFraction = (totalCouldSend - totalOverhead) / totalCouldSend;
     long timeFirstAnyConnections = peers.timeFirstAnyConnections;
     if (timeFirstAnyConnections > 0) {

@@ -20,11 +20,11 @@ import org.slf4j.LoggerFactory;
  * Filters PNG images to a safe, standards‑conforming byte stream.
  *
  * <p>This filter parses the PNG container, validates chunk structure and ordering, and forwards
- * only content that is known to be safe for delivery to user agents. It performs a positive
- * (allow‑list) validation of well‑formed chunks and, when configured by the caller, can remove
- * human‑readable metadata such as {@code tEXt}/{@code iTXt}/{@code zTXt} as well as the optional
- * {@code tIME} timestamp. The filter may also verify per‑chunk CRCs and drop chunks with invalid
- * checksums to prevent partially corrupted or deliberately malformed data from reaching clients.
+ * only content known to be safe for delivery to user agents. It performs a positive (allow‑list)
+ * validation of well‑formed chunks and, when configured by the caller, can remove human‑readable
+ * metadata such as {@code tEXt}/{@code iTXt}/{@code zTXt} as well as the optional {@code tIME}
+ * timestamp. The filter may also verify per‑chunk CRCs and drop chunks with invalid checksums to
+ * prevent partially corrupted or deliberately malformed data from reaching clients.
  *
  * <p>The implementation enforces core PNG invariants, including a single {@code IHDR} at the start
  * of the stream, zero or more consecutive {@code IDAT} chunks, and a single {@code IEND} at the
@@ -79,11 +79,11 @@ public class PNGFilter implements ContentDataFilter {
     "acTL",
     "fcTL",
     "fdAT"
-    // MNG isn't supported by Firefox and IE because of lack of market demand. Big surprise
-    // given nobody supports it! It is supported by Konqueror though. Complex standard,
+    // MNG isn't supported by Firefox and IE because of a lack of market demand. Big surprise
+    // given nobody supports it! It is supported by Konqueror, though. Complex standard,
     // not worth it for the time being.
 
-    // This might be a useful source of info too (e.g. on private chunks):
+    // This might be a useful source of info too (e.g., on private chunks):
     // http://fresh.t-systems-sfr.com/unix/privat/pngcheck-2.3.0.tar.gz:a/pngcheck-2.3.0/pngcheck.c
   };
 
@@ -109,9 +109,9 @@ public class PNGFilter implements ContentDataFilter {
    * filter.readFilter(inStream, outStream, null, Map.of(), null, null);
    * }</pre>
    *
-   * @param input the source PNG byte stream to validate and sanitize; may be network‑backed and is
-   *     read sequentially without relying on {@code available()} for termination; must begin with a
-   *     valid 8‑byte PNG signature.
+   * @param input the source PNG byte stream to validate and sanitize; may be networking‑backed and
+   *     is read sequentially without relying on {@code available()} for termination; must begin
+   *     with a valid 8‑byte PNG signature.
    * @param output the destination for the filtered PNG; receives only validated bytes; the method
    *     flushes on completion but does not close the stream.
    * @param charset ignored for PNG (a binary format); callers may pass {@code null} or any value;
@@ -426,6 +426,7 @@ public class PNGFilter implements ContentDataFilter {
     dos.write(chunk.crcBytes);
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class ChunkData {
     final int length;
     final String type;
@@ -484,27 +485,24 @@ public class PNGFilter implements ContentDataFilter {
       "Invalid colourType/bitDepth combination!";
 
   private void throwOnInvalidColour(int bitDepth, int colourType) throws DataFilterException {
-    switch (bitDepth) {
-      case 1, 2, 4 -> {
-        if (colourType != 0 && colourType != 3) invalidColourCombo(colourType, bitDepth);
-      }
-      case 16 -> {
-        if (colourType == 3) invalidColourCombo(colourType, bitDepth);
-        if (!isValidColourType8(colourType)) invalidColourCombo(colourType, bitDepth);
-      }
-      case 8 -> {
-        if (!isValidColourType8(colourType)) invalidColourCombo(colourType, bitDepth);
-      }
-      default -> invalidColourCombo(colourType, bitDepth);
+    boolean invalid =
+        switch (bitDepth) {
+          case 1, 2, 4 -> colourType != 0 && colourType != 3;
+          case 16 -> colourType == 3 || isInvalidColourType8(colourType);
+          case 8 -> isInvalidColourType8(colourType);
+          default -> true;
+        };
+    if (invalid) {
+      invalidColourCombo(colourType, bitDepth);
     }
   }
 
-  private boolean isValidColourType8(int colourType) {
-    return colourType == 0
-        || colourType == 2
-        || colourType == 3
-        || colourType == 4
-        || colourType == 6;
+  private boolean isInvalidColourType8(int colourType) {
+    return colourType != 0
+        && colourType != 2
+        && colourType != 3
+        && colourType != 4
+        && colourType != 6;
   }
 
   private void invalidColourCombo(int colourType, int bitDepth) throws DataFilterException {

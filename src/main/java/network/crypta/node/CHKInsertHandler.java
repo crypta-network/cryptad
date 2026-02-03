@@ -293,19 +293,16 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
   }
 
   private void handleTerminalStatus(int status) {
-    if (status == CHKInsertSender.TIMED_OUT
-        || status == CHKInsertSender.GENERATED_REJECTED_OVERLOAD
-        || status == CHKInsertSender.INTERNAL_ERROR) {
-      handleFatalOverload(status);
-    } else if (status == CHKInsertSender.ROUTE_NOT_FOUND
-        || status == CHKInsertSender.ROUTE_REALLY_NOT_FOUND) {
-      handleRouteNotFound(status);
-    } else if (status == CHKInsertSender.RECEIVE_FAILED) {
-      handleReceiveFailed();
-    } else if (status == CHKInsertSender.SUCCESS) {
-      handleSuccess(status);
-    } else {
-      handleUnknownStatus();
+    switch (status) {
+      case CHKInsertSender.TIMED_OUT,
+          CHKInsertSender.GENERATED_REJECTED_OVERLOAD,
+          CHKInsertSender.INTERNAL_ERROR ->
+          handleFatalOverload(status);
+      case CHKInsertSender.ROUTE_NOT_FOUND, CHKInsertSender.ROUTE_REALLY_NOT_FOUND ->
+          handleRouteNotFound(status);
+      case CHKInsertSender.RECEIVE_FAILED -> handleReceiveFailed();
+      case CHKInsertSender.SUCCESS -> handleSuccess(status);
+      default -> handleUnknownStatus();
     }
   }
 

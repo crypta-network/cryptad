@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Load bookmark state from disk with a backup/default fallback.
  *   <li>Maintain a path-to-bookmark index for categories and items.
- *   <li>Serialize and write bookmark state (backup write then rename).
+ *   <li>Serialize and write bookmark state (backup write then rename it).
  *   <li>Subscribe/unsubscribe to USK updates for USK-typed bookmark items.
  * </ul>
  */
@@ -60,7 +60,7 @@ public class BookmarkManager implements RequestClient {
   private static final Logger LOG = LoggerFactory.getLogger(BookmarkManager.class);
 
   /**
-   * Parsed default bookmark set loaded from the bundled {@code defaultbookmarks.dat} resource.
+   * Parsed the default bookmark set loaded from the bundled {@code defaultbookmarks.dat} resource.
    *
    * <p>This value may be {@code null} if the resource cannot be loaded or parsed; code that
    * populates defaults should tolerate the absence of bundled defaults.
@@ -112,7 +112,7 @@ public class BookmarkManager implements RequestClient {
   // Legacy threshold callback removed.
 
   /**
-   * Creates a new manager, loads bookmarks from disk, and registers a shutdown hook to persist
+   * Creates a new manager, loads bookmarks from the disk, and registers a shutdown hook to persist
    * changes.
    *
    * <p>The constructor attempts to read {@code bookmarks.dat} from the node user directory. When
@@ -139,7 +139,7 @@ public class BookmarkManager implements RequestClient {
       SimpleFieldSet sfs = SimpleFieldSet.readFrom(bookmarksFile, false, true);
       readBookmarks(MAIN_CATEGORY, sfs);
     } catch (MalformedURLException _) {
-      // Bookmark file contains a malformed key; ignore and fall back to backup/defaults.
+      // Bookmark file contains a malformed key; ignore and fall back to the backup/defaults.
     } catch (IOException ioe) {
       LOG.error("Error reading the bookmark file ({}):{}", bookmarksFile, ioe.getMessage(), ioe);
 
@@ -364,7 +364,7 @@ public class BookmarkManager implements RequestClient {
    * up to date.
    *
    * <p>This method does not persist changes by itself. Callers are expected to choose between
-   * immediate persistence ({@link #storeBookmarks()}) and a delayed/coalesced write ({@link
+   * immediate persistence ({@link #storeBookmarks()}) and a delayed/coalesced writing ({@link
    * #storeBookmarksLazy()}) depending on the update pattern.
    *
    * <pre>{@code
@@ -496,8 +496,8 @@ public class BookmarkManager implements RequestClient {
   private boolean wantUSK(USK u, BookmarkItem ignore) {
     List<BookmarkItem> items = MAIN_CATEGORY.getAllItems();
     for (BookmarkItem item : items) {
-      if (ignore != null && item.instanceId() == ignore.instanceId()) continue;
-      if (!"USK".equals(item.getKeyType())) continue;
+      if ((ignore != null && item.instanceId() == ignore.instanceId())
+          || !"USK".equals(item.getKeyType())) continue;
 
       try {
         FreenetURI furi = new FreenetURI(item.getKey());
@@ -593,7 +593,7 @@ public class BookmarkManager implements RequestClient {
   }
 
   /**
-   * Schedules a delayed persistence of bookmarks, coalescing multiple updates into one write.
+   * Schedules the delayed persistence of bookmarks, coalescing multiple updates into one writing.
    *
    * <p>If a delayed save is already scheduled, this method is a no-op. Otherwise, it queues a job
    * on the node ticker to invoke {@link #storeBookmarks()} after approximately 5 minutes. This is
@@ -601,7 +601,7 @@ public class BookmarkManager implements RequestClient {
    *
    * <p>The method returns immediately and does not wait for I/O. A best-effort guard ensures only
    * one delayed job is queued at a time, so repeated calls within the delay window are collapsed
-   * into the same scheduled write.
+   * into the same scheduled writing.
    */
   public void storeBookmarksLazy() {
     synchronized (bookmarks) {
@@ -627,7 +627,7 @@ public class BookmarkManager implements RequestClient {
    *
    * <p>This method serializes the current tree to a {@link SimpleFieldSet}, writes it to {@code
    * bookmarks.dat.bak}, and then attempts to move it into place as {@code bookmarks.dat}. A
-   * re-entrant guard prevents concurrent writers from executing the write simultaneously.
+   * re-entrant guard prevents concurrent writers from executing the writing simultaneously.
    *
    * <p>Failures are logged and do not throw to callers. The write operation uses regular file I/O
    * and may block while data is flushed to disk.
@@ -648,7 +648,7 @@ public class BookmarkManager implements RequestClient {
       if (!FileUtil.moveTo(backupBookmarksFile, bookmarksFile))
         LOG.error("Unable to rename {} to {}", backupBookmarksFile, bookmarksFile);
     } catch (IOException ioe) {
-      LOG.error("An error has occured saving the bookmark file :{}", ioe.getMessage(), ioe);
+      LOG.error("An error has occurred saving the bookmark file :{}", ioe.getMessage(), ioe);
     } finally {
       synchronized (bookmarks) {
         isSavingBookmarks = false;
@@ -812,7 +812,7 @@ public class BookmarkManager implements RequestClient {
   /**
    * {@inheritDoc}
    *
-   * <p>Bookmark-related requests are not treated as real-time traffic by this client.
+   * <p>This client does not treat bookmark-related requests as real-time traffic.
    *
    * @return always {@code false}
    */

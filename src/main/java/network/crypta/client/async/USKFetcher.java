@@ -541,7 +541,7 @@ public class USKFetcher
     boolean decode;
     List<USKAttempt> killAttempts = null;
     boolean shouldFillKeysWatching;
-    long effectiveLatest = curLatest;
+    long effectiveLatest;
     synchronized (this) {
       if (att != null) attempts.removeRunningAttempt(att.number);
       if (completed || cancelled) {
@@ -1014,7 +1014,7 @@ public class USKFetcher
     boolean decode;
     List<USKAttempt> killAttempts = null;
     boolean shouldFillKeysWatching;
-    long effectiveEd = ed;
+    long effectiveEd;
     synchronized (this) {
       if (completed || cancelled) return null;
       decode = lastEd == ed && data != null;
