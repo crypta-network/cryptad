@@ -45,7 +45,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 
 ## Quick commands (high-level)
 
-Prefer the Gradle wrapper and follow the project’s build/test/tooling guidance in the skills:
+Prefer the Gradle wrapper and follow the project’s build/test/tooling guidance in the skills (always load `$cryptad-build-test` skill):
 
 - `./gradlew build`
 - `./gradlew test` (Always give enough running time (more than 15 minutes) for Gradle to complete tests.)
