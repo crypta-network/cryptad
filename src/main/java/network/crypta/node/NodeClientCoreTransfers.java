@@ -322,36 +322,21 @@ public final class NodeClientCoreTransfers {
             isSSK ? "SSK" : "CHK",
             rs);
         listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
-        return;
       }
-      case RequestSender.DATA_NOT_FOUND -> {
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND));
-        return;
-      }
-      case RequestSender.RECENTLY_FAILED -> {
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.RECENTLY_FAILED));
-        return;
-      }
-      case RequestSender.ROUTE_NOT_FOUND -> {
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.ROUTE_NOT_FOUND));
-        return;
-      }
-      case RequestSender.TRANSFER_FAILED, RequestSender.GET_OFFER_TRANSFER_FAILED -> {
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.TRANSFER_FAILED));
-        return;
-      }
-      case RequestSender.VERIFY_FAILURE, RequestSender.GET_OFFER_VERIFY_FAILURE -> {
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.VERIFY_FAILED));
-        return;
-      }
-      case RequestSender.GENERATED_REJECTED_OVERLOAD, RequestSender.TIMED_OUT -> {
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.REJECTED_OVERLOAD));
-        return;
-      }
-      case RequestSender.INTERNAL_ERROR -> {
-        listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
-        return;
-      }
+      case RequestSender.DATA_NOT_FOUND ->
+          listener.onFailed(new LowLevelGetException(LowLevelGetException.DATA_NOT_FOUND));
+      case RequestSender.RECENTLY_FAILED ->
+          listener.onFailed(new LowLevelGetException(LowLevelGetException.RECENTLY_FAILED));
+      case RequestSender.ROUTE_NOT_FOUND ->
+          listener.onFailed(new LowLevelGetException(LowLevelGetException.ROUTE_NOT_FOUND));
+      case RequestSender.TRANSFER_FAILED, RequestSender.GET_OFFER_TRANSFER_FAILED ->
+          listener.onFailed(new LowLevelGetException(LowLevelGetException.TRANSFER_FAILED));
+      case RequestSender.VERIFY_FAILURE, RequestSender.GET_OFFER_VERIFY_FAILURE ->
+          listener.onFailed(new LowLevelGetException(LowLevelGetException.VERIFY_FAILED));
+      case RequestSender.GENERATED_REJECTED_OVERLOAD, RequestSender.TIMED_OUT ->
+          listener.onFailed(new LowLevelGetException(LowLevelGetException.REJECTED_OVERLOAD));
+      case RequestSender.INTERNAL_ERROR ->
+          listener.onFailed(new LowLevelGetException(LowLevelGetException.INTERNAL_ERROR));
       default -> {
         LOG.error(
             "Async get received unknown RequestSender status for {}: {} on {}",
