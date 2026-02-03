@@ -59,7 +59,9 @@ final class ClientGetEventHandling implements ClientEventListener {
       return handleSplitfileProgress(progressEvent);
     }
     if (event instanceof SendingToNetworkEvent) {
-      request.markSentToNetwork();
+      synchronized (request.persistenceLock()) {
+        request.state().markSentToNetwork();
+      }
       return new EventProgress(
           new SendingToNetworkMessage(request.identifier, request.global),
           ClientGet.VERBOSITY_SENT_TO_NETWORK);
@@ -85,7 +87,9 @@ final class ClientGetEventHandling implements ClientEventListener {
   private EventProgress handleSplitfileProgress(SplitfileProgressEvent event) {
     SimpleProgressMessage message =
         new SimpleProgressMessage(request.identifier, request.global, event);
-    request.recordSplitfileProgress(message);
+    synchronized (request.persistenceLock()) {
+      request.state().setProgressPending(message);
+    }
     if (request.client != null) {
       RequestStatusCache cache = request.client.getRequestStatusCache();
       if (cache != null) {
@@ -97,14 +101,20 @@ final class ClientGetEventHandling implements ClientEventListener {
 
   private EventProgress handleExpectedHashes(ExpectedHashesEvent event) {
     ExpectedHashes hashes = new ExpectedHashes(event, request.identifier, request.global);
-    if (!request.trySetExpectedHashes(hashes)) {
+    boolean accepted;
+    synchronized (request.persistenceLock()) {
+      accepted = request.state().trySetExpectedHashes(hashes);
+    }
+    if (!accepted) {
       return null;
     }
     return new EventProgress(hashes, ClientGet.VERBOSITY_EXPECTED_HASHES);
   }
 
   private EventProgress handleExpectedMime(ExpectedMIMEEvent event) {
-    request.recordExpectedMimeType(event.expectedMIMEType);
+    synchronized (request.persistenceLock()) {
+      request.state().setFoundDataMimeType(event.expectedMIMEType);
+    }
     if (request.client != null) {
       RequestStatusCache cache = request.client.getRequestStatusCache();
       if (cache != null) {
@@ -117,7 +127,9 @@ final class ClientGetEventHandling implements ClientEventListener {
   }
 
   private EventProgress handleExpectedSize(ExpectedFileSizeEvent event) {
-    request.recordExpectedDataLength(event.expectedSize);
+    synchronized (request.persistenceLock()) {
+      request.state().setFoundDataLength(event.expectedSize);
+    }
     if (request.client != null) {
       RequestStatusCache cache = request.client.getRequestStatusCache();
       if (cache != null) {
@@ -136,12 +148,16 @@ final class ClientGetEventHandling implements ClientEventListener {
         context.jobRunner.queue(
             (PersistentJob)
                 _ -> {
-                  request.mergeCompatibilityMode(
-                      event.minCompatibilityMode,
-                      event.maxCompatibilityMode,
-                      event.splitfileCryptoKey,
-                      event.dontCompress,
-                      event.bottomLayer);
+                  synchronized (request.persistenceLock()) {
+                    request
+                        .state()
+                        .mergeCompatibilityMode(
+                            event.minCompatibilityMode,
+                            event.maxCompatibilityMode,
+                            event.splitfileCryptoKey,
+                            event.dontCompress,
+                            event.bottomLayer);
+                  }
                   return false;
                 },
             NativeThread.PriorityLevel.HIGH_PRIORITY.value);
@@ -149,12 +165,16 @@ final class ClientGetEventHandling implements ClientEventListener {
         // Not much we can do.
       }
     } else {
-      request.mergeCompatibilityMode(
-          event.minCompatibilityMode,
-          event.maxCompatibilityMode,
-          event.splitfileCryptoKey,
-          event.dontCompress,
-          event.bottomLayer);
+      synchronized (request.persistenceLock()) {
+        request
+            .state()
+            .mergeCompatibilityMode(
+                event.minCompatibilityMode,
+                event.maxCompatibilityMode,
+                event.splitfileCryptoKey,
+                event.dontCompress,
+                event.bottomLayer);
+      }
     }
   }
 }

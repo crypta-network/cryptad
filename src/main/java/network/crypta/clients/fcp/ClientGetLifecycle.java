@@ -66,28 +66,29 @@ final class ClientGetLifecycle {
   void onSuccess(FetchResult result, ClientGetter state) {
     LOG.debug("Succeeded: {}", request.identifier);
     Bucket data = request.binaryBlobRequested() ? state.getBlobBucket() : result.asBucket();
-    synchronized (request) {
-      if (request.hasSucceededForReplay()) {
+    ClientGetState requestState = request.state();
+    synchronized (request.persistenceLock()) {
+      if (requestState.hasSucceeded()) {
         LOG.error("onSuccess called twice for {} ({})", request, request.identifier);
         return; // We might be called twice; ignore it if so.
       }
       request.started = true;
       if (!request.binaryBlobRequested()) {
-        request.setFoundDataMimeType(result.getMimeType());
+        requestState.setFoundDataMimeType(result.getMimeType());
       } else {
-        request.setFoundDataMimeType(ClientGetGetterFactory.binaryBlobMimeType());
+        requestState.setFoundDataMimeType(ClientGetGetterFactory.binaryBlobMimeType());
       }
 
       // completionTime is set here rather than in finish() for two reasons:
       // 1. It must be set inside the lock.
       // 2. It must be set before AllData is sent so it is consistent.
       request.completionTime = System.currentTimeMillis();
-      request.setProgressPending(null);
-      request.setFoundDataLength(data.size());
-      request.setSucceeded(true);
+      requestState.setProgressPending(null);
+      requestState.setFoundDataLength(data.size());
+      requestState.setSucceeded(true);
       request.finished = true;
       if (request.returnTypeForReplay() == ClientGet.ReturnType.DIRECT) {
-        request.setReturnBucketDirect(data);
+        requestState.setReturnBucketDirect(data);
       }
     }
     request.trySendDataFoundOrGetFailed(null, null);
@@ -118,8 +119,9 @@ final class ClientGetLifecycle {
     if (context == null) {
       throw new NullPointerException("context");
     }
-    synchronized (request) {
-      request.setSucceeded(true);
+    ClientGetState requestState = request.state();
+    synchronized (request.persistenceLock()) {
+      requestState.setSucceeded(true);
       request.started = true;
       request.finished = true;
       request.completionTime = completionTime;
@@ -132,20 +134,20 @@ final class ClientGetLifecycle {
             when type == ClientGet.ReturnType.DISK
                 && (!request.targetFileForLifecycle().exists()
                     || request.targetFileForLifecycle().length()
-                        != request.foundDataLengthForReplay()) ->
+                        != requestState.getFoundDataLength()) ->
             throw new ResumeFailedException("Success but target file doesn't exist or isn't valid");
         case ClientGet.ReturnType type when type == ClientGet.ReturnType.DISK -> {
           // Validation already passed.
         }
         case ClientGet.ReturnType type
             when type == ClientGet.ReturnType.DIRECT
-                && data.size() != request.foundDataLengthForReplay() -> {
-          request.setReturnBucketDirect(data);
+                && data.size() != requestState.getFoundDataLength() -> {
+          requestState.setReturnBucketDirect(data);
           throw new ResumeFailedException(
               "Success but temporary data bucket doesn't exist or isn't valid");
         }
         case ClientGet.ReturnType type when type == ClientGet.ReturnType.DIRECT ->
-            request.setReturnBucketDirect(data);
+            requestState.setReturnBucketDirect(data);
         case ClientGet.ReturnType type when type == ClientGet.ReturnType.CHUNKED ->
             throw new ResumeFailedException("Chunked return type not supported for migration");
         default -> throw new IllegalStateException("Unexpected return type: " + returnType);
@@ -167,15 +169,16 @@ final class ClientGetLifecycle {
     if (request.finished) {
       return;
     }
-    synchronized (request) {
+    ClientGetState requestState = request.state();
+    synchronized (request.persistenceLock()) {
       if (e.getExpectedSize() != 0) {
-        request.setFoundDataLength(e.getExpectedSize());
+        requestState.setFoundDataLength(e.getExpectedSize());
       }
       if (e.getExpectedMimeType() != null) {
-        request.setFoundDataMimeType(e.getExpectedMimeType());
+        requestState.setFoundDataMimeType(e.getExpectedMimeType());
       }
-      request.setSucceeded(false);
-      request.setFailedMessage(new GetFailedMessage(e, request.identifier, request.global));
+      requestState.setSucceeded(false);
+      requestState.setFailedMessage(new GetFailedMessage(e, request.identifier, request.global));
       request.finished = true;
       request.started = true;
       request.completionTime = System.currentTimeMillis();
@@ -203,11 +206,12 @@ final class ClientGetLifecycle {
   void requestWasRemoved() {
     // if the request is still running, send a GetFailed with code=canceled
     if (!request.finished) {
-      synchronized (request) {
-        request.setSucceeded(false);
+      ClientGetState requestState = request.state();
+      synchronized (request.persistenceLock()) {
+        requestState.setSucceeded(false);
         request.finished = true;
         FetchException cancelled = new FetchException(FetchExceptionMode.CANCELLED);
-        request.setFailedMessage(
+        requestState.setFailedMessage(
             new GetFailedMessage(cancelled, request.identifier, request.global));
       }
       request.trySendDataFoundOrGetFailed(null, null);

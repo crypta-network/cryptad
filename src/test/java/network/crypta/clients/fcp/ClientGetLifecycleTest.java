@@ -52,10 +52,10 @@ class ClientGetLifecycleTest {
     // Assert
     assertTrue(getBooleanField(request, "started"));
     assertTrue(getBooleanField(request, "finished"));
-    assertTrue(getBooleanField(request, "succeeded"));
-    assertEquals(123L, (long) getField(request, "foundDataLength"));
-    assertEquals("text/plain", getField(request, "foundDataMimeType"));
-    assertEquals(bucket, getField(request, "returnBucketDirect"));
+    assertTrue(request.state().hasSucceeded());
+    assertEquals(123L, request.state().getFoundDataLength());
+    assertEquals("text/plain", request.state().getFoundDataMimeType());
+    assertEquals(bucket, request.state().getReturnBucketDirect());
     verify(request).trySendDataFoundOrGetFailed(null, null);
     verify(request).trySendAllDataMessage(null, null);
     verify(request).finish();
@@ -81,9 +81,9 @@ class ClientGetLifecycleTest {
     lifecycle.onSuccess(result, getter);
 
     // Assert
-    assertEquals(50L, (long) getField(request, "foundDataLength"));
+    assertEquals(50L, request.state().getFoundDataLength());
     assertEquals(
-        ClientGetGetterFactory.binaryBlobMimeType(), getField(request, "foundDataMimeType"));
+        ClientGetGetterFactory.binaryBlobMimeType(), request.state().getFoundDataMimeType());
   }
 
   @Test
@@ -107,14 +107,14 @@ class ClientGetLifecycleTest {
     Bucket bucket = Mockito.mock(Bucket.class);
     when(bucket.size()).thenReturn(7L);
     setField(request, "returnType", ReturnType.DIRECT);
-    setField(request, "foundDataLength", 5L);
+    request.state().setFoundDataLength(5L);
     ClientContext context = Mockito.mock(ClientContext.class);
     ClientGetLifecycle lifecycle = new ClientGetLifecycle(request);
 
     // Act + Assert
     assertThrows(
         ResumeFailedException.class, () -> lifecycle.setSuccessForMigration(context, 10L, bucket));
-    assertEquals(bucket, getField(request, "returnBucketDirect"));
+    assertEquals(bucket, request.state().getReturnBucketDirect());
   }
 
   @Test
@@ -148,9 +148,9 @@ class ClientGetLifecycleTest {
     // Assert
     assertTrue(getBooleanField(request, "finished"));
     assertTrue(getBooleanField(request, "started"));
-    assertEquals(256L, (long) getField(request, "foundDataLength"));
-    assertEquals("text/plain", getField(request, "foundDataMimeType"));
-    assertNotNull(getField(request, "getFailedMessage"));
+    assertEquals(256L, request.state().getFoundDataLength());
+    assertEquals("text/plain", request.state().getFoundDataMimeType());
+    assertNotNull(request.state().getFailedMessage());
     verify(request).trySendDataFoundOrGetFailed(null, null);
     verify(request).finish();
     verify(client).notifyFailure(request);
@@ -186,15 +186,10 @@ class ClientGetLifecycleTest {
     setField(request, "global", false);
     setField(request, "started", false);
     setField(request, "finished", false);
-    setField(request, "succeeded", false);
-    setField(request, "foundDataLength", -1L);
+    request.state().setSucceeded(false);
+    request.state().setFoundDataLength(-1L);
     setField(request, "targetFile", new File("target.bin"));
     return request;
-  }
-
-  private static Object getField(Object target, String fieldName) throws Exception {
-    Field field = findField(target, fieldName);
-    return field.get(target);
   }
 
   private static boolean getBooleanField(Object target, String fieldName) throws Exception {

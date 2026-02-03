@@ -206,7 +206,7 @@ final class ClientGetPersistenceIO {
     try (DataInputStream inner =
         openChecksummed(dis, context, checker, CHECKSUMMED_BLOCK_MAX_LENGTH)) {
       if (inProgressGetter.resumeFromTrivialProgress(inner, context)) {
-        request.readTransientProgressFields(inner);
+        ClientGetPersistenceCodec.readTransientProgressFields(request, inner);
       }
     } catch (IOException e) {
       LOG.error("Unable to restore splitfile, restarting: {}", e.toString());

@@ -2,10 +2,11 @@ package network.crypta.clients.fcp;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
@@ -76,7 +77,7 @@ class ClientGetEventHandlingTest {
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
-    verify(request).recordSplitfileProgress(any(SimpleProgressMessage.class));
+    assertInstanceOf(SimpleProgressMessage.class, request.state().getProgressPending());
     verify(cache).updateStatus(IDENTIFIER, event);
     verify(request)
         .queueProgressMessageInner(
@@ -95,7 +96,7 @@ class ClientGetEventHandlingTest {
     handler.receive(event, Mockito.mock(ClientContext.class));
 
     // Assert
-    verify(request).recordSplitfileProgress(any(SimpleProgressMessage.class));
+    assertInstanceOf(SimpleProgressMessage.class, request.state().getProgressPending());
     verify(request, never()).queueProgressMessageInner(any(FCPMessage.class), anyInt());
   }
 
@@ -116,11 +117,11 @@ class ClientGetEventHandlingTest {
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
-    verify(request).markSentToNetwork();
     verify(request)
         .queueProgressMessageInner(
             messageCaptor.capture(), eq(ClientGet.VERBOSITY_SENT_TO_NETWORK));
     assertInstanceOf(SendingToNetworkMessage.class, messageCaptor.getValue());
+    assertTrue(request.state().hasSentToNetwork());
   }
 
   @Test
@@ -132,15 +133,14 @@ class ClientGetEventHandlingTest {
             ClientGet.VERBOSITY_EXPECTED_HASHES,
             false,
             ClientRequest.Persistence.CONNECTION);
-    Mockito.doReturn(false).when(request).trySetExpectedHashes(any(ExpectedHashes.class));
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
     ExpectedHashesEvent event = new ExpectedHashesEvent(new HashResult[] {newSha256Hash()});
+    request.state().trySetExpectedHashes(new ExpectedHashes(event, IDENTIFIER, false));
 
     // Act
     handler.receive(event, Mockito.mock(ClientContext.class));
 
     // Assert
-    verify(request).trySetExpectedHashes(any(ExpectedHashes.class));
     verify(request, never()).queueProgressMessageInner(any(FCPMessage.class), anyInt());
   }
 
@@ -190,7 +190,7 @@ class ClientGetEventHandlingTest {
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
-    verify(request).recordExpectedMimeType(EXPECTED_MIME);
+    assertEquals(EXPECTED_MIME, request.state().getFoundDataMimeType());
     verify(cache).updateExpectedMIME(IDENTIFIER, EXPECTED_MIME);
     verify(request)
         .queueProgressMessageInner(messageCaptor.capture(), eq(ClientGet.VERBOSITY_EXPECTED_TYPE));
@@ -219,7 +219,7 @@ class ClientGetEventHandlingTest {
 
     // Assert
     ArgumentCaptor<FCPMessage> messageCaptor = ArgumentCaptor.forClass(FCPMessage.class);
-    verify(request).recordExpectedDataLength(42L);
+    assertEquals(42L, request.state().getFoundDataLength());
     verify(cache).updateExpectedDataLength(IDENTIFIER, 42L);
     verify(request)
         .queueProgressMessageInner(messageCaptor.capture(), eq(ClientGet.VERBOSITY_EXPECTED_SIZE));
@@ -255,14 +255,6 @@ class ClientGetEventHandlingTest {
       throws PersistenceDisabledException {
     // Arrange
     ClientGet request = newRequestWith(IDENTIFIER, 0, false, ClientRequest.Persistence.FOREVER);
-    doNothing()
-        .when(request)
-        .mergeCompatibilityMode(
-            any(CompatibilityMode.class),
-            any(CompatibilityMode.class),
-            any(),
-            anyBoolean(),
-            anyBoolean());
     PersistentJobRunner jobRunner = Mockito.mock(PersistentJobRunner.class);
     when(jobRunner.hasLoaded()).thenReturn(true);
     doNothing().when(jobRunner).queue(any(PersistentJob.class), anyInt());
@@ -281,18 +273,13 @@ class ClientGetEventHandlingTest {
 
     // Assert
     ArgumentCaptor<PersistentJob> jobCaptor = ArgumentCaptor.forClass(PersistentJob.class);
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     verify(jobRunner)
         .queue(jobCaptor.capture(), eq(NativeThread.PriorityLevel.HIGH_PRIORITY.value));
     jobCaptor.getValue().run(Mockito.mock(ClientContext.class));
-    verify(request)
-        .mergeCompatibilityMode(
-            eq(CompatibilityMode.COMPAT_1250),
-            eq(CompatibilityMode.COMPAT_1468),
-            keyCaptor.capture(),
-            eq(true),
-            eq(false));
-    assertArrayEquals(new byte[] {1, 2, 3}, keyCaptor.getValue());
+    assertArrayEquals(
+        new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
+        request.state().getCompatibilityMode());
+    assertArrayEquals(new byte[] {1, 2, 3}, request.state().getOverriddenSplitfileCryptoKey());
   }
 
   @Test
@@ -300,14 +287,6 @@ class ClientGetEventHandlingTest {
       throws PersistenceDisabledException {
     // Arrange
     ClientGet request = newRequestWith(IDENTIFIER, 0, false, ClientRequest.Persistence.CONNECTION);
-    doNothing()
-        .when(request)
-        .mergeCompatibilityMode(
-            any(CompatibilityMode.class),
-            any(CompatibilityMode.class),
-            any(),
-            anyBoolean(),
-            anyBoolean());
     PersistentJobRunner jobRunner = Mockito.mock(PersistentJobRunner.class);
     ClientContext context = newContextWithJobRunner(jobRunner);
     ClientGetEventHandling handler = new ClientGetEventHandling(request);
@@ -323,15 +302,10 @@ class ClientGetEventHandlingTest {
     handler.receive(event, context);
 
     // Assert
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    verify(request)
-        .mergeCompatibilityMode(
-            eq(CompatibilityMode.COMPAT_1250),
-            eq(CompatibilityMode.COMPAT_1468),
-            keyCaptor.capture(),
-            eq(false),
-            eq(true));
-    assertArrayEquals(new byte[] {4, 5, 6}, keyCaptor.getValue());
+    assertArrayEquals(
+        new CompatibilityMode[] {CompatibilityMode.COMPAT_1250, CompatibilityMode.COMPAT_1468},
+        request.state().getCompatibilityMode());
+    assertArrayEquals(new byte[] {4, 5, 6}, request.state().getOverriddenSplitfileCryptoKey());
     verify(jobRunner, never()).queue(any(PersistentJob.class), anyInt());
   }
 
@@ -402,6 +376,8 @@ class ClientGetEventHandlingTest {
     setField(request, ClientRequest.class, "verbosity", verbosity);
     setField(request, ClientRequest.class, "global", global);
     setField(request, ClientRequest.class, "persistence", persistence);
+    setField(request, ClientGet.class, "state", new ClientGetState(request));
+    setField(request, ClientGet.class, "persistenceLock", new ClientGet().persistenceLock());
     return request;
   }
 

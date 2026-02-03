@@ -19,6 +19,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.security.SecureRandom;
 import network.crypta.client.ArchiveManager;
 import network.crypta.client.FetchContext;
@@ -34,6 +35,7 @@ import network.crypta.client.async.ClientContextServices;
 import network.crypta.client.async.ClientContextStorageFactories;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.ClientLayerPersister;
+import network.crypta.client.async.CompatibilityAnalyser;
 import network.crypta.client.async.DatastoreChecker;
 import network.crypta.client.async.HealingQueue;
 import network.crypta.client.async.USKManager;
@@ -62,6 +64,7 @@ import network.crypta.support.io.TempBucketFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -291,18 +294,20 @@ class ClientGetPersistenceIOTest {
     ClientContext context = newClientContext();
     ChecksumChecker checker = mock(ChecksumChecker.class);
     ClientGetter getter = mock(ClientGetter.class);
-    ClientGet request = mock(ClientGet.class);
+    ClientGet request = newRequestWithState("req-1", false);
     DataInputStream input = new DataInputStream(new ByteArrayInputStream(new byte[0]));
 
+    byte[] payload = serializeTransientProgress(42L, "text/plain");
     when(checker.checksumReaderWithLength(input, context.tempBucketFactory, 65536))
-        .thenReturn(new ByteArrayInputStream(new byte[0]));
+        .thenReturn(new ByteArrayInputStream(payload));
     when(getter.resumeFromTrivialProgress(any(DataInputStream.class), eq(context)))
         .thenReturn(true);
 
     ClientGetPersistenceIO.restoreInProgressState(input, context, checker, getter, request);
 
     verify(getter).resumeFromTrivialProgress(any(DataInputStream.class), eq(context));
-    verify(request).readTransientProgressFields(any(DataInputStream.class));
+    assertEquals(42L, request.state().getFoundDataLength());
+    assertEquals("text/plain", request.state().getFoundDataMimeType());
   }
 
   @Test
@@ -408,6 +413,46 @@ class ClientGetPersistenceIOTest {
             .redundancy(0, 0)
             .compatibility(InsertContext.CompatibilityMode.COMPAT_CURRENT)
             .build());
+  }
+
+  private static ClientGet newRequestWithState(String identifier, boolean global) {
+    ClientGet request =
+        mock(ClientGet.class, Mockito.withSettings().defaultAnswer(Mockito.CALLS_REAL_METHODS));
+    setField(request, ClientRequest.class, "identifier", identifier);
+    setField(request, ClientRequest.class, "global", global);
+    setField(request, ClientGet.class, "state", new ClientGetState(request));
+    setField(request, ClientGet.class, "persistenceLock", new ClientGet().persistenceLock());
+    return request;
+  }
+
+  private static byte[] serializeTransientProgress(long length, String mimeType)
+      throws IOException {
+    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    try (DataOutputStream out = new DataOutputStream(buffer)) {
+      out.writeLong(length);
+      if (mimeType != null) {
+        out.writeBoolean(true);
+        out.writeUTF(mimeType);
+      } else {
+        out.writeBoolean(false);
+      }
+      new CompatibilityAnalyser().writeTo(out);
+      ClientGetGetterFactory.writeExpectedHashes(out, null);
+    }
+    return buffer.toByteArray();
+  }
+
+  @SuppressWarnings("java:S3011")
+  private static void setField(Object target, Class<?> owner, String fieldName, Object value) {
+    try {
+      Field field = owner.getDeclaredField(fieldName);
+      field.setAccessible(true);
+      field.set(target, value);
+    } catch (ReflectiveOperationException e) {
+      LinkageError error = new LinkageError("Failed to set field: " + fieldName);
+      error.initCause(e);
+      throw error;
+    }
   }
 
   private static byte[] serializeFetchContext(FetchContext context) throws IOException {
