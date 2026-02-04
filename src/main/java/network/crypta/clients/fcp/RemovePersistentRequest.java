@@ -133,7 +133,20 @@ public class RemovePersistentRequest extends FCPMessage {
                       ClientRequest req1 =
                           handler.removePersistentForeverRequest(global, requestIdentifier);
                       if (req1 == null) {
-                        LOG.error("Huh ? the request is null!");
+                        if (LOG.isDebugEnabled()) {
+                          LOG.debug(
+                              "RemovePersistentRequest missing identifier {} (global={})",
+                              requestIdentifier,
+                              global);
+                        }
+                        ProtocolErrorMessage msg =
+                            new ProtocolErrorMessage(
+                                ProtocolErrorMessage.NO_SUCH_IDENTIFIER,
+                                false,
+                                null,
+                                requestIdentifier,
+                                global);
+                        handler.send(msg);
                         return false;
                       }
                       return true;
