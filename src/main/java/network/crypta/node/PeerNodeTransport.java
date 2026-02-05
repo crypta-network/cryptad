@@ -188,11 +188,7 @@ final class PeerNodeTransport implements PeerTransport {
     MessageItem item = sendAsync(req, cb, ctr);
     cb.waitForSend(MINUTES.toMillis(1));
     if (!cb.done) {
-      LOG.warn(
-          "Waited too long for a blocking send for {} to {}",
-          req,
-          peer.selfPeerNode(),
-          new Exception(STR_ERROR));
+      LOG.warn("Waited too long for a blocking send for {} to {}", req, peer.selfPeerNode());
       peer.localRejectedOverload("SendSyncTimeout", realTime);
       // Try to un-queue it, since it presumably won't be of any use now.
       if (!peer.getMessageQueue().removeMessage(item)) {
@@ -441,7 +437,7 @@ final class PeerNodeTransport implements PeerTransport {
     /** True if completion occurred due to a disconnect. */
     private boolean disconnected = false;
 
-    /** True once the message has been sent to the socket. */
+    /** True, once the message has been sent to the socket. */
     private boolean sent = false;
 
     /**

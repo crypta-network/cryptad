@@ -4,32 +4,45 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.lang.ref.WeakReference;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import network.crypta.support.TimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Base class for tags that represent a single in‑flight request.
+ * Tracks routing and lifecycle state for a single in-flight request UID.
  *
- * <p>A tag tracks routing state (peers we contacted or are contacting), handler state (whether the
- * incoming side has completed), and bookkeeping required to decide when it is safe to release the
- * unique identifier (UID) for reuse. Subclasses define request‑specific behavior and logging.
+ * <p>A {@code UIDTag} instance is created when a request is accepted or initiated and remains bound
+ * to the UID until the inbound handler completes and all outbound routing or offered-key fetch work
+ * has been resolved. It records which peers were contacted, which peers are still considered
+ * active, and whether ownership has been reassigned locally. That state drives unlock decisions in
+ * {@link RequestTracker} and determines when the UID can be safely reused.
  *
- * <p>Concurrency: many methods are {@code synchronized} on {@code this}. Callers must respect the
- * locking comments on helpers that assume the monitor is already held. The class itself is not
- * immutable.
+ * <p>Concurrency: most mutating operations synchronize on the tag itself. Callers must respect the
+ * locking notes for helpers that assume the monitor is already held. Instances are mutable and are
+ * not thread-safe without the documented synchronization.
  *
- * <p>Lifetime: a tag is created when a request is accepted or initiated and is unlocked when both
- * the handler (incoming) and all outstanding outbound activities are complete, or when ownership is
- * reassigned locally as part of timeout handling.
+ * <p>Notable behaviors include:
  *
- * @author Matthew Toseland <toad@amphibian.dyndns.org> (0xE43DA450)
+ * <ul>
+ *   <li>Tracking outbound peers separately for routing and offered-key fetches.
+ *   <li>Allowing local reassignment during timeout handling to avoid false errors.
+ *   <li>Issuing deferred hard timeouts when a handler continues past the timeout.
+ * </ul>
+ *
+ * @see PeerNode
+ * @see RequestTracker
+ * @see UIDTraceLogger
+ * @author Matthew Toseland {@literal <toad@amphibian.dyndns.org>} (0xE43DA450)
  */
 public abstract class UIDTag {
   private static final Logger LOG = LoggerFactory.getLogger(UIDTag.class);
   private static final String DEBUG_EXCEPTION_MESSAGE = "debug";
   private static final String PEER_LOG_PREFIX = "peer=";
   private static final String REMOVED_LOG_FRAGMENT = " removed=";
+  private static final long HARD_TIMEOUT_AFTER_CONTINUE = RequestTracker.TIMEOUT;
+  private static final PeerNode[] NO_PEERS = new PeerNode[0];
 
   // No static initialization required.
 
@@ -37,8 +50,32 @@ public abstract class UIDTag {
   final boolean wasLocal;
   private final WeakReference<PeerNode> sourceRef;
   final boolean realTimeFlag;
+
+  /**
+   * Tracker responsible for UID lifecycle and unlock bookkeeping.
+   *
+   * <p>The tracker reference is established at construction from the owning node. It is stable and
+   * non-null for the lifetime of the tag and is used by {@link #innerUnlock(boolean)} to release
+   * the UID and update routing statistics.
+   */
   protected final RequestTracker tracker;
+
+  /**
+   * Indicates whether the inbound handler has accepted the request.
+   *
+   * <p>This flag is set when the handler decides to process the request. Subclasses may use it to
+   * reason about progress and for logging. Access is synchronized on the tag when mutated or read
+   * concurrently.
+   */
   protected boolean accepted;
+
+  /**
+   * Signals that the original source has restarted or disconnected.
+   *
+   * <p>When true, routing decisions may treat the request as restarted, and continuation behavior
+   * changes to avoid sending additional messages to the original source. The value is updated while
+   * the request is in flight and can be consulted by subclasses.
+   */
   protected boolean sourceRestarted;
 
   /** Nodes we routed to at any point during this tag's lifetime. */
@@ -61,11 +98,34 @@ public abstract class UIDTag {
    */
   private HashSet<PeerNode> handlingTimeouts = null;
 
+  /**
+   * Marks that the request should not be routed further downstream.
+   *
+   * <p>Handlers set this flag when they decide no additional peers should be contacted. It is
+   * mutable, read by subclasses and routing policies, and is guarded by the tag monitor when
+   * updates are concurrent.
+   */
   protected boolean notRoutedOnwards;
+
   final long uid;
 
+  /**
+   * Tracks whether the inbound handler has completed and unlocked.
+   *
+   * <p>Once true, the UID can be released when no outbound peers remain. This flag is updated by
+   * {@link #unlockHandler(boolean)} and should only be changed while holding the tag monitor.
+   */
   protected boolean unlockedHandler;
+
+  /**
+   * Controls whether unlock bookkeeping should be recorded.
+   *
+   * <p>When true, the tag should be released without emitting certain record updates. It is set by
+   * the inbound handler during unlocking to suppress record writing in specific call paths and is
+   * read by {@link #innerUnlock(boolean)}.
+   */
   protected boolean noRecordUnlock;
+
   private boolean hasUnlocked;
 
   private boolean waitingForSlot;
@@ -83,11 +143,15 @@ public abstract class UIDTag {
   }
 
   /**
-   * Log that this tag still exists after the request timeout threshold.
+   * Logs that this tag remains after the request timeout threshold.
    *
-   * <p>Subclasses decide the logging level and include any identifiers they control.
+   * <p>Subclasses decide the logging level, wording, and identifiers because they know the request
+   * type. This callback is invoked by {@link #maybeLogStillPresent(long, Long)} once the timeout
+   * has elapsed and can be called multiple times over the lifetime of the tag; rate limiting is
+   * handled by the caller. Implementations should be lightweight and tolerate a {@code null} UID
+   * when the subclass cannot or should not expose the identifier.
    *
-   * @param uid Optional UID to include in the log; may be {@code null} when not applicable.
+   * @param uid optional UID to include; may be {@code null} in local contexts
    */
   public abstract void logStillPresent(Long uid);
 
@@ -96,14 +160,17 @@ public abstract class UIDTag {
   }
 
   /**
-   * Mark that we route to, or fetch an offered key from, a peer. Call before sending the outbound
-   * message so per‑peer capacity accounting is accurate.
+   * Records that this tag is routing to a peer or fetching an offered key.
    *
-   * @param peer Peer we route to or fetch from.
-   * @param offeredKey {@code true} for an offered‑key fetch; {@code false} for a normal route.
-   *     Offered‑key fetches use shorter timeouts.
-   * @return {@code true} if the peer was newly added to the corresponding set; {@code false} if it
-   *     was already present.
+   * <p>Call this before the outbound message is sent so per-peer capacity accounting and timeout
+   * handling can attribute work correctly. The peer is added to the historical {@code routedTo} set
+   * and also to the active routing set that matches the {@code offeredKey} flag. The method is
+   * synchronized to avoid concurrent mutations of the peer sets and returns whether the peer was
+   * newly recorded for this activity.
+   *
+   * @param peer peer being routed to or fetched from; must be non-null
+   * @param offeredKey {@code true} for offered-key fetches, {@code false} for normal routing
+   * @return {@code true} if the peer was newly recorded; {@code false} if already present
    */
   public synchronized boolean addRoutedTo(PeerNode peer, boolean offeredKey) {
     if (LOG.isDebugEnabled())
@@ -132,10 +199,15 @@ public abstract class UIDTag {
   }
 
   /**
-   * Whether we have ever routed to the given peer for this tag.
+   * Reports whether this tag has ever routed to the given peer.
    *
-   * @param peer Peer to test.
-   * @return {@code true} if {@code peer} has been recorded in {@link #routedTo} at least once.
+   * <p>This query checks the historical routing set, not just the currently active peers. It is
+   * synchronized to provide a consistent view of routing history when other threads are updating
+   * the sets. A {@code false} return means the peer has never been recorded for this tag, and it
+   * does not imply anything about current reachability.
+   *
+   * @param peer peer to test against the historical routing set
+   * @return {@code true} when the peer is present in the history; {@code false} otherwise
    */
   @SuppressWarnings("unused")
   public synchronized boolean hasRoutedTo(PeerNode peer) {
@@ -144,10 +216,15 @@ public abstract class UIDTag {
   }
 
   /**
-   * Whether we are currently routing to the given peer.
+   * Reports whether this tag is currently routing to the given peer.
    *
-   * @param peer Peer to test.
-   * @return {@code true} if {@code peer} is present in {@link #currentlyRoutingTo}.
+   * <p>The check consults the active routing set, which represents peers that still consider the
+   * UID active on their side. The method is synchronized to avoid concurrent modification while
+   * routing decisions or removals are in progress. It does not guarantee that an outbound sending
+   * is currently in flight or that it will succeed.
+   *
+   * @param peer peer to test against the active routing set
+   * @return {@code true} if the peer is currently active; {@code false} if not recorded
    */
   public synchronized boolean currentlyRoutingTo(PeerNode peer) {
     if (currentlyRoutingTo == null) return false;
@@ -160,10 +237,15 @@ public abstract class UIDTag {
   // receiving an acknowledgement sent after the UID is cleared.
 
   /**
-   * Whether we are currently fetching an offered key from the given peer.
+   * Reports whether this tag is currently fetching an offered key from a peer.
    *
-   * @param peer Peer to test.
-   * @return {@code true} if {@code peer} is present in {@link #fetchingOfferedKeyFrom}.
+   * <p>This check reads the active offered-key set, which is distinct from normal routing peers and
+   * may use different timeout behavior. The method is synchronized to avoid concurrent modification
+   * while updates or removals are happening. A {@code true} result means the tag still expects an
+   * offered-key response, not that the transfer is guaranteed.
+   *
+   * @param peer peer to test against the offered-key fetch set
+   * @return {@code true} if the peer is currently in the offered-key set; otherwise {@code false}
    */
   public synchronized boolean currentlyFetchingOfferedKeyFrom(PeerNode peer) {
     if (fetchingOfferedKeyFrom == null) return false;
@@ -171,12 +253,15 @@ public abstract class UIDTag {
   }
 
   /**
-   * Notify that we no longer fetch an offered key from a peer. Call only when the peer no longer
-   * believes we route to it; see {@link #removeRoutingTo(PeerNode)} for rationale. When we are not
-   * routing to any peers, not fetching offered keys, and the handler is unlocked, the UID is
-   * released.
+   * Marks that we no longer fetch an offered key from a peer.
    *
-   * @param next Peer we are no longer fetching an offered key from.
+   * <p>Call this only once the peer is reasonably certain we stopped the offered-key fetch, similar
+   * to {@link #removeRoutingTo(PeerNode)}. The peer is removed from the offered-key tracking set
+   * and from timeout handling bookkeeping. If this change makes the tag eligible for unlocking and
+   * the handler is already unlocked, the method triggers {@link #innerUnlock(boolean)} after
+   * releasing the monitor.
+   *
+   * @param next peer that is no longer providing an offered key
    */
   public void removeFetchingOfferedKeyFrom(PeerNode next) {
     boolean removed;
@@ -216,16 +301,15 @@ public abstract class UIDTag {
   }
 
   /**
-   * Notify that we no longer route to a peer. When we are not routing to any peers (or fetching
-   * offered keys) and the handler is unlocked, the tag is fully unlocked. This is most relevant to
-   * incoming requests; outgoing requests only consider outbound routing.
+   * Marks that we no longer route to a peer.
    *
-   * <p>Do not call until the peer is reasonably certain we stopped routing to it. We unlock the
-   * handler as early as possible, without waiting to acknowledge our completion notice. Late on
-   * sending and early on accepting avoids the peer thinking we finished when we did not, or us
-   * thinking the next peer finished when it did not.
+   * <p>When no peers remain in the routing or offered-key sets and the handler has unlocked, the
+   * tag becomes eligible for full unlocking. Call this only when the peer is reasonably certain we
+   * stopped routing to it so that early unlock does not race with downstream completion. The method
+   * also clears timeout bookkeeping for the peer and can trigger {@link #innerUnlock(boolean)}
+   * after the synchronized section completes.
    *
-   * @param next Peer we are no longer routing to.
+   * @param next peer that is no longer being routed to
    */
   public void removeRoutingTo(PeerNode next) {
     if (LOG.isDebugEnabled()) {
@@ -274,14 +358,27 @@ public abstract class UIDTag {
     innerUnlock(localNoRecordUnlock);
   }
 
+  /**
+   * Performs the actual UID unlocking through the tracker.
+   *
+   * <p>This method delegates to {@link RequestTracker#unlockUID(UIDTag, boolean, boolean)} with the
+   * correct flags for this tag. It should be called immediately after {@link #mustUnlock()} returns
+   * {@code true} so that state and accounting remain consistent. Callers should already have
+   * decided that no further outbound routing or offered-key fetches remain.
+   *
+   * @param noRecordUnlock whether to suppress unlock record bookkeeping for this tag
+   */
   protected void innerUnlock(boolean noRecordUnlock) {
     tracker.unlockUID(this, false, noRecordUnlock);
   }
 
   /**
-   * Called after {@link #innerUnlock(boolean)} to notify peers that tracked this tag.
+   * Notifies peers that previously tracked this tag after it has been unlocked.
    *
-   * <p>The best‑effort; missing peers are ignored.
+   * <p>This method is the best effort: it snapshots the {@code routedTo} set and invokes {@link
+   * PeerNode#postUnlock(Object)} for each peer that is still reachable. Missing or already
+   * disconnected peers are ignored. Callers should invoke it after {@link #innerUnlock(boolean)} to
+   * allow peers to release any tag-specific bookkeeping on their side.
    */
   @SuppressWarnings("unused")
   public void postUnlock() {
@@ -294,30 +391,45 @@ public abstract class UIDTag {
   }
 
   /**
-   * Estimate expected inbound transfers attributed to this tag.
+   * Estimates expected inbound transfers attributed to this tag.
    *
-   * @param ignoreLocalVsRemote When {@code true}, treat the request as remote even if local.
-   * @param outwardTransfersPerInsert Expected number of outbound transfers per insert operation.
-   * @param forAccept When {@code true}, compute for admission control; when {@code false}, compute
-   *     for sending decisions where we must be more conservative to avoid avoidable rejections and
-   *     mandatory backoffs.
+   * <p>The estimate is used to decide whether a request should be accepted or how aggressively it
+   * should be routed. Subclasses should account for the request type, locality, and any special
+   * cases that change transfer counts. The returned value is used for control decisions rather than
+   * exact accounting, so it should be conservative when {@code forAccept} is {@code false}.
+   *
+   * @param ignoreLocalVsRemote when {@code true}, treat the request as remote
+   * @param outwardTransfersPerInsert expected outbound transfers per insert operation
+   * @param forAccept {@code true} for admission control; {@code false} for send decisions
+   * @return estimated number of inbound transfers this tag is expected to represent
    */
   public abstract int expectedTransfersIn(
       boolean ignoreLocalVsRemote, int outwardTransfersPerInsert, boolean forAccept);
 
   /**
-   * Estimate expected outbound transfers attributed to this tag.
+   * Estimates expected outbound transfers attributed to this tag.
    *
-   * @param ignoreLocalVsRemote When {@code true}, treat the request as remote even if local.
-   * @param outwardTransfersPerInsert Expected number of outbound transfers per insert operation.
-   * @param forAccept When {@code true}, compute for admission control; when {@code false}, compute
-   *     for sending decisions where we must be more conservative to avoid avoidable rejections and
-   *     mandatory backoffs.
+   * <p>The estimate informs routing and admission control decisions for outbound traffic.
+   * Subclasses should incorporate request type and locality when deriving the count, and they
+   * should be conservative when the result is used for sending decisions. The method is abstract,
+   * so each request type can encode its specific transfer pattern.
+   *
+   * @param ignoreLocalVsRemote when {@code true}, treat the request as remote
+   * @param outwardTransfersPerInsert expected outbound transfers per insert operation
+   * @param forAccept {@code true} for admission control; {@code false} for send decisions
+   * @return estimated number of outbound transfers this tag is expected to represent
    */
   public abstract int expectedTransfersOut(
       boolean ignoreLocalVsRemote, int outwardTransfersPerInsert, boolean forAccept);
 
-  /** Mark that this request will not be routed further downstream. */
+  /**
+   * Marks that this request will not be routed further downstream.
+   *
+   * <p>This flag is set by handlers that decide no additional peers should be contacted. It does
+   * not itself unlock the tag, but it can influence subclass decisions and routing heuristics. The
+   * method does not alter existing routing sets, and it is synchronized to keep the state
+   * consistent with other routing updates.
+   */
   public synchronized void setNotRoutedOnwards() {
     this.notRoutedOnwards = true;
   }
@@ -325,10 +437,14 @@ public abstract class UIDTag {
   private boolean reassigned;
 
   /**
-   * Get the effective source node for load management.
+   * Returns the effective source peer for load management.
    *
-   * @return The original source {@link PeerNode}, or {@code null} if the tag has been reassigned
-   *     locally or originated locally.
+   * <p>The original source is returned only when the request was not local and has not been
+   * reassigned to self. Because the reference is weak, the GC may also have cleared the peer, in
+   * which case this method returns {@code null}. The method is synchronized to provide a consistent
+   * view with reassignment updates.
+   *
+   * @return the original source peer, or {@code null} if local, reassigned, or collected
    */
   public synchronized PeerNode getSource() {
     if (reassigned) return null;
@@ -336,19 +452,44 @@ public abstract class UIDTag {
     return sourceRef.get();
   }
 
-  /** Reassign the tag locally rather than attributing it to the original sender. */
+  /**
+   * Reassigns the tag locally rather than attributing it to the original sender.
+   *
+   * <p>When invoked for a non-local tag, the request is treated as locally owned for later load
+   * management decisions. Calls are idempotent; invoking this method on a locally originated tag is
+   * a no-op. After reassignment, {@link #getSource()} returns {@code null}, and accounting treats
+   * the request as local. The method records the reassignment in {@link UIDTraceLogger}.
+   */
   public synchronized void reassignToSelf() {
     if (wasLocal) return;
     reassigned = true;
     UIDTraceLogger.log("reassignToSelf", this);
   }
 
-  /** Whether the request originated locally. Not affected by {@link #reassignToSelf()}. */
+  /**
+   * Reports whether the request originated locally.
+   *
+   * <p>This value reflects the original origin and is not affected by {@link #reassignToSelf()}.
+   * The method is inexpensive and does not synchronize because the flag is immutable after
+   * construction. Callers often use it to distinguish local requests from those that arrived from a
+   * peer for accounting and logging.
+   *
+   * @return {@code true} if the request was created locally; {@code false} otherwise
+   */
   public boolean wasLocal() {
     return wasLocal;
   }
 
-  /** Whether the request is considered local now (originated locally or reassigned to self). */
+  /**
+   * Reports whether the request is considered local now.
+   *
+   * <p>A tag is considered local if it originated locally or if it has been reassigned to self as
+   * part of timeout handling. The method synchronizes when checking the reassignment state to avoid
+   * races with updates. It is safe to call immediately after {@link #reassignToSelf()} to reflect
+   * the updated ownership.
+   *
+   * @return {@code true} if the request is treated as local; {@code false} otherwise
+   */
   public boolean isLocal() {
     if (wasLocal) return true;
     synchronized (this) {
@@ -356,18 +497,51 @@ public abstract class UIDTag {
     }
   }
 
-  /** Returns {@code true} if this tag represents an SSK request. */
+  /**
+   * Reports whether this tag represents an SSK request.
+   *
+   * <p>Subclasses implement this to reflect the request type. The result is used by routing and
+   * logging decisions that need to distinguish SSK traffic from other request classes. It also
+   * informs transfer estimation for requests that have different patterns. Callers treat the value
+   * as stable for the lifetime of the tag.
+   *
+   * @return {@code true} if the underlying request is an SSK; {@code false} otherwise
+   */
   public abstract boolean isSSK();
 
-  /** Returns {@code true} if this tag represents an insert request. */
+  /**
+   * Reports whether this tag represents an insert request.
+   *
+   * <p>Subclasses should return {@code true} when the request inserts data rather than fetching it.
+   * The flag influences transfer estimation and some routing policies, so implementations should be
+   * consistent with the request's primary data flow. The return value is expected to remain
+   * consistent for the lifetime of the tag.
+   *
+   * @return {@code true} if the request inserts data; {@code false} otherwise
+   */
   public abstract boolean isInsert();
 
-  /** Returns {@code true} if this tag represents a reply to an offer. */
+  /**
+   * Reports whether this tag represents a reply to an offer.
+   *
+   * <p>Offer replies often use different timeout handling and transfer expectations. Subclasses
+   * should return {@code true} for those requests so routing decisions can reflect that behavior.
+   * The result may also influence how peers are tracked for offered-key handling. Callers should
+   * not assume an offer reply implies any particular routing peer set.
+   *
+   * @return {@code true} if the request is an offer reply; {@code false} otherwise
+   */
   public abstract boolean isOfferReply();
 
   /**
-   * Caller must call innerUnlock(noRecordUnlock) immediately if this returns true. Hence, derived
-   * versions should call mustUnlock() only after they have checked their own unlocking blockers.
+   * Determines whether the tag can be unlocked right now.
+   *
+   * <p>This method checks handler state and outstanding routing or offered-key fetches. If it
+   * returns {@code true}, callers must invoke {@link #innerUnlock(boolean)} immediately while still
+   * honoring any subclass-specific unlocking blockers. It also latches the unlocking decision so
+   * that only one caller proceeds with the actual unlocking.
+   *
+   * @return {@code true} if the tag is ready to unlock; {@code false} otherwise
    */
   protected synchronized boolean mustUnlock() {
     if (hasUnlocked || !unlockedHandler) {
@@ -450,12 +624,15 @@ public abstract class UIDTag {
   }
 
   /**
-   * Unlock the handler. That is, the incoming request has finished. This method should be called
-   * before the acknowledgement that the request has finished is sent downstream. Therefore, we will
-   * never be waiting for an acknowledgement from downstream to release the slot it is using, during
-   * which time it might think we are rejecting wrongly.
+   * Marks the inbound handler as complete and attempts to unlock the tag.
    *
-   * <p>Once both the incoming and outgoing requests are unlocked, the whole tag is unlocked.
+   * <p>This method should be called before sending the completion acknowledgement downstream so the
+   * peer does not assume completion while we are still holding its slot. It records the {@code
+   * noRecord} preference, marks the handler as unlocked, and then checks whether outbound routing
+   * or offered-key fetches remain. If none remain, it triggers {@link #innerUnlock(boolean)};
+   * otherwise it logs that the unlocking is deferred.
+   *
+   * @param noRecord whether to suppress unlock record bookkeeping for this tag
    */
   public void unlockHandler(boolean noRecord) {
     boolean canUnlock;
@@ -473,6 +650,13 @@ public abstract class UIDTag {
     }
   }
 
+  /**
+   * Convenience overload that unlocks the handler with recording enabled.
+   *
+   * <p>This is equivalent to calling {@link #unlockHandler(boolean)} with {@code false}. It is
+   * provided for call sites that do not need to suppress unlock record bookkeeping. Repeated calls
+   * are safe because the underlying method checks and returns once the handler is already unlocked.
+   */
   public void unlockHandler() {
     unlockHandler(false);
   }
@@ -505,11 +689,14 @@ public abstract class UIDTag {
   }
 
   /**
-   * Mark that we are handling a timeout for the given peer. If the handler later unlocks while the
-   * peer still appears in routing/fetching sets, we will reassign this tag locally (rather than log
-   * an error) and wait for the fatal timeout.
+   * Records that a timeout is being handled for a peer.
    *
-   * @param next Peer for which a timeout is being handled.
+   * <p>If the handler later unlocks while the peer still appears in the routing or offered-key
+   * tracking sets, this marker allows the tag to be reassigned locally instead of logging a
+   * spurious error. The timeout marker is cleared when the peer is removed from tracking sets.
+   * Adding the same peer more than once is harmless because the set deduplicates entries.
+   *
+   * @param next peer for which a timeout is being handled
    */
   public synchronized void handlingTimeout(PeerNode next) {
     if (handlingTimeouts == null) handlingTimeouts = new HashSet<>();
@@ -521,10 +708,15 @@ public abstract class UIDTag {
   private static final long LOGGED_STILL_PRESENT_INTERVAL = SECONDS.toMillis(60);
 
   /**
-   * Log that the tag is still present after the request timeout, at most once per interval.
+   * Logs that the tag is still present after the request timeout.
    *
-   * @param now Current time in milliseconds since the epoch.
-   * @param uid Optional UID to include in the subclass log; may be {@code null}.
+   * <p>This method rate-limits logging to at most once per interval and delegates to {@link
+   * #logStillPresent(Long)} for the actual message. It should be called with a monotonically
+   * increasing time source, typically {@link System#currentTimeMillis()}. After logging checks, it
+   * also evaluates whether a deferred hard timeout should be forced.
+   *
+   * @param now current time in milliseconds since the epoch
+   * @param uid optional UID to include in the subclass log, may be {@code null}
    */
   public void maybeLogStillPresent(long now, Long uid) {
     if (now - createdTime > RequestTracker.TIMEOUT) {
@@ -534,26 +726,190 @@ public abstract class UIDTag {
       }
       logStillPresent(uid);
     }
+    maybeForceHardTimeout(now);
   }
 
-  /** Mark this request as accepted by the handler. */
+  /**
+   * Marks this request as accepted by the handler.
+   *
+   * <p>This flag is used by subclasses to reason about progress and logging. The update is
+   * synchronized to avoid races with other handler state transitions. Repeated calls are safe and
+   * simply leave the flag set. The flag does not indicate anything about an outbound routing state.
+   */
   public synchronized void setAccepted() {
     accepted = true;
   }
 
   private boolean timedOutButContinued;
+  private long timeoutContinueAt;
+  private boolean hardTimeoutPeersTriggered;
+  private boolean hardTimeoutWithoutPeersTriggered;
 
   /**
-   * Set when we are going to tell downstream that the request has timed out, but can't terminate it
-   * yet. We will terminate the request if we have to reroute it, and we count it towards the peer's
-   * limit, but we don't stop messages to the request source.
+   * Marks that the handler timed out but processing continues.
+   *
+   * <p>This state is used when we must inform downstream that the request has timed out but cannot
+   * yet terminate it. The request still counts toward the peer's limit, but messages to the source
+   * may continue. The method is idempotent and records the first time the timeout-continue state
+   * was set so that hard timeout logic can be scheduled.
    */
   public synchronized void timedOutToHandlerButContinued() {
-    timedOutButContinued = true;
+    if (!timedOutButContinued) {
+      timedOutButContinued = true;
+      timeoutContinueAt = System.currentTimeMillis();
+    } else if (timeoutContinueAt == 0L) {
+      timeoutContinueAt = System.currentTimeMillis();
+    }
     UIDTraceLogger.log("timeoutContinue", this);
   }
 
-  /** Mark that the handler disconnected or restarted. */
+  private void maybeForceHardTimeout(long now) {
+    HardTimeoutContext context = resolveHardTimeoutContext(now);
+    if (context == null) return;
+    if (context.handleWithoutPeers()) {
+      if (handleHardTimeoutWithoutPeers(context.continueAge())) {
+        markHardTimeoutWithoutPeersTriggered();
+      }
+      return;
+    }
+    logAndForcePeerTimeout(context.continueAge(), context.routingPeers(), context.offeredPeers());
+  }
+
+  private HardTimeoutContext resolveHardTimeoutContext(long now) {
+    PeerNode[] routingPeersArray;
+    PeerNode[] offeredPeersArray;
+    long continueAge;
+    synchronized (this) {
+      if (!timedOutButContinued || !unlockedHandler) return null;
+      if (timeoutContinueAt == 0L) return null;
+      continueAge = now - timeoutContinueAt;
+      if (continueAge < HARD_TIMEOUT_AFTER_CONTINUE) return null;
+      routingPeersArray = routingPeersForHardTimeout();
+      offeredPeersArray = offeredKeyPeersForHardTimeout();
+    }
+    List<PeerNode> routingPeers = List.of(routingPeersArray);
+    List<PeerNode> offeredPeers = List.of(offeredPeersArray);
+    boolean handleWithoutPeers = routingPeers.isEmpty() && offeredPeers.isEmpty();
+    if (!handleWithoutPeers) {
+      if (!markHardTimeoutPeersTriggered()) return null;
+    } else if (!shouldHandleHardTimeoutWithoutPeers()) {
+      return null;
+    }
+    return new HardTimeoutContext(continueAge, routingPeers, offeredPeers, handleWithoutPeers);
+  }
+
+  private boolean markHardTimeoutPeersTriggered() {
+    synchronized (this) {
+      if (hardTimeoutPeersTriggered) return false;
+      hardTimeoutPeersTriggered = true;
+      return true;
+    }
+  }
+
+  private boolean shouldHandleHardTimeoutWithoutPeers() {
+    synchronized (this) {
+      return !hardTimeoutWithoutPeersTriggered;
+    }
+  }
+
+  private void markHardTimeoutWithoutPeersTriggered() {
+    synchronized (this) {
+      hardTimeoutWithoutPeersTriggered = true;
+    }
+  }
+
+  private void logAndForcePeerTimeout(
+      long continueAge, List<PeerNode> routingPeers, List<PeerNode> offeredPeers) {
+    String routingSummary = formatPeers(routingPeers);
+    String offeredSummary = formatPeers(offeredPeers);
+    String elapsed = TimeUtil.formatTime(continueAge);
+    UIDTraceLogger.log(
+        "timeoutHard",
+        this,
+        () -> "elapsed=" + elapsed + " routing=" + routingSummary + " offered=" + offeredSummary);
+    LOG.warn(
+        "Hard timeout after {} for {}. Forcing fatal timeout: routing={} offered={}",
+        elapsed,
+        this,
+        routingSummary,
+        offeredSummary);
+    for (PeerNode peer : routingPeers) {
+      peer.fatalTimeout(this, false);
+    }
+    for (PeerNode peer : offeredPeers) {
+      peer.fatalTimeout(this, true);
+    }
+  }
+
+  /**
+   * Returns a snapshot of peers still considered active for routing timeouts.
+   *
+   * <p>The returned array is built while holding the tag monitor, so it is safe to iterate without
+   * concurrent modification. Callers should treat it as a snapshot for timeout forcing and logging;
+   * later routing updates may change the active set. An empty array indicates there are no active
+   * routing peers at the time of the snapshot.
+   *
+   * @return array of active routing peers, or an empty array if none remain
+   */
+  protected synchronized PeerNode[] routingPeersForHardTimeout() {
+    if (currentlyRoutingTo == null || currentlyRoutingTo.isEmpty()) return NO_PEERS;
+    return currentlyRoutingTo.toArray(new PeerNode[0]);
+  }
+
+  /**
+   * Returns a snapshot of peers still considered active for offered-key timeouts.
+   *
+   * <p>The returned array is produced while holding the tag monitor, providing a consistent view of
+   * the offered-key tracking set. It should be used for timeout enforcement and logging only, not
+   * as a live view. An empty array indicates there are no active offered-key peers at the time of
+   * the snapshot.
+   *
+   * @return array of active offered-key peers, or an empty array if none remain
+   */
+  protected synchronized PeerNode[] offeredKeyPeersForHardTimeout() {
+    if (fetchingOfferedKeyFrom == null || fetchingOfferedKeyFrom.isEmpty()) return NO_PEERS;
+    return fetchingOfferedKeyFrom.toArray(new PeerNode[0]);
+  }
+
+  /**
+   * Allows subclasses to handle hard-timeout conditions when no peers remain.
+   *
+   * <p>This hook is invoked after a timeout-continue period elapses, and there are no routing or
+   * offered-key peers left to force. Subclasses can perform request-specific cleanup or accounting
+   * and return {@code true} to mark the timeout as handled. Returning {@code false} leaves handling
+   * to the default path.
+   *
+   * @param continueAge time since timeout-continue was first recorded, in milliseconds
+   * @return {@code true} if the timeout was handled and should be marked as triggered
+   */
+  protected boolean handleHardTimeoutWithoutPeers(long continueAge) {
+    return false;
+  }
+
+  private record HardTimeoutContext(
+      long continueAge,
+      List<PeerNode> routingPeers,
+      List<PeerNode> offeredPeers,
+      boolean handleWithoutPeers) {}
+
+  private static String formatPeers(List<PeerNode> peers) {
+    if (peers.isEmpty()) return "none";
+    StringBuilder sb = new StringBuilder();
+    for (PeerNode peer : peers) {
+      sb.append(peer.shortToString()).append(',');
+    }
+    sb.setLength(sb.length() - 1);
+    return sb.toString();
+  }
+
+  /**
+   * Marks that the original source handler disconnected or restarted.
+   *
+   * <p>This update affects load accounting and stop/continue decisions. Once set, the tag treats
+   * the request as having a restarted source, which influences {@link #countAsSourceRestarted()}
+   * and {@link #shouldStop()} decisions. The call is idempotent and simply leaves the flag set.
+   * Callers typically invoke it when a disconnect or restart is detected.
+   */
   public synchronized void onRestartOrDisconnectSource() {
     sourceRestarted = true;
   }
@@ -563,33 +919,57 @@ public abstract class UIDTag {
   // are appropriate.
 
   /**
-   * Should we deduct this request from the source's limit instead of counting it towards it? A
-   * normal request is counted towards it. A hidden request is deducted from it. This is used when
-   * the source has restarted but also in some other cases.
+   * Reports whether this request should be deducted from the source's limit.
+   *
+   * <p>Normal requests count toward the source's limit, but some situations such as source restarts
+   * or timeout continuation are accounted for differently. This method encapsulates that policy for
+   * callers that manage admission and throttling. It has no side effects and depends only on the
+   * current restart and timeout state.
+   *
+   * @return {@code true} if the request should be deducted; {@code false} if it should count toward
+   *     the source's limit
    */
   public synchronized boolean countAsSourceRestarted() {
     return sourceRestarted || timedOutButContinued;
   }
 
-  /** Whether we should continue sending messages to the source. */
+  /**
+   * Reports whether the original source is considered restarted.
+   *
+   * <p>This is a direct accessor for the restart flag and is synchronized to provide a consistent
+   * view when other threads update the flag due to disconnects. Unlike {@link
+   * #countAsSourceRestarted()}, it does not consider timeout-continuation state. Callers use it to
+   * decide whether messages to the source should continue.
+   *
+   * @return {@code true} if the source is considered restarted; {@code false} otherwise
+   */
   public synchronized boolean hasSourceReallyRestarted() {
     return sourceRestarted;
   }
 
   /**
-   * Whether we should stop the request as soon as convenient. Normally {@code true} when the source
-   * restarted or disconnected.
+   * Reports whether the request should stop as soon as convenient.
+   *
+   * <p>Stopping is typically recommended when the source has restarted or when the request has
+   * timed out but continues. The method is synchronized to reflect the latest updates to restart
+   * and timeout state. It is advisory only and does not cancel work on its own.
+   *
+   * @return {@code true} if the request should stop; {@code false} if it may continue
    */
   public synchronized boolean shouldStop() {
     return sourceRestarted || timedOutButContinued;
   }
 
   /**
-   * Whether the given peer is the original source of this tag.
+   * Reports whether the given peer is the original source of this tag.
    *
-   * @param pn Peer to compare.
-   * @return {@code true} if {@code pn} is the original source and the tag was not reassigned and is
-   *     not local.
+   * <p>The comparison returns {@code false} if the tag has been reassigned or originated locally.
+   * It uses the stored weak reference to avoid retaining the source peer longer than necessary and
+   * synchronizes to keep the reassignment state consistent. If the weak reference has been cleared,
+   * the method returns {@code false} even when the peer was once the source.
+   *
+   * @param pn peer to compare against the original source; must be non-null
+   * @return {@code true} if the peer is the original source, and the tag is not local or reassigned
    */
   public synchronized boolean isSource(PeerNode pn) {
     if (reassigned) return false;
@@ -598,7 +978,13 @@ public abstract class UIDTag {
     return sourceRef == pn.myRef;
   }
 
-  /** Indicate that the tag is waiting for an outbound slot. */
+  /**
+   * Marks that the tag is waiting for an outbound slot.
+   *
+   * <p>This state is used by handlers to avoid double-counting pending outbound work. The method is
+   * synchronized and idempotent, and it does not itself allocate or release any slots. Callers
+   * should ensure {@link #clearWaitingForSlot()} is invoked when the wait ends or on teardown.
+   */
   public synchronized void setWaitingForSlot() {
     // Consider using a counter on Node.
     // We must ensure it ALWAYS gets unset when some weird
@@ -607,7 +993,13 @@ public abstract class UIDTag {
     waitingForSlot = true;
   }
 
-  /** Clear the waiting‑for‑slot state. */
+  /**
+   * Clears the waiting-for-slot state.
+   *
+   * <p>This method is synchronized and idempotent. It is typically called when outbound work has
+   * got a slot or when the request is being torn down. If the tag was not marked as waiting, the
+   * call has no effect. Clearing the flag does not release any external resources.
+   */
   public synchronized void clearWaitingForSlot() {
     // Consider using a counter on Node.
     // We must ensure it ALWAYS gets unset when some weird
@@ -617,7 +1009,15 @@ public abstract class UIDTag {
     waitingForSlot = false;
   }
 
-  /** Returns {@code true} if the tag is currently waiting for an outbound slot. */
+  /**
+   * Reports whether the tag is currently waiting for an outbound slot.
+   *
+   * <p>The return value reflects the most recent calls to {@link #setWaitingForSlot()} and {@link
+   * #clearWaitingForSlot()}. The method is synchronized to avoid races with updates and does not
+   * imply anything about the state of any external queues. It is purely a local bookkeeping signal.
+   *
+   * @return {@code true} if the tag is waiting for a slot; {@code false} otherwise
+   */
   public synchronized boolean isWaitingForSlot() {
     return waitingForSlot;
   }

@@ -65,7 +65,7 @@ class RequestTagTest {
     RequestTag tag = newLocalTag(node);
 
     RequestSender rs = org.mockito.Mockito.mock(RequestSender.class);
-    // Coalesced: we won't wait for sender completion (sent flag remains false)
+    // Coalesced: we won't wait for sender completion (the "sent" flag remains false)
     tag.setSender(rs, /* coalesced= */ true);
 
     // Expect innerUnlock to delegate to tracker.unlockUID exactly once
@@ -89,7 +89,7 @@ class RequestTagTest {
     // Non-coalesced: mark as sent so mustUnlock() blocks until sender finishes
     tag.setSender(rs, /* coalesced= */ false);
 
-    tag.unlockHandler(); // should be deferred due to pending sender
+    tag.unlockHandler(); // should be deferred due to a pending sender
 
     verify(tracker, never())
         .unlockUID(
@@ -165,7 +165,7 @@ class RequestTagTest {
     // Block unlock via waitingForOpennet != null && get() != null
     setPrivateWaitingForOpennet(tag, new WeakReference<>(pn));
 
-    // Should defer unlock because waitingForOpennet is non-null
+    // Should defer unlocking because waitingForOpennet is non-null
     tag.unlockHandler();
     verify(tracker, never())
         .unlockUID(
@@ -180,17 +180,84 @@ class RequestTagTest {
             org.mockito.Mockito.anyBoolean(),
             org.mockito.Mockito.anyBoolean());
 
-    // Now clear the wait with the same peer and expect unlock
+    // Now clear the wait with the same peer and expect unlocking
     tag.finishedWaitingForOpennet(pn);
 
     verify(tracker, times(1)).unlockUID(tag, false, false);
   }
 
   @Test
+  void hardTimeout_whenWaitingForOpennet_triggersFatalTimeout() throws Exception {
+    RequestTag tag = newLocalTag(node);
+    PeerNode pn = org.mockito.Mockito.mock(PeerNode.class);
+
+    setPrivateWaitingForOpennet(tag, new WeakReference<>(pn));
+
+    tag.timedOutToHandlerButContinued();
+    tag.unlockHandler();
+
+    long now = System.currentTimeMillis() + RequestTracker.TIMEOUT + 1_000;
+    tag.maybeLogStillPresent(now, UID);
+
+    verify(pn, times(1)).fatalTimeout(tag, false);
+  }
+
+  @Test
+  void hardTimeout_whenSenderLostAndNoRouting_forcesSenderFinishAndUnlocks() throws Exception {
+    RequestTag tag = newLocalTag(node);
+    RequestSender rs = org.mockito.Mockito.mock(RequestSender.class);
+
+    tag.setSender(rs, /* coalesced= */ false);
+    setPrivateSender(tag, new WeakReference<>(null));
+
+    tag.timedOutToHandlerButContinued();
+    tag.unlockHandler();
+
+    verify(tracker, never())
+        .unlockUID(
+            org.mockito.Mockito.any(),
+            org.mockito.Mockito.anyBoolean(),
+            org.mockito.Mockito.anyBoolean());
+
+    long now = System.currentTimeMillis() + RequestTracker.TIMEOUT + 1_000;
+    tag.maybeLogStillPresent(now, UID);
+
+    verify(tracker, times(1)).unlockUID(tag, false, false);
+    assertEquals(RequestSender.TIMED_OUT, getPrivateRequestSenderFinishedCode(tag));
+  }
+
+  @Test
+  void hardTimeout_afterPeerTimeout_stillAllowsSenderFallback() throws Exception {
+    RequestTag tag = newLocalTag(node);
+    RequestSender rs = org.mockito.Mockito.mock(RequestSender.class);
+    PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
+
+    tag.setSender(rs, /* coalesced= */ false);
+    setPrivateSender(tag, new WeakReference<>(null));
+    tag.addRoutedTo(peer, /* offeredKey= */ false);
+
+    tag.timedOutToHandlerButContinued();
+    tag.unlockHandler();
+
+    long now = System.currentTimeMillis() + RequestTracker.TIMEOUT + 1_000;
+    tag.maybeLogStillPresent(now, UID);
+
+    verify(peer, times(1)).fatalTimeout(tag, false);
+
+    tag.removeRoutingTo(peer);
+
+    long later = now + 61_000;
+    tag.maybeLogStillPresent(later, UID);
+
+    verify(tracker, times(1)).unlockUID(tag, false, false);
+    assertEquals(RequestSender.TIMED_OUT, getPrivateRequestSenderFinishedCode(tag));
+  }
+
+  @Test
   void handlerTransferBegins_thenUnlock_removesFromTracker() {
     RequestTag tag = newLocalTag(node);
 
-    // Register transferring state and then fully unlock
+    // Register the transferring state and then fully unlock
     tag.handlerTransferBegins();
     verify(tracker, times(1)).addTransferringRequestHandler(UID);
 
@@ -203,7 +270,7 @@ class RequestTagTest {
 
     tag.unlockHandler();
 
-    // innerUnlock should clear transferring handler state
+    // innerUnlock should clear the transferring handler state
     verify(tracker, times(1)).removeTransferringRequestHandler(UID);
     verify(tracker, times(1)).unlockUID(tag, false, false);
   }
@@ -228,7 +295,7 @@ class RequestTagTest {
     tag.senderTransferBegins(key, rs);
     verify(tracker, times(1)).addTransferringSender(key, rs);
 
-    // Should assert and then remove the sender from tracker
+    // Should assert and then remove the sender from the tracker
     tag.senderTransferEnds(key, rs);
     verify(tracker, times(1)).removeTransferringSender(key, rs);
   }
@@ -293,5 +360,18 @@ class RequestTagTest {
     Field f = RequestTag.class.getDeclaredField("waitingForOpennet");
     f.setAccessible(true);
     f.set(tag, ref);
+  }
+
+  private static void setPrivateSender(RequestTag tag, WeakReference<RequestSender> ref)
+      throws Exception {
+    Field f = RequestTag.class.getDeclaredField("sender");
+    f.setAccessible(true);
+    f.set(tag, ref);
+  }
+
+  private static int getPrivateRequestSenderFinishedCode(RequestTag tag) throws Exception {
+    Field f = RequestTag.class.getDeclaredField("requestSenderFinishedCode");
+    f.setAccessible(true);
+    return (int) f.get(tag);
   }
 }
