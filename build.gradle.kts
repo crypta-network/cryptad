@@ -74,8 +74,33 @@ tasks.register("printVersion") {
 // Application entrypoint (used by jpackage). This does not change how we build the wrapper
 // distribution; it's only to inform launchers that invoke the Kotlin main directly.
 // Align with actual top-level entry in Launcher.kt
-application {
+application { mainClass.set("network.crypta.launcher.LauncherKt") }
+
+val nodeRuntimeJvmArgs =
+  listOf(
+    "-Dnetworkaddress.cache.ttl=0",
+    "-Dnetworkaddress.cache.negative.ttl=0",
+    "-Djava.net.preferIPv4Stack=false",
+    "--enable-native-access=ALL-UNNAMED",
+    "--add-opens=java.base/java.lang=ALL-UNNAMED",
+    "--add-opens=java.base/java.util=ALL-UNNAMED",
+    "--add-opens=java.base/java.io=ALL-UNNAMED",
+    "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+    "-enableassertions:freenet",
+  )
+
+tasks.named<JavaExec>("run") {
+  description = "Runs Cryptad daemon via NodeStarter"
+  mainClass.set("network.crypta.node.NodeStarter")
+  jvmArgs(nodeRuntimeJvmArgs)
+}
+
+tasks.register<JavaExec>("runLauncher") {
+  group = "application"
+  description = "Runs the Cryptad Swing launcher"
+  javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
   mainClass.set("network.crypta.launcher.LauncherKt")
+  classpath = sourceSets.main.get().runtimeClasspath
 }
 
 // Sonar configuration is applied via the build-logic convention plugin 'cryptad.sonar'

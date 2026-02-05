@@ -43,6 +43,15 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 - Compile only:
   - `./gradlew compileJava`
 
+## Run tasks
+- Run daemon entrypoint (`NodeStarter`):
+  - `./gradlew run`
+- Pass daemon CLI args:
+  - `./gradlew run --args="--help"`
+  - `./gradlew run --args="--version"`
+- Run Swing launcher entrypoint (`LauncherKt`):
+  - `./gradlew runLauncher`
+
 ## Run your build (manual deployment)
 1. Build: `./gradlew buildJar`
 2. Stop the running node
