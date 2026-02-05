@@ -64,6 +64,10 @@ If `script` exists, the launcher may wrap the process to reduce buffering.
 - `build/cryptad-dist/bin/cryptad-launcher`
 - `build/cryptad-dist/bin/cryptad-launcher.bat`
 
+## Local launcher entrypoint
+- For local development without packaging, start the launcher directly with:
+  - `./gradlew runLauncher`
+
 ## Local testing aid
 - `-PuseDummyCryptad=true` replaces `bin/cryptad` with `tools/cryptad-dummy.sh` in the dist for local testing.
 
