@@ -98,6 +98,7 @@ tasks.named<JavaExec>("run") {
 tasks.register<JavaExec>("runLauncher") {
   group = "application"
   description = "Runs the Cryptad Swing launcher"
+  javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
   mainClass.set("network.crypta.launcher.LauncherKt")
   classpath = sourceSets.main.get().runtimeClasspath
 }
