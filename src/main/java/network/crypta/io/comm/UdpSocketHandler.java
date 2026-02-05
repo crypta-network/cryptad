@@ -378,7 +378,11 @@ public class UdpSocketHandler
   public void sendPacket(byte[] blockToSend, Peer destination, boolean allowLocalAddresses)
       throws LocalAddressException {
     if (!active) {
-      LOG.error("Trying to send packet but no longer active");
+      if (node.isStopping()) {
+        if (LOG.isDebugEnabled()) LOG.debug("Trying to send packet but no longer active");
+      } else {
+        LOG.error("Trying to send packet but no longer active");
+      }
       // Do not send during shutdown to keep AddressTracker data accurate.
       return;
     }

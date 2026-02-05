@@ -211,6 +211,17 @@ public final class NodeNetworkSubsystem {
   }
 
   /**
+   * Requests the packet sender thread to stop.
+   *
+   * <p>Used during shutdown to prevent new outbound sends once the node is quiescing.
+   */
+  public void stopPacketSender() {
+    if (packetSender != null) {
+      packetSender.stop();
+    }
+  }
+
+  /**
    * Exports a volatile field set describing current load and routing statistics.
    *
    * <p>The returned field set is produced by {@link NodeStats} and contains transient values
@@ -447,6 +458,8 @@ public final class NodeNetworkSubsystem {
     if (executor instanceof PooledExecutor pooledExecutor) pooledExecutor.setTicker(ticker);
 
     LOG.info("Creating node...");
+
+    shutdownHook.addEarlyJob(new Thread(this::stopPacketSender));
 
     shutdownHook.addEarlyJob(
         new Thread(

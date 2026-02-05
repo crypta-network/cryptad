@@ -56,6 +56,7 @@ public class PacketSender implements Runnable {
   long lastReportedNoPackets;
   long lastReceivedPacketFromAnyNode;
   private final Random localRandom;
+  private volatile boolean stopping;
 
   public PacketSender(Node node) {
     this.node = node;
@@ -80,6 +81,17 @@ public class PacketSender implements Runnable {
     myThread.start();
   }
 
+  /**
+   * Requests the packet sender thread to stop and wake up promptly.
+   *
+   * <p>This is a best-effort signal used during shutdown. It is safe to call multiple times.
+   */
+  public void stop() {
+    if (stopping) return;
+    stopping = true;
+    wakeUp();
+  }
+
   private void schedulePeriodicJob() {
 
     node.network()
@@ -89,6 +101,7 @@ public class PacketSender implements Runnable {
 
               @Override
               public void run() {
+                if (stopping) return;
                 try {
                   long now = System.currentTimeMillis();
                   if (LOG.isDebugEnabled()) LOG.debug("Start schedulePeriodicJob at {}", now);
@@ -102,7 +115,9 @@ public class PacketSender implements Runnable {
                   if (LOG.isDebugEnabled())
                     LOG.debug("Complete schedulePeriodicJob at {}", System.currentTimeMillis());
                 } finally {
-                  node.network().ticker().queueTimedJob(this, 1000);
+                  if (!stopping) {
+                    node.network().ticker().queueTimedJob(this, 1000);
+                  }
                 }
               }
             },
@@ -121,9 +136,10 @@ public class PacketSender implements Runnable {
   public void run() {
     if (LOG.isDebugEnabled()) LOG.debug("In PacketSender.run()");
 
+    if (stopping) return;
     schedulePeriodicJob();
     // Process peers perform the selected action, then sleep until the next action time.
-    while (true) {
+    while (!stopping) {
       lastReceivedPacketFromAnyNode = lastReportedNoPackets;
       try {
         realRun();
@@ -446,6 +462,7 @@ public class PacketSender implements Runnable {
 
   @SuppressWarnings("java:S2142")
   private void sleepUntilNextAction(long nowBeforeSend, long nextActionTime) {
+    if (stopping) return;
     long now = System.currentTimeMillis();
     if ((now - nowBeforeSend) > SECONDS.toMillis(10))
       LOG.error("Loop delay {} ms exceeds 10000 ms in PacketSender", now - nowBeforeSend);

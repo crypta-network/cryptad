@@ -2305,6 +2305,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
       isStopping = true;
     }
 
+    network.stopPacketSender();
     network.broadcastDisconnect();
 
     config.store();

@@ -122,6 +122,10 @@ final class PeerNodeTransport implements PeerTransport {
   @Override
   public MessageItem sendAsync(Message msg, AsyncMessageCallback cb, ByteCounter ctr)
       throws NotConnectedException {
+    if (peer.node.isStopping()) {
+      if (cb != null) cb.disconnected();
+      throw new NotConnectedException("Node shutting down");
+    }
     if (ctr == null)
       LOG.error(
           "ByteCounter null, so bandwidth usage cannot be logged. Refusing to send.",
