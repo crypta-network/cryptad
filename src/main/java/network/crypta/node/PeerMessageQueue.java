@@ -818,6 +818,8 @@ public class PeerMessageQueue {
   public synchronized long getMessageQueueLengthBytes() {
     long x = 0;
     for (PrioQueue pq : queuesByPriority) {
+      if (pq.itemsNonUrgent != null)
+        for (MessageItem it : pq.itemsNonUrgent) x += it.getLength() + 2;
       if (pq.nonEmptyItemsWithID != null)
         for (PrioQueue.Items q : pq.nonEmptyItemsWithID)
           for (MessageItem it : q.messages) x += it.getLength() + 2;

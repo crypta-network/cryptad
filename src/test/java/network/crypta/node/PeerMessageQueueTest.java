@@ -189,17 +189,54 @@ class PeerMessageQueueTest {
   }
 
   @Test
-  void getMessageQueueLengthBytes_withOnlyNonUrgent_returnsZero() {
+  void getMessageQueueLengthBytes_withOnlyNonUrgent_returnsTotalBytes() {
     // Arrange
     PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(5));
-    MessageItem item = new MessageItem(new byte[4], null, false, null, DMT.PRIORITY_UNSPECIFIED);
-    pmq.queueAndEstimateSize(item, 1024);
+    MessageItem first = new MessageItem(new byte[4], null, false, null, DMT.PRIORITY_UNSPECIFIED);
+    MessageItem second = new MessageItem(new byte[6], null, false, null, DMT.PRIORITY_LOW);
+    pmq.queueAndEstimateSize(first, 1024);
+    pmq.queueAndEstimateSize(second, 1024);
 
     // Act
-    long urgentBytes = pmq.getMessageQueueLengthBytes();
+    long queueBytes = pmq.getMessageQueueLengthBytes();
 
     // Assert
-    assertEquals(0L, urgentBytes); // nothing has been promoted to urgent
+    assertEquals(14L, queueBytes);
+  }
+
+  @Test
+  void getMessageQueueLengthBytes_withOnlyNonEmptyItemsWithId_returnsTotalBytes() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(6));
+    MessageItem first = new MessageItem(new byte[3], null, false, null, DMT.PRIORITY_REALTIME_DATA);
+    MessageItem second =
+        new MessageItem(new byte[5], null, false, null, DMT.PRIORITY_REALTIME_DATA);
+    pmq.pushfrontPrioritizedMessageItem(first);
+    pmq.pushfrontPrioritizedMessageItem(second);
+
+    // Act
+    long queueBytes = pmq.getMessageQueueLengthBytes();
+
+    // Assert
+    assertEquals(12L, queueBytes);
+  }
+
+  @Test
+  void getMessageQueueLengthBytes_withBothQueueStructures_returnsCombinedTotalBytes() {
+    // Arrange
+    PeerMessageQueue pmq = new PeerMessageQueue(new DummyRandomSource(7));
+    MessageItem nonUrgent =
+        new MessageItem(new byte[4], null, false, null, DMT.PRIORITY_UNSPECIFIED);
+    MessageItem urgent =
+        new MessageItem(new byte[8], null, false, null, DMT.PRIORITY_REALTIME_DATA);
+    pmq.queueAndEstimateSize(nonUrgent, 1024);
+    pmq.pushfrontPrioritizedMessageItem(urgent);
+
+    // Act
+    long queueBytes = pmq.getMessageQueueLengthBytes();
+
+    // Assert
+    assertEquals(16L, queueBytes);
   }
 
   @Test
