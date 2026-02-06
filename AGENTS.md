@@ -14,7 +14,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-appenv** — Use AppEnv as the single source of truth for OS/arch/sandbox/service detection; refactor legacy checks safely.
 - **$cryptad-architecture** — Navigate Cryptad’s module/package architecture, key subsystems, design patterns, security model, and versioning scheme.
 - **$cryptad-build-test** — Build, test, and run Cryptad safely using the Gradle wrapper (Java 25+, JUnit 6).
-- **$cryptad-build-tooling** — Maintain formatting and code-quality tooling: Spotless, Gradle dependency verification (verification-metadata), SonarLint, Error Prone, JaCoCo coverage, and SonarCloud uploads.
+- **$cryptad-build-tooling** — Maintain formatting and code-quality tooling: Spotless, SpotBugs, Gradle dependency verification (verification-metadata), SonarLint, Error Prone, JaCoCo coverage, and SonarCloud uploads.
 - **$cryptad-core-updater** — Understand and modify the package-based CoreUpdater update system: /core-update/ endpoints, descriptor format, UI wiring, and platform behaviors.
 - **$cryptad-crypto-aead** — Work safely on AEAD streams and persistent formats (AES-GCM migration + legacy OCB compatibility notes).
 - **$cryptad-git-workflow** — Follow repository etiquette: branch naming, GitFlow merges, conventional commits, PR rules, and strict git identity policy.

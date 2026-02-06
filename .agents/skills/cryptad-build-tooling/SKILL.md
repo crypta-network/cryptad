@@ -1,6 +1,6 @@
 ---
 name: cryptad-build-tooling
-description: "Maintain formatting and code-quality tooling: Spotless, Gradle dependency verification (verification-metadata), SonarLint, JaCoCo coverage, and SonarCloud uploads."
+description: "Maintain formatting and code-quality tooling: Spotless, SpotBugs, Gradle dependency verification (verification-metadata), SonarLint, JaCoCo coverage, and SonarCloud uploads."
 compatibility: opencode
 metadata:
   area: tooling
@@ -10,6 +10,7 @@ metadata:
 ## When to use
 Use this skill when you:
 - Fix formatting or Spotless failures.
+- Add, run, or tune SpotBugs Gradle analysis.
 - Update dependencies and need to refresh Gradle dependency verification metadata.
 - Run or adjust SonarLint / SonarCloud / JaCoCo coverage tasks.
 - Need to analyze a single file with SonarLint.
@@ -55,6 +56,42 @@ Optional but recommended:
 Notes:
 - Keep Spotless config at the intended formatter version (currently `googleJavaFormat("1.28.0")`).
 - Commit updated `gradle/verification-keyring.gpg` and `gradle/verification-keyring.keys` so new environments verify without re-fetching keys.
+
+## SpotBugs (Gradle) usage
+### Current repo wiring
+- Version catalog pins SpotBugs at `6.4.8` and exposes a plugin alias in `gradle/libs.versions.toml`.
+- Build logic includes the plugin marker dependency in `build-logic/build.gradle.kts`.
+- The shared convention plugin applies `com.github.spotbugs` in `build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts`.
+- Default behavior is non-blocking: `spotbugs { ignoreFailures = true }`.
+
+### Tasks
+- Run main analysis:
+  - `./gradlew spotbugsMain`
+- Run test analysis:
+  - `./gradlew spotbugsTest`
+- SpotBugs tasks are also part of `check` once the plugin is applied.
+
+### Enforcing SpotBugs failures
+- To make findings fail the build, set:
+  - `spotbugs { ignoreFailures = false }`
+
+### Verification refresh on SpotBugs bumps
+If strict verification blocks SpotBugs/plugin marker resolution:
+1) Set `org.gradle.dependency.verification=lenient`
+2) Run:
+```bash
+./gradlew --write-verification-metadata sha256,pgp :build-logic:compileKotlin
+```
+3) Restore `org.gradle.dependency.verification=strict`
+4) Validate:
+```bash
+./gradlew help
+./gradlew spotbugsMain
+```
+
+Confirm `gradle/verification-metadata.xml` contains SpotBugs entries such as:
+- component `com.github.spotbugs:com.github.spotbugs.gradle.plugin`
+- trusted key/group entries for `com.github.spotbugs`
 
 ## SonarLint (Gradle) usage
 ### Key behaviors
