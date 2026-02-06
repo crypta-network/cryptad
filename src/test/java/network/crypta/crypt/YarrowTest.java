@@ -82,6 +82,18 @@ class YarrowTest {
   }
 
   @Test
+  void next_whenRequestingSixteenBitsRepeatedly_expectNoArrayBoundsAndInRange() {
+    // Arrange
+    Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", false, false, false);
+
+    // Act + Assert: repeatedly crossing output buffer boundaries must remain safe.
+    for (int i = 0; i < 10_000; i++) {
+      int value = y.next(16);
+      assertTrue(value >= 0 && value <= 0xFFFF);
+    }
+  }
+
+  @Test
   void nextBoolean_whenSamplingLarge_expectBalancedCounts() {
     // Arrange
     Yarrow y = new Yarrow(seedFile, "SHA1", "Rijndael", false, false, false);
