@@ -25,6 +25,9 @@ dependencies {
   implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
   implementation("com.diffplug.spotless:spotless-plugin-gradle:${libs.versions.spotless.get()}")
   implementation(
+    "com.github.spotbugs:com.github.spotbugs.gradle.plugin:${libs.versions.spotbugs.get()}"
+  )
+  implementation(
     "net.ltgt.errorprone:net.ltgt.errorprone.gradle.plugin:${libs.versions.errorpronePlugin.get()}"
   )
   // SonarQube plugin marker for precompiled convention plugin usage

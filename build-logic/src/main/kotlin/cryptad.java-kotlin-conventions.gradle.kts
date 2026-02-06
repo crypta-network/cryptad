@@ -11,6 +11,7 @@ plugins {
   java
   kotlin("jvm")
   jacoco
+  id("com.github.spotbugs")
   id("net.ltgt.errorprone")
 }
 
@@ -82,6 +83,8 @@ val errorproneReportEnabled =
       taskName == "errorproneReport" || taskName.endsWith(":errorproneReport")
     }
   }
+
+spotbugs { ignoreFailures = true }
 
 java {
   toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
