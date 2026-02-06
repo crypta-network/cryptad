@@ -63,12 +63,16 @@ Notes:
 - Build logic includes the plugin marker dependency in `build-logic/build.gradle.kts`.
 - The shared convention plugin applies `com.github.spotbugs` in `build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts`.
 - Default behavior is non-blocking: `spotbugs { ignoreFailures = true }`.
+- All SpotBugs tasks are configured via `tasks.withType<SpotBugsTask>()` to emit XML reports at `build/reports/spotbugs/<taskName>.xml`.
+- Text reports are disabled (`reports.matching { it.name == "text" }`) so findings are read from XML files instead of large stdout dumps.
 
 ### Tasks
 - Run main analysis:
   - `./gradlew spotbugsMain`
+  - Report: `build/reports/spotbugs/spotbugsMain.xml`
 - Run test analysis:
   - `./gradlew spotbugsTest`
+  - Report: `build/reports/spotbugs/spotbugsTest.xml`
 - SpotBugs tasks are also part of `check` once the plugin is applied.
 
 ### Enforcing SpotBugs failures
@@ -87,6 +91,7 @@ If strict verification blocks SpotBugs/plugin marker resolution:
 ```bash
 ./gradlew help
 ./gradlew spotbugsMain
+./gradlew spotbugsTest
 ```
 
 Confirm `gradle/verification-metadata.xml` contains SpotBugs entries such as:
