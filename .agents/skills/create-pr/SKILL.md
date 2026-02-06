@@ -143,7 +143,7 @@ Provide at minimum:
 - `head`: current branch name (or `owner:branch` if required)
 - `title`: `<type>(<scope>): <summary>`
 - `body`: include summary + test plan; incorporate `.github/pull_request_template.md` if present
-- `draft`: `true` by default unless the user requested otherwise
+- `draft`: `false` (create a ready-for-review PR; do not create a draft PR first)
 
 Example shape (adjust to the MCP server you have configured):
 
@@ -160,7 +160,7 @@ args:
 
     ## How to test
     …
-  draft: true
+  draft: false
 ```
 
 After creation:
