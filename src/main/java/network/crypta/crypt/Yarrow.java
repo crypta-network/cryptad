@@ -483,16 +483,16 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     int[] parameters = bitTable[bits];
     int offset = getBytes(parameters[0]);
 
-    int val = outputBuffer[offset];
+    int val = outputBuffer[offset] & 0xFF;
 
     if (parameters[0] == 4)
       val +=
-          (outputBuffer[offset + 1] << 24)
-              + (outputBuffer[offset + 2] << 16)
-              + (outputBuffer[offset + 3] << 8);
+          ((outputBuffer[offset + 1] & 0xFF) << 24)
+              + ((outputBuffer[offset + 2] & 0xFF) << 16)
+              + ((outputBuffer[offset + 3] & 0xFF) << 8);
     else if (parameters[0] == 3)
-      val += (outputBuffer[offset + 1] << 16) + (outputBuffer[offset + 2] << 8);
-    else if (parameters[0] == 2) val += outputBuffer[offset + 2] << 8;
+      val += ((outputBuffer[offset + 1] & 0xFF) << 16) + ((outputBuffer[offset + 2] & 0xFF) << 8);
+    else if (parameters[0] == 2) val += (outputBuffer[offset + 1] & 0xFF) << 8;
 
     return val & parameters[1];
   }
