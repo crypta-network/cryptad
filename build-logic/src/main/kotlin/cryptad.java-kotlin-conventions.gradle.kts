@@ -1,3 +1,4 @@
+import com.github.spotbugs.snom.SpotBugsTask
 import java.time.Instant
 import javax.xml.stream.XMLOutputFactory
 import net.ltgt.gradle.errorprone.errorprone
@@ -85,6 +86,14 @@ val errorproneReportEnabled =
   }
 
 spotbugs { ignoreFailures = true }
+
+tasks.withType<SpotBugsTask>().configureEach {
+  val xmlReport = reports.maybeCreate("xml")
+  xmlReport.required.set(true)
+  xmlReport.outputLocation.set(layout.buildDirectory.file("reports/spotbugs/$name.xml"))
+
+  reports.matching { it.name == "text" }.configureEach { required.set(false) }
+}
 
 java {
   toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }
