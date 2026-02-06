@@ -21,6 +21,7 @@ junitJupiter = "6.0.2"
 junitPlatform = "6.0.2"
 sonarqube = "7.2.2.6593"
 remalSonarlint = "7.0.1"
+spotbugs = "6.4.8"
 #noinspection UnusedVersionCatalogEntry
 jacoco = "0.8.14"
 errorpronePlugin = "5.0.0"
@@ -61,6 +62,8 @@ errorproneCore = { group = "com.google.errorprone", name = "error_prone_core", v
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 #noinspection UnusedVersionCatalogEntry
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+#noinspection UnusedVersionCatalogEntry
+spotbugs = { id = "com.github.spotbugs", version.ref = "spotbugs" }
 #noinspection UnusedVersionCatalogEntry
 sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
 errorprone = { id = "net.ltgt.errorprone", version.ref = "errorpronePlugin" }
