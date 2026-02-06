@@ -542,7 +542,7 @@ class CoreUpdater(params: NodeUpdaterParams) : NodeUpdater(params) {
       val ctx =
         manager.getNode().services().clientCore().makeClient(0.toShort(), true, false).fetchContext
       val fb = FileBucket(outFile, false, false, false, false)
-      getter =
+      val createdGetter =
         ClientGetter(
           this,
           chk,
@@ -552,9 +552,10 @@ class CoreUpdater(params: NodeUpdaterParams) : NodeUpdater(params) {
           null,
           null,
         )
+      getter = createdGetter
       ctx.eventProducer.addEventListener(this)
       try {
-        manager.getNode().services().clientCore().clientContext.start(getter)
+        manager.getNode().services().clientCore().clientContext.start(createdGetter)
         this@CoreUpdater.logInfo(
           "download started (listener attached): target=${outFile.absolutePath}"
         )
