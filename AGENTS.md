@@ -21,6 +21,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **$cryptad-launcher-ui** — Work on the Swing launcher: start/stop logic, logging, keyboard shortcuts, FlatLaf/theme handling, and Windows specifics.
 - **$cryptad-packaging** — Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior).
 - **$cryptad-style-docs** — Apply Cryptad Kotlin/Java style, file layout rules, and long-lived documentation/commenting practices.
+- **$web-search** — Use both Exa and Tavily for external/current web research, then cross-check sources before answering.
 
 ### Skill-first workflow
 
@@ -42,6 +43,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **Environment detection:** Treat `AppEnv` as the single source of truth. Load `$cryptad-appenv` before touching OS/arch/sandbox/service detection code.
 - **Updater:** For any changes touching CoreUpdater descriptors, endpoints, or UI, load `$cryptad-core-updater`.
 - **Packaging/Installers:** For dist builds, installers, or Flatpak, load `$cryptad-packaging`.
+- **Web research:** For latest/current external information or multi-source fact checks, load `$web-search`.
 
 ## Quick commands (high-level)
 
