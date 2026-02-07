@@ -25,7 +25,7 @@ public class OpennetPeerNode extends PeerNode {
   private static final Logger LOG = LoggerFactory.getLogger(OpennetPeerNode.class);
 
   final OpennetManager opennet;
-  private long timeLastSuccess;
+  private volatile long timeLastSuccess;
   // Not persisted across restarts: startup resets grace semantics (disconnection handling is
   // managed separately).
   private int opennetNodeAddedReason = ADDED_REASON_UNKNOWN;
@@ -108,11 +108,11 @@ public class OpennetPeerNode extends PeerNode {
     return false;
   }
 
-  /** Enumerates reasons why a peer must not be dropped during pruning. */
+  /** Lists reasons why a peer must not be dropped during pruning. */
   public enum NOT_DROP_REASON {
     /** No reason to keep the peer; it is eligible for dropping. */
     DROPPABLE,
-    /** Peer was added recently and has not had sufficient time to connect. */
+    /** Peer was added recently and has not had enough time to connect. */
     TOO_NEW_PEER,
     /** Our node uptime is still low; allow time for initial connections. */
     TOO_LOW_UPTIME,
@@ -164,11 +164,11 @@ public class OpennetPeerNode extends PeerNode {
       }
     }
     if (now - node.network().usm().getStartedTime() < OpennetManager.DROP_STARTUP_DELAY)
-      return NOT_DROP_REASON.TOO_LOW_UPTIME; // Give them time to connect after we startup
+      return NOT_DROP_REASON.TOO_LOW_UPTIME; // Give them time to connect after we start up
     if (!ignoreDisconnect) {
       synchronized (this) {
         // This only applies after it has connected, and only if !ignoreDisconnect.
-        // Hence only DISCONNECTED and not NEVER CONNECTED.
+        // Hence, only DISCONNECTED and not NEVER CONNECTED.
         if ((status == PeerManager.PEER_NODE_STATUS_DISCONNECTED)
             && !super.neverConnected()
             && now - timeLastDisconnect < OpennetManager.DROP_DISCONNECT_DELAY
@@ -284,9 +284,9 @@ public class OpennetPeerNode extends PeerNode {
   }
 
   /**
-   * If a node is TOO OLD, we should keep it connected for a brief period for it to allow it to
-   * issue a UOM request, we should keep it connected while the UOM transfer is in progress, but
-   * otherwise we should disconnect.
+   * If a node is too old, keep it connected briefly so it can issue a UOM request.
+   *
+   * <p>Keep it connected while the UOM transfer is in progress. Otherwise, disconnect it.
    */
   private boolean shouldDisconnectTooOld() {
     long uptime = System.currentTimeMillis() - timeLastConnectionCompleted();
@@ -309,7 +309,7 @@ public class OpennetPeerNode extends PeerNode {
   }
 
   /**
-   * Called on successful connect. Marks the address as presumed guilty for a short period so that
+   * Called on successful connection. Marks the address as presumed guilty of a short period so that
    * address tracking can prefer other paths temporarily.
    */
   @Override
@@ -353,7 +353,7 @@ public class OpennetPeerNode extends PeerNode {
   /**
    * Schedules deferred clearing of the added-time markers once the grace period has elapsed.
    *
-   * <p>Opennet peers keep the markers across the first successful connect to enforce the initial
+   * <p>Opennet peers keep the markers across the first successful connection to enforce the initial
    * grace period; the timed job will trigger {@link #isDroppableWithReason(boolean)} after the
    * minimum age to clear them.
    */

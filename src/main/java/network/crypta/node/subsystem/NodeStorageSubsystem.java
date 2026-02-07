@@ -152,13 +152,13 @@ public final class NodeStorageSubsystem {
   private int storeSaltHashSlotFilterPersistenceTime;
 
   /** The maximum number of keys stored in each of the datastores, cache and store combined. */
-  private long maxTotalKeys;
+  private volatile long maxTotalKeys;
 
-  private long maxCacheKeys;
-  private long maxStoreKeys;
+  private volatile long maxCacheKeys;
+  private volatile long maxStoreKeys;
 
   /** The maximum size of the datastore. Kept to avoid rounding turning 5G into 5,368,698,672 */
-  private long maxTotalDatastoreSize;
+  private volatile long maxTotalDatastoreSize;
 
   /**
    * If true, store shrinks occur immediately even if they are over 10% of the store size. If false,
@@ -185,10 +185,10 @@ public final class NodeStorageSubsystem {
   private boolean databaseAwaitingPassword;
 
   /** Client caches maximum cached keys for each type */
-  private long maxClientCacheKeys;
+  private volatile long maxClientCacheKeys;
 
   /** Maximum size of the client cache. Kept to avoid rounding problems. */
-  private long maxTotalClientCacheSize;
+  private volatile long maxTotalClientCacheSize;
 
   /** The CHK datacache. */
   private CHKStore chkDatacache;
@@ -209,7 +209,7 @@ public final class NodeStorageSubsystem {
   private PubkeyStore pubKeyClientcache;
 
   /** Slashdot cache sizing. */
-  private long maxSlashdotCacheSize;
+  private volatile long maxSlashdotCacheSize;
 
   private int maxSlashdotCacheKeys;
 
@@ -223,8 +223,8 @@ public final class NodeStorageSubsystem {
   private boolean useSlashdotCache;
   private boolean writeLocalToDatastore;
 
-  private long cachingFreenetStoreMaxSize;
-  private long cachingFreenetStorePeriod;
+  private volatile long cachingFreenetStoreMaxSize;
+  private volatile long cachingFreenetStorePeriod;
   private CachingFreenetStoreTracker cachingFreenetStoreTracker;
 
   private boolean storePreallocate;

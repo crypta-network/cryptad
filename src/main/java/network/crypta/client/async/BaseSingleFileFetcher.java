@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.Serial;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import network.crypta.client.FetchContext;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.ClientKeyBlock;
@@ -36,8 +37,8 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>The fetcher represents one logical block fetch; {@link #finished} becomes {@code true} when
- *       a terminal outcome is reached and it will no longer emit results.
- *   <li>{@link #cancelled} ends participation in scheduling; subsequent callbacks become no-ops.
+ *       a terminal outcome is reached, and it will no longer emit results.
+ *   <li>{@link #cancelled} ends participation in scheduling; later callbacks become no-ops.
  *   <li>Retry attempts are bounded by {@link #maxRetries} (or unbounded when {@code -1}) and may be
  *       spaced using context-defined cooldowns.
  * </ul>
@@ -58,12 +59,15 @@ import org.slf4j.LoggerFactory;
 public abstract class BaseSingleFileFetcher extends SendableGet implements HasKeyListener {
   private static final Logger LOG = LoggerFactory.getLogger(BaseSingleFileFetcher.class);
 
+  private static final AtomicLongFieldUpdater<BaseSingleFileFetcher> COOLDOWN_WAKEUP_TIME_UPDATER =
+      AtomicLongFieldUpdater.newUpdater(BaseSingleFileFetcher.class, "cooldownWakeupTime");
+
   @Serial private static final long serialVersionUID = 1L;
 
   /** Immutable client-level key that identifies the single block being fetched. */
   protected final ClientKey key;
 
-  /** Flag that becomes {@code true} once the request is explicitly cancelled. */
+  /** Flag that becomes {@code true} once the request is explicitly canceled. */
   protected boolean cancelled;
 
   /** Flag set when the fetch has reached a terminal state and will not emit more events. */
@@ -95,12 +99,12 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
   private int cachedCooldownTries;
 
   /** Cached cooldown duration in milliseconds, derived from {@link #ctx}. */
-  private long cachedCooldownTime;
+  private volatile long cachedCooldownTime;
 
   /**
    * Absolute wake-up time in milliseconds since the epoch for the current cooldown, or {@code 0}.
    */
-  private transient long cooldownWakeupTime;
+  private transient volatile long cooldownWakeupTime;
 
   /**
    * Creates a fetcher for a single block.
@@ -115,8 +119,8 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
    * @param ctx fetch context carrying cooldown timing and local/remote behavior; must not be {@code
    *     null}
    * @param parent requester that owns this fetch and supplies priority and client identity
-   * @param deleteFetchContext whether the associated fetch context may be deleted by the owner when
-   *     the request completes
+   * @param deleteFetchContext whether the owner may delete the associated fetch context when the
+   *     request completes
    * @param realTimeFlag whether this request is considered real-time for scheduling purposes
    */
   protected BaseSingleFileFetcher(
@@ -157,7 +161,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
         if (LOG.isDebugEnabled())
           LOG.debug(
               "RecentlyFailed -> cooldown until {} on {}", TimeUtil.formatTime(l - now), this);
-        cooldownWakeupTime = Math.max(cooldownWakeupTime, l);
+        COOLDOWN_WAKEUP_TIME_UPDATER.accumulateAndGet(this, l, Math::max);
       } else {
         this.onFailure(
             new LowLevelGetException(LowLevelGetException.RECENTLY_FAILED), null, context);
@@ -185,7 +189,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
   /**
    * Attempts to schedule a retry according to the current policy.
    *
-   * <p>When the request is empty (already finished or cancelled) the retry is suppressed. If the
+   * <p>When the request is empty (already finished or canceled), the retry is suppressed. If the
    * retry limit is exceeded, the request is unregistered. Otherwise, this method either enters a
    * finite cooldown (deferring the retry) or clears the wakeup time to retry promptly.
    *
@@ -196,7 +200,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
   protected boolean retry(ClientContext context) {
     if (isEmpty()) {
       if (LOG.isDebugEnabled()) LOG.debug("Not retrying because empty");
-      return false; // Fatal errors (e.g. decode failure) should not retry.
+      return false; // Fatal errors (e.g., decode failure) should not retry.
     }
     // We want 0, 1, ... maxRetries i.e. maxRetries+1 attempts (maxRetries=0 => try once, no
     // retries, maxRetries=1 = original try + 1 retry)
@@ -217,10 +221,10 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
     if (shouldEnterCooldown(r)) {
       enterCooldown(context);
     } else {
-      // Wake the CRS after clearing cache.
+      // Wake the CRS after clearing the cache.
       clearWakeupTime(context);
     }
-    // We will retry in any case, maybe not just not yet.
+    // We will retry in any case, maybe not for now.
     return true;
   }
 
@@ -323,9 +327,9 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
   /**
    * Returns whether there is nothing left to do for this request.
    *
-   * <p>The method returns {@code true} when the request has been cancelled or already finished.
+   * <p>The method returns {@code true} when the request has been canceled or already finished.
    *
-   * @return {@code true} if cancelled or finished; otherwise {@code false}
+   * @return {@code true} if canceled or finished; otherwise {@code false}
    */
   public synchronized boolean isEmpty() {
     return cancelled || finished;
@@ -506,9 +510,9 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
    * Refreshes the cached cooldown parameters from the current {@link FetchContext} after it has
    * changed.
    *
-   * <p>Ideally this would be handled by a shared configuration change mechanism, but here we take a
-   * pragmatic approach so changes such as USK polling intervals take effect without rebuilding the
-   * request.
+   * <p>Ideally, this would be handled by a shared configuration change mechanism, but here we take
+   * a pragmatic approach so changes such as USK polling intervals take effect without rebuilding
+   * the request.
    *
    * @see <a href="https://bugs.freenetproject.org/view.php?id=4984">Freenet bug 4984</a>
    */

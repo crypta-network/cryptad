@@ -32,7 +32,7 @@ public final class MessageFilter {
   private final List<Object> fields = new ArrayList<>();
   private final List<String> fieldNames = new ArrayList<>();
   private PeerContext source;
-  private long timeout;
+  private volatile long timeout;
 
   /**
    * When {@code true}, the effective timeout is measured from the start of waiting; when {@code
@@ -41,10 +41,10 @@ public final class MessageFilter {
    */
   private boolean timeoutFromWait;
 
-  private long initialTimeout;
+  private volatile long initialTimeout;
   private MessageFilter orFilter;
   private Message message;
-  private long oldBootId;
+  private volatile long oldBootId;
   private AsyncMessageFilterCallback callback;
   private ByteCounter byteCounter;
   private boolean timeoutSet = false;

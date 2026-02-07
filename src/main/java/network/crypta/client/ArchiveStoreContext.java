@@ -10,15 +10,15 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This context is the per-key index used by {@link ArchiveManager} to remember which {@link
  * ArchiveStoreItem}s are currently cached for an archive and to retain lightweight state about the
- * last successful extraction. It records the last known archive size and hash so callers can detect
- * when the underlying container has changed and refresh cached members accordingly. The class
- * itself performs no I/O; it provides bookkeeping and coordination hooks invoked by the manager
- * during extraction and eviction.
+ * last successful extraction. It records the last known archive size and hash, so callers can
+ * detect when the underlying container has changed and refresh cached members accordingly. The
+ * class itself performs no I/O; it provides bookkeeping and coordination hooks invoked by the
+ * manager during extraction and eviction.
  *
  * <p>Typical usage is: the manager creates a context for a key, extracts members, and registers
  * resulting items with {@link #addItem(ArchiveStoreItem)}. If a later fetch discovers a changed
  * hash or size, the manager calls {@link #removeAllCachedItems(ArchiveManager)} to evict previous
- * items and then repopulates the cache before signalling a restart to the caller.
+ * items and then repopulates the cache before signaling a restart to the caller.
  *
  * <p>Thread-safety: the internal item list is guarded by its own monitor. Code outside this class
  * must always lock the {@code ArchiveStoreContext} (or its {@code myItems} list) before acquiring
@@ -49,7 +49,7 @@ class ArchiveStoreContext {
   private final ArchiveManager.ARCHIVE_TYPE archiveType;
 
   /** Archive size */
-  private long lastSize = -1;
+  private volatile long lastSize = -1;
 
   /** Archive hash */
   private byte[] lastHash;
@@ -132,7 +132,7 @@ class ArchiveStoreContext {
   /**
    * Removes all {@link ArchiveStoreItem} instances with this key from the manager's cache.
    *
-   * <p>The method repeatedly obtains the head of the internal stack and asks the {@link
+   * <p>The method repeatedly gets the head of the internal stack and asks the {@link
    * ArchiveManager} to remove it. Removal proceeds until the local index is empty. Items perform
    * their own minimal cleanup during removal.
    *

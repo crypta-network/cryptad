@@ -101,8 +101,8 @@ public class LocationManager implements ByteCounter {
   public static final String FOIL_PITCH_BLACK_ATTACK_PREFIX = "mitigate-pitch-black-attack-";
 
   // Renamed to lowerCamelCase; encapsulated via accessors for tests/simulators to adjust.
-  private static long pitchBlackMitigationFrequencyOneDay = DAYS.toMillis(1);
-  private static long pitchBlackMitigationStartupDelay = HOURS.toMillis(2);
+  private static volatile long pitchBlackMitigationFrequencyOneDay = DAYS.toMillis(1);
+  private static volatile long pitchBlackMitigationStartupDelay = HOURS.toMillis(2);
 
   /**
    * Returns the nominal frequency for the pitch‑black mitigation task.
@@ -1144,6 +1144,7 @@ public class LocationManager implements ByteCounter {
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static class CommitPayload {
     final long hisRandom;
     final double hisLoc;
