@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchResult;
@@ -270,6 +271,60 @@ class PeerNodeArkManagerTest {
   }
 
   @Test
+  void startFetcher_whenArkChangesWhileRunning_expectResubscribeAndUnsubscribePrevious() {
+    when(node.isEnableARKs()).thenReturn(true);
+    stubArkSubscriptionDependencies();
+    stubExecutor();
+    USK firstArk = newUsk(2);
+    USK secondArk = newUsk(3);
+    USKRetriever secondRetriever = mock(USKRetriever.class);
+    setField(manager, FIELD_MY_ARK, firstArk);
+    when(uskManager.subscribeContent(
+            firstArk,
+            manager,
+            true,
+            fetchContext,
+            RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
+            requestClient))
+        .thenReturn(arkRetriever);
+    when(uskManager.subscribeContent(
+            secondArk,
+            manager,
+            true,
+            fetchContext,
+            RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
+            requestClient))
+        .thenReturn(secondRetriever);
+
+    manager.startFetcher();
+    setField(manager, FIELD_MY_ARK, secondArk);
+    manager.startFetcher();
+
+    verify(uskManager)
+        .subscribeContent(
+            firstArk,
+            manager,
+            true,
+            fetchContext,
+            RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
+            requestClient);
+    verify(uskManager)
+        .subscribeContent(
+            secondArk,
+            manager,
+            true,
+            fetchContext,
+            RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
+            requestClient);
+
+    ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+    verify(executor).execute(taskCaptor.capture());
+    taskCaptor.getValue().run();
+    verify(uskManager).unsubscribeContent(firstArk, arkRetriever, true);
+    assertTrue(manager.isFetching());
+  }
+
+  @Test
   void stopFetcher_whenArksDisabled_expectNoUnsubscribe() {
     stubArkSubscriptionDependencies();
     USK ark = newUsk(3);
@@ -505,6 +560,12 @@ class PeerNodeArkManagerTest {
     try {
       Field field = findField(target.getClass(), fieldName);
       field.setAccessible(true);
+      if (AtomicReference.class.isAssignableFrom(field.getType())) {
+        @SuppressWarnings("unchecked")
+        AtomicReference<Object> ref = (AtomicReference<Object>) field.get(target);
+        ref.set(value);
+        return;
+      }
       field.set(target, value);
     } catch (IllegalAccessException e) {
       throw new AssertionError("Unable to set field " + fieldName, e);
@@ -515,7 +576,11 @@ class PeerNodeArkManagerTest {
     try {
       Field field = findField(target.getClass(), FIELD_MY_ARK);
       field.setAccessible(true);
-      return (USK) field.get(target);
+      Object value = field.get(target);
+      if (value instanceof AtomicReference<?> ref) {
+        return (USK) ref.get();
+      }
+      return (USK) value;
     } catch (IllegalAccessException e) {
       throw new AssertionError("Unable to read field " + FIELD_MY_ARK, e);
     }
