@@ -1,8 +1,5 @@
 package org.spaceroots.mantissa.ode;
 
-import java.io.Serial;
-import java.io.Serializable;
-
 /**
  * A minimal {@link StepHandler} implementation that deliberately discards all step callbacks.
  *
@@ -28,7 +25,7 @@ import java.io.Serializable;
  * @version $Id: DummyStepHandler.java 1721 2007-10-07 20:21:25Z luc $
  * @author L. Maisonobe
  */
-public class DummyStepHandler implements StepHandler, Serializable {
+public class DummyStepHandler implements StepHandler {
 
   /**
    * Private constructor. The constructor is private to prevent users from creating instances
@@ -46,7 +43,7 @@ public class DummyStepHandler implements StepHandler, Serializable {
    *
    * @return the singleton instance reused for all no-op step handling needs
    */
-  public static DummyStepHandler getInstance() {
+  public static synchronized DummyStepHandler getInstance() {
     if (instance == null) {
       instance = new DummyStepHandler();
     }
@@ -102,6 +99,4 @@ public class DummyStepHandler implements StepHandler, Serializable {
 
   /** The only instance. */
   private static DummyStepHandler instance = null;
-
-  @Serial private static final long serialVersionUID = 1804704906852043886L;
 }

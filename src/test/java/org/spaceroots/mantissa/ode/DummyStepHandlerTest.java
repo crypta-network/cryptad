@@ -4,11 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.ObjectInputStream;
+import java.io.NotSerializableException;
 import java.io.ObjectOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,25 +65,16 @@ class DummyStepHandlerTest {
   }
 
   @Test
-  void serializationRoundTrip_whenDeserialized_instanceRemainsStateless() throws Exception {
+  void serialization_whenSerialized_throwsNotSerializableException() {
     DummyStepHandler handler = DummyStepHandler.getInstance();
-
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
-    try (ObjectOutputStream oos = new ObjectOutputStream(bout)) {
-      oos.writeObject(handler);
-    }
 
-    DummyStepHandler restored;
-    try (ObjectInputStream ois =
-        new ObjectInputStream(new ByteArrayInputStream(bout.toByteArray()))) {
-      restored = (DummyStepHandler) ois.readObject();
-    }
-
-    assertNotNull(restored);
-    assertFalse(restored.requiresDenseOutput());
-    assertSame(handler, DummyStepHandler.getInstance());
-
-    restored.handleStep(interpolator, false);
-    verifyNoInteractions(interpolator);
+    assertThrows(
+        NotSerializableException.class,
+        () -> {
+          try (ObjectOutputStream oos = new ObjectOutputStream(bout)) {
+            oos.writeObject(handler);
+          }
+        });
   }
 }
