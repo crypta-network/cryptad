@@ -2,6 +2,8 @@ package network.crypta.node;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchResult;
 import network.crypta.client.async.USKRetriever;
 import network.crypta.client.async.USKRetrieverCallback;
@@ -20,10 +22,9 @@ import org.slf4j.LoggerFactory;
  * manager is intentionally small and focused: it does not perform transport or routing logic, only
  * state tracking and callback wiring.
  *
- * <p>State is guarded by two monitors: the peer instance protects the current ARK, while {@code
- * arkFetcherSync} protects the subscription reference. This avoids holding the peer lock while
- * invoking callbacks or scheduling unsubscribe work. Thread-safety is limited to the documented
- * synchronized sections; callers should follow {@link PeerNode} threading expectations.
+ * <p>State is guarded by two mechanisms: {@link #myARK} uses an atomic reference for cross-thread
+ * ARK snapshots, while {@code arkFetcherSync} protects fetcher subscription transitions. This
+ * avoids holding the peer lock while invoking callbacks or scheduling unsubscribe work.
  *
  * <p>Responsibilities include:
  *
@@ -50,8 +51,11 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
   /** Active USK subscription fetcher, or {@code null} when no fetch is running. */
   private USKRetriever arkFetcher;
 
+  /** ARK currently used by {@link #arkFetcher}, guarded by {@link #arkFetcherSync}. */
+  private USK subscribedArk;
+
   /** Current ARK USK for this peer, updated when fresher editions are learned. */
-  private USK myARK;
+  private final AtomicReference<USK> myARK = new AtomicReference<>();
 
   /**
    * Creates a manager bound to a single peer instance.
@@ -78,17 +82,15 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
    * @return {@code true} when a new ARK is stored; {@code false} otherwise.
    */
   boolean parseArk(SimpleFieldSet fs, boolean onStartup, boolean forDiffNodeRef) {
-    USK currentArk;
-    synchronized (peer) {
-      currentArk = myARK;
-    }
+    USK currentArk = myARK.get();
     USK ark =
         PeerNodeReferenceSupport.computeArk(
             peer.selfPeerNode(), fs, onStartup, forDiffNodeRef, currentArk);
     if (ark == null) return false;
     synchronized (peer) {
-      if (myARK == null || !myARK.equals(ark)) {
-        myARK = ark;
+      USK previousArk = myARK.get();
+      if (previousArk == null || !previousArk.equals(ark)) {
+        myARK.set(ark);
         return true;
       }
     }
@@ -105,10 +107,7 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
    * @param fs destination field set that receives ARK fields when present.
    */
   void appendArkFields(SimpleFieldSet fs) {
-    USK ark;
-    synchronized (peer) {
-      ark = myARK;
-    }
+    USK ark = myARK.get();
     if (ark == null) return;
     // Decrement it because we keep the number we would like to fetch, not the last one fetched.
     fs.put(PeerNode.SFS_KEY_ARK_NUMBER, ark.suggestedEdition - 1);
@@ -131,39 +130,52 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
   /**
    * Starts the ARK fetcher subscription when configuration and state allow it.
    *
-   * <p>The method is idempotent: it returns quickly if ARK fetching is disabled, no ARK is known,
-   * or a subscription is already active. On success, it registers this instance as the callback and
+   * <p>The method returns quickly if ARK fetching is disabled or no ARK is known. If a subscription
+   * is already active for a different ARK, it re-subscribes to the newer ARK and unsubscribes the
+   * previous retriever asynchronously. On success, it registers this instance as the callback and
    * stores the resulting {@link USKRetriever} under {@link #arkFetcherSync}. Locks are kept minimal
    * to avoid holding them across callback or network activity.
    */
   void startFetcher() {
     // Note: keep locking minimal; avoid holding locks across callbacks
     if (!peer.node.isEnableARKs()) return;
-    USK ark;
-    synchronized (peer) {
-      ark = myARK;
-    }
+    USKRetriever oldFetcher = null;
+    USK oldArk = null;
     synchronized (arkFetcherSync) {
+      USK ark = myARK.get();
       if (ark == null) {
         LOG.debug("No ARK for {} !!!!", peer);
         return;
       }
+
+      if (arkFetcher != null && Objects.equals(subscribedArk, ark)) {
+        return;
+      }
+
       if (arkFetcher == null) {
         LOG.debug("Starting ARK fetcher for {} : {}", peer, ark);
-        arkFetcher =
-            peer.node
-                .services()
-                .clientCore()
-                .getUskManager()
-                .subscribeContent(
-                    ark,
-                    this,
-                    true,
-                    peer.node.network().arkFetcherContext(),
-                    RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
-                    peer.node.getNonPersistentClientRT());
+      } else {
+        LOG.debug("Restarting ARK fetcher for {} : {} -> {}", peer, subscribedArk, ark);
+        oldFetcher = arkFetcher;
+        oldArk = subscribedArk;
       }
+
+      arkFetcher =
+          peer.node
+              .services()
+              .clientCore()
+              .getUskManager()
+              .subscribeContent(
+                  ark,
+                  this,
+                  true,
+                  peer.node.network().arkFetcherContext(),
+                  RequestStarter.IMMEDIATE_SPLITFILE_PRIORITY_CLASS,
+                  peer.node.getNonPersistentClientRT());
+      subscribedArk = ark;
     }
+
+    scheduleUnsubscribe(oldArk, oldFetcher);
   }
 
   /**
@@ -175,23 +187,28 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
    */
   void stopFetcher() {
     if (!peer.node.isEnableARKs()) return;
-    USK ark;
-    synchronized (peer) {
-      ark = myARK;
-    }
-    LOG.debug("Stopping ARK fetcher for {} : {}", peer, ark);
     // Note: keep locking minimal; avoid holding locks across callbacks
+    USK ark;
     USKRetriever ret;
     synchronized (arkFetcherSync) {
       if (arkFetcher == null) {
         if (LOG.isDebugEnabled()) LOG.debug("ARK fetcher not running for {}", peer);
         return;
       }
+      ark = subscribedArk;
       ret = arkFetcher;
       arkFetcher = null;
+      subscribedArk = null;
     }
-    final USKRetriever unsub = ret;
-    final USK unsubArk = ark;
+
+    LOG.debug("Stopping ARK fetcher for {} : {}", peer, ark);
+    scheduleUnsubscribe(ark, ret);
+  }
+
+  private void scheduleUnsubscribe(USK ark, USKRetriever retriever) {
+    if (ark == null || retriever == null) {
+      return;
+    }
     peer.node
         .network()
         .executor()
@@ -201,7 +218,7 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
                     .services()
                     .clientCore()
                     .getUskManager()
-                    .unsubscribeContent(unsubArk, unsub, true));
+                    .unsubscribeContent(ark, retriever, true));
   }
 
   /**
@@ -218,8 +235,9 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
     try {
       synchronized (peer) {
         peer.resetHandshakeCountAfterArkFetch();
-        if (myARK != null && myARK.suggestedEdition < fetchedEdition + 1) {
-          myARK = myARK.copy(fetchedEdition + 1);
+        USK currentArk = myARK.get();
+        if (currentArk != null && currentArk.suggestedEdition < fetchedEdition + 1) {
+          myARK.set(currentArk.copy(fetchedEdition + 1));
         }
       }
       peer.processNewNoderef(fs, true, false, false);
@@ -263,7 +281,7 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
    * Handles a successfully fetched ARK edition and applies it to the peer state.
    *
    * <p>The callback verifies that the fetched edition is not stale relative to the current ARK and
-   * that the peer is not already connected. It then reads the UTF-8 noderef payload from the {@link
+   * that the peer is not yet connected. It then reads the UTF-8 noderef payload from the {@link
    * FetchResult}, parses it into a {@link SimpleFieldSet}, and delegates to {@link
    * #handleArkUpdate(SimpleFieldSet, long)}. I/O or parse failures are logged and do not update the
    * ARK.
@@ -274,10 +292,7 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
    */
   @Override
   public void onFound(USK origUSK, long edition, FetchResult result) {
-    USK arkSnapshot;
-    synchronized (peer) {
-      arkSnapshot = myARK;
-    }
+    USK arkSnapshot = myARK.get();
     try (var _ = result.asBucket()) {
       if (arkSnapshot == null || peer.isConnected() || arkSnapshot.suggestedEdition > edition) {
         return;
