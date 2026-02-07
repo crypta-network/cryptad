@@ -185,8 +185,8 @@ public class MersenneTwister extends Random {
    *
    * <p>The state of the generator is exactly the same as a new generator built with the same seed.
    * The 64‑bit input is split into two 32‑bit values, which are then used to perform array seeding.
-   * This override is synchronized to preserve the {@link Random} contract during construction and
-   * seeding, but generation itself is not synchronized.
+   * This override preserves the {@link Random} construction/seeding behavior while converting the
+   * 64‑bit seed into two 32‑bit words consumed by {@link #setSeed(int[])}.
    *
    * @param seed initial 64‑bit seed value used to rebuild internal state; higher bits contribute
    *     independently of lower bits
@@ -245,7 +245,9 @@ public class MersenneTwister extends Random {
       mti = 0;
     }
 
-    y = mt[mti++];
+    int currentMti = mti;
+    y = mt[currentMti];
+    mti = currentMti + 1;
 
     // tempering
     y ^= (y >>> 11);
@@ -269,7 +271,7 @@ public class MersenneTwister extends Random {
    * <p>When this index reaches {@link #N}, the generator refreshes the whole state vector before
    * producing additional output.
    */
-  private int mti;
+  private volatile int mti;
 
   @Serial private static final long serialVersionUID = 7666069655872848609L;
 

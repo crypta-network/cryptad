@@ -1,6 +1,13 @@
 package network.crypta.support.io;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.io.Serial;
+import java.io.Serializable;
 import java.nio.file.Files;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
@@ -35,7 +42,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
   private boolean closed = false;
   private final long length;
   private final boolean readOnly;
-  private boolean secureDelete;
+  private volatile boolean secureDelete;
 
   /**
    * Creates a buffer over an existing {@link RandomAccessFile}.
@@ -47,7 +54,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
    * @param filename the file on disk that backs {@code raf}; used for deletion and resume
    * @param readOnly whether this buffer is read-only; affects future write operations and how the
    *     file is re-opened during resume
-   * @throws IOException if obtaining the current length fails
+   * @throws IOException if getting the current length fails
    */
   public FileRandomAccessBuffer(RandomAccessFile raf, File filename, boolean readOnly)
       throws IOException {
@@ -102,8 +109,8 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
    * @param bufOffset offset in {@code buf} at which to start writing
    * @param length number of bytes to read
    * @throws IllegalArgumentException if {@code fileOffset < 0}
-   * @throws IOException if the read would exceed the logical size, or an I/O error occurs, or EOF
-   *     is reached before reading {@code length} bytes
+   * @throws IOException if the read exceeds the logical size, or an I/O error occurs, or EOF is
+   *     reached before reading {@code length} bytes
    */
   @Override
   public void pread(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
@@ -133,8 +140,8 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
    * @param bufOffset offset in {@code buf} at which to start reading
    * @param length number of bytes to write
    * @throws IllegalArgumentException if {@code fileOffset < 0}
-   * @throws IOException if the writing would exceed the logical size, if the buffer is read-only,
-   *     or if an I/O error occurs
+   * @throws IOException if the writing exceeds the logical size, if the buffer is read-only, or if
+   *     an I/O error occurs
    */
   @Override
   public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
@@ -187,8 +194,8 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
   /**
    * Returns a lock object representing an open handle to the buffer.
    *
-   * <p>The returned lock performs no additional action on unlock because this implementation keeps
-   * the file open for the lifetime of the buffer. The lock exists to satisfy the {@link
+   * <p>The returned lock performs no additional action on unlocking because this implementation
+   * keeps the file open for the lifetime of the buffer. The lock exists to satisfy the {@link
    * LockableRandomAccessBuffer} contract.
    *
    * @return a no-op lock
@@ -240,7 +247,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
   }
 
   /**
-   * Re-opens the underlying file after a persistence resume.
+   * Re-opens the underlying file after persistence resuming.
    *
    * <p>This method validates that the target file still exists and matches the expected length,
    * then re-opens it in the recorded mode.

@@ -131,7 +131,7 @@ public class PluginJarUpdater extends NodeUpdater {
     return pluginName;
   }
 
-  private int requiredNodeVersion;
+  private volatile int requiredNodeVersion;
 
   private static final String REQUIRED_NODE_VERSION_PREFIX = "Required-Node-Version: ";
 

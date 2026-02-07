@@ -297,7 +297,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
    */
   private static final int MAX_REJECTED_LOOPS = 3;
 
-  private boolean addedExtraNode = false;
+  private volatile boolean addedExtraNode = false;
 
   /**
    * New load-management path.

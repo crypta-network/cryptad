@@ -96,7 +96,7 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
       new SendableRequestItem[] {NullSendableRequestItem.nullItem};
 
   /** Cached number of retries between cooldown sleeps, derived from {@link #ctx}. */
-  private int cachedCooldownTries;
+  private volatile int cachedCooldownTries;
 
   /** Cached cooldown duration in milliseconds, derived from {@link #ctx}. */
   private volatile long cachedCooldownTime;

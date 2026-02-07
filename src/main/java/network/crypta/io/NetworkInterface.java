@@ -28,8 +28,8 @@ import org.tanukisoftware.wrapper.WrapperManager;
  *
  * <p>This class binds one listener per configured local address, queues accepted client
  * connections, and exposes a simple {@link #accept()} method to retrieve them. Inbound connections
- * are filtered using an allow list (see {@link AllowedHosts}). The implementation is thread-safe;
- * it uses a single lock to protect shared state ({@code acceptors}, {@code acceptedSockets}, and
+ * are filtered using an allowlist (see {@link AllowedHosts}). The implementation is thread-safe; it
+ * uses a single lock to protect shared state ({@code acceptors}, {@code acceptedSockets}, and
  * related conditions).
  *
  * <p>Typical flow:
@@ -78,11 +78,11 @@ public class NetworkInterface implements Closeable {
   /** FIFO queue of accepted client connections. */
   private final Queue<Socket> acceptedSockets = new ArrayDeque<>();
 
-  /** Allow list used to decide whether to accept a remote address. */
+  /** Allowlist used to decide whether to accept a remote address. */
   protected final AllowedHosts allowedHosts;
 
   /** The SO_TIMEOUT configured for underlying server sockets via {@link #setSoTimeout(int)}. */
-  private int timeout = 0;
+  private volatile int timeout = 0;
 
   /** Local TCP port to bind each {@link ServerSocket} to. */
   private final int port;
@@ -107,7 +107,7 @@ public class NetworkInterface implements Closeable {
    * @param port local TCP port shared by all bound addresses
    * @param bindTo comma-separated local addresses to bind; if {@code null} or empty, defaults to
    *     {@link #DEFAULT_BIND_TO}
-   * @param allowedHosts allow list for remote client addresses (see {@link AllowedHosts})
+   * @param allowedHosts allowlist for remote client addresses (see {@link AllowedHosts})
    * @param executor executor used to run acceptor threads
    * @param ignoreUnbindableIP6 when {@code true}, silently ignore IPv6 addresses that cannot be
    *     bound due to a {@link SocketException}
@@ -137,7 +137,7 @@ public class NetworkInterface implements Closeable {
    * via the {@link #create(int, String, String, PriorityAwareExecutor, boolean)} factory).
    *
    * @param port local TCP port to listen on
-   * @param allowedHosts allow list used to filter remote client addresses; see {@link AllowedHosts}
+   * @param allowedHosts allowlist used to filter remote client addresses; see {@link AllowedHosts}
    * @param executor executor used to run acceptor threads
    */
   protected NetworkInterface(int port, String allowedHosts, PriorityAwareExecutor executor) {
@@ -161,7 +161,7 @@ public class NetworkInterface implements Closeable {
   /**
    * Binds the interface to the specified local addresses.
    *
-   * <p>Existing acceptors are closed, then a new acceptor is started for each token in {@code
+   * <p>Existing acceptors are closed, then new acceptor is started for each token in {@code
    * bindTo}. If {@code bindTo} is {@code null} or empty, {@link #DEFAULT_BIND_TO} is used. When a
    * shutdown has been requested (either via {@link #close()} or when the Wrapper shutdown hook is
    * active), the method returns without rebinding to avoid resurrecting listeners.
@@ -210,7 +210,7 @@ public class NetworkInterface implements Closeable {
     }
 
     signalBound();
-    // Legacy contract: null on success, non-null array lists failed addresses.
+    // Legacy contract: null on success, a non-null array lists failed addresses.
     return brokenList == null ? null : brokenList.toArray(new String[0]);
   }
 
@@ -271,7 +271,7 @@ public class NetworkInterface implements Closeable {
   }
 
   /**
-   * Replaces the current allow list used to filter incoming connections.
+   * Replaces the current allowlist used to filter incoming connections.
    *
    * <p>See {@link AllowedHosts} for supported syntax (IPv4/IPv6 literals with optional masks, or
    * {@code "*"}).
@@ -336,7 +336,7 @@ public class NetworkInterface implements Closeable {
    * Closes this interface and all underlying server sockets.
    *
    * <p>Signals waiting threads and prevents future re-binding. If closing one or more sockets
-   * fails, the last encountered {@link IOException} is rethrown after signalling.
+   * fails, the last encountered {@link IOException} is rethrown after signaling.
    *
    * @throws IOException if an I/O error occurs while closing server sockets
    * @see ServerSocket#close()
@@ -345,7 +345,7 @@ public class NetworkInterface implements Closeable {
   public void close() throws IOException {
     IOException exception = null;
     shutdown = true;
-    /* Close existing acceptors before signalling waiters. */
+    /* Close existing acceptors before signaling waiters. */
     for (Acceptor acceptor : grabAcceptors()) {
       try {
         acceptor.close();
@@ -390,7 +390,7 @@ public class NetworkInterface implements Closeable {
   // acceptor-stopped signaling is handled within Acceptor
 
   /**
-   * Acceptor runnable that blocks on {@link ServerSocket#accept()}, applies the allow list, and
+   * Acceptor runnable that blocks on {@link ServerSocket#accept()}, applies the allowlist, and
    * enqueues permitted client sockets.
    */
   private class Acceptor implements Runnable {
@@ -399,10 +399,10 @@ public class NetworkInterface implements Closeable {
     private final ServerSocket serverSocket;
 
     /** Whether this acceptor has been closed. */
-    private boolean closed = false;
+    private volatile boolean closed = false;
 
     /**
-     * Creates a new acceptor for the specified server socket.
+     * Creates new acceptor for the specified server socket.
      *
      * @param serverSocket the unbound/bound server socket to listen on
      */
@@ -487,7 +487,7 @@ public class NetworkInterface implements Closeable {
   }
 
   /**
-   * Returns the current allow list as a canonicalized string.
+   * Returns the current allowlist as a canonicalized string.
    *
    * @return a comma-separated rule list; never {@code null}
    */

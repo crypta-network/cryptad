@@ -30,12 +30,12 @@ import org.slf4j.LoggerFactory;
  * enabled for local administration or remote access, subject to the {@code bindTo} and {@code
  * allowedHosts} constraints. When SSL support is available and enabled, the server binds using an
  * {@link SSLNetworkInterface}; otherwise it uses a plain {@link NetworkInterface}. The main loop
- * runs on the node's executor and performs a non-blocking accept with a short socket timeout to
+ * runs on the node's executor and performs a non-blocking acceptance with a short socket timeout to
  * allow responsive shutdown and reconfiguration checks.
  *
  * <p>A single instance maintains its listening parameters ({@code port}, {@code bindTo}, and {@code
- * allowedHosts}). Changes to these values are observed by the accept loop and will cause it to exit
- * so callers can reinitialize bindings as needed. Existing sessions continue to run on their
+ * allowedHosts}). Changes to these values are observed by the acceptance loop and will cause it to
+ * exit so callers can reinitialize bindings as needed. Existing sessions continue to run on their
  * dedicated handler threads. The server itself is lightweight and intended to be started early in
  * the node lifecycle and stopped during shutdown.
  *
@@ -58,7 +58,7 @@ public class TextModeClientInterfaceServer implements Runnable {
   final Node n;
   final NodeClientCore core;
   final File downloadsDir;
-  int port;
+  volatile int port;
   String bindTo;
   String allowedHosts;
   boolean isEnabled;
@@ -412,7 +412,7 @@ public class TextModeClientInterfaceServer implements Runnable {
   }
 
   /**
-   * Runs the accept loop for the TMCI server until disabled or interrupted.
+   * Runs the acceptance loop for the TMCI server until disabled or interrupted.
    *
    * <p>The loop uses a short socket timeout to periodically check for configuration changes and the
    * enabled flag. When {@code port} or {@code bindTo} differ from the values used to initialize the
@@ -470,19 +470,19 @@ public class TextModeClientInterfaceServer implements Runnable {
     try {
       networkInterface.close();
     } catch (IOException e) {
-      LOG.error("Error shuting down TMCI", e);
+      LOG.error("Error shutting down TMCI", e);
     }
   }
 
   /**
    * Sets the TCP port number used when accepting new TMCI connections.
    *
-   * <p>The change is observed by the accept loop; existing client sessions are not affected. The
-   * provided value should be a valid TCP port in the range 1–65535. No validation is performed by
-   * this method.
+   * <p>The change is observed by the acceptance loop; existing client sessions are not affected.
+   * The provided value should be a valid TCP port in the range 1–65,535. This method performs no
+   * validation.
    *
-   * @param val the new listening port number to use for future accepts; typical values are in the
-   *     unprivileged range (>= 1024).
+   * @param val the new listening port number to use for future acceptances; typical values are in
+   *     the unprivileged range (>= 1024).
    */
   public void setPort(int val) {
     port = val;

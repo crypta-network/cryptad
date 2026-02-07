@@ -30,14 +30,14 @@ import org.slf4j.LoggerFactory;
  * Binary Blob header lazily on the first emission and appends the end marker for snapshots and
  * finalization as needed. Methods that mutate internal state are synchronized to coordinate access
  * when used from multiple threads, but callers should still arrange a clear life-cycle to avoid
- * racing a finalization against ongoing writes.
+ * racing finalization against ongoing writes.
  *
  * <ul>
  *   <li>Single-bucket mode: writes directly to the provided {@code Bucket} and closes its stream on
  *       finalization.
  *   <li>Factory-backed mode: streams to temporary buckets, then builds a single read-only result
- *       bucket and frees intermediates.
- *   <li>Deduplication: subsequent attempts to add the same {@code Key} are ignored.
+ *       bucket, and frees intermediates.
+ *   <li>Deduplication: further attempts to add the same {@code Key} are ignored.
  * </ul>
  *
  * @author saces
@@ -52,8 +52,8 @@ public final class BinaryBlobWriter {
   private final Bucket out;
   private final boolean isSingleBucket;
 
-  private boolean started = false;
-  private boolean finalized = false;
+  private volatile boolean started = false;
+  private volatile boolean finalized = false;
 
   private DataOutputStream streamCache = null;
 
@@ -125,10 +125,10 @@ public final class BinaryBlobWriter {
    * <p>The Binary Blob header is written lazily on the first call. If the {@code Key} associated
    * with {@code block} has already been added, the call is a no-op and returns silently. The method
    * does not close or flush the destination stream. Callers may invoke this method multiple times
-   * from different threads; internal synchronization ensures consistent serialization order.
+   * from different threads; internal synchronization ensures a consistent serialization order.
    *
-   * @param block the block to serialize into the blob; its {@code Key} identifies de-duplication
-   *     and must be consistent with its internal metadata; must not be {@code null}.
+   * @param block the block to serialize into the blob; its {@code Key} identifies deduplication and
+   *     must be consistent with its internal metadata; must not be {@code null}.
    * @param context optional client context related to the caller; may be {@code null} and is used
    *     only for diagnostic logging, not for serialization semantics.
    * @throws IOException if writing to the underlying stream fails at any point during emission.
@@ -197,11 +197,11 @@ public final class BinaryBlobWriter {
    *
    * <p>The snapshot contains all data written so far and an explicit end marker so that readers can
    * process it immediately. When the writer is already finalized, this method copies the final
-   * result instead. In single-bucket mode (transient constructor), no intermediate state exists and
-   * the method returns without writing.
+   * result instead. In single-bucket mode (transient constructor), no intermediate state exists,
+   * and the method returns without writing.
    *
-   * @param bucket destination bucket that receives a complete snapshot including the end marker;
-   *     must be writable; the method closes only the snapshot's output stream it obtains.
+   * @param bucket the destination bucket that receives a complete snapshot, including the end
+   *     marker, must be writable; the method closes only the snapshot's output stream it gets.
    * @throws IOException if writing the snapshot to the destination bucket fails at any point.
    * @throws BinaryBlobAlreadyClosedException if the writer is finalized and a non-final snapshot is
    *     requested in a context where it cannot be produced safely.
@@ -240,7 +240,7 @@ public final class BinaryBlobWriter {
    * mode, it is a newly created read-only bucket that contains the complete blob.
    *
    * @return the bucket whose content is the immutable, finalized Binary Blob; its content remains
-   *     stable for subsequent reads and may be read concurrently by clients.
+   *     stable for further reads and may be read concurrently by clients.
    * @throws IllegalStateException if the writer has not been finalized yet or no final bucket is
    *     available.
    */

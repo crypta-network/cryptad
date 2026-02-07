@@ -372,7 +372,7 @@ public class IPDetectorPluginManager implements ForwardPortCallback {
   private short connectionType;
   private ProxyUserAlert proxyAlert;
   private final PortForwardAlert portForwardAlert;
-  private boolean started;
+  private volatile boolean started;
 
   IPDetectorPluginManager(Node node, NodeIPDetector detector) {
     plugins = new FredPluginIPDetector[0];

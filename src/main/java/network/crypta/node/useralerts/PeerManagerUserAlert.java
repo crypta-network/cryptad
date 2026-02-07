@@ -67,11 +67,11 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
   boolean opennetDefinitelyPortForwarded;
   boolean opennetAssumeNAT;
   boolean darknetAssumeNAT;
-  private boolean isOutdated;
+  private volatile boolean isOutdated;
 
   /**
-   * Minimum number of simultaneously connected peers required before the alert stops reporting "too
-   * few connections" conditions. Expressed as a simple connection count and used only by the
+   * A minimum number of simultaneously connected peers required before the alert stops reporting
+   * "too few connections" conditions. Expressed as a simple connection count and used only by the
    * messaging logic; it does not affect network behavior.
    */
   public static final int MIN_CONN_ALERT_THRESHOLD = 3;
@@ -95,13 +95,13 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
   public static final int MAX_NEVER_CONNECTED_PEER_ALERT_THRESHOLD = 5;
 
   /**
-   * Minimum number of peers with clock problems required before the alert mentions clock
+   * A minimum number of peers with clock problems required before the alert mentions clock
    * skew-related issues. Values at or below this threshold suppress clock-related messaging.
    */
   public static final int MIN_CLOCK_PROBLEM_PEER_ALERT_THRESHOLD = 5;
 
   /**
-   * Minimum number of peers with unknown connection errors required before the alert includes a
+   * A minimum number of peers with unknown connection errors required before the alert includes a
    * connection-error message. The counter comes from the peer manager's diagnostics.
    */
   public static final int MIN_CONN_ERROR_ALERT_THRESHOLD = 5;
@@ -305,8 +305,8 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * <p>The returned {@link HTMLNode} is a single {@code div} containing localized text and, for
    * some conditions, a link guiding the user to relevant pages (for example, adding friends). The
-   * structure is intentionally simple so callers can insert the node directly into larger templates
-   * without additional escaping.
+   * structure is intentionally simple, so callers can insert the node directly into larger
+   * templates without additional escaping.
    *
    * @return a newly created {@link HTMLNode} containing the message snapshot at call time
    * @throws IllegalArgumentException if the internal state does not correspond to any known
@@ -380,7 +380,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    * Returns the priority class for the current alert snapshot.
    *
    * <p>The value is derived from connectivity state, problem counters, and update status. Higher
-   * severities take precedence. This method is side effect free and safe to call repeatedly.
+   * severities take precedence. This method is side-effect-free and safe to call repeatedly.
    *
    * @return one of the standard {@link UserAlert} severity constants indicating UI importance
    */
@@ -528,7 +528,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
     return null;
   }
 
-  // Helper predicates to reduce cognitive complexity of content methods
+  // Helper predicates to reduce the cognitive complexity of content methods
   private boolean hasTooHighBwlimitDelayTime() {
     return bwlimitDelayAlertRelevant
         && (bwlimitDelayTime > NodeStats.MAX_BWLIMIT_DELAY_TIME_ALERT_THRESHOLD);
@@ -567,8 +567,8 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
 
   // Setters for cross-package updates (PeerManager)
   /**
-   * Flags that the opennet port is definitively reachable from the public Internet according to the
-   * caller's observation.
+   * Flags that the opennet port is definitively reachable from the public Internet, according to
+   * the caller's observation.
    *
    * @param value {@code true} if reachability has been confirmed; {@code false} if it has not been
    *     confirmed or is known to be unreachable
@@ -578,8 +578,8 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
   }
 
   /**
-   * Flags that the darknet port is definitively reachable from the public Internet according to the
-   * caller's observation.
+   * Flags that the darknet port is definitively reachable from the public Internet, according to
+   * the caller's observation.
    *
    * @param value {@code true} if reachability has been confirmed; {@code false} if it has not been
    *     confirmed or is known to be unreachable

@@ -47,7 +47,7 @@ import org.bouncycastle.crypto.params.ParametersWithIV;
  * whose key and IV are deterministically derived from the decrypted base key.
  *
  * <p>Thread-safety: reads and writes guard cipher state with dedicated locks ({@code
- * readLock}/{@code writeLock}) so a read and a write may proceed concurrently. Concurrency of the
+ * readLock}/{@code writeLock}) so a read and a writing may proceed concurrently. Concurrency of the
  * actual I/O operations is delegated to the underlying buffer implementation.
  *
  * <p>Persistence: instances can be stored and restored via {@link #storeTo(DataOutputStream)} and
@@ -79,7 +79,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
 
   private transient SecretKey headerEncKey;
   private transient byte[] headerEncIV;
-  private int version;
+  private volatile int version;
 
   private static final long END_MAGIC = 0x2c158a6c7772acd3L;
   private static final int VERSION_AND_MAGIC_LENGTH = 12;
@@ -265,7 +265,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
    * @param length Number of bytes to write.
    * @throws IllegalArgumentException If {@code fileOffset} is negative.
    * @throws IOException If the request crosses the end of the data region, the buffer is closed, or
-   *     the underlying write fails.
+   *     the underlying writing fails.
    */
   @Override
   public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
@@ -308,7 +308,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   }
 
   /**
-   * Closes this buffer and its underlying storage for subsequent I/O.
+   * Closes this buffer and its underlying storage for later I/O.
    *
    * <p>Idempotent. After the first call, further calls to {@link #pread(long, byte[], int, int)}
    * and {@link #pwrite(long, byte[], int, int)} throw {@link IOException}.
@@ -382,7 +382,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
   }
 
   /**
-   * Reads the IV, the encrypted base key, and the MAC from the header, then decrypts the key and
+   * Reads the IV, the encrypted base key, and the MAC from the header, then decrypts the key, and
    * verifies the MAC.
    *
    * @return {@code true} if the MAC verifies; {@code false} otherwise.
@@ -519,7 +519,7 @@ public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBu
     if (underlyingBuffer instanceof Serializable serializable) {
       fields.put(FIELD_UNDERLYING, serializable);
       out.writeFields();
-      // Also write the underlying as a trailing object for compatibility with intermediary
+      // Also, write the underlying as a trailing object for compatibility with intermediary
       // formats and to allow readObject() to restore transient fields via defaultReadObject().
       out.writeObject(serializable);
       return;

@@ -391,6 +391,7 @@ public class SSKInsertSender extends BaseSender
   }
 
   /** Callback used to handle late replies after an Accepted/Rejected timeout. */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class AcceptedRejectedTimeoutCallback
       implements SlowAsyncMessageFilterCallback {
     private final SSKInsertSender sender;
@@ -930,7 +931,7 @@ public class SSKInsertSender extends BaseSender
     finish(ROUTE_NOT_FOUND, null);
   }
 
-  private boolean needPubKey;
+  private volatile boolean needPubKey;
 
   /**
    * Returns {@code true} when the message is {@code FNPSSKAccepted} and caches whether the peer

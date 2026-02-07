@@ -65,7 +65,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
   private final byte[] iv;
   private transient byte[] randomSeed;
   private long dataLength;
-  private boolean readOnly;
+  private volatile boolean readOnly;
   private transient int lastOutputStream;
 
   // No static initialization required
@@ -238,7 +238,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
         synchronized (PaddedEphemerallyEncryptedBucket.this) {
           if (closed) return;
           if (streamNumber != lastOutputStream) {
-            LOG.info("Not padding out to length because have been superceded: {}", getName());
+            LOG.info("Not padding out to length because have been superseded: {}", getName());
             return;
           }
           long finalLength = paddedLength();
@@ -551,7 +551,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
     }
   }
 
-  /* Restores default state and the underlying bucket written by {@link #writeObject}. */
+  /* Restores the default state and the underlying bucket written by {@link #writeObject}. */
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();

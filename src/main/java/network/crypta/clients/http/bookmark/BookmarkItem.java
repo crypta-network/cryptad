@@ -57,7 +57,7 @@ public class BookmarkItem extends Bookmark {
 
   private final BookmarkManager manager;
   private FreenetURI key;
-  private boolean updated;
+  private volatile boolean updated;
   private boolean hasAnActivelink;
   private final BookmarkUpdatedUserAlert alert;
   private final UserAlertManager alerts;
@@ -67,7 +67,7 @@ public class BookmarkItem extends Bookmark {
    * The persisted description value for this bookmark, possibly {@code null}.
    *
    * <p>If the value begins with {@code "l10n:"} (case-insensitive), {@link #getDescription()}
-   * resolves it via {@link NodeL10n}. Callers should prefer the accessor to obtain the effective
+   * resolves it via {@link NodeL10n}. Callers should prefer the accessor to get the effective
    * user-facing text.
    */
   protected String desc;
@@ -76,7 +76,7 @@ public class BookmarkItem extends Bookmark {
    * The persisted short description value for this bookmark, possibly {@code null}.
    *
    * <p>If the value begins with {@code "l10n:"} (case-insensitive), {@link #getShortDescription()}
-   * resolves it via {@link NodeL10n}. Callers should prefer the accessor to obtain the effective
+   * resolves it via {@link NodeL10n}. Callers should prefer the accessor to get the effective
    * user-facing text.
    */
   protected String shortDescription;
@@ -314,7 +314,7 @@ public class BookmarkItem extends Bookmark {
    * Updates the bookmark’s URI and descriptive fields in-place.
    *
    * <p>This method replaces the stored URI, descriptions, and active-link flag. If the new URI is
-   * not a USK, any existing update notification is disabled, because edition tracking is only
+   * not a USK, any existing update notification is disabled because edition tracking is only
    * meaningful for USKs. This method does not persist changes to disk; callers typically update the
    * in-memory object and then trigger persistence via the owning {@link BookmarkManager}.
    *
@@ -459,12 +459,13 @@ public class BookmarkItem extends Bookmark {
    *
    * <p>This method only updates the in-memory state. Callers that need to fully disable update
    * notifications should also ensure the corresponding {@link UserAlert} is unregistered (for
-   * example via user dismissal flows) and that persistence is triggered by the owning {@link
+   * example, via user dismissal flows) and that persistence is triggered by the owning {@link
    * BookmarkManager} if appropriate.
    *
    * <p>If this item is a USK and the alert was previously registered, clearing the flag affects the
-   * alert’s validity check but does not, by itself, force an immediate unregister; the surrounding
-   * alert lifecycle is managed by {@link BookmarkItem} and the {@link UserAlertManager}.
+   * alert’s validity check but does not, by itself, force an immediate unregistering; the
+   * surrounding alert lifecycle is managed by {@link BookmarkItem} and the {@link
+   * UserAlertManager}.
    */
   public void clearUpdated() {
     this.updated = false;

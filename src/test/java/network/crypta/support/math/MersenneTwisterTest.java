@@ -3,8 +3,10 @@ package network.crypta.support.math;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.lang.reflect.Modifier;
 import java.util.stream.Stream;
 import network.crypta.support.Fields;
 import org.junit.jupiter.api.DisplayName;
@@ -324,6 +326,30 @@ class MersenneTwisterTest {
     for (int i = 0; i < SEQ_LEN; i++) {
       assertEquals(sync.nextLong(), unsync.nextLong(), "Mismatch at index " + i);
     }
+  }
+
+  @Test
+  @DisplayName("createUnsynchronized_whenInspectOverrides_expectNonSynchronizedMethods")
+  void createUnsynchronized_whenInspectOverrides_expectNonSynchronizedMethods()
+      throws NoSuchMethodException {
+    // Arrange
+    byte[] seed = Fields.intsToBytes(new int[] {123456789});
+    MersenneTwister unsync = MersenneTwister.createUnsynchronized(seed);
+    Class<?> implementationClass = unsync.getClass();
+
+    // Assert
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("next", int.class).getModifiers()));
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("setSeed", int.class).getModifiers()));
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("setSeed", int[].class).getModifiers()));
+    assertFalse(
+        Modifier.isSynchronized(
+            implementationClass.getDeclaredMethod("setSeed", long.class).getModifiers()));
   }
 
   @Test

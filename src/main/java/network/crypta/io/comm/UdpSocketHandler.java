@@ -53,14 +53,14 @@ public class UdpSocketHandler
 
   /**
    * RNG for debugging, used with {@link #dropProbability}. Not cryptographically secure; do not use
-   * for any security-sensitive purpose.
+   * it for any security-sensitive purpose.
    */
   private final Random dropRandom;
 
   /**
    * If &gt; 0, there is a 1 in {@code dropProbability} chance to drop a packet (debugging only).
    */
-  private int dropProbability;
+  private volatile int dropProbability;
 
   // Cross-layer reference to Node for configuration and scheduling.
   private final Node node;
@@ -169,8 +169,8 @@ public class UdpSocketHandler
    *
    * @param listenPort Local UDP port to bind.
    * @param bindToAddress Local address to bind.
-   * @param node Owning node used for configuration, scheduling, and randomness.
-   * @param startupTime Milliseconds timestamp to mark the beginning of send tracking.
+   * @param node The owning node used for configuration, scheduling, and randomness.
+   * @param startupTime Milliseconds timestamp to mark the beginning of sending tracking.
    * @param title Human-readable label for diagnostics.
    * @param ioStatistics Collector that receives per-address byte counters.
    * @throws IOException If the channel cannot be opened, configured, or bound.
@@ -232,7 +232,7 @@ public class UdpSocketHandler
    * Sets the low-level filter used to process received packets.
    *
    * <p>Must be called before {@link #start()} (or any call that triggers {@link #run()}); otherwise
-   * the receive path will dereference a {@code null} filter and fail.
+   * the receiving path will dereference a {@code null} filter and fail.
    *
    * @param f The filter that decodes/dispatches incoming packets.
    */
@@ -262,7 +262,7 @@ public class UdpSocketHandler
   /**
    * Main receive loop. Continues to read from the channel and dispatch packets while active.
    *
-   * <p>All unexpected throwables are logged with memory information to aid diagnostics.
+   * <p>All unexpected throwable are logged with memory information to aid diagnostics.
    */
   @Override
   public void run() { // Listen for packets
@@ -371,44 +371,75 @@ public class UdpSocketHandler
    *
    * @param blockToSend The UDP payload to transmit.
    * @param destination The peer target (address/port).
-   * @param allowLocalAddresses Whether local/private addresses are permitted for this send.
+   * @param allowLocalAddresses Whether local/private addresses are permitted for this sending.
    * @throws LocalAddressException If local addresses are disallowed and the peer resolves to one.
    */
   @Override
   public void sendPacket(byte[] blockToSend, Peer destination, boolean allowLocalAddresses)
       throws LocalAddressException {
-    if (!active) {
-      if (node.isStopping()) {
-        if (LOG.isDebugEnabled()) LOG.debug("Trying to send packet but no longer active");
-      } else {
-        LOG.error("Trying to send packet but no longer active");
-      }
-      // Do not send during shutdown to keep AddressTracker data accurate.
-      return;
+    if (isInactiveForSend()) return;
+
+    int port = destination.getPort();
+    InetAddress address = resolveSendAddress(destination, allowLocalAddresses, port);
+    if (address == null) return;
+
+    if (shouldDropPacket(destination)) return;
+
+    sendResolvedPacket(blockToSend, destination, address, port);
+  }
+
+  private boolean isInactiveForSend() {
+    if (active) {
+      return false;
+    }
+    if (node.isStopping()) {
+      if (LOG.isDebugEnabled()) LOG.debug("Trying to send packet but no longer active");
+    } else {
+      LOG.error("Trying to send packet but no longer active");
+    }
+    // Do not send it during shutdown to keep AddressTracker data accurate.
+    return true;
+  }
+
+  private InetAddress resolveSendAddress(Peer destination, boolean allowLocalAddresses, int port)
+      throws LocalAddressException {
+    // Address should be pre-resolved; fall back to resolution and log if we must.
+    InetAddress address = destination.getAddress(false, allowLocalAddresses);
+    if (address != null) {
+      return address;
     }
 
+    LOG.error(
+        "Tried sending to destination without pre-looked up IP address(needs a real"
+            + " Peer.getHostname()): null:{}",
+        port,
+        new Exception("error"));
+
+    InetAddress resolvedAddress = destination.getAddress(true, allowLocalAddresses);
+    if (resolvedAddress != null) {
+      return resolvedAddress;
+    }
+
+    LOG.error("Tried sending to bad destination address: null:{}", port, new Exception("error"));
+    return null;
+  }
+
+  private boolean shouldDropPacket(Peer destination) {
+    int currentDropProbability = dropProbability;
+    if (currentDropProbability <= 0) {
+      return false;
+    }
+    if (dropRandom.nextInt(currentDropProbability) != 0) {
+      return false;
+    }
+
+    LOG.info("DROPPED: {} -> {}", localAddress.getPort(), destination.getPort());
+    return true;
+  }
+
+  private void sendResolvedPacket(
+      byte[] blockToSend, Peer destination, InetAddress address, int port) {
     ByteBuffer packet = ByteBuffer.wrap(blockToSend);
-    int port = destination.getPort();
-    InetAddress address;
-    // Address should be pre-resolved; fall back to resolution and log if we must.
-    if ((address = destination.getAddress(false, allowLocalAddresses)) == null) {
-      LOG.error(
-          "Tried sending to destination without pre-looked up IP address(needs a real"
-              + " Peer.getHostname()): null:{}",
-          destination.getPort(),
-          new Exception("error"));
-      if ((address = destination.getAddress(true, allowLocalAddresses)) == null) {
-        LOG.error(
-            "Tried sending to bad destination address: null:{}",
-            destination.getPort(),
-            new Exception("error"));
-        return;
-      }
-    }
-    if (dropProbability > 0 && dropRandom.nextInt(dropProbability) == 0) {
-      LOG.info("DROPPED: {} -> {}", localAddress.getPort(), destination.getPort());
-      return;
-    }
 
     try {
       datagramChannel.send(packet, new InetSocketAddress(address, port));
@@ -418,12 +449,16 @@ public class UdpSocketHandler
         LOG.debug("Sent packet length {} to {}:{}", blockToSend.length, address, port);
       }
     } catch (IOException | UnsupportedAddressTypeException e) {
-      if (address instanceof Inet6Address) {
-        LOG.info("Error while sending packet to IPv6 address: {}: {}", destination, e, e);
-      } else {
-        LOG.error("Error while sending packet to {}: {}", destination, e, e);
-      }
+      logSendFailure(destination, address, e);
     }
+  }
+
+  private void logSendFailure(Peer destination, InetAddress address, Exception e) {
+    if (address instanceof Inet6Address) {
+      LOG.info("Error while sending packet to IPv6 address: {}: {}", destination, e, e);
+      return;
+    }
+    LOG.error("Error while sending packet to {}: {}", destination, e, e);
   }
 
   // CompuServe use 1400 MTU; AOL claim 1450; DFN@home use 1448.
@@ -469,9 +504,14 @@ public class UdpSocketHandler
 
   /** Recalculate the maximum packet size (internal helper). */
   int innerCalculateMaxPacketSize() { // Note: consider passing a peerNode and doing per-peer sizing
+    // on
     // a per-peer basis? How? PMTU would require JNI, although it
     // might be worth it...
     final int minAdvertisedMTU = node.getMinimumMTU();
+    if (minAdvertisedMTU < MIN_MTU && LOG.isDebugEnabled()) {
+      LOG.debug(
+          "Configured minimum MTU {} is below conservative minimum {}", minAdvertisedMTU, MIN_MTU);
+    }
     maxPacketSize = Math.min(MAX_ALLOWED_MTU, minAdvertisedMTU) - UDP_HEADERS_LENGTH;
     return maxPacketSize;
   }
@@ -486,7 +526,7 @@ public class UdpSocketHandler
     return getMaxPacketSize() - 100;
   }
 
-  /** Starts the receive loop on the node executor. No-op if already inactive. */
+  /** Starts the receiving loop on the node executor. No-op if already inactive. */
   public void start() {
     if (!active) return;
     synchronized (this) {
@@ -536,8 +576,8 @@ public class UdpSocketHandler
   /**
    * Sets the debug drop probability.
    *
-   * @param dropProbability A value {@code N >= 0}. When {@code N > 0}, each send has a 1/N chance
-   *     to be dropped locally for testing.
+   * @param dropProbability A value {@code N >= 0}. When {@code N > 0}, each sending has a 1/N
+   *     chance to be dropped locally for testing.
    */
   public void setDropProbability(int dropProbability) {
     this.dropProbability = dropProbability;
@@ -559,7 +599,7 @@ public class UdpSocketHandler
   }
 
   /**
-   * Returns the assumed UDP/IP header length when address family is unknown.
+   * Returns the assumed UDP/IP header length when the address family is unknown.
    *
    * @return Header length in bytes (defaults to IPv6 size).
    */

@@ -4,6 +4,7 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.crypt.CryptFormatException;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.io.comm.AsyncMessageCallback;
@@ -270,12 +271,12 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     starting = true;
     // While in no-cache mode, do not decrement HTL on certain control responses (e.g.,
     // RejectedLoop). Cap the number of such failures before declaring ROUTE_NOT_FOUND.
-    highHTLFailureCount = 0;
+    highHTLFailureCount.set(0);
     routeRequests();
   }
 
-  private boolean starting;
-  private int highHTLFailureCount = 0;
+  private volatile boolean starting;
+  private final AtomicInteger highHTLFailureCount = new AtomicInteger();
   private boolean killedByRecentlyFailed = false;
 
   /**
@@ -365,13 +366,13 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     }
     // See notes on when to decrement HTL in the original code.
     if (!starting && !canWriteStorePrev) {
-      if (highHTLFailureCount++ >= MAX_HIGH_HTL_FAILURES) {
+      if (highHTLFailureCount.getAndIncrement() >= MAX_HIGH_HTL_FAILURES) {
         if (LOG.isDebugEnabled()) LOG.debug("Too many failures at non-cacheable HTL");
         finish(ROUTE_NOT_FOUND, null, false);
         return true;
       }
       if (LOG.isDebugEnabled())
-        LOG.debug("Allowing failure {} htl is still {}", highHTLFailureCount, htl);
+        LOG.debug("Allowing failure {} htl is still {}", highHTLFailureCount.get(), htl);
       return false;
     }
     // Decrement at this point so we can DNF immediately on reaching HTL 0.

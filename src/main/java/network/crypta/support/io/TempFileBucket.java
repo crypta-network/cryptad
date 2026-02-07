@@ -56,7 +56,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
   protected transient FilenameGenerator generator;
 
   /** When {@code true}, write operations are disallowed. */
-  private boolean readOnly;
+  private volatile boolean readOnly;
 
   /** Whether {@link #free()} deletes the backing file. */
   private final boolean deleteOnFree;

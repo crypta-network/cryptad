@@ -148,8 +148,8 @@ public final class NodeStorageSubsystem {
   private String storeType;
 
   private boolean storeUseSlotFilters;
-  private boolean storeSaltHashResizeOnStart;
-  private int storeSaltHashSlotFilterPersistenceTime;
+  private volatile boolean storeSaltHashResizeOnStart;
+  private volatile int storeSaltHashSlotFilterPersistenceTime;
 
   /** The maximum number of keys stored in each of the datastores, cache and store combined. */
   private volatile long maxTotalKeys;
@@ -180,9 +180,9 @@ public final class NodeStorageSubsystem {
   private String clientCacheType;
 
   /** Client cache could not be opened, so is a RAMFS until the correct password is entered */
-  private boolean clientCacheAwaitingPassword;
+  private volatile boolean clientCacheAwaitingPassword;
 
-  private boolean databaseAwaitingPassword;
+  private volatile boolean databaseAwaitingPassword;
 
   /** Client caches maximum cached keys for each type */
   private volatile long maxClientCacheKeys;
@@ -211,7 +211,7 @@ public final class NodeStorageSubsystem {
   /** Slashdot cache sizing. */
   private volatile long maxSlashdotCacheSize;
 
-  private int maxSlashdotCacheKeys;
+  private volatile int maxSlashdotCacheKeys;
 
   private CHKStore chkSlashdotcache;
   private SlashdotStore<CHKBlock> chkSlashdotcacheStore;
@@ -220,14 +220,14 @@ public final class NodeStorageSubsystem {
   private PubkeyStore pubKeySlashdotcache;
   private SlashdotStore<DSAPublicKey> pubKeySlashdotcacheStore;
 
-  private boolean useSlashdotCache;
-  private boolean writeLocalToDatastore;
+  private volatile boolean useSlashdotCache;
+  private volatile boolean writeLocalToDatastore;
 
   private volatile long cachingFreenetStoreMaxSize;
   private volatile long cachingFreenetStorePeriod;
   private CachingFreenetStoreTracker cachingFreenetStoreTracker;
 
-  private boolean storePreallocate;
+  private volatile boolean storePreallocate;
 
   public NodeStorageSubsystem(Node node) {
     this.node = node;

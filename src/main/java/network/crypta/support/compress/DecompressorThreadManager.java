@@ -235,7 +235,7 @@ public class DecompressorThreadManager {
     final DecompressorThreadManager manager;
 
     /** Whether this thread should signal the manager that decompression has finished */
-    boolean isLast = false;
+    volatile boolean isLast = false;
 
     public DecompressorThread(
         Compressor compressor,

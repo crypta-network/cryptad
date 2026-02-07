@@ -27,11 +27,11 @@ import network.crypta.support.io.ArrayBucketFactory;
  *
  * <p>This subsystem is a lightweight coordinator used during node startup and runtime to connect
  * service implementations to the {@link Node} lifecycle. Callers typically construct it once from
- * the node, then invoke initialization methods as each dependency becomes available (for example,
- * start the web interface after configuration is loaded, attach the updater and diagnostics once
- * network services exist, and register user alerts after the client core is ready). Most fields are
- * nullable until set, and the class intentionally performs null checks so callers can wire it in
- * stages without complex ordering constraints.
+ * the node, then initialize it in stages as dependencies become available. For example, start the
+ * web interface after the configuration is loaded. Attach the updater and diagnostics once network
+ * services exist. Register user alerts after the client core is ready. Most fields are nullable
+ * until set, and the class intentionally performs null checks so callers can wire it in stages
+ * without complex ordering constraints.
  *
  * <p>The class is mutable and not thread-safe by itself; it relies on the node's startup sequence
  * to serialize most interactions. The only synchronized method is the time-skew alert registration
@@ -59,9 +59,9 @@ public final class NodeServicesSubsystem {
   private network.crypta.pluginmanager.PluginManager pluginManager;
   private network.crypta.node.SecurityLevels securityLevels;
   private MeaningfulNodeNameUserAlert nodeNameUserAlert;
-  private boolean showFriendsVisibilityAlert;
+  private volatile boolean showFriendsVisibilityAlert;
   private UserAlert visibilityAlert;
-  private boolean peersOffersDismissed;
+  private volatile boolean peersOffersDismissed;
   private TimeSkewDetectedUserAlert timeSkewDetectedUserAlert;
 
   /**
@@ -105,7 +105,7 @@ public final class NodeServicesSubsystem {
   }
 
   /**
-   * Returns the current FProxy toadlet server instance, if one has been started.
+   * Returns the current FProxy toadlet server instance if one has been started.
    *
    * <p>The reference is assigned by {@link #startWebInterface(PersistentConfig,
    * PriorityAwareExecutor)} and remains {@code null} until that method succeeds. Callers should
@@ -276,7 +276,7 @@ public final class NodeServicesSubsystem {
    * Returns the configured security levels instance.
    *
    * <p>The returned reference is {@code null} until {@link #setSecurityLevels} is invoked. Treat
-   * the returned instance as shared, mutable configuration owned by the node. It may be {@code
+   * the returned instance as a shared, mutable configuration owned by the node. It may be {@code
    * null} until security levels are initialized.
    *
    * @return the current security levels instance, or {@code null} if not initialized.
@@ -301,8 +301,8 @@ public final class NodeServicesSubsystem {
    * Returns the cached "meaningful node name" user alert.
    *
    * <p>The alert is created by {@link #initNodeNameUserAlert()} and remains {@code null} until that
-   * method is called. The returned alert should be treated as node-owned state. Callers should not
-   * mutate it directly unless they control alert registration elsewhere.
+   * method is called. The returned alert should be treated as a node-owned state. Callers should
+   * not mutate it directly unless they control alert registration elsewhere.
    *
    * @return the node-name alert instance, or {@code null} if not initialized.
    */
@@ -343,10 +343,10 @@ public final class NodeServicesSubsystem {
    * Registers an alert if the current JVM version is end-of-life.
    *
    * <p>If the client core has not been set, this method returns immediately. Otherwise, it checks
-   * {@link JVMVersion#isEOL()} and, when the JVM is end-of-life, registers a {@link
+   * {@link JVMVersion#isEOL()} and, when the JVM is an end-of-life, registers a {@link
    * JVMVersionAlert} with the alert manager. The method is idempotent for alert registration as
-   * long as the manager handles duplicate alerts in a stable way. It performs no work when the JVM
-   * is not end-of-life.
+   * long as the manager handles duplicate alerts stably. It performs no work when the JVM is not
+   * end-of-life.
    */
   public void registerJvmVersionAlertIfNeeded() {
     if (clientCore == null) return;
@@ -361,7 +361,7 @@ public final class NodeServicesSubsystem {
    * <p>If the client core is not set, this method is a no-op. Otherwise, it registers a new {@link
    * NotEnoughNiceLevelsUserAlert} with the alert manager. This method performs no additional
    * checks; it simply surfaces the warning when called by the node startup logic. Repeated calls
-   * register multiple alerts if the manager does not de-duplicate them.
+   * register multiple alerts if the manager does not deduplicate them.
    */
   public void registerNotEnoughNiceLevelsAlert() {
     if (clientCore == null) return;
@@ -398,7 +398,7 @@ public final class NodeServicesSubsystem {
    *
    * <p>This method uses the current storage location to include the absolute master keys path in
    * the localized message. If the client core is unset, it returns immediately. The alert is marked
-   * as critical, reflecting the security impact of leaving sensitive material on disk. When the
+   * as critical, reflecting the security impact of leaving sensitive material on the disk. When the
    * file path is unavailable, the message uses an empty replacement value.
    */
   public void registerCantDeletePasswordFileAlert() {
@@ -422,7 +422,7 @@ public final class NodeServicesSubsystem {
    *
    * <p>This method registers a boolean option that toggles whether peer-offer alerts are dismissed.
    * The callback updates the in-memory flag and registers or unregisters alerts accordingly. It
-   * should be called during configuration initialization so the persisted flag is restored and
+   * should be called during configuration initialization, so the persisted flag is restored and the
    * alert state is consistent with user preferences. The client core must already be set because
    * the callback interacts with the alert manager.
    *

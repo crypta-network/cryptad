@@ -135,7 +135,7 @@ public class RequestHandler
   /** Active {@link RequestSender} for this UID, or {@code null} if not yet created. */
   private RequestSender rs;
 
-  private int status = RequestSender.NOT_FINISHED;
+  private volatile int status = RequestSender.NOT_FINISHED;
   private boolean appliedByteCounts = false;
   private boolean sentRejectedOverload = false;
   private long searchStartTime;

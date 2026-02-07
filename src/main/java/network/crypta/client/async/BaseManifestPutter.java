@@ -982,10 +982,10 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   // Code will need to be changed if we have index/index.html or similar.
 
   /** if true, top level metadata is a container */
-  private boolean containerMode = false;
+  private volatile boolean containerMode = false;
 
   /** if true, top level metadata is a single chunk */
-  private boolean freeformMode = false;
+  private volatile boolean freeformMode = false;
 
   /* common stuff, fields used in freeform and container mode */
   /** put is finalized if empty */

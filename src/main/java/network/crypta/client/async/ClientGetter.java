@@ -148,7 +148,7 @@ public class ClientGetter extends BaseClientGetter
   private volatile long expectedSize;
 
   /** If true, the metadata (mostly the expected size) shouldn't change further. */
-  private boolean finalizedMetadata;
+  private volatile boolean finalizedMetadata;
 
   /** Callback to spy on the metadata at each stage of the request */
   private transient SnoopMetadata snoopMeta;
@@ -170,7 +170,7 @@ public class ClientGetter extends BaseClientGetter
    */
   final String forceCompatibleExtension;
 
-  private transient boolean resumedFetcher;
+  private transient volatile boolean resumedFetcher;
 
   // Constructors.
 
@@ -1305,13 +1305,13 @@ public class ClientGetter extends BaseClientGetter
    * Expected number of final blocks required to complete the top‑level splitfile. Set when the
    * top‑level block layout becomes known and remains unchanged thereafter.
    */
-  private int finalBlocksRequired;
+  private volatile int finalBlocksRequired;
 
   /**
    * Total number of final blocks in the top‑level splitfile. This is used with {@link
    * #finalBlocksRequired} to report progress.
    */
-  private int finalBlocksTotal;
+  private volatile int finalBlocksTotal;
 
   @Override
   public void onExpectedTopSize(

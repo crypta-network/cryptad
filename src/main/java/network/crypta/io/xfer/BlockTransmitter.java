@@ -82,7 +82,7 @@ public class BlockTransmitter {
 
   final MessageCore messageCore;
   final PeerContext destination;
-  private boolean sentSendAborted;
+  private volatile boolean sentSendAborted;
   final long uid;
   private final boolean realTime;
   final PartiallyReceivedBlock prb;
@@ -123,10 +123,10 @@ public class BlockTransmitter {
   private boolean receivedSendSuccess;
 
   /** Have we completed i.e., called the callback? */
-  private boolean completed;
+  private volatile boolean completed;
 
   /** Have we failed e.g., due to PRB abort, disconnection? */
-  private boolean failed;
+  private volatile boolean failed;
 
   static int runningBlockTransmits = 0;
 
