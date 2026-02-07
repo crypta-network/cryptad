@@ -211,8 +211,8 @@ class ClientRequestSelectorTest {
     }
 
     @Override
-    public synchronized void onHasKeys() {
-      notifyAll();
+    public void onHasKeys() {
+      // Ignore.
     }
 
     @Override
@@ -424,7 +424,7 @@ class ClientRequestSelectorTest {
     ChosenBlock block = selector.maybeMakeChosenRequest(ins, ctx, System.currentTimeMillis());
     assertNotNull(block);
     assertSame(token, block.token);
-    assertNull(block.key); // inserts don't expose low-level key here
+    assertNull(block.key); // inserts don't expose the low-level key here
     assertNull(block.ckey);
     assertTrue(block.localRequestOnly);
     assertFalse(block.ignoreStore); // inserts set ignoreStore=false
@@ -538,7 +538,7 @@ class ClientRequestSelectorTest {
     when(offered.realTimeFlag()).thenReturn(true);
 
     RandomSource random = mock(RandomSource.class);
-    when(random.nextBoolean()).thenReturn(true); // choose offered keys path
+    when(random.nextBoolean()).thenReturn(true); // choose an offered keys path
 
     ClientRequestSelector.SelectorReturn ret =
         selector.chooseRequestInner(

@@ -57,6 +57,7 @@ public class PacketSender implements Runnable {
   long lastReceivedPacketFromAnyNode;
   private final Random localRandom;
   private volatile boolean stopping;
+  private boolean wakeUpRequested;
 
   public PacketSender(Node node) {
     this.node = node;
@@ -132,7 +133,7 @@ public class PacketSender implements Runnable {
    * continues on unexpected {@link Throwable}s so the thread remains alive.
    */
   @Override
-  @SuppressWarnings({"java:S2189", "java:S1181", "InfiniteLoopStatement"})
+  @SuppressWarnings({"java:S2189", "java:S1181"})
   public void run() {
     if (LOG.isDebugEnabled()) LOG.debug("In PacketSender.run()");
 
@@ -483,12 +484,15 @@ public class PacketSender implements Runnable {
       synchronized (this) {
         long remaining;
         try {
-          while ((remaining = deadline - System.currentTimeMillis()) > 0) {
+          while (!wakeUpRequested
+              && !stopping
+              && (remaining = deadline - System.currentTimeMillis()) > 0) {
             wait(remaining);
           }
         } catch (InterruptedException _) {
           // Swallow to treat interrupt as a wake-up without latching the flag.
         }
+        wakeUpRequested = false;
       }
     } else {
       if (LOG.isTraceEnabled())
@@ -505,6 +509,7 @@ public class PacketSender implements Runnable {
   void wakeUp() {
     // Wake up if needed
     synchronized (this) {
+      wakeUpRequested = true;
       notifyAll();
     }
   }

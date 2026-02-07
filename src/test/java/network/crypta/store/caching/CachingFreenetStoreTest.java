@@ -1305,8 +1305,12 @@ class CachingFreenetStoreTest {
 
     public void waitForZero() throws InterruptedException {
       synchronized (sync) {
+        long observedPushGeneration = pushGeneration;
         while (getSizeOfCache() > 0) {
-          sync.wait();
+          while (getSizeOfCache() > 0 && observedPushGeneration == pushGeneration) {
+            sync.wait();
+          }
+          observedPushGeneration = pushGeneration;
         }
       }
     }
@@ -1315,12 +1319,14 @@ class CachingFreenetStoreTest {
     void pushAllCachingStores() {
       super.pushAllCachingStores();
       synchronized (sync) {
+        pushGeneration++;
         sync.notifyAll();
       }
     }
 
     /* Don't reuse (this), avoid changing locking behavior of the parent class */
     private final Object sync = new Object();
+    private long pushGeneration;
   }
 
   private static final File TEMP_DIR = new File("tmp-CachingFreenetStoreTest");
@@ -1360,6 +1366,7 @@ class CachingFreenetStoreTest {
     }
 
     @Override
+    @SuppressWarnings("RedundantMethodOverride")
     public boolean equals(Object other) {
       return this == other;
     }
