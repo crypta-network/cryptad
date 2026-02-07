@@ -55,6 +55,7 @@ public class ContentFilter {
 
   // Use a concurrent map to avoid a legacy synchronized Hashtable
   static final ConcurrentMap<String, FilterMIMEType> mimeTypesByName = new ConcurrentHashMap<>();
+  private static final Object MIME_TYPES_REGISTRATION_LOCK = new Object();
 
   /** The HTML mime types are defined here to allow other modules to identify it */
   protected static final String[] HTML_MIME_TYPES =
@@ -288,7 +289,7 @@ public class ContentFilter {
    *     not be {@code null}
    */
   public static void register(FilterMIMEType mimeType) {
-    synchronized (mimeTypesByName) {
+    synchronized (MIME_TYPES_REGISTRATION_LOCK) {
       mimeTypesByName.put(mimeType.primaryMimeType, mimeType);
       String[] alt = mimeType.alternateMimeTypes;
       if (alt != null) {
