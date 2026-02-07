@@ -87,13 +87,28 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    *     actually delete temporary files on exit, subclasses must also return {@code true} from
    *     {@link #deleteOnExit()} so temporary files created by this class are registered too.
    * @throws NullPointerException if {@code file} is {@code null}
-   * @throws AssertionError if subclass contracts {@link #createFileOnly()} and {@link
-   *     #tempFileAlreadyExists()} are inconsistent
    */
+  @SuppressWarnings("unused")
   protected BaseFileBucket(File file, boolean deleteOnExit) {
+    this(file, deleteOnExit, false, false);
+  }
+
+  /**
+   * Constructs a new bucket and validates file-mode invariants without invoking subclass methods.
+   *
+   * @param file target file; must be non-null
+   * @param deleteOnExit when {@code true}, registers the file with {@link File#deleteOnExit()}
+   * @param createFileOnly whether writes must fail when the target file already exists
+   * @param tempFileAlreadyExists whether writes operate directly on an existing temporary file
+   * @throws NullPointerException if {@code file} is {@code null}
+   * @throws AssertionError if {@code createFileOnly} and {@code tempFileAlreadyExists} are both
+   *     {@code true}
+   */
+  protected BaseFileBucket(
+      File file, boolean deleteOnExit, boolean createFileOnly, boolean tempFileAlreadyExists) {
     if (file == null) throw new NullPointerException();
     maybeSetDeleteOnExit(deleteOnExit, file);
-    assert !(createFileOnly() && tempFileAlreadyExists()); // Mutually incompatible!
+    assert !(createFileOnly && tempFileAlreadyExists); // Mutually incompatible!
   }
 
   /** Default constructor for deserialization frameworks. */
