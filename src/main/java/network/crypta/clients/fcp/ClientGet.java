@@ -1162,34 +1162,6 @@ public class ClientGet extends ClientRequest {
     ClientGetPersistenceCodec.writeClientDetail(this, dos, checker);
   }
 
-  /**
-   * Recreates a {@link ClientGet} from serialized persistent storage.
-   *
-   * <p>This factory method is used during startup to restore previously persisted requests. It
-   * validates the serialized header, rebuilds the {@link FetchContext}, restores progress state,
-   * and reconstructs the underlying {@link ClientGetter} where possible. If the stored data is
-   * incomplete or inconsistent, it throws a {@link ResumeFailedException} to signal that the
-   * request should restart rather than trust corrupted state.
-   *
-   * <p>The returned request is fully initialized and ready to re-register with queues.
-   *
-   * @param dis input stream positioned at the serialized client detail block.
-   * @param reqID identifier tuple describing the owner and reference type.
-   * @param context client context supplying factories used during restoration.
-   * @param checker checksum helper verifying the integrity of embedded buckets.
-   * @return fully reconstructed {@link ClientRequest} instance ready for registration and
-   *     resumption.
-   * @throws StorageFormatException when serialized data fails validation or version checks.
-   * @throws IOException when stream IO fails while reading buckets or metadata.
-   * @throws ResumeFailedException when the request must restart due to inconsistencies.
-   */
-  @SuppressWarnings("unused")
-  public static ClientRequest restartFrom(
-      DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
-      throws StorageFormatException, IOException, ResumeFailedException {
-    return ClientGetPersistenceCodec.restartFrom(dis, reqID, context, checker);
-  }
-
   ClientGet(
       DataInputStream dis, RequestIdentifier reqID, ClientContext context, ChecksumChecker checker)
       throws IOException, StorageFormatException, ResumeFailedException {

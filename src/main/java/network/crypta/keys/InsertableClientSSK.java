@@ -107,7 +107,7 @@ public class InsertableClientSSK extends ClientSSK {
    *     key, wrong type, or invalid extras), or if key material is malformed
    */
   public static InsertableClientSSK create(FreenetURI uri) throws MalformedURLException {
-    if (uri.getKeyType().equalsIgnoreCase("KSK")) return ClientKSK.create(uri);
+    if (uri.getKeyType().equalsIgnoreCase("KSK")) return ClientKSK.fromUri(uri);
 
     if (uri.getRoutingKey() == null)
       throw new MalformedURLException("Insertable SSK URIs must have a private key!: " + uri);

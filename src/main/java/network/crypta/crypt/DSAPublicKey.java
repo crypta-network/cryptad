@@ -98,7 +98,7 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
    * @throws IllegalArgumentException if the parsed {@code y} is not in {@code [1, p)}.
    */
   public DSAPublicKey(InputStream is) throws IOException, CryptFormatException {
-    DSAGroup g = (DSAGroup) DSAGroup.read(is);
+    DSAGroup g = (DSAGroup) DSAGroup.readKey(is);
     if (Global.DSAgroupBigA.equals(g)) g = null;
     group = g;
     y = Util.readMPI(is);
@@ -212,7 +212,7 @@ public class DSAPublicKey extends CryptoKey implements StorableBlock {
    * @throws IOException on I/O errors.
    * @throws CryptFormatException if the input is malformed.
    */
-  public static CryptoKey read(InputStream i) throws IOException, CryptFormatException {
+  public static CryptoKey readKey(InputStream i) throws IOException, CryptFormatException {
     return new DSAPublicKey(i);
   }
 

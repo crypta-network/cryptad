@@ -157,7 +157,7 @@ class DSAGroupTest {
     Util.writeMPI(bigA.getG(), bos);
     ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
 
-    CryptoKey parsed = DSAGroup.read(bis);
+    CryptoKey parsed = DSAGroup.readKey(bis);
     assertSame(bigA, parsed, "Expected canonical Global.DSAgroupBigA instance");
   }
 
@@ -167,7 +167,7 @@ class DSAGroupTest {
     byte[] mpiZero = Util.mpiBytes(BigInteger.ZERO);
     byte[] threeZeros = concat(mpiZero, mpiZero, mpiZero);
     ByteArrayInputStream bis = new ByteArrayInputStream(threeZeros);
-    assertThrows(CryptFormatException.class, () -> DSAGroup.read(bis));
+    assertThrows(CryptFormatException.class, () -> DSAGroup.readKey(bis));
   }
 
   @Test

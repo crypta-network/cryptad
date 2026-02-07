@@ -82,7 +82,7 @@ class DSAPublicKeyTest {
   void read_staticMethod_readsFromStream() throws IOException, CryptFormatException {
     DSAPublicKey original = new DSAPublicKey(GROUP, BigInteger.valueOf(3));
     ByteArrayInputStream in = new ByteArrayInputStream(original.asBytes());
-    CryptoKey parsed = DSAPublicKey.read(in);
+    CryptoKey parsed = DSAPublicKey.readKey(in);
     assertInstanceOf(DSAPublicKey.class, parsed);
     assertTrue(original.equals((DSAPublicKey) parsed));
   }

@@ -57,7 +57,7 @@ public class DSAGroup extends CryptoKey {
    * No‑arg constructor for Java serialization frameworks.
    *
    * <p>Not intended for direct use. Regular code should build instances via {@link
-   * #DSAGroup(BigInteger, BigInteger, BigInteger)} or parse with {@link #read(InputStream)}.
+   * #DSAGroup(BigInteger, BigInteger, BigInteger)} or parse with {@link #readKey(InputStream)}.
    */
   protected DSAGroup() {
     p = null;
@@ -77,7 +77,7 @@ public class DSAGroup extends CryptoKey {
    * @throws IOException if the stream cannot be read
    * @throws CryptFormatException if the values are syntactically valid but form an invalid group
    */
-  public static CryptoKey read(InputStream i) throws IOException, CryptFormatException {
+  public static CryptoKey readKey(InputStream i) throws IOException, CryptFormatException {
     BigInteger p;
     BigInteger q;
     BigInteger g;

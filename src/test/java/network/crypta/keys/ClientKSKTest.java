@@ -113,7 +113,7 @@ class ClientKSKTest {
     FreenetURI uriWithMeta = new FreenetURI("KSK@" + raw + "/meta1/meta2");
 
     // Act
-    InsertableClientSSK fromUri = ClientKSK.create(uriWithMeta);
+    InsertableClientSSK fromUri = ClientKSK.fromUri(uriWithMeta);
     // For KSK, the docName is the first path segment after '@'
     String expectedDocName = uriWithMeta.getDocName();
     assertNotNull(expectedDocName);
@@ -132,6 +132,6 @@ class ClientKSKTest {
     FreenetURI chk = new FreenetURI("CHK", null, rkey, ckey, null);
 
     // Act / Assert
-    assertThrows(IllegalArgumentException.class, () -> ClientKSK.create(chk));
+    assertThrows(IllegalArgumentException.class, () -> ClientKSK.fromUri(chk));
   }
 }
