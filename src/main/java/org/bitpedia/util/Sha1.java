@@ -46,7 +46,7 @@ import java.security.NoSuchAlgorithmException;
  * @see MessageDigest
  */
 @SuppressWarnings("java:S2257")
-public final class Sha1 extends MessageDigest {
+public final class Sha1 extends MessageDigest implements Cloneable {
 
   /** SHA-1 digest length in bytes. */
   public static final int HASH_LENGTH = 20; // bytes == 160 bits
