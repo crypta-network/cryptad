@@ -382,10 +382,13 @@ public class NodeStarter implements WrapperListener {
   public static synchronized SecureRandom getGlobalSecureRandom() {
     if (globalSecureRandom == null) {
       globalSecureRandom = new SecureRandom();
-      globalSecureRandom.nextBytes(
-          new byte[16]); // Force it to seed itself so it blocks now, not later.
+      forceSecureRandomSeeding(globalSecureRandom);
     }
     return globalSecureRandom;
+  }
+
+  private static void forceSecureRandomSeeding(SecureRandom secureRandom) {
+    secureRandom.nextBytes(new byte[16]); // Force it to seed itself so it blocks now, not later.
   }
 
   /**
