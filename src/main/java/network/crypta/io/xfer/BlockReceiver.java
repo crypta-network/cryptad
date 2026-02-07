@@ -202,9 +202,10 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
 
           boolean truncateTimeout = false;
           if (isPacketTransmit(m1)) {
-            Boolean res = handlePacketTransmit(m1);
-            if (res == null) return; // completed inside
-            truncateTimeout = res;
+            truncateTimeout = handlePacketTransmit(m1);
+            synchronized (BlockReceiver.this) {
+              if (completed) return;
+            }
           } else if (isAllSent(m1)) {
             truncateTimeout = handleAllSent();
             synchronized (BlockReceiver.this) {
@@ -245,14 +246,13 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
           complete(m.getInt(DMT.REASON), desc);
         }
 
-        @SuppressWarnings("java:S2447")
-        private Boolean handlePacketTransmit(Message m) {
+        private boolean handlePacketTransmit(Message m) {
           int packetNo = m.getInt(DMT.PACKET_NO);
           BitArray sent = (BitArray) m.getObject(DMT.SENT);
           Buffer data = (Buffer) m.getObject(DMT.DATA);
           try {
             synchronized (BlockReceiver.this) {
-              if (completed) return null;
+              if (completed) return false;
             }
             if (CHECK_DUPES && prb.isReceived(packetNo)) {
               LOG.error(
@@ -260,17 +260,17 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
                   this,
                   uid,
                   sender);
-              return Boolean.TRUE; // truncate timeout, don't extend
+              return true; // truncate timeout, don't extend
             }
 
             prb.addPacket(packetNo, data);
             if (LOG.isDebugEnabled()) logPacketInterval();
             if (LOG.isDebugEnabled()) logMissingSentButNotReceived(sent);
-            return Boolean.FALSE;
+            return false;
           } catch (AbortedException e) {
             LOG.error("Receiver aborted while handling packet transmit: {}", e, e);
             complete(RetrievalException.UNKNOWN, LOG_ABORTED_QUESTION);
-            return null; // stop further processing
+            return false;
           }
         }
 
