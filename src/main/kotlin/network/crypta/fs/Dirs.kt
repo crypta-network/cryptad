@@ -114,13 +114,18 @@ private fun computeStandardXdgRuntime(
         .resolve(appId)
         .resolve(APP_RUNTIME_SUBPATH)
     }
-    xdgRuntime != null -> xdgRuntime.resolve(APP_RUNTIME_SUBPATH)
+
+    xdgRuntime != null -> {
+      xdgRuntime.resolve(APP_RUNTIME_SUBPATH)
+    }
+
     else -> {
       val uidBased =
         Paths.get(LINUX_RUN_USER_PREFIX)
           .resolve(System.getProperty("user.name") ?: "0")
           .resolve(APP_RUNTIME_SUBPATH)
-      if (Files.isWritable(uidBased.parent)) uidBased else cacheBase.resolve("rt")
+      val parent = uidBased.parent
+      if (parent != null && Files.isWritable(parent)) uidBased else cacheBase.resolve("rt")
     }
   }
 }
@@ -217,7 +222,6 @@ class AppDirs(
   cliOverrides: Map<String, String>,
   appEnv: AppEnv,
 ) : BaseDirs(env, systemProperties, cliOverrides, appEnv) {
-
   // Zero-arg constructor for Java callers
   constructor() :
     this(
@@ -318,7 +322,6 @@ class ServiceDirs(
   cliOverrides: Map<String, String>,
   appEnv: AppEnv,
 ) : BaseDirs(env, systemProperties, cliOverrides, appEnv) {
-
   // Zero-arg constructor for Java callers
   constructor() :
     this(
@@ -349,8 +352,8 @@ class ServiceDirs(
     appEnv,
   )
 
-  override fun computeBase(): Resolved {
-    return when {
+  override fun computeBase(): Resolved =
+    when {
       appEnv.isWindows() -> {
         val programData =
           env["PROGRAMDATA"]
@@ -369,6 +372,7 @@ class ServiceDirs(
           root.resolve("logs"),
         )
       }
+
       appEnv.isMac() -> {
         val root = Paths.get("/$MACOS_LIBRARY_PATH", "Application Support", "Cryptad")
         Resolved(
@@ -379,6 +383,7 @@ class ServiceDirs(
           Paths.get("/$MACOS_LIBRARY_PATH", "Logs", "Cryptad"),
         )
       }
+
       else -> {
         // Linux systemd defaults
         Resolved(
@@ -390,12 +395,12 @@ class ServiceDirs(
         )
       }
     }
-  }
 
   override fun envOverrides(): Overrides {
     // For Linux/systemd environments, prefer exported directories
-    return if (!appEnv.isLinux()) Overrides()
-    else
+    return if (!appEnv.isLinux()) {
+      Overrides()
+    } else {
       Overrides(
         config = env["CONFIGURATION_DIRECTORY"]?.let { Paths.get(it) },
         data = env["STATE_DIRECTORY"]?.let { Paths.get(it) },
@@ -403,6 +408,7 @@ class ServiceDirs(
         run = env["RUNTIME_DIRECTORY"]?.let { Paths.get(it) },
         logs = env["LOGS_DIRECTORY"]?.let { Paths.get(it) },
       )
+    }
   }
 
   override fun shouldEnsureDirectories(): Boolean {

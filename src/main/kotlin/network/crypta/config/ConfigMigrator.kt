@@ -52,7 +52,8 @@ fun migrateIfNeeded(dirs: Resolved, executableDir: Path) {
 private fun moveIfPresent(src: Path, dst: Path) {
   if (!Files.exists(src) || Files.exists(dst)) return
   try {
-    if (!Files.exists(dst.parent)) Files.createDirectories(dst.parent)
+    val parent = dst.parent
+    if (parent != null && !Files.exists(parent)) Files.createDirectories(parent)
     Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE)
     LOG.info("Moved {} -> {} (atomic)", src, dst)
   } catch (_: AtomicMoveNotSupportedException) {
@@ -79,6 +80,7 @@ private fun moveIfPresent(src: Path, dst: Path) {
 private fun rewriteLegacyPaths(configFile: Path) {
   try {
     val sfs = SimpleFieldSet.readFrom(Files.newInputStream(configFile), true, true)
+
     fun rewrite(key: String, rel: String, placeholder: String) {
       val v = sfs[key] ?: return
       if (v == rel || v == "./$rel") sfs.putOverwrite(key, placeholder)

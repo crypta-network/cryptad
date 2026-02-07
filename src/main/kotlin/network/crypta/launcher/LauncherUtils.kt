@@ -113,7 +113,7 @@ fun upsertWrapperProperty(lines: List<String>, key: String, value: String): List
 fun computeWrapperLogPath(confPath: Path, logSpec: String?): Path {
   val spec = logSpec?.takeUnless { it.isBlank() } ?: "../logs/wrapper.log"
   val p = Paths.get(spec)
-  return if (p.isAbsolute) p else confPath.parent.resolve(p).normalize()
+  return if (p.isAbsolute) p else wrapperConfDirectory(confPath).resolve(p).normalize()
 }
 
 /**
@@ -133,14 +133,23 @@ fun computeWrapperFilePath(confPath: Path, fileSpec: String?, workingDirSpec: St
   val spec = fileSpec?.takeUnless { it.isBlank() } ?: return null
   val p = Paths.get(spec)
   if (p.isAbsolute) return p.normalize()
+  val confDir = wrapperConfDirectory(confPath)
   val base =
     workingDirSpec
       ?.takeUnless { it.isBlank() }
       ?.let { wdRaw ->
         val wd = Paths.get(wdRaw)
-        if (wd.isAbsolute) wd.normalize() else confPath.parent.resolve(wd).normalize()
-      } ?: confPath.parent
+        if (wd.isAbsolute) wd.normalize() else confDir.resolve(wd).normalize()
+      } ?: confDir
   return base.resolve(p).normalize()
+}
+
+private fun wrapperConfDirectory(confPath: Path): Path {
+  confPath.parent?.let {
+    return it
+  }
+  val normalized = confPath.toAbsolutePath().normalize()
+  return normalized.parent ?: normalized
 }
 
 /**
@@ -261,7 +270,7 @@ internal fun findCryptadJarInClassPath(classPath: String): Path? {
     try {
       val p = Paths.get(raw)
       if (Files.isRegularFile(p)) {
-        val name = p.fileName.toString()
+        val name = p.fileName?.toString() ?: continue
         if (re.matches(name)) return p.normalize()
       }
     } catch (e: Exception) {
@@ -314,7 +323,7 @@ private fun resolveCryptadPathFromCwd(cwd: Path, isWindows: Boolean): Path? {
 
 private fun isCryptadJarFile(path: Path): Boolean {
   if (!Files.isRegularFile(path)) return false
-  val name = path.fileName.toString()
+  val name = path.fileName?.toString() ?: return false
   return name.endsWith(".jar") && name.startsWith("cryptad")
 }
 
@@ -392,8 +401,14 @@ fun loadAppIconImage(): Image? {
 
   val candidates = buildList {
     when {
-      env.isMac() -> add("network/crypta/launcher/crypta-launcher-icon-macos.png")
-      env.isWindows() -> add("network/crypta/launcher/crypta-launcher-icon-windows.png")
+      env.isMac() -> {
+        add("network/crypta/launcher/crypta-launcher-icon-macos.png")
+      }
+
+      env.isWindows() -> {
+        add("network/crypta/launcher/crypta-launcher-icon-windows.png")
+      }
+
       else -> {
         // Prefer macOS artwork as a generic fallback for Linux/others if present
         add("network/crypta/launcher/crypta-launcher-icon-macos.png")

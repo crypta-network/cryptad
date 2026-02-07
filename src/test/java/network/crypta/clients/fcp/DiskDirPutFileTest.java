@@ -87,7 +87,10 @@ class DiskDirPutFileTest {
 
   private File createTempFile(String name) throws IOException {
     Path path = tempDir.resolve(name);
-    Files.createDirectories(path.getParent());
+    Path parent = path.getParent();
+    if (parent != null) {
+      Files.createDirectories(parent);
+    }
     Files.deleteIfExists(path);
     return Files.createFile(path).toFile();
   }
