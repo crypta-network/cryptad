@@ -3672,7 +3672,6 @@ class CSSTokenizerFilter {
     int stateBeforeComment = 0;
     int currentState = STATE1;
     boolean isState1Present = false;
-    String[] elements = null;
     StringBuilder filteredTokens = new StringBuilder();
     StringBuilder buffer = new StringBuilder();
     int openBraces = 0;
@@ -3726,7 +3725,6 @@ class CSSTokenizerFilter {
       stateBeforeComment = 0;
       currentState = STATE1;
       isState1Present = false;
-      elements = null;
       filteredTokens.setLength(0);
       buffer.setLength(0);
       openBraces = 0;
@@ -4514,9 +4512,7 @@ class CSSTokenizerFilter {
 
     private void appendPropertyIfValid(
         ParsedWord[] words, CSSPropertyVerifier obj, boolean addSemicolon) {
-      if (!ignoreElementsS2
-          && !ignoreElementsS3
-          && verifyToken(currentMedia, elements, obj, words)) {
+      if (!ignoreElementsS2 && !ignoreElementsS3 && verifyToken(currentMedia, null, obj, words)) {
         if (changedAnything(words)) propertyValue = reconstruct(words);
         filteredTokens.append(whitespaceBeforeProperty);
         whitespaceBeforeProperty = "";
