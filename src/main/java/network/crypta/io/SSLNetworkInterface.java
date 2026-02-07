@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 public class SSLNetworkInterface extends NetworkInterface {
   private static final Logger LOG = LoggerFactory.getLogger(SSLNetworkInterface.class);
 
-  public static NetworkInterface create(
+  public static NetworkInterface createSsl(
       int port,
       String bindTo,
       String allowedHosts,

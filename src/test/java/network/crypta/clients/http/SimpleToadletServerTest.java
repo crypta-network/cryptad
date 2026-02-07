@@ -149,7 +149,7 @@ class SimpleToadletServerTest {
           .when(() -> NetworkInterface.create(anyInt(), any(), any(), any(), anyBoolean()))
           .thenReturn(iface);
       sslMock
-          .when(() -> SSLNetworkInterface.create(anyInt(), any(), any(), any(), anyBoolean()))
+          .when(() -> SSLNetworkInterface.createSsl(anyInt(), any(), any(), any(), anyBoolean()))
           .thenReturn(iface);
       return new SimpleToadletServer(config, bucketFactory, executor, node);
     }

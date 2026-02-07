@@ -1215,7 +1215,7 @@ public final class SimpleToadletServer
     if (this.networkInterface != null) return;
     if (ssl) {
       this.networkInterface =
-          SSLNetworkInterface.create(port, this.bindTo, allowedHosts, executor, true);
+          SSLNetworkInterface.createSsl(port, this.bindTo, allowedHosts, executor, true);
     } else {
       this.networkInterface =
           NetworkInterface.create(port, this.bindTo, allowedHosts, executor, true);

@@ -87,7 +87,7 @@ class InsertableClientSSKTest {
 
     // Assert
     assertInstanceOf(ClientKSK.class, fromInsertable);
-    assertEquals(ClientKSK.create(ksk), fromInsertable);
+    assertEquals(ClientKSK.fromUri(ksk), fromInsertable);
   }
 
   @Test

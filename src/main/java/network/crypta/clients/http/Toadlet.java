@@ -91,7 +91,7 @@ public abstract class Toadlet {
         .getString("Toadlet." + key, new String[] {REASON_PATTERN}, new String[] {value});
   }
 
-  private static String l10n(String key) {
+  private static String l10nToadlet(String key) {
     return NodeL10n.getBase().getString("Toadlet." + key);
   }
 
@@ -120,7 +120,7 @@ public abstract class Toadlet {
             + "</h1><a href=\""
             + HTMLEncoder.encode(location)
             + "\">"
-            + l10n("clickHere")
+            + l10nToadlet("clickHere")
             + "</a></body></html>";
     byte[] buf = redirDoc.getBytes(StandardCharsets.UTF_8);
     MultiValueTable<String, String> headers = MultiValueTable.from("Location", location);
@@ -140,8 +140,8 @@ public abstract class Toadlet {
     content.addChild(
         "a",
         new String[] {"href", "title"},
-        new String[] {"/", l10n("homepage")},
-        l10n("returnToNodeHomepage"));
+        new String[] {"/", l10nToadlet("homepage")},
+        l10nToadlet("returnToNodeHomepage"));
   }
 
   /**
@@ -520,7 +520,7 @@ public abstract class Toadlet {
             + "</h1><a href=\""
             + HTMLEncoder.encode(location)
             + "\">"
-            + l10n("clickHere")
+            + l10nToadlet("clickHere")
             + "</a></body></html>";
     byte[] buf = redirDoc.getBytes(StandardCharsets.UTF_8);
     MultiValueTable<String, String> mvt = MultiValueTable.from("Location", location);
@@ -568,7 +568,7 @@ public abstract class Toadlet {
         ctx.getPageMaker().getInfobox("infobox-error", desc, contentNode, null, true);
     infoboxContent.addChild(message);
     infoboxContent.addChild("br");
-    infoboxContent.addChild("a", "href", ".", l10n("returnToPrevPage"));
+    infoboxContent.addChild("a", "href", ".", l10nToadlet("returnToPrevPage"));
     infoboxContent.addChild("br");
     addHomepageLink(infoboxContent);
 
@@ -602,7 +602,7 @@ public abstract class Toadlet {
     // Consider replacing <pre> with CSS-based styling when modernizing the markup.
     infoboxContent.addChild("pre", sw.toString());
     infoboxContent.addChild("br");
-    infoboxContent.addChild("a", "href", ".", l10n("returnToPrevPage"));
+    infoboxContent.addChild("a", "href", ".", l10nToadlet("returnToPrevPage"));
     addHomepageLink(infoboxContent);
 
     writeHTMLReply(ctx, 500, desc, page.generate());

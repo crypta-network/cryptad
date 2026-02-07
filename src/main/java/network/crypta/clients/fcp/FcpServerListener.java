@@ -174,7 +174,8 @@ final class FcpServerListener implements Runnable {
     NetworkInterface tempNetworkInterface;
     if (ssl) {
       tempNetworkInterface =
-          SSLNetworkInterface.create(port, bindTo, allowedHosts, node.network().executor(), true);
+          SSLNetworkInterface.createSsl(
+              port, bindTo, allowedHosts, node.network().executor(), true);
     } else {
       tempNetworkInterface =
           NetworkInterface.create(port, bindTo, allowedHosts, node.network().executor(), true);

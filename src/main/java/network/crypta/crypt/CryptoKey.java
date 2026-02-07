@@ -19,8 +19,8 @@ import org.slf4j.LoggerFactory;
  * <p>Serialization helpers in this class support a simple polymorphic format in which the first
  * field is the fully qualified class name of the concrete key, written with {@link
  * java.io.DataOutput#writeUTF(String)}. The corresponding {@link #read(InputStream)} method
- * resolves that class and delegates to a public static {@code read(InputStream)} factory on the key
- * type.
+ * resolves that class and delegates to a public static {@code readKey(InputStream)} factory on the
+ * key type, with a fallback to legacy {@code read(InputStream)} factories.
  */
 public abstract class CryptoKey implements CryptoElement, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(CryptoKey.class);
@@ -34,8 +34,10 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
    *
    * <p>The stream must start with a UTF string containing the fully qualified class name of the
    * concrete key type (as written by {@link DataOutput#writeUTF(String)}). The loader locates that
-   * class, obtains a public static factory with the exact signature {@code read(InputStream)}, and
-   * invokes it to parse the remainder of the data.
+   * class, obtains a public static factory with the exact signature {@code readKey(InputStream)},
+   * and invokes it to parse the remainder of the data. For compatibility with older key
+   * implementations, the loader falls back to {@code read(InputStream)} when {@code readKey} is
+   * absent.
    *
    * <p>On failures that represent normal parse conditions, such as malformed input, this method
    * propagates the underlying {@link CryptFormatException} or {@link IOException}. Other failures
@@ -53,7 +55,7 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
     String type = dis.readUTF();
     try {
       Class<?> keyClass = Class.forName(type);
-      Method m = keyClass.getMethod("read", InputStream.class);
+      Method m = resolveReadMethod(keyClass);
       return (CryptoKey) m.invoke(null, dis);
     } catch (InvocationTargetException e) {
       // Unwrap and rethrow expected checked exceptions from the delegate factory.
@@ -68,6 +70,14 @@ public abstract class CryptoKey implements CryptoElement, Serializable {
     } catch (RuntimeException e) {
       LOG.error("Runtime exception while reading CryptoKey", e);
       return null;
+    }
+  }
+
+  private static Method resolveReadMethod(Class<?> keyClass) throws NoSuchMethodException {
+    try {
+      return keyClass.getMethod("readKey", InputStream.class);
+    } catch (NoSuchMethodException e) {
+      return keyClass.getMethod("read", InputStream.class);
     }
   }
 

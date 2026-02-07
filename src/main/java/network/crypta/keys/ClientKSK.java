@@ -121,7 +121,7 @@ public class ClientKSK extends InsertableClientSSK {
    * @return a new {@code ClientKSK} derived from {@code uri}
    * @throws IllegalArgumentException if {@code uri} does not have key type {@code "KSK"}
    */
-  public static InsertableClientSSK create(FreenetURI uri) {
+  public static InsertableClientSSK fromUri(FreenetURI uri) {
     if (!uri.getKeyType().equals("KSK")) throw new IllegalArgumentException();
     return create(uri.getDocName());
   }

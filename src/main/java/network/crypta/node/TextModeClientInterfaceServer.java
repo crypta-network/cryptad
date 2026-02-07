@@ -90,7 +90,7 @@ public class TextModeClientInterfaceServer implements Runnable {
     this.isEnabled = true;
     if (ssl) {
       networkInterface =
-          SSLNetworkInterface.create(port, bindTo, allowedHosts, n.network().executor(), true);
+          SSLNetworkInterface.createSsl(port, bindTo, allowedHosts, n.network().executor(), true);
     } else {
       networkInterface =
           NetworkInterface.create(port, bindTo, allowedHosts, n.network().executor(), true);
