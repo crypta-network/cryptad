@@ -22,7 +22,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * this}. Instances are not intended for broad sharing without external coordination.
  *
  * <p>Read-only behavior: once {@link #setReadOnly()} is called or a random-access view is derived
- * by the base type, subsequent write attempts fail with {@link java.io.IOException}.
+ * by the base type, further write attempts fail with {@link java.io.IOException}.
  *
  * @author oskar
  */
@@ -65,7 +65,7 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
   protected final boolean deleteOnExitFlag;
 
   /**
-   * Whether the target must be created and must not pre-exist on the first open for write.
+   * Whether the target must be created and must not pre-exist on the first open for writing.
    *
    * <p>Naming: renamed from {@code createFileOnly}. The new name avoids a symbol clash with the
    * base class method {@link #createFileOnly()} and clarifies intent.
@@ -92,7 +92,7 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
    * deleted without impacting the caller’s instance.
    *
    * @param file backing file path; resolved to an absolute path (must be non-{@code null})
-   * @param readOnly when {@code true}, subsequent write attempts fail immediately; can also be set
+   * @param readOnly when {@code true}, further write attempts fail immediately; can also be set
    *     later via {@link #setReadOnly()} (irreversible)
    * @param createFileOnly when {@code true}, the first open for writing fails if the target already
    *     exists; writes are staged via a temp file and atomically moved on close to minimize races
@@ -108,7 +108,7 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
       boolean createFileOnly,
       boolean deleteOnExit,
       boolean deleteOnFree) {
-    super(file, deleteOnExit);
+    super(file, deleteOnExit, createFileOnly, false);
     Objects.requireNonNull(file, "file");
     File absFile = file.getAbsoluteFile();
     // Copy it so we can safely delete it.
@@ -160,8 +160,8 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
   /**
    * Makes this bucket read-only.
    *
-   * <p>After calling this method, attempts to obtain an output stream or otherwise modify the
-   * contents fail with {@link java.io.IOException}. This operation is irreversible.
+   * <p>After calling this method, attempts to get an output stream or otherwise modify the contents
+   * fail with {@link java.io.IOException}. This operation is irreversible.
    */
   @Override
   public synchronized void setReadOnly() {
@@ -171,7 +171,7 @@ public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
   /**
    * Whether the first open for writing must create the file (and fail if it already exists).
    *
-   * @return {@code true} to enforce creation-only semantics on the first write
+   * @return {@code true} to enforce creation-only semantics on the first writing
    */
   @Override
   protected boolean createFileOnly() {

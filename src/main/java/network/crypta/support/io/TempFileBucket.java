@@ -12,11 +12,6 @@ import network.crypta.support.api.RandomAccessBucket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/*
- *  This code is part of FProxy, an HTTP proxy server for Freenet.
- *  It is distributed under the GNU Public Licence (GPL) version 2.  See
- *  http://www.gnu.org/ for further details of the GPL.
- */
 /**
  * File-backed, non-persistent temporary bucket implementation.
  *
@@ -28,8 +23,8 @@ import org.slf4j.LoggerFactory;
  * <p>Key characteristics: - Not persistent across process restarts ({@link #persistent()} returns
  * {@code false}). - Never registers files with {@link File#deleteOnExit()} to avoid JVM memory
  * leaks. - Deletes the underlying file on {@link #free()} when constructed with {@code
- * deleteOnFree=true} (default); read-only shadows do not delete on free. - Supports converting to a
- * read-only random-access buffer via the superclass.
+ * deleteOnFree=true} (default); read-only shadows do not deleting on free. - Supports converting to
+ * a read-only random-access buffer via the superclass.
  *
  * <p>Serialization: this class implements {@link Serializable} only to allow derived persistent
  * implementations (e.g., {@code PersistentTempFileBucket}) to serialize the base state.
@@ -98,7 +93,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
    * @param deleteOnFree whether {@link #free()} deletes the underlying file
    */
   protected TempFileBucket(long id, FilenameGenerator generator, boolean deleteOnFree) {
-    super(generator.getFilename(id), false);
+    super(generator.getFilename(id), false, false, true);
     this.filenameID = id;
     this.generator = generator;
     this.deleteOnFree = deleteOnFree;
@@ -128,7 +123,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
 
   @Override
   public File getFile() {
-    // Prefer cached file path; fall back to generator to recompute on demand.
+    // Prefer a cached file path; fall back to the generator to recompute on demand.
     if (file != null) return file;
     return generator.getFilename(filenameID);
   }
@@ -151,7 +146,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
 
   @Override
   public RandomAccessBucket createShadow() {
-    // Create a read-only view that does not delete the file on free.
+    // Create a read-only view that does not delete the file on freeing.
     TempFileBucket ret = new TempFileBucket(filenameID, generator, false);
     ret.setReadOnly();
     if (!getFile().exists()) LOG.error("File does not exist when creating shadow: {}", getFile());
@@ -177,7 +172,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
     } else {
       // File must exist; reconcile location changes.
       if (!file.exists()) {
-        // Try current generator location in case of moves since the last checkpoint.
+        // Try the current generator location in case of moves since the last checkpoint.
         File f = generator.getFilename(filenameID);
         if (f.exists()) {
           file = f;
@@ -244,7 +239,7 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
    * Returns a subclass-specific magic number used by on-disk persistence.
    *
    * <p>This base implementation throws {@link UnsupportedOperationException}. Persistent subclasses
-   * must override and return a stable magic (e.g., {@code 0x2ffdd4cf}).
+   * must override and return stable magic (e.g., {@code 0x2ffdd4cf}).
    *
    * @return magic number identifying the concrete subclass
    * @throws UnsupportedOperationException always in this class
