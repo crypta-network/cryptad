@@ -38,20 +38,22 @@ public class AsyncPersistentProps implements Runnable {
   private boolean closed;
   private boolean changed;
   private boolean writing;
+  private boolean writerThreadStarted;
+  private final Thread writerThread;
 
   /**
-   * Creates a new asynchronous property store bound to the given file and starts the writer thread.
+   * Creates a new asynchronous property store bound to the given file.
    *
    * <p>If the file already exists, its contents are loaded into an initially mutable {@link
    * Properties} instance. When the file is absent, an empty properties set is created and the file
-   * will be materialized on the first successful write. The constructor spawns a daemon thread
-   * named after the target file to persist snapshots without blocking callers. Callers should
-   * retain the returned instance and eventually invoke {@link #close()} to stop the worker and
-   * surface any deferred I/O failures.
+   * will be materialized on the first successful write. The constructor prepares a daemon thread
+   * named after the target file; the thread starts lazily when a write is first required. Callers
+   * should retain the returned instance and eventually invoke {@link #close()} to stop the worker
+   * and surface any deferred I/O failures.
    *
    * @param f backing file that receives serialized property snapshots; must be readable if it
    *     already exists and writable for future writes; never {@code null}
-   * @throws IOException if loading the existing file fails or the writer thread cannot be started
+   * @throws IOException if loading the existing file fails
    */
   public AsyncPersistentProps(File f) throws IOException {
     this.f = f;
@@ -61,9 +63,8 @@ public class AsyncPersistentProps implements Runnable {
         p.load(in);
       }
     }
-    final Thread thread = new Thread(this, "Props Writer :" + f.getName());
-    thread.setDaemon(true);
-    thread.start();
+    writerThread = new Thread(this, "Props Writer :" + f.getName());
+    writerThread.setDaemon(true);
   }
 
   /**
@@ -107,6 +108,7 @@ public class AsyncPersistentProps implements Runnable {
   public synchronized Object setProperty(String key, String value) {
     checkState();
 
+    startWriterThreadIfNeeded();
     Object result = p.setProperty(key, value);
     changed = true;
     this.notifyAll();
@@ -129,6 +131,7 @@ public class AsyncPersistentProps implements Runnable {
 
     Object result = p.remove(key);
     if (result != null) {
+      startWriterThreadIfNeeded();
       changed = true;
       this.notifyAll();
     }
@@ -146,6 +149,7 @@ public class AsyncPersistentProps implements Runnable {
   public synchronized void clear() {
     checkState();
 
+    startWriterThreadIfNeeded();
     p.clear();
     changed = true;
     this.notifyAll();
@@ -220,6 +224,13 @@ public class AsyncPersistentProps implements Runnable {
       throw new IllegalStateException(ioe.getMessage());
     } else if (closed) {
       throw new IllegalStateException("Sorry, we're closed");
+    }
+  }
+
+  private void startWriterThreadIfNeeded() {
+    if (!writerThreadStarted) {
+      writerThread.start();
+      writerThreadStarted = true;
     }
   }
 

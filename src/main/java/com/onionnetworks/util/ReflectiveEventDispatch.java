@@ -52,20 +52,19 @@ public class ReflectiveEventDispatch implements Runnable {
   // Holds either Tuple(event, methodName) or a sentinel (this) to signal shutdown
   private final ArrayDeque<Object> eventQueue = new ArrayDeque<>();
   private final Thread thread;
+  private boolean dispatchThreadStarted;
   private ExceptionHandler handler;
 
   /**
-   * Creates and starts a new dispatcher instance with a dedicated daemon thread.
+   * Creates a new dispatcher instance with a dedicated daemon thread.
    *
-   * <p>The constructor immediately creates the internal queue, spawns the dispatch thread, and
-   * begins processing any events that are enqueued. Callers can adjust the thread priority or
-   * register an {@link ExceptionHandler} after construction; no additional initialization steps are
-   * required.
+   * <p>The constructor initializes internal state and prepares the dispatch thread. The thread
+   * starts lazily when the first event is queued. Callers can register listeners and install an
+   * {@link ExceptionHandler} before any asynchronous work begins.
    */
   public ReflectiveEventDispatch() {
     this.thread = new Thread(this, "Reflective Dispatch#" + hashCode());
     this.thread.setDaemon(true);
-    this.thread.start();
   }
 
   /**
@@ -195,6 +194,7 @@ public class ReflectiveEventDispatch implements Runnable {
    *     against registered names.
    */
   public synchronized void fire(EventObject ev, String methodName) {
+    startDispatchThreadIfNeeded();
     eventQueue.add(new Tuple(ev, methodName));
     this.notifyAll();
   }
@@ -213,6 +213,13 @@ public class ReflectiveEventDispatch implements Runnable {
     this.notifyAll();
   }
 
+  private void startDispatchThreadIfNeeded() {
+    if (!dispatchThreadStarted) {
+      thread.start();
+      dispatchThreadStarted = true;
+    }
+  }
+
   /**
    * Main dispatch loop executed by the internal daemon thread.
    *
@@ -220,7 +227,7 @@ public class ReflectiveEventDispatch implements Runnable {
    * and otherwise delegates each unit of work to {@link #dispatch(DispatchWork)}. It preserves the
    * order in which events were queued and performs listener invocation on the same dedicated thread
    * to simplify synchronization concerns for clients. Applications typically never call this method
-   * directly because it is invoked automatically when the dispatcher is constructed.
+   * directly because it is invoked automatically after the first event is submitted.
    */
   @Override
   public void run() {
