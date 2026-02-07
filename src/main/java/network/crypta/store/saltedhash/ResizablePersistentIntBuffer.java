@@ -329,7 +329,6 @@ public class ResizablePersistentIntBuffer {
    * int)} calls throw {@link IllegalStateException}.
    */
   public void shutdown() {
-    boolean wasInterrupted = false;
     lock.writeLock().lock();
     try {
       boolean doWrite;
@@ -337,18 +336,7 @@ public class ResizablePersistentIntBuffer {
         if (closed) return;
         closed = true;
         doWrite = dirty;
-        if (writing) {
-          // Wait for any in-flight write to finish; preserve interrupt status.
-          while (writing) {
-            try {
-              wait();
-            } catch (InterruptedException _) {
-              wasInterrupted = true; // record and keep waiting so we can flush/close
-            }
-          }
-          // Re-check after the writer completes in case new writes happened while we waited.
-          doWrite = dirty;
-        }
+        // Holding the write lock excludes in-flight/starting writers, so waiting is unnecessary.
         if (doWrite) {
           writing = true;
         }
@@ -374,7 +362,6 @@ public class ResizablePersistentIntBuffer {
       }
     } finally {
       lock.writeLock().unlock();
-      if (wasInterrupted) Thread.currentThread().interrupt();
     }
   }
 
@@ -448,37 +435,54 @@ public class ResizablePersistentIntBuffer {
   public void forceWrite() {
     LOG.info("Force write slot cache: {}", this);
     boolean wasInterrupted = false;
-    lock.readLock().lock();
     try {
-      synchronized (this) {
-        if (closed) return;
-        // Wait for any in-flight write to finish; preserve interrupt status.
-        while (writing) {
-          try {
-            wait();
-          } catch (InterruptedException _) {
-            wasInterrupted = true; // record and keep waiting
+      while (true) {
+        synchronized (this) {
+          if (closed) return;
+          // Wait for any in-flight write to finish; preserve interrupt status.
+          while (writing) {
+            try {
+              wait();
+            } catch (InterruptedException _) {
+              wasInterrupted = true; // record and keep waiting
+            }
           }
+          if (!dirty) return; // Nothing to write.
         }
-        if (!dirty) return; // Nothing to write.
-        // Take ownership of the writing and clear the dirty flag under the writing guard.
-        writing = true;
-        scheduled = false; // avoid a no-op scheduled run after this forced writing
-        dirty = false;
-      }
-      try {
-        writeBuffer();
-      } catch (IOException e) {
-        LOG.error(WRITE_FAILED_FORCED_MSG, filename, e);
+
+        lock.readLock().lock();
+        boolean ownsWrite = false;
+        try {
+          synchronized (this) {
+            if (closed) return;
+            // Another thread may have started writing after we left the wait section.
+            if (writing) continue;
+            // Check dirty only after writing so we don't return while an in-flight writer is
+            // finishing a flush started in the interleaving window above.
+            if (!dirty) return;
+            // Take ownership of the writing and clear the dirty flag under the writing guard.
+            writing = true;
+            scheduled = false; // avoid a no-op scheduled run after this forced writing
+            dirty = false;
+            ownsWrite = true;
+          }
+          try {
+            writeBuffer();
+          } catch (IOException e) {
+            LOG.error(WRITE_FAILED_FORCED_MSG, filename, e);
+          }
+          return;
+        } finally {
+          synchronized (this) {
+            if (ownsWrite) {
+              writing = false;
+              this.notifyAll();
+            }
+          }
+          lock.readLock().unlock();
+        }
       }
     } finally {
-      synchronized (this) {
-        if (writing) {
-          writing = false;
-          this.notifyAll();
-        }
-      }
-      lock.readLock().unlock();
       if (wasInterrupted) Thread.currentThread().interrupt();
     }
   }
