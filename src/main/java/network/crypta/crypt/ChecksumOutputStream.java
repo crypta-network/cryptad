@@ -12,12 +12,12 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>All bytes are forwarded unmodified to the underlying stream. For checksum computation, the
  * first {@code skipPrefix} bytes written through this wrapper are <em>not</em> included; all
- * subsequent bytes contribute to the checksum. Optionally, on {@link #close()}, the current
- * checksum value is appended to the underlying stream as a 4-byte little-endian integer (equivalent
- * to {@link Fields#intToBytes(int)} of the low 32 bits).
+ * following bytes contribute to the checksum. Optionally, on {@link #close()}, the current checksum
+ * value is appended to the underlying stream as a 4-byte little-endian integer (equivalent to
+ * {@link Fields#intToBytes(int)} of the low 32 bits).
  *
- * <p>Ordering note: the checksum is updated before delegating the corresponding write to the
- * wrapped stream. If the underlying write throws, the checksum may already reflect the attempted
+ * <p>Ordering note: the checksum is updated before delegating the corresponding writing to the
+ * wrapped stream. If the underlying writing throws, the checksum may already reflect the attempted
  * bytes (except those within the prefix).
  *
  * <p>Thread-safety: instances are not thread-safe. Use from a single thread or coordinate
@@ -58,7 +58,7 @@ public class ChecksumOutputStream extends FilterOutputStream {
    * @throws IOException if the underlying stream fails to write.
    */
   @Override
-  public void write(int b) throws IOException {
+  public synchronized void write(int b) throws IOException {
     if (bytesInsidePrefix >= skipPrefix) {
       crc.update(b);
     } else bytesInsidePrefix++;
@@ -78,7 +78,7 @@ public class ChecksumOutputStream extends FilterOutputStream {
    * @throws IndexOutOfBoundsException if {@code offset} or {@code length} is invalid.
    */
   @Override
-  public void write(byte @NotNull [] buf, int offset, int length) throws IOException {
+  public synchronized void write(byte @NotNull [] buf, int offset, int length) throws IOException {
     int chop = Math.min(skipPrefix - bytesInsidePrefix, length);
     if (chop <= 0) {
       // Prefix already consumed: count the entire slice.
@@ -103,7 +103,7 @@ public class ChecksumOutputStream extends FilterOutputStream {
    * @throws IOException if the underlying stream fails to write.
    */
   @Override
-  public void write(byte @NotNull [] buf) throws IOException {
+  public synchronized void write(byte @NotNull [] buf) throws IOException {
     write(buf, 0, buf.length);
   }
 
@@ -118,12 +118,10 @@ public class ChecksumOutputStream extends FilterOutputStream {
    * @throws IOException if writing the trailer or closing the underlying stream fails.
    */
   @Override
-  public void close() throws IOException {
+  public synchronized void close() throws IOException {
     if (writeChecksum) {
-      synchronized (this) {
-        if (closed) return; // Idempotent close: avoid duplicate trailer writes
-        closed = true;
-      }
+      if (closed) return; // Idempotent close: avoid duplicate trailer writes
+      closed = true;
       out.write(Fields.intToBytes((int) crc.getValue()));
     }
     super.close(); // Always close the underlying stream
@@ -138,7 +136,7 @@ public class ChecksumOutputStream extends FilterOutputStream {
    *
    * @return the running checksum value.
    */
-  public long getValue() {
+  public synchronized long getValue() {
     return crc.getValue();
   }
 }

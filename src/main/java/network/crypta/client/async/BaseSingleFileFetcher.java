@@ -161,7 +161,9 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
         if (LOG.isDebugEnabled())
           LOG.debug(
               "RecentlyFailed -> cooldown until {} on {}", TimeUtil.formatTime(l - now), this);
-        COOLDOWN_WAKEUP_TIME_UPDATER.accumulateAndGet(this, l, Math::max);
+        synchronized (this) {
+          COOLDOWN_WAKEUP_TIME_UPDATER.accumulateAndGet(this, l, Math::max);
+        }
       } else {
         this.onFailure(
             new LowLevelGetException(LowLevelGetException.RECENTLY_FAILED), null, context);
