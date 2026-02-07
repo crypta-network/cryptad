@@ -19,8 +19,9 @@ class NativeDeployerTest {
   @Test
   void getLocalResourcePath_whenResourceExists_returnsExtractedFile(@TempDir Path tempDir)
       throws IOException {
-    Path resourcePath = tempDir.resolve("resources/libfile.bin");
-    Files.createDirectories(resourcePath.getParent());
+    Path resourceDir = tempDir.resolve("resources");
+    Files.createDirectories(resourceDir);
+    Path resourcePath = resourceDir.resolve("libfile.bin");
     byte[] expected = "native-bytes".getBytes(StandardCharsets.UTF_8);
     Files.write(resourcePath, expected);
 
@@ -46,13 +47,15 @@ class NativeDeployerTest {
   @Test
   void getLibraryPath_whenMatchingOsArchAndResourcePresent_extractsLibrary(@TempDir Path tempDir)
       throws IOException {
-    Path nativeFile = tempDir.resolve("native/libmatched.bin");
-    Files.createDirectories(nativeFile.getParent());
+    Path nativeDir = tempDir.resolve("native");
+    Files.createDirectories(nativeDir);
+    Path nativeFile = nativeDir.resolve("libmatched.bin");
     byte[] expected = "matching-native".getBytes(StandardCharsets.UTF_8);
     Files.write(nativeFile, expected);
 
-    Path propertiesFile = tempDir.resolve("lib/native.properties");
-    Files.createDirectories(propertiesFile.getParent());
+    Path propertiesDir = tempDir.resolve("lib");
+    Files.createDirectories(propertiesDir);
+    Path propertiesFile = propertiesDir.resolve("native.properties");
     String propertiesContent =
         "com.onionnetworks.native.keys=lib1\n"
             + "com.onionnetworks.native.lib1.name=testlib\n"
@@ -73,8 +76,9 @@ class NativeDeployerTest {
 
   @Test
   void getLibraryPath_whenNoOsArchMatch_returnsNull(@TempDir Path tempDir) throws IOException {
-    Path propertiesFile = tempDir.resolve("lib/native.properties");
-    Files.createDirectories(propertiesFile.getParent());
+    Path propertiesDir = tempDir.resolve("lib");
+    Files.createDirectories(propertiesDir);
+    Path propertiesFile = propertiesDir.resolve("native.properties");
     String propertiesContent =
         """
         com.onionnetworks.native.keys=lib1
@@ -93,8 +97,9 @@ class NativeDeployerTest {
 
   @Test
   void getLibraryPath_whenResourceMissing_returnsNull(@TempDir Path tempDir) throws IOException {
-    Path propertiesFile = tempDir.resolve("lib/native.properties");
-    Files.createDirectories(propertiesFile.getParent());
+    Path propertiesDir = tempDir.resolve("lib");
+    Files.createDirectories(propertiesDir);
+    Path propertiesFile = propertiesDir.resolve("native.properties");
     String propertiesContent =
         "com.onionnetworks.native.keys=lib1\n"
             + "com.onionnetworks.native.lib1.name=testlib\n"

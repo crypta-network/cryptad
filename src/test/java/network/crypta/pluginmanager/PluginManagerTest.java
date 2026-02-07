@@ -254,7 +254,7 @@ class PluginManagerTest {
   }
 
   private static Path buildTestPluginJar(Path jarPath) throws IOException {
-    Path workDir = jarPath.getParent().resolve("test-plugin-work");
+    Path workDir = jarPath.resolveSibling("test-plugin-work");
     Path srcDir = workDir.resolve("src");
     Path classesDir = workDir.resolve("classes");
     Files.createDirectories(srcDir);
@@ -313,7 +313,10 @@ class PluginManagerTest {
       assertTrue(ok, "Failed to compile test plugin sources");
     }
 
-    Files.createDirectories(jarPath.getParent());
+    Path jarParent = jarPath.getParent();
+    if (jarParent != null) {
+      Files.createDirectories(jarParent);
+    }
 
     Manifest manifest = new Manifest();
     manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");

@@ -407,7 +407,9 @@ class FileUtilTest {
     Path file = tmp.resolve("x.txt");
     Files.write(file, List.of("x"));
     File a = file.toFile();
-    File b = new File(file.getParent().toFile(), "." + File.separator + file.getFileName());
+    Path parent = file.getParent();
+    assertNotNull(parent);
+    File b = new File(parent.toFile(), "." + File.separator + file.getFileName());
 
     // Act + Assert
     assertTrue(FileUtil.equals(a, b));

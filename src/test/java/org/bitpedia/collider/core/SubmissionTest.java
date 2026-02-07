@@ -207,7 +207,9 @@ class SubmissionTest {
     Submission submission = new Submission(bitcollider, null, false);
 
     setBitprintCountToOne(submission);
-    setFileName(submission, sample.getFileName().toString());
+    Path sampleName = sample.getFileName();
+    assertNotNull(sampleName);
+    setFileName(submission, sampleName.toString());
     submission.addAttribute("tag.custom", "\"<&>");
 
     StringWriter writer = new StringWriter();
@@ -217,7 +219,7 @@ class SubmissionTest {
     String html = writer.toString();
     assertTrue(html.contains("<BODY>"));
     assertFalse(html.contains("onLoad"));
-    assertTrue(html.contains("Bitprint Submission " + sample.getFileName()));
+    assertTrue(html.contains("Bitprint Submission " + sampleName));
     assertTrue(html.contains("&quot;&lt;&amp;&gt;"));
     assertTrue(html.contains("\"<&>"));
   }

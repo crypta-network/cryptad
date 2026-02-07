@@ -109,8 +109,9 @@ class NodeClientCoreTest {
     when(securityLevels.getPhysicalThreatLevel()).thenReturn(PHYSICAL_THREAT_LEVEL.NORMAL);
     core.setDownloadAllowedDirs(new String[] {"downloads"});
 
-    Path inside = tempDir.resolve("sub/inside.dat");
-    Files.createDirectories(inside.getParent());
+    Path insideDir = tempDir.resolve("sub");
+    Files.createDirectories(insideDir);
+    Path inside = insideDir.resolve("inside.dat");
     Path outsideDir = Files.createTempDirectory("outside-");
     File outside = outsideDir.resolve("out.dat").toFile();
 
@@ -147,7 +148,7 @@ class NodeClientCoreTest {
   @Test
   void allowUploadFrom_whenAllEnabled_expectTrueForAnyPath() {
     core.setUploadAllowedDirs(new String[] {"all"});
-    File anywhere = tempDir.getParent().resolve("anywhere.txt").toFile();
+    File anywhere = tempDir.resolve("..").resolve("anywhere.txt").normalize().toFile();
     assertTrue(core.allowUploadFrom(anywhere));
   }
 

@@ -365,7 +365,10 @@ class JarClassLoaderTest {
   private void compileJavaClass(String pkg, String cls, String src) throws IOException {
     Path srcDir = Files.createDirectories(tmp.resolve("src"));
     Path javaFile = srcDir.resolve(pkg.replace('.', '/')).resolve(cls + ".java");
-    Files.createDirectories(javaFile.getParent());
+    Path javaParent = javaFile.getParent();
+    if (javaParent != null) {
+      Files.createDirectories(javaParent);
+    }
     Files.writeString(javaFile, src, UTF_8);
     int rc =
         ToolProvider.getSystemJavaCompiler()

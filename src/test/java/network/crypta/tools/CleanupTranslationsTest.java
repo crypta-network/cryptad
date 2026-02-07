@@ -148,7 +148,10 @@ class CleanupTranslationsTest {
 
   private static void writeUtf8File(Path file, List<String> lines) throws IOException {
     String content = String.join("\n", lines) + "\n";
-    Files.createDirectories(file.getParent());
+    Path parent = file.getParent();
+    if (parent != null) {
+      Files.createDirectories(parent);
+    }
     Files.writeString(file, content, StandardCharsets.UTF_8);
   }
 
