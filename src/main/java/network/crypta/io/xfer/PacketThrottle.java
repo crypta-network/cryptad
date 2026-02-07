@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * <p>Units and invariants:
  *
  * <ul>
- *   <li>Window size is in logical packets and never less than 1.0.
+ *   <li>Window size is in logical packets and never fewer than 1.0.
  *   <li>Round-trip time (RTT) is in milliseconds.
  *   <li>{@link #getDelay()} returns a pacing delay in milliseconds; it is lower-bounded by {@link
  *       #MIN_DELAY} to avoid zero/unstable delays.
@@ -56,8 +56,8 @@ public class PacketThrottle {
   private long droppedPackets;
 
   /**
-   * Congestion window, measured in packets. It never drops below 1.0 so at least one packet can be
-   * sent and divisions by window size remain well-defined.
+   * Congestion window, measured in packets. It never drops below 1.0, so at least one packet can be
+   * sent, and divisions by window size remain well-defined.
    */
   private float windowSize = 2;
 
@@ -128,7 +128,7 @@ public class PacketThrottle {
     if (slowStart) {
       if (LOG.isDebugEnabled()) LOG.debug("Still in slow start");
       windowSize += windowSize / (float) SLOW_START_DIVISOR;
-      // Avoid craziness if there is lag in detecting packet loss.
+      // Avoid craziness if there is a lag in detecting packet loss.
       if (windowSize > maxWindowSize) slowStart = false;
       // Ensure window >= 1.0 so we can send at least one packet and keep divisions defined.
       if (windowSize < 1.0F) windowSize = 1.0F;
@@ -189,7 +189,7 @@ public class PacketThrottle {
   }
 
   /**
-   * Returns an estimated throughput based on the current delay.
+   * Returns estimated throughput based on the current delay.
    *
    * <p>The result is expressed in {@code packetSize} units per second (e.g., bytes/second when
    * {@code packetSize} is bytes). Because {@link #getDelay()} is lower-bounded by {@link
@@ -203,10 +203,12 @@ public class PacketThrottle {
   }
 
   /**
-   * Wakes threads waiting on this instance so they can re-check pacing conditions (e.g., when the
-   * connection state may have changed).
+   * Lifecycle hook invoked when the associated connection may have disconnected.
+   *
+   * <p>The throttle no longer blocks on its own monitor, so this hook intentionally performs no
+   * signaling.
    */
-  public synchronized void maybeDisconnected() {
-    notifyAll();
+  public void maybeDisconnected() {
+    // No-op: PacketThrottle currently has no internal waiters.
   }
 }

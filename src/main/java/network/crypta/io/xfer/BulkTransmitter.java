@@ -261,10 +261,7 @@ public class BulkTransmitter {
    * Idempotent.
    */
   public void onAborted() {
-    sendAbortedMessage();
-    synchronized (this) {
-      notifyAll();
-    }
+    cancel("PartiallyReceivedBulk aborted");
   }
 
   /** Sends {@code FNPBulkSendAborted} once. Subsequent calls are no-ops. */

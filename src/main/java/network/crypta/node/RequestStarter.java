@@ -75,6 +75,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
   private final boolean isInsert;
   private final boolean isSSK;
   final boolean realTime;
+  private boolean wakeUpRequested;
 
   /**
    * Creates a new starter for a specific flow (type and mode).
@@ -174,10 +175,9 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
 
   private boolean waitOneSecond() {
     synchronized (this) {
-      long millis = 1000L;
-      long end = System.currentTimeMillis() + millis;
-      long remaining = millis;
-      while (remaining > 0) {
+      long deadline = System.currentTimeMillis() + 1000L;
+      long remaining = 1000L;
+      while (!wakeUpRequested && remaining > 0) {
         try {
           wait(remaining);
         } catch (InterruptedException e) {
@@ -185,11 +185,9 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
           if (LOG.isDebugEnabled()) LOG.debug("One-second wait interrupted", e);
           return true; // signal interrupt to caller to avoid spin under opennet deferring
         }
-        // If we were notified (or spuriously woke) before the timeout, exit early so wakeUp()
-        // remains responsive during opennet bootstrap.
-        remaining = end - System.currentTimeMillis();
-        if (remaining > 0) remaining = 0;
+        remaining = deadline - System.currentTimeMillis();
       }
+      wakeUpRequested = false;
       return false;
     }
   }
@@ -251,13 +249,16 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
       ChosenBlock r = sched.grabRequest();
       while (r == null) {
         try {
-          wait();
+          while (!wakeUpRequested && (r = sched.grabRequest()) == null) {
+            wait();
+          }
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           if (LOG.isDebugEnabled()) LOG.debug("Wait for request interrupted", e);
           return null;
         }
-        r = sched.grabRequest();
+        wakeUpRequested = false;
+        if (r == null) r = sched.grabRequest();
       }
       return r;
     }
@@ -346,6 +347,7 @@ public class RequestStarter implements Runnable, RandomGrabArrayItemExclusionLis
    */
   public void wakeUp() {
     synchronized (this) {
+      wakeUpRequested = true;
       notifyAll();
     }
   }

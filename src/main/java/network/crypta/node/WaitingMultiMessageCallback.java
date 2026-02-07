@@ -8,7 +8,7 @@ package network.crypta.node;
  * #finished()} returns {@code true}). The intermediate group event {@link #sent(boolean)} is
  * intentionally ignored.
  *
- * <p>Thread-safety: All methods synchronize on this instance. Waiters call {@link #waitFor()}, and
+ * <p>Thread-safety: All methods synchronize in this instance. Waiters call {@link #waitFor()}, and
  * completion notifies them via {@code notifyAll()} on the same monitor.
  *
  * <p>Usage overview:
@@ -22,6 +22,8 @@ package network.crypta.node;
  */
 public class WaitingMultiMessageCallback extends MultiMessageCallback {
 
+  private boolean completionNotified;
+
   /**
    * Wakes all threads blocked in {@link #waitFor()} once aggregation completes.
    *
@@ -34,6 +36,7 @@ public class WaitingMultiMessageCallback extends MultiMessageCallback {
   @Override
   synchronized void finish(boolean success) {
     // Notify all waiters that completion has been reached.
+    completionNotified = true;
     notifyAll();
   }
 
@@ -45,9 +48,9 @@ public class WaitingMultiMessageCallback extends MultiMessageCallback {
    * invoked). Propagating or restoring the interrupt status would allow an early return. Tests in
    * {@code WaitingMultiMessageCallbackTest} cover this behavior.
    */
-  @SuppressWarnings("java:S2142") // InterruptedException intentionally ignored; see method javadoc
+  @SuppressWarnings("java:S2142") // InterruptedException intentionally ignored; see method Javadoc
   public synchronized void waitFor() {
-    while (!finished()) {
+    while (!completionNotified && !finished()) {
       try {
         wait();
       } catch (InterruptedException _) {

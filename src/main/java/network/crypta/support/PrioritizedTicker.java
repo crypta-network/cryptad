@@ -63,6 +63,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
   final NativeThread myThread;
   final PriorityAwareExecutor executor;
   static final int MAX_SLEEP_TIME = 200;
+  private boolean wakeUpRequested;
 
   /**
    * Creates a ticker backed by the given executor and a dedicated high‑priority thread.
@@ -222,28 +223,18 @@ public class PrioritizedTicker implements Ticker, Runnable {
   }
 
   /**
-   * Sleeps up to {@code sleepTime} milliseconds or until {@link #wakeUp()} notifies this monitor.
-   *
-   * <p>Design notes: - This uses a single timed {@code wait(sleepTime)} (no {@code while} loop) on
-   * purpose to maximize wake-up responsiveness. When notified, we return promptly, so the ticker
-   * can re-check the timed-job queue outside the monitor and run any newly scheduled work without
-   * waiting out the remainder of the original sleep window. - Spurious wakeup is acceptable for
-   * this method: an early return only causes an early re-drain of the queue, which is safe and
-   * desirable for latency. The queue/predicate is not tied to this monitor; it lives in {@code
-   * timedJobsByTime} and is checked immediately after this method returns.
-   *
-   * <p>Suppression rationale: Sonar rule S2274 recommends guarding {@code wait} in a loop to
-   * re-check a predicate after spurious wakeups. Here, the predicate lives outside the monitor and
-   * is intentionally re-checked by the caller after returning. Wrapping the wait in a loop to
-   * "sleep until the original deadline" would reintroduce latency and defeat the purpose of {@link
-   * #wakeUp()}.
+   * Sleeps up to {@code sleepTime} milliseconds or until {@link #wakeUp()} requests an early wake.
    */
-  @SuppressWarnings({"java:S2274", "WaitNotInLoop"})
   protected void sleep(long sleepTime) throws InterruptedException {
     if (LOG.isDebugEnabled()) LOG.debug("Sleeping for {}", sleepTime);
     synchronized (this) {
-      // Return early when notified to preserve wake-up responsiveness.
-      wait(sleepTime);
+      long deadline = System.currentTimeMillis() + sleepTime;
+      long remaining = sleepTime;
+      while (!wakeUpRequested && remaining > 0) {
+        wait(remaining);
+        remaining = deadline - System.currentTimeMillis();
+      }
+      wakeUpRequested = false;
     }
   }
 
@@ -372,6 +363,7 @@ public class PrioritizedTicker implements Ticker, Runnable {
   void wakeUp() {
     // Wake up if needed
     synchronized (this) {
+      wakeUpRequested = true;
       notifyAll();
     }
   }
