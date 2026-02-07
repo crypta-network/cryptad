@@ -30,10 +30,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Manages the node's cryptographic identity and UDP transport parameters.
  *
- * <p>This component owns the long‑lived identity (random {@code identity} bytes and their hashes),
- * the ECDSA P‑256 key pair used for signatures, the Address Resolution Key (ARK) used for updatable
- * references, and the UDP socket / packet mangler used by the FNP transport. It also builds, signs,
- * and compresses noderefs that peers consume during handshake.
+ * <p>This component owns the long‑lived identity (random {@code identity} bytes and their hashes).
+ * It also owns the ECDSA P‑256 key pair used for signatures and the Address Resolution Key (ARK)
+ * used for updatable references. It manages the UDP socket and packet mangler used by the FNP
+ * transport, and builds, signs, and compresses noderefs that peers consume during handshake.
  *
  * <p>Construction binds a UDP port (deterministic or random) and wires the packet pipeline, but the
  * I/O threads only start after a call to {@link #start()}.
@@ -70,13 +70,13 @@ public class NodeCrypto {
    */
   private byte[] myIdentity;
 
-  /** Hash of identity. Used as setup key. */
+  /** Hash of identity. Used as the setup key. */
   private byte[] identityHash;
 
-  /** Hash of hash of identity i.e. hash of setup key. */
+  /** Hash of hash of identity i.e., hash of the setup key. */
   private byte[] identityHashHash;
 
-  /** Nonce used to generate ?secureid= for fproxy etc */
+  /** Nonce used to generate ?secureid= for fproxy etc. */
   byte[] clientNonce;
 
   /** My ECDSA/P256 keypair and context */
@@ -88,7 +88,7 @@ public class NodeCrypto {
   private InsertableClientSSK myARK;
 
   /** My ARK sequence number */
-  private long myARKNumber;
+  private volatile long myARKNumber;
 
   private final NodeCryptoConfig config;
 
@@ -370,12 +370,12 @@ public class NodeCrypto {
   /**
    * Export my reference so that another node can connect to me.
    *
-   * @param forSetup If true, strip out everything that isn't needed for the references exchanged
-   *     immediately after connection setup. I.e. strip out everything that is invariant, or that
+   * @param forSetup If true, strip out everything aren't needed for the references exchanged
+   *     immediately after connection setup. I.e., strip out everything that is invariant, or that
    *     can safely be exchanged later.
    * @param forAnonInitiator If true, we are adding a node from an anonymous initiator noderef
    *     exchange. Minimal noderef which we can construct a PeerNode from. Short-lived so no ARK
-   *     etc. Already signed so dump the signature.
+   *     etc. Already signed, so dump the signature.
    */
   SimpleFieldSet exportPublicFieldSet(boolean forSetup, boolean forAnonInitiator, boolean forARK) {
     SimpleFieldSet fs = exportPublicCryptoFieldSet(forSetup || forARK, forAnonInitiator);
@@ -538,7 +538,7 @@ public class NodeCrypto {
   }
 
   /**
-   * Sign data with the node's ECDSA key. The data does not need to be hashed, the signing code will
+   * Sign data with the node's ECDSA key. The data does not need to be hashed; the signing code will
    * handle that for us, using an algorithm appropriate for the keysize.
    */
   byte[] ecdsaSign(byte[]... data) {
@@ -596,7 +596,7 @@ public class NodeCrypto {
    */
   public boolean allowConnection(PeerNode pn, FreenetInetAddress addr) {
     // Disallow multiple connections to the same address.
-    // For IPv6, a configurable same-/64 subnet rule may be more appropriate than exact match.
+    // For IPv6, a configurable same-/64 subnet rule may be more appropriate than the exact match.
     if (config.oneConnectionPerAddress()
         && node.network().peers().roster().anyConnectedPeerHasAddress(addr, pn)
         && !detector.includes(addr)

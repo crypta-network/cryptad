@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Packet format and transport for encrypted peer communication.
  *
- * <p>This implementation handles packet assembly and parsing including:
+ * <p>This implementation handles packet assembly and parsing, including:
  *
  * <ul>
  *   <li>Fragmenting and reassembling messages up to {@link #MAX_MESSAGE_SIZE} bytes.
@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>Thread safety: this class uses fine‑grained locks. The send buffer and its counters are
- * protected by {@code sendBufferLock}. The receive buffer usage counter is protected by {@code
+ * protected by {@code sendBufferLock}. The receiving buffer usage counter is protected by {@code
  * receiveBufferSizeLock}. Window pointers and some shared structures synchronize on {@code this} or
  * their own monitors as documented. Callers may use an instance from multiple threads.
  *
@@ -91,7 +91,7 @@ public class NewPacketFormat implements PacketFormat {
 
   /**
    * Total bytes currently used by partially received buffers. This mirrors how much of the sender's
-   * send window we occupy. Guarded by {@code receiveBufferSizeLock}.
+   * sending window we occupy. Guarded by {@code receiveBufferSizeLock}.
    */
   private int receiveBufferUsed = 0;
 
@@ -556,7 +556,7 @@ public class NewPacketFormat implements PacketFormat {
    *
    * <p>When {@code ackOnly} is {@code true}, the packet contains only acks or keepalive payloads
    * (no message fragments). When {@code false}, the method may coalesce queued message fragments
-   * according to priorities and deadlines.
+   * according to prioritize and deadlines.
    *
    * @param now current time in milliseconds.
    * @param ackOnly whether to limit the packet to acks/keepalives.
@@ -1096,8 +1096,8 @@ public class NewPacketFormat implements PacketFormat {
    * Returns whether a packet with data can be sent now under current constraints.
    *
    * <p>Checks include message ID availability, sequence-number allocation for the given key, remote
-   * buffer usage, and throttle window. When message ID allocation is not possible but there are
-   * partially started messages, a send may still be performed to finish them.
+   * buffer usage, and throttle window. When message ID allocation is not possible, but there are
+   * partially started messages, a sending may still be performed to finish them.
    *
    * @param tracker the session key whose sequence numbers will be used; may be {@code null} to
    *     indicate that only throttling and buffering should be considered.
@@ -1217,7 +1217,7 @@ public class NewPacketFormat implements PacketFormat {
     final NewPacketFormat npf;
     final List<MessageWrapper> messages = new ArrayList<>();
     final List<int[]> ranges = new ArrayList<>();
-    long sentTime;
+    volatile long sentTime;
 
     SentPacket(NewPacketFormat npf, SessionKey key) {
       this.npf = npf;

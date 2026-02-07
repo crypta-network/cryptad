@@ -45,9 +45,9 @@ public class PeerStatusBook {
   private final PeerStatusTracker<String> peerNodeRoutingBackoffReasonsBulk =
       new PeerStatusTracker<>();
 
-  private long oldestNeverConnectedDarknetPeerAge = 0L;
+  private volatile long oldestNeverConnectedDarknetPeerAge = 0L;
   private long nextOldestNeverConnectedDarknetPeerAgeUpdateTime = -1L;
-  private long nextPeerNodeStatusLogTime = -1L;
+  private volatile long nextPeerNodeStatusLogTime = -1L;
   private long nextRoutableConnectionStatsUpdateTime = -1L;
 
   /**

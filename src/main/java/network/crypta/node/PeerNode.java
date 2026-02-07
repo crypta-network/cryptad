@@ -243,7 +243,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private SessionKey unverifiedTracker;
 
   /** When did we last send a packet? */
-  private long timeLastSentPacket;
+  private volatile long timeLastSentPacket;
 
   /** When did we last receive a packet? */
   private long timeLastReceivedPacket;

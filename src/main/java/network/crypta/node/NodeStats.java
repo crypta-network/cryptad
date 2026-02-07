@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.xfer.BlockTransmitter.BlockTimeCallback;
 import network.crypta.node.SecurityLevels.NETWORK_THREAT_LEVEL;
@@ -220,10 +221,10 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   // static initializer intentionally removed (no-op)
 
   /** the first time bwlimitDelay was over PeerManagerUserAlert threshold */
-  private long firstBwlimitDelayTimeThresholdBreak;
+  private volatile long firstBwlimitDelayTimeThresholdBreak;
 
   /** the first time nodeAveragePing was over PeerManagerUserAlert threshold */
-  private long firstNodeAveragePingTimeThresholdBreak;
+  private volatile long firstNodeAveragePingTimeThresholdBreak;
 
   /** bwlimitDelay PeerManagerUserAlert should happen if true */
   private boolean bwlimitDelayAlertRelevant;
@@ -2924,7 +2925,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     return routedMessageBytesSent;
   }
 
-  private long disconnBytesSent;
+  private final AtomicLong disconnBytesSent = new AtomicLong();
 
   @SuppressWarnings("unused")
   void disconnBytesReceived(int x) {
@@ -2932,7 +2933,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   }
 
   void disconnBytesSent(int x) {
-    this.disconnBytesSent += x;
+    disconnBytesSent.addAndGet(x);
   }
 
   /**
@@ -2944,7 +2945,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    * @return total disconnect bytes sent.
    */
   public long getDisconnBytesSent() {
-    return disconnBytesSent;
+    return disconnBytesSent.get();
   }
 
   private long initialMessagesBytesSent;
@@ -3151,7 +3152,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
         + pingBytesSent // ping bytes
         + probeRequestSentBytes // probe requests
         + routedMessageBytesSent // routed test messages
-        + disconnBytesSent // disconnection related bytes
+        + disconnBytesSent.get() // disconnection related bytes
         + initialMessagesBytesSent // initial messages
         + changedIPBytesSent // changed IP
         + nodeToNodeSentBytes // n2n messages

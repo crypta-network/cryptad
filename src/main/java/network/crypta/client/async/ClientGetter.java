@@ -145,7 +145,7 @@ public class ClientGetter extends BaseClientGetter
   private String expectedMIME;
 
   /** The expected size of the file, if we know it. */
-  private long expectedSize;
+  private volatile long expectedSize;
 
   /** If true, the metadata (mostly the expected size) shouldn't change further. */
   private boolean finalizedMetadata;

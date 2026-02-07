@@ -7,6 +7,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicLong;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.support.TimeUtil;
 import network.crypta.support.io.NativeThread;
@@ -53,8 +54,8 @@ public class PacketSender implements Runnable {
   final NativeThread myThread;
   final Node node;
   NodeStats stats;
-  long lastReportedNoPackets;
-  long lastReceivedPacketFromAnyNode;
+  volatile long lastReportedNoPackets;
+  final AtomicLong lastReceivedPacketFromAnyNode = new AtomicLong();
   private final Random localRandom;
   private volatile boolean stopping;
   private boolean wakeUpRequested;
@@ -141,7 +142,7 @@ public class PacketSender implements Runnable {
     schedulePeriodicJob();
     // Process peers perform the selected action, then sleep until the next action time.
     while (!stopping) {
-      lastReceivedPacketFromAnyNode = lastReportedNoPackets;
+      lastReceivedPacketFromAnyNode.set(lastReportedNoPackets);
       try {
         realRun();
       } catch (Throwable t) {
@@ -237,8 +238,7 @@ public class PacketSender implements Runnable {
   }
 
   private void preProcessPeer(PeerNode pn) {
-    lastReceivedPacketFromAnyNode =
-        Math.max(pn.lastReceivedPacketTime(), lastReceivedPacketFromAnyNode);
+    lastReceivedPacketFromAnyNode.accumulateAndGet(pn.lastReceivedPacketTime(), Math::max);
     pn.maybeOnConnect();
     if (pn.shouldDisconnectAndRemoveNow() && !pn.isDisconnecting()) {
       node.network().peers().messenger().disconnectAndRemove(pn, true, true, false);
@@ -471,7 +471,7 @@ public class PacketSender implements Runnable {
     long sleepTime = Math.min(nextActionTime - now, MAX_COALESCING_DELAY);
 
     if ((now - node.getStartupTime()) > MINUTES.toMillis(5)
-        && (now - lastReceivedPacketFromAnyNode) > Node.ALARM_TIME) {
+        && (now - lastReceivedPacketFromAnyNode.get()) > Node.ALARM_TIME) {
       LOG.error(
           "No packets received from any node in {} seconds",
           SECONDS.convert(Node.ALARM_TIME, MILLISECONDS));
