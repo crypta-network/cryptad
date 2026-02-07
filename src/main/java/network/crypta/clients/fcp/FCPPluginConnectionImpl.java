@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import network.crypta.clients.fcp.FCPPluginMessage.ClientPermissions;
@@ -104,7 +105,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * NOTICE: If you do implement this, make sure to not rewrite the ReferenceQueue polling thread
    * but instead base it upon {@link FCPPluginConnectionTracker}. You should probably extract a
    * generic class WeakValueMap from that one and use it to power both the existing class and the
-   * one which deals with this variable here.<br>
+   * one that deals with this variable here.<br>
    * Also, once you've implemented ReferenceQueue monitoring, remove {@link #isServerDead()} as it
    * only was added for the opportunistic cleaning due to lack of a ReferenceQueue and is an ugly
    * function besides that.
@@ -115,15 +116,15 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
 
   /**
    * For intra-node plugin connections, this is the connecting client. For networked plugin
-   * connections, this is null.
+   * connections, this is a null.
    */
   private final ClientSideFCPMessageHandler client;
 
   /**
    * For networked plugin connections, this is the network connection to which this
-   * FCPPluginConnectionImpl belongs. For intra-node connections to plugins, this is null. For each
-   * {@link FCPConnectionHandler}, there can only be one FCPPluginConnectionImpl for each {@link
-   * #serverPluginName}.
+   * FCPPluginConnectionImpl belongs. For intra-node connections to plugins, this is a null. For
+   * each {@link FCPConnectionHandler}, there can only be one FCPPluginConnectionImpl for each
+   * {@link #serverPluginName}.
    */
   private final FCPConnectionHandler clientConnection;
 
@@ -160,8 +161,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * The key is the identifier {@link FCPPluginMessage#identifier} of the original message which was
    * sent by sendSynchronous().<br>
    * <br>
-   * An entry shall be added by sendSynchronous() when a new synchronous send is started, and then
-   * it shall wait for the Condition {@link SynchronousSend#completionSignal} to be signaled.<br>
+   * An entry shall be added by sendSynchronous() when a new synchronous sending is started, and
+   * then it shall wait for the Condition {@link SynchronousSend#completionSignal} to be signaled.
+   * <br>
    * When the reply message is received, the node will always dispatch it via {@link
    * #send(SendDirection, FCPPluginMessage)}. Thus, that function is obliged to check this map for
    * whether there is an entry for each received reply. If it contains a SynchronousSend for the
@@ -177,14 +179,14 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * - Not sent a reply message at all, even though they should. This shall be compensated by
    * sendSynchronous() always specifying a timeout when waiting upon the Conditions.<br>
    * - Send <i>multiple</i> reply messages for the same identifier even though they should only send
-   * one. This probably won't matter though:<br>
+   * one. This probably won't matter, though:<br>
    * * The first arriving reply will complete the matching sendSynchronous() call.<br>
-   * * Any subsequent replies will not find a matching entry in this table, which is the same
-   * situation as if the reply was to a <i>non</i>-synchronous send. Non-synchronous sends are a
-   * normal thing, and thus handling their replies is implemented. It will cause the reply to be
-   * shipped to the message handler interface of the server/client instead of being returned by
-   * sendSynchronous() though, which could confuse it. But in that case it will probably just log an
-   * error message and continue working as normal. <br>
+   * * Any further replies will not find a matching entry in this table, which is the same situation
+   * as if the reply was to a <i>non</i>-synchronous send. Non-synchronous sends are a normal thing,
+   * and thus handling their replies is implemented. It will cause the reply to be shipped to the
+   * message handler interface of the server/client instead of being returned by sendSynchronous()
+   * though, which could confuse it. But in that case it will probably just log an error message and
+   * continue working as normal. <br>
    * <br>
    * Design note: We do not need the order of the map, and thus this could be a HashMap instead of a
    * TreeMap. We do not use a HashMap for scalability: Java HashMaps never shrink, they only grow.
@@ -198,12 +200,12 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   /**
    * Shall be used to ensure thread-safety of {@link #synchronousSends}. <br>
    * (Please read its Javadoc before continuing to read this Javadoc: It explains the mechanism of
-   * synchronous sends, and it is assumed that you understand it in what follows here.)<br>
+   * synchronous sending, and it is assumed that you understand it in what follows here.)<br>
    * <br>
    * It is a {@link ReadWriteLock} because synchronous sends shall by design be used infrequently,
-   * and thus there will be more reads checking for an existing synchronous send than writes to
+   * and thus there will be more reads checking for an existing synchronous sending than writes to
    * terminate one. (It is a {@link ReentrantReadWriteLock} because that is currently the only
-   * implementation of ReadWriteLock, the re-entrancy is probably not needed by the actual code.)
+   * implementation of ReadWriteLock, the reentrancy is probably not needed by the actual code.)
    */
   private final ReadWriteLock synchronousSendsLock = new ReentrantReadWriteLock();
 
@@ -267,8 +269,8 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    *
    * <p>The method locates the server plug-in via {@link PluginManager}, registers the resulting
    * connection with the tracker, and returns an instance whose default direction adapters can be
-   * given to plugins. Always hand out adapters rather than this raw instance so GC-based disconnect
-   * logic remains effective.
+   * given to plugins. Always hand out adapters rather than this raw instance, so GC-based
+   * disconnect logic remains effective.
    *
    * @param tracker tracker that observes created connections and provides GC notifications
    * @param executor execution pool shared by plugin dispatchers, honoring {@link
@@ -422,7 +424,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   /**
    * ATTENTION: Only for internal use by {@link PluginConnectionRegistry} when resolving plugin
    * connections for a {@link FCPConnectionHandler}.<br>
-   * Server / client code should instead always send messages, for example via {@link
+   * Server / client code should instead always send messages, for example, via {@link
    * #send(SendDirection, FCPPluginMessage)}, to check whether the connection is alive. This is to
    * ensure that the implementation of this class could safely be changed to allow the server to be
    * attached by network instead of always running locally in the same node as it currently is. Also
@@ -489,7 +491,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
           direction);
     }
     // We first have to compute the message.permissions field ourselves - we shall ignore what
-    // caller said for security.
+    //  the caller said for security.
     ClientPermissions currentClientPermissions =
         (direction == SendDirection.TO_CLIENT)
             ? null // Server-to-client messages do not have permissions.
@@ -512,10 +514,10 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       LOG.trace("send(): direction = {}; message = {}", direction, message);
     }
 
-    // True if the target server or client message handler is running in this VM.
+    // True, if the target server or client message handler is running in this VM.
     // This means that we can call its message handling function in a thread instead of
     // sending a message over the network.
-    // Notice that we do not check for server != null because that is not allowed by this class.
+    // Notice that we do not check for server != null because this class does not allow that.
     final boolean messageHandlerExistsLocally =
         (direction == SendDirection.TO_SERVER)
             || (direction == SendDirection.TO_CLIENT && client != null);
@@ -529,14 +531,14 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     // types of local message handlers:
     // 1) An object provided by the server/client which implements FredPluginFCPMessageHandler.
     //    The message is delivered by executing a callback on that object, with the message
-    //    as parameter.
+    //    as a parameter.
     // 2) A call to sendSynchronous() which is blocking because it is waiting for a reply
     //    to the message it sent so it can return the reply message to the caller.
     //    The reply message is delivered by passing it to the sendSynchronous() thread through
     //    an internal table of this class.
     //
-    // The following function call checks for whether case 2 applies, and handles it if yes:
-    // If there is such a waiting sendSynchronous() thread, it delivers the message to it, and
+    // The following function call checks for whether case 2 applies and handles it if yes:
+    // If there is such a waiting sendSynchronous() thread, it delivers the message to it and
     // returns true, and we are done: By contract, messages are preferably delivered to
     // sendSynchronous().
     // If there was no sendSynchronous() thread, it returns false, and we must continue to
@@ -552,7 +554,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
         (direction == SendDirection.TO_SERVER) ? server.get() : client;
 
     if (messageHandler == null) {
-      // server is a WeakReference which can be nulled if the server plugin was unloaded.
+      // server is a WeakReference that can be nulled if the server plugin was unloaded.
       // client is not a WeakReference, we already checked for it to be non-null.
       // Thus, in this case here, the server plugin has been unloaded so we can have
       // an error message which specifically talks about the *server* plugin.
@@ -574,7 +576,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
   private void dispatchMessageByNetwork(
       final SendDirection direction, final FCPPluginMessage message) throws IOException {
 
-    // The message handler is attached by network.
+    // Network attaches the message handler.
     // In theory, we could construct a mock FredPluginFCPMessagehandler object for it to
     // pretend it was a local message. But then we wouldn't know the reply message immediately
     // because the messages take time to travel over the network. This wouldn't work with the
@@ -635,9 +637,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       return false;
     }
 
-    // Since the Javadoc of sendSynchronous() tells people to use it not very often due to
-    // the impact upon thread count, we assume that the percentage of messages which pass
-    // through here for which there is an actual sendSynchronous() thread waiting is small.
+    // The Javadoc for sendSynchronous() says to use it sparingly because it increases
+    // thread usage. We therefore assume only a small fraction of messages that pass
+    // through this path have an actual sendSynchronous() thread waiting.
     // Thus, a ReadWriteLock is used, and we here only take the ReadLock, which can be taken
     // by *multiple* threads at once. We then read the map to check whether there is a
     //  waiter, and if there is, take the write lock to hand the message to it.
@@ -865,7 +867,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    *
    * <p>The method installs a {@link SynchronousSend} record keyed by the message identifier, sends
    * the payload using {@link #send(SendDirection, FCPPluginMessage)}, then waits on a {@link
-   * Condition}. Spurious wakeups are tolerated by re-checking the reply slot, and every code path
+   * Condition}. Spurious wakeup are tolerated by re-checking the reply slot, and every code path
    * removes its entry to avoid leaking memory. Timeouts raise {@link IOException} so callers can
    * rebuild the connection. Reply messages are forbidden because they would deadlock the handshake.
    *
@@ -899,9 +901,10 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       throw new IllegalArgumentException("Timeout should be positive");
     }
 
-    synchronousSendsLock.writeLock().lock();
+    final Lock writeLock = synchronousSendsLock.writeLock();
+    writeLock.lock();
     try {
-      final Condition completionSignal = synchronousSendsLock.writeLock().newCondition();
+      final Condition completionSignal = writeLock.newCondition();
       final SynchronousSend synchronousSend = new SynchronousSend(completionSignal);
 
       // An assert() instead of a throwing is fine:
@@ -939,7 +942,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
       // This will make the following awaitNanos() wake up and return true, which causes this
       // function to be able to return the reply.
       do {
-        // The compleditionSignal is a Condition which was created from the
+        // The compleditionSignal is a Condition created from the
         // synchronousSendsLock.writeLock(), so it will be released by the awaitNanos()
         // while it is blocking, and re-acquired when it returns.
         timeoutNanoSeconds = completionSignal.awaitNanos(timeoutNanoSeconds);
@@ -962,10 +965,10 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
         // So the naive assumption would be that at this point of code,
         // synchronousSend.reply would be non-null because awaitNanos() should only return
         // true after signal() was called.
-        // However, Condition.awaitNanos() can wake up "spuriously", i.e. wake up without
+        // However, Condition.awaitNanos() can wake up "spuriously", i.e., wake up without
         // actually having been signal()ed. See the JavaDoc of Condition.
         // So after awaitNanos() has returned true to indicate that it might have been
-        // signaled we still need to check whether the semantic condition which would
+        // signaled, we still need to check whether the semantic condition which would
         // trigger signaling is *really* met, which we do with this if:
         if (synchronousSend.reply != null) {
           if (!synchronousSend.reply.identifier.equals(message.identifier)) {
@@ -979,18 +982,20 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
         // A spurious wakeup occurred, so loop again and continue waiting.
       } while (true);
     } finally {
-      // We MUST always remove the SynchronousSend object which we added to the map,
-      // otherwise it will leak memory eternally.
-      synchronousSends.remove(message.identifier);
+      try {
+        // We MUST always remove the SynchronousSend object which we added to the map,
+        // otherwise it will leak memory eternally.
+        synchronousSends.remove(message.identifier);
 
-      if (LOG.isDebugEnabled()) {
-        LOG.debug(
-            "sendSynchronous(): Done for identifier {}; synchronousSends table size: {}",
-            message.identifier,
-            synchronousSends.size());
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(
+              "sendSynchronous(): Done for identifier {}; synchronousSends table size: {}",
+              message.identifier,
+              synchronousSends.size());
+        }
+      } finally {
+        writeLock.unlock();
       }
-
-      synchronousSendsLock.writeLock().unlock();
     }
   }
 
@@ -1001,9 +1006,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * - {@link FCPPluginConnection#sendSynchronous(FCPPluginMessage, long)}<br>
    * <br>
    * An adapter is needed instead of storing this as a member variable in FCPPluginConnectionImpl
-   * because a single FCPPluginConnectionImpl object is used by both to the server AND the client
-   * which it connects, and their default send direction will be different:<br>
-   * A server will want to send to the client by default, but the client will want to default to
+   * because a single FCPPluginConnectionImpl object is used by both the server AND the client which
+   * it connects, and their default send direction will be different:<br>
+   * A server will want to send it to the client by default, but the client will want to default to
    * sending to the server.<br>
    * <br>
    * Is abstract and has two implementing child classes (to implement differing internal
@@ -1014,7 +1019,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * NOTICE: Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to
    * ensure that the client disconnection mechanism of monitoring garbage collection works. This
    * class also serves the purpose of preventing servers from keeping a strong reference:<br>
-   * Uses of class FCPPluginConnectionImpl are told by the documentation to never hand out a
+   * The documentation tells uses of the class FCPPluginConnectionImpl to never hand out a
    * FCPPluginConnectionImpl itself to servers, but only give them adapters. Since the {@link
    * SendToClientAdapter} only keeps a {@link WeakReference} to the FCPPluginConnectionImpl, by only
    * handing out the adapter, servers are prevented from keeping a strong reference to the
@@ -1029,12 +1034,12 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
     }
 
     /**
-     * Returns the encapsulated backend FCPPluginConnection which shall be used for sending.<br>
+     * Returns the encapsulated backend FCPPluginConnection, which shall be used for sending.<br>
      * <br>
-     * Abstract because storage of a FCPPluginConnection object is different for servers and clients
-     * and thus must be implemented in separate child classes:<br>
-     * - Clients may and must store a FCPPluginConnection with a hard reference because a connection
-     * is considered as closed once there is no more hard reference to it.<br>
+     * Abstract because storage of an FCPPluginConnection object is different for servers and
+     * clients and thus must be implemented in separate child classes:<br>
+     * - Clients may and must store an FCPPluginConnection with a hard reference because a
+     * connection is considered as closed once there is no more hard reference to it.<br>
      * Disconnection is detected by monitoring the FCPluginConnection for garbage collection. <br>
      * - Servers must store a FCPPluginConnection with a {@link WeakReference} (or always query it
      * by UUID from the node) to ensure that they will get garbage connected once the client decides
@@ -1082,7 +1087,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * NOTICE: Server plugins must not keep a strong reference to the FCPPluginConnectionImpl to
    * ensure that the client disconnection mechanism of monitoring garbage collection works. This
    * class also serves the purpose of preventing servers from keeping a strong reference:<br>
-   * Uses of class FCPPluginConnectionImpl are told by the documentation to never hand out a
+   * The documentation tells uses of the class FCPPluginConnectionImpl to never hand out a
    * FCPPluginConnectionImpl itself to servers, but only give them adapters. Since the
    * SendToClientAdapter only keeps a {@link WeakReference} to the FCPPluginConnectionImpl, by only
    * handing out the adapter, servers are prevented from keeping a strong reference to the
@@ -1160,9 +1165,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * <br>
    * ATTENTION: Must only be used by the client, not by the server: Client disconnection is
    * implemented by monitoring the garbage collection of their FCPPluginConnectionImpl objects -
-   * once the connection is not strong referenced anymore, it is considered as closed. As this class
-   * keeps a strong reference to the connection, if servers did use it, they would prevent client
-   * disconnection.<br>
+   * once the connection is not strongly referenced anymore, it is considered as closed. As this
+   * class keeps a strong reference to the connection, if servers did use it, they would prevent
+   * client disconnection.<br>
    * See section "Disconnecting properly" at {@link PluginRespirator#connectToOtherPlugin( String,
    * ClientSideFCPMessageHandler)}.
    */
@@ -1200,7 +1205,7 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * Returns an adapter that locks the default {@link SendDirection} for callers lacking explicit
    * routing.
    *
-   * <p>Adapters keep weak references when facing server plugins so garbage-collection-based
+   * <p>Adapters keep weak references when facing server plugins, so garbage-collection-based
    * disconnects still work. Callers must use these adapters instead of caching {@code
    * FCPPluginConnectionImpl} directly; otherwise synchronous send restrictions and lifecycle
    * monitoring are bypassed.
@@ -1216,9 +1221,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * @throws NoSendDirectionSpecifiedException Is always thrown since this function is only
    *     implemented for FCPPluginConnectionImpl objects which are wrapped inside a {@link
    *     DefaultSendDirectionAdapter}.<br>
-   *     Objects of type FCPPluginConnectionImpl will never be handed out directly to the server or
-   *     client application code, they will always be wrapped in such an adapter - so this function
-   *     will work for servers and clients.
+   *     Objects of the type FCPPluginConnectionImpl will never be handed out directly to the server
+   *     or client application code, they will always be wrapped in such an adapter - so this
+   *     function will work for servers and clients.
    */
   @Override
   public void send(FCPPluginMessage message) {
@@ -1229,9 +1234,9 @@ final class FCPPluginConnectionImpl implements FCPPluginConnection {
    * @throws NoSendDirectionSpecifiedException Is always thrown since this function is only
    *     implemented for FCPPluginConnectionImpl objects which are wrapped inside a {@link
    *     DefaultSendDirectionAdapter}.<br>
-   *     Objects of type FCPPluginConnectionImpl will never be handed out directly to the server or
-   *     client application code, they will always be wrapped in such an adapter - so this function
-   *     will work for servers and clients.
+   *     Objects of the type FCPPluginConnectionImpl will never be handed out directly to the server
+   *     or client application code, they will always be wrapped in such an adapter - so this
+   *     function will work for servers and clients.
    */
   @Override
   public FCPPluginMessage sendSynchronous(FCPPluginMessage message, long timeoutNanoSeconds) {

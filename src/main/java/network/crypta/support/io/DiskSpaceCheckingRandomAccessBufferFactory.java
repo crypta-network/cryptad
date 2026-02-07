@@ -162,15 +162,18 @@ public class DiskSpaceCheckingRandomAccessBufferFactory
         throw new InsufficientDiskSpaceException();
       }
     } finally {
-      if (ret == null) { // Best‑effort cleanup when no buffer was returned.
-        try {
-          Files.delete(file.toPath());
-        } catch (IOException e) {
-          // Preserve original failure; deletion failure here is non‑fatal.
-          LOG.debug("Unable to delete {} after RAF creation failed", file, e);
+      try {
+        if (ret == null) { // Best‑effort cleanup when no buffer was returned.
+          try {
+            Files.delete(file.toPath());
+          } catch (IOException | RuntimeException e) {
+            // Preserve original failure; deletion failure here is non‑fatal.
+            LOG.debug("Unable to delete {} after RAF creation failed", file, e);
+          }
         }
+      } finally {
+        lock.unlock();
       }
-      lock.unlock();
     }
   }
 
@@ -181,7 +184,7 @@ public class DiskSpaceCheckingRandomAccessBufferFactory
    * {@code true} (i.e., it does not block the writing). Otherwise, it evaluates {@code
    * dir.getUsableSpace() - (toWrite + bufferSize) >= minDiskSpace} under the internal lock.
    *
-   * @param file file being extended; used to validate directory relationship
+   * @param file file being extended; used to validate the directory relationship
    * @param toWrite number of additional bytes intended to be written
    * @param bufferSize number of bytes written since the last check; callers use this to throttle
    *     check frequency

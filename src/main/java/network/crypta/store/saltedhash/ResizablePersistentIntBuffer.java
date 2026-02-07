@@ -6,6 +6,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import network.crypta.support.Fields;
@@ -146,7 +147,8 @@ public class ResizablePersistentIntBuffer {
     this.writer =
         () -> {
           LOG.info("Starting scheduled flush for slot cache {}", ResizablePersistentIntBuffer.this);
-          lock.readLock().lock(); // Protect buffer.
+          Lock readLock = lock.readLock();
+          readLock.lock(); // Protect buffer.
           try {
             synchronized (ResizablePersistentIntBuffer.this) {
               if (writing || !dirty || closed) {
@@ -163,11 +165,14 @@ public class ResizablePersistentIntBuffer {
               LOG.error(WRITE_FAILED_SCHEDULED_MSG, filename, e);
             }
           } finally {
-            synchronized (ResizablePersistentIntBuffer.this) {
-              writing = false;
-              ResizablePersistentIntBuffer.this.notifyAll();
+            try {
+              synchronized (ResizablePersistentIntBuffer.this) {
+                writing = false;
+                ResizablePersistentIntBuffer.this.notifyAll();
+              }
+            } finally {
+              readLock.unlock();
             }
-            lock.readLock().unlock();
           }
           LOG.info("Written slot cache {}", ResizablePersistentIntBuffer.this);
         };
@@ -321,6 +326,11 @@ public class ResizablePersistentIntBuffer {
 
   private final Runnable writer;
 
+  private enum ForceWriteAttemptResult {
+    RETRY,
+    FINISHED
+  }
+
   /**
    * Flushes pending changes if any and closes the file.
    *
@@ -438,52 +448,70 @@ public class ResizablePersistentIntBuffer {
     try {
       while (true) {
         synchronized (this) {
-          if (closed) return;
+          if (closed) {
+            return;
+          }
           // Wait for any in-flight write to finish; preserve interrupt status.
           while (writing) {
             try {
               wait();
             } catch (InterruptedException _) {
-              wasInterrupted = true; // record and keep waiting
+              wasInterrupted = true;
             }
           }
-          if (!dirty) return; // Nothing to write.
+          if (!dirty) {
+            return;
+          }
         }
-
-        lock.readLock().lock();
-        boolean ownsWrite = false;
-        try {
-          synchronized (this) {
-            if (closed) return;
-            // Another thread may have started writing after we left the wait section.
-            if (writing) continue;
-            // Check dirty only after writing so we don't return while an in-flight writer is
-            // finishing a flush started in the interleaving window above.
-            if (!dirty) return;
-            // Take ownership of the writing and clear the dirty flag under the writing guard.
-            writing = true;
-            scheduled = false; // avoid a no-op scheduled run after this forced writing
-            dirty = false;
-            ownsWrite = true;
-          }
-          try {
-            writeBuffer();
-          } catch (IOException e) {
-            LOG.error(WRITE_FAILED_FORCED_MSG, filename, e);
-          }
+        if (tryForceWriteOnce() == ForceWriteAttemptResult.FINISHED) {
           return;
-        } finally {
-          synchronized (this) {
-            if (ownsWrite) {
-              writing = false;
-              this.notifyAll();
-            }
-          }
-          lock.readLock().unlock();
         }
       }
     } finally {
       if (wasInterrupted) Thread.currentThread().interrupt();
+    }
+  }
+
+  private ForceWriteAttemptResult tryForceWriteOnce() {
+    Lock readLock = lock.readLock();
+    readLock.lock();
+    boolean ownsWrite = false;
+    try {
+      synchronized (this) {
+        if (closed || !dirty) {
+          return ForceWriteAttemptResult.FINISHED;
+        }
+        // Another thread may have started writing after we left the wait section.
+        if (writing) {
+          return ForceWriteAttemptResult.RETRY;
+        }
+        // Take ownership of the writing and clear the dirty flag under the writing guard.
+        writing = true;
+        scheduled = false; // avoid a no-op scheduled run after this forced writing
+        dirty = false;
+        ownsWrite = true;
+      }
+      writeBufferSafelyForForcedWrite();
+      return ForceWriteAttemptResult.FINISHED;
+    } finally {
+      try {
+        synchronized (this) {
+          if (ownsWrite) {
+            writing = false;
+            this.notifyAll();
+          }
+        }
+      } finally {
+        readLock.unlock();
+      }
+    }
+  }
+
+  private void writeBufferSafelyForForcedWrite() {
+    try {
+      writeBuffer();
+    } catch (IOException e) {
+      LOG.error(WRITE_FAILED_FORCED_MSG, filename, e);
     }
   }
 
