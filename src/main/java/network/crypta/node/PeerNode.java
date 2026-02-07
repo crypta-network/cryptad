@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.KeyAgreementSchemeContext;
@@ -2302,7 +2303,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
         unverifiedTracker = null;
       }
       sendHandshakeTime = now;
-      countFailedRevocationTransfers = 0;
+      countFailedRevocationTransfers.set(0);
       timePrevDisconnect = timeLastDisconnect;
       timeLastDisconnect = now;
       if (dumpMessageQueue) {
@@ -5408,13 +5409,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   // Note: lastFailedRevocationTransfer was unused; removing avoids dead code.
 
   /** Reset on disconnection */
-  private int countFailedRevocationTransfers;
+  private final AtomicInteger countFailedRevocationTransfers = new AtomicInteger();
 
   /** Records a failed revocation transfer and schedules a fresh handshake IP update attempt. */
   public void failedRevocationTransfer() {
     // Something odd happened, possibly a disconnect, maybe looking up the DNS names will help?
     internals.markHandshakeIpUpdateAttempted(System.currentTimeMillis());
-    countFailedRevocationTransfers++;
+    countFailedRevocationTransfers.incrementAndGet();
   }
 
   /**
@@ -5426,7 +5427,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @return count of failed revocation transfers since last disconnect
    */
   public int countFailedRevocationTransfers() {
-    return countFailedRevocationTransfers;
+    return countFailedRevocationTransfers.get();
   }
 
   /**

@@ -74,7 +74,7 @@ public class SplitFileInserterCrossSegmentStorage {
 
   private final int statusLength;
 
-  // Set to true to encode block keys during *cross-segment* encoding, and thus detect e.g. storage
+  // Set to true to encode block keys during *cross-segment* encoding, and thus detect e.g., storage
   // bugs.
   // This will cause more disk I/O as we have to write the keys (more or less randomly).
   // Intended for additional verification during cross-segment encoding.
@@ -131,7 +131,7 @@ public class SplitFileInserterCrossSegmentStorage {
   }
 
   /** Only used during construction */
-  void addBlock(SplitFileInserterSegmentStorage seg, int blockNum) {
+  private synchronized void addBlock(SplitFileInserterSegmentStorage seg, int blockNum) {
     segments[counter] = seg;
     blockNumbers[counter] = blockNum;
     if (LOG.isDebugEnabled())
@@ -144,14 +144,14 @@ public class SplitFileInserterCrossSegmentStorage {
     counter++;
   }
 
-  void addDataBlock(SplitFileInserterSegmentStorage seg, int blockNum) {
+  synchronized void addDataBlock(SplitFileInserterSegmentStorage seg, int blockNum) {
     assert (counter < dataBlockCount);
     assert (blockNum < seg.dataBlockCount);
     addBlock(seg, blockNum);
   }
 
   /** Only used during construction */
-  void addCheckBlock(SplitFileInserterSegmentStorage seg, int blockNum) {
+  synchronized void addCheckBlock(SplitFileInserterSegmentStorage seg, int blockNum) {
     assert (counter >= dataBlockCount);
     assert (blockNum >= seg.dataBlockCount
         && blockNum < seg.dataBlockCount + seg.crossCheckBlockCount);
@@ -261,7 +261,7 @@ public class SplitFileInserterCrossSegmentStorage {
   /**
    * Schedules asynchronous encoding of cross-check (parity) blocks for this segment.
    *
-   * <p>The call is idempotent and returns immediately: when first invoked it enqueues a
+   * <p>The call is idempotent and returns immediately: when first invoked, it enqueues a
    * memory-bounded job that reads all data blocks, computes parity via the configured codec, writes
    * each cross-check block to its owning segment, and persists status where enabled. Subsequent
    * calls while encoding is in progress are ignored.
@@ -374,7 +374,7 @@ public class SplitFileInserterCrossSegmentStorage {
    * @param blockNoWithinSegment block index inside {@code segmentNumber} that is expected to match
    *     the recorded block number for the provided slot.
    * @return a newly allocated byte array containing the cross-check block data as stored on disk.
-   * @throws IOException if the underlying storage cannot read the requested block or an I/O error
+   * @throws IOException if the underlying storage cannot read the requested block, or an I/O error
    *     occurs during the read operation.
    */
   byte[] readCheckBlock(
@@ -424,7 +424,7 @@ public class SplitFileInserterCrossSegmentStorage {
    *
    * @return the number of allocated block slots recorded at construction time.
    */
-  public int getAllocatedCrossCheckBlocks() {
+  public synchronized int getAllocatedCrossCheckBlocks() {
     return counter;
   }
 
@@ -480,12 +480,14 @@ public class SplitFileInserterCrossSegmentStorage {
     encoded = dis.readBoolean();
   }
 
+  @SuppressWarnings("unused")
   int[] getSegmentNumbers() {
     int[] ret = new int[totalBlocks];
     for (int i = 0; i < totalBlocks; i++) ret[i] = segments[i].segNo;
     return ret;
   }
 
+  @SuppressWarnings("unused")
   int[] getBlockNumbers() {
     return blockNumbers.clone();
   }
@@ -493,8 +495,8 @@ public class SplitFileInserterCrossSegmentStorage {
   /**
    * Cancel the encode.
    *
-   * @return True if we can complete cancelling now, false if we are encoding, in which case parent
-   *     will get the usual callback when it is done.
+   * @return True if we can complete cancelling now, false if we are encoding, in which case the
+   *     parent will get the usual callback when it is done.
    */
   public synchronized boolean cancel() {
     cancelled = true;
@@ -502,14 +504,14 @@ public class SplitFileInserterCrossSegmentStorage {
   }
 
   /**
-   * Indicates whether the encode job has either completed or been cancelled.
+   * Indicates whether the encoding job has either completed or been canceled.
    *
    * <p>The method returns {@code false} while the job is running. Once the job finishes it returns
    * {@code true} for both success and cancellation. Call {@link #isFinishedEncoding()} to
    * distinguish a successful completion from cancellation.
    *
-   * @return {@code true} if the job is not running and the segment is either encoded or was
-   *     cancelled; {@code false} while encoding is in progress.
+   * @return {@code true} if the job is not running, and the segment is either encoded or was
+   *     canceled; {@code false} while encoding is in progress.
    */
   public synchronized boolean hasCompletedOrFailed() {
     if (encoding) return false;

@@ -11,7 +11,7 @@ import java.util.Random;
  * significantly better statistical properties for simulation, sampling, and randomized algorithms
  * that are sensitive to correlation artifacts. The generator maintains an internal 624‑element
  * state vector and produces 32‑bit values in batches; the public {@code nextInt()}, {@code
- * nextLong()}, and other {@code Random} methods all delegate to {@link #next(int)} to obtain the
+ * nextLong()}, and other {@code Random} methods all delegate to {@link #next(int)} to get the
  * requested number of bits. Calling any {@code setSeed} method fully resets that internal state so
  * that two instances seeded identically will produce the same sequence of values.
  *
@@ -21,7 +21,7 @@ import java.util.Random;
  * determinism and avoid races during state refresh.
  *
  * <p>This generator features an extremely long period (2<sup>19937</sup>-1) and 623-dimensional
- * equidistribution up to 32 bits accuracy. The home page for this generator is located at <a
+ * equidistribution up to 32-bit accuracy. The home page for this generator is located at <a
  * href="http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html">
  * http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html</a>.
  *
@@ -31,8 +31,8 @@ import java.util.Random;
  * Modeling and Computer Simulation, Vol. 8, No. 1, January 1998, pp 3--30
  *
  * <p>The class is implemented as a specialization of the standard <code>java.util.Random</code>
- * class. This allows to use it in algorithms expecting a standard random generator, and hence
- * benefit from a better generator without code change.
+ * class. This allows using it in algorithms expecting a standard random generator and hence
+ * benefiting from a better generator without code change.
  *
  * <p>This class is mainly a Java port of the 2002-01-26 version of the generator written in C by
  * Makoto Matsumoto and Takuji Nishimura. The following license text is reproduced from the original
@@ -48,9 +48,9 @@ import java.util.Random;
  *
  * <ol>
  *   <li>Redistributions of source code must retain the above copyright notice, this list of
- *       conditions and the following disclaimer.
+ *       conditions, and the following disclaimer.
  *   <li>Redistributions in binary form must reproduce the above copyright notice, this list of
- *       conditions and the following disclaimer in the documentation and/or other materials
+ *       conditions, and the following disclaimer in the documentation and/or other materials
  *       provided with the distribution.
  *   <li>The names of its contributors may not be used to endorse or promote products derived from
  *       this software without specific prior written permission.
@@ -61,10 +61,10 @@ import java.util.Random;
  * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
  * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
  * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
- * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
- * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
- * OF SUCH DAMAGE.</strong>
+ * GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER, CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.</strong>
  *
  * @author Makoto Matsumoto and Takuji Nishimura (C version), Luc Maisonobe (Java port)
  * @version $Id: MersenneTwister.java 1666 2005-12-15 16:37:55Z luc $
@@ -149,12 +149,13 @@ public class MersenneTwister extends Random {
     // we use a long masked by 0xffffffffL as a poor man unsigned int
     long longMT = seed;
     mt[0] = (int) longMT;
-    for (mti = 1; mti < N; ++mti) {
+    for (int i = 1; i < N; ++i) {
       // See Knuth TAOCP Vol2. 3rd Ed. P.106 for multiplier.
       // initializer from the 2002-01-09 C version by Makoto Matsumoto
-      longMT = (1812433253L * (longMT ^ (longMT >> 30)) + mti) & 0xffffffffL;
-      mt[mti] = (int) longMT;
+      longMT = (1812433253L * (longMT ^ (longMT >> 30)) + i) & 0xffffffffL;
+      mt[i] = (int) longMT;
     }
+    mti = N;
   }
 
   /**
@@ -202,7 +203,7 @@ public class MersenneTwister extends Random {
   }
 
   /**
-   * Generate next pseudorandom number.
+   * Generate the next pseudorandom number.
    *
    * <p>This method is the core generation algorithm. As per {@link Random Random } contract, it is
    * used by all the public generation methods for the various primitive types {@link

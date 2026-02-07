@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
@@ -194,31 +195,31 @@ public class LocationManager implements ByteCounter {
   static final long MAX_SWAP_TIME = MINUTES.toMillis(1);
 
   private static void incrementSwaps() {
-    swaps++;
+    swaps.incrementAndGet();
   }
 
   private static void incrementNoSwaps() {
-    noSwaps++;
+    noSwaps.incrementAndGet();
   }
 
   private static void incrementStartedSwaps() {
-    startedSwaps++;
+    startedSwaps.incrementAndGet();
   }
 
   private static void incrementSwapsRejectedAlreadyLocked() {
-    swapsRejectedAlreadyLocked++;
+    swapsRejectedAlreadyLocked.incrementAndGet();
   }
 
   private static void incrementSwapsRejectedNowhereToGo() {
-    swapsRejectedNowhereToGo++;
+    swapsRejectedNowhereToGo.incrementAndGet();
   }
 
   private static void incrementSwapsRejectedRecognizedID() {
-    swapsRejectedRecognizedID++;
+    swapsRejectedRecognizedID.incrementAndGet();
   }
 
   private static void incrementSwapsRejectedRateLimit() {
-    swapsRejectedRateLimit++;
+    swapsRejectedRateLimit.incrementAndGet();
   }
 
   /** Don't start swapping until our peers have had a reasonable chance to reconnect. */
@@ -1210,47 +1211,47 @@ public class LocationManager implements ByteCounter {
 
   private boolean locked;
 
-  private static int swaps;
-  private static int noSwaps;
-  private static int startedSwaps;
-  private static int swapsRejectedAlreadyLocked;
-  private static int swapsRejectedNowhereToGo;
-  private static int swapsRejectedRateLimit;
-  private static int swapsRejectedRecognizedID;
+  private static final AtomicInteger swaps = new AtomicInteger();
+  private static final AtomicInteger noSwaps = new AtomicInteger();
+  private static final AtomicInteger startedSwaps = new AtomicInteger();
+  private static final AtomicInteger swapsRejectedAlreadyLocked = new AtomicInteger();
+  private static final AtomicInteger swapsRejectedNowhereToGo = new AtomicInteger();
+  private static final AtomicInteger swapsRejectedRateLimit = new AtomicInteger();
+  private static final AtomicInteger swapsRejectedRecognizedID = new AtomicInteger();
 
   /** Returns the number of successful swaps since start. */
   public static int getSwaps() {
-    return swaps;
+    return swaps.get();
   }
 
   /** Returns the number of swap attempts that did not result in a swap. */
   public static int getNoSwaps() {
-    return noSwaps;
+    return noSwaps.get();
   }
 
   /** Returns the number of outgoing swap attempts started. */
   public static int getStartedSwaps() {
-    return startedSwaps;
+    return startedSwaps.get();
   }
 
   /** Returns the number of rejections due to lock contention or queue limits. */
   public static int getSwapsRejectedAlreadyLocked() {
-    return swapsRejectedAlreadyLocked;
+    return swapsRejectedAlreadyLocked.get();
   }
 
   /** Returns the number of rejections due to no available peer to forward to. */
   public static int getSwapsRejectedNowhereToGo() {
-    return swapsRejectedNowhereToGo;
+    return swapsRejectedNowhereToGo.get();
   }
 
   /** Returns the number of rejections due to peer-advised rate limiting. */
   public static int getSwapsRejectedRateLimit() {
-    return swapsRejectedRateLimit;
+    return swapsRejectedRateLimit.get();
   }
 
   /** Returns the number of rejections due to duplicate or recognized IDs. */
   public static int getSwapsRejectedRecognizedID() {
-    return swapsRejectedRecognizedID;
+    return swapsRejectedRecognizedID.get();
   }
 
   long lockedTime;
