@@ -78,9 +78,13 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
    * @return {@code true} when a new ARK is stored; {@code false} otherwise.
    */
   boolean parseArk(SimpleFieldSet fs, boolean onStartup, boolean forDiffNodeRef) {
+    USK currentArk;
+    synchronized (peer) {
+      currentArk = myARK;
+    }
     USK ark =
         PeerNodeReferenceSupport.computeArk(
-            peer.selfPeerNode(), fs, onStartup, forDiffNodeRef, myARK);
+            peer.selfPeerNode(), fs, onStartup, forDiffNodeRef, currentArk);
     if (ark == null) return false;
     synchronized (peer) {
       if (myARK == null || !myARK.equals(ark)) {
@@ -135,20 +139,24 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
   void startFetcher() {
     // Note: keep locking minimal; avoid holding locks across callbacks
     if (!peer.node.isEnableARKs()) return;
+    USK ark;
+    synchronized (peer) {
+      ark = myARK;
+    }
     synchronized (arkFetcherSync) {
-      if (myARK == null) {
+      if (ark == null) {
         LOG.debug("No ARK for {} !!!!", peer);
         return;
       }
       if (arkFetcher == null) {
-        LOG.debug("Starting ARK fetcher for {} : {}", peer, myARK);
+        LOG.debug("Starting ARK fetcher for {} : {}", peer, ark);
         arkFetcher =
             peer.node
                 .services()
                 .clientCore()
                 .getUskManager()
                 .subscribeContent(
-                    myARK,
+                    ark,
                     this,
                     true,
                     peer.node.network().arkFetcherContext(),
@@ -167,7 +175,11 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
    */
   void stopFetcher() {
     if (!peer.node.isEnableARKs()) return;
-    LOG.debug("Stopping ARK fetcher for {} : {}", peer, myARK);
+    USK ark;
+    synchronized (peer) {
+      ark = myARK;
+    }
+    LOG.debug("Stopping ARK fetcher for {} : {}", peer, ark);
     // Note: keep locking minimal; avoid holding locks across callbacks
     USKRetriever ret;
     synchronized (arkFetcherSync) {
@@ -179,6 +191,7 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
       arkFetcher = null;
     }
     final USKRetriever unsub = ret;
+    final USK unsubArk = ark;
     peer.node
         .network()
         .executor()
@@ -188,7 +201,7 @@ final class PeerNodeArkManager implements USKRetrieverCallback {
                     .services()
                     .clientCore()
                     .getUskManager()
-                    .unsubscribeContent(myARK, unsub, true));
+                    .unsubscribeContent(unsubArk, unsub, true));
   }
 
   /**
