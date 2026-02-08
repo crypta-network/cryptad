@@ -514,32 +514,32 @@ public abstract class PersistentJobRunnerImpl implements PersistentJobRunner {
   }
 
   private void waitForRunningJobs() throws PersistenceDisabledException {
-    while (runningJobs > 0) {
-      if (!enableCheckpointing) return;
-      if (killed) throw new PersistenceDisabledException();
-      LOG.error("Waiting for {} to finish before checkpoint", runningJobs);
-      try {
-        synchronized (sync) {
+    synchronized (sync) {
+      while (runningJobs > 0) {
+        if (!enableCheckpointing) return;
+        if (killed) throw new PersistenceDisabledException();
+        LOG.error("Waiting for {} to finish before checkpoint", runningJobs);
+        try {
           sync.wait();
+        } catch (InterruptedException _) {
+          Thread.currentThread().interrupt();
+          throw new PersistenceDisabledException();
         }
-      } catch (InterruptedException _) {
-        Thread.currentThread().interrupt();
-        throw new PersistenceDisabledException();
       }
     }
   }
 
   private void waitWhileWriting() throws PersistenceDisabledException {
-    while (writing) {
-      if (!enableCheckpointing) return;
-      if (killed) throw new PersistenceDisabledException();
-      try {
-        synchronized (sync) {
+    synchronized (sync) {
+      while (writing) {
+        if (!enableCheckpointing) return;
+        if (killed) throw new PersistenceDisabledException();
+        try {
           sync.wait();
+        } catch (InterruptedException _) {
+          Thread.currentThread().interrupt();
+          throw new PersistenceDisabledException();
         }
-      } catch (InterruptedException _) {
-        Thread.currentThread().interrupt();
-        throw new PersistenceDisabledException();
       }
     }
   }
