@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  * table.
  *
  * <p>This helper is used by the HTTP UI layer to turn an IP address (typically the peer address or
- * a remote client address) into a {@link Country} enum value that can be rendered as a
+ * a remote client address) into a {@link Country} enum value. That value can be rendered as a
  * human-friendly label and, when available, a flag icon. It is intentionally lightweight: it reads
  * a compact encoded range list from a local database file, builds an in-memory search structure,
  * and then performs a binary search for lookups. Results are memoized in a small LRU-like cache to
@@ -30,8 +30,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The database file is treated as an optional, best-effort input. If the file is missing,
  * corrupted, or contains unknown country codes, lookups return {@code null} rather than failing the
- * caller. The instance keeps a soft reference to the full decoded table so the JVM may reclaim it
- * under memory pressure and the next lookup will reload it.
+ * caller. The instance keeps a soft reference to the full decoded table, so the JVM may reclaim it
+ * under memory pressure, and the next lookup will reload it.
  *
  * <p><b>Thread-safety:</b> instances have mutable caches and are not designed for concurrent access
  * without external synchronization.
@@ -54,7 +54,7 @@ public class IPConverter {
 
   // Cached DB file content
   private SoftReference<Cache> fullCache;
-  // Reference to singleton object
+  // Reference to the singleton object
   private static IPConverter instance;
   // File containing IP ranges
   private final File dbFile;
@@ -654,8 +654,7 @@ public class IPConverter {
      */
     public String getFlagIconPath() {
       String flagPath = flagIconPath();
-      boolean hasFlag =
-          FLAG_CACHE.computeIfAbsent(this, country -> StaticToadlet.haveFile(flagPath));
+      boolean hasFlag = FLAG_CACHE.computeIfAbsent(this, _ -> StaticToadlet.haveFile(flagPath));
       return hasFlag ? flagPath : null;
     }
   }
@@ -710,14 +709,13 @@ public class IPConverter {
    * <p>If the current singleton is {@code null} or was created for a different {@code file}, a new
    * instance is created and replaces the previous singleton reference.
    *
-   * <p><b>Thread-safety:</b> this method is not synchronized. Concurrent callers may observe races
-   * when swapping the singleton; all created instances should be functionally equivalent for a
-   * given file path.
+   * <p><b>Thread-safety:</b> synchronized for safe lazy initialization and replacement when the
+   * backing file changes.
    *
    * @param file database file that should back the singleton instance; must not be {@code null}.
    * @return singleton instance configured to read from {@code file}.
    */
-  public static IPConverter getInstance(File file) {
+  public static synchronized IPConverter getInstance(File file) {
     if (instance == null || !instance.getDBFile().equals(file)) {
       instance = new IPConverter(file);
     }
@@ -767,7 +765,7 @@ public class IPConverter {
       // Arrays to form a Cache
       short[] codes = new short[size];
       int[] ips = new int[size];
-      // Read ips and add it to ip table
+      // Read ips and add it to the ip table
       for (int i = 0, offset = 0; i < size; i++, offset += 7) {
         // Code
         String code = line.substring(offset, offset + 2);
@@ -785,7 +783,7 @@ public class IPConverter {
       LOG.error(e.getMessage());
     } catch (IPConverterParseException e) {
       LOG.error("IP-to-country database file is corrupt: {}", e, e);
-      // Don't try again until next restart.
+      // Don't try again until the next restart.
       dbFileCorrupt = true;
     }
     return null;
@@ -796,7 +794,7 @@ public class IPConverter {
    *
    * <p>The returned value is the 32-bit IPv4 address interpreted as an unsigned integer and stored
    * in the low 32 bits of the returned {@code long}. Each octet is parsed as a decimal integer and
-   * reduced modulo 256 to obtain a byte value.
+   * reduced modulo 256 to get a byte value.
    *
    * @param ip IPv4 address in dotted-decimal form (for example, {@code 192.0.2.1}).
    * @return numeric value for the address, suitable for {@link #locateIP(long)} lookups.
@@ -883,7 +881,7 @@ public class IPConverter {
           && ip[2] == (byte) 0x00
           && ip[3] == (byte) 0x00)) {
         // 2001:0::/32, Teredo tunnels
-        //  4..8  = server adderss
+        //  4..8  = server address
         //  9..10 = flags
         // 10..11 = client port (inverted)
         // 12..16 = client address (inverted)
