@@ -125,14 +125,7 @@ public class NodeStarter implements WrapperListener {
       String details,
       boolean noDNS,
       RandomSource randomSource) {
-
-    synchronized (NodeStarter.class) {
-      if (isStarted) {
-        throw new IllegalStateException();
-      }
-      isStarted = true;
-      isTestingVM = true;
-    }
+    markStarted(true);
 
     ensureDirectoryExists(baseDirectory);
 
@@ -153,6 +146,16 @@ public class NodeStarter implements WrapperListener {
     DNSRequester.disable = noDNS;
 
     return random;
+  }
+
+  private static void markStarted(boolean testingVm) {
+    synchronized (NodeStarter.class) {
+      if (isStarted) {
+        throw new IllegalStateException();
+      }
+      isStarted = true;
+      isTestingVM = testingVm;
+    }
   }
 
   private static void ensureDirectoryExists(File dir) {
@@ -455,13 +458,7 @@ public class NodeStarter implements WrapperListener {
    */
   @Override
   public Integer start(String[] args) {
-    synchronized (NodeStarter.class) {
-      if (isStarted) {
-        throw new IllegalStateException();
-      }
-      isStarted = true;
-      isTestingVM = false;
-    }
+    markStarted(false);
 
     NodeCli cli = new NodeCli();
     CommandLine cmd = new CommandLine(cli);

@@ -189,27 +189,31 @@ public class SSL {
       @Override
       public void set(Boolean newValue) throws InvalidConfigValueException {
         if (!get().equals(newValue)) {
-          enable = newValue;
-          if (enable)
-            try {
-              loadKeyStoreAndCreateCertificate();
-              createSSLContext();
-            } catch (Exception e) {
-              enable = false;
-              LOG.error("SSL could not be enabled", e);
-              throwConfigError("SSL could not be enabled", e);
-            }
-          else {
-            ssf = null;
-            try {
-              keystore.load(null, keyStorePass.toCharArray());
-            } catch (Exception _) {
-              // Just clear the key store
-            }
-          }
+          updateEnable(newValue);
         }
       }
     };
+  }
+
+  private static void updateEnable(boolean newValue) throws InvalidConfigValueException {
+    enable = newValue;
+    if (enable)
+      try {
+        loadKeyStoreAndCreateCertificate();
+        createSSLContext();
+      } catch (Exception e) {
+        enable = false;
+        LOG.error("SSL could not be enabled", e);
+        throwConfigError("SSL could not be enabled", e);
+      }
+    else {
+      ssf = null;
+      try {
+        keystore.load(null, keyStorePass.toCharArray());
+      } catch (Exception _) {
+        // Just clear the key store
+      }
+    }
   }
 
   private static StringCallback keyStorePathCallback() {

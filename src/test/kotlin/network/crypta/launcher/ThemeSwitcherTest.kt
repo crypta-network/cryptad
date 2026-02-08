@@ -261,11 +261,14 @@ internal class ThemeSwitcherTest {
 
       assertTrue(portalConstruction.constructed().isNotEmpty())
       val detector = portalConstruction.constructed().first()
-      val listenerField = ThemeSwitcher::class.java.getDeclaredField("listener")
-      listenerField.isAccessible = true
-      @Suppress("UNCHECKED_CAST", "kotlin:S6518")
-      val listener = requireNotNull(listenerField.get(null) as Consumer<Boolean>?)
-      Mockito.verify(detector).registerListener(listener)
+
+      @Suppress("UNCHECKED_CAST")
+      val listener =
+        Mockito.mockingDetails(detector)
+          .invocations
+          .first { it.method.name == "registerListener" }
+          .arguments
+          .first() as Consumer<Boolean>
 
       ThemeSwitcher.shutdown()
 

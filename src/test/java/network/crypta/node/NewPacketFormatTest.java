@@ -34,7 +34,7 @@ class NewPacketFormatTest {
   void setUp() {
     // Because we don't call maybeSendPacket, the packet sent times are not updated,
     // so let's turn off the keepalives.
-    NewPacketFormat.doKeepalives = false;
+    setDoKeepalives(false);
   }
 
   @Test
@@ -80,12 +80,12 @@ class NewPacketFormatTest {
     // Act
     assertEquals(1, npf.handleDecryptedPacket(generated, s).size());
     boolean keepalivesOrig = NewPacketFormat.doKeepalives;
-    NewPacketFormat.doKeepalives = true; // force sending without sleeping
+    setDoKeepalives(true); // force sending without sleeping
     NPFPacket ackOnly;
     try {
       ackOnly = npf.createPacket(1400, pmq, s, false);
     } finally {
-      NewPacketFormat.doKeepalives = keepalivesOrig;
+      setDoKeepalives(keepalivesOrig);
     }
 
     // Assert
@@ -97,7 +97,7 @@ class NewPacketFormatTest {
   void resend_whenAckLost_triggersAckOnlyLater() throws BlockedTooLongException {
     // Arrange
     boolean keepalivesOrig = NewPacketFormat.doKeepalives;
-    NewPacketFormat.doKeepalives = true; // avoid sleeps for ack scheduling
+    setDoKeepalives(true); // avoid sleeps for ack scheduling
     NullBasePeerNode senderNode = new NullBasePeerNode();
     NewPacketFormat sender = new NewPacketFormat(senderNode, 0, 0);
     PeerMessageQueue senderQueue = new PeerMessageQueue(new DummyRandomSource(1234));
@@ -142,7 +142,7 @@ class NewPacketFormatTest {
     NPFPacket ack2 = receiver.createPacket(512, receiverQueue, receiverKey, false);
     assertNotNull(ack2);
     assertEquals(1, ack2.getAcks().size());
-    NewPacketFormat.doKeepalives = keepalivesOrig;
+    setDoKeepalives(keepalivesOrig);
   }
 
   @Test
@@ -397,7 +397,7 @@ class NewPacketFormatTest {
     assertNotNull(p, "Expected a packet with one fragment before disconnect");
     assertEquals(1, p.getFragments().size());
 
-    // Now disconnect and ensure the caller returns the item for requeueing.
+    // Now disconnect and ensure the caller returns the item for requeue-ing.
     List<MessageItem> returned = npf.onDisconnect();
     assertEquals(1, returned.size());
     assertEquals(payload.length, returned.getFirst().getLength());
@@ -620,10 +620,12 @@ class NewPacketFormatTest {
     }
   }
 
+  private static void setDoKeepalives(boolean enabled) {
+    NewPacketFormat.doKeepalives = enabled;
+  }
+
   private static LinkageError linkageError(String message, ReflectiveOperationException e) {
-    LinkageError error = new LinkageError(message);
-    error.initCause(e);
-    return error;
+    return new LinkageError(message, e);
   }
 
   @Test
