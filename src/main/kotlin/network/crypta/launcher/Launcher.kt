@@ -56,11 +56,13 @@ class CryptaLauncher : JFrame(APP_NAME) {
         e.consume()
         return@KeyEventDispatcher true
       }
+
       KeyEvent.VK_RIGHT -> {
         cycleFocus(+1)
         e.consume()
         return@KeyEventDispatcher true
       }
+
       KeyEvent.VK_S -> {
         val st = controller.state.value
         if (st.isStoppingOrShuttingDown) return@KeyEventDispatcher true
@@ -68,26 +70,31 @@ class CryptaLauncher : JFrame(APP_NAME) {
         e.consume()
         return@KeyEventDispatcher true
       }
+
       KeyEvent.VK_Q -> {
         quitApp()
         e.consume()
         return@KeyEventDispatcher true
       }
+
       KeyEvent.VK_UP -> {
         scrollRows(-1)
         e.consume()
         return@KeyEventDispatcher true
       }
+
       KeyEvent.VK_DOWN -> {
         scrollRows(+1)
         e.consume()
         return@KeyEventDispatcher true
       }
+
       KeyEvent.VK_PAGE_UP -> {
         scrollPage(-1)
         e.consume()
         return@KeyEventDispatcher true
       }
+
       KeyEvent.VK_PAGE_DOWN -> {
         scrollPage(+1)
         e.consume()
@@ -98,7 +105,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
   }
 
   init {
-    instance = this
+    registerLauncherInstance(this)
     defaultCloseOperation = DO_NOTHING_ON_CLOSE
     // Allow shrinking to half of the default size
     minimumSize = Dimension(450, 300)
@@ -218,8 +225,11 @@ class CryptaLauncher : JFrame(APP_NAME) {
         launchBtn.isEnabled = st.isRunning && st.knownPort != null && !st.isShuttingDown
         // Update tooltip with actual port when known
         launchBtn.toolTipText =
-          if (st.knownPort != null) "Open http://localhost:${st.knownPort}/ in your browser"
-          else "Open http://localhost:<port>/ in your browser"
+          if (st.knownPort != null) {
+            "Open http://localhost:${st.knownPort}/ in your browser"
+          } else {
+            "Open http://localhost:<port>/ in your browser"
+          }
       }
     }
 
@@ -456,6 +466,10 @@ private fun createAndShowLauncherUi() {
   setWindowAndDockIcons(f)
   centerAndShow(f, Dimension(900, 600))
   installWindowsHooksIfNeeded(f)
+}
+
+private fun registerLauncherInstance(launcher: CryptaLauncher) {
+  CryptaLauncher.instance = launcher
 }
 
 private fun setWindowAndDockIcons(f: JFrame) {

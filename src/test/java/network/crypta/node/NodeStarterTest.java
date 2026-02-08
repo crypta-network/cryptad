@@ -38,7 +38,7 @@ class NodeStarterTest {
   @BeforeEach
   void resetStatics_before() throws ReflectiveOperationException {
     resetNodeStarterStatics();
-    DNSRequester.disable = false;
+    clearDnsRequesterDisable();
   }
 
   @AfterEach
@@ -236,6 +236,10 @@ class NodeStarterTest {
     clearStaticBoolean("isTestingVM");
     clearStaticObject("globalSecureRandom");
     clearStaticObject("nodestarter_osgi");
+  }
+
+  private static void clearDnsRequesterDisable() {
+    DNSRequester.disable = false;
   }
 
   private static void clearStaticBoolean(String field)

@@ -12,6 +12,8 @@ import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.plaf.FontUIResource
 import network.crypta.fs.AppEnv
+import network.crypta.launcher.ThemeSwitcher.install
+import network.crypta.launcher.ThemeSwitcher.shutdown
 
 /**
  * Applies a FlatLaf look-and-feel that tracks the operating system theme and keeps Swing components
@@ -36,8 +38,13 @@ import network.crypta.fs.AppEnv
  * @see AppEnv
  */
 object ThemeSwitcher {
-  @Volatile private var detector: OsThemeDetector? = null
-  @Volatile private var listener: Consumer<Boolean>? = null
+  private class ThemeDetectionState {
+    @Volatile var detector: OsThemeDetector? = null
+
+    @Volatile var listener: Consumer<Boolean>? = null
+  }
+
+  private val state = ThemeDetectionState()
 
   /**
    * Initialize OS theme detection and apply the matching FlatLaf before UI creation.
@@ -46,8 +53,8 @@ object ThemeSwitcher {
    * initial theme is applied synchronously on the EDT and remains stable. The method configures
    * platform-specific details (macOS appearance hint and Linux client decorations), creates a
    * detector via [FlatpakAwareOsThemeDetector], applies the current theme immediately, and then
-   * registers a listener for subsequent OS theme changes. Repeated calls replace the stored
-   * detector reference, but the intent is a single early call to avoid redundant listeners.
+   * registers a listener for later OS theme changes. Repeated calls replace the stored detector
+   * reference, but the intent is a single early call to avoid redundant listeners.
    */
   fun install() {
     // macOS: ensure the system appearance is reported to Java/Swing
@@ -65,15 +72,15 @@ object ThemeSwitcher {
       logDebug("Failed to enable client decorations on Linux/Flatpak", t)
     }
     val det = FlatpakAwareOsThemeDetector.getDetector()
-    detector = det
+    state.detector = det
 
-    // Apply current theme synchronously (must happen before any Swing components are created)
+    // Apply the current theme synchronously (must happen before any Swing components are created)
     val initialDark = det.isDark
     applyFor(initialDark, synchronous = true)
 
     // Listen for changes and switch LAF live
     val consumer = Consumer<Boolean> { isDark -> applyFor(isDark) }
-    listener = consumer
+    state.listener = consumer
     det.registerListener(consumer)
   }
 
@@ -86,11 +93,11 @@ object ThemeSwitcher {
    * look-and-feel state.
    */
   fun shutdown() {
-    val det = detector
-    val c = listener
+    val det = state.detector
+    val c = state.listener
     if (det != null && c != null) det.removeListener(c)
-    detector = null
-    listener = null
+    state.detector = null
+    state.listener = null
   }
 
   private fun applyFor(useDark: Boolean, synchronous: Boolean = false) {
@@ -150,7 +157,7 @@ object ThemeSwitcher {
   }
 
   private fun applyLookAndFeel(laf: LookAndFeel) {
-    // Apply LAF explicitly via UIManager to catch errors, then let FlatLaf do extra set up
+    // Apply LAF explicitly via UIManager to catch errors, then let FlatLaf do extra setup
     try {
       UIManager.setLookAndFeel(laf)
     } catch (t: Throwable) {
