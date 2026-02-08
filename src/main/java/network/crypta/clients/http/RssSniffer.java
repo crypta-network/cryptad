@@ -9,11 +9,11 @@ package network.crypta.clients.http;
  * sniffing) and need to force a download instead of inline rendering when a feed is detected. The
  * logic recognizes top-level {@code <rss}, {@code <feed}, and {@code <rdf:RDF} tags even when they
  * are preceded by XML declarations or comments. Callers should not pass unbounded streams; the
- * input is treated as immutable and no additional I/O occurs during detection.
+ * input is treated as immutable, and no additional I/O occurs during detection.
  *
  * <p>The class is stateless and thread-safe. All methods are static and throw no checked
  * exceptions, making it safe to invoke from network pipelines or pre-processing filters where
- * defensive checks are desired but latency and memory overhead must remain minimal.
+ * defensive checks are desired, but latency and memory overhead must remain minimal.
  *
  * <ul>
  *   <li>Responsibilities: detect browser feed sniffing cues in raw byte prefixes.
@@ -23,14 +23,12 @@ package network.crypta.clients.http;
  */
 public class RssSniffer {
 
-  private RssSniffer() {
-    throw new IllegalStateException("Utility class");
-  }
+  private RssSniffer() {}
 
   /**
    * Look for any of the following strings as top-level XML tags: &lt;rss &lt;feed &lt;rdf:RDF
    *
-   * <p>If they start at the beginning of the file, or are preceded by one or more &lt;! or &lt;?
+   * <p>If they start at the beginning of the file or are preceded by one or more &lt;! or &lt;?
    * tags, then firefox will read it as RSS. In which case we must force it to be downloaded to
    * disk.
    *
@@ -40,7 +38,7 @@ public class RssSniffer {
    * and is therefore insensitive to XML prolog encoding hints.
    *
    * @param prefix initial bytes from the HTTP entity body; may be truncated
-   * @return true when a recognized feed root tag appears as first top-level tag
+   * @return true when a recognized feed root tag appears as the first top-level tag
    */
   public static boolean isSniffedAsFeed(byte[] prefix) {
     int tlt = indexOfTopLevelTag(prefix);
@@ -73,7 +71,7 @@ public class RssSniffer {
       // Found a comment, processing instruction or doctype; proceed to the end of the tag.
       i = indexOf(data, (byte) '>', i);
       if (i == -1) {
-        // No end of tag in buffer: we won't find a top-level tag.
+        // No end of tag in the buffer: we won't find a top-level tag.
         return -1;
       }
     }
@@ -81,7 +79,7 @@ public class RssSniffer {
   }
 
   /**
-   * Checks whether the given data starts with the characters in the key value, when starting at
+   * Checks whether the given data starts with the characters in the key value when starting at
    * fromIndex in the data array.
    */
   private static boolean startsWithString(byte[] data, String key, int fromIndex) {

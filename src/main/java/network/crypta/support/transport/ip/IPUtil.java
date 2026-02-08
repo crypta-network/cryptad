@@ -12,9 +12,7 @@ import java.net.InetAddress;
  */
 public class IPUtil {
 
-  private IPUtil() {
-    throw new IllegalStateException("Utility class");
-  }
+  private IPUtil() {}
 
   /**
    * Returns whether the address should be treated as site/unique-local.
@@ -24,8 +22,8 @@ public class IPUtil {
    * fc00::/7}) and the deprecated site-local range ({@code fec0::/10}). For non-IPv6 addresses, the
    * method delegates to {@link InetAddress#isSiteLocalAddress()}.
    *
-   * <p>This classification is used when deciding whether an address is local-only for the purpose
-   * of publishing noderefs and similar metadata.
+   * <p>This classification is used when deciding whether an address is local-only to publish
+   * noderefs and similar metadata.
    *
    * @param i the address to test; must not be {@code null}
    * @return {@code true} if the address is considered site-local (or unique-local), otherwise

@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  * <p>This class centralizes whitelists and small, allocation‑free validators used by the CSS and
  * HTML content filters. It answers questions such as whether a token is a valid CSS identifier,
  * whether a pseudo‑class is acceptable, and whether a tag name is part of the allowed element set.
- * The API is intentionally small and based on primitives so it can be called frequently during
+ * The API is intentionally small and based on primitives, so it can be called frequently during
  * tokenization and parsing without introducing extra object churn.
  *
  * <p>The class is stateless and thread‑safe. All collections exposed as {@code public static final}
@@ -26,12 +26,10 @@ import java.util.regex.Pattern;
  * </ul>
  */
 public class ElementInfo {
-  private ElementInfo() {
-    throw new IllegalStateException("Utility class");
-  }
+  private ElementInfo() {}
 
   /**
-   * Controls whether specific font family names must be on a known allow list.
+   * Controls whether specific font family names must be on a known allowlist.
    *
    * <p>When {@code true}, {@link #isSpecificFontFamily(String)} accepts only names present in the
    * predefined {@link #FONTS} set. When {@code false}, the decision may be delegated to the {@link
@@ -105,7 +103,7 @@ public class ElementInfo {
   /**
    * Allowed HTML elements for the sanitizer layer.
    *
-   * <p>This is a snapshot of the configured allow list at class‑load time. Names are typically
+   * <p>This is a snapshot of the configured allowlist at class‑load time. Names are typically
    * lower‑case; callers that accept user input should normalize the case or use {@link
    * #isValidHTMLTag(String)} which performs the appropriate case handling.
    */
@@ -178,7 +176,7 @@ public class ElementInfo {
           MEDIA_TV);
 
   /**
-   * Canonical allow list of specific font family names.
+   * Canonical allowlist of specific font family names.
    *
    * <p>The names are provided in lower‑case. This list is used when {@link
    * #DISALLOW_UNKNOWN_SPECIFIC_FONTS} is enabled to constrain accepted family names. Immutable and
@@ -279,7 +277,7 @@ public class ElementInfo {
           "target",
           "any-link",
           "default", // forms
-          "defined", // Javascript only (BANNED_PSEUDOCLASS)
+          "defined", // JavaScript only (BANNED_PSEUDOCLASS)
           "disabled", // forms
           "empty",
           "enabled", // forms
@@ -297,7 +295,7 @@ public class ElementInfo {
           "required", // forms
           "root");
 
-  // :visited is considered harmful as it may leak browser history to an adversary.
+  // ":visited" is considered harmful as it may leak browser history to an adversary.
   // This may not be obvious immediately, but :visited gives an adversary the
   // opportunity to tailor the page to the user's browser history, and may capture
   // this information based on where the user interacts (e.g. he can alternate the
@@ -318,13 +316,12 @@ public class ElementInfo {
   // Freenet where we often use USKs to visit sites, which are implemented through
   // permanent redirects. Users should hence already expect :visited not to work
   // occasionally. The downside is that some (if only a few) freesites will look
-  // less pretty. Given the lack of harm to the overall user experience, and the
+  // less pretty. Given the lack of harm to the overall user experience and the
   // effectiveness of potential attacks through :visited, we disallow :visited in
   // CSS selectors (by ignoring it).
   //
   // TL;DR: Protecting the user is the main purpose of the CSS ContentFilter,
-  // :visited
-  //        is considered too much of a danger, so we scrub that pseudoclass.
+  // ":visited" is considered too much of a danger, so we scrub that pseudoclass.
   //
   // [1] http://lcamtuf.coredump.cx/css_calc/
   /**
@@ -336,7 +333,7 @@ public class ElementInfo {
       Set.of(
           "link",
           "visited",
-          // Javascript only
+          // JavaScript only
           "defined");
 
   /**
@@ -482,13 +479,13 @@ public class ElementInfo {
   }
 
   /**
-   * Checks whether the supplied tag name is allowed by the HTML sanitizer.
+   * Checks whether the HTML sanitizer allows the supplied tag name.
    *
    * <p>The comparison is effectively case‑insensitive: the method normalizes the argument to lower
    * case and checks membership in {@link #HTML_ELEMENTS} and {@link #VOID_ELEMENTS}.
    *
    * @param tag HTML tag name to validate; expected without angle brackets; never {@code null}.
-   * @return {@code true} when the normalized name is in the allow list; {@code false} otherwise.
+   * @return {@code true} when the normalized name is in the allowlist; {@code false} otherwise.
    */
   public static boolean isValidHTMLTag(String tag) {
     String lowered = tag.toLowerCase(Locale.ROOT);
@@ -498,9 +495,9 @@ public class ElementInfo {
   /**
    * Validates an HTML {@code id}/name‑like token against a conservative character set.
    *
-   * <p>The first character must be an ASCII letter; subsequent characters may be letters, digits,
-   * underscore, colon, dot, or hyphen. This method is used for simple attribute‑style identifiers
-   * and is stricter than general CSS identifiers.
+   * <p>The first character must be an ASCII letter; the following characters may be letters,
+   * digits, underscore, colon, dot, or hyphen. This method is used for simple attribute‑style
+   * identifiers and is stricter than general CSS identifiers.
    *
    * @param name token to validate; evaluated character by character; never {@code null}.
    * @return {@code true} when the token matches the allowed pattern; {@code false} otherwise.
@@ -553,7 +550,7 @@ public class ElementInfo {
       }
 
       // Still in an escape.
-      // Might be dangerous e.g. escaping the ] in E[foo=blah] could change the meaning completely.
+      // Might be dangerous e.g., escaping the ] in E[foo=blah] could change the meaning completely.
       return !esc.escape;
     }
   }
@@ -608,7 +605,7 @@ public class ElementInfo {
     // Line continuation per CSS 2.1 §4.1.3: a backslash followed by a newline is ignored
     if (c == '\r') {
       st.escapeNewline = true; // consume optional LF on next char
-      // keep escape state until we handle the optional LF, then reset
+      // keep the escape state until we handle the optional LF, then reset
       return 1;
     }
     if (c == '\n' || c == '\f') {
@@ -659,7 +656,7 @@ public class ElementInfo {
       return new NonEscapeResult(true, newDigitsAllowed, false);
     }
     if (isNonAsciiPrintable(c)) {
-      // Spec strictly speaking allows control chars, but let's disallow them here as a paranoid
+      // Spec, strictly speaking, allows control chars, but let's disallow them here as a paranoid
       // precaution.
       return new NonEscapeResult(true, newDigitsAllowed, false);
     }
@@ -713,7 +710,7 @@ public class ElementInfo {
   }
 
   /**
-   * Validates a pseudo‑class (or chain) against the allow list and argument rules.
+   * Validates a pseudo‑class (or chain) against the allowlist and argument rules.
    *
    * <p>Argument‑bearing pseudo‑classes such as {@code lang(...)} and {@code nth-child(...)} are
    * parsed to extract and validate their arguments.

@@ -27,9 +27,7 @@ import network.crypta.support.io.IOUtils;
  */
 public class SHA256 {
 
-  private SHA256() {
-    throw new IllegalStateException("Utility class");
-  }
+  private SHA256() {}
 
   /**
    * Reads all bytes from the given input stream and updates the provided digest.
@@ -73,7 +71,7 @@ public class SHA256 {
   /**
    * Computes the SHA-256 digest of the provided byte array.
    *
-   * <p>This is equivalent to {@code getMessageDigest().digest(data)}.
+   * <p>This is an equivalent to {@code getMessageDigest().digest(data)}.
    *
    * @param data input bytes; must be non-null
    * @return 32-byte SHA-256 digest

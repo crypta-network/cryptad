@@ -21,9 +21,7 @@ import java.util.Random;
  * Using a linked-list implementation will typically degrade performance to O(n).
  */
 public class ListUtils {
-  private ListUtils() {
-    throw new IllegalStateException("Utility class");
-  }
+  private ListUtils() {}
 
   /**
    * Removes the first occurrence of {@code o} by swapping it with the last element and truncating

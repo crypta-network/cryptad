@@ -47,12 +47,9 @@ public class PebbleUtils {
   /**
    * Prevents instantiation of this utility class.
    *
-   * <p>This type is a static utility holder and should not be instantiated. If construction is
-   * attempted (for example via reflection), this constructor fails fast.
+   * <p>This type is a static utility holder and should not be instantiated.
    */
-  private PebbleUtils() {
-    throw new UnsupportedOperationException("Utility class");
-  }
+  private PebbleUtils() {}
 
   static {
     Loader<String> loader = new ClasspathLoader(PebbleUtils.class.getClassLoader());
@@ -110,11 +107,11 @@ public class PebbleUtils {
    *
    * <p>This method should only be called from tests.
    *
-   * @param l10n The l10n provider to register for subsequent template evaluations
+   * @param l10n The l10n provider to register for later template evaluations
    */
   static void setBaseL10n(BaseL10n l10n) {
     // This removes the old function from the registry because the registry is a Map keyed by
-    // function name.
+    //  the function name.
     templateEngine.getExtensionRegistry().addExtension(new L10nExtension(l10n));
   }
 }

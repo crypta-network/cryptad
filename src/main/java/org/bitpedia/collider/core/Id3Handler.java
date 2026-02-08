@@ -32,7 +32,7 @@ import java.nio.charset.StandardCharsets;
  *   <li>Supports ID3v2.2 and ID3v2.3 text frames plus the ID3v1 footer.
  *   <li>Leaves the file otherwise untouched; only reads bytes from supplied streams.
  *   <li>Does not normalize character encodings beyond stripping the leading encoding byte.
- *   <li>Thread-safe through immutability and absence of shared mutable state.
+ *   <li>Thread-safe through immutability and absence of a shared mutable state.
  * </ul>
  */
 public class Id3Handler {
@@ -255,7 +255,7 @@ public class Id3Handler {
      * Removes leading and trailing whitespace from all text fields in place.
      *
      * <p>The operation skips null fields and leaves numeric fields unchanged. Use this after
-     * reading a tag when human-readable presentation is desired and the trailing padding added by
+     * reading a tag when human-readable presentation is desired, and the trailing padding added by
      * ID3v1 encoders should be suppressed. The method is idempotent and safe to call multiple times
      * on the same instance.
      */
@@ -272,9 +272,9 @@ public class Id3Handler {
    * Parsed ID3v2 header information for the tag block at the start of a file.
    *
    * <p>The header stores the raw version numbers, flags, and sync-safe size bytes that bound the
-   * subsequent frame sequence. Instances are produced by {@link #readFromFile(RandomAccessFile)}
-   * and consumed internally to drive frame parsing. The class performs no validation beyond simple
-   * byte extraction, leaving semantic checks to the caller.
+   * following frame sequence. Instances are produced by {@link #readFromFile(RandomAccessFile)} and
+   * consumed internally to drive frame parsing. The class performs no validation beyond simple byte
+   * extraction, leaving semantic checks to the caller.
    */
   public static class Id3Header {
 
@@ -544,7 +544,7 @@ public class Id3Handler {
    * <p>The method first attempts to parse an ID3v2.2 or ID3v2.3 header from the start of the file;
    * when present and well-formed, it processes frames until the declared tag size is exhausted or a
    * malformed frame is encountered. It then looks for an ID3v1 footer and merges any missing fields
-   * such as title or track number. No bytes are written and the file is closed automatically via a
+   * such as title or track number. No bytes are written, and the file is closed automatically via a
    * try-with-resources block. Callers should treat a {@code null} result as an indication that no
    * usable tag data was found.
    *
@@ -672,7 +672,5 @@ public class Id3Handler {
     return (null != value) && !value.trim().isEmpty();
   }
 
-  private Id3Handler() {
-    throw new IllegalStateException("Utility class");
-  }
+  private Id3Handler() {}
 }

@@ -42,9 +42,7 @@ public class TimeUtil {
   private static final Pattern TIME_INTERVAL_PATTERN =
       Pattern.compile(TIME_INTERVAL_PART_1 + TIME_INTERVAL_PART_2);
 
-  private TimeUtil() {
-    throw new IllegalStateException("Utility class");
-  }
+  private TimeUtil() {}
 
   /**
    * Formats a duration into a compact {@code w/d/h/m/s} string.
@@ -79,8 +77,9 @@ public class TimeUtil {
     boolean extraOneMs = false;
     if (neg) {
       sb.append('-');
-      // Preserve full magnitude for Long.MIN_VALUE by tracking one extra millisecond separately.
-      // abs(Long.MIN_VALUE) overflows; use Long.MAX_VALUE and remember +1 ms to apply at seconds.
+      // Preserve the full magnitude for Long.MIN_VALUE by tracking one extra millisecond
+      // separately.
+      // abs(Long.MIN_VALUE) overflows; use Long.MAX_VALUE and remember +1 ms to apply in seconds.
       if (remaining == Long.MIN_VALUE) {
         remaining = Long.MAX_VALUE;
         extraOneMs = true;
@@ -120,7 +119,7 @@ public class TimeUtil {
     return sb.toString();
   }
 
-  // Returns true when the term limit has been met so the caller stops emitting more units.
+  // Returns true when the term limit has been met, so the caller stops emitting more units.
   private static boolean reachedMaxTermsAfterAppend(
       StringBuilder sb, long amount, char suffix, int maxTerms, int[] termCount) {
     if (amount > 0) {

@@ -33,9 +33,7 @@ import network.crypta.support.ShortBuffer;
 @SuppressWarnings("unused")
 public class DMT {
 
-  private DMT() {
-    throw new IllegalStateException("Utility class");
-  }
+  private DMT() {}
 
   public static final String UID = "uid";
   /*
@@ -162,19 +160,20 @@ public class DMT {
   public static final String MAX_TRANSFERS_OUT = "maxTransfersOut";
 
   /**
-   * Maximum transfers out, peer limit. If total is over the lower limit and our usage is over the
-   * peer limit, we will be rejected.
+   * Maximum transfers out, peer limit. If the total is over the lower limit and our usage is over
+   * the peer limit, we will be rejected.
    */
   public static final String MAX_TRANSFERS_OUT_PEER_LIMIT = "maxTransfersOutPeerLimit";
 
   /**
-   * Maximum transfers out, lower limit. If total is over the lower limit and our usage is over the
-   * peer limit, we will be rejected.
+   * Maximum transfers out, lower limit. If the total is over the lower limit and our usage is over
+   * the peer limit, we will be rejected.
    */
   public static final String MAX_TRANSFERS_OUT_LOWER_LIMIT = "maxTransfersOutLowerLimit";
 
   /**
-   * Maximum transfers out, upper limit. If total is over the upper limit, everything is rejected.
+   * Maximum transfers out, upper limit. If the total is over the upper limit, everything is
+   * rejected.
    */
   public static final String MAX_TRANSFERS_OUT_UPPER_LIMIT = "maxTransfersOutUpperLimit";
 
@@ -389,7 +388,7 @@ public class DMT {
     return msg;
   }
 
-  /** Receiver aborted a bulk transfer; subsequent packets should be discarded. */
+  /** Receiver aborted a bulk transfer; later packets should be discarded. */
   public static final MessageType FNPBulkReceiveAborted =
       new MessageType("FNPBulkReceiveAborted", PRIORITY_UNSPECIFIED);
 
@@ -594,7 +593,7 @@ public class DMT {
 
   // Internal only messages
 
-  /** Internal: indicates completion of a test receive, with success flag and reason. */
+  /** Internal: indicates completion of a test receiving, with a success flag and reason. */
   public static final MessageType testReceiveCompleted =
       new MessageType("testReceiveCompleted", PRIORITY_UNSPECIFIED, true, false);
 
@@ -620,7 +619,7 @@ public class DMT {
     return msg;
   }
 
-  /** Internal: indicates completion of a test send, with success flag and reason. */
+  /** Internal: indicates completion of a test sending, with a success flag and reason. */
   public static final MessageType testSendCompleted =
       new MessageType("testSendCompleted", PRIORITY_UNSPECIFIED, true, false);
 
@@ -751,7 +750,7 @@ public class DMT {
   }
 
   // Too many concurrent requests for current capacity.
-  /** Rejection due to overload; caller may reduce rate or choose another peer. */
+  /** Rejection due to overload; caller may reduce the rate or choose another peer. */
   public static final MessageType FNPRejectedOverload =
       new MessageType("FNPRejectOverload", PRIORITY_HIGH);
 
@@ -826,7 +825,7 @@ public class DMT {
    * Creates an {@code FNPRecentlyFailed} with a remaining-wait hint.
    *
    * @param id Request identifier.
-   * @param timeLeft Remaining time to wait before retrying (unit implementation-defined).
+   * @param timeLeft Remaining time to wait before retrying (unit-implementation-defined).
    * @return Initialized message.
    */
   public static Message createFNPRecentlyFailed(long id, int timeLeft) {
@@ -980,7 +979,7 @@ public class DMT {
   // Consider using a single message for both. One complication is that
   // CHKs have a single DataInsert (followed by a transfer), whereas SSKs have 2-3 messages,
   // any of which can time out independently. We could send one message now that we have the new
-  // packet format; see the discussion on FNPSSKInsertRequestNew vs the old version.
+  // packet format; see the discussion on FNPSSKInsertRequestNew vs. the old version.
   /** Timeout for CHK inserts when {@code FNPDataInsert} was not received in time. */
   public static final MessageType FNPRejectedTimeout =
       new MessageType("FNPTooSlow", PRIORITY_UNSPECIFIED);
@@ -1362,11 +1361,11 @@ public class DMT {
       new MessageType("FNPConnectDestinationNew", PRIORITY_UNSPECIFIED);
 
   static {
-    FNPOpennetConnectDestinationNew.addField(UID, Long.class); // UID of original message chain
+    FNPOpennetConnectDestinationNew.addField(UID, Long.class); // UID of the original message chain
     FNPOpennetConnectDestinationNew.addField(TRANSFER_UID, Long.class); // UID of data transfer
     FNPOpennetConnectDestinationNew.addField(NODEREF_LENGTH, Integer.class); // Size of noderef
     FNPOpennetConnectDestinationNew.addField(
-        PADDED_LENGTH, Integer.class); // Size of actual transfer i.e. padded length
+        PADDED_LENGTH, Integer.class); // Size of actual transfer i.e., padded length
   }
 
   /**
@@ -1397,11 +1396,11 @@ public class DMT {
       new MessageType("FNPConnectReplyNew", PRIORITY_UNSPECIFIED);
 
   static {
-    FNPOpennetConnectReplyNew.addField(UID, Long.class); // UID of original message chain
+    FNPOpennetConnectReplyNew.addField(UID, Long.class); // UID of the original message chain
     FNPOpennetConnectReplyNew.addField(TRANSFER_UID, Long.class); // UID of data transfer
     FNPOpennetConnectReplyNew.addField(NODEREF_LENGTH, Integer.class); // Size of noderef
     FNPOpennetConnectReplyNew.addField(
-        PADDED_LENGTH, Integer.class); // Size of actual transfer i.e. padded length
+        PADDED_LENGTH, Integer.class); // Size of actual transfer i.e., padded length
   }
 
   /**
@@ -1747,7 +1746,7 @@ public class DMT {
   /**
    * Constructs a probe request.
    *
-   * @param htl hopsToLive: hops until result is requested.
+   * @param htl hopsToLive: hops until a result is requested.
    * @param uid Probe identifier: should be unique.
    * @return Message with requested attributes.
    */
@@ -1941,7 +1940,7 @@ public class DMT {
    * Creates a probe response to a query for uptime.
    *
    * @param uid Probe identifier.
-   * @param uptimePercent Percent of the requested period (48 hours or 7 days) which the endpoint
+   * @param uptimePercent Percentage of the requested period (48 hours or 7 days) which the endpoint
    *     was online.
    * @return Message with requested attributes.
    */
@@ -1967,7 +1966,7 @@ public class DMT {
     return msg;
   }
 
-  /** Divide output bandwidth limit by this to get bandwidth class. */
+  /** Divide the output bandwidth limit by this to get bandwidth class. */
   static final int CAPACITY_USAGE_MULTIPLIER = 10 * 1024;
 
   /** Maximum value of bandwidth class */
@@ -2141,7 +2140,7 @@ public class DMT {
   /**
    * Creates an {@code FNPLocChangeNotificationNew}.
    *
-   * @param myLocation This node's new location.
+   * @param myLocation This the node's new location.
    * @param locations Neighbor location hints.
    * @return Initialized message.
    */
@@ -2202,7 +2201,7 @@ public class DMT {
     return msg;
   }
 
-  /** Routed request was rejected; includes remaining HTL. */
+  /** Routed request was rejected; includes the remaining HTL. */
   public static final MessageType FNPRoutedRejected =
       new MessageType("FNPRoutedRejected", PRIORITY_UNSPECIFIED);
 
@@ -2322,14 +2321,14 @@ public class DMT {
   public static final MessageType FNPDisconnect = new MessageType("FNPDisconnect", PRIORITY_HIGH);
 
   static {
-    // If true, remove from active routing table, likely to be down for a while.
-    // Otherwise, just dump all current connection state and keep trying to connect.
+    // If true, remove from the active routing table, likely to be down for a while.
+    // Otherwise, just dump all current connection states and keep trying to connect.
     FNPDisconnect.addField(REMOVE, Boolean.class);
     // If true, purge all references to this node. Otherwise, we can keep the node
-    // around in secondary tables etc. in order to more easily reconnect later.
+    // around in secondary tables etc. to more easily reconnect later.
     // (Mostly used on opennet)
     FNPDisconnect.addField(PURGE, Boolean.class);
-    // Parting message, may be empty. A SimpleFieldSet in exactly the same format
+    // Parting message. Maybe empty. A SimpleFieldSet in exactly the same format
     // as an N2NTM.
     FNPDisconnect.addField(NODE_TO_NODE_MESSAGE_TYPE, Integer.class);
     FNPDisconnect.addField(NODE_TO_NODE_MESSAGE_DATA, ShortBuffer.class);
@@ -2355,7 +2354,7 @@ public class DMT {
   }
 
   // Update over mandatory. Not strictly part of FNP. Only goes between nodes at the link
-  // level, and will be sent, and parsed, even if the node is out of date. Should be stable
+  // level, and will be sent and parsed, even if the node is out of date. Should be stable
   // long-term.
 
   /**
@@ -2507,7 +2506,7 @@ public class DMT {
 
   static {
     CryptadUOMSendingRevocation.addField(UID, Long.class);
-    // Probably excessive, but lengths are always long's, and wasting a few bytes here
+    // Probably excessive, but lengths are always long, and wasting a few bytes here
     // doesn't matter in the least, as it's very rarely called.
     CryptadUOMSendingRevocation.addField(FILE_LENGTH, Long.class);
     CryptadUOMSendingRevocation.addField(REVOCATION_KEY, String.class);
@@ -2561,7 +2560,7 @@ public class DMT {
 
   /**
    * Used to fetch a file required for deploying an update. The client knows both the size and hash
-   * of the file. If we don't want to send the data we should send an FNPBulkReceiveAborted,
+   * of the file. If we don't want to send the data, we should send an FNPBulkReceiveAborted,
    * otherwise we just send the data as a BulkTransmitter transfer.
    */
   public static final MessageType CryptadUOMFetchDependency =
@@ -2570,7 +2569,7 @@ public class DMT {
   static {
     CryptadUOMFetchDependency.addField(UID, Long.class); // This will be used for the transfer.
     CryptadUOMFetchDependency.addField(EXPECTED_HASH, ShortBuffer.class); // Fetch by hash
-    CryptadUOMFetchDependency.addField(FILE_LENGTH, Long.class); // Length is known by both sides.
+    CryptadUOMFetchDependency.addField(FILE_LENGTH, Long.class); // Both sides know length.
   }
 
   /**
@@ -2619,7 +2618,7 @@ public class DMT {
 
   static {
     // Maybe this should be some sort of typed array?
-    // It's just a bunch of double's anyway.
+    // It's just a bunch of doubles anyway.
     FNPBestRoutesNotTaken.addField(BEST_LOCATIONS_NOT_VISITED, ShortBuffer.class);
   }
 
@@ -2690,7 +2689,7 @@ public class DMT {
     return msg;
   }
 
-  /** Sub-insert hint: prefer insert over other options when possible. */
+  /** Sub-insert hint: prefer insert to other options when possible. */
   public static final MessageType FNPSubInsertPreferInsert =
       new MessageType("FNPSubInsertPreferInsert", PRIORITY_HIGH);
 
@@ -2710,7 +2709,7 @@ public class DMT {
     return msg;
   }
 
-  /** Sub-insert hint: ignore low backoff threshold. */
+  /** Sub-insert hint: ignore the low backoff threshold. */
   public static final MessageType FNPSubInsertIgnoreLowBackoff =
       new MessageType("FNPSubInsertIgnoreLowBackoff", PRIORITY_HIGH);
 

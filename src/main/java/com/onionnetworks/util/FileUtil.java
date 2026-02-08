@@ -1,6 +1,9 @@
 package com.onionnetworks.util;
 
-import java.io.*;
+import java.io.EOFException;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.util.BitSet;
 import java.util.StringTokenizer;
@@ -34,9 +37,7 @@ import java.util.StringTokenizer;
  */
 public class FileUtil {
 
-  private FileUtil() {
-    throw new IllegalStateException("Utility class");
-  }
+  private FileUtil() {}
 
   // safe characters for file name sanitization
   static BitSet safeChars = new BitSet(256);
@@ -161,15 +162,15 @@ public class FileUtil {
   /**
    * Ensures the target file and its parent directories exist, tolerating concurrent creators.
    *
-   * <p>If parents do not exist they are created. When the file already exists, the method returns
+   * <p>If parents do not exist, they are created. When the file already exists, the method returns
    * immediately without modifying timestamps. If creation is attempted and {@link
    * File#createNewFile()} returns {@code false} because another thread or process created the file
    * in the interim, the method treats that as success. Only failures to create parents or the file
    * itself result in an {@link IOException}.
    *
    * @param f absolute or relative file reference to materialize on disk; must not be null
-   * @throws IOException if parent directories cannot be created or the file cannot be created and
-   *     does not already exist afterwards
+   * @throws IOException if parent directories cannot be created, or the file cannot be created and
+   *     does not already exist afterward
    */
   public static void ensureExists(File f) throws IOException {
     File parent = f.getParentFile();
@@ -239,8 +240,8 @@ public class FileUtil {
    * directory if needed. If any creation attempt fails, the method retries in progressively broader
    * locations before ultimately throwing.
    *
-   * @param f reference file whose directory and name will influence the temp location; may be null
-   *     to request automatic placement
+   * @param f reference a file whose directory and name will influence the temp location; may be
+   *     null to request automatic placement
    * @return newly created temporary {@link File} that already exists on disk and is writable by the
    *     current process
    * @throws IOException if all attempts to create the temporary file fail across preferred
@@ -282,7 +283,7 @@ public class FileUtil {
    *
    * <p>This method repeatedly calls {@link InputStream#skip(long)} and, when necessary, falls back
    * to buffered reads to guarantee forward progress. It throws {@link EOFException} if the stream
-   * ends before the requested number of bytes are consumed. The input stream is not closed.
+   * ends before the requested number of bytes is consumed. The input stream is not closed.
    *
    * @param is input stream to advance; must support blocking reads; not closed by this method
    * @param count number of bytes to skip; must be non-negative and typically small enough to fit in
@@ -298,7 +299,7 @@ public class FileUtil {
     while (left > 0) {
       long skipped = is.skip(left);
       if (skipped == 0) {
-        // We couldn't skip any bytes, lets try reading some.
+        // We couldn't skip any bytes, let's try reading some.
         if (b == null) {
           b = new byte[1024];
         }

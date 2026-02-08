@@ -24,12 +24,11 @@ import org.bouncycastle.crypto.params.KeyParameter;
  * <p>This is an internal utility; returned cipher instances are stateful and not thread-safe.
  */
 class BlockCiphers {
-  private BlockCiphers() {
-    throw new IllegalStateException("Utility class");
-  }
+  private BlockCiphers() {}
 
   // Prefer JCE when it supports AES with 128/192/256-bit keys (sizes are in bytes).
-  private static final boolean USE_JCE_FOR_AES = checkJceSupported(16, 24, 32);
+  private static final int[] AES_KEY_SIZES_BYTES = {16, 24, 32};
+  private static final boolean USE_JCE_FOR_AES = checkJceSupported();
 
   /**
    * Creates a new AES block cipher in ECB mode with no padding.
@@ -139,14 +138,14 @@ class BlockCiphers {
   }
 
   /*
-   * Returns whether the JCE provider can initialize AES for the provided key sizes.
+   * Returns whether the JCE provider can initialize AES for required key sizes.
    *
-   * Key sizes are expressed in bytes (16/24/32 → 128/192/256 bits). Any exception during
+   * Key sizes are expressed in bytes (16/24/32 -> 128/192/256 bits). Any exception during
    * initialization is treated as lack of support.
    */
-  private static boolean checkJceSupported(int... keySizes) {
+  private static boolean checkJceSupported() {
     try {
-      for (int keySize : keySizes) {
+      for (int keySize : AES_KEY_SIZES_BYTES) {
         new JceEcbBlockCipher("AES").init(false, new KeyParameter(new byte[keySize]));
       }
       return true;

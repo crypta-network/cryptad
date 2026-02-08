@@ -37,7 +37,7 @@ public class URLEncoder {
    * @param force List of characters (in the form of a string) which must be encoded as well as the
    *     built-in.
    * @param ascii If true, encode all foreign letters, if false, leave them as is. Set to true if
-   *     you are passing to something that needs ASCII (e.g. HTTP headers), set to false if you are
+   *     you are passing to something that needs ASCII (e.g., HTTP headers), set to false if you are
    *     using in an HTML page.
    * @return Encoded version of string
    */
@@ -80,7 +80,7 @@ public class URLEncoder {
    *
    * @param url String to encode
    * @param ascii If true, encode all foreign letters, if false, leave them as is. Set to true if
-   *     you are passing to something that needs ASCII (e.g. HTTP headers), set to false if you are
+   *     you are passing to something that needs ASCII (e.g., HTTP headers), set to false if you are
    *     using in an HTML page.
    * @return Encoded version of string
    */
@@ -88,7 +88,5 @@ public class URLEncoder {
     return encode(url, null, ascii);
   }
 
-  private URLEncoder() {
-    throw new IllegalStateException("Utility class");
-  }
+  private URLEncoder() {}
 }

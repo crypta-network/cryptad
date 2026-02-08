@@ -55,7 +55,6 @@ public class IOUtils {
 
   private IOUtils() {
     // Not instantiable: utility holder.
-    throw new IllegalStateException("Utility class");
   }
 
   /**

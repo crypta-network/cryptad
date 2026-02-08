@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>Thread-safety: fields are {@code static final} and become visible after class initialization.
- * There is no subsequent mutation.
+ * There is no further mutation.
  */
 public class JceLoader {
   private static final Logger LOG = LoggerFactory.getLogger(JceLoader.class);
@@ -71,9 +71,7 @@ public class JceLoader {
   /** JDK {@code SunJCE} provider, or {@code null} when disabled by property. */
   protected static final Provider SunJCE; // optional, may be null
 
-  private JceLoader() {
-    throw new IllegalStateException("Utility class");
-  }
+  private JceLoader() {}
 
   static {
     Provider p;
@@ -107,7 +105,7 @@ public class JceLoader {
         p = new BouncyCastleLoader().load();
       } catch (Exception e) {
         // Catch reflective loading issues and runtime failures from algorithm probes inside
-        // BouncyCastleLoader (e.g., IllegalStateException when ECDH/ECDSA are missing) so we
+        // BouncyCastleLoader (e.g., IllegalStateException when ECDH/ECDSA are missing), so we
         // degrade to "BC = null" instead of aborting class initialization.
         final String msg = "SERIOUS PROBLEM: Unable to load or use BouncyCastle provider.";
         LOG.error(msg, e);
@@ -306,7 +304,8 @@ public class JceLoader {
       try (OutputStream os = new FileOutputStream(nssFile);
           OutputStreamWriter osw = new OutputStreamWriter(os, StandardCharsets.ISO_8859_1);
           BufferedWriter bw = new BufferedWriter(osw)) {
-        // Use explicit streams instead of PrintWriter(file) to avoid silent failures when disk is
+        // Use explicit streams instead of PrintWriter(file) to avoid silent failures when the disk
+        // is
         // full and to control the charset.
         bw.write("name=NSScrypto\n");
         bw.write("nssDbMode=noDb\n");

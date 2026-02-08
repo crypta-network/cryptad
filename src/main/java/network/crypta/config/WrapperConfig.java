@@ -25,9 +25,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
 public class WrapperConfig {
   private static final Logger LOG = LoggerFactory.getLogger(WrapperConfig.class);
 
-  private WrapperConfig() {
-    throw new IllegalStateException("Utility class");
-  }
+  private WrapperConfig() {}
 
   private static final HashMap<String, String> overrides = new HashMap<>();
 
@@ -62,7 +60,7 @@ public class WrapperConfig {
     }
     if (!FileUtil.getCanonicalFile(f).getParentFile().canWrite()) {
       LOG.info("Cannot alter properties: parent dir not writable");
-      return false; // Can we create a file in order to rename over wrapper.conf?
+      return false; // Can we create a file to rename over wrapper.conf?
     }
     return true;
   }
