@@ -64,9 +64,9 @@ class NullBloomFilterTest {
       assertEquals(0, bf.getK());
       assertEquals(0, bf.getLength());
     }
-    // Best effort cleanup of the temp file (not strictly necessary for correctness of the test)
-    //noinspection ResultOfMethodCallIgnored
-    f.delete();
+    if (!f.delete() && f.exists()) {
+      f.deleteOnExit();
+    }
   }
 
   // -------- Semantics --------
