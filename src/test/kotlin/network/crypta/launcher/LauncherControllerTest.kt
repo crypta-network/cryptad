@@ -6,18 +6,18 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import network.crypta.fs.AppEnv
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -34,7 +34,6 @@ import org.mockito.junit.jupiter.MockitoExtension
 @Suppress("java:S100", "kotlin:S100")
 @ExtendWith(MockitoExtension::class)
 internal class LauncherControllerTest {
-
   @TempDir lateinit var tempDir: Path
 
   private companion object {
@@ -42,7 +41,7 @@ internal class LauncherControllerTest {
   }
 
   @Test
-  fun start_whenCryptadMissing_logsErrorAndDoesNotRun() = runBlocking {
+  fun start_whenCryptadMissing_logsErrorAndDoesNotRun() {
     val scope = newScope()
     val controller = LauncherController(scope, Dispatchers.IO, tempDir)
     val logs = startLogCollector(scope, controller)
@@ -50,17 +49,16 @@ internal class LauncherControllerTest {
     try {
       controller.start()
 
-      val line = awaitLog(logs.channel) { it.contains("Cannot find executable 'cryptad'") }
+      val line = awaitLog(logs.lines) { it.contains("Cannot find executable 'cryptad'") }
       assertTrue(line.contains("ERROR: Cannot find executable 'cryptad'"))
       assertFalse(controller.state.value.isRunning)
     } finally {
-      logs.channel.close()
       scope.cancel()
     }
   }
 
   @Test
-  fun start_whenScriptRuns_updatesStateAndReadsPort() = runBlocking {
+  fun start_whenScriptRuns_updatesStateAndReadsPort() {
     val scope = newScope()
     val controller = LauncherController(scope, Dispatchers.IO, tempDir)
     val logs = startLogCollector(scope, controller)
@@ -71,18 +69,14 @@ internal class LauncherControllerTest {
     try {
       controller.start()
 
-      withTimeout(5_000) { controller.state.filter { it.isRunning }.first() }
-      val stateWithPort =
-        withTimeout(5_000) { controller.state.filter { it.knownPort == TEST_PORT }.first() }
+      awaitState(controller) { it.isRunning }
+      val stateWithPort = awaitState(controller) { it.knownPort == TEST_PORT }
       assertEquals(TEST_PORT, stateWithPort.knownPort)
 
-      val stoppedState =
-        withTimeout(5_000) {
-          controller.state.filter { !it.isRunning && it.knownPort == TEST_PORT }.first()
-        }
+      val stoppedState = awaitState(controller) { !it.isRunning && it.knownPort == TEST_PORT }
       assertFalse(stoppedState.isRunning)
 
-      awaitLog(logs.channel) { it.contains("Starting FProxy on") }
+      awaitLog(logs.lines) { it.contains("Starting FProxy on") }
       assertTrue(logs.lines.any { it.contains("Starting 'cryptad'") })
       assertTrue(logs.lines.any { it.contains("exec:") })
       assertTrue(logs.lines.any { it.contains("Starting FProxy on") })
@@ -90,7 +84,6 @@ internal class LauncherControllerTest {
       val confLines = Files.readAllLines(wrapperConf, StandardCharsets.UTF_8).toList()
       assertTrue(confLines.any { it.trim() == "wrapper.console.flush=TRUE" })
     } finally {
-      logs.channel.close()
       scope.cancel()
     }
   }
@@ -154,12 +147,12 @@ internal class LauncherControllerTest {
   }
 
   @Test
-  fun shutdownAndWait_whenNoProcess_setsShuttingDownFlag() = runBlocking {
+  fun shutdownAndWait_whenNoProcess_setsShuttingDownFlag() {
     val scope = newScope()
     val controller = LauncherController(scope, Dispatchers.IO, tempDir)
 
     try {
-      controller.shutdownAndWait()
+      invokeShutdownAndWait(controller)
 
       assertTrue(getPrivateState(controller).isShuttingDown)
     } finally {
@@ -173,19 +166,63 @@ internal class LauncherControllerTest {
     scope: CoroutineScope,
     controller: LauncherController,
   ): LogCollector {
-    val channel = Channel<String>(Channel.UNLIMITED)
     val lines = CopyOnWriteArrayList<String>()
-    scope.launch {
-      controller.logs.collect { line ->
-        lines.add(line)
-        channel.trySend(line)
-      }
-    }
-    return LogCollector(channel, lines)
+    scope.launch { controller.logs.collect { line -> lines.add(line) } }
+    return LogCollector(lines)
   }
 
-  private suspend fun awaitLog(channel: Channel<String>, predicate: (String) -> Boolean): String {
-    return withTimeout(5_000) { channel.receiveAsFlow().first { predicate(it) } }
+  private fun awaitLog(lines: List<String>, predicate: (String) -> Boolean): String {
+    val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+    while (System.nanoTime() < deadlineNanos) {
+      lines.firstOrNull(predicate)?.let {
+        return it
+      }
+      Thread.sleep(10)
+    }
+    error("Timed out waiting for expected launcher log line")
+  }
+
+  private fun awaitState(
+    controller: LauncherController,
+    predicate: (AppState) -> Boolean,
+  ): AppState {
+    val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+    while (System.nanoTime() < deadlineNanos) {
+      val state = controller.state.value
+      if (predicate(state)) return state
+      Thread.sleep(10)
+    }
+    error("Timed out waiting for launcher state")
+  }
+
+  private fun invokeShutdownAndWait(controller: LauncherController) {
+    val completionLatch = CountDownLatch(1)
+    var failure: Throwable? = null
+    val continuation =
+      object : Continuation<Unit> {
+        override val context: CoroutineContext = EmptyCoroutineContext
+
+        override fun resumeWith(result: Result<Unit>) {
+          failure = result.exceptionOrNull()
+          completionLatch.countDown()
+        }
+      }
+
+    val method = controller.javaClass.getDeclaredMethod("shutdownAndWait", Continuation::class.java)
+    method.isAccessible = true
+    val result =
+      try {
+        method.invoke(controller, continuation)
+      } catch (e: java.lang.reflect.InvocationTargetException) {
+        throw (e.targetException ?: e)
+      }
+    if (result !== COROUTINE_SUSPENDED) {
+      completionLatch.countDown()
+    }
+    if (!completionLatch.await(5, TimeUnit.SECONDS)) {
+      error("Timed out waiting for shutdownAndWait completion")
+    }
+    failure?.let { throw AssertionError("shutdownAndWait failed", it) }
   }
 
   private fun writeCryptadScript(baseDir: Path): Path {
@@ -196,19 +233,19 @@ internal class LauncherControllerTest {
     val content =
       if (isWindows) {
         """
-        @echo off
-        echo Starting FProxy on 127.0.0.1:$TEST_PORT
-        echo READY
-        ping -n 2 127.0.0.1 > nul
-        """
+                @echo off
+                echo Starting FProxy on 127.0.0.1:$TEST_PORT
+                echo READY
+                ping -n 2 127.0.0.1 > nul
+                """
           .trimIndent()
       } else {
         """
-        #!/usr/bin/env sh
-        echo "Starting FProxy on 127.0.0.1:$TEST_PORT"
-        echo "READY"
-        sleep 0.2
-        """
+                #!/usr/bin/env sh
+                echo "Starting FProxy on 127.0.0.1:$TEST_PORT"
+                echo "READY"
+                sleep 0.2
+                """
           .trimIndent()
       }
     Files.writeString(script, content, StandardCharsets.UTF_8)
@@ -236,9 +273,8 @@ internal class LauncherControllerTest {
     stateFlow.value = state
   }
 
-  private fun getPrivateState(controller: LauncherController): AppState {
-    return getStateFlow(controller).value
-  }
+  private fun getPrivateState(controller: LauncherController): AppState =
+    getStateFlow(controller).value
 
   @Suppress("kotlin:S6518")
   private fun setPrivateField(target: Any, fieldName: String, value: Any?) {
@@ -255,8 +291,5 @@ internal class LauncherControllerTest {
     return field.get(controller) as MutableStateFlow<AppState>
   }
 
-  private data class LogCollector(
-    val channel: Channel<String>,
-    val lines: CopyOnWriteArrayList<String>,
-  )
+  private data class LogCollector(val lines: CopyOnWriteArrayList<String>)
 }

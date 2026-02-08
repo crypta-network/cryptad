@@ -133,7 +133,7 @@ class USKAttemptManagerTest {
   }
 
   private static final class TestRequester extends ClientRequester {
-    private final ClientBaseCallback callback;
+    private final transient ClientBaseCallback callback;
     private final network.crypta.keys.FreenetURI uri;
     private int toNetworkCalls;
     private boolean wasCancelled;

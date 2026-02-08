@@ -1672,6 +1672,57 @@ class SingleFileInserter implements ClientPutState, Serializable {
 
   /* ===== Java serialization support ===== */
 
+  private static final class NoOpPutCompletionCallback
+      implements PutCompletionCallback, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
+    @Override
+    public void onSuccess(ClientPutState state, ClientContext context) {
+      // no-op
+    }
+
+    @Override
+    public void onFailure(InsertException e, ClientPutState state, ClientContext context) {
+      // no-op
+    }
+
+    @Override
+    public void onEncode(BaseClientKey usk, ClientPutState state, ClientContext context) {
+      // no-op
+    }
+
+    @Override
+    public void onTransition(
+        ClientPutState oldState, ClientPutState newState, ClientContext context) {
+      // no-op
+    }
+
+    @Override
+    public void onMetadata(Metadata m, ClientPutState state, ClientContext context) {
+      // no-op
+    }
+
+    @Override
+    public void onMetadata(Bucket meta, ClientPutState state, ClientContext context) {
+      meta.free();
+    }
+
+    @Override
+    public void onFetchable(ClientPutState state) {
+      // no-op
+    }
+
+    @Override
+    public void onBlockSetFinished(ClientPutState state, ClientContext context) {
+      // no-op
+    }
+
+    @Override
+    public void onResume(ClientContext context) {
+      // no-op
+    }
+  }
+
   /**
    * Custom Java deserialization hook to restore transient/runtime links.
    *
@@ -1696,58 +1747,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
               "Restored SingleFileInserter without callback and parent does not implement "
                   + "PutCompletionCallback; using no-op callback: {}",
               this);
-        cb =
-            new PutCompletionCallback() {
-              @Override
-              public void onSuccess(ClientPutState state, ClientContext context) {
-                // Intentionally no-op: fallback callback for legacy-deserialized inserters.
-                // We only need a safe stub to avoid NPEs when older states resume.
-              }
-
-              @Override
-              public void onFailure(
-                  InsertException e, ClientPutState state, ClientContext context) {
-                // Intentionally no-op: see the rationale above. Failures are observed upstream when
-                // a real callback exists; this stub avoids crashing on legacy resumes.
-              }
-
-              @Override
-              public void onEncode(BaseClientKey usk, ClientPutState state, ClientContext context) {
-                // Intentionally no-op: fallback stub; no external observer to notify.
-              }
-
-              @Override
-              public void onTransition(
-                  ClientPutState oldState, ClientPutState newState, ClientContext context) {
-                // Intentionally no-op: fallback stub; used only to prevent NPEs on legacy resumes.
-              }
-
-              @Override
-              public void onMetadata(Metadata m, ClientPutState state, ClientContext context) {
-                // Intentionally no-op: fallback stub for legacy-deserialized inserters without a
-                // real observer.
-              }
-
-              @Override
-              public void onMetadata(Bucket meta, ClientPutState state, ClientContext context) {
-                meta.free();
-              }
-
-              @Override
-              public void onFetchable(ClientPutState state) {
-                // Intentionally no-op: no observer present for this legacy fallback.
-              }
-
-              @Override
-              public void onBlockSetFinished(ClientPutState state, ClientContext context) {
-                // Intentionally no-op: fallback stub; prevents NPEs only.
-              }
-
-              @Override
-              public void onResume(ClientContext context) {
-                // Intentionally no-op: fallback stub; nothing to re-attach for a no-op observer.
-              }
-            };
+        cb = new NoOpPutCompletionCallback();
       }
     }
   }
