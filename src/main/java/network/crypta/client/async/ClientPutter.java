@@ -106,6 +106,13 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   @SuppressWarnings("java:S1948")
   private ClientPutState currentState;
 
+  /**
+   * Non-persistent runtime-only insert state.
+   *
+   * <p>Used for states that must never be serialized (for example {@link BinaryBlobInserter}).
+   */
+  private transient ClientPutState transientState;
+
   /** Whether the insert has finished. */
   private boolean finished;
 
@@ -292,17 +299,23 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   }
 
   private void scheduleCurrentState(ClientContext context) throws InsertException {
-    if (LOG.isDebugEnabled()) LOG.debug("Scheduling insert state: {}", currentState);
-    if (currentState instanceof SingleFileInserter inserter) inserter.start(context);
-    else currentState.schedule(context);
+    ClientPutState state = currentState != null ? currentState : transientState;
+    if (state == null) {
+      throw new InsertException(
+          InsertExceptionMode.INTERNAL_ERROR, "No active insert state to schedule", null);
+    }
+    if (LOG.isDebugEnabled()) LOG.debug("Scheduling insert state: {}", state);
+    if (state instanceof SingleFileInserter inserter) inserter.start(context);
+    else state.schedule(context);
   }
 
   private boolean handleRestartGuard(boolean restart) {
     if (restart) {
       clearCountersOnRestart();
-      if (currentState != null && !finished) {
+      ClientPutState activeState = currentState != null ? currentState : transientState;
+      if (activeState != null && !finished) {
         if (LOG.isDebugEnabled())
-          LOG.debug("Restart blocked: insert still running with state {}", currentState);
+          LOG.debug("Restart blocked: insert still running with state {}", activeState);
         return false;
       }
       if (finished) startedStarting = false;
@@ -318,12 +331,13 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
       return false;
     }
     startedStarting = true;
-    if (currentState != null) {
+    ClientPutState activeState = currentState != null ? currentState : transientState;
+    if (activeState != null) {
       if (LOG.isDebugEnabled())
         LOG.debug(
             "Start guard rejected {}: existing state {}",
             restart ? "restart" : "start",
-            currentState);
+            activeState);
       return false;
     }
     return true;
@@ -371,7 +385,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
               .withMetadataThreshold(metadataThreshold);
       currentState = new SingleFileInserter(params);
     } else {
-      currentState =
+      transientState =
           new BinaryBlobInserter(data, this, getClient(), false, priorityClass, ctx, context);
     }
   }
@@ -381,6 +395,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     synchronized (this) {
       finished = true;
       currentState = null;
+      transientState = null;
     }
     if (this.callback != null) this.callback.onFailure(e, this);
   }
@@ -425,6 +440,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     synchronized (this) {
       finished = true;
       currentState = null;
+      transientState = null;
     }
     if ((super.failedBlocks > 0
             || super.fatallyFailedBlocks > 0
@@ -456,6 +472,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
     synchronized (this) {
       finished = true;
       currentState = null;
+      transientState = null;
     }
     callback.onFailure(e, this);
   }
@@ -526,7 +543,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
       if (cancelled) return;
       if (finished) return;
       super.cancel();
-      oldState = currentState;
+      oldState = currentState != null ? currentState : transientState;
     }
     if (oldState != null) oldState.cancel(context);
     onFailure(new InsertException(InsertExceptionMode.CANCELLED), null, context);
@@ -596,9 +613,14 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
         currentState = newState;
         return;
       }
+      if (transientState == oldState) {
+        transientState = newState;
+        return;
+      }
     }
     if (persistent()) context.jobRunner.setCheckpointASAP();
-    LOG.info("onTransition: cur={}, old={}, new={}", currentState, oldState, newState);
+    ClientPutState activeState = currentState != null ? currentState : transientState;
+    LOG.info("onTransition: cur={}, old={}, new={}", activeState, oldState, newState);
   }
 
   /**
@@ -717,7 +739,8 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    *     false} otherwise.
    */
   public boolean canRestart() {
-    if (currentState != null && !finished) {
+    ClientPutState activeState = currentState != null ? currentState : transientState;
+    if (activeState != null && !finished) {
       LOG.debug("Cannot restart because not finished for {}", uri);
       return false;
     }
@@ -764,6 +787,24 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   @Override
   public void innerOnResume(ClientContext context) throws ResumeFailedException {
     super.innerOnResume(context);
+    boolean resumedDataForBinaryRestart = false;
+    if (shouldRestartBinaryBlobOnResume()) {
+      data.onResume(context);
+      resumedDataForBinaryRestart = true;
+      synchronized (this) {
+        // Re-enter restart flow to rebuild a runtime-only BinaryBlobInserter after deserialization.
+        // During normal execution startedStarting stays true while work is active, so explicitly
+        // reset lifecycle guards before delegating to restart logic.
+        startedStarting = false;
+        finished = true;
+      }
+      try {
+        start(true, context);
+      } catch (InsertException e) {
+        this.onFailure(e, null, context);
+        return;
+      }
+    }
     if (currentState != null) {
       try {
         currentState.onResume(context);
@@ -772,8 +813,17 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
         return;
       }
     }
-    if (data != null) data.onResume(context);
+    if (data != null && !resumedDataForBinaryRestart) data.onResume(context);
     notifyClients(context);
+  }
+
+  private synchronized boolean shouldRestartBinaryBlobOnResume() {
+    return binaryBlob
+        && !finished
+        && startedStarting
+        && currentState == null
+        && transientState == null
+        && data != null;
   }
 
   @Override
@@ -785,7 +835,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   public void onShutdown(ClientContext context) {
     ClientPutState state;
     synchronized (this) {
-      state = currentState;
+      state = currentState != null ? currentState : transientState;
     }
     if (state != null) state.onShutdown(context);
   }

@@ -22,10 +22,11 @@ private const val LOG_REPLAY: Int = 200
 private const val LOG_EXTRA_CAPACITY: Int = 300
 private const val TAIL_BASE_DELAY_MS: Long = 200
 private const val TAIL_MAX_DELAY_MS: Long = 1500
+private const val TAIL_CANCEL_POLL_MS: Long = 50
 private const val TAIL_READ_CHUNK: Int = 64 * 1024
 
 /**
- * Coordinates the launcher lifecycle for the Crypta daemon process and exposes UI-facing state.
+ * Coordinates the launcher lifecycle for the Crypta daemon process and exposes the UI-facing state.
  *
  * This controller resolves the wrapper script, starts the process, streams combined stdout/stderr,
  * tails `wrapper.log` when available, and updates an in-memory [AppState] snapshot for the UI. It
@@ -49,6 +50,7 @@ class LauncherController(
   private val cwd: Path = Paths.get(System.getProperty("user.dir")),
 ) {
   private val _state = MutableStateFlow(AppState())
+
   /**
    * Read-only stream of the latest [AppState] snapshot for UI rendering. The flow is eagerly
    * started and always available, reflecting changes made by [start], [stop], and shutdown calls.
@@ -59,9 +61,9 @@ class LauncherController(
   /**
    * Bounded, drop-older log stream.
    *
-   * We keep a small replay window so late subscribers (e.g., UI created after controller) still see
-   * the latest lines, and we cap total in-memory buffering to avoid memory pressure when the daemon
-   * is very chatty or the UI is momentarily stalled.
+   * We keep a small replay window so late subscribers still see the latest lines. We also cap total
+   * in-memory buffering to avoid memory pressure when the daemon is chatty or the UI is momentarily
+   * stalled.
    *
    * Total buffer = [LOG_REPLAY] + [LOG_EXTRA_CAPACITY]. When full, the oldest entries are dropped.
    */
@@ -71,6 +73,7 @@ class LauncherController(
       extraBufferCapacity = LOG_EXTRA_CAPACITY,
       onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
+
   /**
    * Bounded, drop-older log stream for launcher and daemon output. A small replay window is kept so
    * late subscribers still receive recent lines; when buffers fill, older entries are dropped to
@@ -82,6 +85,7 @@ class LauncherController(
   private var tailJob: Job? = null
   private var autoOpenedBrowser = false
   private var wrapperConfPath: Path? = null
+
   // Separate shutdown scope so quit can proceed even if the UI scope is canceled
   private val shutdownScope: CoroutineScope = CoroutineScope(SupervisorJob() + io)
 
@@ -135,7 +139,11 @@ class LauncherController(
         wrapperConfPath = conf
         val logSpec = readWrapperProperty(conf, "wrapper.logfile")
         val logPath = computeWrapperLogPath(conf, logSpec)
-        tailJob = scope.launch { tailFileWhileAlive(logPath) }
+        tailJob =
+          scope.launch(Dispatchers.IO) {
+            val thisJob = coroutineContext[Job] ?: return@launch
+            tailFileWhileAlive(logPath, thisJob)
+          }
       }
     }
   }
@@ -143,10 +151,10 @@ class LauncherController(
   /**
    * Request a graceful stop of the wrapper process if it is running.
    *
-   * The controller updates state to indicate a stop is in progress and then attempts platform
-   * appropriate shutdown (anchor-file signaling on Windows, signal escalation on Unix). The call
-   * returns immediately; waiting happens on [io] and is best-effort. If the process is already
-   * stopped, the state is normalized and the method exits without further work.
+   * The controller updates the state to indicate a stop is in progress and then attempts the
+   * platform appropriate shutdown (anchor-file signaling on Windows, signal escalation on Unix).
+   * The call returns immediately; waiting happens on [io] and is best-effort. If the process is
+   * already stopped, the state is normalized and the method exits without further work.
    */
   fun stop() {
     val p = process ?: return
@@ -198,11 +206,11 @@ class LauncherController(
   }
 
   /**
-   * Begin shutdown and return immediately.
+   * Begin to shut down and return immediately.
    *
    * This method marks the controller as shutting down and initiates a stop on a dedicated shutdown
-   * scope so the request is honored even if the UI scope has been canceled. It is safe to call
-   * multiple times; subsequent calls are ignored once shutdown has started.
+   * scope, so the request is honored even if the UI scope has been canceled. It is safe to call
+   * multiple times; further calls are ignored once shutdown has started.
    */
   fun shutdown() {
     if (_state.value.isShuttingDown) return
@@ -270,25 +278,41 @@ class LauncherController(
    * rotation/truncation. All resource operations are guarded and closed in `finally` to avoid leaks
    * on exceptions or coroutine cancellation.
    */
-  private suspend fun tailFileWhileAlive(path: Path) {
+  private fun tailFileWhileAlive(path: Path, tailingJob: Job) {
     // Keep a single RAF open to avoid repeated open/close churn. Add exponential backoff when no
     // new data arrives to reduce filesystem pressure. Re-open on file rotation or truncation.
-    withContext(io) {
-      val state = TailState()
-      try {
-        while (scope.isActive && (process?.isAlive == true)) {
-          try {
-            val madeProgress = tailOnce(path, state)
-            state.idleCount = if (madeProgress) 0 else state.idleCount + 1
-          } catch (_: Throwable) {
-            resetTailOnError(state)
-          }
-          delay(calcTailDelayMs(state.idleCount))
+    val state = TailState()
+    try {
+      while (tailingJob.isActive && (process?.isAlive == true)) {
+        try {
+          val madeProgress = tailOnce(path, state)
+          state.idleCount = if (madeProgress) 0 else state.idleCount + 1
+        } catch (_: Throwable) {
+          resetTailOnError(state)
         }
-      } finally {
-        closeTailFile(state)
+        if (!sleepWhileJobActive(tailingJob, calcTailDelayMs(state.idleCount))) {
+          return
+        }
       }
+    } finally {
+      closeTailFile(state)
     }
+  }
+
+  private fun sleepWhileJobActive(job: Job, delayMs: Long): Boolean {
+    var remaining = delayMs
+    while (remaining > 0) {
+      if (!job.isActive) return false
+      val chunk = minOf(remaining, TAIL_CANCEL_POLL_MS)
+      try {
+        Thread.sleep(chunk)
+      } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        return false
+      }
+      remaining -= chunk
+    }
+    return job.isActive
   }
 
   private suspend fun stopProcessGracefully(p: Process) {
@@ -300,7 +324,7 @@ class LauncherController(
       val allPids = listOf(pid) + snapshot
 
       if (isWindows) {
-        // Prefer a graceful stop via Wrapper anchor file on Windows. Falls back to taskkill.
+        // Prefer a graceful stop via a Wrapper anchor file on Windows. Falls back to task-kill.
         if (!tryWindowsGracefulStopViaAnchor(allPids)) {
           runCmd("cmd", "/c", "taskkill /PID $pid /T")
           if (!waitForPidsToExit(allPids, 20_000)) {
@@ -328,11 +352,12 @@ class LauncherController(
     }
   }
 
-  private fun getDescendantTreePids(rootPid: Long): List<Long> {
-    return try {
+  private fun getDescendantTreePids(rootPid: Long): List<Long> =
+    try {
       val opt = ProcessHandle.of(rootPid)
-      if (!opt.isPresent) emptyList()
-      else {
+      if (!opt.isPresent) {
+        emptyList()
+      } else {
         val root = opt.get()
         root
           .descendants()
@@ -342,15 +367,13 @@ class LauncherController(
     } catch (_: Throwable) {
       emptyList()
     }
-  }
 
-  private fun isPidAlive(pid: Long): Boolean {
-    return try {
+  private fun isPidAlive(pid: Long): Boolean =
+    try {
       ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
     } catch (_: Throwable) {
       false
     }
-  }
 
   /**
    * Suspend until all `pids` have exited or until `millis` has elapsed. Uses coroutines (`delay`)
@@ -448,19 +471,14 @@ class LauncherController(
     }
   }
 
-  /**
-   * Read a single property from `wrapper.conf` on the I/O dispatcher to avoid blocking the caller
-   * context. Returns null on any error or when the key is not present.
-   */
-  private suspend fun readWrapperProperty(conf: Path, key: String): String? =
-    withContext(io) {
-      runCatching {
-          Files.newBufferedReader(conf, StandardCharsets.UTF_8).useLines { lines ->
-            lines.firstNotNullOfOrNull { extractWrapperProperty(it, key) }
-          }
+  /** Read a single property from `wrapper.conf`. Returns null on any error or when absent. */
+  private fun readWrapperProperty(conf: Path, key: String): String? =
+    runCatching {
+        Files.newBufferedReader(conf, StandardCharsets.UTF_8).useLines { lines ->
+          lines.firstNotNullOfOrNull { extractWrapperProperty(it, key) }
         }
-        .getOrNull()
-    }
+      }
+      .getOrNull()
 
   private fun extractWrapperProperty(raw: String, key: String): String? {
     val line = raw.trim()
@@ -528,13 +546,12 @@ class LauncherController(
     return true
   }
 
-  private fun readFileKey(path: Path): Any? {
-    return try {
+  private fun readFileKey(path: Path): Any? =
+    try {
       Files.readAttributes(path, BasicFileAttributes::class.java).fileKey()
     } catch (_: Throwable) {
       null
     }
-  }
 
   private fun openTailFileIfNeeded(path: Path, newKey: Any?, state: TailState) {
     if (
@@ -570,7 +587,7 @@ class LauncherController(
   }
 
   private fun logLine(s: String) {
-    // Non-suspending emission; when buffers are full the oldest entries are dropped per
+    // Non-suspending emission; when buffers are full, the oldest entries are dropped per
     // BufferOverflow.DROP_OLDEST.
     _logs.tryEmit(s)
   }
@@ -579,11 +596,17 @@ class LauncherController(
     val isWindows = AppEnv().isWindows()
     return cmd.joinToString(" ") { arg ->
       if (isWindows) {
-        if (arg.any { it.isWhitespace() || it == '"' }) "\"" + arg.replace("\"", "\\\"") + "\""
-        else arg
+        if (arg.any { it.isWhitespace() || it == '"' }) {
+          "\"" + arg.replace("\"", "\\\"") + "\""
+        } else {
+          arg
+        }
       } else {
-        if (arg.any { it.isWhitespace() || it == '\'' || it == '"' || it == '\\' }) shellQuote(arg)
-        else arg
+        if (arg.any { it.isWhitespace() || it == '\'' || it == '"' || it == '\\' }) {
+          shellQuote(arg)
+        } else {
+          arg
+        }
       }
     }
   }
