@@ -86,7 +86,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
 
   private transient SecretKey headerEncKey;
   private transient byte[] headerEncIV;
-  private int version;
+  private volatile int version;
 
   private transient MasterSecret masterKey;
 
@@ -581,6 +581,7 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
   private static final String FIELD_UNDERLYING = "underlying";
   private static final String FIELD_VERSION = "version";
 
+  @SuppressWarnings("unused") // Referenced reflectively by Java serialization.
   @Serial
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_TYPE, EncryptedRandomAccessBufferType.class),
@@ -590,7 +591,6 @@ public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializ
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    assert serialPersistentFields.length > 0;
     // Persist core fields via the default field block. Include the underlying only when it is
     // Serializable; otherwise fail fast to avoid silently dropping data on checkpoint.
     PutField fields = out.putFields();

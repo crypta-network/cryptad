@@ -59,7 +59,7 @@ public class SplitFileInserterCrossSegmentStorage {
   final int crossCheckBlockCount;
   final int totalBlocks;
 
-  private boolean encoded;
+  private volatile boolean encoded;
   private boolean encoding;
   private boolean cancelled;
 

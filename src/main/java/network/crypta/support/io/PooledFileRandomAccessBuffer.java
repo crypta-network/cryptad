@@ -28,7 +28,7 @@ import org.slf4j.LoggerFactory;
  * <p>Concurrency: instances coordinate through a shared {@code FDTracker}. Pool coordination is
  * synchronized on a final monitor ({@code fds.lock}). A lock from {@link #lockOpen()} controls only
  * lifetime in the pool; it does not serialize I/O. Individual I/O calls synchronize on {@code this}
- * around {@link RandomAccessFile#seek(long)} and the subsequent read/write.
+ * around {@link RandomAccessFile#seek(long)} and the further read/write.
  *
  * <p>Resource management: call {@link #close()} when done. If {@code deleteOnFree} is true, {@link
  * #free()} deletes the file (securely when {@link #setSecureDelete(boolean)} is enabled). Closing
@@ -131,7 +131,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   // -1 when not a persistent-temp file; otherwise an ID to allow relocation across prefix changes.
   private final long persistentTempID;
 
-  private boolean secureDelete;
+  private volatile boolean secureDelete;
   private final boolean deleteOnFree;
 
   /**
@@ -158,8 +158,8 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
    *
    * @param file non‑null path to the target file (must exist and be readable; writable when {@code
    *     readOnly == false})
-   * @param readOnly if {@code true}, subsequent calls to {@link #pwrite(long, byte[], int, int)}
-   *     fail with {@link IOException}
+   * @param readOnly if {@code true}, further calls to {@link #pwrite(long, byte[], int, int)} fail
+   *     with {@link IOException}
    * @param forceLength desired size in bytes, or {@code -1} to keep the current size
    * @param persistentTempID persistent‑temp identifier used during resume ({@code -1} for none)
    * @param deleteOnFree if {@code true}, {@link #free()} deletes the backing file (securely when
@@ -199,7 +199,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
         // downloads.
         try (WrapperKeepalive wrapperKeepalive = new WrapperKeepalive()) {
           wrapperKeepalive.start();
-          // freenet-mobile-changed: Passing file descriptor to avoid using reflection
+          // freenet-mobile-changed: Passing a file descriptor to avoid using reflection
           Fallocate.forChannel(raf.getChannel(), raf.getFD(), forceLength)
               .fromOffset(currentLength)
               .execute();
@@ -325,7 +325,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
    * @param bufOffset offset within {@code buf}
    * @param length number of bytes to write
    * @throws IllegalArgumentException if {@code fileOffset < 0}
-   * @throws IOException if the buffer is read-only or if the writing would exceed the fixed length
+   * @throws IOException if the buffer is read-only, or if the writing would exceed the fixed length
    */
   @Override
   public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
@@ -437,7 +437,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   private void waitForSlotUnsafe() throws IOException {
     final Object monitor = fds.lock;
     synchronized (monitor) {
-      // Wait only while there is no free slot, this buffer is not already open/closed, and there
+      // Wait only while there is no free slot, this buffer is not yet open/closed, and there
       // are no queued closables we could reap after waking up.
       while (fds.closables.isEmpty() && !hasFDSlotUnsafe() && !isOpenUnsafe() && !closed) {
         try {
@@ -501,7 +501,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
   /**
    * Enable or disable secure deletion for {@link #free()}.
    *
-   * @param secureDelete when {@code true}, attempts a best‑effort secure delete
+   * @param secureDelete when {@code true}, attempts the best‑effort secure deleting
    */
   public void setSecureDelete(boolean secureDelete) {
     this.secureDelete = secureDelete;

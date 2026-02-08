@@ -209,10 +209,10 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /** Total number of blocks this request has attempted to fetch or insert. */
-  protected int totalBlocks;
+  protected volatile int totalBlocks;
 
   /** Number of blocks successfully fetched or inserted so far. */
-  protected int successfulBlocks;
+  protected volatile int successfulBlocks;
 
   /**
    * Timestamp of the most recent successful block completion.
@@ -224,25 +224,25 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected Instant latestSuccess = Instant.now();
 
   /** Number of blocks which have failed. */
-  protected int failedBlocks;
+  protected volatile int failedBlocks;
 
   /** Number of blocks which have failed fatally. */
-  protected int fatallyFailedBlocks;
+  protected volatile int fatallyFailedBlocks;
 
   /** Timestamp of the most recent failed or fatally failed block, if any. */
   protected Instant latestFailure = null;
 
   /** Minimum number of blocks required to succeed for success. */
-  protected int minSuccessBlocks;
+  protected volatile int minSuccessBlocks;
 
   /** Has totalBlocks stopped growing? */
-  protected boolean blockSetFinalized;
+  protected volatile boolean blockSetFinalized;
 
   /**
    * Has at least one block been scheduled to be sent to the network? Requests can be satisfied
    * entirely from the datastore sometimes.
    */
-  protected boolean sentToNetwork;
+  protected volatile boolean sentToNetwork;
 
   /**
    * Returns the current total number of blocks considered by this request.
@@ -517,7 +517,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   }
 
   /**
-   * Notifies clients that at least one part of the request is now being processed by the network.
+   * Notifies clients that the network is now processing at least one part of the request.
    *
    * @param context the transient {@link ClientContext} used for notification and scheduling
    */
@@ -559,7 +559,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * is safe to call repeatedly and may be used to temporarily boost or reduce a request’s priority
    * based on user action or policy.
    *
-   * @param newPriorityClass the new priority class to apply for all subsequent scheduling
+   * @param newPriorityClass the new priority class to apply for all later scheduling
    * @param ctx the {@link ClientContext} used to perform re-registration with all schedulers
    */
   public void setPriorityClass(short newPriorityClass, ClientContext ctx) {
@@ -607,8 +607,8 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   /**
    * Returns a snapshot of all currently live non‑persistent requesters.
    *
-   * <p>The returned array is a best‑effort snapshot based on weak references and may exclude items
-   * that have been garbage‑collected.
+   * <p>The returned array is the best‑effort snapshot based on weak references and may exclude
+   * items that have been garbage‑collected.
    *
    * @return an array containing the live requesters known to this JVM
    */
@@ -695,7 +695,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected abstract ClientBaseCallback getCallback();
 
   /**
-   * Hook invoked prior to the final write during node shutdown.
+   * Hook invoked prior to the final writing during node shutdown.
    *
    * @param context the transient {@link ClientContext} provided for shutdown coordination
    */

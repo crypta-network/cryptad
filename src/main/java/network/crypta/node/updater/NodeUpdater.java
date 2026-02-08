@@ -116,7 +116,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   private int maxDeployVersion;
   private int minDeployVersion;
-  private boolean isRunning;
+  private volatile boolean isRunning;
   private boolean isFetching;
   private final String blobFilenamePrefix;
 

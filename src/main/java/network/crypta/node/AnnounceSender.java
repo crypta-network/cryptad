@@ -158,7 +158,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private boolean processNextHop(RoutingState state) {
-    if (LOG.isDebugEnabled()) LOG.debug("htl={}", htl);
+    if (LOG.isDebugEnabled()) LOG.debug("htl={}", getHtl());
 
     updateHtl(state.hasForwarded, state.last);
 
@@ -207,16 +207,17 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private NodeProcessResult routeOnce(Set<PeerNode> nodesRoutedTo, PeerNode next) {
+    short currentHtl = getHtl();
     if (LOG.isDebugEnabled()) LOG.debug("Routing request to {}", next);
     if (onlyNode == null)
       PeerNodeRoutingReporter.reportRoutedTo(
           node,
           next,
           new PeerNodeRoutingReportParams(
-              target, source == null, false, source, nodesRoutedTo, htl));
+              target, source == null, false, source, nodesRoutedTo, currentHtl));
     nodesRoutedTo.add(next);
 
-    long transferUID = sendTo(next);
+    long transferUID = sendTo(next, currentHtl);
     if (transferUID == -1) {
       return NodeProcessResult.CONTINUE_NO_FORWARD;
     }
@@ -240,13 +241,15 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   }
 
   private boolean shouldCompleteNow() {
-    return (htl == 0) || !node.network().isOpennetEnabled();
+    return (getHtl() == 0) || !node.network().isOpennetEnabled();
   }
 
   private void updateHtl(boolean hasForwarded, PeerNode last) {
     if (onlyNode == null) {
       // Decrement at this point so HTL==0 is detected before routing the next hop.
-      htl = node.routing().decrementHTL(hasForwarded ? last : source, htl);
+      short currentHtl = getHtl();
+      short decremented = node.routing().decrementHTL(hasForwarded ? last : source, currentHtl);
+      setHtl(decremented);
     }
   }
 
@@ -266,7 +269,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
                   null,
                   2.0,
                   null,
-                  htl,
+                  getHtl(),
                   0L,
                   source == null,
                   false,
@@ -548,7 +551,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   private void backtrackWithinHops(Message msg) {
     short newHtl = msg.getShort(DMT.HTL);
     if (newHtl < 0) newHtl = 0;
-    if (newHtl < htl) htl = newHtl;
+    capHtl(newHtl);
   }
 
   private void handleCompletedSequence(PeerNode next) {
@@ -699,9 +702,9 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
    * @param next Destination peer.
    * @return Transfer UID used for the noderef payload, or {@code -1} if disconnected.
    */
-  private long sendTo(PeerNode next) {
+  private long sendTo(PeerNode next, short currentHtl) {
     try {
-      return om.startSendAnnouncementRequest(uid, next, noderefBuf, this, target, htl);
+      return om.startSendAnnouncementRequest(uid, next, noderefBuf, this, target, currentHtl);
     } catch (NotConnectedException _) {
       if (LOG.isDebugEnabled()) LOG.debug("Disconnected");
       return -1;
@@ -712,7 +715,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
    * Sends the remaining announcement payload (the noderef) after an Accepted.
    *
    * @param next Destination peer.
-   * @param xferUID Transfer UID obtained from {@link #sendTo(PeerNode)}.
+   * @param xferUID Transfer UID obtained from {@link #sendTo(PeerNode, short)}.
    * @throws NotConnectedException if {@code next} disconnects before the payload is sent.
    */
   private void sendRest(PeerNode next, long xferUID) throws NotConnectedException {
@@ -743,7 +746,7 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
 
   private void rnf(PeerNode next) {
     waitForRunningTransfers();
-    Message msg = DMT.createFNPRouteNotFound(uid, htl);
+    Message msg = DMT.createFNPRouteNotFound(uid, getHtl());
     if (source != null) {
       try {
         source.transport().sendAsync(msg, null, this);
@@ -838,5 +841,17 @@ public class AnnounceSender implements PrioRunnable, ByteCounter {
   @Override
   public int getPriority() {
     return NativeThread.PriorityLevel.HIGH_PRIORITY.value;
+  }
+
+  private synchronized short getHtl() {
+    return htl;
+  }
+
+  private synchronized void setHtl(short value) {
+    htl = value;
+  }
+
+  private synchronized void capHtl(short candidate) {
+    if (candidate < htl) htl = candidate;
   }
 }

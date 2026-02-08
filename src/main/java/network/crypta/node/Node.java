@@ -347,7 +347,7 @@ public class Node implements TimeSkewDetectorCallback {
   private final NodeRoutingSubsystem routing;
 
   // The watchdog will be silenced until it's true
-  private boolean hasStarted;
+  private volatile boolean hasStarted;
   private boolean isStopping = false;
 
   /**
@@ -821,7 +821,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     storage.initializeStoreSaltHashResizeOnStart(
         nodeConfig.getBoolean("storeSaltHashResizeOnStart"));
 
-    // Determine default database again for storeDir (separate from earlier setup)
+    // Determine the default database again for storeDir (separate from earlier setup)
     Path defaultDataBase = storage.defaultStoreBaseDir();
 
     storage.setStoreDir(
@@ -1675,7 +1675,7 @@ In particular: YOU ARE WIDE OPEN TO YOUR IMMEDIATE PEERS! They can eavesdrop on 
     }
   }
 
-  @SuppressWarnings("java:S6206")
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
   private static final class MasterKeyState {
     private final byte[] clientCacheKey;
     private final MasterSecret persistentSecret;

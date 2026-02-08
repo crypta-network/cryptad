@@ -500,7 +500,7 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
     }
   }
 
-  private boolean canCommit = false;
+  private volatile boolean canCommit = false;
   private boolean sentCompletion = false;
   private final Object sentCompletionLock = new Object();
 

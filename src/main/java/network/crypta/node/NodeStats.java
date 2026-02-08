@@ -227,10 +227,10 @@ public class NodeStats implements Persistable, BlockTimeCallback {
   private volatile long firstNodeAveragePingTimeThresholdBreak;
 
   /** bwlimitDelay PeerManagerUserAlert should happen if true */
-  private boolean bwlimitDelayAlertRelevant;
+  private volatile boolean bwlimitDelayAlertRelevant;
 
   /** nodeAveragePing PeerManagerUserAlert should happen if true */
-  private boolean nodeAveragePingAlertRelevant;
+  private volatile boolean nodeAveragePingAlertRelevant;
 
   /**
    * Decaying average fraction of incoming requests rejected immediately due to overload.

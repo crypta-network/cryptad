@@ -71,7 +71,7 @@ public class NodeIPDetector {
   String overrideIPAddressString;
 
   /** Whether configuration allows binding to localhost addresses. */
-  boolean allowBindToLocalhost;
+  volatile boolean allowBindToLocalhost;
 
   /** Previously used IP address, if any. */
   FreenetInetAddress oldIPAddress;
@@ -609,7 +609,7 @@ public class NodeIPDetector {
         // Set to null
         overrideIPAddressString = val;
         overrideIPAddress = null;
-        // Clearing the override should also clear any previous invalid state so the
+        // Clearing the override should also clear any previous invalid state, so the
         // node stops warning about a bad override after the user removes it.
         synchronized (NodeIPDetector.this) {
           hasValidAddressOverride = true;
@@ -759,7 +759,7 @@ public class NodeIPDetector {
   /**
    * Starts background detection and schedules follow-up tasks.
    *
-   * <p>Registers alerts for invalid overrides, launches the periodic IP re-detector, triggers an
+   * <p>Registers alerts for invalid overrides, launches the periodic IP re-detector, triggers
    * initial detection, and schedules a delayed ARK insert to avoid redundant work at startup.
    */
   public void start() {
@@ -770,7 +770,7 @@ public class NodeIPDetector {
     node.network().executor().execute(ipDetector, "IP address re-detector");
     redetectAddress();
     // Delay ARK insertion by 60 seconds to limit redundant inserts when IP detection lags startup.
-    // Not a FastRunnable because the insert can take noticeable time to begin.
+    // Not a FastRunnable because the insert can take a noticeable time to begin.
     node.network()
         .ticker()
         .queueTimedJob(

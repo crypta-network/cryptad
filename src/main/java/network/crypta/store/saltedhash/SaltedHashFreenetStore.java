@@ -146,7 +146,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
   private int generation;
   private int flags;
 
-  private boolean preallocate;
+  private volatile boolean preallocate;
   // Mutable test hook: keep non-public and expose minimal accessor.
   private static volatile boolean noCleanerSleep = false;
 
@@ -1354,7 +1354,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
 
   private record CacheState(int cache, boolean valid, boolean likelyMatch) {}
 
-  @SuppressWarnings("java:S6206")
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
   private static final class KeyContext {
     private final byte[] digestedKey;
     private final byte[] routingKey;
@@ -1407,7 +1407,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     }
   }
 
-  @SuppressWarnings("java:S6206")
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
   private static final class EntryData {
     private final byte[] header;
     private final byte[] data;

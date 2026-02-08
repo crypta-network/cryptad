@@ -60,18 +60,14 @@ public class MersenneTwister extends MersenneTwisterBase {
 
   /** {@inheritDoc} */
   @Override
-  public void setSeed(int seed) {
-    synchronized (this) {
-      super.setSeed(seed);
-    }
+  public synchronized void setSeed(int seed) {
+    super.setSeed(seed);
   }
 
   /** {@inheritDoc} */
   @Override
-  public void setSeed(int[] seed) {
-    synchronized (this) {
-      super.setSeed(seed);
-    }
+  public synchronized void setSeed(int[] seed) {
+    super.setSeed(seed);
   }
 
   /** {@inheritDoc} */
@@ -97,10 +93,8 @@ public class MersenneTwister extends MersenneTwisterBase {
 
   /** {@inheritDoc} */
   @Override
-  protected int next(int bits) {
-    synchronized (this) {
-      return super.next(bits);
-    }
+  protected synchronized int next(int bits) {
+    return super.next(bits);
   }
 
   /**
@@ -120,9 +114,15 @@ public class MersenneTwister extends MersenneTwisterBase {
     return new Unsynchronized(seed);
   }
 
+  @SuppressWarnings({"UnsynchronizedOverridesSynchronized", "java:S3551"})
   private static final class Unsynchronized extends MersenneTwister {
+    // Random's constructor invokes setSeed(long) before this subclass finishes initialization.
+    // Keep that early call on the constructor-safeguarded path, then switch to lock-free seeding.
+    private final boolean initialized;
+
     private Unsynchronized(byte[] seed) {
       super(Fields.bytesToInts(seed));
+      initialized = true;
     }
 
     @Override
@@ -141,7 +141,11 @@ public class MersenneTwister extends MersenneTwisterBase {
     }
 
     @Override
-    public synchronized void setSeed(long seed) {
+    public void setSeed(long seed) {
+      if (!initialized) {
+        super.setSeed(seed);
+        return;
+      }
       unsynchronizedSetSeed(seed);
     }
 
@@ -164,7 +168,7 @@ public class MersenneTwister extends MersenneTwisterBase {
   }
 
   final void unsynchronizedSetSeed(long seed) {
-    super.setSeed(seed);
+    super.setSeed(new int[] {(int) (seed >>> 32), (int) (seed & 0xffffffffL)});
   }
 
   final void unsynchronizedSetSeed(byte[] seed) {

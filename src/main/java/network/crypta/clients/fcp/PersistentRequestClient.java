@@ -135,7 +135,7 @@ public class PersistentRequestClient {
   /** Are we watching the global queue? */
   boolean watchGlobal;
 
-  int watchGlobalVerbosityMask;
+  volatile int watchGlobalVerbosityMask;
 
   /** FCPClients watching us. Lazy init, sync on clientsWatchingLock */
   private List<PersistentRequestClient> clientsWatching;

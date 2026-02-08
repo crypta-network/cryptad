@@ -612,7 +612,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    * The number of blocks that will be needed to fetch the data. We put this in the top block
    * metadata.
    */
-  protected int minSuccessFetchBlocks;
+  protected volatile int minSuccessFetchBlocks;
 
   @Override
   public int getMinSuccessFetchBlocks() {

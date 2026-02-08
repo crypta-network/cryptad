@@ -371,7 +371,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** Note: Used by the N2NChat plugin because the getter is protected. */
   public final byte[] peerECDSAPubKeyHash;
 
-  private boolean isSignatureVerificationSuccessfull;
+  private volatile boolean isSignatureVerificationSuccessfull;
 
   /**
    * Incoming setup key. Used to decrypt incoming auth packets. Specifically: K_node XOR
@@ -461,7 +461,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private long clockDelta;
 
   /** Percentage uptime of this node, 0 if they haven't said */
-  private byte uptime;
+  private volatile byte uptime;
 
   /**
    * If the clock delta is more than this constant, we don't talk to the node. Reason: It may not be

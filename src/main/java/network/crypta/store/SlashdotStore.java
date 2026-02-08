@@ -60,7 +60,7 @@ public class SlashdotStore<T extends StorableBlock> implements FreenetStore<T> {
 
   private final StoreCallback<T> callback;
 
-  private int maxKeys;
+  private volatile int maxKeys;
 
   private long hits;
   private long misses;

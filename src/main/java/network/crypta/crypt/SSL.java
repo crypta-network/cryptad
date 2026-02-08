@@ -79,7 +79,7 @@ public class SSL {
   private static String keyStorePath;
   private static String keyStorePass;
   private static String keyPass;
-  private static int hstsMaxAge;
+  private static volatile int hstsMaxAge;
 
   /**
    * Returns whether SSL/TLS support is initialized.
@@ -95,7 +95,7 @@ public class SSL {
    * Returns the value for the {@code Strict-Transport-Security} header.
    *
    * <p>When SSL is enabled, initialized, and a positive max-age is configured, this returns {@code
-   * "max-age=<seconds>"}. Otherwise an empty string is returned to indicate that the header should
+   * "max-age=<seconds>"}. Otherwise, an empty string is returned to indicate that the header should
    * not be sent.
    *
    * @return the header value without the name (e.g., {@code "max-age=31536000"}), or an empty
@@ -319,7 +319,7 @@ public class SSL {
   }
 
   /**
-   * Loads the keystore from disk without creating a certificate when the file is missing.
+   * Loads the keystore from the disk without creating a certificate when the file is missing.
    *
    * <p>Used during early startup when generating a certificate may not be desirable (e.g., before
    * sufficient entropy is available).
@@ -353,7 +353,7 @@ public class SSL {
           NoSuchProviderException,
           OperatorCreationException {
     if (enable) {
-      // Load existing keystore or generate a fresh one with a self-signed certificate.
+      // Load an existing keystore or generate a fresh one with a self-signed certificate.
       try (FileInputStream fis = new FileInputStream(keyStorePath)) {
         keystore.load(fis, keyStorePass.toCharArray());
       } catch (FileNotFoundException _) {

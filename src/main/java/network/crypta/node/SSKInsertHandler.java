@@ -51,7 +51,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   private SSKInsertSender sender;
   private byte[] data;
   private byte[] headers;
-  private boolean canCommit;
+  private volatile boolean canCommit;
   final InsertTag tag;
   private final boolean canWriteDatastore;
   private final boolean forkOnCacheable;
@@ -59,7 +59,7 @@ public class SSKInsertHandler implements PrioRunnable, ByteCounter {
   private final boolean ignoreLowBackoff;
   private final boolean realTimeFlag;
 
-  private boolean collided = false;
+  private volatile boolean collided = false;
 
   SSKInsertHandler(
       NodeSSK key,

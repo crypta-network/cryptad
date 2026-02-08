@@ -42,7 +42,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
   private static final Logger LOG = LoggerFactory.getLogger(NodeARKInserter.class);
   private static final String PHYSICAL_UDP = "physical.udp";
 
-  /** Owning node used for scheduling and peer interactions. */
+  /** The owning node used for scheduling and peer interactions. */
   private final Node node;
 
   private final NodeCrypto crypto;
@@ -72,7 +72,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
   private ClientPutter inserter;
   private boolean shouldInsert;
   private Peer[] lastInsertedPeers;
-  private boolean canStart;
+  private volatile boolean canStart;
 
   void start() {
     if (!enabled) return;
@@ -149,7 +149,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
         for (int i = 0; i < p.length; i++)
           if (!p[i].strictEquals(lastInsertedPeers[i])) return true;
       } else {
-        // we've not inserted an ARK that we know about (ie since startup)
+        // we've not inserted an ARK that we know about (i.e., since startup)
         return true;
       }
     }
@@ -169,11 +169,11 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
 
     // Remove fields that increase collision risk when generating ARKs.
 
-    // Drop entire ark.* subset. Automatic migration between formats may be added later.
+    // Drop the entire ark.* subset. Automatic migration between formats may be added later.
     fs.removeSubset("ark");
     fs.removeValue("location");
     fs.removeValue("sig");
-    // fs.remove("version"); - keep version because of its significance in reconnection
+    // fs.remove("version"); - keep the version because of its significance in reconnection
 
     String s = fs.toString();
 
@@ -209,7 +209,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
           lastInsertedPeers = null;
         } else {
           Peer[] parsed = parsePeers(fs);
-          // Keep prior value on parse failure to avoid repeated reinserts
+          // Keep a prior value on parse failure to avoid repeated reinserts
           if (parsed != null) {
             lastInsertedPeers = parsed;
           }
@@ -236,7 +236,7 @@ public class NodeARKInserter implements ClientPutCallback, RequestClient {
           e1,
           fs.get(PHYSICAL_UDP),
           e1);
-      // Signal failure so caller can preserve previous lastInsertedPeers
+      // Signal failure so the caller can preserve previous lastInsertedPeers
       return null;
     }
   }

@@ -33,7 +33,7 @@ public class SubConfig implements Comparable<SubConfig> {
   private final LinkedHashMap<String, Option<?>> map;
   public final Config config;
   final String prefix;
-  private boolean hasInitialized;
+  private volatile boolean hasInitialized;
 
   // No static initialization required.
 

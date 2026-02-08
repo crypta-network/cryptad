@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * {@link ClientContext} and must be safe to invoke from the node's worker threads.
  *
  * <ul>
- *   <li>Tracks client-visible metadata such as identifiers, tokens and verbosity.
+ *   <li>Tracks client-visible metadata such as identifiers, tokens, and verbosity.
  *   <li>Coordinates persistence, resumption, and cancellation across reconnections and restarts.
  *   <li>Provides hooks for status reporting, restart, and orderly shutdown.
  * </ul>
@@ -80,7 +80,7 @@ public abstract class ClientRequest implements Serializable {
   protected transient PersistentRequestClient client;
 
   /** Priority class */
-  protected short priorityClass;
+  protected volatile short priorityClass;
 
   /** Is the request scheduled as "real-time" (as opposed to bulk)? */
   protected final boolean realTime;

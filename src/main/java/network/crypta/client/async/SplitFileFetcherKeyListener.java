@@ -85,9 +85,9 @@ public class SplitFileFetcherKeyListener implements KeyListener {
   private final int mainBloomFilterSizeBytes;
 
   /**
-   * Default mainBloomElementsPerKey. False positives is approx 0.6185^[this number], so 19 gives us
-   * 0.01% false positives, which should be acceptable even if there are thousands of splitfiles on
-   * the queue.
+   * Default mainBloomElementsPerKey. False positives are approx 0.6185^[this number], so 19 gives
+   * us 0.01% false positives, which should be acceptable even if there are thousands of splitfiles
+   * on the queue.
    */
   static final int DEFAULT_MAIN_BLOOM_ELEMENTS_PER_KEY = 19;
 
@@ -102,8 +102,8 @@ public class SplitFileFetcherKeyListener implements KeyListener {
   static final double ACCEPTABLE_BLOOM_FALSE_POSITIVES_ALL_SEGMENTS = 0.01;
 
   /**
-   * Size of per-segment bloom filter in bytes. This is calculated from the above constant and the
-   * number of segments, and rounded up.
+   * Size of a per-segment bloom filter in bytes. This is calculated from the above constant and the
+   * number of segments and rounded up.
    */
   private final int perSegmentBloomFilterSizeBytes;
 
@@ -125,8 +125,8 @@ public class SplitFileFetcherKeyListener implements KeyListener {
   /** Does the main bloom filter need writing? */
   private boolean dirty;
 
-  private boolean mustRegenerateMainFilter;
-  private boolean mustRegenerateSegmentFilters;
+  private volatile boolean mustRegenerateMainFilter;
+  private volatile boolean mustRegenerateSegmentFilters;
 
   // No dedicated close lifecycle: filters are heap-backed here and do not
   // require explicit closing; cleanup is deferred to GC.
@@ -135,13 +135,13 @@ public class SplitFileFetcherKeyListener implements KeyListener {
    * Create a listener and initialize in‑memory Bloom filters for a new splitfile download.
    *
    * <p>This constructor builds the global counting Bloom filter and one immutable per‑segment Bloom
-   * filter for each segment. Sizes are derived from the total number of blocks and segments in
-   * order to achieve a small, bounded false‑positive rate. No disk I/O occurs here; callers may
-   * persist the filters later via {@link #innerWriteMainBloomFilter(long)} and {@link
+   * filter for each segment. Sizes are derived from the total number of blocks and segments to
+   * achieve a small, bounded false‑positive rate. No disk I/O occurs here; callers may persist the
+   * filters later via {@link #innerWriteMainBloomFilter(long)} and {@link
    * #initialWriteSegmentBloomFilters(long)} when appropriate.
    *
    * @param fetcher callback that provides priority and failure handling; never {@code null}; used
-   *     to propagate disk errors and obtain the request priority class
+   *     to propagate disk errors and get the request priority class
    * @param storage backing storage that exposes segment metadata and persistence helpers; must
    *     correspond to the same splitfile layout and segment count supplied below
    * @param persistent whether this listener participates in persistence and triggers lazy metadata
@@ -235,7 +235,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
    * the salt has not changed, attempts to restore the mutable main counting Bloom filter as well. A
    * failed checksum for either region marks the corresponding structure for regeneration; callers
    * should subsequently feed all keys back through {@link #addKey(Key, int, KeySalter)} and call
-   * {@link #addedAllKeys()} once complete. No network activity is triggered by this method.
+   * {@link #addedAllKeys()} once complete. This method triggers no network activity.
    *
    * @param storage backing storage that provides offsets and lengths for the persisted filter
    *     regions; must expose a consistent {@code segments} array for sizing
@@ -249,7 +249,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
    * @param newSalt when {@code true}, the main Bloom filter is not read from disk because the salt
    *     differs; the filter will be regenerated from keys instead
    * @throws IOException if the input stream cannot be read fully for settings or filter regions
-   * @throws StorageFormatException when the persisted sizes or parameters are invalid or when a
+   * @throws StorageFormatException when the persisted sizes or parameters are invalid or when
    *     checksum verification fails for a region that must be readable
    */
   public SplitFileFetcherKeyListener(
@@ -383,7 +383,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
   }
 
   /**
-   * Return the on‑disk size of the main Bloom filter region including checksum padding.
+   * Return the on‑disk size of the main Bloom filter region, including checksum padding.
    *
    * <p>The main counting Bloom filter is stored as {@code mainBloomFilterSizeBytes} followed by the
    * storage's checksum. This method returns their sum, which is the exact length written by {@link
@@ -557,7 +557,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
   }
 
   /**
-   * Optionally return a single key of immediate interest.
+   * Optionally, return a single key of immediate interest.
    *
    * <p>Unused by this listener; returning {@code null} communicates that there is no special key to
    * prioritize outside the regular filtering flow.
@@ -571,15 +571,15 @@ public class SplitFileFetcherKeyListener implements KeyListener {
   }
 
   /**
-   * Write immutable listener parameters that are required to reconstruct filter state.
+   * Write immutable listener parameters that are required to reconstruct the filter state.
    *
    * <p>The method writes, in order: {@code localSalt} (32 bytes), {@code mainBloomFilterSizeBytes},
    * {@code mainBloomK}, {@code perSegmentBloomFilterSizeBytes}, and {@code perSegmentK}. It does
    * not write the main or per‑segment filter contents; those regions are handled separately using
    * checksummed blobs.
    *
-   * @param dos target stream used to serialize settings; must remain open for subsequent writes by
-   *     the caller; the method does not close the stream
+   * @param dos target stream used to serialize settings; must remain open for further writes by the
+   *     caller; the method does not close the stream
    * @throws IOException if any of the setting values cannot be written to the destination stream
    */
   public void writeStaticSettings(DataOutputStream dos) throws IOException {

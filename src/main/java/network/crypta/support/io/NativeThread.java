@@ -47,7 +47,7 @@ public class NativeThread extends Thread {
    * external renice was detected. When set, {@link #usingNativeCode()} returns false and further
    * native adjustments are skipped.
    */
-  private static boolean disabled;
+  private static volatile boolean disabled;
 
   /** Range of Java priorities ({@code MAX_PRIORITY - MIN_PRIORITY}). */
   public static final int JAVA_PRIORITY_RANGE = Thread.MAX_PRIORITY - Thread.MIN_PRIORITY;

@@ -38,7 +38,7 @@ final class FcpServerListener implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(FcpServerListener.class);
 
   /** Tracks whether SSL should be used when creating the network interface. */
-  private static boolean ssl = false;
+  private static volatile boolean ssl = false;
 
   /** Owning server used to construct connection handlers for accepted sockets. */
   private final FCPServer server;

@@ -115,12 +115,12 @@ public class ToadletContextImpl implements ToadletContext {
   // Legacy Logger threshold callbacks removed; use LOG.isDebugEnabled()/isTraceEnabled().
 
   /**
-   * Is the context closed? If so, don't allow any more writes. This is because there may be later
+   * Is the context closed? If so, don't allow writes anymore. This is because there may be later
    * requests.
    */
-  private boolean closed;
+  private volatile boolean closed;
 
-  private boolean shouldDisconnect;
+  private volatile boolean shouldDisconnect;
 
   /**
    * Builds a per-request context wrapping the client socket, parsed headers, and supporting

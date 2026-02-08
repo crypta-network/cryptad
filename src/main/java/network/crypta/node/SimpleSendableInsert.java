@@ -21,8 +21,8 @@ import org.slf4j.LoggerFactory;
  * <p>This class provides a minimal {@link SendableInsert} implementation that schedules exactly one
  * {@link KeyBlock} on the bulk insert schedulers. It is created by the node for opportunistic
  * background inserts and is not part of the external client API or persistence layer. Instances are
- * short-lived: they are scheduled, run a single blocking send, and then mark themselves finished so
- * they are not rescheduled.
+ * short-lived: they are scheduled, run a single blocking sending, and then mark themselves finished
+ * so they are not rescheduled.
  *
  * <p>The implementation intentionally avoids retries and callbacks. Success and failure are logged
  * at debug level only, and no {@link ClientRequester} is retained. A small synchronization boundary
@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>Select the CHK or SSK bulk insert scheduler based on the block type.
  *   <li>Expose exactly one sendable item and suppress duplicates while in flight.
- *   <li>Track completion state for cancellation and wake-up decisions.
+ *   <li>Track the completion state for cancellation and wake-up decisions.
  * </ul>
  *
  * @see SendableInsert
@@ -65,12 +65,12 @@ public class SimpleSendableInsert extends SendableInsert {
   public final short prioClass;
 
   /** Completion flag used to suppress rescheduling and treat the insert as empty. */
-  private boolean finished;
+  private volatile boolean finished;
 
   /**
    * Request client attribution for scheduling and accounting.
    *
-   * <p>Typically this is the node's non-persistent bulk client, but callers may supply a different
+   * <p>Typically, this is the node's non-persistent bulk client, but callers may supply a different
    * client when constructing the insert explicitly. The reference is transient and expected to
    * remain valid only for the short lifetime of this insert.
    */
@@ -94,7 +94,7 @@ public class SimpleSendableInsert extends SendableInsert {
    * invoke {@link #schedule()} when they are ready to enqueue it. Unsupported block types and
    * non-insert schedulers are rejected eagerly to avoid mis-scheduling.
    *
-   * @param core node client core used to resolve client and schedulers
+   * @param core node client core used to resolve the client and schedulers
    * @param block block payload to insert; expected CHKBlock or SSKBlock instance
    * @param prioClass scheduler priority class passed through unchanged to scheduling logic
    * @throws IllegalArgumentException if the block type is unsupported for simple inserts
@@ -113,7 +113,7 @@ public class SimpleSendableInsert extends SendableInsert {
   }
 
   /**
-   * Creates a simple insert with explicit client and scheduler.
+   * Creates a simple insert with the explicit client and scheduler.
    *
    * <p>This constructor stores the supplied references without additional validation. Callers are
    * responsible for providing a scheduler that can handle inserts and a client suitable for
@@ -137,10 +137,10 @@ public class SimpleSendableInsert extends SendableInsert {
   /**
    * Handles a successful completion of the single insert attempt.
    *
-   * <p>This callback is invoked by the sender after {@link NodeClientCoreTransfers#realPut} returns
+   * <p>The sender invokes this callback after {@link NodeClientCoreTransfers#realPut} returns
    * without throwing. It does not notify any {@link ClientRequester} and performs no state changes;
-   * the finished flag is managed by the sender. The only observable effect is a debug log entry,
-   * making this method safe to call multiple times but ordinarily invoked once per insert.
+   * the sender manages the finished flag. The only observable effect is a debug log entry, making
+   * this method safe to call multiple times but ordinarily invoked once per insert.
    *
    * @param keyNum token identifying the scheduled item; used for logging only
    * @param key client key associated with the insert; ignored and may be null
@@ -157,7 +157,7 @@ public class SimpleSendableInsert extends SendableInsert {
    *
    * <p>This callback is invoked when {@link NodeClientCoreTransfers#realPut} throws a {@link
    * LowLevelPutException}. The method logs the failure at debug level and does not request retries
-   * or propagate the exception. Completion state is still finalized by the sender, so this method
+   * or propagate the exception. The sender still finalizes the completion state, so this method
    * focuses solely on recording the outcome for diagnostics.
    *
    * @param e failure describing why the low-level insert did not succeed
@@ -174,7 +174,7 @@ public class SimpleSendableInsert extends SendableInsert {
    *
    * <p>The value is supplied at construction time and is passed through unchanged to the scheduler.
    * It is used for queue selection and accounting and does not depend on the request context. This
-   * method is side-effect free and may be called at any time, including after cancellation.
+   * method is side-effect-free and may be called at any time, including after cancellation.
    *
    * @return scheduler priority class associated with this insert instance
    */
@@ -299,10 +299,9 @@ public class SimpleSendableInsert extends SendableInsert {
   /**
    * Treats a completed insert as empty for scheduling purposes.
    *
-   * <p>This method delegates to {@link #isCancelled()} so that completion and cancellation are
-   * handled consistently by the scheduler. A finished insert yields no keys and should not be
-   * rescheduled. The method is side-effect free and returns immediately. It does not modify
-   * scheduler state.
+   * <p>This method delegates to {@link #isCancelled()} so that the scheduler handles completion and
+   * cancellation consistently. A finished insert yields no keys and should not be rescheduled. The
+   * method is side-effect-free and returns immediately. It does not modify the scheduler state.
    *
    * @return {@code true} when there is no remaining work left
    */
@@ -331,7 +330,7 @@ public class SimpleSendableInsert extends SendableInsert {
    * delegating to {@link SendableInsert#unregister}. If the insert is already finished, the call is
    * a no-op. No additional cancellation logic is performed beyond unregistering from queues.
    *
-   * @param context request context used for unregister bookkeeping and metrics
+   * @param context request context used for unregistering bookkeeping and metrics
    */
   public void cancel(ClientContext context) {
     synchronized (this) {
@@ -373,6 +372,7 @@ public class SimpleSendableInsert extends SendableInsert {
     return countAllKeys(context);
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static class MySendableRequestItem
       implements SendableRequestItem, SendableRequestItemKey {
 
@@ -479,7 +479,7 @@ public class SimpleSendableInsert extends SendableInsert {
    * Returns the fork-on-cacheable policy for this insert.
    *
    * <p>The policy is delegated to {@link Node#FORK_ON_CACHEABLE_DEFAULT}, matching the node's
-   * default behavior for background inserts. The method is side-effect free and does not inspect
+   * default behavior for background inserts. The method is side-effect-free and does not inspect
    * the request context. This keeps simple inserts aligned with the node-wide cacheable fork policy
    * for background traffic.
    *
@@ -510,7 +510,7 @@ public class SimpleSendableInsert extends SendableInsert {
    * Indicates whether the insert must stay on the local node.
    *
    * <p>Returns {@code false} so the scheduler may route the insert normally. The value is constant
-   * for this implementation and does not depend on request state. This keeps the behavior
+   * for this implementation and does not depend on the request state. This keeps the behavior
    * consistent with bulk background inserts and allows normal routing decisions by default.
    *
    * @return {@code false} to allow normal routing beyond the local node

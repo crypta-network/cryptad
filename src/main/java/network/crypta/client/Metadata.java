@@ -578,7 +578,7 @@ public class Metadata implements Serializable {
   boolean dbr;
 
   /** No MIME type; on by default as not all doctypes have MIME */
-  boolean noMIME = true;
+  volatile boolean noMIME = true;
 
   /** Compressed MIME type */
   boolean compressedMIME;

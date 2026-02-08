@@ -1,6 +1,13 @@
 package network.crypta.support.io;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,7 +39,7 @@ public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
    * <p>Serialization compatibility: The field type was changed from {@code byte[]} to {@code
    * AtomicReference<byte[]>}. We intentionally do not preserve backward compatibility for
    * previously serialized {@code ArrayBucket} objects; older streams will fail to deserialize (for
-   * example with {@code InvalidClassException}). This is by design for this class.
+   * example, with {@code InvalidClassException}). This is by design for this class.
    *
    * @serial Field type intentionally not backward compatible with releases that used {@code
    *     byte[]}.
@@ -42,8 +49,8 @@ public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
   private final AtomicReference<byte[]> data;
 
   private final String name;
-  private boolean readOnly;
-  private boolean freed;
+  private volatile boolean readOnly;
+  private volatile boolean freed;
 
   /** Create an empty bucket named {@code "ArrayBucket"}. */
   public ArrayBucket() {
@@ -54,11 +61,11 @@ public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
    * Create a bucket whose initial contents are the provided array.
    *
    * <p>This constructor does not defensively copy the array; the reference is stored as‑is until it
-   * is replaced by a future write. Mutations to {@code initdata} performed by the caller after this
-   * constructor returns are visible through this instance until the next successful write via the
-   * output stream.
+   * is replaced by a future writing. Mutations to {@code initdata} performed by the caller after
+   * this constructor returns are visible through this instance until the next successful writing
+   * via the output stream.
    *
-   * @param initdata initial contents; may be {@code null} (subsequent access may throw)
+   * @param initdata initial contents; may be {@code null} (later access may throw)
    */
   public ArrayBucket(byte[] initdata) {
     this("ArrayBucket");
@@ -155,7 +162,7 @@ public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
       if (hasBeenClosed) return;
       /*
        * Commit the buffered bytes first, then validate read‑only. This ordering
-       * mirrors historical behavior: closing after a read‑only toggle throws but
+       * mirrors historical behavior: closing after read‑only toggle throws, but
        * the in‑memory contents are already replaced.
        */
       data.set(super.toByteArray());
@@ -248,8 +255,8 @@ public class ArrayBucket implements Bucket, Serializable, RandomAccessBucket {
   /**
    * Convert to a {@link LockableRandomAccessBuffer} and mark this bucket read‑only.
    *
-   * <p>The returned buffer is a read‑only copy of the current contents; subsequent writes to this
-   * bucket (if ever allowed again) would not affect the buffer.
+   * <p>The returned buffer is a read‑only copy of the current contents; later writes to this bucket
+   * (if ever allowed again) would not affect the buffer.
    *
    * @return a read‑only random‑access view containing a copy of the data
    */
