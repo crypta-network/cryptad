@@ -2,6 +2,7 @@ package network.crypta.client.async;
 
 import java.io.IOException;
 import java.io.Serial;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertContext;
@@ -55,6 +56,8 @@ import org.slf4j.LoggerFactory;
  */
 public class ClientPutter extends BaseClientPutter implements PutCompletionCallback {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutter.class);
+  private static final AtomicIntegerFieldUpdater<ClientPutter> MIN_SUCCESS_FETCH_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientPutter.class, "minSuccessFetchBlocks");
 
   @Serial private static final long serialVersionUID = 2L;
 
@@ -622,7 +625,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   @Override
   public void addBlock() {
     synchronized (this) {
-      minSuccessFetchBlocks++;
+      MIN_SUCCESS_FETCH_BLOCKS_UPDATER.incrementAndGet(this);
     }
     super.addBlock();
   }

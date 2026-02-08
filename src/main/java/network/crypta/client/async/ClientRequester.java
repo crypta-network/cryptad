@@ -7,6 +7,7 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.RequestClient;
@@ -16,7 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * High-level client request orchestration for fetch or insert operations.
+ * High-level client requesting orchestration for fetch or insert operations.
  *
  * <p>This type represents a single user-visible request that may expand into many low-level network
  * operations over its lifetime. For example, a fetch may follow redirects, retrieve and verify
@@ -47,6 +48,14 @@ import org.slf4j.LoggerFactory;
  */
 public abstract class ClientRequester implements Serializable, ClientRequestSchedulerGroup {
   private static final Logger LOG = LoggerFactory.getLogger(ClientRequester.class);
+  private static final AtomicIntegerFieldUpdater<ClientRequester> TOTAL_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "totalBlocks");
+  private static final AtomicIntegerFieldUpdater<ClientRequester> SUCCESSFUL_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "successfulBlocks");
+  private static final AtomicIntegerFieldUpdater<ClientRequester> FAILED_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "failedBlocks");
+  private static final AtomicIntegerFieldUpdater<ClientRequester> FATALLY_FAILED_BLOCKS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(ClientRequester.class, "fatallyFailedBlocks");
 
   @Serial private static final long serialVersionUID = 1L;
 
@@ -70,7 +79,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   /** Whether this is a real-time request */
   protected final boolean realTimeFlag;
 
-  /** Has the request or insert been cancelled? */
+  /** Has the request or insert been canceled? */
   protected volatile boolean cancelled;
 
   /**
@@ -131,7 +140,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * Cancel the request. Inner method, subclasses should actually tell the ClientGetState or
    * whatever to cancel itself: this does not do anything apart from set a flag!
    *
-   * @return Whether we were already cancelled.
+   * @return Whether we were already canceled.
    */
   protected synchronized boolean cancel() {
     boolean ret = cancelled;
@@ -153,9 +162,9 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   public abstract void cancel(ClientContext context);
 
   /**
-   * Reports whether the request has been cancelled.
+   * Reports whether the request has been canceled.
    *
-   * <p>Cancellation is sticky for the lifetime of the instance. Subclasses may set the cancelled
+   * <p>Cancellation is sticky for the lifetime of the instance. Subclasses may set the canceled
    * flag and then propagate cancellation to underlying states; once set, it remains true even if
    * background work is still unwinding.
    *
@@ -261,7 +270,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * Returns the UTC timestamp of the most recent successful block completion.
    *
    * <p>The value is initialized to the current time to keep “sort by last success” UIs usable for
-   * newly created requests. For very old serialized data that lacks this field the method returns
+   * newly created requests. For very old serialized data that lacks this field, the method returns
    * the epoch start.
    *
    * @return the last-success timestamp; never {@code null}
@@ -294,7 +303,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected synchronized void resetBlocks() {
     totalBlocks = 0;
     successfulBlocks = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
     latestSuccess = Instant.now();
     failedBlocks = 0;
     fatallyFailedBlocks = 0;
@@ -331,7 +340,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   public void addBlock() {
     boolean wasFinalized;
     synchronized (this) {
-      totalBlocks++;
+      TOTAL_BLOCKS_UPDATER.incrementAndGet(this);
       wasFinalized = blockSetFinalized;
     }
 
@@ -379,8 +388,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * Marks a block as completed and optionally notifies clients.
    *
    * <p>Updates counters and the {@link #latestSuccess} timestamp. When {@code dontNotify} is {@code
-   * false}, a progress notification is queued off-thread. Calls from cancelled requests are
-   * ignored.
+   * false}, a progress notification is queued off-thread. Calls from canceled requests are ignored.
    *
    * @param dontNotify when {@code true}, suppresses the asynchronous progress notification
    * @param context the transient {@link ClientContext} used to dispatch notifications
@@ -400,7 +408,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
           this);
     synchronized (this) {
       if (cancelled) return;
-      successfulBlocks++;
+      SUCCESSFUL_BLOCKS_UPDATER.incrementAndGet(this);
       latestSuccess = Instant.now();
     }
     if (dontNotify) return;
@@ -415,7 +423,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    */
   public void failedBlock(boolean dontNotify, ClientContext context) {
     synchronized (this) {
-      failedBlocks++;
+      FAILED_BLOCKS_UPDATER.incrementAndGet(this);
       latestFailure = Instant.now();
     }
     if (!dontNotify) notifyClients(context);
@@ -437,7 +445,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    */
   public void fatallyFailedBlock(ClientContext context) {
     synchronized (this) {
-      fatallyFailedBlocks++;
+      FATALLY_FAILED_BLOCKS_UPDATER.incrementAndGet(this);
       latestFailure = Instant.now();
     }
     notifyClients(context);
@@ -538,7 +546,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
     this.minSuccessBlocks = 0;
     this.sentToNetwork = false;
     this.successfulBlocks = 0;
-    // See ClientRequester.getLatestSuccess() for why this defaults to current time.
+    // See ClientRequester.getLatestSuccess() for why this defaults to the current time.
     this.latestSuccess = Instant.now();
     this.totalBlocks = 0;
   }
@@ -678,7 +686,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * common initialization is performed.
    *
    * @param context the transient {@link ClientContext} used during resume
-   * @throws ResumeFailedException if restoring persistent state fails
+   * @throws ResumeFailedException if restoring the persistent state fails
    */
   protected void innerOnResume(ClientContext context) throws ResumeFailedException {
     ClientBaseCallback cb = getCallback();
