@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>The class is stateless and thread-safe through synchronization on extraction methods. It does
- * not manage library unloading and assumes the caller controls lifetime and subsequent clean-up.
+ * not manage library unloading and assumes the caller controls lifetime and later cleanup.
  *
  * @author Justin F. Chapweske
  * @see AppEnv
@@ -93,9 +93,7 @@ public class NativeDeployer {
     LOGGER.info("Attempting to deploy Native FEC for {}", OS_ARCH);
   }
 
-  private NativeDeployer() {
-    throw new IllegalStateException("Utility class");
-  }
+  private NativeDeployer() {}
 
   /**
    * Locates and extracts a named native library for the current platform.
@@ -152,8 +150,8 @@ public class NativeDeployer {
    *     in {@code lib/native.properties}; must correspond to an existing bundled resource.
    * @return absolute path to the copied resource suitable for {@link System#load(String)}, or
    *     {@code null} if the resource is missing.
-   * @throws IOException if the resource cannot be read or the temporary file cannot be written with
-   *     the required permissions.
+   * @throws IOException if the resource cannot be read, or the temporary file cannot be written
+   *     with the required permissions.
    */
   public static synchronized String getLocalResourcePath(ClassLoader cl, String resourcePath)
       throws IOException {
@@ -185,8 +183,8 @@ public class NativeDeployer {
    * Parses bundled {@code lib/native.properties} resources and returns a mapping of library names
    * to platform-specific resource paths for the detected {@link #OS_ARCH}.
    *
-   * @param cl class loader used to enumerate property resources; must supply access to bundled
-   *     {@code lib/native.properties} files.
+   * @param cl class loader used to list property resources; must supply access to bundled {@code
+   *     lib/native.properties} files.
    * @return map of logical library names to resource paths scoped to the current platform; entries
    *     are trimmed but not validated for existence.
    * @throws IOException if any property file cannot be opened or read from the supplied class
@@ -208,7 +206,7 @@ public class NativeDeployer {
               new StringTokenizer(p.getProperty(NATIVE_PROPERTY_PREFIX + "keys"), ",");
           st.hasMoreTokens(); ) {
         String key = st.nextToken().trim();
-        // If it matches the os and arch then add it.
+        // If it matches the os and arch, then add it.
         if (p.getProperty(NATIVE_PROPERTY_PREFIX + key + ".osarch").trim().equals(OS_ARCH)) {
 
           libMap.put(

@@ -49,9 +49,7 @@ public class DefaultMIMETypes {
    *
    * <p>This type is a pure, static utility and must not be instantiated.
    */
-  private DefaultMIMETypes() {
-    throw new IllegalStateException("Utility class");
-  }
+  private DefaultMIMETypes() {}
 
   /**
    * Default MIME type used when no specific type can be determined.
@@ -902,7 +900,7 @@ public class DefaultMIMETypes {
    * extension is unknown, callers can choose between {@code null} and {@link #DEFAULT_MIME_TYPE}
    * via {@code noDefault}.
    *
-   * @param arg file name or path to inspect; only the final component is considered and the method
+   * @param arg file name or path to inspect; only the final component is considered, and the method
    *     does not perform any file I/O
    * @param noDefault when {@code true}, return {@code null} for unknown or missing extensions;
    *     otherwise return {@link #DEFAULT_MIME_TYPE}

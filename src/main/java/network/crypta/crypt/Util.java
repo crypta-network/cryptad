@@ -52,9 +52,7 @@ public class Util {
   public static final Map<String, Provider> mdProviders;
 
   /** Utility class. */
-  private Util() {
-    throw new IllegalStateException("Utility class");
-  }
+  private Util() {}
 
   static {
     try {

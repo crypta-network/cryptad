@@ -20,16 +20,14 @@ import java.nio.charset.StandardCharsets;
 public class URIPreEncoder {
 
   // Utility class: prevent instantiation.
-  private URIPreEncoder() {
-    throw new IllegalStateException("Utility class");
-  }
+  private URIPreEncoder() {}
 
   /**
    * Characters that pass through {@link #encode(String)} unchanged.
    *
    * <p>The set includes {@code '%'} to avoid double-encoding existing percent-escape sequences and
    * {@code '#'} to preserve fragment anchors. The remainder corresponds to commonly accepted
-   * unreserved and sub-delims characters for URIs.
+   * unreserved and sub-delimiter characters for URIs.
    */
   public static final String ALLOWED_CHARS =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-!.~'()*,;:$&+=?/@%#";

@@ -41,9 +41,7 @@ public class HostnameUtil {
   // Leading zeros are allowed by design (e.g., 001, 000) for compatibility with historical input.
   private static final Pattern IPV4_DOTTED_SHAPE = Pattern.compile("^(?:\\d{1,3}\\.){3}\\d{1,3}$");
 
-  private HostnameUtil() {
-    throw new IllegalStateException("Utility class");
-  }
+  private HostnameUtil() {}
 
   /**
    * Validates a hostname or (optionally) a numeric IP literal using conservative syntax rules.
@@ -53,7 +51,7 @@ public class HostnameUtil {
    * @param hn candidate value; must not be {@code null}
    * @param allowIPAddress when {@code true}, IPv4/IPv6 literals are accepted using {@link
    *     AddressIdentifier}; when {@code false}, only DNS-like hostnames are allowed
-   * @return {@code true} if the input is valid according to the class rules; otherwise {@code
+   * @return {@code true} if the input is valid, according to the class rules; otherwise {@code
    *     false}
    * @throws NullPointerException if {@code hn} is {@code null}
    * @see AddressIdentifier#getAddressType(String, boolean)
@@ -114,7 +112,7 @@ public class HostnameUtil {
     AddressIdentifier.AddressType addressType = AddressIdentifier.getAddressType(hn, true);
     if (LOG.isTraceEnabled()) LOG.trace("Address type of '{}' appears to be '{}'", hn, addressType);
     // Treat only non-hostname types as immediate success. Compare the enum directly to avoid
-    // string-name regressions if enum constant names change (e.g., OTHER vs "Other").
+    // string-name regressions if enum constant names change (e.g., OTHER vs. "Other").
     if (addressType != AddressIdentifier.AddressType.OTHER) {
       return true;
     }

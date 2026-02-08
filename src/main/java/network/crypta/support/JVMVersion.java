@@ -24,9 +24,7 @@ import com.sun.jna.Platform;
  */
 public class JVMVersion {
 
-  private JVMVersion() {
-    throw new IllegalStateException("Utility class");
-  }
+  private JVMVersion() {}
 
   /**
    * Java version below which the runtime is considered end-of-life for this application.
@@ -46,7 +44,7 @@ public class JVMVersion {
   public static final String UPDATER_THRESHOLD = "21";
 
   /**
-   * Oldest Java version considered to support the Java Platform Module System (JPMS).
+   * Oldest Java version considered supporting the Java Platform Module System (JPMS).
    *
    * <p>Used by {@link #supportsModules()} to decide whether modules are available. The check is a
    * numeric comparison performed against the current runtime version.
@@ -146,7 +144,7 @@ public class JVMVersion {
   }
 
   /**
-   * Parses a Java version string into four numeric components.
+   * Parses a Java version string into four numeric parts.
    *
    * <p>The parser scans left-to-right and extracts up to the first four integer tokens it finds,
    * ignoring any non-numeric separators or identifiers (such as {@code .}, {@code _}, or {@code

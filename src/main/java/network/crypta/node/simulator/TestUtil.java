@@ -31,9 +31,7 @@ import org.slf4j.LoggerFactory;
 public class TestUtil {
   private static final Logger LOG = LoggerFactory.getLogger(TestUtil.class);
 
-  private TestUtil() {
-    throw new IllegalStateException("Utility class");
-  }
+  private TestUtil() {}
 
   static boolean waitForNodes(Node node) throws InterruptedException {
     int targetPeers = node.network().opennet().getAnnouncementThreshold();

@@ -69,9 +69,7 @@ public class SSL {
   private static final String CHAIN_ALIAS = "freenet";
   private static final String DEFAULT_SECRET = "freenet";
 
-  private SSL() {
-    throw new IllegalStateException("Utility class");
-  }
+  private SSL() {}
 
   private static volatile boolean enable;
   private static KeyStore keystore;

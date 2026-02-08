@@ -17,7 +17,7 @@ import java.util.Objects;
  * <p>The class centralizes a handful of low-level routines that are reused across the legacy
  * OnionNetworks codebase. Typical call sites include encoding and decoding byte buffers, scrubbing
  * sensitive arrays, generating hex dumps for diagnostics, performing deterministic rounding, and
- * discovering public methods in reflection-heavy paths. All methods are static and side effect free
+ * discovering public methods in reflection-heavy paths. All methods are static and side-effect-free
  * except for operations that intentionally mutate caller-supplied arrays.
  *
  * <p>Thread-safety: the class is stateless aside from the shared {@link SecureRandom} instance used
@@ -49,9 +49,7 @@ public class Util {
   // Must be global for shuffle
   private static SecureRandom rand = initSecureRandom();
 
-  private Util() {
-    throw new IllegalStateException("Utility class");
-  }
+  private Util() {}
 
   private static SecureRandom initSecureRandom() {
     try {
@@ -67,7 +65,7 @@ public class Util {
    *
    * <p>The generator is lazily initialized using the {@code SHA1PRNG} algorithm when available and
    * falls back to the platform default if that algorithm is missing. Callers receive the live
-   * instance; no additional seeding or cloning is performed, so state evolves globally across
+   * instance; no additional seeding or cloning is performed, so the state evolves globally across
    * threads. Tests can swap in a deterministic generator via {@link
    * #setRandForTesting(SecureRandom)} to stabilize outcomes without altering production behavior.
    *
@@ -85,7 +83,7 @@ public class Util {
    * provides synchronized access. Passing {@code null} is not allowed and will raise a {@link
    * NullPointerException} through {@link Objects#requireNonNull(Object)}.
    *
-   * @param secureRandom replacement generator to use for subsequent shuffle operations.
+   * @param secureRandom replacement generator to use for further shuffle operations.
    */
   static void setRandForTesting(SecureRandom secureRandom) {
     rand = Objects.requireNonNull(secureRandom);
@@ -158,7 +156,7 @@ public class Util {
       if (copyLength > MAX_ZERO_COPY) {
         copyLength = MAX_ZERO_COPY;
       }
-      // We copy from close to the current position so we aren't
+      // We copy from close to the current position, so we aren't
       // thrashing mem for really large buffers.
       System.arraycopy(b, off + zeroLength - copyLength, b, off + zeroLength, copyLength);
       zeroLength += copyLength;
@@ -197,7 +195,7 @@ public class Util {
       if (copyLength > MAX_ZERO_COPY) {
         copyLength = MAX_ZERO_COPY;
       }
-      // We copy from close to the current position so we aren't
+      // We copy from close to the current position, so we aren't
       // thrashing mem for really large buffers.
       System.arraycopy(b, off + zeroLength - copyLength, b, off + zeroLength, copyLength);
       zeroLength += copyLength;
@@ -228,7 +226,7 @@ public class Util {
    * overflow handling is applied. Supplying identical arrays with identical offsets short-circuits
    * to {@code true} immediately.
    *
-   * @param arr1 first int array supplying the left-hand slice.
+   * @param arr1 the first int array supplying the left-hand slice.
    * @param start1 offset in {@code arr1} where comparison begins.
    * @param arr2 second int array supplying the right-hand slice.
    * @param start2 offset in {@code arr2} aligned to {@code start1}.
@@ -256,9 +254,9 @@ public class Util {
    * beforehand to avoid exceptions. Identical array references with matching start indices shortcut
    * to {@code true}.
    *
-   * @param arr1 first long array supplying the left-hand slice.
+   * @param arr1 the first long array supplying the left-hand slice.
    * @param start1 starting index within {@code arr1}; must be non-negative.
-   * @param arr2 second long array providing the comparison slice.
+   * @param arr2 the second long array providing the comparison slice.
    * @param start2 starting index within {@code arr2} paired with {@code start1}.
    * @param len elements compared in both arrays; zero returns {@code true}.
    * @return true when all compared long values match; false otherwise.
@@ -358,10 +356,10 @@ public class Util {
    * SecureRandom} source.
    *
    * <p>Each iteration selects a swap partner from the prefix {@code [0, i]} where {@code i}
-   * decreases toward zero. No additional allocations occur, making this suitable for performance
-   * sensitive code that needs unbiased shuffling of flags or bitfield-derived values. The provided
-   * array is modified directly; callers should copy first if the original ordering must be
-   * preserved elsewhere.
+   * decreases toward zero. No additional allocations occur, making this suitable for
+   * performance-sensitive code that needs unbiased shuffling of flags or bitfield-derived values.
+   * The provided array is modified directly; callers should copy first if the original ordering
+   * must be preserved elsewhere.
    *
    * @param list boolean array shuffled in place; contents are mutated.
    */
@@ -469,7 +467,7 @@ public class Util {
   }
 
   /**
-   * Dumps a byte array to a UNIX style hex dump. This isn't terribly efficient so you should
+   * Dumps a byte array to a UNIX style hex dump. This isn't terribly efficient, so you should
    * probably try to limit it to debug code.
    *
    * <p>The output mirrors classic {@code hexdump -C} formatting: offsets are displayed in octal
@@ -518,7 +516,7 @@ public class Util {
    * @param bytes source byte array containing big-endian character data.
    * @param byteOff starting byte offset used for decoding characters.
    * @param chars destination char array receiving reconstructed values.
-   * @param charOff starting index within destination char array.
+   * @param charOff starting index within the destination char array.
    * @param numBytes byte count to process; odd counts leave low byte zero.
    */
   public static void arraycopy(byte[] bytes, int byteOff, char[] chars, int charOff, int numBytes) {
@@ -663,7 +661,7 @@ public class Util {
   /**
    * Check if an IP address is probably inside a NAT. Data culled from RFC 790.
    *
-   * <p>The method inspects the four-byte IPv4 address and classifies it as NAT-like when it falls
+   * <p>The method inspects the four-byte IPv4 address and classifies it as NAT like when it falls
    * into well-known private ranges: 10/8, 192.168/16, 192.0.0.1/32, or 223.255.255/24. Addresses
    * outside those ranges are treated as publicly routable, though no DNS or routing checks are
    * performed. Input validation ensures the array length is exactly four bytes.
@@ -695,7 +693,7 @@ public class Util {
    * is allowed. This is particularly useful when reflecting on proxies or subclasses where the
    * runtime signature may be compatible but not identical to the requested types.
    *
-   * @param clazz starting class whose hierarchy will be inspected.
+   * @param clazz the starting class whose hierarchy will be inspected.
    * @param name method name to match exactly, case-sensitive.
    * @param types parameter types that must be assignable from candidates.
    * @return first public compatible method found across the class hierarchy.

@@ -32,9 +32,7 @@ import network.crypta.node.NewPacketFormat;
  * <p>The class is stateless and thread-safe. All methods are static; instantiation is prevented.
  */
 public class Serializer {
-  private Serializer() {
-    throw new IllegalStateException("Utility class");
-  }
+  private Serializer() {}
 
   /** Historical SCM identifier (kept for traceability). */
   public static final String VERSION =
@@ -68,7 +66,7 @@ public class Serializer {
    *     #readFromDataInputStream(Class, DataInput)}.
    * @param dis the input to read from; not closed by this method.
    * @return a new {@link List} containing the decoded elements in order.
-   * @throws IOException if an I/O error occurs or an element payload is invalid for the declared
+   * @throws IOException if an I/O error occurs, or an element payload is invalid for the declared
    *     type.
    * @throws IllegalArgumentException if {@code elementType} is unsupported.
    * @see #readFromDataInputStream(Class, DataInput)
@@ -100,7 +98,7 @@ public class Serializer {
    *     above.
    * @param dis the input to read from; not closed by this method.
    * @return the decoded value; never {@code null}.
-   * @throws IOException if an I/O error occurs or the next value is malformed for the requested
+   * @throws IOException if an I/O error occurs, or the next value is malformed for the requested
    *     type (for example, a boolean byte not equal to {@code 0} or {@code 1}, an invalid string
    *     length, or an oversized array).
    * @throws IllegalArgumentException if {@code type} is unsupported.
@@ -351,7 +349,7 @@ public class Serializer {
    */
   @SuppressWarnings({"java:S2445", "SynchronizationOnLocalVariableOrMethodParameter"})
   private static void writeList(final List<?> list, DataOutputStream dos) throws IOException {
-    // Intentionally lock on the list instance so external synchronization on the same
+    // Intentionally lock on the list instance, so external synchronization on the same
     // object also applies. Snapshot under lock; perform I/O after releasing it to
     // minimize contention.
     final Object[] snapshot;

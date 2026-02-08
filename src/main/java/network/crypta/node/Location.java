@@ -17,9 +17,7 @@ public class Location {
 
   public static final double LOCATION_INVALID = -1.0;
 
-  private Location() {
-    throw new IllegalStateException("Utility class");
-  }
+  private Location() {}
 
   /**
    * Parse a location from text.

@@ -17,7 +17,7 @@ import java.nio.charset.StandardCharsets;
  *       escape {@code %00} by throwing {@link URLEncodedFormatException}.
  * </ul>
  *
- * <p>Typical usage is to decode individual URI components (path segments, query parameter names or
+ * <p>Typical usage is to decode individual URI components (path segments, query parameter names, or
  * values) where percent-encoding represents UTF-8 bytes. Example: {@code
  * URLDecoder.decode("%E2%9C%93", false)} yields the check mark character (✓).
  *
@@ -28,9 +28,7 @@ import java.nio.charset.StandardCharsets;
  * @author <a href="http://www.doc.ic.ac.uk/~twh1/">Theodore Hong</a> Originally!
  */
 public class URLDecoder {
-  private URLDecoder() {
-    throw new IllegalStateException("Utility class");
-  }
+  private URLDecoder() {}
 
   /**
    * Decodes percent-encoded sequences in {@code s} and returns the UTF-8 result.
@@ -43,7 +41,7 @@ public class URLDecoder {
    *
    * <p>Tolerance behavior: When {@code tolerant} is {@code true}, a malformed escape right where it
    * appears (two non-hex digits following {@code '%'}) is passed through literally <em>until the
-   * first successful percent-decoding occurs</em>. After the first successful decode, subsequent
+   * first successful percent-decoding occurs</em>. After the first successful decoding, later
    * malformed escapes cause {@link URLEncodedFormatException}. When {@code tolerant} is {@code
    * false}, any malformed escape causes an exception. In all modes, {@code %00} is rejected.
    *
@@ -52,7 +50,7 @@ public class URLDecoder {
    * <p>Complexity: O(n) time and O(n) additional memory in the length of {@code s}.
    *
    * @param s string to decode; must not be {@code null}
-   * @param tolerant whether to pass through malformed escapes until the first successful decode
+   * @param tolerant whether to pass through malformed escapes until the first successful decoding
    * @return decoded string, interpreted as UTF-8
    * @throws URLEncodedFormatException if an escape is truncated, contains non-hex digits after
    *     {@code '%'}, or encodes a NUL byte ({@code %00})
@@ -108,8 +106,8 @@ public class URLDecoder {
       decodedBytes.write((int) read);
       return new Result(i + 3, true);
     } catch (NumberFormatException _) {
-      // Tolerate an apparent escape only until the first successful decode, to avoid silently
-      // "fixing" mixed or partially encoded input.
+      // Tolerate a noticeable escape only until the first successful decoding to avoid silently
+      // "fixing" mixed or partial encoded input.
       if (tolerant && !hasDecodedSomething) {
         byte[] buf = ('%' + hexval).getBytes(StandardCharsets.UTF_8);
         decodedBytes.write(buf, 0, buf.length);

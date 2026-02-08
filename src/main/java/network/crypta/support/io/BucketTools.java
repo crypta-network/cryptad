@@ -42,9 +42,7 @@ public class BucketTools {
   private static final String MOVED_LITERAL = " (moved ";
   private static final String UNABLE_TO_READ_FROM_LITERAL = "): unable to read from ";
 
-  private BucketTools() {
-    throw new IllegalStateException("Utility class");
-  }
+  private BucketTools() {}
 
   /**
    * Copies all data from {@code src}'s input stream to {@code dst}'s output stream.
@@ -78,7 +76,7 @@ public class BucketTools {
    *
    * <p>The method opens an unbuffered output stream and writes zero-filled blocks until the
    * requested length is produced. It does not attempt to seek; callers decide where the bucket
-   * writes go according to the implementation.
+   * writes go, according to the implementation.
    *
    * @param b the bucket to pad with zero bytes
    * @param size the number of zero bytes to write; must be non-negative
@@ -152,7 +150,7 @@ public class BucketTools {
    * Writes zero padding to reach the requested block size.
    *
    * Private helper for {@link #paddedCopy(Bucket, Bucket, long, int)}. Assumes that {@code count}
-   * is the number of bytes already written and fills remainder with zeroes in chunks up to the
+   * is the number of bytes already written and fills the remainder with zeroes in chunks up to the
    * provided temporary buffer size.
    */
   private static void writeZeroPadding(
@@ -332,7 +330,7 @@ public class BucketTools {
   }
 
   /**
-   * Creates a read-only {@link RandomAccessBucket} from a range of a byte array.
+   * Creates a read-only {@link RandomAccessBucket} from a range of byte arrays.
    *
    * @param bucketFactory factory used to allocate the bucket
    * @param data the source array
@@ -486,7 +484,7 @@ public class BucketTools {
    * @param persistent if {@code true} and {@code origData} is a {@code FileBucket}, returns file
    *     slice buckets; otherwise new buckets are created and populated
    * @return an array of buckets covering the full content of {@code origData}
-   * @throws IllegalArgumentException if the computed number of buckets would overflow an int
+   * @throws IllegalArgumentException if the computed number of buckets overflows an int
    * @throws IOException if reading from {@code origData} or writing to a created bucket fails
    */
   @SuppressWarnings({"java:S2095", "squid:S2095", "resource"})
