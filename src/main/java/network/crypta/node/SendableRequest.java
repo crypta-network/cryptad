@@ -1,7 +1,10 @@
 package network.crypta.node;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientRequestScheduler;
 import network.crypta.client.async.ClientRequestSchedulerGroup;
@@ -19,14 +22,14 @@ import org.slf4j.LoggerFactory;
  * a set of keys to fetch or blocks to insert and expose readiness via the {@link
  * network.crypta.support.RandomGrabArrayItem} contract.
  *
- * <p>Locking and threading: Some subclasses may synchronize on external objects (for example,
+ * <p>Locking and threading: Some subclasses may synchronize with external objects (for example,
  * segment or block holders). To avoid deadlocks, callers must not invoke subclass callbacks while
  * holding locks owned by {@code SendableRequest}. In particular, take outer locks last and avoid
  * calling into subclass code while holding them.
  *
  * <p>Serialization: This type is {@link Serializable}. Changing non-transient fields in
- * implementations may invalidate on-disk state and cause downloads to restart or uploads to be
- * lost. Not all subclasses are persisted; when in doubt, prefer adding transient state and derive
+ * implementations may invalidate the on-disk state and cause downloads to restart or uploads to be
+ * lost. Not all subclasses are persisted; when in doubt, prefer adding transient state and deriving
  * it at runtime.
  */
 public abstract class SendableRequest implements RandomGrabArrayItem, Serializable {
@@ -62,6 +65,12 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
     this.hashCode = oid;
   }
 
+  @Serial
+  private void readObject(ObjectInputStream stream) throws IOException, ClassNotFoundException {
+    stream.defaultReadObject();
+    parentGrabArray = new AtomicReference<>();
+  }
+
   /**
    * Returns the stable, pre-computed identity hash for this instance.
    *
@@ -86,7 +95,7 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
     return this == obj;
   }
 
-  protected transient RandomGrabArray parentGrabArray;
+  protected transient AtomicReference<RandomGrabArray> parentGrabArray = new AtomicReference<>();
 
   /** Whether this request is persisted; must remain constant after construction. */
   protected final boolean persistent;
@@ -94,8 +103,8 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
   /**
    * Returns the priority class for scheduling.
    *
-   * <p>The concrete values and their meaning are defined by the scheduler. Higher priority classes
-   * may be considered first when selecting ready items.
+   * <p>The scheduler defines the concrete values and their meaning. Higher priority classes may be
+   * considered first when selecting ready items.
    *
    * @return a scheduler-defined priority class
    */
@@ -104,10 +113,10 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
   /**
    * Chooses the next item (key or block) to send.
    *
-   * <p>Implementations must not modify persisted structures here, but may update in-memory
-   * cooldowns or bookkeeping to avoid immediate reselection. Success and failure are reported via
-   * separate callbacks on the scheduler/requester path, so this method can be called outside the
-   * persistent job runner.
+   * <p>Implementations must not modify persisted structures here but may update in-memory cooldowns
+   * or bookkeeping to avoid immediate reselection. Success and failure are reported via separate
+   * callbacks on the scheduler/requester path, so this method can be called outside the persistent
+   * job runner.
    *
    * @param keys a view of keys currently being fetched locally; used to avoid duplicates
    * @param context client execution context
@@ -132,7 +141,7 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
    * <p>Does not include items already running, on cooldown, or otherwise excluded by the scheduler.
    *
    * @param context client execution context
-   * @return number of items eligible for immediate send
+   * @return number of items eligible for immediate sending
    */
   public abstract long countSendableKeys(ClientContext context);
 
@@ -148,7 +157,7 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
   public abstract SendableRequestSender getSender(ClientContext context);
 
   /**
-   * Returns whether this request is finished (cancelled or completed).
+   * Returns whether this request is finished (canceled or completed).
    *
    * <p>Finished requests no longer need to be registered with the scheduler. By contrast, an
    * "empty" request may have no queued items temporarily but can still accept new work.
@@ -182,15 +191,13 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
 
   /** Returns the parent array used by the selection tree, if tracked. */
   @Override
-  public synchronized RandomGrabArray getParentGrabArray() {
-    return parentGrabArray;
+  public RandomGrabArray getParentGrabArray() {
+    return parentGrabArray.get();
   }
 
   // Grab and clear the parent atomically to avoid double-unregister races.
-  private synchronized RandomGrabArray grabParentGrabArray() {
-    RandomGrabArray ret = parentGrabArray;
-    parentGrabArray = null;
-    return ret;
+  private RandomGrabArray grabParentGrabArray() {
+    return parentGrabArray.getAndSet(null);
   }
 
   @Override
@@ -200,8 +207,8 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
 
   /** Sets or clears the back-reference to the current parent selection array. */
   @Override
-  public synchronized void setParentGrabArray(RandomGrabArray parent) {
-    parentGrabArray = parent;
+  public void setParentGrabArray(RandomGrabArray parent) {
+    parentGrabArray.set(parent);
   }
 
   /**
@@ -253,11 +260,6 @@ public abstract class SendableRequest implements RandomGrabArrayItem, Serializab
    */
   public boolean realTimeFlag() {
     return realTimeFlag;
-  }
-
-  /** Returns {@link Object#toString()} for subclasses that want the identity form. */
-  protected final String objectToString() {
-    return super.toString();
   }
 
   /**
