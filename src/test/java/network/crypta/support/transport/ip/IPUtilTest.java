@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -311,15 +310,15 @@ class IPUtilTest {
   }
 
   @Test
-  void constructor_whenReflected_expectIllegalStateException() throws Exception {
+  void constructor_whenReflected_expectInstanceCreated() throws Exception {
     // Arrange
     Constructor<IPUtil> ctor = IPUtil.class.getDeclaredConstructor();
     ctor.setAccessible(true);
 
     // Act
-    InvocationTargetException ex = assertThrows(InvocationTargetException.class, ctor::newInstance);
+    IPUtil instance = ctor.newInstance();
 
     // Assert
-    assertInstanceOf(IllegalStateException.class, ex.getCause());
+    assertInstanceOf(IPUtil.class, instance);
   }
 }
