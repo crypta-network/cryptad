@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!--
+    These callback/state classes are intentionally non-static and serializable:
+    they must keep an enclosing-instance link to resume durable requests using the
+    existing serialized object graph. Refactoring them to static would alter
+    serialization layout and risk breaking persisted state compatibility.
+  -->
+  <Match>
+    <Bug pattern="SE_INNER_CLASS"/>
+    <Class name="network.crypta.client.async.SingleFileFetcher$ArchiveFetcherCallback"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="SE_INNER_CLASS"/>
+    <Class name="network.crypta.client.async.SingleFileFetcher$MultiLevelMetadataCallback"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="SE_INNER_CLASS"/>
+    <Class name="network.crypta.client.async.SingleFileInserter$SplitHandler"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="SE_INNER_CLASS"/>
+    <Class name="network.crypta.support.io.MultiReaderBucket$ReaderBucket"/>
+  </Match>
+</FindBugsFilter>
