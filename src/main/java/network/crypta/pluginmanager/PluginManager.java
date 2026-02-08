@@ -177,12 +177,12 @@ public class PluginManager {
         new BooleanCallback() {
 
           @Override
-          public synchronized Boolean get() {
+          public Boolean get() {
             return enabled;
           }
 
           @Override
-          public synchronized void set(Boolean val) throws NodeNeedRestartException {
+          public void set(Boolean val) throws NodeNeedRestartException {
             if (enabled != Boolean.TRUE.equals(val))
               throw new NodeNeedRestartException(l10n("changePluginManagerEnabledInConfig"));
           }
