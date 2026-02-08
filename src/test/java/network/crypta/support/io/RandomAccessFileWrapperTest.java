@@ -22,7 +22,7 @@ class RandomAccessFileWrapperTest extends RandomAccessBufferTestBase {
 
   @BeforeEach
   void setUp() {
-    base.mkdir();
+    assertTrue(base.mkdir() || base.isDirectory(), "Failed to create test directory: " + base);
   }
 
   @AfterEach

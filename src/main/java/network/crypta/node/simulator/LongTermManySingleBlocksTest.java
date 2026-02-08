@@ -345,10 +345,9 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     ensureSeednodesReadable(seednodes);
 
     File innerDir = new File(dir, Integer.toString(DARKNET_PORT1));
-    // We only need best-effort directory creation; later operations will fail clearly if it
-    // doesn't exist.
-    //noinspection ResultOfMethodCallIgnored
-    innerDir.mkdir();
+    if (!innerDir.mkdir() && !innerDir.isDirectory()) {
+      throw new IOException("Unable to create seednodes directory: " + innerDir.getAbsolutePath());
+    }
 
     try (FileInputStream seedInputStream = new FileInputStream(seednodes)) {
       FileUtil.writeTo(seedInputStream, new File(innerDir, "seednodes.fref"));
@@ -713,6 +712,7 @@ public class LongTermManySingleBlocksTest extends LongTermTest {
     }
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class ParsedInsertedBlocks {
     private final FreenetURI[] insertedUris;
     private final int[] insertTimes;

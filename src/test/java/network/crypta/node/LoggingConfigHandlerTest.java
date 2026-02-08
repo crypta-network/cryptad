@@ -203,7 +203,7 @@ class LoggingConfigHandlerTest {
 
     SizeAndTimeBasedRollingPolicy<?> st = (SizeAndTimeBasedRollingPolicy<?>) rfa.getRollingPolicy();
     String pat = st.getFileNamePattern();
-    // default interval is hourly in the handler
+    // the default interval is hourly in the handler
     String expected = new File(dir, "crypta-%d{yyyy-MM-dd_HH}.%i.log.gz").getAbsolutePath();
     assertEquals(expected, pat);
   }
@@ -220,9 +220,9 @@ class LoggingConfigHandlerTest {
           InvalidConfigValueException.class,
           () -> logging.set("dirname", tmpFile.getAbsolutePath()));
     } finally {
-      // cleanup
-      // noinspection ResultOfMethodCallIgnored
-      tmpFile.delete();
+      if (!tmpFile.delete() && tmpFile.exists()) {
+        tmpFile.deleteOnExit();
+      }
     }
   }
 
