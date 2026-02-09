@@ -762,8 +762,8 @@ public class FetchContext implements Serializable {
   /**
    * Get the set of MIME types that are allowed when filtering is enabled.
    *
-   * @return A possibly {@code null} set of allowed MIME type strings; empty when no constraints are
-   *     configured.
+   * @return A possibly {@code null} set of allowed MIME type strings; {@code null} means no
+   *     constraints and an empty set means no MIME types are accepted.
    */
   public Set<String> getAllowedMIMETypes() {
     return allowedMIMETypes;
@@ -908,8 +908,8 @@ public class FetchContext implements Serializable {
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
     out.defaultWriteObject();
-    if (allowedMIMETypes == null || allowedMIMETypes.isEmpty()) {
-      out.writeInt(0);
+    if (allowedMIMETypes == null) {
+      out.writeInt(-1);
       return;
     }
     out.writeInt(allowedMIMETypes.size());
@@ -924,7 +924,7 @@ public class FetchContext implements Serializable {
     eventProducer = new SimpleEventProducer();
     try {
       int size = in.readInt();
-      if (size <= 0) {
+      if (size < 0) {
         allowedMIMETypes = null;
         return;
       }
