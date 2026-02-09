@@ -2,6 +2,7 @@ package network.crypta.support.compress;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -139,7 +140,7 @@ public class Bzip2Compressor extends AbstractCompressor {
   /**
    * Decompresses BZip2 data from {@link InputStream} to {@link OutputStream}.
    *
-   * <p>The method enforces {@code maxLength}. If the next read would exceed that limit, and {@code
+   * <p>The method enforces {@code maxLength}. If the next read exceeds that limit, and {@code
    * maxCheckSizeBytes} is positive, it continues reading up to {@code maxLength +
    * maxCheckSizeBytes} to compute an estimated uncompressed size and then throws {@link
    * CompressionOutputSizeException} populated with that estimate. If {@code maxCheckSizeBytes} is
@@ -148,8 +149,8 @@ public class Bzip2Compressor extends AbstractCompressor {
    * @param is source stream containing BZip2 data (without the {@code "BZ"} header)
    * @param os destination stream for uncompressed bytes
    * @param maxLength maximum number of bytes allowed to be written to {@code os}
-   * @param maxCheckSizeBytes additional number of bytes to read when the limit is exceeded in order
-   *     to estimate the total uncompressed size; non-positive disables estimation
+   * @param maxCheckSizeBytes additional number of bytes to read when the limit is exceeded to
+   *     estimate the total uncompressed size; non-positive disables estimation
    * @return number of bytes written to {@code os}
    * @throws IOException on I/O errors or if the source returns a zero-length read
    * @throws CompressionOutputSizeException if the uncompressed output would exceed {@code
@@ -158,44 +159,46 @@ public class Bzip2Compressor extends AbstractCompressor {
   @Override
   public long decompress(InputStream is, OutputStream os, long maxLength, long maxCheckSizeBytes)
       throws IOException {
-    BZip2CompressorInputStream bz2is =
-        new BZip2CompressorInputStream(HeaderStreams.augInput(BZ_HEADER, is));
-    long written = 0;
-    int bufSize = 32768;
-    if (maxLength > 0 && maxLength < bufSize) bufSize = (int) maxLength;
-    byte[] buffer = new byte[bufSize];
-    // Read in a loop, enforcing the maximum on every iteration. We intentionally allow
-    // over-reading by asking for a full buffer and then detecting overflow; this keeps the logic
-    // simple while still bounding output via explicit checks.
-    while (true) {
-      int expectedBytesRead = (int) Math.min(buffer.length, maxLength - written);
-      // Over-read is intentional here to detect when the next chunk would exceed the configured
-      // maximum. We then either estimate the full size (if requested) or fail immediately.
-      int bytesRead = bz2is.read(buffer, 0, buffer.length);
-      if (expectedBytesRead < bytesRead) {
-        LOG.info(
-            "expectedBytesRead={}, bytesRead={}, written={}, maxLength={} throwing a"
-                + " CompressionOutputSizeException",
-            expectedBytesRead,
-            bytesRead,
-            written,
-            maxLength);
-        if (maxCheckSizeBytes > 0) {
-          consumeAndThrowWithEstimate(
-              bz2is, buffer, maxLength, maxCheckSizeBytes, written, bytesRead);
+    try (BZip2CompressorInputStream bz2is =
+        new BZip2CompressorInputStream(
+            HeaderStreams.augInput(BZ_HEADER, new NonClosingInputStream(is)))) {
+      long written = 0;
+      int bufSize = 32768;
+      if (maxLength > 0 && maxLength < bufSize) bufSize = (int) maxLength;
+      byte[] buffer = new byte[bufSize];
+      // Read in a loop, enforcing the maximum on every iteration. We intentionally allow
+      // over-reading by asking for a full buffer and then detecting overflow; this keeps the logic
+      // simple while still bounding output via explicit checks.
+      while (true) {
+        int expectedBytesRead = (int) Math.min(buffer.length, maxLength - written);
+        // Over-read is intentional here to detect when the next chunk would exceed the configured
+        // maximum. We then either estimate the full size (if requested) or fail immediately.
+        int bytesRead = bz2is.read(buffer, 0, buffer.length);
+        if (expectedBytesRead < bytesRead) {
+          LOG.info(
+              "expectedBytesRead={}, bytesRead={}, written={}, maxLength={} throwing a"
+                  + " CompressionOutputSizeException",
+              expectedBytesRead,
+              bytesRead,
+              written,
+              maxLength);
+          if (maxCheckSizeBytes > 0) {
+            consumeAndThrowWithEstimate(
+                bz2is, buffer, maxLength, maxCheckSizeBytes, written, bytesRead);
+          }
+          throw new CompressionOutputSizeException();
         }
-        throw new CompressionOutputSizeException();
+        if (bytesRead <= -1) return written;
+        if (bytesRead == 0) throw new IOException("Returned zero from read()");
+        os.write(buffer, 0, bytesRead);
+        written += bytesRead;
       }
-      if (bytesRead <= -1) return written;
-      if (bytesRead == 0) throw new IOException("Returned zero from read()");
-      os.write(buffer, 0, bytesRead);
-      written += bytesRead;
     }
   }
 
   /**
-   * Continues reading until EOF in order to compute an estimated uncompressed size, then throws a
-   * {@link CompressionOutputSizeException} with that estimate.
+   * Continues reading until EOF to compute an estimated uncompressed size, then throws a {@link
+   * CompressionOutputSizeException} with that estimate.
    *
    * <p>This is only invoked when the uncompressed output has already exceeded {@code maxLength} and
    * the caller requested an estimate via {@code maxCheckSizeBytes}.
@@ -266,5 +269,17 @@ public class Bzip2Compressor extends AbstractCompressor {
     byte[] buf = baos.toByteArray();
     System.arraycopy(buf, 0, output, 0, bytes);
     return bytes;
+  }
+
+  @SuppressWarnings("java:S4929")
+  private static final class NonClosingInputStream extends FilterInputStream {
+    NonClosingInputStream(InputStream in) {
+      super(in);
+    }
+
+    @Override
+    public void close() {
+      // Keep ownership of the caller-provided stream with the caller.
+    }
   }
 }
