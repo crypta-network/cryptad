@@ -3,6 +3,7 @@ package network.crypta.client.async;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
@@ -65,7 +66,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
 
   /**
    * Context used for fetch operations initiated by this retriever. It defines limits such as
-   * maximum output/temp sizes, retry policy and link filtering behavior. The instance is provided
+   * maximum output/temp sizes, retry policy, and link filtering behavior. The instance is provided
    * by the caller and is not modified.
    */
   final FetchContext ctx;
@@ -79,7 +80,6 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
    */
   final USK origUSK;
 
-  // In wierd
   /**
    * The USKCallback that is actually subscribed. This is used when we may be going through a
    * USKSparseProxyCallback.
@@ -99,7 +99,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
    * <p>The retriever is explicitly non‑persistent. If a persistent {@link RequestClient} is
    * provided this constructor throws {@link UnsupportedOperationException}.
    *
-   * @param fctx fetch configuration that defines size limits, retries and filtering; must remain
+   * @param fctx fetch configuration that defines size limits, retries, and filtering; must remain
    *     valid for the lifetime of the retriever
    * @param prio request priority used when scheduling network activity; higher values generally
    *     indicate greater urgency
@@ -357,8 +357,8 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
   }
 
   /**
-   * Called when we subscribe() in USKManager, if we don't directly subscribe the USKRetriever.
-   * Usually this happens when we put a proxy between them, e.g. USKProxyCompletionCallback, which
+   * Called when we subscribe() in USKManager if we don't directly subscribe the USKRetriever.
+   * Usually this happens when we put a proxy between them, e.g., USKProxyCompletionCallback, which
    * hides updates for efficiency.
    *
    * @param cb The callback that is actually USKManager.subscribe()'ed.
@@ -383,7 +383,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
    * Unsubscribes this retriever from the given manager and cancels any active fetcher associated
    * with it.
    *
-   * <p>After this call the retriever will no longer receive edition updates and will not schedule
+   * <p>After this call, the retriever will no longer receive edition updates and will not schedule
    * further network activity.
    *
    * @param manager the manager from which the retriever should be detached; must be non‑null and
@@ -409,7 +409,7 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
    * @param time the new cooldown interval between polling cycles, in milliseconds; values shorter
    *     than roughly 30 minutes are rejected
    * @param tries the number of attempts performed after each cooldown; must be greater than zero
-   *     and less than three or an exception is thrown
+   *     and less than three, or an exception is thrown
    * @param context execution context used to apply the change; provides access to manager state and
    *     scheduling facilities and must be non‑null
    * @throws IllegalStateException if no fetcher has been associated with this instance via {@code
@@ -470,6 +470,12 @@ public class USKRetriever extends BaseClientGetter implements USKCallback {
             null,
             null,
             context.linkFilterExceptionProvider));
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    this.proxy = this;
   }
 
   @Override

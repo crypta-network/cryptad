@@ -13,6 +13,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.Serial;
 import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -133,26 +136,29 @@ class USKAttemptManagerTest {
   }
 
   private static final class TestRequester extends ClientRequester {
-    private final transient ClientBaseCallback callback;
+    private transient ClientBaseCallback callback;
     private final network.crypta.keys.FreenetURI uri;
     private int toNetworkCalls;
     private boolean wasCancelled;
 
+    private static ClientBaseCallback newCallback(RequestClient client) {
+      return new ClientBaseCallback() {
+        @Override
+        public void onResume(ClientContext context) {
+          // no-op
+        }
+
+        @Override
+        public RequestClient getRequestClient() {
+          return client;
+        }
+      };
+    }
+
     private TestRequester(network.crypta.keys.FreenetURI uri, RequestClient client) {
       super((short) 1, client);
       this.uri = uri;
-      this.callback =
-          new ClientBaseCallback() {
-            @Override
-            public void onResume(ClientContext context) {
-              // no-op
-            }
-
-            @Override
-            public RequestClient getRequestClient() {
-              return client;
-            }
-          };
+      this.callback = newCallback(client);
     }
 
     @Override
@@ -193,6 +199,12 @@ class USKAttemptManagerTest {
 
     int toNetworkCalls() {
       return toNetworkCalls;
+    }
+
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
+      this.callback = newCallback(TRANSIENT_CLIENT);
     }
   }
 

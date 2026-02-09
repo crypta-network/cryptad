@@ -4,6 +4,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.List;
@@ -56,7 +57,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Responsibilities: orchestration and progress reporting; scheduling and cooldown control.
  *   <li>Notable behaviors: optional completion via file truncation; resumable after corruption.
  *   <li>Thread-safety: external methods may be called from multiple threads; internal state changes
- *       are synchronized where necessary and long‑running work is delegated to schedulers.
+ *       are synchronized where necessary, and long‑running work is delegated to schedulers.
  * </ul>
  *
  * @author toad
@@ -142,7 +143,7 @@ public class SplitFileFetcher
   /** Whether the parent wants keys collected into a binary blob during fetching. */
   private final boolean wantBinaryBlob;
 
-  /** True when the fetcher and on‑disk state should survive node restarts. */
+  /** True, when the fetcher and on‑disk state should survive node restarts. */
   private final boolean persistent;
 
   static final class InitParams {
@@ -295,6 +296,13 @@ public class SplitFileFetcher
     fileCompleteViaTruncation = null;
   }
 
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    this.raf = null;
+    this.getter = null;
+  }
+
   /**
    * Schedules initial fetching work with the underlying sendable getter and storage.
    *
@@ -313,7 +321,7 @@ public class SplitFileFetcher
   /**
    * Fail the whole splitfile request when we get an IOException on writing to or reading from the
    * on-disk storage. Can be called asynchronously by SplitFileFetcher*Storage if an off-thread job
-   * (e.g. FEC decoding) breaks, or may be called when SplitFileFetcher*Storage throws.
+   * (e.g., FEC decoding) breaks, or may be called when SplitFileFetcher*Storage throws.
    *
    * @param e The IOException, generated when accessing the on-disk storage.
    */
@@ -564,7 +572,7 @@ public class SplitFileFetcher
     parent.completedBlock(dontNotify, context);
   }
 
-  /** Reports that a block retrieval failed so the parent can update progress. */
+  /** Reports that block retrieval failed so the parent can update progress. */
   @Override
   public void onFailedBlock() {
     parent.failedBlock(context);
@@ -572,7 +580,7 @@ public class SplitFileFetcher
 
   /**
    * Restores high‑level progress counters and notifies the client of expected metadata after a
-   * storage resume.
+   * storage resuming.
    *
    * @param succeededBlocks number of blocks already completed at resume time
    * @param failedBlocks number of blocks known to have failed at resume time
@@ -646,7 +654,7 @@ public class SplitFileFetcher
   }
 
   /**
-   * Lowers the scheduled wakeup time to the given value if it would wake the request earlier.
+   * Lowers the scheduled wakeup time to the given value if it wakes the request earlier.
    *
    * @param wakeupTime target absolute time (milliseconds since epoch) to consider work again
    */
@@ -666,7 +674,7 @@ public class SplitFileFetcher
   }
 
   /**
-   * Reattaches resources and reconstructs storage and scheduling state after a persisted resume.
+   * Reattaches resources and reconstructs storage and scheduling state after a persisted resuming.
    *
    * <p>On success the getter is recreated and, if storage indicates readiness, the request is
    * scheduled using the stored knowledge of blocks present in the local store. Errors from invalid

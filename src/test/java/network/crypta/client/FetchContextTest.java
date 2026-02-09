@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -15,6 +16,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.HashSet;
 import java.util.Set;
 import network.crypta.client.async.BlockSet;
@@ -176,7 +179,7 @@ class FetchContextTest {
     FetchContext base = createValidContext();
     FetchContext copy = new FetchContext(base, FetchContext.IDENTICAL_MASK);
 
-    // Event producer should be a new SimpleEventProducer, not the same mock
+    // Event producer should be a new SimpleEventProducer, differently mock
     assertNotSame(base.getEventProducer(), copy.getEventProducer());
     assertInstanceOf(SimpleEventProducer.class, copy.getEventProducer());
 
@@ -400,6 +403,27 @@ class FetchContextTest {
   }
 
   @Test
+  void javaSerialization_whenAllowedMimeTypesNull_restoresNull() throws Exception {
+    FetchContext ctx = createValidContext();
+    ctx.setAllowedMIMETypes(null);
+
+    FetchContext read = javaRoundTrip(ctx);
+
+    assertNull(read.getAllowedMIMETypes());
+  }
+
+  @Test
+  void javaSerialization_whenAllowedMimeTypesEmpty_preservesEmptySet() throws Exception {
+    FetchContext ctx = createValidContext();
+    ctx.setAllowedMIMETypes(new HashSet<>());
+
+    FetchContext read = javaRoundTrip(ctx);
+
+    assertNotNull(read.getAllowedMIMETypes());
+    assertTrue(read.getAllowedMIMETypes().isEmpty());
+  }
+
+  @Test
   void readFrom_whenStreamOmitsSchemeHostAndPort_setsNull() throws Exception {
     // Manually serialize the "old" format without the final schemeHostAndPort UTF string.
     FetchContext ctx = createValidContext();
@@ -487,5 +511,21 @@ class FetchContextTest {
 
   private FetchContext createValidContext() {
     return new FetchContext(validOptionsBuilder().build());
+  }
+
+  private static FetchContext javaRoundTrip(FetchContext context)
+      throws IOException, ClassNotFoundException {
+    byte[] bytes;
+    try (var baos = new ByteArrayOutputStream();
+        var oos = new ObjectOutputStream(baos)) {
+      oos.writeObject(context);
+      oos.flush();
+      bytes = baos.toByteArray();
+    }
+
+    try (var bais = new ByteArrayInputStream(bytes);
+        var ois = new ObjectInputStream(bais)) {
+      return (FetchContext) ois.readObject();
+    }
   }
 }

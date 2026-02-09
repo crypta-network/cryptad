@@ -1,5 +1,7 @@
 package network.crypta.client.async;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.util.HashMap;
 import java.util.Map;
@@ -59,7 +61,7 @@ public class SimpleHealingQueue extends BaseClientPutter
   /**
    * Monotonically increasing counter used to tag and correlate healing attempts in diagnostics.
    *
-   * <p>The counter value is assigned at enqueue time and may appear in debug log messages to aid
+   * <p>The counter-value is assigned at enqueue time and may appear in debug log messages to aid
    * troubleshooting. It has no semantic meaning beyond identification.
    */
   int counter;
@@ -73,7 +75,7 @@ public class SimpleHealingQueue extends BaseClientPutter
   InsertContext ctx;
 
   private final transient HealingDecisionSupplier healingDecisionSupplier;
-  final transient Map<Bucket, SingleBlockInserter> runningInserters;
+  transient Map<Bucket, SingleBlockInserter> runningInserters;
 
   static final RequestClient REQUEST_CLIENT = new RequestClientBuilder().build();
 
@@ -116,8 +118,8 @@ public class SimpleHealingQueue extends BaseClientPutter
    *
    * @param data the block-sized bucket to insert; must contain the correct number of bytes for a
    *     single CHK block and remain readable until the operation completes; never {@code null}.
-   * @param cryptoKey the raw key material used to encrypt the block; contents are implementation
-   *     dependent and must match the algorithm parameter.
+   * @param cryptoKey the raw key material used to encrypt the block; contents are
+   *     implementation-dependent and must match the algorithm parameter.
    * @param cryptoAlgorithm identifier of the encryption algorithm to use; valid values are defined
    *     by the surrounding client stack.
    * @param context the client context on which to schedule work; must be non-null and suitable for
@@ -264,7 +266,7 @@ public class SimpleHealingQueue extends BaseClientPutter
    * <p>Removes the corresponding entry from the in-flight map, logs a diagnostic message including
    * the failure, and frees the associated bucket.
    *
-   * @param e the failure cause as reported by the client putter; may carry detailed diagnostics.
+   * @param e the failure cause, as reported by the client putter, may carry detailed diagnostics.
    * @param state the put state representing the failed operation; expected to be a single-block
    *     putter instance.
    * @param context the client context active at failure time; not modified.
@@ -404,7 +406,7 @@ public class SimpleHealingQueue extends BaseClientPutter
   }
 
   /**
-   * Minimum number of successfully fetched blocks required by this request.
+   * A minimum number of successfully fetched blocks required by this request.
    *
    * <p>Healing insertions do not perform fetches as part of completion, so the value is zero.
    *
@@ -481,5 +483,11 @@ public class SimpleHealingQueue extends BaseClientPutter
   public int hashCode() {
     // Preserve the stable, identity-based hash code from the superclass.
     return super.hashCode();
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    this.runningInserters = new HashMap<>();
   }
 }
