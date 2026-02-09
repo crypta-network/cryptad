@@ -153,13 +153,13 @@ public class NodeClientCore implements Persistable {
    * How much disk space must be free when starting a long-term, unpredictable duration job such as
    * a big download?
    */
-  private long minDiskFreeLongTerm;
+  private volatile long minDiskFreeLongTerm;
 
   /**
    * How much disk space must be free when starting a quick but disk-heavy job such as completing a
    * download?
    */
-  private long minDiskFreeShortTerm;
+  private volatile long minDiskFreeShortTerm;
 
   /** Client context. Access via {@link #getClientContext()}. */
   private final ClientContext clientContext;

@@ -12,6 +12,8 @@ import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import network.crypta.io.AddressIdentifier;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.support.PriorityAwareExecutor;
@@ -55,7 +57,8 @@ public class IPAddressDetector implements Runnable {
     this.detector = detector;
   }
 
-  InetAddress[] lastAddressList = null;
+  final AtomicReference<AtomicReferenceArray<InetAddress>> lastAddressList =
+      new AtomicReference<>();
   long lastDetectedTime = -1;
 
   /**
@@ -71,7 +74,7 @@ public class IPAddressDetector implements Runnable {
     if (System.currentTimeMillis() > (lastDetectedTime + interval)) {
       checkpoint();
     }
-    return lastAddressList == null ? new InetAddress[0] : lastAddressList;
+    return snapshotAddresses(lastAddressList.get());
   }
 
   /**
@@ -90,7 +93,7 @@ public class IPAddressDetector implements Runnable {
     if (System.currentTimeMillis() > (lastDetectedTime + interval) && checkpoint()) {
       executor.execute(detector::redetectAddress);
     }
-    return lastAddressList == null ? new InetAddress[0] : lastAddressList;
+    return snapshotAddresses(lastAddressList.get());
   }
 
   boolean old = false;
@@ -98,9 +101,9 @@ public class IPAddressDetector implements Runnable {
   /**
    * Performs a detection pass.
    *
-   * <p>Enumerates network interfaces, reports MTU information, collects and normalizes addresses,
-   * and updates the cached snapshot. If interface enumeration fails, a best-effort fallback based
-   * on a UDP socket connect is used to determine a single outward-facing address.
+   * <p>Lists network interfaces, reports MTU information, collects and normalizes addresses, and
+   * updates the cached snapshot. If interface enumeration fails, a best-effort fallback based on a
+   * UDP socket connection is used to determine a single outward-facing address.
    *
    * @return {@code true} if the snapshot changed compared to the previous pass
    */
@@ -112,10 +115,19 @@ public class IPAddressDetector implements Runnable {
       collectAddressesFromInterfaces(addrs, interfaces);
     }
 
-    InetAddress[] oldAddressList = lastAddressList;
+    InetAddress[] oldAddressList = snapshotAddresses(lastAddressList.get());
     onGetAddresses(addrs);
     lastDetectedTime = System.currentTimeMillis();
-    return addressListChanged(oldAddressList, lastAddressList);
+    return addressListChanged(oldAddressList, snapshotAddresses(lastAddressList.get()));
+  }
+
+  private static InetAddress[] snapshotAddresses(AtomicReferenceArray<InetAddress> addresses) {
+    if (addresses == null) return new InetAddress[0];
+    InetAddress[] snapshot = new InetAddress[addresses.length()];
+    for (int i = 0; i < snapshot.length; i++) {
+      snapshot[i] = addresses.get(i);
+    }
+    return snapshot;
   }
 
   /** Returns network interfaces or populates a fallback address when enumeration fails. */
@@ -168,7 +180,7 @@ public class IPAddressDetector implements Runnable {
       InetAddress addr = ee.nextElement();
       // telling the NodeIPDetector object about the MTU only if MTU != 0
       // MTU = 0 means error in retrieving it
-      // Note: Consider whether to report MTU for local IPs.
+      // Note: Consider whether reporting MTU for local IPs.
       if (ifaceMTU > 0) detector.reportMTU(ifaceMTU, addr instanceof Inet6Address);
 
       addrs.add(cleanGlobalIPv6(addr));
@@ -249,7 +261,7 @@ public class IPAddressDetector implements Runnable {
   /**
    * Filters and stores the list of detected addresses.
    *
-   * <p>Wildcard (0.0.0.0) and multicast addresses are dropped. Link-local, loopback and site-local
+   * <p>Wildcard (0.0.0.0) and multicast addresses are dropped. Link-local, loopback, and site-local
    * addresses are retained so that higher layers can decide how to handle them. ISATAP-style IPv6
    * addresses are filtered out.
    *
@@ -262,7 +274,7 @@ public class IPAddressDetector implements Runnable {
 
     if (addrs.isEmpty()) {
       LOG.error("No addresses found!");
-      lastAddressList = null;
+      lastAddressList.set(null);
       return;
     }
 
@@ -274,7 +286,7 @@ public class IPAddressDetector implements Runnable {
       }
     }
 
-    lastAddressList = output.toArray(new InetAddress[0]);
+    lastAddressList.set(new AtomicReferenceArray<>(output.toArray(new InetAddress[0])));
   }
 
   /** Returns {@code true} when an address should be kept in the snapshot. */
@@ -312,7 +324,7 @@ public class IPAddressDetector implements Runnable {
    *       that contract.
    *   <li>Lifecycle: the default scheduler uses a non-daemon worker which can keep the JVM alive if
    *       not shut down explicitly.
-   *   <li>Robustness: with a scheduler, any uncaught error in the task suppresses subsequent
+   *   <li>Robustness: with a scheduler, any uncaught error in the task suppresses further
    *       executions. This loop explicitly catches {@link AssertionError} and {@link Exception} to
    *       continue running while still honoring interruption.
    * </ul>
