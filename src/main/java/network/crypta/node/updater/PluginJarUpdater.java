@@ -236,7 +236,8 @@ public class PluginJarUpdater extends NodeUpdater {
       return;
     }
 
-    if (loaded != null && loaded.getPluginLongVersion() >= fetchedVersion) {
+    int latestFetchedVersion = getFetchedVersion();
+    if (loaded != null && loaded.getPluginLongVersion() >= latestFetchedVersion) {
       deleteTempBlobQuietly();
       return;
     }
@@ -362,7 +363,11 @@ public class PluginJarUpdater extends NodeUpdater {
   }
 
   void writeJar() throws IOException {
-    writeJarTo(result, pluginManager.getPluginFilename(pluginName));
+    FetchResult localResult;
+    synchronized (this) {
+      localResult = result;
+    }
+    writeJarTo(localResult, pluginManager.getPluginFilename(pluginName));
     UserAlert a;
     synchronized (this) {
       a = alert;
