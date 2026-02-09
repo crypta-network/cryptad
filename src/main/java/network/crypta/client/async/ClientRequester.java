@@ -74,7 +74,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
       ClientGetState oldState, ClientGetState newState, ClientContext context);
 
   /** Priority class of the request or insert. */
-  protected short priorityClass;
+  protected volatile short priorityClass;
 
   /** Whether this is a real-time request */
   protected final boolean realTimeFlag;
@@ -230,7 +230,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * #getLatestSuccess()} for the precise semantics and defaulting behavior that keeps the user
    * interface sortable even before any blocks complete.
    */
-  protected Instant latestSuccess = Instant.now();
+  protected volatile Instant latestSuccess = Instant.now();
 
   /** Number of blocks which have failed. */
   protected volatile int failedBlocks;
@@ -239,7 +239,7 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
   protected volatile int fatallyFailedBlocks;
 
   /** Timestamp of the most recent failed or fatally failed block, if any. */
-  protected Instant latestFailure = null;
+  protected volatile Instant latestFailure = null;
 
   /** Minimum number of blocks required to succeed for success. */
   protected volatile int minSuccessBlocks;

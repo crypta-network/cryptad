@@ -69,7 +69,7 @@ class IPAddressDetectorTest {
     NodeIPDetector nodeIPDetector = mock(NodeIPDetector.class);
     // Override checkpoint to inject a deterministic change without touching real interfaces
     TestIPAddressDetector det = new TestIPAddressDetector(1, nodeIPDetector);
-    det.lastDetectedTime = -1; // force checkpoint on first call
+    det.lastDetectedTime = -1; // force checkpoint on the first call
 
     PriorityAwareExecutor directExec = new DirectExecutor();
     InetAddress[] out = det.getAddress(directExec);
@@ -203,7 +203,7 @@ class IPAddressDetectorTest {
     InetAddress cleaned = (InetAddress) m.invoke(det, withScope);
 
     assertEquals("2001:db8:0:0:0:0:0:1", cleaned.getHostAddress());
-    // Ensure original still contains the scope id
+    // Ensure the original still contains the scope id
     assertTrue(withScope.getHostAddress().contains("%"));
   }
 
@@ -221,7 +221,7 @@ class IPAddressDetectorTest {
         throw new AssertionError(e);
       }
       this.lastDetectedTime = System.currentTimeMillis();
-      return true; // indicate list changed
+      return true; // indicate the list changed
     }
   }
 
@@ -281,7 +281,7 @@ class IPAddressDetectorTest {
 
   /** Test subclass that counts checkpoint invocations and supplies a deterministic snapshot. */
   private static final class CountingDetector extends IPAddressDetector {
-    int checkpointCalls = 0;
+    volatile int checkpointCalls = 0;
 
     CountingDetector(long interval, NodeIPDetector detector) {
       super(interval, detector);
@@ -301,7 +301,7 @@ class IPAddressDetectorTest {
     }
   }
 
-  /** Executor that captures submitted runnables without executing them automatically. */
+  /** Executor that captures submitted runnable without executing them automatically. */
   private static final class CapturingExecutor implements PriorityAwareExecutor {
     private final List<Runnable> captured = new ArrayList<>();
 
