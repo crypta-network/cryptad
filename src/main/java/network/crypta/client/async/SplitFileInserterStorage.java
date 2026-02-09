@@ -481,90 +481,95 @@ public class SplitFileInserterStorage {
     this.random = runtime.random;
     this.raf = params.raf;
     rafLength = params.raf.size();
-    InputStream ois = new RAFInputStream(this.raf, 0, rafLength);
-    DataInputStream dis = new DataInputStream(ois);
-    validateMagic(dis.readLong());
-    int checksumType = dis.readInt();
-    this.checker = createChecksumChecker(checksumType);
-
     long maxLength = Long.MAX_VALUE;
+    try (InputStream ois = new RAFInputStream(this.raf, 0, rafLength);
+        DataInputStream header = new DataInputStream(ois)) {
+      validateMagic(header.readLong());
+      int checksumType = header.readInt();
+      this.checker = createChecksumChecker(checksumType);
 
-    InputStream is = checker.checksumReaderWithLength(ois, new ArrayBucketFactory(), maxLength);
-    dis = new DataInputStream(is);
-    validateVersion(dis.readInt());
-    LockableRandomAccessBuffer rafOrig =
-        BucketTools.restoreRAFFrom(
-            dis, params.persistentFG, params.persistentFileTracker, params.masterKey);
-    LockableRandomAccessBuffer resumeOriginalData = params.originalData;
-    this.originalData = chooseOriginalData(resumeOriginalData, rafOrig);
-    this.totalDataBlocks = readPositiveInt(dis, "total data blocks");
-    this.totalCheckBlocks = readPositiveInt(dis, "total check blocks");
-    this.splitfileType = readSplitfileAlgorithm(dis);
-    this.codec = getCodecFor(splitfileType);
-    this.dataLength = readPositiveLong(dis, "data length");
-    validateDataLengthMatches(dataLength, resumeOriginalData);
-    validateBlockCountCompatibility(dataLength, totalDataBlocks);
-    decompressedLength = readPositiveLong(dis, "decompressed length");
-    isMetadata = dis.readBoolean();
-    archiveType = readArchiveType(dis.readShort());
-    clientMetadata = readClientMetadata(dis);
-    compressionCodec = readCompressionCodec(dis);
-    int segmentCount = readPositiveInt(dis, "segment count");
-    this.segmentSize = readPositiveInt(dis, "segment size");
-    // Allow zero for NON_REDUNDANT splitfiles (codec == null), where no check blocks exist.
-    this.checkSegmentSize = readCheckSegmentSize(dis);
-    int ccb = dis.readInt();
-    if (ccb < 0) throw new StorageFormatException("Bad cross-check block count");
-    this.crossCheckBlocks = ccb;
-    validateSegmentTotals(segmentSize, checkSegmentSize, crossCheckBlocks);
-    this.splitfileCryptoAlgorithm = dis.readByte();
-    validateCryptoAlgorithm(splitfileCryptoAlgorithm);
-    splitfileCryptoKey = readOptionalCryptoKey(dis);
-    this.keyLength = dis.readInt();
-    validateKeyLength(keyLength);
-    this.cmode = readCompatibilityModeChecked(dis);
-    this.deductBlocksFromSegments = dis.readInt();
-    validateDeductBlocksRange(deductBlocksFromSegments, segmentCount);
-    this.maxRetries = dis.readInt();
-    validateMaxRetries(maxRetries);
-    this.consecutiveRNFsCountAsSuccess = dis.readInt();
-    if (consecutiveRNFsCountAsSuccess < 0)
-      throw new StorageFormatException("Bad consecutiveRNFsCountAsSuccess");
-    specifySplitfileKeyInMetadata = dis.readBoolean();
-    hashThisLayerOnly = readOptionalHashThisLayerOnly(dis);
-    topDontCompress = dis.readBoolean();
-    topRequiredBlocks = dis.readInt();
-    topTotalBlocks = dis.readInt();
-    origDataSize = dis.readLong();
-    origCompressedDataSize = dis.readLong();
-    hashes = HashResult.readHashes(dis);
-    dis.close();
-    this.hasPaddedLastBlock = (dataLength % CHKBlock.DATA_LENGTH != 0);
-    this.segments = new SplitFileInserterSegmentStorage[segmentCount];
-    randomSegmentIterator = new RandomArrayIterator<>(segments);
-    this.crossSegments = initCrossSegmentsArrayIfAny(segmentCount);
-    // Read offsets.
-    is = checker.checksumReaderWithLength(ois, new ArrayBucketFactory(), maxLength);
-    dis = new DataInputStream(is);
-    OffsetsData od = readOffsets(dis, rafLength, segmentCount);
-    dis.close();
-    offsetPaddedLastBlock = od.offsetPaddedLastBlock;
-    offsetOverallStatus = od.offsetOverallStatus;
-    overallStatusLength = od.overallStatusLength;
-    offsetCrossSegmentBlocks = od.arrays.offsetCrossSegmentBlocks;
-    offsetSegmentCheckBlocks = od.arrays.offsetSegmentCheckBlocks;
-    offsetSegmentStatus = od.arrays.offsetSegmentStatus;
-    offsetCrossSegmentStatus = od.arrays.offsetCrossSegmentStatus;
-    offsetSegmentKeys = od.arrays.offsetSegmentKeys;
-    // Set up segments...
-    underlyingOffsetDataSegments = new long[segmentCount];
-    is = checker.checksumReaderWithLength(ois, new ArrayBucketFactory(), maxLength);
-    long blocks = initSegmentsAndComputeBlocks(is, segmentCount, runtime.keysFetching);
-    if (blocks != totalDataBlocks)
-      throw new StorageFormatException(
-          "Total data blocks should be " + totalDataBlocks + " but is " + blocks);
-    readCrossSegmentsFromDisk(ois, maxLength);
-    ois.close();
+      int segmentCount;
+      try (InputStream is =
+              checker.checksumReaderWithLength(ois, new ArrayBucketFactory(), maxLength);
+          DataInputStream dis = new DataInputStream(is)) {
+        validateVersion(dis.readInt());
+        LockableRandomAccessBuffer rafOrig =
+            BucketTools.restoreRAFFrom(
+                dis, params.persistentFG, params.persistentFileTracker, params.masterKey);
+        LockableRandomAccessBuffer resumeOriginalData = params.originalData;
+        this.originalData = chooseOriginalData(resumeOriginalData, rafOrig);
+        this.totalDataBlocks = readPositiveInt(dis, "total data blocks");
+        this.totalCheckBlocks = readPositiveInt(dis, "total check blocks");
+        this.splitfileType = readSplitfileAlgorithm(dis);
+        this.codec = getCodecFor(splitfileType);
+        this.dataLength = readPositiveLong(dis, "data length");
+        validateDataLengthMatches(dataLength, resumeOriginalData);
+        validateBlockCountCompatibility(dataLength, totalDataBlocks);
+        decompressedLength = readPositiveLong(dis, "decompressed length");
+        isMetadata = dis.readBoolean();
+        archiveType = readArchiveType(dis.readShort());
+        clientMetadata = readClientMetadata(dis);
+        compressionCodec = readCompressionCodec(dis);
+        segmentCount = readPositiveInt(dis, "segment count");
+        this.segmentSize = readPositiveInt(dis, "segment size");
+        // Allow zero for NON_REDUNDANT splitfiles (codec == null), where no check blocks exist.
+        this.checkSegmentSize = readCheckSegmentSize(dis);
+        int ccb = dis.readInt();
+        if (ccb < 0) throw new StorageFormatException("Bad cross-check block count");
+        this.crossCheckBlocks = ccb;
+        validateSegmentTotals(segmentSize, checkSegmentSize, crossCheckBlocks);
+        this.splitfileCryptoAlgorithm = dis.readByte();
+        validateCryptoAlgorithm(splitfileCryptoAlgorithm);
+        splitfileCryptoKey = readOptionalCryptoKey(dis);
+        this.keyLength = dis.readInt();
+        validateKeyLength(keyLength);
+        this.cmode = readCompatibilityModeChecked(dis);
+        this.deductBlocksFromSegments = dis.readInt();
+        validateDeductBlocksRange(deductBlocksFromSegments, segmentCount);
+        this.maxRetries = dis.readInt();
+        validateMaxRetries(maxRetries);
+        this.consecutiveRNFsCountAsSuccess = dis.readInt();
+        if (consecutiveRNFsCountAsSuccess < 0)
+          throw new StorageFormatException("Bad consecutiveRNFsCountAsSuccess");
+        specifySplitfileKeyInMetadata = dis.readBoolean();
+        hashThisLayerOnly = readOptionalHashThisLayerOnly(dis);
+        topDontCompress = dis.readBoolean();
+        topRequiredBlocks = dis.readInt();
+        topTotalBlocks = dis.readInt();
+        origDataSize = dis.readLong();
+        origCompressedDataSize = dis.readLong();
+        hashes = HashResult.readHashes(dis);
+      }
+      this.hasPaddedLastBlock = (dataLength % CHKBlock.DATA_LENGTH != 0);
+      this.segments = new SplitFileInserterSegmentStorage[segmentCount];
+      randomSegmentIterator = new RandomArrayIterator<>(segments);
+      this.crossSegments = initCrossSegmentsArrayIfAny(segmentCount);
+      // Read offsets.
+      OffsetsData od;
+      try (InputStream is =
+              checker.checksumReaderWithLength(ois, new ArrayBucketFactory(), maxLength);
+          DataInputStream dis = new DataInputStream(is)) {
+        od = readOffsets(dis, rafLength, segmentCount);
+      }
+      offsetPaddedLastBlock = od.offsetPaddedLastBlock;
+      offsetOverallStatus = od.offsetOverallStatus;
+      overallStatusLength = od.overallStatusLength;
+      offsetCrossSegmentBlocks = od.arrays.offsetCrossSegmentBlocks;
+      offsetSegmentCheckBlocks = od.arrays.offsetSegmentCheckBlocks;
+      offsetSegmentStatus = od.arrays.offsetSegmentStatus;
+      offsetCrossSegmentStatus = od.arrays.offsetCrossSegmentStatus;
+      offsetSegmentKeys = od.arrays.offsetSegmentKeys;
+      // Set up segments...
+      underlyingOffsetDataSegments = new long[segmentCount];
+      try (InputStream is =
+          checker.checksumReaderWithLength(ois, new ArrayBucketFactory(), maxLength)) {
+        long blocks = initSegmentsAndComputeBlocks(is, segmentCount, runtime.keysFetching);
+        if (blocks != totalDataBlocks)
+          throw new StorageFormatException(
+              "Total data blocks should be " + totalDataBlocks + " but is " + blocks);
+      }
+      readCrossSegmentsFromDisk(ois, maxLength);
+    }
     errors = readStatusesFromDisk(maxLength);
     computeStatus();
 

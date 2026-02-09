@@ -241,17 +241,18 @@ class LauncherController(
 
   private suspend fun readProcessOutput(p: Process) {
     withContext(io) {
-      val br = BufferedReader(InputStreamReader(p.inputStream, StandardCharsets.UTF_8))
-      var line: String?
-      while (br.readLine().also { line = it } != null) {
-        val s = line!!
-        logLine(s)
-        parseFProxyPortFromLine(s)?.let { port ->
-          val old = _state.value.knownPort
-          if (old != port) updateState { it.copy(knownPort = port) }
-          if (!autoOpenedBrowser) {
-            autoOpenedBrowser = true
-            launchBrowser()
+      BufferedReader(InputStreamReader(p.inputStream, StandardCharsets.UTF_8)).use { br ->
+        var line: String?
+        while (br.readLine().also { line = it } != null) {
+          val s = line!!
+          logLine(s)
+          parseFProxyPortFromLine(s)?.let { port ->
+            val old = _state.value.knownPort
+            if (old != port) updateState { it.copy(knownPort = port) }
+            if (!autoOpenedBrowser) {
+              autoOpenedBrowser = true
+              launchBrowser()
+            }
           }
         }
       }
