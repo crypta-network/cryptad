@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import network.crypta.client.async.ClientContext;
-import network.crypta.fs.AppEnv;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import network.crypta.support.api.RandomAccessBucket;
@@ -71,12 +70,6 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
   // Sentinels for stream-detach results
   private static final Closeable[] NO_STREAMS = new Closeable[0];
   private static final Closeable[] ALREADY_FREED = new Closeable[0];
-
-  /**
-   * Directory used for temporary files created by this bucket implementation. Resolved at class
-   * initialization; see static initializer for the exact resolution order.
-   */
-  protected static String tempDir;
 
   /**
    * Constructs a new bucket that targets the provided file.
@@ -450,50 +443,6 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
     } catch (IOException e) {
       // Preserve existing behavior: do not throw, but provide clearer context.
       LOG.warn("Bucket file delete failed {}: {}", getFile(), e.toString());
-    }
-  }
-
-  /*
-   * Resolve the temporary directory once at class-load time:
-   *   1) java.io.tmpdir system property
-   *   2) Platform-specific fallbacks (/tmp, /var/tmp on Linux; common TEMP paths on Windows)
-   *   3) user.dir as a last resort
-   */
-  static {
-    // Try the Java property (1.2 and above)
-    tempDir = System.getProperty("java.io.tmpdir");
-
-    // Deprecated calls removed.
-
-    // Try TEMP and TMP
-    // Deprecated TEMP/TMP environment probing removed; rely on standard properties
-
-    // make some semi-educated guesses based on OS.
-
-    if (tempDir == null) {
-      AppEnv env = new AppEnv();
-      String[] candidates = null;
-      if (env.isLinux()) {
-        candidates = new String[] {"/tmp", "/var/tmp"};
-      } else if (env.isWindows()) {
-        candidates = new String[] {"C:\\TEMP", "C:\\WINDOWS\\TEMP"};
-      }
-      if (candidates != null) {
-        for (String candidate : candidates) {
-          File path = new File(candidate);
-          if (path.exists() && path.isDirectory() && path.canWrite()) {
-            tempDir = candidate;
-            break;
-          }
-        }
-      }
-    }
-
-    // last resort -- use the current working directory
-
-    if (tempDir == null) {
-      // This can be null -- but that's OK, null => cwd for File constructor, anyway.
-      tempDir = System.getProperty("user.dir");
     }
   }
 
