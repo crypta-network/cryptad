@@ -1,5 +1,6 @@
 package com.onionnetworks.util;
 
+import java.io.Serial;
 import java.util.EventObject;
 
 /**
@@ -27,15 +28,17 @@ import java.util.EventObject;
  * @see EventObject
  */
 public class InvokeEvent extends EventObject {
+  @Serial private static final long serialVersionUID = 234594476951043607L;
+
   private final transient Runnable r;
 
   /**
-   * Creates a new invoke event that associates the given source object with a runnable callback the
-   * listener may execute. The constructor does not validate the runnable; callers decide whether a
-   * {@code null} runnable is meaningful in their dispatch model. The source parameter must not be
-   * {@code null} because {@link EventObject} enforces that requirement and will throw {@link
-   * NullPointerException} if violated. Once created, the event captures the provided values and
-   * exposes them immutably to downstream handlers.
+   * Creates a new invoking event that associates the given source object with a runnable callback
+   * the listener may execute. The constructor does not validate the runnable; callers decide
+   * whether a {@code null} runnable is meaningful in their dispatch model. The source parameter
+   * must not be {@code null} because {@link EventObject} enforces that requirement and will throw
+   * {@link NullPointerException} if violated. Once created, the event captures the provided values
+   * and exposes them immutably to downstream handlers.
    *
    * @param source non-null origin of the event, typically the publisher or owning component
    * @param r runnable callback to execute when handling the event; may be {@code null} if handled

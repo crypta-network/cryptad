@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.io.Serial;
 import network.crypta.client.FetchContext;
 import network.crypta.keys.ClientKey;
 import network.crypta.keys.Key;
@@ -40,6 +41,8 @@ import network.crypta.node.SendableRequestItem;
  * @see USKStoreCheckCoordinator.USKStoreChecker
  */
 final class USKStoreCheckerGetter extends SendableGet {
+  @Serial private static final long serialVersionUID = 1L;
+
   /** Coordinator for store-check lifecycle and callbacks. */
   private final transient USKStoreCheckCoordinator coordinator;
 

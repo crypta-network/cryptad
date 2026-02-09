@@ -54,6 +54,8 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
    * monitor when accessing or mutating the state.
    */
   static class FDTracker implements Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
     private int maxOpenFDs;
     private int totalOpenFDs = 0;
     private final LinkedHashSet<PooledFileRandomAccessBuffer> closables = new LinkedHashSet<>();
@@ -189,7 +191,7 @@ public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer,
     this.fds = fds;
     lockLevel = 0;
     // Check the parameters and get the length.
-    // Also, unlock() adds to the closeables queue, which is essential.
+    // Also, unlock() adds to the closeable queue, which is essential.
     RAFLock lock = lockOpen();
     try {
       long currentLength = raf.length();

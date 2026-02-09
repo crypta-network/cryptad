@@ -136,6 +136,8 @@ class USKAttemptManagerTest {
   }
 
   private static final class TestRequester extends ClientRequester {
+    @Serial private static final long serialVersionUID = 1L;
+
     private transient ClientBaseCallback callback;
     private final network.crypta.keys.FreenetURI uri;
     private int toNetworkCalls;
