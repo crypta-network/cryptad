@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.IOException;
+import java.io.Serial;
 import network.crypta.client.InsertException;
 import network.crypta.client.async.SplitFileInserterSegmentStorage.BlockInsert;
 import network.crypta.keys.CHKBlock;
@@ -32,8 +33,8 @@ import org.slf4j.LoggerFactory;
  * <p>Persistence model: instances of this class are <strong>not</strong> serialized. For persistent
  * inserts the parent {@link SplitFileInserter} reconstructs both its {@link
  * SplitFileInserterStorage} and a fresh {@code SplitFileInserterSender} during {@link
- * SplitFileInserter#onResume(ClientContext)}. Any transient collaborators (for example the internal
- * sender object) are therefore safe to keep non‑serializable.
+ * SplitFileInserter#onResume(ClientContext)}. Any transient collaborators (for example, the
+ * internal sender object) are therefore safe to keep non‑serializable.
  *
  * <p>Concurrency: selection and callbacks are invoked by the client request schedulers. The sender
  * treats disk failures and unexpected throwables as terminal for the affected block: errors are
@@ -45,7 +46,7 @@ import org.slf4j.LoggerFactory;
  *   <li><strong>Responsibilities:</strong> choose a block, encode it, submit a put (local or
  *       remote), and translate success/failure into storage updates and client callbacks.
  *   <li><strong>Notable behaviors:</strong> local‑only mode stores to the node’s store directly;
- *       remote mode uses {@code realPut}. All unexpected throwables during send are caught and
+ *       remote mode uses {@code realPut}. All unexpected throwables during sending are caught and
  *       mapped to an internal‑error failure so the scheduler state remains consistent.
  * </ul>
  *
@@ -55,9 +56,11 @@ import org.slf4j.LoggerFactory;
 public class SplitFileInserterSender extends SendableInsert {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserterSender.class);
 
+  @Serial private static final long serialVersionUID = 1L;
+
   /**
-   * Owning high‑level inserter that coordinates metadata, progress, and completion reporting. The
-   * reference is stable for the lifetime of the sender and is never {@code null}.
+   * The owning high‑level inserter that coordinates metadata, progress, and completion reporting.
+   * The reference is stable for the lifetime of the sender and is never {@code null}.
    */
   final SplitFileInserter parent;
 
@@ -71,7 +74,7 @@ public class SplitFileInserterSender extends SendableInsert {
   /**
    * Creates a sender bound to an existing split‑file inserter and its storage.
    *
-   * <p>The persistence and real‑time flags are inherited from the parent so this sender integrates
+   * <p>The persistence and real‑time flags are inherited from the parent, so this sender integrates
    * with the appropriate schedulers and job runners.
    *
    * @param parent owning inserter that provides context, priority, and client identity; must not be
@@ -82,7 +85,9 @@ public class SplitFileInserterSender extends SendableInsert {
   public SplitFileInserterSender(SplitFileInserter parent, SplitFileInserterStorage storage) {
     super(
         parent.persistent,
-        parent.realTime); // Persistence should be from parent so that e.g. callbacks get run on the
+        parent
+            .realTime); // Persistence should be from the parent so that e.g., callbacks get run on
+    // the
     // right jobRunner.
     this.parent = parent;
     this.storage = storage;
@@ -98,7 +103,7 @@ public class SplitFileInserterSender extends SendableInsert {
    * @param keyNum scheduler token identifying the block within a segment; expected to be a {@link
    *     SplitFileInserterSegmentStorage.BlockInsert}
    * @param key client key produced for the block; ownership is not transferred
-   * @param context execution context used for subsequent callbacks; not {@code null}
+   * @param context execution context used for later callbacks; not {@code null}
    */
   @Override
   public void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
@@ -151,7 +156,7 @@ public class SplitFileInserterSender extends SendableInsert {
    * <p>This callback runs on the appropriate persistence‑aware job runner. If the insert has
    * already finished, the method returns immediately. I/O failures are considered disk errors and
    * delegated to {@link SplitFileInserterStorage#failOnDiskError(IOException)} which will terminate
-   * or retry according to policy.
+   * or retry, according to policy.
    *
    * @param token block token identifying the segment and block number; expected to be a {@link
    *     SplitFileInserterSegmentStorage.BlockInsert}
@@ -191,8 +196,8 @@ public class SplitFileInserterSender extends SendableInsert {
    * Selects the next block to insert, or returns {@code null} when none are eligible.
    *
    * <p>Selection is delegated to the per‑segment chooser in {@link SplitFileInserterStorage}. The
-   * returned token is stable for the duration of the attempted send; the scheduler will not select
-   * the same block concurrently for the same request.
+   * returned token is stable for the duration of the attempted sending; the scheduler will not
+   * select the same block concurrently for the same request.
    *
    * @param keys view of keys currently being inserted locally to avoid duplication
    * @param context execution context supplied by the scheduler; not used for selection
@@ -309,7 +314,7 @@ public class SplitFileInserterSender extends SendableInsert {
    * or failure back to this request, converting unexpected throwables to an internal‑error failure.
    *
    * @param context execution context provided by the scheduler; not {@code null}
-   * @return a sender that performs the blocking send for this request instance
+   * @return a sender that performs the blocking sending for this request instance
    */
   @Override
   public SendableRequestSender getSender(ClientContext context) {
@@ -317,7 +322,7 @@ public class SplitFileInserterSender extends SendableInsert {
   }
 
   /**
-   * Indicates whether the request has finished or been cancelled and should no longer run.
+   * Indicates whether the request has finished or been canceled and should no longer run.
    *
    * @return {@code true} when the underlying storage reports that the insert has finished
    */
@@ -345,7 +350,7 @@ public class SplitFileInserterSender extends SendableInsert {
    * Registers this sender with the CHK insert scheduler when not already registered.
    *
    * <p>The registration uses the parent’s real‑time flag and persistence mode. When already
-   * registered (for example during priority changes), the method returns without side effects.
+   * registered (for example, during priority changes), the method returns without side effects.
    *
    * @param context execution context that provides the CHK insert scheduler; must not be {@code
    *     null}

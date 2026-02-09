@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.Serial;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
@@ -156,6 +157,8 @@ class DatastoreCheckerTest {
   }
 
   private static class TestSendableGet extends SendableGet {
+    @Serial private static final long serialVersionUID = 1L;
+
     private final short prio;
     private final transient Key[] keys;
     private final transient ClientRequestScheduler sched;

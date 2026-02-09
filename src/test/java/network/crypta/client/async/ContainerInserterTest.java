@@ -204,6 +204,8 @@ class ContainerInserterTest {
   }
 
   private static final class TestPutter extends BaseClientPutter {
+    @Serial private static final long serialVersionUID = 1L;
+
     private transient RequestClient rc;
 
     TestPutter(RequestClient rc) {
