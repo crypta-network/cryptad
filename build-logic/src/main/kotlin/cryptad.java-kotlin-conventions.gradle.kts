@@ -87,7 +87,12 @@ val errorproneReportEnabled =
 
 spotbugs { ignoreFailures = true }
 
+val spotbugsExcludeFilter =
+  rootProject.layout.projectDirectory.file("build-logic/spotbugs-exclude.xml")
+
 tasks.withType<SpotBugsTask>().configureEach {
+  excludeFilter.set(spotbugsExcludeFilter)
+
   val xmlReport = reports.maybeCreate("xml")
   xmlReport.required.set(true)
   xmlReport.outputLocation.set(layout.buildDirectory.file("reports/spotbugs/$name.xml"))
