@@ -4,6 +4,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashSet;
@@ -35,7 +37,7 @@ import network.crypta.support.io.StorageFormatException;
  *
  * <p>Instances are mutable and not thread-safe. A context is intended to be owned by a single
  * request at a time; copying is supported via the masking constructors to derive variants for
- * sub-operations (for example fetching a container member). Invariants include non‑negative sizes
+ * sub-operations (for example, fetching a container member). Invariants include non‑negative sizes
  * and retry counts (or {@code -1} for unlimited retries where supported). Cooldown settings are
  * bounded by constants in {@link RequestScheduler}.
  *
@@ -74,18 +76,16 @@ public class FetchContext implements Serializable {
   /** Maximum length of the final returned data */
   private long maxOutputLength;
 
-  /**
-   * Maximum length of data fetched in order to obtain the final data - metadata, containers, etc.
-   */
+  /** Maximum length of data fetched to gather the final data - metadata, containers, etc. */
   private long maxTempLength;
 
   /**
-   * 1 = only fetch a single block. 2 = allow one redirect, e.g. metadata block pointing to actual
-   * data block. Etc. 0 may work sometimes but is not recommended.
+   * 1 = only fetch a single block. 2 = allow one redirect, e.g., metadata block pointing to the
+   * actual data block. Etc. 0 may work sometimes but is not recommended.
    */
   private int maxRecursionLevel;
 
-  /** Maximum number of times an archive read may be restarted. */
+  /** The maximum number of times an archive read may be restarted. */
   private int maxArchiveRestarts;
 
   /**
@@ -94,8 +94,8 @@ public class FetchContext implements Serializable {
    * are inside containers (archives), which are usually tar files, which may or may not be
    * compressed (compression occurs transparently on a different level). This is not necessarily the
    * same as the number of slashes in the key after the part for the key itself, since keys can
-   * redirect to other keys. If you are fetching user-uploaded keys, e.g. in fproxy, especially
-   * freesites, you will want this to be non-zero. However, if you are using keys only internally,
+   * redirect to other keys. If you are fetching user-uploaded keys, e.g., in fproxy, especially
+   * freesites, you will want this to be non-zero. However, if you are using keys only internally
    * and never upload freesites, you should set this to 0.
    *
    * @see ArchiveContext where this is enforced.
@@ -110,7 +110,7 @@ public class FetchContext implements Serializable {
    * or until success or a fatal error. A fatal error is either an internal error (problem with the
    * node) or something resulting from the original data being corrupt as inserted. So with retries
    * = -1 we will not report Data not found, Route not found, All data not found, etc., because
-   * these are nonfatal errors and we will retry. Note that after every 3 attempts the request is
+   * these are nonfatal errors and we will retry. Note that after every 3 attempts, the request is
    * put on the cooldown queue for 30 minutes, so the cost of retries = -1 is really not that high.
    */
   private int maxSplitfileBlockRetries;
@@ -121,7 +121,7 @@ public class FetchContext implements Serializable {
    * A fatal error is either an internal error (problem with the node) or something resulting from
    * the original data being corrupt as inserted. So with retries = -1 we will not report Data not
    * found, Route not found, All data not found, etc., because these are nonfatal errors and we will
-   * retry. Note that after every 3 attempts the request is put on the cooldown queue for 30
+   * retry. Note that after every 3 attempts, the request is put on the cooldown queue for 30
    * minutes, so the cost of retries = -1 is really not that high.
    */
   private int maxNonSplitfileRetries;
@@ -145,7 +145,7 @@ public class FetchContext implements Serializable {
   private boolean ignoreStore;
 
   /** Client events will be published to this, you can subscribe to them */
-  private final transient ClientEventProducer eventProducer;
+  private transient ClientEventProducer eventProducer;
 
   /** Maximum metadata size permitted for the request, in bytes. */
   private int maxMetadataSize;
@@ -172,7 +172,7 @@ public class FetchContext implements Serializable {
   public final transient BlockSet blocks;
 
   /**
-   * If non-null, the request will be stopped if it has a MIME type that is not one of these, or has
+   * If non-null, the request will be stopped if it has a MIME type that is not one of these or has
    * no MIME type.
    */
   private transient Set<String> allowedMIMETypes;
@@ -188,7 +188,7 @@ public class FetchContext implements Serializable {
 
   /**
    * Can this request write to the client-cache? We don't store all requests in the client cache, in
-   * particular big stuff usually isn't written to it, to maximise its effectiveness.
+   * particular big stuff usually isn't written to it, to maximize its effectiveness.
    */
   private boolean canWriteClientCache;
 
@@ -198,7 +198,7 @@ public class FetchContext implements Serializable {
   /** Callback needed for web-pushing */
   private transient TagReplacerCallback tagReplacer;
 
-  /** Force the content fiter to use this MIME type */
+  /** Force the content filter to use this MIME type */
   private String overrideMIME;
 
   /**
@@ -218,7 +218,7 @@ public class FetchContext implements Serializable {
   private boolean ignoreUSKDatehints;
 
   /**
-   * scheme, host and port: force the prefix of a URI. Example: <a
+   * Scheme, host, and port: force the prefix of a URI. Example: <a
    * href="https://localhost:1234">https://localhost:1234</a>
    */
   private final String schemeHostAndPort;
@@ -284,7 +284,7 @@ public class FetchContext implements Serializable {
    * Copy a FetchContext, creating a new EventProducer and not changing the blocks list.
    *
    * @param ctx The old FetchContext to copy.
-   * @param maskID Mask mode for the copy operation e.g. SPLITFILE_DEFAULT_BLOCK_MASK.
+   * @param maskID Mask mode for the copy operation e.g., SPLITFILE_DEFAULT_BLOCK_MASK.
    */
   public FetchContext(FetchContext ctx, int maskID) {
     this(ctx, maskID, false, null);
@@ -294,11 +294,11 @@ public class FetchContext implements Serializable {
    * Copy a FetchContext.
    *
    * @param ctx The old FetchContext to copy.
-   * @param maskID Mask mode for the copy operation e.g. SPLITFILE_DEFAULT_BLOCK_MASK.
+   * @param maskID Mask mode for the copy operation e.g., SPLITFILE_DEFAULT_BLOCK_MASK.
    * @param keepProducer If true, keep the existing EventProducer. Must be false if we are creating
-   *     a new request. Can be true if we are masking the FetchContext within a single request, e.g.
-   *     to download a container. This is important so that we see the progress updates for the
-   *     request and not for other requests sharing the FetchContext, but also it could break
+   *     a new request. Can be true if we are masking the FetchContext within a single request,
+   *     e.g., to download a container. This is important so that we see the progress updates for
+   *     the request and not for other requests sharing the FetchContext, but also it could break
    *     serialization.
    * @param blocks Storing a BlockSet to the database is not supported, see comments on
    *     SimpleBlockSet.objectCanNew().
@@ -588,7 +588,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Whether simple redirects are followed by the fetcher.
+   * Whether the fetcher follows simple redirects.
    *
    * @return {@code true} when redirects are followed automatically.
    */
@@ -597,7 +597,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Control whether simple redirects are followed by the fetcher.
+   * Control whether the fetcher follows simple redirects.
    *
    * @param followRedirects {@code true} to follow redirects; {@code false} to disable following.
    */
@@ -798,7 +798,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Whether the client cache may be written to by this request.
+   * Whether this request may write to the client cache.
    *
    * @return {@code true} when writing to the client cache is allowed.
    */
@@ -807,7 +807,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Control whether the client cache may be written to by this request.
+   * Control whether this request may write to the client cache.
    *
    * @param canWriteClientCache {@code true} to enable writing; {@code false} to disable.
    */
@@ -870,7 +870,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Whether USK DATEHINTs should be ignored by the client.
+   * Whether the client should ignore USK DATEHINTs.
    *
    * @return {@code true} when date hints are ignored.
    */
@@ -879,7 +879,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Control whether USK DATEHINTs should be ignored by the client.
+   * Control whether the client should ignore USK DATEHINTs.
    *
    * @param ignoreUSKDatehints {@code true} to ignore date hints; otherwise {@code false}.
    */
@@ -888,7 +888,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Get the forced URI prefix composed of scheme, host, and port.
+   * Get the forced URI prefix composed of the scheme, host, and port.
    *
    * @return A string such as {@code "https://localhost:1234"}, or {@code null} when unset.
    */
@@ -903,6 +903,39 @@ public class FetchContext implements Serializable {
    */
   public long getCooldownTime() {
     return cooldownTime;
+  }
+
+  @Serial
+  private void writeObject(ObjectOutputStream out) throws IOException {
+    out.defaultWriteObject();
+    if (allowedMIMETypes == null || allowedMIMETypes.isEmpty()) {
+      out.writeInt(0);
+      return;
+    }
+    out.writeInt(allowedMIMETypes.size());
+    for (String mime : allowedMIMETypes) {
+      out.writeUTF(mime);
+    }
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    eventProducer = new SimpleEventProducer();
+    try {
+      int size = in.readInt();
+      if (size <= 0) {
+        allowedMIMETypes = null;
+        return;
+      }
+      Set<String> mimes = HashSet.newHashSet(size);
+      for (int i = 0; i < size; i++) {
+        mimes.add(in.readUTF());
+      }
+      allowedMIMETypes = mimes;
+    } catch (EOFException _) {
+      allowedMIMETypes = null;
+    }
   }
 
   private static final long CLIENT_DETAIL_MAGIC = 0x5ae53b0ce18dd821L;
@@ -965,7 +998,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Create from a saved form, e.g. for restarting a request from scratch. Will create its own
+   * Create from a saved form, e.g., for restarting a request from scratch. Will create its own
    * SimpleEventProducer.
    *
    * @param dis Data stream positioned at the beginning of a context previously written by {@link
@@ -1026,7 +1059,8 @@ public class FetchContext implements Serializable {
     try {
       s = dis.readUTF();
     } catch (EOFException _) {
-      // input stream reached EOF, so it must have been and old version without scehmeHostAndPort.
+      // the input stream reached EOF, so it must have been and old version without
+      // scehmeHostAndPort.
       s = "";
     }
     this.schemeHostAndPort = s.isEmpty() ? null : s;
@@ -1110,8 +1144,7 @@ public class FetchContext implements Serializable {
   }
 
   /**
-   * Are two InsertContext's equal? Ignores the EventProducer, compares only the actual config
-   * values.
+   * Are two InsertContext equal? Ignores the EventProducer, compares only the actual config values.
    */
   @Override
   public boolean equals(Object obj) {

@@ -1,5 +1,7 @@
 package network.crypta.node;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.util.Objects;
 import network.crypta.client.InsertException;
@@ -74,7 +76,7 @@ public class SimpleSendableInsert extends SendableInsert {
    * client when constructing the insert explicitly. The reference is transient and expected to
    * remain valid only for the short lifetime of this insert.
    */
-  public final transient RequestClient client;
+  private transient RequestClient client;
 
   /**
    * Scheduler that executes this insert.
@@ -518,6 +520,12 @@ public class SimpleSendableInsert extends SendableInsert {
   @Override
   public boolean localRequestOnly() {
     return false;
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    this.client = new RequestClientBuilder().build();
   }
 
   /**

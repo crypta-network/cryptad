@@ -46,7 +46,7 @@ import org.slf4j.LoggerFactory;
  * #onResume(ClientContext)}).
  *
  * <ul>
- *   <li>Persists progress in an RAF to enable reliable resume.
+ *   <li>Persists progress in an RAF to enable a reliable resuming.
  *   <li>Streams metadata to the caller early when configured to do so.
  *   <li>Honors real-time priority settings via the provided {@link InsertContext}.
  * </ul>
@@ -75,7 +75,7 @@ public class SplitFileInserter
   private final LockableRandomAccessBuffer originalData;
 
   /**
-   * Whether to free the data when the insert completes/fails. E.g. this is true if the data is the
+   * Whether to free the data when the insert completes/fails. E.g., this is true if the data is the
    * result of compression.
    */
   private final boolean freeData;
@@ -117,14 +117,13 @@ public class SplitFileInserter
    * ensure that referenced buffers and contexts outlive the construction phase and remain valid
    * until the insert is started or resumed.
    */
-  public static final class Options implements Serializable {
-    @Serial private static final long serialVersionUID = 1L;
+  public static final class Options {
 
-    /** Insert behavior, scheduling and encoding options used by the client layer. */
+    /** Insert behavior, scheduling, and encoding options used by the client layer. */
     final InsertContext ctx;
 
-    /** Execution context and facilities; transient and provided by the runtime. */
-    final transient ClientContext context;
+    /** Execution context and facilities provided by the runtime. */
+    final ClientContext context;
 
     /** Length of the content after decompression; used when the original is compressed. */
     final long decompressedLength;
@@ -172,7 +171,7 @@ public class SplitFileInserter
     final boolean realTime;
 
     /** Opaque caller token associated with this insert; returned unchanged in callbacks. */
-    final transient Object token;
+    final Object token;
 
     private Options(Builder b) {
       this.ctx = b.ctx;
@@ -345,7 +344,7 @@ public class SplitFileInserter
       }
 
       /**
-       * Provides precomputed hash results for segments or blocks to accelerate verification.
+       * Provides precomputed hash results for segments or blocks to speed up verification.
        *
        * @param v array of hash results; elements may be {@code null} if unavailable
        * @return this builder for fluent chaining; stores the array reference
@@ -528,8 +527,8 @@ public class SplitFileInserter
    * Requests cancellation of the insert and fails the operation.
    *
    * <p>This method propagates a {@link InsertExceptionMode#CANCELLED} to the underlying storage,
-   * which triggers cleanup and completion callbacks. It is safe to call multiple times; subsequent
-   * calls have no additional effect once failure handling has begun.
+   * which triggers cleanup and completion callbacks. It is safe to call multiple times; later calls
+   * have no additional effect once failure handling has begun.
    *
    * @param context execution context used by the caller; ignored for cancellation semantics
    */
@@ -573,11 +572,11 @@ public class SplitFileInserter
    *
    * <p>This method re-initializes transient collaborators, replays storage state from the RAF,
    * updates internals, and then calls {@link #schedule(ClientContext)} to continue. It is
-   * idempotent: only the first call takes effect; subsequent calls are ignored.
+   * idempotent: only the first call takes effect; later calls are ignored.
    *
    * @param context execution context for persistent resumes; must be a persistent-capable context
    * @throws InsertException if a storage or scheduling error occurs during resume
-   * @throws ResumeFailedException if on-disk state is corrupt or cannot be reconciled
+   * @throws ResumeFailedException if the on-disk state is corrupt or cannot be reconciled
    */
   @Override
   public void onResume(ClientContext context) throws InsertException, ResumeFailedException {
@@ -662,7 +661,7 @@ public class SplitFileInserter
       context
           .getJobRunner(persistent)
           .queueNormalOrDrop(
-              jobCtx -> {
+              _ -> {
                 try {
                   Metadata metadata = storageRef.get().encodeMetadata();
                   reportMetadata(metadata);
@@ -712,7 +711,7 @@ public class SplitFileInserter
   }
 
   /**
-   * Unregisters the sender with schedulers so it no longer participates in network activity.
+   * Unregisters the sender with schedulers, so it no longer participates in network activity.
    *
    * <p>This helper is invoked on success and failure paths to ensure resources are released and the
    * scheduler state is updated consistently.

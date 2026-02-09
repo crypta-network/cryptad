@@ -14,7 +14,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.io.OutputStream;
+import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -202,7 +204,7 @@ class ContainerInserterTest {
   }
 
   private static final class TestPutter extends BaseClientPutter {
-    private final transient RequestClient rc;
+    private transient RequestClient rc;
 
     TestPutter(RequestClient rc) {
       super((short) 0, rc);
@@ -267,14 +269,20 @@ class ContainerInserterTest {
 
     @Override
     public boolean equals(Object obj) {
-      // identity semantics are sufficient for test helper; delegate to super
+      // identity semantics are enough for test helper; delegate to super class
       return super.equals(obj);
     }
 
     @Override
     public int hashCode() {
-      // delegate to super to preserve identity-based semantics
+      // delegate to super class to preserve identity-based semantics
       return super.hashCode();
+    }
+
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
+      rc = new RequestClientBuilder().persistent(false).build();
     }
   }
 
@@ -413,7 +421,7 @@ class ContainerInserterTest {
     // Act
     inserter.onResume(clientContext);
 
-    // Assert: callback gets onResume, and bucket got resumed via resumeMetadata()
+    // Assert: callback gets onResume, and the bucket got resumed via resumeMetadata()
     verify(callback, times(1)).onResume(clientContext);
     assertEquals(1, bucketResume.get());
   }
@@ -431,7 +439,7 @@ class ContainerInserterTest {
     manifest.put(FILENAME_A, new ManifestElement(FILENAME_A, file, null, 5));
 
     when(clientContext.getBucketFactory(false))
-        .thenReturn(size -> new InMemoryBucket("bucket-" + java.util.UUID.randomUUID()));
+        .thenReturn(_ -> new InMemoryBucket("bucket-" + java.util.UUID.randomUUID()));
 
     // Callback captures the SingleFileInserter to inspect the produced archive and aborts the flow
     PutCompletionCallback inspectingCb =
@@ -445,9 +453,12 @@ class ContainerInserterTest {
           public void onTransition(ClientPutState from, ClientPutState to, ClientContext ctx) {
             // Assert mime via block metadata
             SingleFileInserter sfi = (SingleFileInserter) to;
-            assertEquals("application/zip", sfi.block.clientMetadata.getMIMEType());
+            ClientMetadata metadata =
+                java.util.Objects.requireNonNull(
+                    java.util.Objects.requireNonNull(sfi.block).clientMetadata);
+            assertEquals("application/zip", metadata.getMIMEType());
 
-            // Safely enumerate entries without extracting to filesystem
+            // Safely list entries without extracting to filesystem
             Set<String> names = new HashSet<>();
             try {
               java.nio.file.Path tmp = java.nio.file.Files.createTempFile("ziptest", ".zip");
@@ -475,7 +486,7 @@ class ContainerInserterTest {
             assertTrue(names.contains(".metadata"));
             assertTrue(names.contains(FILENAME_A));
 
-            // Abort further scheduling; this is expected by the test
+            // Abort further scheduling; the test expects this
             throw new IllegalStateException("stop-after-inspection");
           }
 
@@ -553,7 +564,7 @@ class ContainerInserterTest {
     manifest.put(FILENAME_A, new ManifestElement(FILENAME_A, fileBucket, null, 5));
 
     when(clientContext.getBucketFactory(false))
-        .thenReturn(size -> new InMemoryBucket("bucket-" + java.util.UUID.randomUUID()));
+        .thenReturn(_ -> new InMemoryBucket("bucket-" + java.util.UUID.randomUUID()));
 
     PutCompletionCallback inspectingCb =
         new PutCompletionCallback() {
@@ -565,7 +576,10 @@ class ContainerInserterTest {
           @Override
           public void onTransition(ClientPutState from, ClientPutState to, ClientContext ctx) {
             SingleFileInserter sfi = (SingleFileInserter) to;
-            assertEquals("application/x-tar", sfi.block.clientMetadata.getMIMEType());
+            ClientMetadata metadata =
+                java.util.Objects.requireNonNull(
+                    java.util.Objects.requireNonNull(sfi.block).clientMetadata);
+            assertEquals("application/x-tar", metadata.getMIMEType());
 
             Set<String> names = new HashSet<>();
             try (InputStream is = sfi.block.getData().getInputStream();
@@ -644,13 +658,13 @@ class ContainerInserterTest {
     RequestClient rc = new RequestClientBuilder().persistent(false).build();
     BaseClientPutter parent = new TestPutter(rc);
     HashMap<String, Object> manifest = new HashMap<>();
-    // Include at least one file entry so makeManifest will add it; irrelevant here
+    // Include at least one file entry, so makeManifest will add it; irrelevant here
     InMemoryBucket fileBucket = new InMemoryBucket("in");
     fileBucket.getOutputStream().write(new byte[] {1});
     fileBucket.setReadOnly();
     manifest.put("a.bin", new ManifestElement("a.bin", fileBucket, null, 1));
 
-    BucketFactory failing = size -> new FailingBucket();
+    BucketFactory failing = _ -> new FailingBucket();
     when(clientContext.getBucketFactory(false)).thenReturn(failing);
 
     ContainerInserter inserter =

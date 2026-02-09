@@ -1,5 +1,7 @@
 package com.onionnetworks.util;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serial;
 import java.util.EventListener;
 import java.util.EventObject;
@@ -38,8 +40,8 @@ public class InvokingDispatch extends ReflectiveEventDispatch implements EventLi
   public static final String INVOKE_EVENT_NAME = "invoke";
 
   /**
-   * Creates a new dispatcher and registers it to listen for its own invoke events, enabling
-   * subsequent calls to {@link #invokeLater(Runnable)} and {@link #invokeAndWait(Runnable)}.
+   * Creates a new dispatcher and registers it to listen for its own invoking events, enabling later
+   * calls to {@link #invokeLater(Runnable)} and {@link #invokeAndWait(Runnable)}.
    */
   public InvokingDispatch() {
     super();
@@ -71,7 +73,7 @@ public class InvokingDispatch extends ReflectiveEventDispatch implements EventLi
    * Callers should prefer this method for fire-and-forget tasks or when they do not need to observe
    * completion.
    *
-   * @param r runnable to execute; must be non-null and ready for single invocation.
+   * @param r runnable to execute; must be non-null and ready for a single invocation.
    */
   public void invokeLater(Runnable r) {
     fire(new InvokeEvent(this, r), INVOKE_EVENT_NAME);
@@ -81,7 +83,7 @@ public class InvokingDispatch extends ReflectiveEventDispatch implements EventLi
    * Submits a runnable to the dispatch thread and blocks until it completes or the thread is
    * interrupted.
    *
-   * <p>The caller waits on a per-event lock so different submissions do not interfere with one
+   * <p>The caller waits on a per-event lock, so different submissions do not interfere with one
    * another. If the current thread is interrupted while waiting, the method throws {@link
    * InterruptedException} and leaves the interrupt status cleared. The runnable still executes
    * unless dispatching is interrupted upstream.
@@ -122,13 +124,13 @@ public class InvokingDispatch extends ReflectiveEventDispatch implements EventLi
     private final transient Runnable runnable;
 
     /** Per-event monitor used to coordinate waiting callers and completion notification. */
-    private final transient Object lock = new Object();
+    private transient Object lock = new Object();
 
     /** Tracks whether the runnable has finished executing; guarded by {@link #lock}. */
     private boolean completed;
 
     /**
-     * Creates a new invoke event carrying the specified runnable and source reference.
+     * Creates a new invoking event carrying the specified runnable and source reference.
      *
      * @param source originator of the event, passed to {@link EventObject}; must be non-null.
      * @param r runnable to execute when dispatched; must be non-null.
@@ -136,6 +138,12 @@ public class InvokingDispatch extends ReflectiveEventDispatch implements EventLi
     public InvokeEvent(Object source, Runnable r) {
       super(source);
       this.runnable = Objects.requireNonNull(r);
+    }
+
+    @Serial
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+      in.defaultReadObject();
+      this.lock = new Object();
     }
 
     /**

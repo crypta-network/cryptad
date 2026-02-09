@@ -481,6 +481,12 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     this.topCompatibilityMode = fetcher.topCompatibilityMode;
   }
 
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    this.ah = null;
+  }
+
   // Completion callback + token (needed now that we don't extend SimpleSingleFileFetcher)
   /** Completion callback used to surface success, failure, and progress to the requester. */
   @SuppressWarnings("java:S1948")
