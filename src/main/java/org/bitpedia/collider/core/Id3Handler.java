@@ -229,7 +229,7 @@ public class Id3Handler {
       byte[] buf = new byte[128];
       try {
         f.seek(f.length() - 128);
-        f.read(buf);
+        f.readFully(buf);
 
         Id3v1 info = new Id3v1();
         info.id = new String(buf, 0, 3, StandardCharsets.ISO_8859_1);
@@ -298,7 +298,7 @@ public class Id3Handler {
 
       byte[] buf = new byte[10];
       try {
-        f.read(buf);
+        f.readFully(buf);
 
         Id3Header h = new Id3Header();
         h.tag = new String(buf, 0, 3, StandardCharsets.ISO_8859_1);
@@ -343,7 +343,7 @@ public class Id3Handler {
         FrameHeaderv23 h = new FrameHeaderv23();
 
         byte[] buf = new byte[4];
-        f.read(buf);
+        f.readFully(buf);
         h.tag = new String(buf, StandardCharsets.ISO_8859_1);
         h.size = f.readInt();
         h.flags = f.readUnsignedShort();
@@ -382,9 +382,9 @@ public class Id3Handler {
         FrameHeaderv22 h = new FrameHeaderv22();
 
         byte[] buf = new byte[3];
-        f.read(buf);
+        f.readFully(buf);
         h.tag = new String(buf, 0, 3, StandardCharsets.ISO_8859_1);
-        f.read(h.size);
+        f.readFully(h.size);
 
         return h;
       } catch (Exception _) {
@@ -497,7 +497,9 @@ public class Id3Handler {
       if (0 != (head.flags & (1 << 6))) {
 
         int extHeaderSize = f.readInt();
-        f.skipBytes(extHeaderSize);
+        if (!skipFully(f, extHeaderSize)) {
+          return null;
+        }
       }
 
       Id3Info info = new Id3Info();
@@ -536,6 +538,22 @@ public class Id3Handler {
     } catch (IOException _) {
       return info;
     }
+  }
+
+  private static boolean skipFully(RandomAccessFile f, int count) throws IOException {
+    if (count < 0) {
+      return false;
+    }
+
+    int remaining = count;
+    while (remaining > 0) {
+      int skipped = f.skipBytes(remaining);
+      if (skipped <= 0) {
+        return false;
+      }
+      remaining -= skipped;
+    }
+    return true;
   }
 
   /**
