@@ -34,7 +34,7 @@ import org.mockito.junit.jupiter.MockitoExtension
 @Suppress("java:S100", "kotlin:S100")
 @ExtendWith(MockitoExtension::class)
 internal class LauncherControllerTest {
-  @TempDir lateinit var tempDir: Path
+  @TempDir private lateinit var tempDir: Path
 
   private companion object {
     private const val TEST_PORT = 8888

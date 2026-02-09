@@ -11,12 +11,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 class AppDirsTest {
+  @TempDir private lateinit var tmp: Path
 
-  @TempDir lateinit var tmp: Path
-
-  private fun norm(value: String): String {
-    return value.replace('\\', '/')
-  }
+  private fun norm(value: String): String = value.replace('\\', '/')
 
   private fun sysProps(home: Path, tmpdir: Path): Map<String, String> {
     val props = HashMap<String, String>()
@@ -246,7 +243,7 @@ class AppDirsTest {
 
     val resolved = dirs.resolve()
 
-    // Without XDG_RUNTIME_DIR and without writable /run parent, runDir should be <cache>/rt
+    // Without XDG_RUNTIME_DIR and without a writable /run parent, runDir should be <cache>/rt
     assertTrue(resolved.runDir.startsWith(xdgCache.resolve("rt")))
   }
 

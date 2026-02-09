@@ -25,4 +25,23 @@
     <Bug pattern="SE_INNER_CLASS"/>
     <Class name="network.crypta.support.io.MultiReaderBucket$ReaderBucket"/>
   </Match>
+
+  <!--
+    InsertBlock is a long-lived public client API object. Its desiredURI/clientMetadata
+    fields are intentionally mutable and publicly readable to preserve compatibility with
+    existing integrations that construct and hand off blocks across subsystems.
+    SpotBugs PA warns when such fields are also written by class methods (nullURI/
+    nullMetadata), but tightening visibility would be a breaking API change.
+  -->
+  <Match>
+    <Bug pattern="PA_PUBLIC_PRIMITIVE_ATTRIBUTE"/>
+    <Class name="network.crypta.client.InsertBlock"/>
+    <Field name="desiredURI"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="PA_PUBLIC_PRIMITIVE_ATTRIBUTE"/>
+    <Class name="network.crypta.client.InsertBlock"/>
+    <Field name="clientMetadata"/>
+  </Match>
 </FindBugsFilter>
