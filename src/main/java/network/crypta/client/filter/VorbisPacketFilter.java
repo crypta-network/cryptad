@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>This filter performs a minimal, stateful pass over the Vorbis header sequence (identification
  * → comment → setup). It validates the identification header, removes or normalizes the comment
- * header content, and then yields subsequent packets unchanged. The intent is to enforce basic
+ * header content, and then yields the following packets unchanged. The intent is to enforce basic
  * invariants and to ensure that embedded metadata does not leak undesired information while keeping
  * processing lightweight. The class maintains a simple state machine and therefore is designed for
  * single-stream use: create one instance per logical Vorbis stream and feed packets in order.
@@ -67,7 +67,7 @@ public class VorbisPacketFilter implements CodecPacketFilter {
    * }</pre>
    */
   public VorbisPacketFilter() {
-    // Intentionally empty: the filter starts in UNINITIALIZED state and requires
+    // Intentionally empty: the filter starts in the UNINITIALIZED state and requires
     // no additional setup beyond the default field values.
   }
 
@@ -77,7 +77,7 @@ public class VorbisPacketFilter implements CodecPacketFilter {
    * <p>Call this method with packets in stream order. The identification header is validated for
    * version, channel count, sample rate, block size ordering, and framing. The comment header is
    * reduced to a minimal, empty form while preserving required framing bytes. The setup header and
-   * all subsequent packets are returned unchanged.
+   * all following packets are returned unchanged.
    *
    * <pre>{@code
    * VorbisPacketFilter filter = new VorbisPacketFilter();
@@ -152,8 +152,9 @@ public class VorbisPacketFilter implements CodecPacketFilter {
     input.readFully(vendorString);
     long userCommentListLength = Integer.reverseBytes(input.readInt());
     for (long i = 0; i < userCommentListLength; i++) {
-      for (long j = Integer.reverseBytes(input.readInt()); j > 0; j--) {
-        input.skipBytes(1);
+      int userCommentLength = Integer.reverseBytes(input.readInt());
+      if ((userCommentLength < 0) || !skipBytesFully(input, userCommentLength)) {
+        return null;
       }
     }
     if (!input.readBoolean()) return null;
@@ -169,5 +170,17 @@ public class VorbisPacketFilter implements CodecPacketFilter {
     LOG.debug("Packet size: {}", rewritten.payload.length);
     currentState = State.COMMENT_FOUND;
     return rewritten;
+  }
+
+  private static boolean skipBytesFully(DataInputStream input, int count) throws IOException {
+    int remaining = count;
+    while (remaining > 0) {
+      int skipped = input.skipBytes(remaining);
+      if (skipped == 0) {
+        return false;
+      }
+      remaining -= skipped;
+    }
+    return true;
   }
 }
