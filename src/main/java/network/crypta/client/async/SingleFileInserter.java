@@ -1597,9 +1597,12 @@ class SingleFileInserter implements ClientPutState, Serializable {
       ClientPutState metadataState = getMetadataPutter();
       if (splitState != null) splitState.onResume(context);
       if (metadataState != null) metadataState.onResume(context);
-      if (splitState != null) splitState.schedule(context);
-      if (metadataState != null && (ctx.isEarlyEncode() || splitState == null || metaInsertStarted))
-        metadataState.schedule(context);
+      ClientPutState splitStateAfterResume = getSfi();
+      if (splitStateAfterResume != null) splitStateAfterResume.schedule(context);
+      ClientPutState metadataStateAfterResume = getMetadataPutter();
+      if (metadataStateAfterResume != null
+          && (ctx.isEarlyEncode() || getSfi() == null || metaInsertStarted))
+        metadataStateAfterResume.schedule(context);
     }
 
     /** {@inheritDoc} */
