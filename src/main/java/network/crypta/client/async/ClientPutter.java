@@ -299,7 +299,10 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   }
 
   private void scheduleCurrentState(ClientContext context) throws InsertException {
-    ClientPutState state = currentState != null ? currentState : transientState;
+    ClientPutState state;
+    synchronized (this) {
+      state = currentState != null ? currentState : transientState;
+    }
     if (state == null) {
       throw new InsertException(
           InsertExceptionMode.INTERNAL_ERROR, "No active insert state to schedule", null);
@@ -437,15 +440,17 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    */
   @Override
   public void onSuccess(ClientPutState state, ClientContext context) {
+    FreenetURI finalURI;
     synchronized (this) {
       finished = true;
       currentState = null;
       transientState = null;
+      finalURI = uri;
     }
     if ((super.failedBlocks > 0
             || super.fatallyFailedBlocks > 0
             || super.successfulBlocks < super.totalBlocks)
-        && !uri.isUSK()
+        && !finalURI.isUSK()
         && !ctx.isGetCHKOnly())
       // USK auxiliary inserts are allowed to fail.
       // If only generating the key, the splitfile may not have reported the blocks as inserted.
@@ -585,8 +590,8 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    *     produced the top-level key; includes a filename segment when applicable.
    */
   @Override
-  public FreenetURI getURI() {
-    return uri;
+  public synchronized FreenetURI getURI() {
+    return this.uri;
   }
 
   /**
@@ -607,6 +612,7 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
   public void onTransition(
       ClientPutState oldState, ClientPutState newState, ClientContext context) {
     if (newState == null) throw new NullPointerException();
+    ClientPutState activeStateForLog;
 
     synchronized (this) {
       if (currentState == oldState) {
@@ -617,10 +623,10 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
         transientState = newState;
         return;
       }
+      activeStateForLog = currentState != null ? currentState : transientState;
     }
     if (persistent()) context.jobRunner.setCheckpointASAP();
-    ClientPutState activeState = currentState != null ? currentState : transientState;
-    LOG.info("onTransition: cur={}, old={}, new={}", activeState, oldState, newState);
+    LOG.info("onTransition: cur={}, old={}, new={}", activeStateForLog, oldState, newState);
   }
 
   /**
@@ -739,9 +745,16 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
    *     false} otherwise.
    */
   public boolean canRestart() {
-    ClientPutState activeState = currentState != null ? currentState : transientState;
-    if (activeState != null && !finished) {
-      LOG.debug("Cannot restart because not finished for {}", uri);
+    ClientPutState activeState;
+    boolean alreadyFinished;
+    FreenetURI currentURI;
+    synchronized (this) {
+      activeState = currentState != null ? currentState : transientState;
+      alreadyFinished = finished;
+      currentURI = uri;
+    }
+    if (activeState != null && !alreadyFinished) {
+      LOG.debug("Cannot restart because not finished for {}", currentURI);
       return false;
     }
     return data != null;
@@ -771,9 +784,15 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
 
   @Override
   public void dump() {
-    LOG.info("URI: {}", uri);
+    FreenetURI currentURI;
+    boolean done;
+    synchronized (this) {
+      currentURI = uri;
+      done = finished;
+    }
+    LOG.info("URI: {}", currentURI);
     LOG.info("Client: {}", callback);
-    LOG.info("Finished: {}", finished);
+    LOG.info("Finished: {}", done);
     LOG.info("Data: {}", data);
   }
 
@@ -805,9 +824,13 @@ public class ClientPutter extends BaseClientPutter implements PutCompletionCallb
         return;
       }
     }
-    if (currentState != null) {
+    ClientPutState activeState;
+    synchronized (this) {
+      activeState = currentState;
+    }
+    if (activeState != null) {
       try {
-        currentState.onResume(context);
+        activeState.onResume(context);
       } catch (InsertException e) {
         this.onFailure(e, null, context);
         return;

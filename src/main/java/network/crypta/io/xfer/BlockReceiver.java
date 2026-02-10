@@ -497,7 +497,7 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
       // that we will ignore. If we are cancelling because the sender has told us
       // to, we need to acknowledge that.
       try {
-        sendAborted(prb.abortReason, prb.abortDescription);
+        sendAborted(prb.getAbortReason(), prb.getAbortDescription());
       } catch (NotConnectedException _) {
         // Ignore at this point.
       }
@@ -590,7 +590,8 @@ public class BlockReceiver implements AsyncMessageFilterCallback {
         } catch (AbortedException _) {
           // Intentionally ignored: PRB aborted between attempts to get the block
         }
-        callback.blockReceiveFailed(new RetrievalException(prb.abortReason, prb.abortDescription));
+        callback.blockReceiveFailed(
+            new RetrievalException(prb.getAbortReason(), prb.getAbortDescription()));
         return;
       }
     }

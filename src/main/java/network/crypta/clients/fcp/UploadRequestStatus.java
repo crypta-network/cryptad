@@ -90,7 +90,7 @@ public abstract class UploadRequestStatus extends RequestStatus {
   }
 
   /**
-   * Returns the URI that was ultimately published by the upload, if a value exists yet.
+   * Returns the URI ultimately published by the upload if a value exists yet.
    *
    * <p>The reference represents the canonical URI under which the inserted data became available.
    * When the upload is still running or failed before committing, the value may be {@code null} and
@@ -153,13 +153,14 @@ public abstract class UploadRequestStatus extends RequestStatus {
   public abstract long getDataSize();
 
   /**
-   * Obtains the most recent textual explanation describing why the upload failed or stalled.
+   * Gets the most recent textual explanation describing why the upload failed or stalled.
    *
-   * <p>The status maintains both concise and expanded variants so different presentation layers can
-   * select an appropriate verbosity. The short text typically fits notifications or compact tables,
-   * while the long text is suitable for logs, REST responses, or troubleshooting dialogs. Messages
-   * are updated whenever the associated request transitions into a fatal state, so callers should
-   * not cache the result unless they also snapshot the surrounding {@link RequestStatus} fields.
+   * <p>The status maintains both concise and expanded variants, so different presentation layers
+   * can select appropriate verbosity. The short text typically fits notifications or compact
+   * tables, while the long text is suitable for logs, REST responses, or troubleshooting dialogs.
+   * Messages are updated whenever the associated request transitions into a fatal state, so callers
+   * should not cache the result unless they also snapshot the surrounding {@link RequestStatus}
+   * fields.
    *
    * @param longDescription {@code true} to request the expanded explanation, {@code false} for the
    *     concise human-readable summary
@@ -167,7 +168,7 @@ public abstract class UploadRequestStatus extends RequestStatus {
    *     recorded yet
    */
   @Override
-  public String getFailureReason(boolean longDescription) {
+  public synchronized String getFailureReason(boolean longDescription) {
     return longDescription ? failureReasonLong : failureReasonShort;
   }
 
@@ -179,13 +180,13 @@ public abstract class UploadRequestStatus extends RequestStatus {
    * Suggests a filename derived from the known URIs for display in client save dialogs.
    *
    * <p>The method inspects the final URI first to honor any filenames assigned by the completed
-   * insert, including meta strings distributed through Freenet. If the upload has not produced a
-   * final URI, it falls back to the target URI so callers can still infer a meaningful label, for
-   * example when pre-populating a download request. No normalization is performed beyond delegating
-   * to {@link FreenetURI#getPreferredFilename()}, therefore callers should sanitize values before
-   * writing them to disk.
+   * insert, including meta-strings distributed through Freenet. If the upload has not produced a
+   * final URI, it falls back to the target URI, so callers can still infer a meaningful label, for
+   * example, when pre-populating a download request. No normalization is performed beyond
+   * delegating to {@link FreenetURI#getPreferredFilename()}, therefore, callers should sanitize
+   * values before writing them to disk.
    *
-   * @return filename hint derived from meta strings or doc names, or {@code null} when neither URI
+   * @return filename hint derived from meta-strings or doc names, or {@code null} when neither URI
    *     contains sufficient metadata
    */
   @Override

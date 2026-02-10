@@ -6,12 +6,12 @@ import java.util.Random;
  * A {@link SimpleBlockChooser} variant that introduces per-block cooldown windows after repeated
  * non‑fatal failures.
  *
- * <p>This chooser behaves like the base implementation for tracking completion and retry counts,
- * but augments selection with a configurable cooldown policy. After a block accumulates a defined
+ * <p>This chooser behaves like the base implementation for tracking completion and retry counts but
+ * augments selection with a configurable cooldown policy. After a block accumulates a defined
  * number of consecutive non‑fatal failures, it becomes temporarily ineligible for selection. The
  * goal is to avoid continuously hammering problematic blocks while allowing other work to proceed
  * and potentially change the network or cache state. Cooldowns are tracked per block, while a
- * cached "overall" wake‑up time exposes when any block may next become eligible again.
+ * cached "overall" wakeup time exposes when any block may next become eligible again.
  *
  * <p>Instances are stateful and use synchronized methods; individual operations are thread‑safe
  * with respect to a single instance. The supplied {@link Random} is used only to break ties among
@@ -56,9 +56,7 @@ public class CooldownBlockChooser extends SimpleBlockChooser {
     blockCooldownTimes = new long[blocks];
   }
 
-  /**
-   * Every cooldownTries attempts, a key will enter cooldown, and won't be re-tried for a period.
-   */
+  /** Every cooldownTries attempts, a key will enter cooldown and won't be re-tried for a period. */
   private final int cooldownTries;
 
   /** Cooldown lasts this long for each key. */
@@ -102,7 +100,7 @@ public class CooldownBlockChooser extends SimpleBlockChooser {
   }
 
   @Override
-  protected boolean checkValid(int blockNo) {
+  protected synchronized boolean checkValid(int blockNo) {
     if (!super.checkValid(blockNo)) return false;
     long wakeUp = blockCooldownTimes[blockNo];
     // Consider cooldown ending exactly at 'now' as expired to avoid edge races
@@ -154,10 +152,10 @@ public class CooldownBlockChooser extends SimpleBlockChooser {
    * Marks a block as no longer successful and clears any associated cooldown.
    *
    * <p>This override resets the per‑block cooldown timer for {@code blockNo} and clears the cached
-   * overall cooldown gate so that subsequent calls to {@link #chooseKey()} consider eligibility
+   * overall cooldown gate so that further calls to {@link #chooseKey()} consider eligibility
    * immediately. Callers use this when previously downloaded data becomes unusable (for example,
-   * after validation failure or corruption) and the block needs to be retried without an artificial
-   * delay.
+   * after validation failure or corruption), and the block needs to be retried without an
+   * artificial delay.
    *
    * @param blockNo zero‑based index of the block to mark as not successful; must be within range
    *     and refer to a block tracked by this chooser.
@@ -171,13 +169,14 @@ public class CooldownBlockChooser extends SimpleBlockChooser {
   /**
    * Returns the earliest time at which any block may next be eligible for selection.
    *
-   * <p>The value is a wall‑clock timestamp in milliseconds since the epoch, as produced by {@link
-   * System#currentTimeMillis()}. A return value of {@code 0} means no global cooldown applies and a
-   * block may be immediately available if other eligibility conditions hold. While best‑effort and
-   * safe to be conservative, this time is never later than the actual earliest per‑block wake‑up.
+   * <p>The value has been a wall‑clock timestamp in milliseconds since the epoch, as produced by
+   * {@link System#currentTimeMillis()}. A return value of {@code 0} means no global cooldown
+   * applies and a block may be immediately available if other eligibility conditions hold. While
+   * best‑effort and safe to be conservative, this time is never later than the actual earliest
+   * per‑block wake‑up.
    *
    * @return timestamp in milliseconds for the next potential eligibility across all blocks, or
-   *     {@code 0} when selection is not globally delayed by cooldown.
+   *     {@code 0} when cooldown does not globally delay selection.
    */
   public synchronized long overallCooldownTime() {
     return overallCooldownTime;

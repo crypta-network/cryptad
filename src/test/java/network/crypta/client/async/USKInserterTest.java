@@ -1,8 +1,10 @@
 package network.crypta.client.async;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -320,6 +322,48 @@ class USKInserterTest {
   }
 
   @Test
+  void schedule_whenCancelledBeforeFetcherSchedule_doesNotScheduleFetcher() throws Exception {
+    byte[] bytes = "race".getBytes(StandardCharsets.UTF_8);
+    Bucket bucket = makeBucket(bytes);
+    String site = "race-site";
+    long edition = 10L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            bucket, (short) 1, insertUri, ic, new InserterCfg(false, false, true, false, false));
+
+    doAnswer(
+            _ -> {
+              inserter.cancel(context);
+              return fetcherTag;
+            })
+        .when(uskManager)
+        .getFetcherForInsertDontSchedule(
+            any(USK.class),
+            any(short.class),
+            any(USKFetcherCallback.class),
+            any(),
+            any(ClientContext.class),
+            any(Boolean.class),
+            any(Boolean.class));
+
+    inserter.schedule(context);
+
+    verify(fetcherTag, times(0)).schedule(context);
+  }
+
+  @Test
   void onFoundEdition_whenDataAndCodecMatch_expectAlreadyInsertedAndSuccessCallbacks()
       throws Exception {
     // Arrange: prepare data and matching hisData/codec/metadata
@@ -470,6 +514,40 @@ class USKInserterTest {
     ArgumentCaptor<InsertException> ex = ArgumentCaptor.forClass(InsertException.class);
     verify(cb, times(1)).onFailure(ex.capture(), any(), any());
     assertEquals(InsertExceptionMode.CANCELLED, ex.getValue().getMode());
+  }
+
+  @Test
+  void onFailure_afterCancelAndDataReleased_doesNotThrow() throws Exception {
+    byte[] bytes = "late-cancel".getBytes(StandardCharsets.UTF_8);
+    Bucket data = Mockito.spy(makeBucket(bytes));
+    String site = "late";
+    long edition = 1L;
+    InsertableClientSSK ssk = InsertableClientSSK.createRandom(new DummyRandomSource(), site);
+    FreenetURI insertUri =
+        new FreenetURI(
+            "USK",
+            site,
+            null,
+            ssk.getInsertURI().getRoutingKey(),
+            ssk.getInsertURI().getCryptoKey(),
+            ssk.getInsertURI().getExtra(),
+            edition);
+
+    InsertContext ic = newInsertContext();
+    USKInserter inserter =
+        newInserter(
+            data, (short) 0, insertUri, ic, new InserterCfg(false, false, true, false, false));
+
+    inserter.cancel(context);
+
+    assertDoesNotThrow(
+        () ->
+            inserter.onFailure(
+                new InsertException(InsertExceptionMode.CANCELLED),
+                Mockito.mock(ClientPutState.class),
+                context));
+
+    verify(data, times(1)).free();
   }
 
   @Test

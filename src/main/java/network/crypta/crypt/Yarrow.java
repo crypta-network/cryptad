@@ -55,8 +55,6 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 
   @Serial private static final long serialVersionUID = -1;
 
-  // Static initializer not required.
-
   /** Security parameters */
   private static final boolean DEBUG = false;
 
@@ -118,7 +116,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   }
 
   /**
-   * Creates a generator with fully specified configuration.
+   * Creates a generator with a fully specified configuration.
    *
    * @param seed path to the seed file (string form).
    * @param digest message digest algorithm used by the entropy pools (for example, {@code SHA1}).
@@ -132,7 +130,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   }
 
   /**
-   * Creates a generator with fully specified configuration.
+   * Creates a generator with a fully specified configuration.
    *
    * @param seed seed file used for persistence and bootstrap.
    * @param digest message digest algorithm used by the entropy pools.
@@ -183,7 +181,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
       seedFromExternalStuff(canBlock);
       /*
        * If we do not reseed at this point, the generator would be predictable because startup
-       * entropy alone might not cross the reseed thresholds.
+       * entropy alone might not cross the reseeding thresholds.
        */
       fastPoolReseed();
       slowPoolReseed();
@@ -299,7 +297,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
    *
    * <p>The method reads up to 32 {@code long} values and credits a conservative amount of entropy
    * for each sample. End‑of‑file is treated as normal, and I/O errors are logged. A fast‑pool
-   * reseed is attempted after processing the file.
+   * reseeding is attempted after processing the file.
    *
    * @param filename seed file to read; must not be {@code null}.
    */
@@ -332,7 +330,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
    * {@code true}, the method writes immediately. The file must be configured at construction time.
    * Errors are logged and do not propagate.
    *
-   * @param force request that the write bypass rate‑limiting.
+   * @param force request that the writing bypass rate‑limiting.
    */
   @Override
   public void writeSeed(boolean force) {
@@ -374,7 +372,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   private int outputCount;
   private int fetchCounter;
 
-  private void generatorInit(String cipher) {
+  private synchronized void generatorInit(String cipher) {
     cipherCtx = Util.getCipherByName(cipher);
     if (cipherCtx == null) {
       throw new IllegalStateException("Unsupported cipher: '" + cipher + "'");
@@ -391,7 +389,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     for (int i = counter.length - 1; i >= 0; i--) if (++counter[i] != 0) break;
   }
 
-  private void generateOutput() {
+  private synchronized void generateOutput() {
     counterInc();
 
     outputBuffer = new byte[counter.length];
@@ -404,7 +402,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     }
   }
 
-  private void rekey(byte[] key) {
+  private synchronized void rekey(byte[] key) {
     // Keep a copy for serialization so we can restore the generator state after deserialization.
     // The input buffer is wiped immediately below.
     generatorKey = Arrays.copyOf(key, key.length);
@@ -507,7 +505,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   private boolean fastSelect;
   private transient Map<EntropySource, int[]> entropySeen;
 
-  private void accumulatorInit(String digest) throws NoSuchAlgorithmException {
+  private synchronized void accumulatorInit(String digest) throws NoSuchAlgorithmException {
     fastPool = MessageDigest.getInstance(digest, Util.mdProviders.get(digest));
     slowPool = MessageDigest.getInstance(digest, Util.mdProviders.get(digest));
     entropySeen = new HashMap<>();
@@ -518,7 +516,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
    *
    * <p>Yarrow bounds credited entropy per sample and mixes data into alternating fast/slow pools.
    * Reseed may be triggered when pool thresholds are exceeded, which can also cause a seed file
-   * write if configured.
+   * writing if configured.
    */
   @Override
   public int acceptEntropy(EntropySource source, long data, int entropyGuess) {
@@ -702,11 +700,11 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
 
   private transient MessageDigest reseedCtx;
 
-  private void reseedInit(String digest) throws NoSuchAlgorithmException {
+  private synchronized void reseedInit(String digest) throws NoSuchAlgorithmException {
     reseedCtx = MessageDigest.getInstance(digest, Util.mdProviders.get(digest));
   }
 
-  private void fastPoolReseed() {
+  private synchronized void fastPoolReseed() {
     long startTime = System.currentTimeMillis();
     byte[] v0 = fastPool.digest();
     byte[] vi = v0;
@@ -729,7 +727,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     }
   }
 
-  private void slowPoolReseed() {
+  private synchronized void slowPoolReseed() {
     byte[] slowHash = slowPool.digest();
     fastPool.update(slowHash, 0, slowHash.length);
 
@@ -742,8 +740,8 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   /**
    * Custom serialization to rebuild transient crypto state after deserialization.
    *
-   * <p>Persisted fields record the selected digest and cipher, along with sufficient generator
-   * state to restore the cipher. Upon deserialization, transient pools and the cipher context are
+   * <p>Persisted fields record the selected digest and cipher, along with enough generator states
+   * to restore the cipher. Upon deserialization, transient pools and the cipher context are
    * recreated and reinitialized.
    */
   @Serial
@@ -763,7 +761,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
       reseedInit(d);
 
       // Recreate only the cipher instance and reinitialize it with the previously serialized key.
-      // Do NOT clobber serialized generator state (counter/outputBuffer/tmp/fetch counters).
+      // Do NOT clobber the serialized generator state (counter/outputBuffer/tmp/fetch counters).
       cipherCtx =
           Objects.requireNonNull(Util.getCipherByName(c), "Unsupported cipher: '" + c + "'");
 
@@ -784,13 +782,14 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
         tmp = new byte[keyBytes];
       }
 
-      // Restore key into cipher. Prefer the explicitly persisted generatorKey; fall back to 'tmp'
+      // Restore the key into cipher. Prefer the explicitly persisted generatorKey; fall back to
+      // 'tmp'
       // for backward compatibility with snapshots taken before this field existed.
       byte[] keyForInit =
           (generatorKey != null && generatorKey.length == keyBytes) ? generatorKey : tmp;
       cipherCtx.initialize(keyForInit);
 
-      // Sanity for fetch pointer after custom streams or old snapshots.
+      // Sanity for the fetch pointer after custom streams or old snapshots.
       if (fetchCounter <= 0 || fetchCounter > outputBuffer.length) {
         fetchCounter = outputBuffer.length;
       }
@@ -824,7 +823,7 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     consumeBytes(str.getBytes(StandardCharsets.UTF_8));
   }
 
-  private void consumeBytes(byte[] bytes) {
+  private synchronized void consumeBytes(byte[] bytes) {
     if (fastSelect) fastPool.update(bytes, 0, bytes.length);
     else slowPool.update(bytes, 0, bytes.length);
     // Alternate pools to distribute contributions across fast/slow accumulators.

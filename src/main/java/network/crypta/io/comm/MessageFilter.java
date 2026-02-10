@@ -26,7 +26,7 @@ public final class MessageFilter {
   public static final String VERSION =
       "$Id: MessageFilter.java,v 1.7 2005/08/25 17:28:19 amphibian Exp $";
 
-  private boolean matchedFlag;
+  private volatile boolean matchedFlag;
   private PeerContext droppedConnection;
   private MessageType type;
   private final List<Object> fields = new ArrayList<>();
@@ -87,7 +87,7 @@ public final class MessageFilter {
    *     false, it's relative to the start of waitFor().
    */
   @SuppressWarnings("UnusedReturnValue")
-  public MessageFilter setTimeoutRelativeToCreation(boolean b) {
+  public synchronized MessageFilter setTimeoutRelativeToCreation(boolean b) {
     timeoutFromWait = !b;
     return this;
   }
@@ -254,7 +254,8 @@ public final class MessageFilter {
    * @return this filter instance (for chaining)
    */
   @SuppressWarnings("UnusedReturnValue")
-  public MessageFilter setAsyncCallback(AsyncMessageFilterCallback cb, ByteCounter ctr) {
+  public synchronized MessageFilter setAsyncCallback(
+      AsyncMessageFilterCallback cb, ByteCounter ctr) {
     callback = cb;
     byteCounter = ctr;
     return this;
@@ -356,7 +357,7 @@ public final class MessageFilter {
     return droppedConnection;
   }
 
-  boolean reallyTimedOut(long time) {
+  synchronized boolean reallyTimedOut(long time) {
     if (callback != null && callback.shouldTimeout()) timeout = -1; // timeout immediately
     return timeout < time;
   }

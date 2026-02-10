@@ -173,7 +173,7 @@ public class PaddedBucket implements Bucket, Serializable {
 
     /**
      * Computes the padded length for the given size using a minimum of {@link #MIN_PADDED_SIZE} and
-     * powers of two growth. The result is always {@code >=} the provided size.
+     * powers of two growths. The result is always {@code >=} the provided size.
      */
     private long paddedLength(long size) {
       if (size < MIN_PADDED_SIZE) size = MIN_PADDED_SIZE;
@@ -184,7 +184,7 @@ public class PaddedBucket implements Bucket, Serializable {
         if (max < 0)
           throw new IllegalStateException(
               "Impossible size: " + size + " - min=" + min + ", max=" + max);
-        // size is always >= min at this point; only need to compare to upper bound
+        // size is always >= min at this point; only need to compare to the upper bound
         if (size <= max) {
           return max;
         }
@@ -277,10 +277,12 @@ public class PaddedBucket implements Bucket, Serializable {
     }
 
     @Override
-    public synchronized int available() throws IOException {
-      long max = size - counter;
+    public int available() throws IOException {
       int ret = in.available();
-      if (max < ret) ret = (int) max;
+      synchronized (PaddedBucket.this) {
+        long max = size - counter;
+        if (max < ret) ret = (int) max;
+      }
       return Math.max(ret, 0);
     }
   }
@@ -334,8 +336,12 @@ public class PaddedBucket implements Bucket, Serializable {
    */
   @Override
   public Bucket createShadow() {
+    long currentSize;
+    synchronized (this) {
+      currentSize = size;
+    }
     Bucket shadow = underlying.createShadow();
-    PaddedBucket ret = new PaddedBucket(shadow, size);
+    PaddedBucket ret = new PaddedBucket(shadow, currentSize);
     ret.setReadOnly();
     return ret;
   }
@@ -362,6 +368,7 @@ public class PaddedBucket implements Bucket, Serializable {
   // Preserve backward compatibility with historical Java-serialization layout where 'underlying'
   // was a non-transient field written via default serialization. We keep a declared persistent
   // field for it so readObject() can consume legacy streams that still carry it.
+  @SuppressWarnings("unused")
   @Serial
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_SIZE, long.class),
@@ -380,10 +387,16 @@ public class PaddedBucket implements Bucket, Serializable {
    */
   @Override
   public void storeTo(DataOutputStream dos) throws IOException {
+    long currentSize;
+    boolean currentReadOnly;
+    synchronized (this) {
+      currentSize = size;
+      currentReadOnly = readOnly;
+    }
     dos.writeInt(MAGIC);
     dos.writeInt(VERSION);
-    dos.writeLong(size);
-    dos.writeBoolean(readOnly);
+    dos.writeLong(currentSize);
+    dos.writeBoolean(currentReadOnly);
     underlying.storeTo(dos);
   }
 
@@ -428,7 +441,6 @@ public class PaddedBucket implements Bucket, Serializable {
    */
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    assert serialPersistentFields.length > 0;
     ObjectOutputStream.PutField fields = out.putFields();
     fields.put(FIELD_SIZE, size);
     fields.put(FIELD_READ_ONLY, readOnly);

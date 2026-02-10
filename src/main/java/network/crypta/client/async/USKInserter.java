@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Concurrency: instances are stateful and not intended for reuse across multiple inserts.
  * Internal state transitions occur on callbacks driven by the client framework; externally visible
- * methods guard state via synchronization where necessary. Callers should treat an instance as
+ * methods guard the state via synchronization where necessary. Callers should treat an instance as
  * single-use and avoid concurrent calls other than lifecycle hooks invoked by the framework.
  *
  * <ul>
@@ -75,7 +75,7 @@ public class USKInserter
   /** Per-insert configuration including retry policy, priorities, and flags. */
   final InsertContext ctx;
 
-  /** Callback notified of encode, success, failure, and state transitions. */
+  /** Callback notified of encoding, success, failure, and state transitions. */
   @SuppressWarnings("java:S1948")
   final PutCompletionCallback cb;
 
@@ -107,7 +107,7 @@ public class USKInserter
   /** Corresponding public USK used to resolve and report editions to consumers. */
   final USK pubUSK;
 
-  /** Fetcher used to discover the latest inserted edition (scanning for latest slot). */
+  /** Fetcher used to discover the latest inserted edition (scanning for the latest slot). */
   private USKFetcherTag fetcher;
 
   /** Helper that inserts the actual SSK block for a given edition. */
@@ -146,7 +146,7 @@ public class USKInserter
    * <p>Schedules a discovery pass to find the latest known edition and then attempts to insert the
    * provided data at the next edition. Progress and completion are delivered to the configured
    * {@link PutCompletionCallback}. Idempotent with respect to repeated calls before completion;
-   * subsequent calls after a terminal state have no effect.
+   * later calls after a terminal state have no effect.
    *
    * @param context the client context providing executors, managers, and factories; must be
    *     non-{@code null} and valid for the lifetime of the operation
@@ -173,21 +173,31 @@ public class USKInserter
    * errors and so on.
    */
   private void scheduleFetcher(ClientContext context) {
+    USKFetcherTag localFetcher;
     synchronized (this) {
       if (LOG.isDebugEnabled()) LOG.debug("scheduling fetcher for {}", pubUSK.getURI());
       if (finished) return;
-      fetcher =
-          context.uskManager.getFetcherForInsertDontSchedule(
-              persistent ? pubUSK.copy() : pubUSK,
-              parent.priorityClass,
-              this,
-              parent.getClient(),
-              context,
-              persistent,
-              ctx.isIgnoreUSKDatehints());
+      localFetcher =
+          fetcher =
+              context.uskManager.getFetcherForInsertDontSchedule(
+                  persistent ? pubUSK.copy() : pubUSK,
+                  parent.priorityClass,
+                  this,
+                  parent.getClient(),
+                  context,
+                  persistent,
+                  ctx.isIgnoreUSKDatehints());
       if (LOG.isDebugEnabled()) LOG.debug("scheduled: {}", fetcher);
     }
-    fetcher.schedule(context);
+    boolean shouldSchedule;
+    synchronized (this) {
+      shouldSchedule = !finished && fetcher != null && fetcher.equals(localFetcher);
+    }
+    if (shouldSchedule) {
+      localFetcher.schedule(context);
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("Skipping stale fetcher schedule on {}", this);
+    }
   }
 
   /**
@@ -195,7 +205,7 @@ public class USKInserter
    *
    * <p>Updates the candidate edition and, when possible, determines whether the content is already
    * present by comparing data and codec. If the payload is already inserted at the reported
-   * edition, completes successfully. Otherwise, schedules an insert attempt at the next edition.
+   * edition, it completes successfully. Otherwise, schedules an insert attempt at the next edition.
    *
    * @param foundEdition The payload describing the discovered edition and its metadata.
    */
@@ -207,8 +217,11 @@ public class USKInserter
     short codec = foundEdition.codec();
     byte[] hisData = foundEdition.data();
     boolean alreadyInserted = false;
+    long currentEdition;
+    Bucket dataToFree = null;
     synchronized (this) {
       edition = Math.max(editionFound, edition);
+      currentEdition = edition;
       consecutiveCollisions = 0;
       if ((lastContentWasMetadata == isMetadata)
           && hisData != null
@@ -220,6 +233,10 @@ public class USKInserter
             alreadyInserted = true;
             finished = true;
             sbi = null;
+            if (freeData) {
+              dataToFree = data;
+              data = null;
+            }
           }
         } catch (IOException e) {
           LOG.error("Could not decode: {}", e, e);
@@ -232,11 +249,9 @@ public class USKInserter
     if (alreadyInserted) {
       // Success!
       parent.completedBlock(true, context);
-      cb.onEncode(pubUSK.copy(edition), this, context);
+      cb.onEncode(pubUSK.copy(currentEdition), this, context);
       insertSucceeded(context, editionFound);
-      if (freeData) {
-        data.free();
-      }
+      if (dataToFree != null) dataToFree.free();
     } else {
       scheduleInsert(context);
     }
@@ -296,37 +311,39 @@ public class USKInserter
 
   private void scheduleInsert(ClientContext context) {
     // Schedules a single-block insert for the current candidate edition.
-    long edNo = Math.max(edition, context.uskManager.lookupLatestSlot(pubUSK) + 1);
+    long latestKnownSlot = context.uskManager.lookupLatestSlot(pubUSK) + 1;
+    SingleBlockInserter localSbi;
     synchronized (this) {
       if (finished) return;
-      edition = edNo;
+      edition = Math.max(edition, latestKnownSlot);
       if (LOG.isDebugEnabled()) LOG.debug("scheduling insert for {} {}", pubUSK.getURI(), edition);
-      sbi =
-          new SingleBlockInserter(
-              new BlockInsertPayload(
-                  data,
-                  privUSK.getInsertableSSK(edition).getInsertURI(),
-                  compressionCodec,
-                  isMetadata,
-                  sourceLength,
-                  cryptoAlgorithm,
-                  forceCryptoKey),
-              new BlockInsertParams(parent, ctx, this, token, tokenObject, false, context),
-              new BlockInsertOptions(persistent, realTimeFlag, false, extraInserts),
-              true /* we don't use it */);
+      localSbi =
+          sbi =
+              new SingleBlockInserter(
+                  new BlockInsertPayload(
+                      data,
+                      privUSK.getInsertableSSK(edition).getInsertURI(),
+                      compressionCodec,
+                      isMetadata,
+                      sourceLength,
+                      cryptoAlgorithm,
+                      forceCryptoKey),
+                  new BlockInsertParams(parent, ctx, this, token, tokenObject, false, context),
+                  new BlockInsertOptions(persistent, realTimeFlag, false, extraInserts),
+                  true /* we don't use it */);
     }
     try {
-      sbi.schedule(context);
+      localSbi.schedule(context);
     } catch (InsertException e) {
+      Bucket dataToFree = null;
       synchronized (this) {
         finished = true;
-      }
-      if (freeData) {
-        data.free();
-        synchronized (this) {
+        if (freeData) {
+          dataToFree = data;
           data = null;
         }
       }
+      if (dataToFree != null) dataToFree.free();
       cb.onFailure(e, this, context);
     }
   }
@@ -335,8 +352,8 @@ public class USKInserter
    * Notifies that the single-block insert succeeded.
    *
    * <p>Updates the USK manager with the confirmed edition, frees data if configured, and reports
-   * the encoded USK (with concrete edition) to the completion callback. Also triggers optional USK
-   * date hint insertion when enabled by the insert context.
+   * the encoded USK (with a concrete edition) to the completion callback. Also triggers optional
+   * USK date hint insertion when enabled by the insert context.
    *
    * @param state the originating state that completed, expected to be a {@link SingleBlockInserter}
    * @param context the client context for follow-up work and bookkeeping
@@ -377,6 +394,7 @@ public class USKInserter
   @Override
   public void onFailure(InsertException e, ClientPutState state, ClientContext context) {
     synchronized (this) {
+      if (finished) return;
       sbi = null;
       if (e.getMode() == InsertExceptionMode.COLLISION) {
         // Try the next slot
@@ -385,17 +403,13 @@ public class USKInserter
         if (consecutiveCollisions > MAX_TRIED_SLOTS) scheduleFetcher(context);
         else scheduleInsert(context);
       } else {
-        Bucket d = null;
-        synchronized (this) {
-          finished = true;
-          if (freeData) {
-            d = data;
-            data = null;
-          }
-        }
+        Bucket dataToFree = null;
+        finished = true;
         if (freeData) {
-          d.free();
+          dataToFree = data;
+          data = null;
         }
+        if (dataToFree != null) dataToFree.free();
         cb.onFailure(e, state, context);
       }
     }
@@ -466,8 +480,8 @@ public class USKInserter
   /**
    * No-arg constructor for serialization frameworks.
    *
-   * <p>Not intended for direct use by application code. Fields are initialized to defaults only to
-   * satisfy deserialization requirements.
+   * <p>Not intended for direct use by application code. Fields are initialized to the defaults only
+   * to satisfy deserialization requirements.
    */
   @SuppressWarnings("unused")
   protected USKInserter() {
@@ -508,34 +522,35 @@ public class USKInserter
    *
    * <p>Cancels any outstanding discovery and insert tasks, frees data when configured, and reports
    * a {@link InsertExceptionMode#CANCELLED} failure to the completion callback. Safe to call more
-   * than once; subsequent calls after completion have no effect.
+   * than once; later calls after completion have no effect.
    *
    * @param context the client context used to propagate cancellation downstream
    */
   @Override
   public void cancel(ClientContext context) {
     USKFetcherTag tag;
+    SingleBlockInserter localSbi;
     synchronized (this) {
       if (finished) return;
       finished = true;
       tag = fetcher;
       fetcher = null;
+      localSbi = sbi;
+      sbi = null;
     }
     if (tag != null) {
       tag.cancel(context);
     }
-    if (sbi != null) {
-      sbi.cancel(context); // will call onFailure, which will removeFrom()
+    if (localSbi != null) {
+      localSbi.cancel(context); // will call onFailure, which will removeFrom()
     }
     if (freeData) {
-      if (data == null) {
-        LOG.error("data == null in cancel() on {}", this);
-      } else {
-        data.free();
-        synchronized (this) {
-          data = null;
-        }
+      Bucket dataToFree;
+      synchronized (this) {
+        dataToFree = data;
+        data = null;
       }
+      if (dataToFree != null) dataToFree.free();
     }
     cb.onFailure(new InsertException(InsertExceptionMode.CANCELLED), this, context);
   }
@@ -573,10 +588,10 @@ public class USKInserter
   }
 
   /**
-   * Notifies that an encode event occurred during the insert pipeline. This implementation does not
-   * take action for encode events; the final success path reports the encoded USK separately.
+   * Notifies that an encoding event occurred during the insert pipeline. This implementation does
+   * not take action for encoding events; the final success path reports the encoded USK separately.
    *
-   * @param key the key associated with the encode event
+   * @param key the key associated with the encoding event
    * @param state the state reporting the event
    * @param context the client context at the time of the event
    */
@@ -693,12 +708,20 @@ public class USKInserter
    */
   @Override
   public void onResume(ClientContext context) throws InsertException, ResumeFailedException {
-    if (resumed) return;
-    resumed = true;
-    if (data != null) data.onResume(context);
+    Bucket localData;
+    USKFetcherTag localFetcher;
+    SingleBlockInserter localSbi;
+    synchronized (this) {
+      if (resumed) return;
+      resumed = true;
+      localData = data;
+      localFetcher = fetcher;
+      localSbi = sbi;
+    }
+    if (localData != null) localData.onResume(context);
     if (cb != null && cb != parent) cb.onResume(context);
-    if (fetcher != null) fetcher.onResume(context);
-    if (sbi != null) sbi.onResume(context);
+    if (localFetcher != null) localFetcher.onResume(context);
+    if (localSbi != null) localSbi.onResume(context);
   }
 
   /**
