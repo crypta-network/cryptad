@@ -636,15 +636,19 @@ public abstract class UIDTag {
    */
   public void unlockHandler(boolean noRecord) {
     boolean canUnlock;
+    boolean localNoRecordUnlock = false;
     synchronized (this) {
       if (unlockedHandler) return;
       noRecordUnlock = noRecord;
       unlockedHandler = true;
       canUnlock = mustUnlock();
+      if (canUnlock) {
+        localNoRecordUnlock = this.noRecordUnlock;
+      }
     }
     UIDTraceLogger.log(
         "unlockHandler", this, () -> "noRecord=" + noRecord + " canUnlock=" + canUnlock);
-    if (canUnlock) innerUnlock(noRecordUnlock);
+    if (canUnlock) innerUnlock(localNoRecordUnlock);
     else {
       LOG.info("Defer unlock in unlockHandler; still sending requests");
     }

@@ -246,7 +246,7 @@ public class LocationManager implements ByteCounter {
   }
 
   private double loc;
-  private long timeLocSet;
+  private volatile long timeLocSet;
   private double locChangeSession = 0.0;
 
   int numberOfRemotePeerLocationsSeenInSwaps = 0;

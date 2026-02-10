@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * <p>This type exists to decouple long-lived request intent from the short-lived mechanics of a
  * running fetch. Typical usage is to construct a tag via {@link #create(USK, USKFetcherCallback,
  * FetchContext, int, Flag...)} and then hand it to code that schedules work. On startup the node
- * reinstates pending USK fetches from persistent state; tags are reused while a new transient
+ * reinstates pending USK fetches from a persistent state; tags are reused while a new transient
  * fetcher is created and wired to the original callback.
  *
  * <p>Concurrency: instances are designed to be passed across threads managed by {@code
@@ -67,7 +67,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
   public final boolean persistent;
 
   /**
-   * Fetch context controlling policies such as timeouts, routing and verification. The context is
+   * Fetch context controlling policies such as timeouts, routing, and verification. The context is
    * supplied by the caller and is treated as read‑only by this type; ownership and lifecycle remain
    * with the caller.
    */
@@ -85,7 +85,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
 
   /**
    * Opaque application token preserved across callbacks. Useful for correlating fetch completion
-   * with the original request or UI action. The value is not interpreted by this class.
+   * with the original request or UI action. This class does not interpret the value.
    */
   private final long token;
 
@@ -146,8 +146,8 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
    * constructed when the tag is scheduled or resumed.
    *
    * <p>For persistent requests, the caller is responsible for removing the request from persistent
-   * storage when it is no longer needed; the lifecycle of the {@link USKFetcherCallback} and {@link
-   * FetchContext} remains under the caller’s control.
+   * storage when it is no longer necessary; the lifecycle of the {@link USKFetcherCallback} and
+   * {@link FetchContext} remains under the caller’s control.
    *
    * @param usk The original {@link USK} to fetch; must be non‑null. The edition may be adjusted
    *     internally when scheduling.
@@ -157,7 +157,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
    *     treated as read‑only by this tag.
    * @param token Application‑supplied token for correlation; preserved and returned from {@link
    *     #getToken()} unchanged.
-   * @param flags Optional behavior switches influencing persistence, realtime scheduling and store
+   * @param flags Optional behavior switches influencing persistence, realtime scheduling, and store
    *     probing. Omit for defaults; duplicates are ignored.
    * @return A new {@code USKFetcherTag} instance encapsulating the provided arguments and options;
    *     never {@code null}.
@@ -207,8 +207,12 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
    */
   public void start(USKManager manager, ClientContext context) {
     USK usk = origUSK;
-    if (usk.suggestedEdition < edition) {
-      usk = usk.copy(edition);
+    long editionSnapshot;
+    synchronized (this) {
+      editionSnapshot = edition;
+    }
+    if (usk.suggestedEdition < editionSnapshot) {
+      usk = usk.copy(editionSnapshot);
     } else if (persistent) { // Copy it to avoid deactivation issues
       usk = usk.copy();
     }
@@ -228,7 +232,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
   /**
    * Requests cancellation of the in‑flight fetch, if any, and marks this tag as finished. For
    * persistent requests, a follow‑up callback is delivered on the persistent job runner so callers
-   * can update durable state.
+   * can update the durable state.
    *
    * @param context The client context used to route the cancellation and potential callback.
    */
@@ -264,7 +268,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
   }
 
   /**
-   * Notification that the fetch was cancelled before producing a result. Ensures callbacks are
+   * Notification that the fetch was canceled before producing a result. Ensures callbacks are
    * delivered on the appropriate executor depending on persistence and marks this tag as finished.
    * Subsequent terminal events are ignored.
    *
@@ -300,7 +304,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
   }
 
   /**
-   * Notification that the fetch failed with a terminal error. The callback is invoked and this tag
+   * Notification that the fetch failed with a terminal error. The callback is invoked, and this tag
    * is marked as finished. When persistent, the notification is delivered via the persistent job
    * runner to preserve ordering with durable state updates.
    *
@@ -405,12 +409,12 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
   }
 
   /**
-   * Indicates whether this tag has already received a terminal event (cancelled, failure, or
-   * edition found). Once {@code true}, no further callbacks are emitted for this instance.
+   * Indicates whether this tag has already received a terminal event (canceled, failure, or edition
+   * found). Once {@code true}, no further callbacks are emitted for this instance.
    *
    * @return {@code true} when a terminal event was processed; otherwise {@code false}.
    */
-  public final boolean isFinished() {
+  public final synchronized boolean isFinished() {
     return finished;
   }
 
@@ -435,7 +439,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
    */
   @Override
   public void onResume(ClientContext context) {
-    if (finished) return;
+    if (isFinished()) return;
     start(context.uskManager, context);
   }
 
@@ -470,7 +474,7 @@ public class USKFetcherTag implements ClientGetState, USKFetcherCallback, Serial
 
     /**
      * Retain the last successfully fetched data while probing for newer editions. Useful when
-     * consumers prefer a best‑effort result even during upgrades.
+     * consumers prefer the best‑effort result even during upgrades.
      */
     KEEP_LAST_DATA,
 

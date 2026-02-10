@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.MissingResourceException;
 import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import network.crypta.clients.http.TranslationToadlet;
 import network.crypta.support.HTMLNode;
@@ -47,7 +48,7 @@ import org.slf4j.LoggerFactory;
 public class BaseL10n {
   private static final Logger LOG = LoggerFactory.getLogger(BaseL10n.class);
 
-  // Sonar: de-duplicate common literals used in this class
+  // Sonar: deduplicate common literals used in this class
   private static final String L10N_VAR_PREFIX = "\\$\\{"; // matches "${"
   private static final String L10N_VAR_SUFFIX = "}"; // matches "}"
   private static final String UNLISTED_LITERAL = "unlisted";
@@ -134,30 +135,31 @@ public class BaseL10n {
             "WINDOWS140C",
             "WINDOWS180C")),
     ITALIAN("it", "Italiano", "ita", aliases("WINDOWS0410", "WINDOWS0810")),
-    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
     NORWEGIAN("nb-no", "Bokmål", "nob", aliases("WINDOWS0414", "WINDOWS0814")),
     POLISH("pl", "Polski", "pol", aliases("WINDOWS0415")),
     SWEDISH("sv", "Svenska", "swe", aliases("WINDOWS041D", "WINDOWS081D")),
-    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
     CHINESE("zh-cn", "中文(简体)", "chn", aliases("WINDOWS0804", "WINDOWS1004")),
-    // simplified chinese, used on mainland, Singapore and Malaysia
-    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // simplified chinese, used on the mainland, Singapore and Malaysia
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
     CHINESE_TAIWAN(
         "zh-tw", "中文(繁體)", "zh-tw", aliases("WINDOWS0404", "WINDOWS0C04", "WINDOWS1404")),
-    // traditional chinese, used in Taiwan, Hong Kong and Macau
+    // traditional Chinese, used in Taiwan, Hong Kong and Macau
     RUSSIAN(
         "ru",
         "Русский",
         "rus",
-        aliases("WINDOWS0419")), // Just one variant for russian. Belorussian is separate, code page
+        aliases(
+            "WINDOWS0419")), // Just one variant for Russian. Belorussian is a separate, code page
     // 423, speakers may or
-    // may not speak russian, I'm not including it.
+    // may not speak Russian, I'm not including it.
     JAPANESE("ja", "日本語", "jpn", aliases("WINDOWS0411")),
     PORTUGUESE("pt-PT", "Português do Portugal", "pt", aliases("WINDOWS0816")),
-    // RFC 5646 non-compliant. Rename when converting the entire list to RFC 5646; provide a
+    // RFC 5646 non-compliant. Rename it when converting the entire list to RFC 5646; provide a
     // migration path to avoid breaking plugin identifiers.
     BRAZILIAN_PORTUGUESE("pt-br", "Português do Brasil", "pt-br", aliases("WINDOWS0416")),
     GREEK("el", "Ελληνικά", "ell", aliases("WINDOWS0408")),
@@ -310,7 +312,8 @@ public class BaseL10n {
 
     private String getFallbackString(String key) {
       BaseL10n.this.loadFallback();
-      String result = BaseL10n.this.fallbackTranslation.get(key);
+      SimpleFieldSet fallback = BaseL10n.this.fallbackTranslation.get();
+      String result = fallback == null ? null : fallback.get(key);
       if (result == null) {
         LOG.error("The default translation for {} hasn't been found!", key);
       }
@@ -323,7 +326,7 @@ public class BaseL10n {
   private final String l10nFilesMask;
   private final String l10nOverrideFilesMask;
   private SimpleFieldSet currentTranslation = null;
-  private SimpleFieldSet fallbackTranslation = null;
+  private final AtomicReference<SimpleFieldSet> fallbackTranslation = new AtomicReference<>();
   private SimpleFieldSet translationOverride;
   private final ClassLoader cl;
 
@@ -495,9 +498,10 @@ public class BaseL10n {
 
   /** Ensure the fallback (default) translation is loaded; synchronized for safe init. */
   private synchronized void loadFallback() {
-    if (this.fallbackTranslation == null) {
-      this.fallbackTranslation = loadTranslation(LANGUAGE.getDefault());
-      if (fallbackTranslation == null) fallbackTranslation = new SimpleFieldSet(true);
+    if (this.fallbackTranslation.get() == null) {
+      SimpleFieldSet loaded = loadTranslation(LANGUAGE.getDefault());
+      if (loaded == null) loaded = new SimpleFieldSet(true);
+      this.fallbackTranslation.set(loaded);
     }
   }
 
@@ -526,7 +530,7 @@ public class BaseL10n {
   /**
    * Write or remove an on-disk override for a key in the selected language.
    *
-   * <p>Whitespace surrounding the key and value is trimmed. When the value is empty, or equals the
+   * <p>Whitespace surrounding the key and value is trimmed. When the value is empty or equals the
    * bundled translation for the current language, the override is removed. Otherwise, the value is
    * normalized by stripping CR/LF/TAB characters and then saved.
    *
@@ -569,7 +573,7 @@ public class BaseL10n {
     File finalFile = new File(this.getL10nOverrideFileName(this.lang));
 
     try {
-      // We don't set deleteOnExit on it : if the save operation fails, we want a backup
+      // We don't set deleteOnExit on it: if the save operation fails, we want a backup
       File tempFile = File.createTempFile(finalFile.getName(), ".bak", finalFile.getParentFile());
       LOG.debug("The temporary filename is : {}", tempFile);
 
@@ -610,7 +614,7 @@ public class BaseL10n {
   public SimpleFieldSet getDefaultLanguageTranslation() {
     this.loadFallback();
 
-    return new SimpleFieldSet(this.fallbackTranslation);
+    return new SimpleFieldSet(this.fallbackTranslation.get());
   }
 
   /**
@@ -673,14 +677,12 @@ public class BaseL10n {
     return result;
   }
 
-  /** Enumerate strings associated with a key in order of preference. */
+  /** List strings associated with a key in order of preference. */
   private Iterable<String> getStrings(final String key) {
     return getStrings(key, FallbackState.CURRENT_LANG);
   }
 
-  /**
-   * Enumerate strings associated with a key in order of preference, starting with a specified one.
-   */
+  /** List strings associated with a key in order of preference, starting with a specified one. */
   private Iterable<String> getStrings(final String key, final FallbackState initialState) {
     return () -> new L10nStringIterator(key, initialState);
   }
@@ -805,7 +807,7 @@ public class BaseL10n {
   }
 
   /**
-   * Escape null, $ and \.
+   * Escape null, $, and \.
    *
    * @param s Replacement string.
    * @return Escaped replacement string.
@@ -1001,11 +1003,12 @@ public class BaseL10n {
    * @return Array of matching keys; empty when the fallback set is not loaded or no match exists.
    */
   public String[] getAllNamesWithPrefix(String prefix) {
-    if (fallbackTranslation == null) {
+    SimpleFieldSet fallback = fallbackTranslation.get();
+    if (fallback == null) {
       return new String[] {};
     }
     List<String> toReturn = new ArrayList<>();
-    Iterator<String> it = fallbackTranslation.keyIterator();
+    Iterator<String> it = fallback.keyIterator();
     while (it.hasNext()) {
       String key = it.next();
       if (key.startsWith(prefix)) {

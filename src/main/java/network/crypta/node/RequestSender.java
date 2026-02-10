@@ -5,6 +5,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.crypt.CryptFormatException;
 import network.crypta.crypt.DSAPublicKey;
 import network.crypta.io.comm.AsyncMessageCallback;
@@ -95,7 +96,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   // Basics
   final RequestTag origTag;
   private PartiallyReceivedBlock prb;
-  private byte[] finalHeaders;
+  private final AtomicReference<byte[]> finalHeaders = new AtomicReference<>();
   private byte[] finalSskData;
   private DSAPublicKey pubKey;
   private SSKBlock block;
@@ -112,7 +113,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   // Terminal status
   // Always set finished AFTER setting the reason flag
 
-  private int status = -1;
+  private volatile int status = -1;
   static final int NOT_FINISHED = -1;
   static final int SUCCESS = 0;
   static final int ROUTE_NOT_FOUND = 1;
@@ -646,7 +647,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         try {
           node.network().usm().addAsyncFilter(mf, this, RequestSender.this);
         } catch (DisconnectedException _) {
-          onDisconnect(lastNode);
+          onDisconnect(lastNode.get());
         }
       } else {
         onTimeout();
@@ -850,7 +851,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
       boolean failNow = false;
       synchronized (RequestSender.this) {
-        finalHeaders = waiter.headers;
+        finalHeaders.set(waiter.headers);
         if (status == SUCCESS || (RequestSender.this.prb != null && transferringFrom != null))
           failNow = true;
         if (!wasFork
@@ -1060,7 +1061,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         if (node.bootstrap().random().nextInt(RANDOM_REINSERT_INTERVAL) == 0)
           node.services().clientCore().getTransfers().queueRandomReinsert(block);
         synchronized (RequestSender.this) {
-          finalHeaders = headers;
+          finalHeaders.set(headers);
           finalSskData = sskData;
         }
         finish(SUCCESS, next, false);
@@ -1085,8 +1086,8 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           sskData = block.getRawData();
         }
         synchronized (RequestSender.this) {
-          if (finalHeaders == null || finalSskData == null) {
-            finalHeaders = headers;
+          if (finalHeaders.get() == null || finalSskData == null) {
+            finalHeaders.set(headers);
             finalSskData = sskData;
           }
         }
@@ -1463,7 +1464,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
 
   private OFFER_STATUS processChkOfferReply(
       final PeerNode pn, final OfferList offers, final byte[] headers) {
-    finalHeaders = headers;
+    finalHeaders.set(headers);
     origTag.senderTransferBegins((NodeCHK) key, this);
     try {
       prb = new PartiallyReceivedBlock(Node.PACKETS_IN_BLOCK, Node.PACKET_SIZE);
@@ -1484,7 +1485,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
           new BlockReceiverCompletion() {
             @Override
             public void blockReceived(byte[] data) {
-              onChkOfferBlockReceived(pn, offers, finalHeaders, data);
+              onChkOfferBlockReceived(pn, offers, finalHeaders.get(), data);
             }
 
             @Override
@@ -1606,7 +1607,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     try {
       block = new SSKBlock(sskData, headers, (NodeSSK) key, false);
       synchronized (this) {
-        finalHeaders = headers;
+        finalHeaders.set(headers);
         finalSskData = sskData;
       }
       node.storage().storeShallow(block, canWriteClientCache, canWriteDatastore, tryOffersOnly);
@@ -1649,7 +1650,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     if (!isSSK) {
       CHKBlock chkBlock = new CHKBlock(data, headers, (NodeCHK) key);
       synchronized (this) {
-        finalHeaders = headers;
+        finalHeaders.set(headers);
       }
       if (LOG.isDebugEnabled()) LOG.debug("Verified");
       // Cache only in the cache, not the store. The reason for this is that
@@ -1661,7 +1662,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
         node.services().clientCore().getTransfers().queueRandomReinsert(chkBlock);
     } else {
       synchronized (this) {
-        finalHeaders = headers;
+        finalHeaders.set(headers);
         finalSskData = data;
       }
       try {
@@ -2138,7 +2139,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
    * @return The header bytes, or {@code null} if unavailable.
    */
   public synchronized byte[] getHeaders() {
-    return finalHeaders;
+    return finalHeaders.get();
   }
 
   /**

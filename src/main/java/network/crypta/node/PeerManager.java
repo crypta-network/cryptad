@@ -228,7 +228,7 @@ public class PeerManager {
    *
    * @return Epoch milliseconds of the first connection, or 0 if none yet.
    */
-  public long getTimeFirstAnyConnections() {
+  public synchronized long getTimeFirstAnyConnections() {
     return timeFirstAnyConnections;
   }
 

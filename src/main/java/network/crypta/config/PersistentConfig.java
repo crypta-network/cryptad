@@ -1,6 +1,7 @@
 package network.crypta.config;
 
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,7 @@ public class PersistentConfig extends Config {
    * SimpleFieldSet#MULTI_LEVEL_CHAR}). Entries are removed as options register. Set to {@code null}
    * once {@link #finishedInit()} completes.
    */
-  protected SimpleFieldSet origConfigFileContents;
+  protected final AtomicReference<SimpleFieldSet> origConfigFileContents = new AtomicReference<>();
 
   /**
    * Indicates whether the configuration has completed initialization.
@@ -43,7 +44,7 @@ public class PersistentConfig extends Config {
    * @param initialContents the source of initial values; may be {@code null}
    */
   public PersistentConfig(SimpleFieldSet initialContents) {
-    this.origConfigFileContents = initialContents;
+    this.origConfigFileContents.set(initialContents);
   }
 
   /**
@@ -56,16 +57,17 @@ public class PersistentConfig extends Config {
   @Override
   public synchronized void finishedInit() {
     finishedInit = true;
-    if (origConfigFileContents == null) return;
-    Iterator<String> i = origConfigFileContents.keyIterator();
+    SimpleFieldSet originalContents = origConfigFileContents.get();
+    if (originalContents == null) return;
+    Iterator<String> i = originalContents.keyIterator();
     while (i.hasNext()) {
       String key = i.next();
       if (LOG.isErrorEnabled()) {
-        String value = origConfigFileContents.get(key);
+        String value = originalContents.get(key);
         LOG.error("Unknown option: {} (value={})", key, value);
       }
     }
-    origConfigFileContents = null;
+    origConfigFileContents.set(null);
     super.finishedInit();
   }
 
@@ -123,8 +125,8 @@ public class PersistentConfig extends Config {
    * Consumes an initial value for a newly registered option from the original field set.
    *
    * <p>If a value exists under {@code <prefix>.<name>}, it is parsed and applied via {@link
-   * Option#setInitialValue(String)}. Parse failures are logged at error level and the option keeps
-   * its default. When called after {@link #finishedInit()}, this method throws.
+   * Option#setInitialValue(String)}. Parse failures are logged at the error level, and the option
+   * keeps its default. When called after {@link #finishedInit()}, this method throws.
    *
    * @param config the owning {@link SubConfig}
    * @param o the option being registered
@@ -138,10 +140,11 @@ public class PersistentConfig extends Config {
       if (finishedInit)
         throw new IllegalStateException(
             "onRegister(" + config + ':' + o + ") called after finishedInit() !!");
-      if (origConfigFileContents == null) return;
+      SimpleFieldSet originalContents = origConfigFileContents.get();
+      if (originalContents == null) return;
       name = config.prefix + SimpleFieldSet.MULTI_LEVEL_CHAR + o.name;
-      val = origConfigFileContents.get(name);
-      origConfigFileContents.removeValue(name);
+      val = originalContents.get(name);
+      originalContents.removeValue(name);
       if (val == null) return;
     }
     try {
@@ -158,6 +161,7 @@ public class PersistentConfig extends Config {
    *     finished or if no original contents were provided
    */
   public synchronized SimpleFieldSet getSimpleFieldSet() {
-    return (origConfigFileContents == null ? null : new SimpleFieldSet(origConfigFileContents));
+    SimpleFieldSet originalContents = origConfigFileContents.get();
+    return (originalContents == null ? null : new SimpleFieldSet(originalContents));
   }
 }

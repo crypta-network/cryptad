@@ -363,7 +363,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Encoded {} for {} shouldSend={} dontSendEncoded={}",
-          resultingKey.getURI(),
+          block.getClientKey().getURI(),
           this,
           shouldSend,
           dontSendEncoded);
@@ -631,6 +631,7 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
     return isEmpty();
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   static class MySendableRequestSender implements SendableRequestSender {
 
     final String compressorDescriptor;
@@ -998,7 +999,12 @@ public class SingleBlockInserter extends SendableInsert implements ClientPutStat
   public void innerOnResume(ClientContext context) throws InsertException, ResumeFailedException {
     sourceData.onResume(context);
     if (cb != parent) cb.onResume(context);
-    if (resultingKey != null) cb.onEncode(resultingKey, SingleBlockInserter.this, context);
+    ClientKey resultingKeySnapshot;
+    synchronized (this) {
+      resultingKeySnapshot = resultingKey;
+    }
+    if (resultingKeySnapshot != null)
+      cb.onEncode(resultingKeySnapshot, SingleBlockInserter.this, context);
     this.schedule(context);
   }
 

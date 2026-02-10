@@ -661,7 +661,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     @Override
     public boolean isFinished() {
       if (LOG.isDebugEnabled()) LOG.debug("Finished {}", this);
-      return BaseManifestPutter.this.finished || cancelled || BaseManifestPutter.this.cancelled;
+      return BaseManifestPutter.this.isFinished() || cancelled;
     }
 
     @Override
@@ -942,7 +942,11 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     public void innerOnResume(ClientContext context) throws ResumeFailedException {
       super.innerOnResume(context);
       try {
-        if (currentState != null) currentState.onResume(context);
+        ClientPutState currentStateSnapshot;
+        synchronized (this) {
+          currentStateSnapshot = currentState;
+        }
+        if (currentStateSnapshot != null) currentStateSnapshot.onResume(context);
         if (origSFI != null) origSFI.onResume(context);
       } catch (InsertException e) {
         throw new ResumeFailedException(e);
@@ -1773,7 +1777,7 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         addRedirect(name, element.targetURI, cm, isDefaultDoc);
         return;
       }
-      throw new IllegalStateException("ME is neither a redirect nor dircet data. " + element);
+      throw new IllegalStateException("ME is neither a redirect nor direct data. " + element);
     }
 
     /**
@@ -1902,11 +1906,12 @@ public abstract class BaseManifestPutter extends ManifestPutter {
         throw new IllegalStateException("You can not add containers in free form mode!");
       }
       /*
-       * Tree containing the status of the insert. Can have ManifestElement's (original files to
-       * insert or bundle inside a container), HashMap's (more subdirs), Metadata (to be put into a
-       * container as metadata for e.g., an external file), a ContainerPutHandler or an
-       * ArchivePutHandler (for containers that are part of the structure and external containers
-       * for overflow, respectively).
+       * Tree containing the status of the insert.
+       *
+       * Entries can be ManifestElements (original files to insert or bundle in a container),
+       * HashMaps (subdirectories), Metadata (container metadata, e.g., for an external file),
+       * ContainerPutHandler instances (containers in the structure), or ArchivePutHandler
+       * instances (external overflow containers).
        */
       HashMap<String, Object> rootDirMap = new HashMap<>();
       if (isArchive)

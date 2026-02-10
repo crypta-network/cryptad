@@ -43,7 +43,7 @@ public class SplitFileInserterSegmentBlockChooser extends SimpleBlockChooser {
   final KeysFetchingLocally keysFetching;
   final int[] consecutiveRNFs;
 
-  /** If positive, this many RNFs count as success. */
+  /** If positive, these many RNFs count as success. */
   final int consecutiveRNFsCountAsSuccess;
 
   /**
@@ -60,8 +60,8 @@ public class SplitFileInserterSegmentBlockChooser extends SimpleBlockChooser {
    * @param maxRetries maximum number of non-fatal failures per block before giving up;
    *     non-negative.
    * @param keysFetching coordinator that tracks keys being inserted to avoid duplicate work.
-   * @param consecutiveRNFsCountAsSuccess if greater than zero, treat N consecutive RNFs as success;
-   *     zero or negative disables the policy.
+   * @param consecutiveRNFsCountAsSuccess if greater than zero, treat N consecutive RNFs as a
+   *     success; zero or negative disables the policy.
    */
   public SplitFileInserterSegmentBlockChooser(
       SplitFileInserterSegmentStorage segment,
@@ -109,11 +109,11 @@ public class SplitFileInserterSegmentBlockChooser extends SimpleBlockChooser {
   /**
    * Checks whether a candidate block is currently eligible for insertion.
    *
-   * <p>Combines the base validity checks with a de-duplication guard that skips blocks already
-   * being inserted as reported by {@link KeysFetchingLocally}.
+   * <p>Combines the base validity checks with a deduplication guard that skips blocks already being
+   * inserted as reported by {@link KeysFetchingLocally}.
    *
    * @param chosen zero-based block index to validate for selection.
-   * @return {@code true} if the block passes base checks and is not already being inserted; {@code
+   * @return {@code true} if the block passes base checks and is not yet being inserted; {@code
    *     false} otherwise.
    */
   @Override
@@ -196,7 +196,7 @@ public class SplitFileInserterSegmentBlockChooser extends SimpleBlockChooser {
    * @throws StorageFormatException if the serialized data is structurally invalid for this type.
    */
   @Override
-  public void read(DataInputStream dis) throws IOException, StorageFormatException {
+  public synchronized void read(DataInputStream dis) throws IOException, StorageFormatException {
     super.read(dis);
     if (consecutiveRNFsCountAsSuccess > 0) {
       int[] rnfs = this.consecutiveRNFs;

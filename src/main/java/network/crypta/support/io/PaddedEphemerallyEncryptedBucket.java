@@ -64,7 +64,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
 
   private final byte[] iv;
   private transient byte[] randomSeed;
-  private long dataLength;
+  private volatile long dataLength;
   private volatile boolean readOnly;
   private transient int lastOutputStream;
 
@@ -570,6 +570,10 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
    */
   @Override
   public void storeTo(DataOutputStream dos) throws IOException {
+    long currentDataLength;
+    synchronized (this) {
+      currentDataLength = dataLength;
+    }
     dos.writeInt(MAGIC);
     dos.writeInt(VERSION);
     dos.writeInt(minPaddedSize);
@@ -581,7 +585,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
       dos.writeBoolean(false);
     }
     // randomSeed should be recovered in onResume().
-    dos.writeLong(dataLength);
+    dos.writeLong(currentDataLength);
     dos.writeBoolean(readOnly);
     bucket.storeTo(dos);
   }

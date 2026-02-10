@@ -431,7 +431,9 @@ public class RequestHandler
                 }
               });
     } else {
-      finalTransferFailed = true;
+      synchronized (this) {
+        finalTransferFailed = true;
+      }
       status = rs.getStatus();
       // for byte logging, since the block is the 'terminal' message.
       applyByteCounts();

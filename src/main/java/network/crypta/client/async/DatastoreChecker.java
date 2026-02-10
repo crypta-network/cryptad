@@ -107,11 +107,11 @@ public class DatastoreChecker implements PrioRunnable {
   /** List of requests to check the datastore for, bucketed by priority. */
   private final ArrayList<ArrayDeque<QueueItem>> queue;
 
-  private ClientContext context;
+  private volatile ClientContext context;
   private final Node node;
 
   /**
-   * Sets the client context used to obtain schedulers and to queue persistence-related jobs.
+   * Sets the client context used to get schedulers and to queue persistence-related jobs.
    *
    * <p>The context must be set before processing begins. This method is synchronized because the
    * checker may read the context from its worker thread while clients may update it during
@@ -191,7 +191,7 @@ public class DatastoreChecker implements PrioRunnable {
    *
    * <p>The loop processes a single queue item at a time and blocks with a bounded wait when the
    * queue is empty. In lazy mode, the method returns once the queue has drained so the caller can
-   * release the thread. Any unexpected exceptions are logged and the loop continues to reduce the
+   * release the thread. Any unexpected exceptions are logged, and the loop continues to reduce the
    * chance of losing queued work.
    */
   @Override
@@ -208,7 +208,7 @@ public class DatastoreChecker implements PrioRunnable {
   /**
    * Process a single job, waiting if necessary.
    *
-   * @return True if lazy=true and there are no jobs to run.
+   * @return True if lazy=true, and there are no jobs to run.
    */
   private boolean realRun() {
     Random random = (killBlocks != 0) ? new MersenneTwister() : null;
@@ -256,7 +256,7 @@ public class DatastoreChecker implements PrioRunnable {
       try {
         wait(SECONDS.toMillis(100));
       } catch (InterruptedException _) {
-        // Swallow and continue waiting; do not re-interrupt to avoid hot loop
+        // Swallow and continue waiting; do not re-interrupt to avoid the hot loop
       }
     }
   }

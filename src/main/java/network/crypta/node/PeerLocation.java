@@ -25,7 +25,7 @@ public class PeerLocation {
   /**
    * Sorted locations of our peer's neighbors (FOAF).
    *
-   * <p>Invariant: never mutate in place; only replace with a new, sorted array.
+   * <p>Invariant: never mutate in place; only replace it with a new, sorted array.
    */
   private double[] currentPeersLocation;
 
@@ -70,7 +70,8 @@ public class PeerLocation {
       double[] peerLocations = new double[peerLocationsString.length];
       for (int i = 0; i < peerLocationsString.length; i++)
         peerLocations[i] = Location.getLocation(peerLocationsString[i]);
-      updateLocation(currentLocation, peerLocations);
+      double current = getLocation();
+      updateLocation(current, peerLocations);
     }
   }
 

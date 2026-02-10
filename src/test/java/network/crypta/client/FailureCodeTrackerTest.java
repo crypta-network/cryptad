@@ -280,6 +280,17 @@ class FailureCodeTrackerTest {
   }
 
   @Test
+  void merge_withNullSource_isNoOp() {
+    fetchTracker.inc(FetchExceptionMode.TOO_BIG);
+
+    FailureCodeTracker merged = fetchTracker.merge((FailureCodeTracker) null);
+
+    assertTrue(merged == fetchTracker);
+    assertEquals(1, fetchTracker.getErrorCount(FetchExceptionMode.TOO_BIG.code));
+    assertEquals(1, fetchTracker.totalCount());
+  }
+
+  @Test
   void merge_fetchException_mergesCodesAndIncrementsMode() {
     // Prepare error codes in the exception (count 7 for TOO_BIG)
     FailureCodeTracker codes = trackerFromCounts(false, Map.of(FetchExceptionMode.TOO_BIG.code, 7));

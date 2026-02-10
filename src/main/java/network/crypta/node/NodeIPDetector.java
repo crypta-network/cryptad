@@ -120,7 +120,7 @@ public class NodeIPDetector {
   /** UserAlert shown when {@code ipAddressOverride} has invalid hostname or IP syntax. */
   private final InvalidAddressOverrideUserAlert invalidAddressOverrideAlert;
 
-  private boolean hasValidAddressOverride;
+  private volatile boolean hasValidAddressOverride;
 
   /** UserAlert shown when no usable IP address can be detected. */
   private final IPUndetectedUserAlert primaryIPUndetectedAlert;

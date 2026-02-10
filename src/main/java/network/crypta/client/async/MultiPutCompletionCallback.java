@@ -356,17 +356,19 @@ public class MultiPutCompletionCallback
     boolean allDone;
     boolean allGotBlocks;
     boolean doCancel;
+    InsertException failureSnapshot;
     synchronized (this) {
       started = true;
       allDone = waitingFor.isEmpty();
       allGotBlocks = waitingForBlockSet.isEmpty();
       doCancel = cancelling;
+      failureSnapshot = e;
     }
     if (allGotBlocks) {
       cb.onBlockSetFinished(this, context);
     }
     if (allDone) {
-      complete(e, context);
+      complete(failureSnapshot, context);
     } else if (doCancel) {
       cancel(context);
     }

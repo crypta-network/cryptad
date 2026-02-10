@@ -735,7 +735,7 @@ public class Metadata implements Serializable {
   int crossCheckBlocks;
 
   /** Per‑segment key lists; may be {@code null} until built. */
-  SplitFileSegmentKeys[] segments;
+  volatile SplitFileSegmentKeys[] segments;
 
   /** Minimum compatibility mode inferred for this metadata. */
   CompatibilityMode minCompatMode = CompatibilityMode.COMPAT_UNKNOWN;

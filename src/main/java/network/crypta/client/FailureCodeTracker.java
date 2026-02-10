@@ -291,15 +291,23 @@ public class FailureCodeTracker implements Serializable {
    *     {@code null}
    * @return this tracker for call chaining
    */
-  public synchronized FailureCodeTracker merge(FailureCodeTracker source) {
-    if (source.map == null) return this;
-    if (map == null) map = new HashMap<>();
-    for (Map.Entry<Integer, Integer> e : source.map.entrySet()) {
-      Integer k = e.getKey();
-      Integer item = e.getValue();
-      inc(k, item);
+  public FailureCodeTracker merge(FailureCodeTracker source) {
+    if (source == null) return this;
+    Map<Integer, Integer> sourceMapSnapshot = source.snapshotMap();
+    if (sourceMapSnapshot.isEmpty()) return this;
+    synchronized (this) {
+      for (Map.Entry<Integer, Integer> e : sourceMapSnapshot.entrySet()) {
+        Integer k = e.getKey();
+        Integer item = e.getValue();
+        inc(k, item);
+      }
+      return this;
     }
-    return this;
+  }
+
+  private synchronized Map<Integer, Integer> snapshotMap() {
+    if (map == null) return Map.of();
+    return new HashMap<>(map);
   }
 
   /**

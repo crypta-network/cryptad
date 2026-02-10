@@ -21,9 +21,9 @@ import org.slf4j.LoggerFactory;
  * state changes rely on {@link ClientContext#ticker} to avoid blocking the calling thread.
  *
  * <p>Typical call flow: a servlet asks for a fetcher via {@link #makeFetcher(FProxyFetchCriteria,
- * REFILTER_POLICY)}, obtains a waiter, and later the tracker culls abandoned instances through
- * {@link #run()}. Instances are intentionally short-lived; they are cancelled when a fetch
- * completes, fails fatally, or the scheduled cleanup fires.
+ * REFILTER_POLICY)}, gets a waiter, and later the tracker culls abandoned instances through {@link
+ * #run()}. Instances are intentionally short-lived; they are canceled when a fetch completes, fails
+ * fatally, or the scheduled cleanup fires.
  *
  * <ul>
  *   <li>Responsibility: deduplicate fetch requests and manage their lifetime.
@@ -42,7 +42,7 @@ public class FProxyFetchTracker implements Runnable {
   private long fetchIdentifiers;
   private final FetchContext fctx;
   private final RequestClient rc;
-  private boolean queuedJob;
+  private volatile boolean queuedJob;
   private boolean requeue;
 
   /**
@@ -151,9 +151,9 @@ public class FProxyFetchTracker implements Runnable {
    * Locates an existing {@link FProxyFetchInProgress} by URI, size limit, and optional context.
    *
    * <p>The lookup runs under the registry lock to avoid races with creation or cleanup. Only
-   * fetches that are still usable (not finished fatally, or already holding data) and satisfy the
-   * size and context constraints are returned. This helper underpins both waiter lookups and fetch
-   * reuse decisions elsewhere in the tracker.
+   * fetches that are still usable (not finished fatally or already holding data) and satisfy the
+   * size and context constraints are returned. This helper underpins both waiter lookups and
+   * fetches reuse decisions elsewhere in the tracker.
    *
    * @param criteria immutable criteria containing URI, size limit, and optional fetch context.
    * @return an active {@link FProxyFetchInProgress} if one matches, otherwise {@code null} when

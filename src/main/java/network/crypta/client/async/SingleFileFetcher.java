@@ -17,6 +17,7 @@ import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.ArchiveContext;
 import network.crypta.client.ArchiveExtractCallback;
 import network.crypta.client.ArchiveFailureException;
@@ -121,6 +122,8 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    * depending on progress through the state machine.
    */
   private Metadata metadata;
+
+  private transient AtomicReference<Metadata> metadataRef = new AtomicReference<>();
 
   /**
    * Metadata for the enclosing archive when the requested item lives inside a container. Populated
@@ -314,7 +317,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    */
   protected void onFailure(FetchException e, boolean forceFatal, ClientContext context) {
     if (LOG.isDebugEnabled()) LOG.debug("onFailure( {} , {})", e, forceFatal, e);
-    if (parent.isCancelled() || cancelled) {
+    if (parent.isCancelled() || isCancelled()) {
       if (LOG.isDebugEnabled()) LOG.debug("Failing: cancelled");
       e = new FetchException(FetchExceptionMode.CANCELLED);
       forceFatal = true;
@@ -462,7 +465,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
         (fetcher.clientMetadata != null
             ? ClientMetadata.copyOf(fetcher.clientMetadata)
             : new ClientMetadata());
-    this.metadata = newMeta;
+    updateMetadata(newMeta);
     this.metaStrings = new ArrayList<>();
     this.addedMetaStrings = 0;
     this.recursionLevel = fetcher.recursionLevel + 1;
@@ -484,6 +487,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   @Serial
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();
+    metadataRef = new AtomicReference<>(metadata);
     this.ah = null;
   }
 
@@ -497,6 +501,15 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
    * with higher‑level requests or UI elements.
    */
   final long token;
+
+  private Metadata currentMetadata() {
+    return metadataRef.get();
+  }
+
+  private void updateMetadata(Metadata newMetadata) {
+    metadata = newMetadata;
+    metadataRef.set(newMetadata);
+  }
 
   // Process the completed data. May result in us going to a
   // splitfile, or another SingleFileFetcher, etc.
@@ -565,7 +578,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     }
     // Parse metadata
     try {
-      metadata = Metadata.construct(data);
+      updateMetadata(Metadata.construct(data));
       data.free();
       data = null;
       innerWrapHandleMetadata(false, context);
@@ -780,7 +793,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
           // no-op, continue loop
         }
         case UNKNOWN -> {
-          LOG.error("Don't know what to do with metadata: {}", metadata);
+          LOG.error("Don't know what to do with metadata: {}", currentMetadata());
           throw new FetchException(FetchExceptionMode.UNKNOWN_METADATA);
         }
       }
@@ -788,7 +801,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private boolean snoopAndMaybeCancel(ClientContext context) {
-    if (metaSnoop != null && metaSnoop.snoopMetadata(metadata, context)) {
+    if (metaSnoop != null && metaSnoop.snoopMetadata(currentMetadata(), context)) {
       cancel(context);
       return true;
     }
@@ -797,24 +810,25 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   private void handleTopDataAndHashesIfNoMetaStrings(ClientContext context) throws FetchException {
     if (!metaStrings.isEmpty()) return;
-    if (metadata.hasTopData()) {
-      if ((metadata.topSize > ctx.getMaxOutputLength())
-          || (metadata.topCompressedSize > ctx.getMaxTempLength())) {
-        if (metadata.isSimpleRedirect() || metadata.isSplitfile())
-          clientMetadata.mergeNoOverwrite(metadata.getClientMetadata());
+    Metadata current = currentMetadata();
+    if (current.hasTopData()) {
+      if ((current.topSize > ctx.getMaxOutputLength())
+          || (current.topCompressedSize > ctx.getMaxTempLength())) {
+        if (current.isSimpleRedirect() || current.isSplitfile())
+          clientMetadata.mergeNoOverwrite(current.getClientMetadata());
         throw new FetchException(
-            FetchExceptionMode.TOO_BIG, metadata.topSize, true, clientMetadata.getMIMEType());
+            FetchExceptionMode.TOO_BIG, current.topSize, true, clientMetadata.getMIMEType());
       }
       rcb.onExpectedTopSize(
-          metadata.topSize,
-          metadata.topCompressedSize,
-          metadata.topBlocksRequired,
-          metadata.topBlocksTotal,
+          current.topSize,
+          current.topCompressedSize,
+          current.topBlocksRequired,
+          current.topBlocksTotal,
           context);
-      topCompatibilityMode = metadata.getTopCompatibilityCode();
-      topDontCompress = metadata.getTopDontCompress();
+      topCompatibilityMode = current.getTopCompatibilityCode();
+      topDontCompress = current.getTopDontCompress();
     }
-    HashResult[] hashes = metadata.getHashes();
+    HashResult[] hashes = current.getHashes();
     if (hashes != null) {
       rcb.onHashes(hashes, context);
     }
@@ -833,13 +847,14 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private MetaKind detectMetaKind() {
-    if (metadata.isSimpleManifest()) return MetaKind.SIMPLE_MANIFEST;
-    if (metadata.isArchiveManifest()) return MetaKind.ARCHIVE_MANIFEST;
-    if (metadata.isArchiveMetadataRedirect()) return MetaKind.ARCHIVE_METADATA_REDIRECT;
-    if (metadata.isArchiveInternalRedirect()) return MetaKind.ARCHIVE_INTERNAL_REDIRECT;
-    if (metadata.isMultiLevelMetadata()) return MetaKind.MULTI_LEVEL_METADATA;
-    if (metadata.isSingleFileRedirect()) return MetaKind.SINGLE_FILE_REDIRECT;
-    if (metadata.isSplitfile()) return MetaKind.SPLITFILE;
+    Metadata current = currentMetadata();
+    if (current.isSimpleManifest()) return MetaKind.SIMPLE_MANIFEST;
+    if (current.isArchiveManifest()) return MetaKind.ARCHIVE_MANIFEST;
+    if (current.isArchiveMetadataRedirect()) return MetaKind.ARCHIVE_METADATA_REDIRECT;
+    if (current.isArchiveInternalRedirect()) return MetaKind.ARCHIVE_INTERNAL_REDIRECT;
+    if (current.isMultiLevelMetadata()) return MetaKind.MULTI_LEVEL_METADATA;
+    if (current.isSingleFileRedirect()) return MetaKind.SINGLE_FILE_REDIRECT;
+    if (current.isSplitfile()) return MetaKind.SPLITFILE;
     return MetaKind.UNKNOWN;
   }
 
@@ -920,30 +935,32 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
           ArchiveFailureException,
           ArchiveRestartException,
           MetadataParseException {
+    Metadata current = currentMetadata();
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Is archive manifest (type={} codec={})",
-          metadata.getArchiveType(),
-          metadata.getCompressionCodec());
+          current.getArchiveType(),
+          current.getCompressionCodec());
     if (metaStrings.isEmpty() && ctx.getReturnZIPManifests()) {
-      metadata.setSimpleRedirect();
+      current.setSimpleRedirect();
       return false; // continue outer loop
     }
     ensureArchiveHandler(context);
-    archiveMetadata = metadata;
-    metadata = null;
+    archiveMetadata = current;
+    updateMetadata(null);
     Bucket metadataBucket = ah.getMetadata(actx, context.archiveManager);
     return handleArchiveManifestBucketOrSchedule(metadataBucket, context);
   }
 
   private void ensureArchiveHandler(ClientContext context) throws ArchiveFailureException {
+    Metadata current = currentMetadata();
     if (ah == null || !ah.getKey().equals(thisKey)) {
       actx.doLoopDetection(thisKey);
       ah =
           context.archiveManager.makeHandler(
               thisKey,
-              metadata.getArchiveType(),
-              metadata.getCompressionCodec(),
+              current.getArchiveType(),
+              current.getCompressionCodec(),
               (parent instanceof ClientGetter cg && cg.collectingBinaryBlob()),
               persistent);
     }
@@ -953,7 +970,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       Bucket metadataBucket, ClientContext context) throws FetchException, MetadataParseException {
     if (metadataBucket != null) {
       try {
-        metadata = Metadata.construct(metadataBucket);
+        updateMetadata(Metadata.construct(metadataBucket));
       } catch (InsufficientDiskSpaceException _) {
         throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
       } catch (IOException e) {
@@ -976,7 +993,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             if (LOG.isDebugEnabled())
               LOG.debug("gotBucket on {} persistent={}", SingleFileFetcher.this, persistentLocal);
             try {
-              metadata = Metadata.construct(data);
+              updateMetadata(Metadata.construct(data));
               innerWrapHandleMetadata(true, ctx1);
             } catch (MetadataParseException e) {
               onFailure(new FetchException(FetchExceptionMode.INVALID_METADATA, e), false, ctx1);
@@ -1014,11 +1031,12 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   private boolean processArchiveMetadataRedirectStep(final ClientContext context)
       throws FetchException {
+    Metadata current = currentMetadata();
     if (LOG.isDebugEnabled()) LOG.debug("Is archive-metadata");
     if (ah == null)
       throw new FetchException(
           FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
-    String filename = metadata.getArchiveInternalName();
+    String filename = current.getArchiveInternalName();
     if (LOG.isDebugEnabled()) LOG.debug("Fetching archive-metadata entry {}", filename);
     Bucket dataBucket;
     try {
@@ -1039,7 +1057,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     try {
       Metadata newMetadata = Metadata.construct(dataBucket);
       synchronized (this) {
-        metadata = newMetadata;
+        updateMetadata(newMetadata);
       }
     } catch (InsufficientDiskSpaceException _) {
       throw new FetchException(FetchExceptionMode.NOT_ENOUGH_DISK_SPACE);
@@ -1070,7 +1088,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
             try {
               Metadata newMetadata = Metadata.construct(data);
               synchronized (SingleFileFetcher.this) {
-                metadata = newMetadata;
+                updateMetadata(newMetadata);
               }
               innerWrapHandleMetadata(true, ctx1);
             } catch (IOException _) {
@@ -1102,15 +1120,16 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   private void processArchiveInternalRedirectStep(final ClientContext context)
       throws FetchException {
+    Metadata current = currentMetadata();
     if (LOG.isDebugEnabled()) LOG.debug("Is archive-internal redirect");
-    clientMetadata.mergeNoOverwrite(metadata.getClientMetadata());
+    clientMetadata.mergeNoOverwrite(current.getClientMetadata());
     String mime = clientMetadata.getMIMEType();
     if (mime != null) rcb.onExpectedMIME(clientMetadata, context);
     validateAllowedMimeForArchiveInternal();
     if (ah == null)
       throw new FetchException(
           FetchExceptionMode.UNKNOWN_METADATA, "Archive redirect not in an archive manifest");
-    String filename = metadata.getArchiveInternalName();
+    String filename = current.getArchiveInternalName();
     if (LOG.isDebugEnabled()) LOG.debug("Fetching archive-internal entry {}", filename);
     Bucket dataBucket;
     try {
@@ -1189,12 +1208,13 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private void processMultiLevelMetadataStep(final ClientContext context) throws FetchException {
+    Metadata current = currentMetadata();
     if (LOG.isDebugEnabled()) LOG.debug("Is multi-level metadata");
-    metadata.setSimpleRedirect();
+    current.setSimpleRedirect();
     final SingleFileFetcher f =
         new SingleFileFetcher(
-            this, persistent, false, metadata, new MultiLevelMetadataCallback(), ctx);
-    this.metadata = null;
+            this, persistent, false, current, new MultiLevelMetadataCallback(), ctx);
+    updateMetadata(null);
     parent.onTransition(this, f, context);
     context
         .getJobRunner(persistent)
@@ -1207,20 +1227,21 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private boolean processSingleFileRedirectStep(final ClientContext context) throws FetchException {
+    Metadata current = currentMetadata();
     if (LOG.isDebugEnabled()) LOG.debug("Is single-file redirect");
-    clientMetadata.mergeNoOverwrite(metadata.getClientMetadata());
+    clientMetadata.mergeNoOverwrite(current.getClientMetadata());
     emitExpectedMimeIfPresent(context);
     String mimeType = clientMetadata.getMIMETypeNoParams();
     if (mimeType != null
         && ArchiveManager.ARCHIVE_TYPE.isUsableArchiveType(mimeType)
         && !metaStrings.isEmpty()) {
-      metadata.setArchiveManifest();
+      current.setArchiveManifest();
       clientMetadata.clear();
       if (LOG.isDebugEnabled()) LOG.debug("Handling implicit container... (redirect)");
       return false; // continue loop
     }
     validateAllowedMimeForSingleRedirect(mimeType);
-    FreenetURI newURI = metadata.getSingleTarget();
+    FreenetURI newURI = current.getSingleTarget();
     if (LOG.isDebugEnabled()) LOG.debug("Redirecting to {}", newURI);
     ClientKey redirectedKey = resolveRedirectedKey(newURI);
     addNewMetaStringsFrom(newURI);
@@ -1233,16 +1254,16 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       if (key instanceof ClientCHK hK && !Arrays.equals(hK.getCryptoKey(), redirectedCryptoKey))
         redirectedCryptoKey = null;
       rcb.onSplitfileCompatibilityMode(
-          metadata.getMinCompatMode(),
-          metadata.getMaxCompatMode(),
+          current.getMinCompatMode(),
+          current.getMaxCompatMode(),
           redirectedCryptoKey,
           !hK1.isCompressed(),
           true,
           true,
           context);
     }
-    if (metadata.isCompressed()) {
-      COMPRESSOR_TYPE codec = metadata.getCompressionCodec();
+    if (current.isCompressed()) {
+      COMPRESSOR_TYPE codec = current.getCompressionCodec();
       f.addDecompressor(codec);
     }
     parent.onTransition(this, f, context);
@@ -1312,13 +1333,14 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
 
   private boolean processSplitfileStep(final ClientContext context)
       throws FetchException, MetadataParseException {
+    Metadata current = currentMetadata();
     if (LOG.isDebugEnabled()) LOG.debug("Fetching splitfile");
-    clientMetadata.mergeNoOverwrite(metadata.getClientMetadata());
+    clientMetadata.mergeNoOverwrite(current.getClientMetadata());
     String mimeType = clientMetadata.getMIMETypeNoParams();
     if (mimeType != null
         && ArchiveManager.ARCHIVE_TYPE.isUsableArchiveType(mimeType)
         && !metaStrings.isEmpty()) {
-      metadata.setArchiveManifest();
+      current.setArchiveManifest();
       clientMetadata.clear();
       if (LOG.isDebugEnabled()) LOG.debug("Handling implicit container... (splitfile)");
       return false; // continue loop
@@ -1328,10 +1350,10 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
     validateAllowedMimeForSplitfile(mimeType);
     applyDecompressorIfCompressed();
     if (handleTooManyPathComponentsIfNeeded(context)) return true;
-    final long len = metadata.dataLength();
-    final long uncompressedLen = metadata.isCompressed() ? metadata.uncompressedDataLength() : len;
+    final long len = current.dataLength();
+    final long uncompressedLen = current.isCompressed() ? current.uncompressedDataLength() : len;
     if ((uncompressedLen > ctx.getMaxOutputLength()) || (len > ctx.getMaxTempLength())) {
-      boolean compressed = metadata.isCompressed();
+      boolean compressed = current.isCompressed();
       throw new FetchException(
           FetchExceptionMode.TOO_BIG,
           uncompressedLen,
@@ -1344,7 +1366,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
       reallyFinal = false;
     }
     SplitFileFetcher.InitParams p = new SplitFileFetcher.InitParams();
-    p.metadata = metadata;
+    p.metadata = current;
     p.rcb = rcb;
     p.parent = parent;
     p.fetchContext = ctx;
@@ -1367,8 +1389,9 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private void applyDecompressorIfCompressed() {
-    if (metadata.isCompressed()) {
-      COMPRESSOR_TYPE codec = metadata.getCompressionCodec();
+    Metadata current = currentMetadata();
+    if (current.isCompressed()) {
+      COMPRESSOR_TYPE codec = current.getCompressionCodec();
       addDecompressor(codec);
     }
   }
@@ -1379,7 +1402,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
         && mimeType != null
         && ctx.getAllowedMIMETypes() != null
         && !ctx.getAllowedMIMETypes().contains(mimeType)) {
-      long len = metadata.uncompressedDataLength();
+      long len = currentMetadata().uncompressedDataLength();
       throw new FetchException(
           FetchExceptionMode.WRONG_MIME_TYPE, len, false, clientMetadata.getMIMEType());
     }
@@ -1401,7 +1424,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
           rcb.onFailure(
               new FetchException(
                   FetchExceptionMode.TOO_MANY_PATH_COMPONENTS,
-                  metadata.uncompressedDataLength(),
+                  currentMetadata().uncompressedDataLength(),
                   (rcb == parent),
                   clientMetadata.getMIMEType(),
                   tryURI),
@@ -1432,9 +1455,10 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private String resolveManifestName() throws FetchException {
-    if (metadata.countDocuments() == 1
-        && metadata.getDocument("") != null
-        && metadata.getDocument("").isSimpleManifest()) {
+    Metadata current = currentMetadata();
+    if (current.countDocuments() == 1
+        && current.getDocument("") != null
+        && current.getDocument("").isSimpleManifest()) {
       LOG.error("Manifest is called \"\" for {}", this);
       return "";
     } else if (metaStrings.isEmpty()) {
@@ -1449,12 +1473,13 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private void selectDefaultManifestDocument() throws FetchException {
+    Metadata current = currentMetadata();
     if (!persistent) {
-      metadata = metadata.getDefaultDocument();
+      updateMetadata(current.getDefaultDocument());
     } else {
-      metadata = metadata.grabDefaultDocument();
+      updateMetadata(current.grabDefaultDocument());
     }
-    if (metadata == null)
+    if (currentMetadata() == null)
       throw new FetchException(
           FetchExceptionMode.NOT_ENOUGH_PATH_COMPONENTS,
           -1,
@@ -1464,30 +1489,31 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
   }
 
   private void selectManifestDocumentByName(String name) throws FetchException {
+    Metadata current = currentMetadata();
     if (!persistent) {
-      Metadata origMd = metadata;
-      metadata = origMd.getDocument(name);
-      if (metadata != null && metadata.isSymbolicShortlink()) {
+      Metadata newMetadata = current.getDocument(name);
+      if (newMetadata != null && newMetadata.isSymbolicShortlink()) {
         String oldName = name;
-        name = metadata.getSymbolicShortlinkTargetName();
+        name = newMetadata.getSymbolicShortlinkTargetName();
         if (oldName.equals(name))
           throw new FetchException(FetchExceptionMode.INVALID_METADATA, "redirect loop: " + name);
-        metadata = origMd.getDocument(name);
+        newMetadata = current.getDocument(name);
       }
+      updateMetadata(newMetadata);
       thisKey = thisKey.pushMetaString(name);
     } else {
-      Metadata newMeta = metadata.grabDocument(name);
+      Metadata newMeta = current.grabDocument(name);
       if (newMeta != null && newMeta.isSymbolicShortlink()) {
         String oldName = name;
         name = newMeta.getSymbolicShortlinkTargetName();
         if (oldName.equals(name))
           throw new FetchException(FetchExceptionMode.INVALID_METADATA, "redirect loop: " + name);
-        newMeta = metadata.getDocument(name);
+        newMeta = current.getDocument(name);
       }
-      metadata = newMeta;
+      updateMetadata(newMeta);
       thisKey = thisKey.pushMetaString(name);
     }
-    if (metadata == null)
+    if (currentMetadata() == null)
       throw new FetchException(FetchExceptionMode.NOT_IN_ARCHIVE, "can't find " + name);
   }
 
@@ -1805,7 +1831,7 @@ public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGe
         // Note: Pass an InputStream here and save ourselves a Bucket
         Metadata meta = Metadata.construct(finalData);
         synchronized (SingleFileFetcher.this) {
-          metadata = meta;
+          updateMetadata(meta);
         }
         innerWrapHandleMetadata(true, context);
       } catch (MetadataParseException e) {

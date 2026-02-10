@@ -207,14 +207,20 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
     // We want 0, 1, ... maxRetries i.e. maxRetries+1 attempts (maxRetries=0 => try once, no
     // retries, maxRetries=1 = original try + 1 retry)
     int r = ++retryCount;
+    boolean finishedSnapshot;
+    boolean cancelledSnapshot;
+    synchronized (this) {
+      finishedSnapshot = finished;
+      cancelledSnapshot = cancelled;
+    }
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Attempting to retry... (max {}, current {}) on {} finished={} cancelled={}",
           maxRetries,
           r,
           this,
-          finished,
-          cancelled);
+          finishedSnapshot,
+          cancelledSnapshot);
     if (!withinRetryLimit(r)) {
       unregister(context, getPriorityClass());
       return false;

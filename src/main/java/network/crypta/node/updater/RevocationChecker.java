@@ -42,8 +42,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Typical usage is to construct a single instance tied to the lifetime of {@link
  * NodeUpdateManager}, then call {@link #start(boolean)} on startup and whenever the revocation URI
- * changes. The checker manages its own request state and ensures that low‑priority fetches are
- * replaced by aggressive ones after a successful core update.
+ * changes. The checker manages its own request state and ensures that aggressive ones replace
+ * low‑priority fetches after a successful core update.
  *
  * <p>Concurrency: instances are not immutable, but the critical fields are guarded internally.
  * Methods that mutate state take care to synchronize where required. Callers do not need to add
@@ -113,15 +113,15 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     // Debug gating derives from LOG.isDebugEnabled() where needed
     ctxRevocation = core.makeClient((short) 0, true, false).getFetchContext();
     // Do not allow redirects etc.
-    // If we allow redirects then it will take too long to download the revocation.
+    // If we allow redirects, then it will take too long to download the revocation.
     // Anyone inserting it should be aware of this fact!
-    // You must insert with no content type, and be less than the size limit, and less than the
+    // You must insert with no content type and be less than the size limit, and less than the
     // block size after compression!
     // If it doesn't fit, we'll still tell the user, but the message may not be easily readable.
     ctxRevocation.setAllowSplitfiles(false);
     ctxRevocation.setMaxArchiveLevels(0);
     ctxRevocation.setFollowRedirects(false);
-    // big enough ?
+    // big enough?
     ctxRevocation.setMaxOutputLength(NodeUpdateManager.MAX_REVOCATION_KEY_LENGTH);
     ctxRevocation.setMaxTempLength(NodeUpdateManager.MAX_REVOCATION_KEY_TEMP_LENGTH);
     // if we find content, try forever to get it; not used because of the above size limits.
@@ -149,7 +149,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    * Starts a revocation fetch cycle with the default reset behavior.
    *
    * <p>When invoked, the checker schedules a new fetch. If a previous low‑priority request is still
-   * running and {@code aggressive} is {@code true}, that request is cancelled and replaced with an
+   * running and {@code aggressive} is {@code true}, that request is canceled and replaced with an
    * aggressive one. If a previously persisted blob exists, it is processed immediately before the
    * asynchronous fetch completes.
    *
@@ -179,7 +179,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    * Starts a revocation fetch, optionally resetting counters and adjusting priority.
    *
    * <p>If a fetch is already in progress and {@code aggressive} is {@code true} while the existing
-   * request is not, the existing request is cancelled and replaced. When {@code reset} is {@code
+   * request is not, the existing request is canceled and replaced. When {@code reset} is {@code
    * true} the consecutive {@code DATA_NOT_FOUND} counter is cleared; otherwise it continues from
    * its previous value. The method returns whether an in‑flight request existed prior to this call
    * (useful for callers wanting to know if they took over an existing cycle).
@@ -188,8 +188,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    *     false}, submits at a lower, immediate class suitable for background checking.
    * @param reset when {@code true}, clears the internal DNF counter before queuing a new request;
    *     when {@code false}, preserves the current count across cycles.
-   * @return {@code true} if a previous fetch was running and was not already replaced by an
-   *     aggressive one; {@code false} otherwise.
+   * @return {@code true} if a previous fetch was running and was not yet replaced by an aggressive
+   *     one; {@code false} otherwise.
    */
   public boolean start(boolean aggressive, boolean reset) {
     if (manager.isBlown()) {
@@ -237,7 +237,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     boolean wasRunning = false;
     synchronized (this) {
       if (shouldCancelOld(aggressive)) {
-        toCancel = revocationGetter; // Ignore old one.
+        toCancel = revocationGetter; // Ignore the old one.
         if (LOG.isDebugEnabled()) LOG.debug("Ignoring old request, because was low priority");
         revocationGetter = null;
         if (toCancel != null) wasRunning = true;
@@ -333,8 +333,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
   /**
    * Handles a successful fetch of the revocation message.
    *
-   * <p>Marks the checker as blown, persists the received blob to disk, attempts to extract a user
-   * readable message from the payload, and forwards the message to {@link
+   * <p>Marks the checker as blown, persists the received blob to disk, attempts to extract a
+   * user-readable message from the payload, and forwards the message to {@link
    * NodeUpdateManager#blow(String, boolean)}. Any errors while decoding the payload are logged and
    * do not prevent the revocation from being enforced.
    *
@@ -350,7 +350,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
 
   void onSuccess(FetchResult result, ClientGetter state, Bucket blob) {
     // The key has been blown !
-    // Note: Warning message content kept concise by design.
+    // Note: Warning message content is kept concise by design.
     blown = true;
     if (LOG.isDebugEnabled() && state != null) {
       LOG.debug("Revocation success; state={} (ignored)", state);
@@ -366,7 +366,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
         LOG.error(msg, t);
         // Message already logged above
       } catch (Exception _) {
-        msg = "Internal error after retreiving revocation key";
+        msg = "Internal error after retrieving revocation key";
       }
     }
     manager.blow(msg, false); // Real one, even if we can't extract the message.
@@ -376,7 +376,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    * Returns whether a revocation message has been observed during this process lifetime.
    *
    * <p>Once {@code true}, this flag remains {@code true} for the life of the process. The overall
-   * node state should be considered revoked even if subsequent fetch cycles fail or if the payload
+   * node state should be considered revoked even if later fetch cycles fail or if the payload
    * cannot be decoded.
    *
    * @return {@code true} if revocation has been detected and propagated; {@code false} otherwise.
@@ -452,8 +452,9 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    *
    * <p>Non‑fatal failures update the internal {@code DATA_NOT_FOUND} counter and may schedule a
    * retry depending on policy. Fatal failures trigger a blow with a localized, user‑readable
-   * message; when possible the partial blob is persisted for inspection. Redirects are treated as a
-   * configuration error and cause an immediate blow to avoid following potentially unsafe targets.
+   * message; when possible, the partial blob is persisted for inspection. Redirects are treated as
+   * a configuration error and cause an immediate blow to avoid following potentially unsafe
+   * targets.
    *
    * @param e the failure information, including the {@link FetchExceptionMode} and user‑friendly
    *     detail message; never {@code null}.
@@ -475,7 +476,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
     boolean completed;
     long now = System.currentTimeMillis();
     if (errorCode == FetchExceptionMode.CANCELLED) {
-      return; // cancelled by us above, or killed; either way irrelevant and doesn't need to be
+      return; // canceled by us above, or killed; either way irrelevant and doesn't need to be
       // restarted
     }
     if (handleFatalFailure(e, blob)) return;
@@ -500,7 +501,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
   private boolean handleFatalFailure(FetchException e, Bucket blob) {
     if (!e.isFatal()) return false;
     if (!e.isDefinitelyFatal()) {
-      // INTERNAL_ERROR could be related to the key but isn't necessarily.
+      // INTERNAL_ERROR could be related to the key but isn't necessary.
       String message =
           l10n(
               "revocationFetchFailedMaybeInternalError",
@@ -510,7 +511,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
       manager.blow(message, true);
       return true;
     }
-    // Really fatal, i.e. something was inserted but can't be decoded.
+    // Really fatal, i.e., something was inserted but can't be decoded.
     // Strings are intentionally explicit despite being rarely seen.
     String message =
         l10n(
@@ -559,7 +560,11 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    * in‑flight request. Call {@link #start(boolean)} afterward to begin a fresh cycle if desired.
    */
   public void kill() {
-    if (revocationGetter != null) revocationGetter.cancel(core.getClientContext());
+    ClientGetter getter;
+    synchronized (this) {
+      getter = revocationGetter;
+    }
+    if (getter != null) getter.cancel(core.getClientContext());
   }
 
   /**
@@ -596,7 +601,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
   /**
    * Provides the revocation blob as a read‑only {@link RandomAccessBuffer}, when available.
    *
-   * <p>If the blob is already cached in memory it is returned as a read‑only byte array–backed
+   * <p>If the blob is already cached in memory, it is returned as a read-only byte-array-backed
    * buffer. Otherwise, a file‑backed buffer is opened for the persisted blob. When the node is not
    * blown or the blob cannot be read, {@code null} is returned and details are logged.
    *

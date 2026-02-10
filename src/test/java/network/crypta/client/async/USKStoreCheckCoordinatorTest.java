@@ -434,6 +434,9 @@ class USKStoreCheckCoordinatorTest {
     java.lang.reflect.Field field =
         USKStoreCheckCoordinator.class.getDeclaredField("runningStoreChecker");
     field.setAccessible(true);
-    field.set(coordinator, checker);
+    @SuppressWarnings("unchecked")
+    java.util.concurrent.atomic.AtomicReference<USKStoreCheckerGetter> holder =
+        (java.util.concurrent.atomic.AtomicReference<USKStoreCheckerGetter>) field.get(coordinator);
+    holder.set(checker);
   }
 }

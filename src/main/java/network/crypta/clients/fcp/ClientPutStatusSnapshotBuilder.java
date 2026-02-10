@@ -58,10 +58,11 @@ final class ClientPutStatusSnapshotBuilder {
     InsertExceptionMode failureCode = null;
     String failureReasonShort = null;
     String failureReasonLong = null;
-    if (request.putFailedMessage != null) {
-      failureCode = request.putFailedMessage.failureMode;
-      failureReasonShort = request.putFailedMessage.getShortFailedMessage();
-      failureReasonLong = request.putFailedMessage.getLongFailedMessage();
+    PutFailedMessage failureMessage = request.getFailureMessage();
+    if (failureMessage != null) {
+      failureCode = failureMessage.failureMode;
+      failureReasonShort = failureMessage.getShortFailedMessage();
+      failureReasonLong = failureMessage.getLongFailedMessage();
     }
     String mimeType = null;
     if (request.persistence == ClientRequest.Persistence.FOREVER) {
@@ -103,7 +104,8 @@ final class ClientPutStatusSnapshotBuilder {
     Instant latestFailure = null;
     boolean totalFinalized = false;
 
-    if (request.progressMessage instanceof SimpleProgressMessage msg) {
+    FCPMessage progressSnapshot = request.getProgressMessageSnapshot();
+    if (progressSnapshot instanceof SimpleProgressMessage msg) {
       total = (int) msg.getTotalBlocks();
       min = (int) msg.getMinBlocks();
       fetched = (int) msg.getFetchedBlocks();

@@ -238,7 +238,9 @@ public class CHKInsertHandler implements PrioRunnable, ByteCounter {
 
     // Receive the data off-thread so downstream routing can proceed concurrently.
     Runnable dataReceiver = new DataReceiver();
-    receiveStarted = true;
+    synchronized (this) {
+      receiveStarted = true;
+    }
     node.network().executor().execute(dataReceiver, "CHKInsertHandler$DataReceiver for UID " + uid);
   }
 

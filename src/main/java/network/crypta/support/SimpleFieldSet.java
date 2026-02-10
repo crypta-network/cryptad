@@ -70,8 +70,8 @@ public class SimpleFieldSet {
   private static final String CANNOT_PARSE = "Cannot parse ";
 
   private final Map<String, String> values;
-  private Map<String, SimpleFieldSet> subsets;
-  private String endMarker;
+  private volatile Map<String, SimpleFieldSet> subsets;
+  private volatile String endMarker;
   private final boolean shortLived;
   private final boolean alwaysUseBase64;
   protected String[] header;

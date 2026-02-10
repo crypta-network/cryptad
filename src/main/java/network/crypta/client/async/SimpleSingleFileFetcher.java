@@ -238,7 +238,7 @@ public class SimpleSingleFileFetcher extends BaseSingleFileFetcher
    */
   protected void onFailure(FetchException e, boolean forceFatal, ClientContext context) {
     if (LOG.isDebugEnabled()) LOG.debug("onFailure( {} , {})", e, forceFatal, e);
-    if (parent.isCancelled() || cancelled) {
+    if (parent.isCancelled() || isCancelled()) {
       if (LOG.isDebugEnabled()) LOG.debug("Failing: cancelled");
       e = new FetchException(FetchExceptionMode.CANCELLED);
       forceFatal = true;

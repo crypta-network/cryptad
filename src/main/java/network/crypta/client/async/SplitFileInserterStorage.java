@@ -221,7 +221,7 @@ public class SplitFileInserterStorage {
     FAILED
   }
 
-  private Status status;
+  private volatile Status status;
   private final FailureCodeTracker errors;
   private boolean overallStatusDirty;
 

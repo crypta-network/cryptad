@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>Tracks membership: which segment and block number provide each cross‑segment block.
- *   <li>Reads and validates blocks from disk with defensive handling of I/O failures.
+ *   <li>Reads and validates blocks from the disk with defensive handling of I/O failures.
  *   <li>Performs FEC decode/encode and reports recovered blocks back to their segments.
  *   <li>Bounds memory via {@link network.crypta.support.MemoryLimitedJobRunner} jobs.
  * </ul>
@@ -59,7 +59,7 @@ public class SplitFileFetcherCrossSegmentStorage {
 
   /**
    * Owning storage that coordinates all segments for the overall split‑file request. The parent is
-   * used to obtain priorities, schedule persistent jobs, and report success or fatal errors. The
+   * used to get priorities, schedule persistent jobs, and report success or fatal errors. The
    * reference remains valid until the fetch completes or is canceled.
    */
   public final SplitFileFetcherStorage parent;
@@ -92,7 +92,7 @@ public class SplitFileFetcherCrossSegmentStorage {
   private boolean cancelled;
 
   /**
-   * If true, the segment has completed. Once a segment decode starts, finished must not be set
+   * If true, the segment has completed. Once a segment decoding starts, finished must not be set
    * until it exits.
    */
   private boolean succeeded;
@@ -378,7 +378,7 @@ public class SplitFileFetcherCrossSegmentStorage {
   private static boolean[] wasNonNullFill(byte[][] blocks) {
     boolean[] nonNulls = new boolean[blocks.length];
     for (int i = 0; i < blocks.length; i++) {
-      // Treat null or empty arrays as absent; provide zero-filled buffer for codec.
+      // Treat null or empty arrays as absent; provide a zero-filled buffer for codec.
       if (blocks[i] == null || blocks[i].length == 0) {
         blocks[i] = new byte[CHKBlock.DATA_LENGTH];
       } else {
@@ -479,7 +479,7 @@ public class SplitFileFetcherCrossSegmentStorage {
    *
    * <p>The format consists of two integers (data block count, check block count) followed by, for
    * each cross‑segment position, the segment number and the block number within that segment. The
-   * output is sufficient to reconstruct the mapping using the stream constructor.
+   * output is enough to reconstruct the mapping using the stream constructor.
    *
    * @param dos destination stream; the caller owns the stream’s lifetime and buffering policy and
    *     must not be {@code null}
@@ -539,13 +539,13 @@ public class SplitFileFetcherCrossSegmentStorage {
   }
 
   /**
-   * Scan referenced segments and mark blocks already present on disk.
+   * Scan referenced segments and mark blocks already present on the disk.
    *
    * <p>Invoked after the parent has read segment metadata, this method initializes internal
    * availability counters from the current on‑disk state. It performs no locking; callers typically
-   * use it during construction prior to scheduling any decode attempts.
+   * use it during construction before scheduling any decoding attempts.
    */
-  public void checkBlocks() {
+  public synchronized void checkBlocks() {
     for (int i = 0; i < totalBlocks; i++) {
       if (segments[i].hasBlock(blockNumbers[i])) {
         blocksFound[i] = true;
@@ -577,7 +577,7 @@ public class SplitFileFetcherCrossSegmentStorage {
    *
    * <p>If a decode/encode job is in progress, the completion callback will not be invoked until the
    * job exits; otherwise the method schedules the usual completion notification on the parent.
-   * After cancellation, subsequent notifications are ignored.
+   * After cancellation, further notifications are ignored.
    */
   public void cancel() {
     synchronized (this) {

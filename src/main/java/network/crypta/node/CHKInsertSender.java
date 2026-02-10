@@ -573,7 +573,7 @@ public final class CHKInsertSender extends BaseSender
         LOG.debug("Allowing failure {} htl is still {}", highHTLFailureCount, htl);
       return new HtlDecision(false, highHTLFailureCount, false);
     }
-    htl = node.routing().decrementHTL(hasForwarded ? lastNode : source, htl);
+    htl = node.routing().decrementHTL(hasForwarded ? lastNode.get() : source, htl);
     if (LOG.isDebugEnabled()) LOG.debug("Decremented HTL to {}", htl);
     return new HtlDecision(false, highHTLFailureCount, false);
   }
@@ -1000,7 +1000,8 @@ public final class CHKInsertSender extends BaseSender
 
     completeAfterTransfers(failedRecv);
 
-    if (status == SUCCESS && next != null) next.onSuccess(true, false);
+    int finalStatus = getStatus();
+    if (finalStatus == SUCCESS && next != null) next.onSuccess(true, false);
     if (LOG.isDebugEnabled()) LOG.debug("Returning from finish()");
   }
 
