@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import network.crypta.node.FSParseException;
 import network.crypta.support.io.LineReader;
 import network.crypta.support.io.Readers;
@@ -70,7 +71,7 @@ public class SimpleFieldSet {
   private static final String CANNOT_PARSE = "Cannot parse ";
 
   private final Map<String, String> values;
-  private volatile Map<String, SimpleFieldSet> subsets;
+  private ConcurrentHashMap<String, SimpleFieldSet> subsets;
   private volatile String endMarker;
   private final boolean shortLived;
   private final boolean alwaysUseBase64;
@@ -160,7 +161,7 @@ public class SimpleFieldSet {
    */
   public SimpleFieldSet(SimpleFieldSet sfs) {
     values = new HashMap<>(sfs.values);
-    if (sfs.subsets != null) subsets = new HashMap<>(sfs.subsets);
+    if (sfs.subsets != null) subsets = new ConcurrentHashMap<>(sfs.subsets);
     this.shortLived = false; // it's been copied!
     this.header = sfs.header;
     this.endMarker = sfs.endMarker;
@@ -510,7 +511,7 @@ public class SimpleFieldSet {
     // overwrite old
     values.putAll(fs.values);
     if (fs.subsets == null) return;
-    if (subsets == null) subsets = new HashMap<>();
+    if (subsets == null) subsets = new ConcurrentHashMap<>();
     for (Map.Entry<String, SimpleFieldSet> entry : fs.subsets.entrySet()) {
       String key = entry.getKey();
       SimpleFieldSet hisFS = entry.getValue();
@@ -633,7 +634,7 @@ public class SimpleFieldSet {
       boolean allowMultiple,
       boolean overwrite,
       boolean fromRead) {
-    if (subsets == null) subsets = new HashMap<>();
+    if (subsets == null) subsets = new ConcurrentHashMap<>();
     SimpleFieldSet fs = subsets.get(before);
     if (fs == null) {
       fs = new SimpleFieldSet(shortLived, alwaysUseBase64);
@@ -1118,7 +1119,7 @@ public class SimpleFieldSet {
     if (fs.isEmpty()) { // can't just no-op, because the caller might add the FS then populate it...
       throw new IllegalArgumentException("Empty");
     }
-    if (subsets == null) subsets = new HashMap<>();
+    if (subsets == null) subsets = new ConcurrentHashMap<>();
     if (subsets.containsKey(key))
       throw new IllegalArgumentException(
           "Already contains " + key + " but trying to add a SimpleFieldSet!");

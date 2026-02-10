@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.keys.Key;
 import network.crypta.keys.KeyBlock;
 import network.crypta.node.LowLevelGetException;
@@ -107,7 +108,7 @@ public class DatastoreChecker implements PrioRunnable {
   /** List of requests to check the datastore for, bucketed by priority. */
   private final ArrayList<ArrayDeque<QueueItem>> queue;
 
-  private volatile ClientContext context;
+  private final AtomicReference<ClientContext> context = new AtomicReference<>();
   private final Node node;
 
   /**
@@ -121,7 +122,7 @@ public class DatastoreChecker implements PrioRunnable {
    *     later accessed from the checker thread.
    */
   public synchronized void setContext(ClientContext context) {
-    this.context = context;
+    this.context.set(Objects.requireNonNull(context, "context"));
   }
 
   /**
@@ -224,7 +225,7 @@ public class DatastoreChecker implements PrioRunnable {
 
     ClientRequestScheduler sched;
     synchronized (this) {
-      sched = getter.getScheduler(context);
+      sched = getter.getScheduler(context.get());
     }
     boolean anyValid = processKeys(keys, blocks, random, sched);
 
@@ -296,8 +297,9 @@ public class DatastoreChecker implements PrioRunnable {
 
   private void queueFinishRegisterPersistent(
       final SendableGet getter, final ClientRequestScheduler sched, final boolean anyValid) {
+    ClientContext localContext = context.get();
     try {
-      context.jobRunner.queue(
+      localContext.jobRunner.queue(
           new PersistentJob() {
             @Override
             public boolean run(ClientContext context) {
