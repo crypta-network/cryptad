@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.crypt.BlockCipher;
 import network.crypta.crypt.KeyAgreementSchemeContext;
@@ -85,34 +86,34 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * True if this peer has a build number older than our last-known-good build number. Note that
    * even if this is true, the node can still be 'connected'.
    */
-  protected boolean unroutableOlderVersion;
+  protected volatile boolean unroutableOlderVersion;
 
   /**
    * True if this peer reports that our build number is before their last-known-good build number.
    * Note that even if this is true, the node can still be 'connected'.
    */
-  protected boolean unroutableNewerVersion;
+  protected volatile boolean unroutableNewerVersion;
 
   /**
    * Indicates whether routing to this peer is currently disabled by policy. When true, routing
    * decisions treat the peer as ineligible even if it is otherwise connected; control traffic may
    * still flow. Updated under the peer lock as configuration or remote signals change.
    */
-  protected boolean disableRouting;
+  protected volatile boolean disableRouting;
 
   /**
    * Records whether local configuration explicitly set {@link #disableRouting}. This flag lets the
    * node distinguish local intent from remote requests and preserves local overrides across later
    * updates. It is read and written under the peer lock only.
    */
-  protected boolean disableRoutingHasBeenSetLocally;
+  protected volatile boolean disableRoutingHasBeenSetLocally;
 
   /**
    * Records whether the remote peer has asked us to disable routing. The flag is advisory and may
    * be overridden by local policy. It is maintained under the peer lock and influences the
    * effective routing eligibility calculation.
    */
-  protected boolean disableRoutingHasBeenSetRemotely;
+  protected volatile boolean disableRoutingHasBeenSetRemotely;
 
   /*
    * Buffer of Ni,Nr,g^i,g^r,ID
@@ -217,7 +218,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private final OutgoingPacketMangler outgoingMangler;
 
   /** Advertised addresses */
-  List<Peer> nominalPeer;
+  AtomicReference<List<Peer>> nominalPeer = new AtomicReference<>();
 
   /** The PeerNode's report of our IP address */
   private Peer remoteDetectedPeer;
@@ -232,13 +233,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private SessionKey previousTracker;
 
   /** When did we last rekey (promote the unverified tracker to new)? */
-  private long timeLastRekeyed;
+  private volatile long timeLastRekeyed;
 
   /** How much data did we send with the current tracker? */
-  private long totalBytesExchangedWithCurrentTracker = 0;
+  private volatile long totalBytesExchangedWithCurrentTracker = 0;
 
   /** Are we rekeying? */
-  private boolean isRekeying = false;
+  private volatile boolean isRekeying = false;
 
   /** Unverified tracker - will be promoted to the currentTracker if we receive packets on it */
   private SessionKey unverifiedTracker;
@@ -247,13 +248,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private volatile long timeLastSentPacket;
 
   /** When did we last receive a packet? */
-  private long timeLastReceivedPacket;
+  private volatile long timeLastReceivedPacket;
 
   /** When did we last receive a non-auth packet? */
-  private long timeLastReceivedDataPacket;
+  private volatile long timeLastReceivedDataPacket;
 
   /** When did we last receive an ack? */
-  private long timeLastReceivedAck;
+  private volatile long timeLastReceivedAck;
 
   /** When was isRoutingCompatible() last true? */
   private long timeLastRoutable;
@@ -261,7 +262,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /** Time added or restarted (reset on startup unlike peerAddedTime) */
   private final long timeAddedOrRestarted;
 
-  private long countSelectionsSinceConnected = 0;
+  private final AtomicLong countSelectionsSinceConnected = new AtomicLong();
 
   /**
    * Percentage threshold that triggers a selection warning for this peer. The value is expressed as
@@ -279,10 +280,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   public static final int SELECTION_MIN_PEERS = 5;
 
   // Note: isRoutable() depends on more than this flag.
-  private boolean isRoutable;
+  private volatile boolean isRoutable;
 
   /** Used by maybeOnConnect */
-  private boolean wasDisconnected = true;
+  private volatile boolean wasDisconnected = true;
 
   /**
    * Were we removed from the routing table? Used as a cache to avoid accessing PeerManager if not
@@ -291,7 +292,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private boolean removed;
 
   /** Number of handshake attempts since the last successful connection or ARK fetch */
-  private int handshakeCount;
+  private final AtomicInteger handshakeCount = new AtomicInteger();
 
   /** After these many failed handshakes, we start the ARK fetcher. */
   private static final int MAX_HANDSHAKE_COUNT = 2;
@@ -351,10 +352,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   final boolean decrementHTLAtMinimum;
 
   /** Time at which we should send the next handshake request */
-  protected long sendHandshakeTime;
+  protected volatile long sendHandshakeTime;
 
   /** Version of the node */
-  private String version;
+  private volatile String version;
 
   /** Cached parsed version components to avoid reparsing */
   private final AtomicReference<String[]> parsedVersionComponents = new AtomicReference<>();
@@ -401,19 +402,19 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * in-flight messages and call disconnected() on their clients, i.e., whenever we call
    * disconnected(true, ...)
    */
-  private long myBootID;
+  private volatile long myBootID;
 
   /** myBootID at the time of the last successful completed handshake. */
   private long myLastSuccessfulBootID;
 
   /** If true, this means the last time we tried, we got a bogus noderef */
-  private boolean bogusNoderef;
+  private volatile boolean bogusNoderef;
 
   /** The time at which we last completed a connection setup. */
-  private long connectedTime;
+  private volatile long connectedTime;
 
   /** The status of this peer node in terms of Node.PEER_NODE_STATUS_* */
-  private int peerNodeStatus = PeerManager.PEER_NODE_STATUS_DISCONNECTED;
+  private volatile int peerNodeStatus = PeerManager.PEER_NODE_STATUS_DISCONNECTED;
 
   /**
    * Holds a String-Long pair that shows which message types (as name) have been sent to this peer.
@@ -432,7 +433,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private Peer[] handshakeIPs;
 
   /** True if we have never connected to this peer since it was added to this node */
-  protected boolean neverConnected;
+  protected volatile boolean neverConnected;
 
   /**
    * When this peer was added to this node. This is used differently by opennet and darknet nodes.
@@ -458,7 +459,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * Delta between our clock and his clock (positive = his clock is fast, negative = our clock is
    * fast)
    */
-  private long clockDelta;
+  private volatile long clockDelta;
 
   /** Percentage uptime of this node, 0 if they haven't said */
   private volatile byte uptime;
@@ -501,10 +502,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   private boolean isBursting;
 
   /** Number of handshake attempts (while in ListenOnly mode) since the beginning of this burst */
-  private int listeningHandshakeBurstCount;
+  private final AtomicInteger listeningHandshakeBurstCount = new AtomicInteger();
 
   /** Total number of handshake attempts (while in ListenOnly mode) to be in this burst */
-  private int listeningHandshakeBurstSize;
+  private volatile int listeningHandshakeBurstSize;
 
   // NodeCrypto for the relevant node reference for this peer's type (Darknet or Opennet at this
   // time)
@@ -528,7 +529,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * noderef has been observed. The value is mutable, accessed under the peer lock, and used for
    * persistence and export.
    */
-  protected SimpleFieldSet fullFieldSet;
+  protected AtomicReference<SimpleFieldSet> fullFieldSet = new AtomicReference<>();
 
   /**
    * Returns whether to ignore last-known-good version checks for this peer.
@@ -667,7 +668,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     this.bytesOutAtStartup = fs.getLong("totalOutput", 0);
     if (fromLocal) {
       SimpleFieldSet f = fs.subset("full");
-      if (fullFieldSet == null && f != null) fullFieldSet = f;
+      if (f != null) fullFieldSet.compareAndSet(null, f);
     }
     // If we got here, odds are we should consider writing to the peer-file
     writePeers();
@@ -753,16 +754,17 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   private void parseNominalPeers(SimpleFieldSet fs, boolean fromLocal) {
-    nominalPeer = new ArrayList<>();
+    List<Peer> parsedNominalPeer = new ArrayList<>();
     String[] physical = fs.getAll(SFS_KEY_PHYSICAL_UDP);
     if (physical != null) {
       for (String phys : physical) {
         for (Peer p : parsePeerEntryCompat(phys, fromLocal)) {
-          if (p != null && !nominalPeer.contains(p)) nominalPeer.add(p);
+          if (p != null && !parsedNominalPeer.contains(p)) parsedNominalPeer.add(p);
         }
       }
     }
-    if (nominalPeer.isEmpty()) {
+    nominalPeer.set(List.copyOf(parsedNominalPeer));
+    if (parsedNominalPeer.isEmpty()) {
       LOG.atInfo()
           .addArgument(() -> identityAsBase64String)
           .addArgument(internals::locationToString)
@@ -817,7 +819,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   private void scheduleFirstHandshake(boolean fromLocal, long now) {
-    listeningHandshakeBurstCount = 0;
+    listeningHandshakeBurstCount.set(0);
     listeningHandshakeBurstSize =
         Node.MIN_BURSTING_HANDSHAKE_BURST_SIZE
             + random.nextInt(Node.RANDOMIZED_BURSTING_HANDSHAKE_BURST_SIZE);
@@ -826,7 +828,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
           "First BurstOnly mode handshake in {}" + STR_MS_FOR + "{} (count: {}, size: {})",
           sendHandshakeTime - now,
           shortToString(),
-          listeningHandshakeBurstCount,
+          listeningHandshakeBurstCount.get(),
           listeningHandshakeBurstSize);
     }
     if (fromLocal)
@@ -1588,11 +1590,11 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     }
 
     private void updateRoutabilityAndBootId(HandshakeParams p, HandshakeApplyResult r) {
-      handshakeCount = 0;
+      handshakeCount.set(0);
       bogusNoderef = false;
       if (!isConnected()) {
         connectedTime = p.now;
-        countSelectionsSinceConnected = 0;
+        countSelectionsSinceConnected.set(0);
         sentInitialMessages = false;
       } else r.wasARekey = true;
       disableRouting = disableRoutingHasBeenSetLocally || disableRoutingHasBeenSetRemotely;
@@ -1614,7 +1616,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
             getPeer());
         r.wasARekey = false;
         connectedTime = p.now;
-        countSelectionsSinceConnected = 0;
+        countSelectionsSinceConnected.set(0);
         sentInitialMessages = false;
       } else if (r.bootIDChanged && LOG.isDebugEnabled())
         LOG.debug(
@@ -1737,9 +1739,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   @Override
   public synchronized Peer getPeer() {
-    if (detectedPeer == null && !nominalPeer.isEmpty()) {
+    List<Peer> localNominalPeer = nominalPeer.get();
+    if (detectedPeer == null && localNominalPeer != null && !localNominalPeer.isEmpty()) {
       sortNominalPeer();
-      detectedPeer = nominalPeer.getFirst();
+      localNominalPeer = nominalPeer.get();
+      if (localNominalPeer != null && !localNominalPeer.isEmpty()) {
+        detectedPeer = localNominalPeer.getFirst();
+      }
       updateShortToString();
     }
     return detectedPeer;
@@ -1764,7 +1770,13 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   private void sortNominalPeer() {
-    nominalPeer.sort(Peer.PEER_COMPARATOR);
+    List<Peer> localNominalPeer = nominalPeer.get();
+    if (localNominalPeer == null || localNominalPeer.size() < 2) {
+      return;
+    }
+    List<Peer> sorted = new ArrayList<>(localNominalPeer);
+    sorted.sort(Peer.PEER_COMPARATOR);
+    nominalPeer.set(List.copyOf(sorted));
   }
 
   /**
@@ -1954,7 +1966,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   /**
    * Returns true if (apart from actually knowing the peer's location), it is presumed that this
    * peer could route requests. True if this peer's build number is not 'too-old' or 'too-new',
-   * actively connected, and not marked as explicity disabled. Does not reflect any 'backoff' logic.
+   * actively connected, and not marked as explicitly disabled. Does not reflect any 'backoff'
+   * logic.
    *
    * <p>The method updates {@link #timeLastRoutable} when the peer is considered compatible. It is a
    * lightweight eligibility check and does not validate the current location or bandwidth
@@ -2493,20 +2506,20 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       if (LOG.isDebugEnabled()) LOG.debug("Next handshake in {} on {}", delay, this);
 
       if (successfulHandshakeSend) firstHandshake = false;
-      handshakeCount++;
-      return handshakeCount == MAX_HANDSHAKE_COUNT;
+      return handshakeCount.incrementAndGet() == MAX_HANDSHAKE_COUNT;
     }
   }
 
   private synchronized boolean calcNextHandshakeBurstOnly(long now) {
     boolean fetchARKFlag = false;
-    listeningHandshakeBurstCount++;
-    if (isBurstOnly() && listeningHandshakeBurstCount >= listeningHandshakeBurstSize) {
-      listeningHandshakeBurstCount = 0;
+    int burstCount = listeningHandshakeBurstCount.incrementAndGet();
+    if (isBurstOnly() && burstCount >= listeningHandshakeBurstSize) {
+      listeningHandshakeBurstCount.set(0);
+      burstCount = 0;
       fetchARKFlag = true;
     }
     long delay;
-    if (listeningHandshakeBurstCount == 0) { // 0 only if we just reset it above
+    if (burstCount == 0) { // 0 only if we just reset it above
       delay =
           (long) Node.MIN_TIME_BETWEEN_BURSTING_HANDSHAKE_BURSTS
               + (long) random.nextInt(Node.RANDOMIZED_TIME_BETWEEN_BURSTING_HANDSHAKE_BURSTS);
@@ -2533,7 +2546,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
               + "{}",
           sendHandshakeTime - now,
           shortToString(),
-          listeningHandshakeBurstCount,
+          burstCount,
           listeningHandshakeBurstSize,
           this,
           new Exception("double-called debug"));
@@ -2933,7 +2946,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     return 2;
   }
 
-  boolean sentInitialMessages;
+  volatile boolean sentInitialMessages;
 
   void maybeSendInitialMessages() {
     synchronized (this) {
@@ -3186,9 +3199,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     boolean changedAnything = false;
     String[] physical = fs.getAll(SFS_KEY_PHYSICAL_UDP);
     if (physical != null) {
-      List<Peer> oldNominalPeer = nominalPeer;
+      List<Peer> oldNominalPeer = nominalPeer.get();
+      if (oldNominalPeer == null) oldNominalPeer = List.of();
       Peer[] oldPeers = oldNominalPeer.toArray(new Peer[0]);
-      nominalPeer = collectPeersFromPhysical(physical);
+      nominalPeer.set(collectPeersFromPhysical(physical));
       sortNominalPeer();
       changedAnything = applyNominalPeersChange(oldPeers);
     } else if (forARK || forFullNodeRef) {
@@ -3217,9 +3231,12 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   private boolean applyNominalPeersChange(Peer[] oldPeers) {
-    if (!Arrays.equals(oldPeers, nominalPeer.toArray(new Peer[0]))) {
+    List<Peer> localNominalPeer = nominalPeer.get();
+    if (localNominalPeer == null) localNominalPeer = List.of();
+    if (!Arrays.equals(oldPeers, localNominalPeer.toArray(new Peer[0]))) {
       if (LOG.isDebugEnabled())
-        LOG.debug("Got new physical.udp for {} : {}", this, Arrays.toString(nominalPeer.toArray()));
+        LOG.debug(
+            "Got new physical.udp for {} : {}", this, Arrays.toString(localNominalPeer.toArray()));
       // Look up the DNS names if any ASAP
       internals.resetHandshakeIpUpdateTimer();
       // Clear nonces to prevent leak. Will kill any in-progress connect attempts, but that is
@@ -3340,7 +3357,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     SimpleFieldSet fs = exportFieldSet();
     SimpleFieldSet meta = exportMetadataFieldSet(System.currentTimeMillis());
     if (!meta.isEmpty()) fs.put(SFS_KEY_METADATA, meta);
-    if (fullFieldSet != null) fs.put("full", fullFieldSet);
+    SimpleFieldSet localFullFieldSet = fullFieldSet.get();
+    if (localFullFieldSet != null) fs.put("full", localFullFieldSet);
     return fs;
   }
 
@@ -3421,7 +3439,10 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   public synchronized SimpleFieldSet exportFieldSet() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     if (getLastGoodVersion() != null) fs.putSingle(SFS_KEY_LAST_GOOD_VERSION, lastGoodVersion);
-    for (Peer peer : nominalPeer) fs.putAppend(SFS_KEY_PHYSICAL_UDP, peer.toString());
+    List<Peer> localNominalPeer = nominalPeer.get();
+    if (localNominalPeer != null) {
+      for (Peer peer : localNominalPeer) fs.putAppend(SFS_KEY_PHYSICAL_UDP, peer.toString());
+    }
     fs.put(SFS_KEY_NEG_TYPES, negTypes);
     fs.putSingle(SFS_KEY_IDENTITY, getIdentityString());
     fs.put(SFS_KEY_LOCATION, getLocation());
@@ -3574,8 +3595,8 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     return pingTime > maxPeerPingTime();
   }
 
-  long routingBackedOffUntilRT = -1;
-  long routingBackedOffUntilBulk = -1;
+  volatile long routingBackedOffUntilRT = -1;
+  volatile long routingBackedOffUntilBulk = -1;
 
   /** Initial nominal routing backoff length */
   static final int INITIAL_ROUTING_BACKOFF_LENGTH = (int) SECONDS.toMillis(1);
@@ -4126,7 +4147,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   void resetHandshakeCountAfterArkFetch() {
     synchronized (this) {
-      handshakeCount = 0;
+      handshakeCount.set(0);
     }
   }
 
@@ -4137,7 +4158,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   void markHandshakeCountAfterArkFailure() {
     synchronized (this) {
-      handshakeCount = MAX_HANDSHAKE_COUNT;
+      handshakeCount.set(MAX_HANDSHAKE_COUNT);
     }
   }
 
@@ -4478,7 +4499,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @return number of recent handshake attempts
    */
   public synchronized int getHandshakeCount() {
-    return handshakeCount;
+    return handshakeCount.get();
   }
 
   /**
@@ -5329,7 +5350,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   public void incrementNumberOfSelections() {
     // Note: a compact bit-field could reduce memory; retained simple counter for clarity.
     synchronized (this) {
-      countSelectionsSinceConnected++;
+      countSelectionsSinceConnected.incrementAndGet();
     }
   }
 
@@ -5345,7 +5366,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
     long timeSinceConnected = System.currentTimeMillis() - this.connectedTime;
     // Avoid bias due to short uptime.
     if (timeSinceConnected < SECONDS.toMillis(10)) return 0.0;
-    return countSelectionsSinceConnected / (double) timeSinceConnected;
+    return countSelectionsSinceConnected.get() / (double) timeSinceConnected;
   }
 
   private volatile int offeredMainJarVersion;
@@ -5673,8 +5694,9 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    */
   public synchronized boolean matchesPeerAndPort(Peer peer) {
     if (getPeer() != null && getPeer().laxEquals(peer)) return true;
-    if (nominalPeer != null) { // Note: condition retained for safety
-      for (Peer p : nominalPeer) {
+    List<Peer> localNominalPeer = nominalPeer.get();
+    if (localNominalPeer != null) {
+      for (Peer p : localNominalPeer) {
         if (p != null && p.laxEquals(peer)) return true;
       }
     }
@@ -5886,7 +5908,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @return {@code true} if a full noderef is available
    */
   public synchronized boolean hasFullNoderef() {
-    return fullFieldSet != null;
+    return fullFieldSet.get() != null;
   }
 
   /**
@@ -5898,7 +5920,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
    * @return full noderef field set, or {@code null} if unavailable
    */
   public synchronized SimpleFieldSet getFullNoderef() {
-    return fullFieldSet;
+    return fullFieldSet.get();
   }
 
   private int consecutiveGuaranteedRejectsRT = 0;

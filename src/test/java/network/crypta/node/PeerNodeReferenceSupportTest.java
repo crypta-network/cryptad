@@ -22,6 +22,7 @@ import java.security.SecureRandom;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import java.util.zip.DeflaterOutputStream;
 import network.crypta.crypt.BlockCipher;
@@ -67,6 +68,7 @@ class PeerNodeReferenceSupportTest {
     setField(peer, "identity", IDENTITY);
     setField(peer, "peerECDSAPubKey", ecdsa.getPublicKey());
     setField(peer, "peerECDSAPubKeyHash", SHA256.digest(ecdsa.getPublicKey().getEncoded()));
+    setField(peer, "fullFieldSet", new AtomicReference<SimpleFieldSet>());
     support = new PeerNodeReferenceSupport(peer);
   }
 
@@ -360,7 +362,11 @@ class PeerNodeReferenceSupportTest {
     assertTrue(support.verifyReferenceSignature(fs));
 
     verify(peer).setSignatureVerificationSuccessfull(true);
-    assertEquals(fs, getField(peer, "fullFieldSet"));
+    @SuppressWarnings("unchecked")
+    AtomicReference<SimpleFieldSet> fullFieldSetRef =
+        (AtomicReference<SimpleFieldSet>) getField(peer, "fullFieldSet");
+    assertNotNull(fullFieldSetRef);
+    assertEquals(fs, fullFieldSetRef.get());
   }
 
   @Test
