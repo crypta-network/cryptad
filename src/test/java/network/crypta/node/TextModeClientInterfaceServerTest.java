@@ -57,7 +57,7 @@ class TextModeClientInterfaceServerTest {
   void resetStatics() throws Exception {
     // Ensure SSL.available() returns false by default for tests that rely on it.
     setStaticField(SSL.class, "ssf", null);
-    // Reset TMCI SSL flag to a known state.
+    // Reset the TMCI SSL flag to a known state.
     setStaticField(TextModeClientInterfaceServer.class, "ssl", false);
     Mockito.lenient().when(core.getEndpoints()).thenReturn(endpoints);
   }
@@ -111,7 +111,7 @@ class TextModeClientInterfaceServerTest {
     // Capture stdout
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     PrintStream originalOut = System.out;
-    System.setOut(new PrintStream(bout));
+    System.setOut(new PrintStream(bout, false, StandardCharsets.UTF_8));
     try {
       // Act
       tmci.start();
@@ -201,7 +201,7 @@ class TextModeClientInterfaceServerTest {
         new TextModeClientInterfaceServer.TMCIBindtoCallback(core);
 
     assertEquals(NetworkInterface.DEFAULT_BIND_TO, cb.get());
-    // set(equal) should be a no-op (and not throw) even when server is null.
+    // set(equal) should be a no-op (and not throw) even when the server is null.
     assertDoesNotThrow(() -> cb.set(NetworkInterface.DEFAULT_BIND_TO));
   }
 

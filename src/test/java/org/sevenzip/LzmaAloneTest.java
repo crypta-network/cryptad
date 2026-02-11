@@ -27,7 +27,7 @@ class LzmaAloneTest {
     originalOut = System.out;
     originalLogStream = LzmaAlone.getLogStream();
     capturedOut = new ByteArrayOutputStream();
-    LzmaAlone.setLogStream(new PrintStream(capturedOut));
+    LzmaAlone.setLogStream(new PrintStream(capturedOut, false, StandardCharsets.UTF_8));
   }
 
   @AfterEach
@@ -91,7 +91,7 @@ class LzmaAloneTest {
 
   @Test
   void main_whenArgsMissing_printsHelp() throws Exception {
-    System.setOut(new PrintStream(capturedOut));
+    System.setOut(new PrintStream(capturedOut, false, StandardCharsets.UTF_8));
 
     LzmaAlone.main(new String[] {});
 
@@ -101,7 +101,7 @@ class LzmaAloneTest {
 
   @Test
   void main_whenDecodeWithTooShortInput_throws() throws Exception {
-    System.setOut(new PrintStream(capturedOut));
+    System.setOut(new PrintStream(capturedOut, false, StandardCharsets.UTF_8));
     Path tempFile = Files.createTempFile("lzma-empty", ".lzma");
     Path outFile = Files.createTempFile("lzma-empty-out", ".bin");
     String[] decodeArgs = new String[] {"d", tempFile.toString(), outFile.toString()};
@@ -119,7 +119,7 @@ class LzmaAloneTest {
     Path decoded = tempDir.resolve("decoded.txt");
     Files.writeString(source, "Crypta LZMA test payload", StandardCharsets.UTF_8);
 
-    System.setOut(new PrintStream(capturedOut));
+    System.setOut(new PrintStream(capturedOut, false, StandardCharsets.UTF_8));
     LzmaAlone.main(new String[] {"e", source.toString(), encoded.toString()});
     LzmaAlone.main(new String[] {"d", encoded.toString(), decoded.toString()});
 
