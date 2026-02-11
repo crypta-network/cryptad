@@ -17,15 +17,15 @@ import network.crypta.keys.USK;
  * Builds and describes date-based edition "hints" for updatable SSK/USK keys.
  *
  * <p>This helper encapsulates the logic used by the client to derive readable, stable suffixes that
- * encode a point in time at different granularities (year, month, day, and a week representation).
+ * encode a point in time at different granularity (year, month, day, and a week representation).
  * These suffixes are embedded into document names and small hint payloads so that producers and
  * consumers can rendezvous on likely editions without scanning the entire namespace.
  *
  * <p>Instances are immutable and thread-safe. Each instance is bound to a UTC {@link
- * java.time.LocalDate} captured at construction. Typical usage is to obtain a hint anchored to
- * "today" in UTC via {@link #now()} and then render one or more representations via {@link
- * #get(Type)} or the compact wire format via {@link #getData(long)}. Consumers such as the USK
- * fetcher use these forms to schedule and interpret background requests.
+ * java.time.LocalDate} captured at construction. Typical usage is to get a hint anchored "today" in
+ * UTC via {@link #now()} and then render one or more representations via {@link #get(Type)} or the
+ * compact wire format via {@link #getData(long)}. Consumers such as the USK fetcher use these forms
+ * to schedule and interpret background requests.
  *
  * <ul>
  *   <li><strong>Responsibilities</strong>: provide date-derived suffixes and a minimal wire payload
@@ -156,13 +156,12 @@ public class USKDateHint {
    * // HINT\n12345\nYYYY-M-D\n
    * }</pre>
    *
-   * @param edition the suggested absolute edition number to advertise; non-negative values are
-   *     expected by consumers.
+   * @param edition the suggested absolute edition number to advertise; consumers expect
+   *     non-negative values.
    * @return a three-line LF-terminated string suitable for insertion and remote parsing.
    */
-  @SuppressWarnings("java:S3457")
   public String getData(long edition) {
-    return "HINT\n%d\n%s\n".formatted(edition, get(Type.DAY));
+    return "HINT\n" + edition + '\n' + get(Type.DAY) + '\n';
   }
 
   /**
