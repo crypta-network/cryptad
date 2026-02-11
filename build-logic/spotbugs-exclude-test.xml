@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!--
+    Test code frequently creates short-lived, seed-fixed Random/SecureRandom instances
+    to produce deterministic fixtures. SpotBugs DMI_RANDOM_USED_ONLY_ONCE is intended for
+    production entropy use and is noisy for these test-only deterministic data generators.
+  -->
+  <Match>
+    <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
+  </Match>
+</FindBugsFilter>
