@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 import network.crypta.node.NodeStats.RequestType;
@@ -841,12 +843,14 @@ public final class PeerNodeLoadTracker {
     public synchronized SlotWaiter removeFirst() {
       if (lru.isEmpty()) return null;
       // Consider using LRUMap; would need to update to use Iterator and other modern APIs.
-      PeerNode source = lru.keySet().iterator().next();
-      TreeMap<Long, SlotWaiter> map = lru.get(source);
+      Iterator<Map.Entry<PeerNode, TreeMap<Long, SlotWaiter>>> sourceIterator =
+          lru.entrySet().iterator();
+      Map.Entry<PeerNode, TreeMap<Long, SlotWaiter>> sourceEntry = sourceIterator.next();
+      PeerNode source = sourceEntry.getKey();
+      TreeMap<Long, SlotWaiter> map = sourceEntry.getValue();
       Long key = map.firstKey();
-      SlotWaiter ret = map.get(key);
-      map.remove(key);
-      lru.remove(source);
+      SlotWaiter ret = map.remove(key);
+      sourceIterator.remove();
       if (!map.isEmpty()) lru.put(source, map);
       return ret;
     }
