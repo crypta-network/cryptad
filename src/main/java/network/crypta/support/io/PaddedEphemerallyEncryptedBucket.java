@@ -14,6 +14,7 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.crypt.PCFBMode;
@@ -48,6 +49,10 @@ import org.slf4j.LoggerFactory;
  */
 public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(PaddedEphemerallyEncryptedBucket.class);
+
+  private static final AtomicLongFieldUpdater<PaddedEphemerallyEncryptedBucket>
+      DATA_LENGTH_UPDATER =
+          AtomicLongFieldUpdater.newUpdater(PaddedEphemerallyEncryptedBucket.class, "dataLength");
 
   /**
    * Serial version for Java serialization. Bumped to 2 to reflect the change in the on-wire Java
@@ -199,7 +204,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
       int toWrite = pcfb.encipher(b);
       synchronized (PaddedEphemerallyEncryptedBucket.this) {
         out.write(toWrite);
-        dataLength++;
+        DATA_LENGTH_UPDATER.incrementAndGet(PaddedEphemerallyEncryptedBucket.this);
       }
     }
 
@@ -226,7 +231,7 @@ public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
       pcfb.blockEncipher(enc, 0, enc.length);
       synchronized (PaddedEphemerallyEncryptedBucket.this) {
         out.write(enc, 0, enc.length);
-        dataLength += enc.length;
+        DATA_LENGTH_UPDATER.addAndGet(PaddedEphemerallyEncryptedBucket.this, enc.length);
       }
     }
 

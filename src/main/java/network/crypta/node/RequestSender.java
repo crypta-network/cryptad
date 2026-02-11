@@ -386,7 +386,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
     boolean failed;
     synchronized (this) {
       failed = reassignedToSelfDueToMultipleTimeouts;
-      if (!failed) routeAttempts++;
+      if (!failed) ROUTE_ATTEMPTS_UPDATER.incrementAndGet(this);
     }
     if (failed) {
       finish(TIMED_OUT, null, false);
