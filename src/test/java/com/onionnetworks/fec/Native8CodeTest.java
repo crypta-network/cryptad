@@ -11,7 +11,7 @@ class Native8CodeTest {
   private static final class StubNative8Code extends Native8Code {
     int encodeCalls;
     int decodeCalls;
-    volatile int freeCalls;
+    int freeCalls;
     int newFecCalls;
     volatile boolean throwOnFree;
 

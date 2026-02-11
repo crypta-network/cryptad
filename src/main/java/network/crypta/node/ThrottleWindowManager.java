@@ -1,5 +1,6 @@
 package network.crypta.node;
 
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +19,12 @@ import org.slf4j.LoggerFactory;
  */
 public class ThrottleWindowManager {
   private static final Logger LOG = LoggerFactory.getLogger(ThrottleWindowManager.class);
+
+  private static final AtomicLongFieldUpdater<ThrottleWindowManager> TOTAL_PACKETS_UPDATER =
+      AtomicLongFieldUpdater.newUpdater(ThrottleWindowManager.class, "totalPackets");
+
+  private static final AtomicLongFieldUpdater<ThrottleWindowManager> DROPPED_PACKETS_UPDATER =
+      AtomicLongFieldUpdater.newUpdater(ThrottleWindowManager.class, "droppedPackets");
 
   // On overload, scale the window down by this factor (< 1.0).
   static final float PACKET_DROP_DECREASE_MULTIPLE = 0.97f;
@@ -76,8 +83,8 @@ public class ThrottleWindowManager {
    * #PACKET_DROP_DECREASE_MULTIPLE}.
    */
   public synchronized void rejectedOverload() {
-    droppedPackets++;
-    totalPackets++;
+    DROPPED_PACKETS_UPDATER.incrementAndGet(this);
+    TOTAL_PACKETS_UPDATER.incrementAndGet(this);
     simulatedWindowSize *= PACKET_DROP_DECREASE_MULTIPLE;
     if (LOG.isDebugEnabled()) LOG.debug("Overload rejection recorded (state={})", this);
   }
@@ -89,7 +96,7 @@ public class ThrottleWindowManager {
    * simulatedWindowSize}.
    */
   public synchronized void requestCompleted() {
-    totalPackets++;
+    TOTAL_PACKETS_UPDATER.incrementAndGet(this);
     simulatedWindowSize += (PACKET_TRANSMIT_INCREMENT / simulatedWindowSize);
     if (LOG.isDebugEnabled()) LOG.debug("Request completes (state={})", this);
   }

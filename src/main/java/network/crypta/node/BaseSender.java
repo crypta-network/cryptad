@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
@@ -46,6 +47,9 @@ import org.slf4j.LoggerFactory;
 public abstract class BaseSender implements ByteCounter, HighHtlAware {
   private static final Logger LOG = LoggerFactory.getLogger(BaseSender.class);
   private static final String TOOK_MSG = "Took {} tries in {}{}";
+
+  protected static final AtomicIntegerFieldUpdater<BaseSender> ROUTE_ATTEMPTS_UPDATER =
+      AtomicIntegerFieldUpdater.newUpdater(BaseSender.class, "routeAttempts");
 
   final boolean realTimeFlag;
   final Key key;

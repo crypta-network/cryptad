@@ -1,5 +1,6 @@
 package network.crypta.io;
 
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import network.crypta.node.FSParseException;
 import network.crypta.support.SimpleFieldSet;
 import org.slf4j.Logger;
@@ -23,6 +24,12 @@ import org.slf4j.LoggerFactory;
  */
 public class AddressTrackerItem {
   private static final Logger LOG = LoggerFactory.getLogger(AddressTrackerItem.class);
+
+  private static final AtomicLongFieldUpdater<AddressTrackerItem> PACKETS_SENT_UPDATER =
+      AtomicLongFieldUpdater.newUpdater(AddressTrackerItem.class, "packetsSent");
+
+  private static final AtomicLongFieldUpdater<AddressTrackerItem> PACKETS_RECEIVED_UPDATER =
+      AtomicLongFieldUpdater.newUpdater(AddressTrackerItem.class, "packetsReceived");
 
   /**
    * Time of the first observed receive from this address, in milliseconds since epoch, or {@code
@@ -138,7 +145,7 @@ public class AddressTrackerItem {
    * @param now timestamp in milliseconds since epoch
    */
   public synchronized void sentPacket(long now) {
-    packetsSent++;
+    PACKETS_SENT_UPDATER.incrementAndGet(this);
     if (timeFirstSentPacket < 0) timeFirstSentPacket = now;
     timeLastSentPacket = now;
   }
@@ -153,7 +160,7 @@ public class AddressTrackerItem {
    * @param now timestamp in milliseconds since epoch
    */
   public synchronized void receivedPacket(long now) {
-    packetsReceived++;
+    PACKETS_RECEIVED_UPDATER.incrementAndGet(this);
     if (timeFirstReceivedPacket < 0) timeFirstReceivedPacket = now;
     long oldTimeLastReceivedPacket = timeLastReceivedPacket;
     timeLastReceivedPacket = now;
