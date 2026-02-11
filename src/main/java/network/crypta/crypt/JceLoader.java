@@ -53,6 +53,8 @@ import org.slf4j.LoggerFactory;
 public class JceLoader {
   private static final Logger LOG = LoggerFactory.getLogger(JceLoader.class);
 
+  private static final Provider EMPTY_PROVIDER = new EmptyProvider();
+
   /**
    * BouncyCastle provider instance, or {@code null} if disabled, unavailable, or missing required
    * algorithms. Loaded during class initialization.
@@ -156,7 +158,7 @@ public class JceLoader {
    *     algorithms
    */
   public static Provider getBouncyCastle() {
-    return BouncyCastle;
+    return nullIfEmptyProvider(resolveConfiguredProvider(BouncyCastle));
   }
 
   /**
@@ -166,7 +168,7 @@ public class JceLoader {
    */
   @SuppressWarnings("unused")
   public static Provider getNSS() {
-    return NSS;
+    return nullIfEmptyProvider(resolveConfiguredProvider(NSS));
   }
 
   /**
@@ -176,7 +178,7 @@ public class JceLoader {
    */
   @SuppressWarnings("unused")
   public static Provider getSUN() {
-    return SUN;
+    return nullIfEmptyProvider(resolveConfiguredProvider(SUN));
   }
 
   /**
@@ -185,7 +187,25 @@ public class JceLoader {
    * @return the provider instance, or {@code null} when disabled by property
    */
   public static Provider getSunJCE() {
-    return SunJCE;
+    return nullIfEmptyProvider(resolveConfiguredProvider(SunJCE));
+  }
+
+  private static Provider resolveConfiguredProvider(Provider configuredProvider) {
+    if (configuredProvider == null) {
+      return EMPTY_PROVIDER;
+    }
+    Provider resolvedProvider = Security.getProvider(configuredProvider.getName());
+    return resolvedProvider == null ? EMPTY_PROVIDER : resolvedProvider;
+  }
+
+  private static Provider nullIfEmptyProvider(Provider provider) {
+    return provider instanceof EmptyProvider ? null : provider;
+  }
+
+  private static final class EmptyProvider extends Provider {
+    private EmptyProvider() {
+      super("EmptyProvider", "1.0", "Placeholder for disabled provider");
+    }
   }
 
   // Avoid a hard reference that could be redirected or replaced in unusual environments.

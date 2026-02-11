@@ -3,6 +3,7 @@ package network.crypta.crypt.ciphers;
 import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;
 import java.security.Provider;
+import java.security.Security;
 import java.util.Objects;
 import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
@@ -15,7 +16,7 @@ import org.slf4j.LoggerFactory;
 
 /*
  This code is part of the Java Adaptive Network Client by Ian Clarke.
- It is distributed under the GNU Public Licence (GPL) version 2.  See
+ It is distributed under the GNU Public License (GPL) version 2.  See
  http://www.gnu.org/ for further details of the GPL.
 */
 
@@ -39,6 +40,7 @@ public class Rijndael implements BlockCipher {
   private final int keysize;
   private final int blocksize;
 
+  private static final Provider EMPTY_PROVIDER = new EmptyProvider();
   private static final Provider AesCtrProvider = detectAesCtrProvider();
 
   /**
@@ -64,7 +66,26 @@ public class Rijndael implements BlockCipher {
    * @return the chosen provider, or {@code null} if none was selected.
    */
   public static Provider getAesCtrProvider() {
-    return AesCtrProvider;
+    return nullIfEmptyProvider(resolveConfiguredProvider());
+  }
+
+  private static Provider resolveConfiguredProvider() {
+    Provider configuredProvider = AesCtrProvider;
+    if (configuredProvider == null) {
+      return EMPTY_PROVIDER;
+    }
+    Provider resolvedProvider = Security.getProvider(configuredProvider.getName());
+    return resolvedProvider == null ? EMPTY_PROVIDER : resolvedProvider;
+  }
+
+  private static Provider nullIfEmptyProvider(Provider provider) {
+    return provider instanceof EmptyProvider ? null : provider;
+  }
+
+  private static final class EmptyProvider extends Provider {
+    private EmptyProvider() {
+      super("EmptyProvider", "1.0", "Placeholder for unavailable provider");
+    }
   }
 
   private static long benchmark(Cipher cipher, SecretKeySpec key) throws GeneralSecurityException {
@@ -218,7 +239,7 @@ public class Rijndael implements BlockCipher {
    * Initializes the cipher with a raw key.
    *
    * <p>Only the first {@code keySize/8} bytes of {@code key} are used; excess bytes are ignored.
-   * The derived key schedule is stored in the instance for subsequent operations.
+   * The derived key schedule is stored in the instance for later operations.
    *
    * @param key the raw key material; must contain at least {@code keySize/8} bytes.
    */

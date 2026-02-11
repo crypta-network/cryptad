@@ -140,7 +140,7 @@ class LauncherController(
         val logSpec = readWrapperProperty(conf, "wrapper.logfile")
         val logPath = computeWrapperLogPath(conf, logSpec)
         tailJob =
-          scope.launch(Dispatchers.IO) {
+          scope.launch(io) {
             val thisJob = coroutineContext[Job] ?: return@launch
             tailFileWhileAlive(logPath, thisJob)
           }
@@ -246,16 +246,23 @@ class LauncherController(
         while (br.readLine().also { line = it } != null) {
           val s = line!!
           logLine(s)
-          parseFProxyPortFromLine(s)?.let { port ->
-            val old = _state.value.knownPort
-            if (old != port) updateState { it.copy(knownPort = port) }
-            if (!autoOpenedBrowser) {
-              autoOpenedBrowser = true
-              launchBrowser()
-            }
+          val detectedPort = parseFProxyPortFromLine(s)
+          if (detectedPort != null) {
+            handleDetectedPort(detectedPort)
           }
         }
       }
+    }
+  }
+
+  private fun handleDetectedPort(port: Int) {
+    val oldPort = _state.value.knownPort
+    if (oldPort != port) {
+      updateState { it.copy(knownPort = port) }
+    }
+    if (!autoOpenedBrowser) {
+      autoOpenedBrowser = true
+      launchBrowser()
     }
   }
 

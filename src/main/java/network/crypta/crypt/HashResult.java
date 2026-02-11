@@ -24,9 +24,10 @@ import org.slf4j.LoggerFactory;
  * to read a set of hashes from a stream, compare them to expected values, or write them back in the
  * canonical order.
  *
- * <p>Instances are effectively immutable by convention, but the underlying byte array is stored and
- * returned directly. Callers must treat the bytes as read-only to preserve invariants. Because of
- * that shared storage, concurrent reads are safe only if the array is not mutated elsewhere.
+ * <p>Instances are effectively immutable by convention, but constructors keep the caller-provided
+ * digest array reference instead of copying it. Accessors return defensive copies, so callers
+ * cannot mutate this object's internal state through the API. Concurrent reads remain safe as long
+ * as the original array passed at construction time is not mutated elsewhere.
  *
  * <p>Notable behaviors:
  *
@@ -94,7 +95,7 @@ public class HashResult implements Comparable<HashResult>, Serializable {
    *
    * <p>When {@code testing} is {@code true}, callers may bypass the length assertion; otherwise an
    * assertion checks that {@code bs.length} matches the declared hash length. This constructor is
-   * protected so tests can create intentionally malformed instances without exposing that behavior
+   * protected, so tests can create intentionally malformed instances without exposing that behavior
    * to normal callers.
    *
    * @param hashType identifies the hash algorithm; expected non-null for non-test use
@@ -208,7 +209,7 @@ public class HashResult implements Comparable<HashResult>, Serializable {
    * ignores the digest bytes and only inspects the {@link HashType} bitmask. The method requires
    * both instances and their types to be non-null.
    *
-   * @param h other hash result to compare; must be non-null and initialized
+   * @param h the other hash result to compare; must be non-null and initialized
    * @return a negative, zero, or positive value based on the type bitmask ordering
    * @throws NullPointerException if {@code h} or either hash type is null
    */
@@ -228,7 +229,7 @@ public class HashResult implements Comparable<HashResult>, Serializable {
    * intended for compact storage or quick membership checks.
    *
    * @param hashes array of hash results to inspect; expected non-null and fully populated
-   * @return bitmask with one bit set for each hash type present
+   * @return bitmask with one-bit set for each hash type present
    * @throws NullPointerException if {@code hashes} or any entry is null
    */
   public static long makeBitmask(HashResult[] hashes) {
@@ -242,8 +243,8 @@ public class HashResult implements Comparable<HashResult>, Serializable {
    *
    * <p>The arrays must have the same length and be ordered identically by hash type. The method
    * compares types by identity and by name to tolerate classloader differences, then compares the
-   * raw digest bytes. Any mismatch is logged at error level. This is a diagnostic helper; it does
-   * not attempt to reorder or normalize inputs.
+   * raw digest bytes. Any mismatch is logged at the error level. This is a diagnostic helper; it
+   * does not attempt to reorder or normalize inputs.
    *
    * @param results expected results array; must be non-null and aligned by type
    * @param hashes actual results array; must be non-null and aligned by type
@@ -294,13 +295,13 @@ public class HashResult implements Comparable<HashResult>, Serializable {
   /**
    * Returns the raw digest bytes for the requested hash type.
    *
-   * <p>The returned array is the internal storage of the matching {@link HashResult}, not a copy.
-   * Callers must treat it as read-only. When the array is {@code null} or no match is found, a
-   * shared empty array is returned.
+   * <p>When a matching hash exists, this method returns a defensive copy of its digest bytes. This
+   * prevents callers from mutating internal state by writing to the returned array. When the array
+   * is {@code null} or no match is found, a shared empty array is returned.
    *
    * @param hashes array of hash results to scan; {@code null} is treated as empty
    * @param type hash type to locate; expected non-null and stable
-   * @return the stored digest bytes for the matching type, or an empty array if absent
+   * @return a copy of the stored digest bytes for the matching type, or an empty array if absent
    * @throws NullPointerException if {@code type} is null and the array is non-null
    */
   public static byte[] get(HashResult[] hashes, HashType type) {
@@ -308,7 +309,8 @@ public class HashResult implements Comparable<HashResult>, Serializable {
       return EMPTY_BYTES;
     }
     for (HashResult res : hashes)
-      if (res.type == type || type.name().equals(res.type.name())) return res.result;
+      if (res.type == type || type.name().equals(res.type.name()))
+        return Arrays.copyOf(res.result, res.result.length);
     return EMPTY_BYTES;
   }
 
@@ -321,7 +323,7 @@ public class HashResult implements Comparable<HashResult>, Serializable {
    * yields a shared empty array.
    *
    * @param hashes array of hash results to copy; {@code null} is treated as empty
-   * @return a new array containing shallow copies, or a shared empty array when no entries exist
+   * @return a new array containing shallow copies or a shared empty array when no entries exist
    */
   public static HashResult[] copy(HashResult[] hashes) {
     if (hashes == null || hashes.length == 0) return EMPTY_HASHES;
