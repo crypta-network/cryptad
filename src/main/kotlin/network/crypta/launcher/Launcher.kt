@@ -23,7 +23,9 @@ internal const val APP_NAME: String = "Crypta Launcher"
  */
 class CryptaLauncher : JFrame(APP_NAME) {
   companion object {
-    @Volatile var instance: CryptaLauncher? = null
+    @Volatile
+    var instance: CryptaLauncher? = null
+      private set
   }
 
   private val startStopBtn = JButton("Start")
@@ -105,7 +107,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
   }
 
   init {
-    registerLauncherInstance(this)
+    instance = this
     defaultCloseOperation = DO_NOTHING_ON_CLOSE
     // Allow shrinking to half of the default size
     minimumSize = Dimension(450, 300)
@@ -223,7 +225,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
         startStopBtn.text = if (st.isRunning) "Stop" else "Start"
         startStopBtn.isEnabled = !st.isShuttingDown
         launchBtn.isEnabled = st.isRunning && st.knownPort != null && !st.isShuttingDown
-        // Update tooltip with actual port when known
+        // Update the tooltip with the actual port when known
         launchBtn.toolTipText =
           if (st.knownPort != null) {
             "Open http://localhost:${st.knownPort}/ in your browser"
@@ -466,10 +468,6 @@ private fun createAndShowLauncherUi() {
   setWindowAndDockIcons(f)
   centerAndShow(f, Dimension(900, 600))
   installWindowsHooksIfNeeded(f)
-}
-
-private fun registerLauncherInstance(launcher: CryptaLauncher) {
-  CryptaLauncher.instance = launcher
 }
 
 private fun setWindowAndDockIcons(f: JFrame) {
