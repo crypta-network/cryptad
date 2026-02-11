@@ -422,7 +422,8 @@ public class NodeUpdateManager {
    */
   @SuppressWarnings("unused")
   public FreenetURI getSeednodesURI() {
-    return updateURI.sskForUSK().setDocName("seednodes-" + Version.currentBuildNumber());
+    FreenetURI uri = getURI();
+    return uri.sskForUSK().setDocName("seednodes-" + Version.currentBuildNumber());
   }
 
   /**
@@ -431,7 +432,8 @@ public class NodeUpdateManager {
    * @return a {@link FreenetURI} for {@code installer-<build>} under the update key
    */
   public FreenetURI getInstallerNonWindowsURI() {
-    return updateURI.sskForUSK().setDocName("installer-" + Version.currentBuildNumber());
+    FreenetURI uri = getURI();
+    return uri.sskForUSK().setDocName("installer-" + Version.currentBuildNumber());
   }
 
   /**
@@ -440,7 +442,8 @@ public class NodeUpdateManager {
    * @return a {@link FreenetURI} for {@code wininstaller-<build>} under the update key
    */
   public FreenetURI getInstallerWindowsURI() {
-    return updateURI.sskForUSK().setDocName("wininstaller-" + Version.currentBuildNumber());
+    FreenetURI uri = getURI();
+    return uri.sskForUSK().setDocName("wininstaller-" + Version.currentBuildNumber());
   }
 
   /**
@@ -449,7 +452,8 @@ public class NodeUpdateManager {
    * @return a {@link FreenetURI} for {@code iptocountryv4-<build>} under the update key
    */
   public FreenetURI getIPv4ToCountryURI() {
-    return updateURI.sskForUSK().setDocName("iptocountryv4-" + Version.currentBuildNumber());
+    FreenetURI uri = getURI();
+    return uri.sskForUSK().setDocName("iptocountryv4-" + Version.currentBuildNumber());
   }
 
   /**
@@ -501,10 +505,16 @@ public class NodeUpdateManager {
   }
 
   private Message getNewUOMAnnouncement(long blobSize) {
+    FreenetURI localUpdateURI;
+    FreenetURI localRevocationURI;
+    synchronized (this) {
+      localUpdateURI = updateURI;
+      localRevocationURI = revocationURI;
+    }
     int fetchedVersion = (blobSize <= 0) ? -1 : Version.currentBuildNumber();
     return new DMT.UOMAnnouncementBuilder()
-        .mainKey(updateURI.toString())
-        .revocationKey(revocationURI.toString())
+        .mainKey(localUpdateURI.toString())
+        .revocationKey(localRevocationURI.toString())
         .haveRevocation(getRevocationChecker().hasBlown())
         .mainJarVersion(fetchedVersion)
         .timeLastTriedRevocationFetch(getRevocationChecker().lastSucceededDelta())
@@ -568,6 +578,7 @@ public class NodeUpdateManager {
     // Note: wrapper gating removed in favor of CoreUpdater
     Map<String, PluginJarUpdater> oldPluginUpdaters = null;
     CoreUpdater stoppedCoreUpdater = null;
+    CoreUpdater startedCoreUpdater = null;
     // We need to run the revocation checker even if the auto-update is
     // disabled.
     // Two reasons:
@@ -591,6 +602,7 @@ public class NodeUpdateManager {
       } else {
         // Start CoreUpdater and plugin updaters
         startCoreUpdater();
+        startedCoreUpdater = coreUpdater;
         pluginUpdaters = new HashMap<>();
         // Suppress obsolete an Update-ASAP form in alert; CoreUpdater renders its own buttons
         armed = true;
@@ -602,7 +614,17 @@ public class NodeUpdateManager {
       stoppedCoreUpdater.kill();
       stopPluginUpdaters(oldPluginUpdaters);
     } else {
-      if (coreUpdater != null) coreUpdater.start();
+      if (startedCoreUpdater != null) {
+        boolean stillCurrent;
+        synchronized (this) {
+          stillCurrent = (coreUpdater == startedCoreUpdater);
+        }
+        if (stillCurrent) {
+          startedCoreUpdater.start();
+        } else if (LOG.isDebugEnabled()) {
+          LOG.debug("Skipping stale CoreUpdater start after concurrent state change");
+        }
+      }
       startPluginUpdaters();
     }
   }
@@ -650,7 +672,7 @@ public class NodeUpdateManager {
     if (info != null) {
       minVer = Math.max(minVer, info.getPluginLongVersion());
     }
-    FreenetURI uri = updateURI.setDocName(name).setSuggestedEdition(minVer);
+    FreenetURI uri = getURI().setDocName(name).setSuggestedEdition(minVer);
     NodeUpdaterParams params =
         new NodeUpdaterParams(
             this,
@@ -953,7 +975,7 @@ public class NodeUpdateManager {
       blownCoreUpdater = coreUpdater;
       coreUpdater = null;
     }
-    printRevocationMessage(disabledNotBlown);
+    printRevocationMessage(disabledNotBlown, msg);
     if (blownCoreUpdater != null) {
       blownCoreUpdater.kill();
     }
@@ -967,7 +989,7 @@ public class NodeUpdateManager {
     broadcastUOMAnnounces();
   }
 
-  private void printRevocationMessage(boolean disabledNotBlown) {
+  private void printRevocationMessage(boolean disabledNotBlown, String msg) {
     // We must show the user the message
     try {
       if (disabledNotBlown) {
@@ -976,12 +998,10 @@ public class NodeUpdateManager {
             "We do not know whether this is a local problem or the auto-update system has in fact"
                 + " been compromised. What we do know:{}{}",
             System.lineSeparator(),
-            revocationMessage);
+            msg);
       } else {
         LOG.error("THE AUTO-UPDATING SYSTEM HAS BEEN COMPROMISED!");
-        LOG.error(
-            "The auto-updating system revocation key has been inserted. It says: {}",
-            revocationMessage);
+        LOG.error("The auto-updating system revocation key has been inserted. It says: {}", msg);
       }
     } catch (Exception t) {
       try {
@@ -1076,7 +1096,7 @@ public class NodeUpdateManager {
    *
    * @return {@code true} when a newer version has been fetched and is ready
    */
-  public boolean hasNewMainJar() {
+  public synchronized boolean hasNewMainJar() {
     CoreUpdater cu = coreUpdater;
     return cu != null && cu.canUpdateNow();
   }
@@ -1086,7 +1106,7 @@ public class NodeUpdateManager {
    *
    * @return the fetched version number, or {@code -1} when none is available
    */
-  public int newMainJarVersion() {
+  public synchronized int newMainJarVersion() {
     CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.getFetchedVersion() : -1;
   }
@@ -1096,7 +1116,7 @@ public class NodeUpdateManager {
    *
    * @return {@code true} when a download is in progress
    */
-  public boolean fetchingNewMainJar() {
+  public synchronized boolean fetchingNewMainJar() {
     CoreUpdater cu = coreUpdater;
     return (cu != null && cu.isFetching());
   }
@@ -1106,7 +1126,7 @@ public class NodeUpdateManager {
    *
    * @return the in‑flight version number, or {@code -1} when idle
    */
-  public int fetchingNewMainJarVersion() {
+  public synchronized int fetchingNewMainJarVersion() {
     CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.fetchingVersion() : -1;
   }

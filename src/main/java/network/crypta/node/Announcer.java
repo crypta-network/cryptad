@@ -968,7 +968,7 @@ public class Announcer {
         int connectedSeednodes = 0;
         int disconnectedSeednodes = 0;
         long coolingOffSeconds = Math.max(0, startTime - System.currentTimeMillis()) / 1000;
-        synchronized (this) {
+        synchronized (Announcer.this) {
           addedNodes = announcementAddedNodes;
           refusedNodes = announcementNotWantedNodes;
           recentSentAnnouncements = sentAnnouncements;

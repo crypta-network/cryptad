@@ -85,7 +85,7 @@ public class ClientPut extends ClientPutBase {
   private final ClientMetadata clientMetadata;
 
   /** We store the size of inserted data before freeing it */
-  private long finishedSize;
+  private volatile long finishedSize;
 
   /** Filename if the file has one */
   private final String targetFilename;

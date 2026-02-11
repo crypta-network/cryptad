@@ -251,7 +251,7 @@ public class DownloadRequestStatus extends RequestStatus {
    * @return the requested failure reason flavor, or {@code null} when the information is missing.
    */
   @Override
-  public String getFailureReason(boolean longDescription) {
+  public synchronized String getFailureReason(boolean longDescription) {
     if (longDescription) return failureReasonLong;
     else return failureReasonShort;
   }

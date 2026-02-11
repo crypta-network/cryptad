@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * <p>The node exposes three categories of security levels. The user selects initial values in the
  * first-time wizard and can reconfigure them later. Changing a level adjusts defaults for several
  * other configuration options and notifies listeners; users can still override individual options
- * explicitly. The UI provides per-level explanations and a dedicated configuration sub-page. A
+ * explicitly. The UI provides per-level explanations and a dedicated configuration subpage. A
  * summary is also shown on the homepage as a user alert.
  *
  * <p>Thread-safety: public mutators synchronize on the instance and notify listeners outside the
@@ -48,7 +48,7 @@ public class SecurityLevels {
    * is applied by default.
    */
   public enum NETWORK_THREAT_LEVEL {
-    /** Favor performance; enable opennet; disable most costly hardening. */
+    /** Favor performance; enable opennet; disable the most costly hardening. */
     LOW,
     /** Default hybrid mode; both darknet and opennet allowed. */
     NORMAL,
@@ -113,7 +113,7 @@ public class SecurityLevels {
     MAXIMUM
   }
 
-  NETWORK_THREAT_LEVEL networkThreatLevel;
+  volatile NETWORK_THREAT_LEVEL networkThreatLevel;
   FRIENDS_THREAT_LEVEL friendsThreatLevel;
   PHYSICAL_THREAT_LEVEL physicalThreatLevel;
 
@@ -190,7 +190,7 @@ public class SecurityLevels {
       // Ensure dependent configuration aligns with the initial threat level.
       setThreatLevel(netLevel);
     }
-    // Backward compatibility: read legacy "friendsThreatLevel" option when present.
+    // Backward compatibility: read the legacy "friendsThreatLevel" option when present.
     String s = myConfig.getRawOption("friendsThreatLevel");
     if (s != null) {
       friendsThreatLevel = parseFriendsThreatLevel(s);
@@ -556,8 +556,8 @@ public class SecurityLevels {
   /**
    * Resets the stored physical threat level without notifying listeners.
    *
-   * <p>Intended for internal synchronization with external state when caller will explicitly handle
-   * notifications.
+   * <p>Intended for internal synchronization with external state when the caller will explicitly
+   * handle notifications.
    *
    * @param level the physical level to store
    */

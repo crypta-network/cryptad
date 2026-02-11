@@ -734,7 +734,7 @@ public class Metadata implements Serializable {
   /** Number of cross‑segment parity blocks per segment (0 when not used). */
   int crossCheckBlocks;
 
-  /** Per‑segment key lists; may be {@code null} until built. */
+  /** Per-segment key lists; may be {@code null} until built. */
   SplitFileSegmentKeys[] segments;
 
   /** Minimum compatibility mode inferred for this metadata. */
@@ -890,8 +890,8 @@ public class Metadata implements Serializable {
    *     version, or otherwise fails structural validation.
    */
   public static Metadata construct(byte[] data) throws MetadataParseException {
-    try {
-      return new Metadata(data);
+    try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(data))) {
+      return new Metadata(dis, data.length);
     } catch (IOException e) {
       throw (MetadataParseException) new MetadataParseException("Caught " + e).initCause(e);
     }
@@ -916,18 +916,6 @@ public class Metadata implements Serializable {
       m = new Metadata(dis, data.size());
     }
     return m;
-  }
-
-  /**
-   * Parse some metadata from a byte[].
-   *
-   * @throws IOException if the data is incomplete or an I/O error occurs while reading from the
-   *     in‑memory stream.
-   * @throws MetadataParseException if the serialized bytes are malformed or unsupported for the
-   *     current parser version.
-   */
-  private Metadata(byte[] data) throws IOException, MetadataParseException {
-    this(new DataInputStream(new ByteArrayInputStream(data)), data.length);
   }
 
   @Override
@@ -1999,9 +1987,10 @@ public class Metadata implements Serializable {
   }
 
   private void writeSplitfileKeys(DataOutputStream dos) throws IOException {
-    if (segments != null) {
-      for (int i = 0; i < segmentCount; i++) segments[i].writeKeys(dos, false);
-      for (int i = 0; i < segmentCount; i++) segments[i].writeKeys(dos, true);
+    SplitFileSegmentKeys[] localSegments = segments;
+    if (localSegments != null) {
+      for (int i = 0; i < segmentCount; i++) localSegments[i].writeKeys(dos, false);
+      for (int i = 0; i < segmentCount; i++) localSegments[i].writeKeys(dos, true);
       return;
     }
     if (splitfileSingleCryptoKey == null) {
@@ -2646,13 +2635,13 @@ public class Metadata implements Serializable {
   @SuppressWarnings("unused")
   public SplitFileSegmentKeys[] grabSegmentKeys() throws FetchException {
     synchronized (this) {
-      if (segments == null && splitfileDataKeys != null && splitfileCheckKeys != null)
+      SplitFileSegmentKeys[] localSegments = segments;
+      if (localSegments == null && splitfileDataKeys != null && splitfileCheckKeys != null)
         throw new FetchException(
             FetchExceptionMode.INTERNAL_ERROR,
             "Please restart the download, need to re-parse metadata due to internal changes");
-      SplitFileSegmentKeys[] segs = segments;
       segments = null;
-      return segs;
+      return localSegments;
     }
   }
 
@@ -2665,11 +2654,12 @@ public class Metadata implements Serializable {
    */
   public SplitFileSegmentKeys[] getSegmentKeys() throws FetchException {
     synchronized (this) {
-      if (segments == null && splitfileDataKeys != null && splitfileCheckKeys != null)
+      SplitFileSegmentKeys[] localSegments = segments;
+      if (localSegments == null && splitfileDataKeys != null && splitfileCheckKeys != null)
         throw new FetchException(
             FetchExceptionMode.INTERNAL_ERROR,
             "Please restart the download, need to re-parse metadata due to internal changes");
-      return segments;
+      return localSegments;
     }
   }
 

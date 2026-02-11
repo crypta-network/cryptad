@@ -3,6 +3,7 @@ package network.crypta.client.async;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.keys.Key;
 import network.crypta.keys.USK;
@@ -37,7 +38,8 @@ final class USKStoreCheckCoordinator {
   private static final Logger LOG = LoggerFactory.getLogger(USKStoreCheckCoordinator.class);
 
   /** Active store checker getter, or {@code null} when no store scan is running. */
-  private USKStoreCheckerGetter runningStoreChecker;
+  private final AtomicReference<USKStoreCheckerGetter> runningStoreChecker =
+      new AtomicReference<>();
 
   /** Watched key set used to derive datastore checks. */
   private final USKKeyWatchSet watchingKeys;
@@ -287,29 +289,31 @@ final class USKStoreCheckCoordinator {
    */
   @SuppressWarnings("BooleanMethodIsAlwaysInverted")
   boolean fillKeysWatching(long ed, ClientContext context) {
+    USKStoreCheckerGetter activeChecker;
     synchronized (this) {
       // Do not run a new one until this one has finished.
       // USKStoreCheckerGetter itself will automatically call back to fillKeysWatching, so there is
       // no
       // chance of losing it.
-      if (runningStoreChecker != null) return true;
+      if (runningStoreChecker.get() != null) return true;
       USKStoreChecker checker = buildStoreChecker(ed);
       if (checker == null) {
         if (LOG.isDebugEnabled()) LOG.debug("No datastore checker");
         return false;
       }
 
-      runningStoreChecker = new USKStoreCheckerGetter(this, callbacks, parent, checker);
+      activeChecker = new USKStoreCheckerGetter(this, callbacks, parent, checker);
+      runningStoreChecker.set(activeChecker);
     }
     try {
       context
           .getSskFetchScheduler(realTimeFlag)
-          .register(null, new SendableGet[] {runningStoreChecker}, false, null, false);
+          .register(null, new SendableGet[] {activeChecker}, false, null, false);
     } catch (Exception t) {
       USKStoreCheckerGetter storeChecker;
       synchronized (this) {
-        storeChecker = runningStoreChecker;
-        runningStoreChecker = null;
+        storeChecker = runningStoreChecker.get();
+        runningStoreChecker.set(null);
       }
       LOG.error("Unable to start: {}", t, t);
       if (storeChecker != null) {
@@ -320,7 +324,7 @@ final class USKStoreCheckCoordinator {
         }
       }
     }
-    if (LOG.isDebugEnabled()) LOG.debug("Registered {} for {}", runningStoreChecker, callbacks);
+    if (LOG.isDebugEnabled()) LOG.debug("Registered {} for {}", activeChecker, callbacks);
     return true;
   }
 
@@ -346,7 +350,7 @@ final class USKStoreCheckCoordinator {
     if (callbacks.isCancelled()) {
       storeChecker.unregister(context, storeChecker.getPriorityClass());
       synchronized (this) {
-        runningStoreChecker = null;
+        runningStoreChecker.set(null);
       }
       if (LOG.isDebugEnabled())
         LOG.debug("StoreChecker preRegister aborted: fetcher cancelled/completed");
@@ -358,7 +362,7 @@ final class USKStoreCheckCoordinator {
 
     USKAttempt[] attemptsToStart;
     synchronized (this) {
-      runningStoreChecker = null;
+      runningStoreChecker.set(null);
       // Note: optionally start USKAttempts only when a datastore check shows no progress.
       attemptsToStart = attempts.snapshotAttemptsToStart();
       attempts.clearAttemptsToStart();
@@ -401,7 +405,7 @@ final class USKStoreCheckCoordinator {
    */
   boolean isStoreCheckRunning() {
     synchronized (this) {
-      return runningStoreChecker != null;
+      return runningStoreChecker.get() != null;
     }
   }
 
@@ -415,8 +419,8 @@ final class USKStoreCheckCoordinator {
   void cancelStoreChecker(ClientContext context) {
     USKStoreCheckerGetter checker;
     synchronized (this) {
-      checker = runningStoreChecker;
-      runningStoreChecker = null;
+      checker = runningStoreChecker.get();
+      runningStoreChecker.set(null);
     }
     if (checker != null) {
       checker.unregister(context, checker.getPriorityClass());
@@ -441,6 +445,7 @@ final class USKStoreCheckCoordinator {
    * <p>This helper merges keys from multiple sources and forwards completion notifications back to
    * the underlying sub-checkers.
    */
+  @SuppressWarnings("ClassCanBeRecord")
   static final class USKStoreChecker {
 
     /** Sub-checkers contributing keys to a query in the datastore. */

@@ -660,16 +660,18 @@ public class SubConfig implements Comparable<SubConfig> {
    */
   public String getRawOption(String name) {
     if (config instanceof PersistentConfig pc) {
-      if (pc.finishedInit)
-        throw new IllegalStateException(
-            "getRawOption("
-                + name
-                + ") on "
-                + this
-                + " but persistent config has been finishedInit() already!");
-      SimpleFieldSet fs = pc.origConfigFileContents;
-      if (fs == null) return null;
-      return fs.get(prefix + SimpleFieldSet.MULTI_LEVEL_CHAR + name);
+      synchronized (config) {
+        if (pc.finishedInit)
+          throw new IllegalStateException(
+              "getRawOption("
+                  + name
+                  + ") on "
+                  + this
+                  + " but persistent config has been finishedInit() already!");
+        SimpleFieldSet fs = pc.origConfigFileContents.get();
+        if (fs == null) return null;
+        return fs.get(prefix + SimpleFieldSet.MULTI_LEVEL_CHAR + name);
+      }
     } else return null;
   }
 

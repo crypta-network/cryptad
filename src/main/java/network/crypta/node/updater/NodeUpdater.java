@@ -165,7 +165,11 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   private void subscribe(Runnable onError) {
     try {
       // because of UoM, this version is actually worth having as well
-      USK myUsk = USK.create(this.uri.setSuggestedEdition(currentVersion));
+      FreenetURI localUri;
+      synchronized (this) {
+        localUri = this.uri;
+      }
+      USK myUsk = USK.create(localUri.setSuggestedEdition(currentVersion));
       core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
     } catch (MalformedURLException _) {
       LOG.error("The auto-update URI isn't valid and can't be used");
@@ -352,7 +356,13 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   @Override
   public void onSuccess(FetchResult result, ClientGetter state) {
-    onSuccess(result, tempBlobFile, fetchingVersion);
+    File localTempBlobFile;
+    int localFetchingVersion;
+    synchronized (this) {
+      localTempBlobFile = tempBlobFile;
+      localFetchingVersion = fetchingVersion;
+    }
+    onSuccess(result, localTempBlobFile, localFetchingVersion);
   }
 
   void onSuccess(FetchResult result, File tempBlobFile, int fetchedVersion) {
@@ -669,17 +679,25 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     // Debug gating derives from LOG.isDebugEnabled() where needed
     if (!isRunning) return;
     FetchExceptionMode errorCode = e.getMode();
-    try {
-      Files.delete(tempBlobFile.toPath());
-    } catch (IOException ex) {
-      LOG.warn("Unable to delete temp blob {} on failure", tempBlobFile, ex);
-    }
 
-    if (LOG.isDebugEnabled()) LOG.debug("onFailure({},{})", e, cg);
+    File localTempBlobFile;
+    ClientGetter localCg;
     synchronized (this) {
+      localTempBlobFile = tempBlobFile;
+      localCg = this.cg;
       this.cg = null;
       isFetching = false;
     }
+
+    try {
+      if (localTempBlobFile != null) {
+        Files.delete(localTempBlobFile.toPath());
+      }
+    } catch (IOException ex) {
+      LOG.warn("Unable to delete temp blob {} on failure", localTempBlobFile, ex);
+    }
+
+    if (LOG.isDebugEnabled()) LOG.debug("onFailure({},{})", e, localCg);
     if (errorCode == FetchExceptionMode.CANCELLED || !e.isFatal()) {
       LOG.info("Rescheduling new request");
       ticker.queueTimedJob(this::maybeUpdate, 0);
@@ -718,8 +736,8 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @return the immutable update key associated with this updater instance
    */
   @SuppressWarnings("unused")
-  public FreenetURI getUpdateKey() {
-    return uri;
+  public synchronized FreenetURI getUpdateKey() {
+    return this.uri;
   }
 
   /**
@@ -764,7 +782,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    *
    * @return the last successfully fetched edition, or the current version when none were fetched
    */
-  public int getFetchedVersion() {
+  public synchronized int getFetchedVersion() {
     return fetchedVersion;
   }
 
@@ -773,7 +791,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    *
    * @return {@code true} if a fetch is active for a newer edition; otherwise {@code false}
    */
-  public boolean isFetching() {
+  public synchronized boolean isFetching() {
     return availableVersion > fetchedVersion && availableVersion > currentVersion;
   }
 
@@ -782,7 +800,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    *
    * @return an edition number used for progress reporting; never less than the current version
    */
-  public int fetchingVersion() {
+  public synchronized int fetchingVersion() {
     // We will not deploy the currentVersion...
     if (fetchingVersion <= currentVersion) return availableVersion;
     else return fetchingVersion;

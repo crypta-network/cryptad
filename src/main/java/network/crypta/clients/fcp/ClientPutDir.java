@@ -722,9 +722,10 @@ public class ClientPutDir extends ClientPutBase {
     FreenetURI finalURI = getFinalURI();
     InsertExceptionMode failureCode = null;
     String failureReasonShort = null;
-    if (putFailedMessage != null) {
-      failureCode = putFailedMessage.failureMode;
-      failureReasonShort = putFailedMessage.getLongFailedMessage();
+    PutFailedMessage failureMessage = getFailureMessage();
+    if (failureMessage != null) {
+      failureCode = failureMessage.failureMode;
+      failureReasonShort = failureMessage.getLongFailedMessage();
     }
 
     int total = 0;
@@ -737,7 +738,8 @@ public class ClientPutDir extends ClientPutBase {
     Instant latestFailure = null;
     boolean totalFinalized = false;
 
-    if (progressMessage instanceof SimpleProgressMessage msg) {
+    FCPMessage progressSnapshot = getProgressMessageSnapshot();
+    if (progressSnapshot instanceof SimpleProgressMessage msg) {
       total = (int) msg.getTotalBlocks();
       min = (int) msg.getMinBlocks();
       fetched = (int) msg.getFetchedBlocks();

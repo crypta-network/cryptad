@@ -79,7 +79,7 @@ final class PeerNodeReferenceSupport {
   private static final Logger LOG = LoggerFactory.getLogger(PeerNodeReferenceSupport.class);
 
   /**
-   * Owning peer whose reference state is parsed and validated by this helper.
+   * The owning peer whose reference state is parsed and validated by this helper.
    *
    * <p>The reference support delegates identity and signature outcomes to this peer and may update
    * flags or cached field sets on it. Callers are expected to pass a stable, non-null instance for
@@ -549,7 +549,7 @@ final class PeerNodeReferenceSupport {
       }
       return;
     }
-    // Missing identity is allowed for differential or partial noderefs (e.g., during handshake).
+    // Missing identity is allowed for differential or partial noderefs (e.g., during a handshake).
     // Only full noderefs must include identity.
     if (forFullNodeRef && !forDiffNodeRef) {
       if (peer.isDarknet()) throw new FSParseException("No identity!");
@@ -663,7 +663,7 @@ final class PeerNodeReferenceSupport {
             "The integrity of the reference has been compromised!" + errCause);
       } else {
         peer.setSignatureVerificationSuccessfull(true);
-        if (!peer.dontKeepFullFieldSet()) peer.fullFieldSet = fs;
+        if (!peer.dontKeepFullFieldSet()) peer.fullFieldSet.set(fs);
       }
     } catch (IllegalBase64Exception e) {
       LOG.error("Invalid reference: {}", e, e);

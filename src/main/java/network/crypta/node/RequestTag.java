@@ -275,14 +275,33 @@ public class RequestTag extends UIDTag {
    */
   @Override
   public void logStillPresent(Long uid) {
+    boolean localServedFromDatastore;
+    WeakReference<RequestSender> localSender;
+    boolean localSent;
+    int localRequestSenderFinishedCode;
+    boolean localRejected;
+    Throwable localHandlerThrew;
+    boolean localHandlerDisconnected;
+    WeakReference<PeerNode> localWaitingForOpennet;
+    synchronized (this) {
+      localServedFromDatastore = servedFromDatastore;
+      localSender = sender;
+      localSent = sent;
+      localRequestSenderFinishedCode = requestSenderFinishedCode;
+      localRejected = rejected;
+      localHandlerThrew = handlerThrew;
+      localHandlerDisconnected = handlerDisconnected;
+      localWaitingForOpennet = waitingForOpennet;
+    }
+
     StringBuilder sb = new StringBuilder();
     sb.append("Still present after ").append(TimeUtil.formatTime(age()));
     sb.append(" : ").append(uid).append(" : start=").append(start);
-    sb.append(" ssk=").append(isSSK).append(" from store=").append(servedFromDatastore);
-    if (sender == null) {
+    sb.append(" ssk=").append(isSSK).append(" from store=").append(localServedFromDatastore);
+    if (localSender == null) {
       sb.append(" sender not set");
     } else {
-      RequestSender s = sender.get();
+      RequestSender s = localSender.get();
       if (s == null) {
         sb.append(" sender=null");
       } else {
@@ -293,20 +312,20 @@ public class RequestTag extends UIDTag {
         sb.append(" transferActive=").append(s.isTransferActive());
       }
     }
-    if (sent) sb.append(" sent");
-    sb.append(" finishedCode=").append(requestSenderFinishedCode);
-    sb.append(" rejected=").append(rejected);
-    if (handlerThrew != null) sb.append(" thrown=").append(handlerThrew);
-    if (handlerDisconnected) sb.append(" handlerDisconnected=true");
-    if (waitingForOpennet != null) {
-      PeerNode pn = waitingForOpennet.get();
+    if (localSent) sb.append(" sent");
+    sb.append(" finishedCode=").append(localRequestSenderFinishedCode);
+    sb.append(" rejected=").append(localRejected);
+    if (localHandlerThrew != null) sb.append(" thrown=").append(localHandlerThrew);
+    if (localHandlerDisconnected) sb.append(" handlerDisconnected=true");
+    if (localWaitingForOpennet != null) {
+      PeerNode pn = localWaitingForOpennet.get();
       sb.append(" waitingForOpennet=");
       sb.append(pn == null ? "(null)" : pn.shortToString());
     }
     sb.append(" : ");
     sb.append(super.toString());
-    if (handlerThrew != null) {
-      LOG.atError().setCause(handlerThrew).log("{}", sb);
+    if (localHandlerThrew != null) {
+      LOG.atError().setCause(localHandlerThrew).log("{}", sb);
     } else {
       LOG.atError().log("{}", sb);
     }

@@ -443,12 +443,12 @@ class FailureTableEntry implements TimedOutNodesList {
    */
   public void offer() {
     HashSet<PeerNodeUnlocked> set = new HashSet<>();
-    if (LOG.isDebugEnabled())
-      LOG.debug(
-          "Sending offers to nodes which requested the key from us: ({}) for {}",
-          requestorNodes.length,
-          key);
     synchronized (this) {
+      if (LOG.isDebugEnabled())
+        LOG.debug(
+            "Sending offers to nodes which requested the key from us: ({}) for {}",
+            requestorNodes.length,
+            key);
       collectRequestorOfferTargets(set);
       if (LOG.isDebugEnabled())
         LOG.debug(

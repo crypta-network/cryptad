@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Tracks message activity to and from a single logical address and derives recent inactivity gaps.
  *
- * <p>The concrete address (for example an IP:port, an IP only, or another scheme) is owned by a
+ * <p>The concrete address (for example, an IP:port, an IP only, or another scheme) is owned by a
  * subclass; this type focuses purely on timing and counters:
  *
  * <ul>
@@ -28,37 +28,37 @@ public class AddressTrackerItem {
    * Time of the first observed receive from this address, in milliseconds since epoch, or {@code
    * -1} if none.
    */
-  private long timeFirstReceivedPacket;
+  private volatile long timeFirstReceivedPacket;
 
   /**
    * Time of the first observed send to this address, in milliseconds since epoch, or {@code -1} if
    * none.
    */
-  private long timeFirstSentPacket;
+  private volatile long timeFirstSentPacket;
 
   /**
-   * Earliest time (strict upper bound) at which we know no packet was received. Typically, the
-   * socket startup time; may advance if caches are flushed.
+   * The earliest time (strict upper bound) at which we know no packet was received. Typically, the
+   * socket startup time may advance if caches are flushed.
    */
   private final long timeDefinitelyNoPacketsReceived;
 
   /**
-   * Earliest time (strict upper bound) at which we know no packet was sent. Typically, the node
+   * The earliest time (strict upper bound) at which we know no packet was sent. Typically, the node
    * startup time; may advance if caches are flushed.
    */
   private final long timeDefinitelyNoPacketsSent;
 
-  /** Time of the most recent receive, in milliseconds since epoch, or {@code -1} if none. */
-  private long timeLastReceivedPacket;
+  /** Time of the most recent receiving, in milliseconds since epoch, or {@code -1} if none. */
+  private volatile long timeLastReceivedPacket;
 
-  /** Time of the most recent send, in milliseconds since epoch, or {@code -1} if none. */
-  private long timeLastSentPacket;
+  /** Time of the most recent sending, in milliseconds since epoch, or {@code -1} if none. */
+  private volatile long timeLastSentPacket;
 
   /** Total number of packets sent to this address. */
-  private long packetsSent;
+  private volatile long packetsSent;
 
   /** Total number of packets received from this address. */
-  private long packetsReceived;
+  private volatile long packetsReceived;
 
   /** Number of recent gaps to retain and expose via {@link #getGaps()}. */
   public static final int TRACK_GAPS = 5;
@@ -70,17 +70,17 @@ public class AddressTrackerItem {
   private static final long GAP_THRESHOLD = AddressTracker.MAYBE_TUNNEL_LENGTH;
 
   /**
-   * When true, the interval start considers the last receive as well as the last send. This yields
-   * conservative (longer) gaps when back-to-back receives occur without intervening sends.
+   * When true, the interval start considers the last receiving as well as the last sending. This
+   * yields conservative (longer) gaps when back-to-back receives occur without intervening sending.
    */
   static final boolean INCLUDE_RECEIVED_PACKETS = true;
 
   /**
    * Creates an empty tracker with known upper bounds for the "no packets yet" window.
    *
-   * @param timeDefinitelyNoPacketsReceived earliest time at which receiving is known to have been
-   *     impossible (e.g., socket startup), in milliseconds since epoch
-   * @param timeDefinitelyNoPacketsSent earliest time at which sending is known to have been
+   * @param timeDefinitelyNoPacketsReceived the earliest time at which receiving is known to have
+   *     been impossible (e.g., socket startup), in milliseconds since epoch
+   * @param timeDefinitelyNoPacketsSent the earliest time at which sending is known to have been
    *     impossible (e.g., node startup), in milliseconds since epoch
    */
   public AddressTrackerItem(
@@ -148,7 +148,7 @@ public class AddressTrackerItem {
    * inactivity since the last relevant activity exceeds the threshold.
    *
    * <p>Interval start is the maximum of the last send, the {@code no-sent} bound, and, when {@link
-   * #INCLUDE_RECEIVED_PACKETS} is true, the last receive and the {@code no-recv} bound.
+   * #INCLUDE_RECEIVED_PACKETS} is true, the last receiving and the {@code no-recv} bound.
    *
    * @param now timestamp in milliseconds since epoch
    */
@@ -189,7 +189,7 @@ public class AddressTrackerItem {
    * <p>This is a coarse signal that a long-running tunnel may have been observed recently.
    *
    * @param horizon look-back window in milliseconds
-   * @return {@code true} if the latest gap's receive time is within {@code horizon} of "now"
+   * @return {@code true} if the latest gap's receiving time is within {@code horizon} of "now"
    */
   public synchronized boolean hasLongTunnel(long horizon) {
     return gapLengthRecvTimes[0] > System.currentTimeMillis() - horizon;
@@ -258,7 +258,7 @@ public class AddressTrackerItem {
   }
 
   /**
-   * Returns the time of the most recent receive, or {@code -1} if none.
+   * Returns the time of the most recent receiving, or {@code -1} if none.
    *
    * @return milliseconds since epoch, or {@code -1}
    */
@@ -267,7 +267,7 @@ public class AddressTrackerItem {
   }
 
   /**
-   * Returns the time of the most recent send, or {@code -1} if none.
+   * Returns the time of the most recent sending, or {@code -1} if none.
    *
    * @return milliseconds since epoch, or {@code -1}
    */
@@ -306,8 +306,8 @@ public class AddressTrackerItem {
   /**
    * Returns whether the first observed activity was a sending rather than a receiving.
    *
-   * <p>Returns {@code true} if there has been no receive, {@code false} if there has been no send,
-   * otherwise compares first-send and first-receive times.
+   * <p>Returns {@code true} if there has been no receiving, {@code false} if there has been no
+   * send, otherwise compares first-send and first-receive times.
    *
    * @return {@code true} if the first event was a sending
    */
@@ -318,7 +318,7 @@ public class AddressTrackerItem {
   }
 
   /**
-   * Returns the delay from the {@code no-sent} bound to the first send, or {@code -1} if nothing
+   * Returns the delay from the {@code no-sent} bound to the first sending, or {@code -1} if nothing
    * has been sent.
    *
    * @return milliseconds since the {@code no-sent} bound, or {@code -1}
@@ -329,8 +329,8 @@ public class AddressTrackerItem {
   }
 
   /**
-   * Returns the delay from the {@code no-recv} bound to the first receive, or {@code -1} if nothing
-   * has been received.
+   * Returns the delay from the {@code no-recv} bound to the first receiving, or {@code -1} if
+   * nothing has been received.
    *
    * @return milliseconds since the {@code no-recv} bound, or {@code -1}
    */

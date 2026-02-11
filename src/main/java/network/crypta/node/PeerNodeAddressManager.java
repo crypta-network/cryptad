@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.PeerParseException;
@@ -32,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * policy.
  *
  * <ul>
- *   <li><strong>Handshake address refresh:</strong> throttles DNS lookups and de-duplicates
+ *   <li><strong>Handshake address refresh:</strong> throttles DNS lookups and deduplicates
  *       candidates
  *   <li><strong>Selection:</strong> filters candidates for policy and rotates among valid choices
  *   <li><strong>Matching:</strong> compares incoming addresses using strict or relaxed semantics
@@ -61,18 +62,18 @@ final class PeerNodeAddressManager {
   /** The last time we attempted to update handshake IPs. Guarded by {@code peer}. */
   private long lastAttemptedHandshakeIPUpdateTime;
 
-  /** Alternator used to pick a single handshake address when multiple are available. */
+  /** Alternator used to pick a single handshake address when multiple addresses are available. */
   private int handshakeIPAlternator;
 
   /**
    * Creates a new manager bound to a specific peer node.
    *
    * <p>The instance does not perform any work eagerly. It records the provided peer node, which is
-   * subsequently used for both synchronization and access to cached address state. The caller is
-   * responsible for ensuring the same {@code PeerNodeAddressManager} is reused for the same peer
+   * subsequently used for both synchronization and access to the cached address state. The caller
+   * is responsible for ensuring the same {@code PeerNodeAddressManager} is reused for the same peer
    * node to keep the throttling counters meaningful.
    *
-   * @param peer owning peer node that supplies address state and synchronization.
+   * @param peer the owning peer node that supplies address state and synchronization.
    */
   PeerNodeAddressManager(PeerNode peer) {
     this.peer = peer;
@@ -82,7 +83,7 @@ final class PeerNodeAddressManager {
    * Clears the handshake refresh timer so the next update attempt is not throttled.
    *
    * <p>This method is idempotent and only affects the timestamp used to suppress rapid DNS
-   * refreshes. It does not alter the current handshake candidate list or detected peer values.
+   * refreshes. It does not alter the current handshake candidate list or detect peer values.
    *
    * @see #markHandshakeIpUpdateAttempted(long)
    */
@@ -95,7 +96,7 @@ final class PeerNodeAddressManager {
   /**
    * Records the most recent handshake-IP update attempt time.
    *
-   * <p>The stored timestamp is used to throttle subsequent DNS resolution attempts. Callers should
+   * <p>The stored timestamp is used to throttle further DNS resolution attempts. Callers should
    * pass a millisecond value consistent with {@link System#currentTimeMillis()} to preserve the
    * expected five-minute backoff logic in {@link #maybeUpdateHandshakeIPs(boolean)}.
    *
@@ -114,7 +115,7 @@ final class PeerNodeAddressManager {
    *
    * @param localHandshakeIPs candidate addresses to resolve and de-duplicate
    * @param ignoreHostnames when true, skips hostname resolution
-   * @return the updated, de-duplicated address array
+   * @return the updated, deduplicated address array
    */
   private Peer[] resolveAndDedupe(Peer[] localHandshakeIPs, boolean ignoreHostnames) {
     for (Peer localHandshakeIP : localHandshakeIPs) {
@@ -164,7 +165,10 @@ final class PeerNodeAddressManager {
 
     Peer[] myNominalPeer;
     synchronized (peer) {
-      myNominalPeer = peer.nominalPeer.toArray(new Peer[0]);
+      AtomicReference<List<Peer>> nominalPeerRef = peer.nominalPeer;
+      List<Peer> localNominalPeer = nominalPeerRef == null ? null : nominalPeerRef.get();
+      myNominalPeer =
+          localNominalPeer == null ? new Peer[0] : localNominalPeer.toArray(new Peer[0]);
     }
     if (handleNoNominalPeersCase(localDetectedPeer, myNominalPeer, ignoreHostnames)) return;
 
@@ -172,7 +176,9 @@ final class PeerNodeAddressManager {
     Peer[] nodePeers = peer.getOutgoingMangler().getPrimaryIPAddress();
     List<Peer> basePeers;
     synchronized (peer) {
-      basePeers = new ArrayList<>(peer.nominalPeer);
+      AtomicReference<List<Peer>> nominalPeerRef = peer.nominalPeer;
+      List<Peer> localNominalPeer = nominalPeerRef == null ? null : nominalPeerRef.get();
+      basePeers = localNominalPeer == null ? new ArrayList<>() : new ArrayList<>(localNominalPeer);
     }
     PeersBuildResult build =
         prepareLocalPeers(myNominalPeer, localDetectedPeer, nodePeers, localhost, basePeers);
@@ -268,7 +274,7 @@ final class PeerNodeAddressManager {
    * @return {@code true} if {@code p} is a value-equal duplicate of the detected peer.
    */
   private boolean isDuplicateLocalDetectedPeer(Peer p, Peer localDetectedPeer) {
-    return localDetectedPeer != null && p.equals(localDetectedPeer);
+    return p.equals(localDetectedPeer);
   }
 
   /**
@@ -317,7 +323,7 @@ final class PeerNodeAddressManager {
   /**
    * Holds the intermediate results of composing handshake candidates.
    *
-   * @param localPeers ordered list of candidate peers after filtering and augmentation.
+   * @param localPeers an ordered list of candidate peers after filtering and augmentation.
    * @param detectedDuplicate nominal peer that duplicates the detected peer, if found.
    */
   private record PeersBuildResult(List<Peer> localPeers, Peer detectedDuplicate) {}
@@ -434,20 +440,8 @@ final class PeerNodeAddressManager {
    * @return {@code true} if a detected or nominal address equals {@code addr}.
    */
   static boolean strictMatch(PeerNode peerNode, FreenetInetAddress addr) {
-    Peer p = peerNode.getPeer();
-    if (p != null) {
-      FreenetInetAddress a = p.getFreenetAddress();
-      if (a != null && a.equals(addr)) return true;
-    }
-    if (peerNode.nominalPeer != null) {
-      for (Peer np : peerNode.nominalPeer) {
-        if (np != null) {
-          FreenetInetAddress a = np.getFreenetAddress();
-          if (a != null && a.equals(addr)) return true;
-        }
-      }
-    }
-    return false;
+    return matchesPeerAddress(peerNode.getPeer(), addr, true)
+        || matchesNominalPeers(peerNode.nominalPeer, addr, true);
   }
 
   /**
@@ -463,32 +457,38 @@ final class PeerNodeAddressManager {
    * @return {@code true} if a detected or nominal address matches {@code addr} laxly.
    */
   static boolean nonStrictMatch(PeerNode peerNode, FreenetInetAddress addr) {
-    Peer p = peerNode.getPeer();
-    if (p != null) {
-      FreenetInetAddress a = p.getFreenetAddress();
-      if (a != null && a.laxEquals(addr)) return true;
-    }
-    if (peerNode.nominalPeer != null) {
-      for (Peer np : peerNode.nominalPeer) {
-        if (np != null) {
-          FreenetInetAddress a = np.getFreenetAddress();
-          if (a != null && a.laxEquals(addr)) return true;
-        }
-      }
+    return matchesPeerAddress(peerNode.getPeer(), addr, false)
+        || matchesNominalPeers(peerNode.nominalPeer, addr, false);
+  }
+
+  private static boolean matchesNominalPeers(
+      AtomicReference<List<Peer>> nominalPeerRef, FreenetInetAddress addr, boolean strict) {
+    List<Peer> localNominalPeer = nominalPeerRef == null ? null : nominalPeerRef.get();
+    if (localNominalPeer == null) return false;
+    for (Peer peer : localNominalPeer) {
+      if (matchesPeerAddress(peer, addr, strict)) return true;
     }
     return false;
+  }
+
+  private static boolean matchesPeerAddress(Peer peer, FreenetInetAddress addr, boolean strict) {
+    if (peer == null) return false;
+    FreenetInetAddress peerAddress = peer.getFreenetAddress();
+    if (peerAddress == null) return false;
+    if (strict) return peerAddress.equals(addr);
+    return peerAddress.laxEquals(addr);
   }
 
   /**
    * Determines whether traffic to the peer should be throttled based on locality.
    *
    * <p>Throttle decisions are conservative: if the node is configured to throttle local data, or if
-   * the peer or its resolved address is missing, this method returns {@code true}. Otherwise it
+   * the peer or its resolved address is missing, this method returns {@code true}. Otherwise, it
    * delegates to {@link PeerNodeReferenceSupport#isValidAddress(InetAddress)}; public addresses are
    * treated as throttled, while local-only addresses are not.
    *
    * @param peer peer whose resolved address should be evaluated; may be {@code null}.
-   * @param node owning node that provides configuration flags for throttling.
+   * @param node the owning node that provides configuration flags for throttling.
    * @return {@code true} when throttling should be applied; {@code false} otherwise.
    */
   static boolean shouldThrottle(Peer peer, Node node) {

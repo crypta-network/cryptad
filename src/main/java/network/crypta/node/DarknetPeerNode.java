@@ -337,8 +337,9 @@ public class DarknetPeerNode extends PeerNode {
     if (ignoreSourcePort) {
       FreenetInetAddress addr = detectedPeer == null ? null : detectedPeer.getFreenetAddress();
       int port = detectedPeer == null ? -1 : detectedPeer.getPort();
-      if (nominalPeer == null) return detectedPeer;
-      for (Peer p : nominalPeer) {
+      List<Peer> localNominalPeer = nominalPeer.get();
+      if (localNominalPeer == null) return detectedPeer;
+      for (Peer p : localNominalPeer) {
         if (p.getPort() != port && p.getFreenetAddress().equals(addr)) {
           return p;
         }
@@ -2316,7 +2317,7 @@ public class DarknetPeerNode extends PeerNode {
   @Override
   public boolean shallWeRouteAccordingToOurPeersLocation(int htl) {
     if (!node.shallWeRouteAccordingToOurPeersLocation(htl)) return false; // Globally disabled
-    return trustLevel != FRIEND_TRUST.LOW;
+    return getTrustLevel() != FRIEND_TRUST.LOW;
   }
 
   /** Sets the trust level and persists peer metadata. */
@@ -2562,7 +2563,7 @@ public class DarknetPeerNode extends PeerNode {
                       return;
                     }
                     synchronized (DarknetPeerNode.this) {
-                      fullFieldSet = fs;
+                      fullFieldSet.set(fs);
                     }
                     node.network().peers().writePeersDarknet();
                   } else {

@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.PersistenceDisabledException;
 import network.crypta.client.async.PersistentJob;
 import network.crypta.client.async.TooManyFilesInsertException;
@@ -68,7 +69,7 @@ public class FCPConnectionHandler implements Closeable {
   private boolean outputClosed;
   private String clientName;
   private PersistentRequestClient rebootClient;
-  private PersistentRequestClient foreverClient;
+  private final AtomicReference<PersistentRequestClient> foreverClient = new AtomicReference<>();
   final HashMap<String, ClientRequest> requestsByIdentifier;
 
   private final PluginConnectionRegistry pluginConnectionRegistry = new PluginConnectionRegistry();
@@ -77,6 +78,7 @@ public class FCPConnectionHandler implements Closeable {
     return pluginConnectionRegistry;
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class CloseSnapshot {
     final ClientRequest[] requests;
     final SubscribeUSK[] subscriptions;
@@ -96,7 +98,7 @@ public class FCPConnectionHandler implements Closeable {
   }
 
   /**
-   * Legacy 16-byte hexadecimal identifier mirrored from older protocol versions so existing client
+   * Legacy 16-byte hexadecimal identifier mirrored from older protocol versions, so existing client
    * libraries can continue to correlate reconnect attempts and queue state without having to
    * understand UUIDs. The value is immutable and scoped to this connection instance only.
    */
@@ -184,9 +186,9 @@ public class FCPConnectionHandler implements Closeable {
    *
    * <p>The method only synchronizes long enough to place the message into the bounded outbound
    * queue, respecting the server's drop policy when limits are exceeded. Because the actual socket
-   * write happens on the output thread, callers must treat this method as fire-and-forget: a return
-   * value simply means queuing succeeded, not that the peer received or acknowledged anything. Use
-   * the handler's logging output when diagnosing queue pressure or dropped messages.
+   * writing happens on the output thread, callers must treat this method as fire-and-forget: a
+   * return value simply means queuing succeeded, not that the peer received or acknowledged
+   * anything. Use the handler's logging output when diagnosing queue pressure or dropped messages.
    *
    * @param message Non-null message that has already been fully constructed and validated for
    *     network serialization.
@@ -241,8 +243,9 @@ public class FCPConnectionHandler implements Closeable {
     if (rebootClient != null) {
       rebootClient.onLostConnection(this);
     }
-    if (foreverClient != null) {
-      foreverClient.onLostConnection(this);
+    PersistentRequestClient connectionForeverClient = foreverClient.get();
+    if (connectionForeverClient != null) {
+      connectionForeverClient.onLostConnection(this);
     }
     CloseSnapshot snapshot = prepareCloseSnapshot();
     if (snapshot == null) {
@@ -293,14 +296,16 @@ public class FCPConnectionHandler implements Closeable {
                     if ((rebootClient != null) && !rebootClient.hasPersistentRequests()) {
                       server.unregisterClient(rebootClient);
                     }
-                    if ((foreverClient != null) && !foreverClient.hasPersistentRequests()) {
-                      server.unregisterClient(foreverClient);
+                    PersistentRequestClient cleanupForeverClient = foreverClient.get();
+                    if ((cleanupForeverClient != null)
+                        && !cleanupForeverClient.hasPersistentRequests()) {
+                      server.unregisterClient(cleanupForeverClient);
                     }
                     return false;
                   },
               NativeThread.PriorityLevel.NORM_PRIORITY.value);
     } catch (PersistenceDisabledException _) {
-      // Ignore: cleanup already best-effort.
+      // Ignore: cleanups already best-effort.
     }
   }
 
@@ -381,7 +386,7 @@ public class FCPConnectionHandler implements Closeable {
    * safe to call once per connection handshake before any request scheduling occurs.
    *
    * @param name Logical identifier supplied by the peer; should be non-null and consistent across
-   *     reconnects to benefit from persistence.
+   *     reconnections to benefit from persistence.
    */
   public void setClientName(final String name) {
     this.clientName = name;
@@ -394,9 +399,9 @@ public class FCPConnectionHandler implements Closeable {
     PersistentRequestClient client = server.getForeverClient(name, this);
     if (client != null) {
       synchronized (this) {
-        foreverClient = client;
+        foreverClient.set(client);
       }
-      foreverClient.queuePendingMessagesOnConnectionRestartAsync(
+      client.queuePendingMessagesOnConnectionRestartAsync(
           outputHandler, server.getCore().getClientContext());
     }
   }
@@ -410,20 +415,21 @@ public class FCPConnectionHandler implements Closeable {
    * returned client immediately begins replaying pending messages on the current connection.
    *
    * @param name Identifier shared across reconnections so persistent requests remain addressable.
-   * @return Initialized persistent client ready to accept forever-scope requests.
+   * @return The initialized persistent client ready to accept forever-scope requests.
    */
   protected PersistentRequestClient createForeverClient(String name) {
     synchronized (FCPConnectionHandler.this) {
-      if (foreverClient != null) return foreverClient;
+      PersistentRequestClient existing = foreverClient.get();
+      if (existing != null) return existing;
     }
     PersistentRequestClient client = server.registerForeverClient(name, FCPConnectionHandler.this);
     synchronized (FCPConnectionHandler.this) {
-      foreverClient = client;
+      foreverClient.set(client);
       FCPConnectionHandler.this.notifyAll();
     }
     client.queuePendingMessagesOnConnectionRestartAsync(
         outputHandler, server.getCore().getClientContext());
-    return foreverClient;
+    return client;
   }
 
   /**
@@ -872,14 +878,15 @@ public class FCPConnectionHandler implements Closeable {
    * returned instance queues pending messages back to the output handler automatically.
    *
    * @return Non-null persistent client once the connection has an assigned name; the reference is
-   *     cached for subsequent calls.
+   *     cached for later calls.
    */
   public PersistentRequestClient getForeverClient() {
     synchronized (this) {
-      if (foreverClient == null) {
-        foreverClient = createForeverClient(clientName);
+      PersistentRequestClient client = foreverClient.get();
+      if (client == null) {
+        client = createForeverClient(clientName);
       }
-      return foreverClient;
+      return client;
     }
   }
 
@@ -902,8 +909,8 @@ public class FCPConnectionHandler implements Closeable {
    * Reports whether the reboot-scope persistent client currently watches the global queue, meaning
    * it receives broadcasts rather than only this connection's identifiers.
    *
-   * <p>This is primarily surfaced for diagnostics and tests so they can assert that a connection is
-   * subscribed before sending synthetic updates.
+   * <p>This is primarily surfaced for diagnostics and tests, so they can assert that a connection
+   * is subscribed before sending synthetic updates.
    *
    * @return {@code true} when {@link #rebootClient} is configured for global traffic, otherwise
    *     {@code false}. Primarily used by diagnostic commands.
@@ -965,7 +972,7 @@ public class FCPConnectionHandler implements Closeable {
   /**
    * Retrieves and removes the pending DDA check for the specified path if one exists.
    *
-   * <p>This is typically called once the peer has responded so we can resume the original request
+   * <p>This is typically called once the peer has responded, so we can resume the original request
    * using the recorded permissions.
    *
    * @param path Path originally used to queue the DDA job; must match exactly.
@@ -978,7 +985,7 @@ public class FCPConnectionHandler implements Closeable {
 
   /**
    * Deletes any temporary files left behind by outstanding DDA tests and clears the tracking
-   * structures so the handler can be safely closed or recycled between reconnects.
+   * structures so the handler can be safely closed or recycled between reconnections.
    *
    * <p>Invoke this after the peer completes DDA verification or when the handler disconnects so
    * background checks do not leak disk state.
@@ -992,7 +999,7 @@ public class FCPConnectionHandler implements Closeable {
    * identifier.
    *
    * <p>If {@code kill} is {@code true}, the request receives a cancel callback before the handler
-   * notifies it about removal, which lets callers align cleanup with de-registration.
+   * notifies it about removal, which lets callers align cleanup with deregistration.
    *
    * @param identifier Unique token previously provided by the client; must not be {@code null}.
    * @param kill {@code true} to cancel the request before removal, {@code false} otherwise.
@@ -1042,7 +1049,7 @@ public class FCPConnectionHandler implements Closeable {
    * Registers a {@link SubscribeUSK} under the provided identifier, enforcing uniqueness across the
    * connection.
    *
-   * <p>The subscription map is guarded by this handler's monitor so concurrent add/remove
+   * <p>The subscription map is guarded by this handler's monitor, so concurrent add/remove
    * operations stay consistent even when clients open many subscriptions at once.
    *
    * @param identifier Token supplied by the client to track the subscription lifecycle.
@@ -1060,7 +1067,7 @@ public class FCPConnectionHandler implements Closeable {
    * the change.
    *
    * <p>The removal is synchronized with {@link #addUSKSubscription(String, SubscribeUSK)} so no
-   * updates race while the unsubscribe runs.
+   * updates race while the unsubscribing runs.
    *
    * @param identifier Subscription token previously registered via {@link
    *     #addUSKSubscription(String, SubscribeUSK)}.

@@ -119,7 +119,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
   /** The per-segment bloom filters, containing the keys for each segment. These are not changed. */
   private final BinaryBloomFilter[] segmentFilters;
 
-  private boolean finishedSetup;
+  private volatile boolean finishedSetup;
   private final boolean persistent;
 
   /** Does the main bloom filter need writing? */
@@ -284,7 +284,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
           storage.offsetSegmentBloomFilters, segmentsFilterBuffer, 0, segmentsFilterBuffer.length);
     } catch (ChecksumFailedException e) {
       LOG.error(
-          "Checksummed read for segment filters at {} failed for {}",
+          "Check-summed read for segment filters at {} failed for {}",
           storage.offsetSegmentBloomFilters,
           this,
           e);
@@ -312,7 +312,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
             storage.offsetMainBloomFilter, filterBuffer, 0, mainBloomFilterSizeBytes);
       } catch (ChecksumFailedException e) {
         LOG.error(
-            "Checksummed read for main filters at {} failed for {}",
+            "Check-summed read for main filters at {} failed for {}",
             storage.offsetMainBloomFilter,
             this,
             e);
@@ -576,7 +576,7 @@ public class SplitFileFetcherKeyListener implements KeyListener {
    * <p>The method writes, in order: {@code localSalt} (32 bytes), {@code mainBloomFilterSizeBytes},
    * {@code mainBloomK}, {@code perSegmentBloomFilterSizeBytes}, and {@code perSegmentK}. It does
    * not write the main or per‑segment filter contents; those regions are handled separately using
-   * checksummed blobs.
+   * check-summed blobs.
    *
    * @param dos target stream used to serialize settings; must remain open for further writes by the
    *     caller; the method does not close the stream

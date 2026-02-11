@@ -1,6 +1,13 @@
 package network.crypta.support.io;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.NotSerializableException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serial;
+import java.io.Serializable;
 import network.crypta.client.async.ClientContext;
 import network.crypta.crypt.MasterSecret;
 import network.crypta.support.api.LockableRandomAccessBuffer;
@@ -17,8 +24,8 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  * <h2>Thread-safety</h2>
  *
  * Access to the {@code freed} lifecycle flag is synchronized on {@code this}. All I/O methods check
- * the flag and throw {@link IOException} once the wrapper is freed. Otherwise, operations delegate
- * directly to the underlying buffer.
+ * the flag and throw {@link IOException} once the wrapper is freed. Otherwise, operations are
+ * delegated directly to the underlying buffer.
  *
  * <h2>Persistence</h2>
  *
@@ -47,7 +54,7 @@ public class DelayedFreeRandomAccessBuffer
    * Creates a wrapper around a lockable random-access buffer that will be freed after a commit.
    *
    * <p>The constructor captures {@link PersistentFileTracker#commitID()} to decide later whether
-   * the free can happen immediately or must be delayed until a subsequent commit.
+   * the free can happen immediately or must be delayed until a later commit.
    *
    * @param raf underlying buffer; must be non-{@code null}
    * @param factory tracker responsible for deferred freeing
@@ -97,7 +104,7 @@ public class DelayedFreeRandomAccessBuffer
    * @param buf source array
    * @param bufOffset offset into {@code buf}
    * @param length number of bytes to write
-   * @throws IOException if this wrapper is freed or if the underlying write fails
+   * @throws IOException if this wrapper is freed or if the underlying writing fails
    */
   @Override
   public void pwrite(long fileOffset, byte[] buf, int bufOffset, int length) throws IOException {
@@ -156,7 +163,7 @@ public class DelayedFreeRandomAccessBuffer
    * Reattaches runtime state after a restart.
    *
    * <p>Wires the tracker from {@link ClientContext#persistentBucketFactory} and delegates to the
-   * underlying buffer so it can register itself and avoid premature collection.
+   * underlying buffer so it can register itself and avoid the premature collection.
    *
    * @param context runtime context providing the persistent bucket factory
    * @throws ResumeFailedException if the underlying buffer cannot be resumed
@@ -216,7 +223,7 @@ public class DelayedFreeRandomAccessBuffer
    * @return {@code true} if {@link #free()} has been called; {@code false} otherwise
    */
   @Override
-  public boolean toFree() {
+  public synchronized boolean toFree() {
     return freed;
   }
 
@@ -228,7 +235,7 @@ public class DelayedFreeRandomAccessBuffer
    *
    * @return the underlying buffer, or {@code null} if freed
    */
-  public LockableRandomAccessBuffer getUnderlying() {
+  public synchronized LockableRandomAccessBuffer getUnderlying() {
     if (freed) return null;
     return underlying;
   }
@@ -257,7 +264,7 @@ public class DelayedFreeRandomAccessBuffer
   /**
    * Compares wrappers by the identity of their underlying buffers.
    *
-   * <p>Two delayed-free wrappers may reference the same restored buffer after a resume; they should
+   * <p>Two delayed-free wrappers may reference the same restored buffer after resuming; they should
    * then compare as equal.
    */
   @Override

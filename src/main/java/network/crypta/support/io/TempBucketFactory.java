@@ -84,6 +84,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
   private static final Cleaner resourceCleaner = Cleaner.create();
 
   // Cleaner action that avoids capturing the outer TempBucket instance strongly.
+  @SuppressWarnings("ClassCanBeRecord")
   private static class TempBucketCleanup implements Runnable {
     private final RandomAccessBucket currentBucket;
 
@@ -103,6 +104,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
   }
 
   // Cleaner action for TempRandomAccessBuffer memory accounting only.
+  @SuppressWarnings("ClassCanBeRecord")
   private static class TempRABCleanup implements Runnable {
     private final long rabId;
     private final long size;
@@ -341,17 +343,28 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       private boolean shouldMigrateDueToOversize(long futureSize) {
+        long maxBucketSize = getMaxRAMBucketSize();
         return futureSize
-            >= Math.min(Integer.MAX_VALUE, maxRAMBucketSize * RAMBUCKET_CONVERSION_FACTOR);
+            >= Math.min(Integer.MAX_VALUE, maxBucketSize * RAMBUCKET_CONVERSION_FACTOR);
       }
 
       private boolean shouldMigrateDueToPoolLimit(long futureSize) {
-        return (futureSize - currentSize) + bytesInUse >= maxRamUsed;
+        long currentBucketSize;
+        synchronized (TempBucket.this) {
+          currentBucketSize = currentSize;
+        }
+        synchronized (TempBucketFactory.this) {
+          return (futureSize - currentBucketSize) + bytesInUse >= maxRamUsed;
+        }
       }
 
       private void ensureDiskSpace(long futureSize) throws InsufficientDiskSpaceException {
-        if (filenameGenerator.getDir().getUsableSpace() + (futureSize - currentSize) < minDiskSpace)
-          throw new InsufficientDiskSpaceException();
+        long currentBucketSize;
+        synchronized (TempBucket.this) {
+          currentBucketSize = currentSize;
+        }
+        if (filenameGenerator.getDir().getUsableSpace() + (futureSize - currentBucketSize)
+            < minDiskSpace) throw new InsufficientDiskSpaceException();
       }
 
       private void logMigration(boolean oversized) {
@@ -360,7 +373,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
             LOG.debug(
                 "event=ram_bucket_oversize_migrate bucket={} threshold={}",
                 TempBucket.this,
-                SizeUtil.formatSize(maxRAMBucketSize * RAMBUCKET_CONVERSION_FACTOR));
+                SizeUtil.formatSize(getMaxRAMBucketSize() * RAMBUCKET_CONVERSION_FACTOR));
           else LOG.debug("event=ram_pool_pressure_migrate reason=bucketpool_limit");
         }
       }
@@ -498,13 +511,16 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       public void maybeResetInputStream() throws IOException {
-        if (idx != osIndex) close();
-        else {
-          IOUtils.closeQuietly(currentIS);
-          currentIS = currentBucket.getInputStreamUnbuffered();
-          long toSkip = index;
-          while (toSkip > 0) {
-            toSkip -= currentIS.skip(toSkip);
+        synchronized (TempBucket.this) {
+          if (idx != osIndex) {
+            close();
+          } else {
+            IOUtils.closeQuietly(currentIS);
+            currentIS = currentBucket.getInputStreamUnbuffered();
+            long toSkip = index;
+            while (toSkip > 0) {
+              toSkip -= currentIS.skip(toSkip);
+            }
           }
         }
       }
@@ -649,7 +665,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     // Accounting helper inlined at call sites
 
     @Override
-    public RandomAccessBucket createShadow() {
+    public synchronized RandomAccessBucket createShadow() {
       return currentBucket.createShadow();
     }
 

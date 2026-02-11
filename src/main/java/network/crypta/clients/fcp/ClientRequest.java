@@ -101,7 +101,7 @@ public abstract class ClientRequest implements Serializable {
   protected final long startupTime;
 
   /** Timestamp : completion time */
-  protected long completionTime;
+  protected volatile long completionTime;
 
   /**
    * Low-level node-side request handle used to communicate with the core routing and scheduling
@@ -765,7 +765,7 @@ public abstract class ClientRequest implements Serializable {
   /**
    * Lock used to guard shared request state such as {@link #started} and {@link #finished}.
    *
-   * <p>Subclasses may override to supply a dedicated lock that is used consistently across request
+   * <p>Subclasses may override to supply a dedicated lock used consistently across request
    * lifecycle updates.
    */
   protected Object requestLock() {
@@ -822,7 +822,7 @@ public abstract class ClientRequest implements Serializable {
   private static final int CLIENT_DETAIL_VERSION = 1;
 
   /**
-   * Writes a compact, checksummed representation of this request’s client-visible state.
+   * Writes a compact, check-summed representation of this request’s client-visible state.
    *
    * @param dos destination stream used to serialize the client detail
    * @param checker checksum helper that callers can use to wrap or verify the serialized data

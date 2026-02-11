@@ -542,6 +542,7 @@ public class SplitFileFetcherSegmentStorage {
     return fail;
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class SplitFileFetcherBlock {
     final byte[] buf;
     final int blockNumber;
@@ -604,6 +605,7 @@ public class SplitFileFetcherSegmentStorage {
     parent.restartedAfterDataCorruption();
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class DecodePrep {
     final byte[][] dataBlocks;
     final byte[][] checkBlocks;
@@ -1144,7 +1146,8 @@ public class SplitFileFetcherSegmentStorage {
    *     invariants.
    * @throws ChecksumFailedException if the persisted checksum does not match the payload.
    */
-  void readMetadata() throws IOException, StorageFormatException, ChecksumFailedException {
+  synchronized void readMetadata()
+      throws IOException, StorageFormatException, ChecksumFailedException {
     byte[] buf = new byte[segmentStatusPaddedLength];
     try {
       parent.preadChecksummed(
@@ -1428,7 +1431,7 @@ public class SplitFileFetcherSegmentStorage {
    * Only called during creation. Writes the segment key list and its checksum; callers must not
    * trigger a read of the keys before they have been persisted.
    */
-  void writeKeysWithChecksum(SplitFileSegmentKeys keys) throws IOException {
+  synchronized void writeKeysWithChecksum(SplitFileSegmentKeys keys) throws IOException {
     assert Objects.equals(keysCache.get(), keys);
     assert (this.dataBlocks + this.crossSegmentCheckBlocks == keys.dataBlocks);
     assert (this.checkBlocks == keys.checkBlocks);

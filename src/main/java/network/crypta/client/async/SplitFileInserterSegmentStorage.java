@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
  * and two kinds of redundancy blocks: per-segment check blocks and cross-segment check blocks. This
  * class owns the per-segment state for one segment during an insert: tracking which blocks exist on
  * disk, generating and persisting keys, running FEC encoding, and coordinating block transmission.
- * It is instantiated either from fixed settings (for new inserts), or from persisted metadata (for
+ * It is instantiated either from fixed settings (for new inserts) or from persisted metadata (for
  * restarts).
  *
  * <p>Typical flow: the caller constructs the instance, optionally restores persisted status via
@@ -54,10 +54,10 @@ import org.slf4j.LoggerFactory;
  * completion or cancellation.
  *
  * <ul>
- *   <li>Responsibilities: encode blocks, persist keys/status, choose next block
+ *   <li>Responsibilities: encode blocks, persist keys/status, choose the next block
  *   <li>Notable behavior: lazy metadata writes; restart-friendly status format
- *   <li>Error handling: disk errors fail the parent; RNF may be treated as success under configured
- *       heuristics
+ *   <li>Error handling: disk errors fail the parent; RNF may be treated as a success under
+ *       configured heuristics
  * </ul>
  *
  * @see SplitFileInserterStorage
@@ -69,7 +69,7 @@ public class SplitFileInserterSegmentStorage {
   /**
    * Parameter object used to configure segment construction.
    *
-   * <p>This simple builder groups the knobs required to create a segment: block counts,
+   * <p>This basic builder groups the knobs required to create a segment: block counts,
    * cryptographic parameters, and block-choosing/codec related settings. Using an explicit
    * parameter object keeps the constructor readable and stable while allowing callers to assemble
    * values in a fluent style.
@@ -164,13 +164,13 @@ public class SplitFileInserterSegmentStorage {
   final int totalBlockCount;
 
   /** Has the segment been encoded? If so, all the check blocks have been written. */
-  private boolean encoded;
+  private volatile boolean encoded;
 
   private boolean encoding;
 
   private final int statusLength;
 
-  /** Length of a single key stored on disk. Includes checksum. */
+  /** Length of a single key stored on the disk. Includes checksum. */
   private final int keyLength;
 
   // Populated by SplitFileInserterCrossSegmentStorage during construction.
@@ -201,7 +201,7 @@ public class SplitFileInserterSegmentStorage {
 
   private boolean metadataDirty;
 
-  /** Set if the insert is cancelled. */
+  /** Set if the insert is canceled. */
   private boolean cancelled;
 
   /**
@@ -255,7 +255,7 @@ public class SplitFileInserterSegmentStorage {
    * Recreate a segment from on-disk fixed settings previously written by {@link
    * #writeFixedSettings(DataOutputStream)}.
    *
-   * <p>The constructor reads basic block counts and status sizing, rebuilds chooser state, and
+   * <p>The constructor reads basic block counts and status sizing, rebuilds the chooser state, and
    * validates that values are within reasonable limits. It does not read per-block keys or variable
    * status; call {@link #readStatus()} for that after construction.
    *
@@ -326,7 +326,7 @@ public class SplitFileInserterSegmentStorage {
    * splitfile compatibility; the Random seed is actually determined by the splitfile metadata.
    *
    * @param random PRNG seeded from the splitfile metadata, which determines which blocks to
-   *     allocate in a deterministic manner.
+   *     allocate deterministically.
    * @return The data block number allocated.
    */
   int allocateCrossDataBlock(Random random) {
@@ -360,7 +360,7 @@ public class SplitFileInserterSegmentStorage {
    *
    * @param seg The cross-segment to allocate a block for.
    * @param random PRNG seeded from the splitfile metadata, which determines which blocks to
-   *     allocate in a deterministic manner.
+   *     allocate deterministically.
    * @param crossSegmentBlockNumber Block number within the cross-segment.
    * @return The block number allocated (between dataBlockCount and
    *     dataBlockCount+crossSegmentCheckBlocks).
@@ -387,8 +387,8 @@ public class SplitFileInserterSegmentStorage {
    * Persist the current status for this segment when appropriate.
    *
    * <p>When persistence is enabled and the overall insert is still active, this method writes the
-   * status record unless metadata is already up-to-date. The write is skipped when the segment has
-   * been cancelled, and failures are reported back to the parent as disk errors.
+   * status record unless metadata is already up to date. The writing is skipped when the segment
+   * has been canceled, and failures are reported back to the parent as disk errors.
    *
    * @param force when {@code true}, write status regardless of the in-memory dirty flag; when
    *     {@code false}, write only if metadata changed.
@@ -408,7 +408,7 @@ public class SplitFileInserterSegmentStorage {
         }
         metadataDirty = false;
       }
-      // Outside the lock is safe since if we fail we will fail the whole splitfile.
+      // Outside the lock is safe since if we fail, we will fail the whole splitfile.
       dos.close();
     } catch (IOException e) {
       LOG.error("I/O error writing segment status?: {}", e, e);
@@ -751,7 +751,7 @@ public class SplitFileInserterSegmentStorage {
   /**
    * Generate keys for each block and record them.
    *
-   * @throws IOException if persisting a generated key for any block fails due to an I/O error in
+   * @throws IOException if persisting, a generated key for any block fails due to an I/O error in
    *     the underlying storage.
    */
   private void generateKeys(byte[][] dataBlocks, int offset) throws IOException {
@@ -784,14 +784,16 @@ public class SplitFileInserterSegmentStorage {
    * @return {@code true} when all per-segment and cross-segment check blocks have been generated
    *     and written; {@code false} otherwise.
    */
+  @SuppressWarnings("BooleanMethodIsAlwaysInverted")
   public synchronized boolean isFinishedEncoding() {
     return encoded;
   }
 
   /**
    * For unit tests. Generally for concurrency purposes we want something that won't change back,
-   * hence e.g. isFinishedEncoding().
+   * hence e.g., isFinishedEncoding().
    */
+  @SuppressWarnings("unused")
   synchronized boolean isEncoding() {
     return encoding;
   }
@@ -801,12 +803,12 @@ public class SplitFileInserterSegmentStorage {
    *
    * <p>This method reads the block content (data, cross-check, or check) based on the index,
    * validates preconditions (not already successfully inserted), and applies the splitfile crypto.
-   * It does not modify persistent state.
+   * It does not modify the persistent state.
    *
    * @param blockNo zero-based block index spanning data, cross-check, and check regions.
    * @return an immutable encoded block that exposes the derived {@linkplain ClientCHK client key}
    *     for uploads.
-   * @throws IOException if the block cannot be read or if an already-inserted block is requested.
+   * @throws IOException if the block cannot be read, or if an already-inserted block is requested.
    */
   public ClientCHKBlock encodeBlock(int blockNo) throws IOException {
     if (parent.isFinishing()) {
@@ -867,7 +869,7 @@ public class SplitFileInserterSegmentStorage {
   }
 
   /**
-   * Signals that a requested per-block key is not present on disk.
+   * Signals that a requested per-block key is not present on the disk.
    *
    * <p>Thrown by {@link #readKey(int)} when the on-disk marker indicates the key is missing.
    * Callers typically trigger re-encoding to regenerate keys in such cases.
@@ -890,10 +892,10 @@ public class SplitFileInserterSegmentStorage {
    * Return whether all required blocks for this segment have been inserted.
    *
    * <p>The outcome is final under normal operation. In rare circumstances involving local data loss
-   * (for example, keys removed from disk), the state may be reconsidered by higher layers.
+   * (for example, keys removed from the disk), the state may be reconsidered by higher layers.
    *
    * @return {@code true} if the chooser reports success for all required blocks; {@code false} if
-   *     any block remains or the segment was cancelled.
+   *     any block remains or the segment was canceled.
    */
   public synchronized boolean hasSucceeded() {
     if (cancelled) return false;
@@ -912,8 +914,8 @@ public class SplitFileInserterSegmentStorage {
   /**
    * Notify this segment that a block insert succeeded.
    *
-   * <p>The method records the key when not already present, updates chooser state, and triggers a
-   * lazy metadata write. The parent callback is invoked when success completes the segment.
+   * <p>The method records the key when not already present, updates the chooser state, and triggers
+   * a lazy metadata writing. The parent callback is invoked when success completes the segment.
    *
    * @param blockNo zero-based block index whose insert succeeded.
    * @param key the {@link ClientCHK} associated with the inserted block; must match the value
@@ -1008,7 +1010,7 @@ public class SplitFileInserterSegmentStorage {
    */
   public synchronized boolean hasCompletedOrFailed() {
     if (encoded) return true; // No more encoding jobs will run.
-    if (encoding) return false; // Waiting for job to finish.
+    if (encoding) return false; // Waiting for the job to finish.
     if (cancelled) return true;
     return blockChooser.hasSucceededAll();
   }
@@ -1017,9 +1019,9 @@ public class SplitFileInserterSegmentStorage {
    * Request cancellation of this segment.
    *
    * <p>The caller must separately check {@link #hasCompletedOrFailed()} after all segments are
-   * cancelled to observe completion of any in-flight encode work.
+   * canceled to observe completion of any in-flight encode work.
    *
-   * @return {@code true} if the segment is now done (no work pending); {@code false} if an encode
+   * @return {@code true} if the segment is now done (no work pending); {@code false} if an encoding
    *     was already in progress and a callback will be issued to the parent when it finishes.
    */
   public synchronized boolean cancel() {
@@ -1029,7 +1031,7 @@ public class SplitFileInserterSegmentStorage {
   }
 
   /**
-   * Choose the next block to insert according to the internal policy.
+   * Choose the next block to insert, according to the internal policy.
    *
    * @return a {@link BlockInsert} handle representing the chosen block, or {@code null} if no
    *     further blocks should be sent at this time.
@@ -1108,7 +1110,7 @@ public class SplitFileInserterSegmentStorage {
 
   /**
    * Set the cross-segment associated with a cross-check block, which tells us how to read that
-   * block from disk.
+   * block from the disk.
    *
    * @param crossSegment The cross-segment.
    * @param segmentBlockNumber The block number within this segment

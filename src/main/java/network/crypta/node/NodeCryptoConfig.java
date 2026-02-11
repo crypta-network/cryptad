@@ -41,7 +41,7 @@ public class NodeCryptoConfig {
   private static final String KEY_BIND_TO = "bindTo";
 
   /** Port number; {@code -1} selects a random available port at activation time. */
-  private int portNumber;
+  private volatile int portNumber;
 
   /** Bind address; {@code 0.0.0.0} binds all local interfaces. */
   private final FreenetInetAddress bindTo;
@@ -50,7 +50,7 @@ public class NodeCryptoConfig {
    * Test hook for simulated loss. When {@code > 0}, roughly one in {@code dropProbability} packets
    * is dropped by the UDP handler to emulate lossy networks.
    */
-  private int dropProbability;
+  private volatile int dropProbability;
 
   /** The current {@link NodeCrypto} instance, when started; {@code null} otherwise. */
   private NodeCrypto crypto;
@@ -59,12 +59,12 @@ public class NodeCryptoConfig {
    * Prevents maintaining multiple simultaneous connections to the same peer IP address. Typically
    * enabled for opennet and disabled for darknet.
    */
-  private boolean oneConnectionPerAddress;
+  private volatile boolean oneConnectionPerAddress;
 
   /**
    * When true, allows connecting to peers via local/LAN IP addresses regardless of per‑peer flags.
    */
-  private boolean alwaysAllowLocalAddresses;
+  private volatile boolean alwaysAllowLocalAddresses;
 
   /**
    * When true, assumes the node is behind NAT and enables aggressive handshake behavior
@@ -445,8 +445,8 @@ public class NodeCryptoConfig {
   /**
    * Sets the stored listen port value.
    *
-   * <p>This method updates configuration state only; socket binding is performed elsewhere during
-   * activation.
+   * <p>This method updates the configuration state only; socket binding is performed elsewhere
+   * during activation.
    *
    * @param port the desired port number, or {@code -1} to select a random port at activation
    */

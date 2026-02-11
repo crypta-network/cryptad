@@ -532,7 +532,7 @@ public class SplitFileFetcher
    *
    * @return {@code true} once either {@link #onSuccess()} or {@link #fail(FetchException)} occurred
    */
-  public boolean hasFinished() {
+  public synchronized boolean hasFinished() {
     return failed || succeeded;
   }
 

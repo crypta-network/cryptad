@@ -17,11 +17,10 @@ import org.jetbrains.annotations.Nullable;
  * invoking {@link #free()} or by transferring ownership via {@link #nullData()} when the bucket
  * becomes managed elsewhere.
  *
- * <p>Concurrency: {@link #free()} is idempotent and synchronized to avoid double-free. The actual
+ * <p>Concurrency: state transitions that affect ownership ({@link #getData()}, {@link #nullData()},
+ * and the synchronized portion of {@link #free()}) are serialized on {@code this}. The actual
  * {@code RandomAccessBucket#free()} call occurs outside the monitor to prevent blocking other
- * threads on potentially slow I/O. Reads such as {@link #getData()} are not synchronized and may
- * race with {@link #free()}; callers should not retain a reference to the bucket if they plan to
- * free it concurrently.
+ * threads on potentially slow I/O.
  *
  * <ul>
  *   <li>Mutability: fields are mutable and can be nulled to denote transfer of ownership.
@@ -55,8 +54,9 @@ public class InsertBlock implements Serializable {
   @Nullable public FreenetURI desiredURI;
 
   /**
-   * Optional metadata supplied by the client to accompany the insert. This object may carry content
-   * type or other advisory attributes; it is not interpreted by this class. May be {@code null}.
+   * Optional metadata supplied by the client to accompany the insert. This object may carry a
+   * content type or other advisory attributes; it is not interpreted by this class. May be {@code
+   * null}.
    */
   @Nullable public ClientMetadata clientMetadata;
 
@@ -94,15 +94,15 @@ public class InsertBlock implements Serializable {
    * @return the current {@link RandomAccessBucket} if not yet freed or disowned; otherwise {@code
    *     null}. The caller does not acquire ownership and should not free it here.
    */
-  public RandomAccessBucket getData() {
+  public synchronized RandomAccessBucket getData() {
     return (isFreed ? null : data);
   }
 
   /**
    * Releases the owned payload bucket, if any, and marks this block as freed.
    *
-   * <p>This operation is safe to call multiple times; subsequent invocations are no-ops. The method
-   * synchronizes only during state transition and obtains a local reference, then performs the
+   * <p>This operation is safe to call multiple times; further invocations are no-ops. The method
+   * synchronizes only during state transition and gets a local reference, then performs the
    * potentially slow {@link RandomAccessBucket#free()} call outside the monitor to avoid blocking
    * contending threads. After completion, {@link #getData()} will return {@code null}.
    */
@@ -113,6 +113,7 @@ public class InsertBlock implements Serializable {
       isFreed = true;
       if (data == null) return;
       toFree = data;
+      data = null;
     }
     // Call outside synchronized block to avoid holding the monitor during external I/O.
     toFree.free();
@@ -125,7 +126,7 @@ public class InsertBlock implements Serializable {
    * the recipient will manage its lifecycle. After calling, {@link #getData()} returns {@code null}
    * and invoking {@link #free()} will not release the previously attached bucket.
    */
-  public void nullData() {
+  public synchronized void nullData() {
     data = null;
   }
 

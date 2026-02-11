@@ -796,7 +796,7 @@ public class BlockTransmitter {
       registerAsyncFilters(mfAllReceived, mfSendAborted);
 
     } catch (AbortedException _) {
-      onAborted(prb.abortReason, prb.abortDescription);
+      onAborted(prb.getAbortReason(), prb.getAbortDescription());
     }
   }
 

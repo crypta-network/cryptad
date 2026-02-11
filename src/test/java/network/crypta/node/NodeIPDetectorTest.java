@@ -16,6 +16,8 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import network.crypta.config.Config;
 import network.crypta.config.InvalidConfigValueException;
 import network.crypta.config.NodeNeedRestartException;
@@ -65,7 +67,10 @@ class NodeIPDetectorTest {
 
     Field last = ipd.getClass().getDeclaredField("lastAddressList");
     last.setAccessible(true);
-    last.set(ipd, addrs);
+    @SuppressWarnings("unchecked")
+    AtomicReference<AtomicReferenceArray<InetAddress>> lastRef =
+        (AtomicReference<AtomicReferenceArray<InetAddress>>) last.get(ipd);
+    lastRef.set(new AtomicReferenceArray<>(addrs));
 
     Field ts = ipd.getClass().getDeclaredField("lastDetectedTime");
     ts.setAccessible(true);

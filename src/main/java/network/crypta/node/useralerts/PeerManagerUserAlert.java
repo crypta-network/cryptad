@@ -459,7 +459,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
     return ret;
   }
 
-  private void update() {
+  private synchronized void update() {
     bwlimitDelayTime = (int) n.getBwlimitDelayTime();
     nodeAveragePingTime = (int) n.getNodeAveragePingTime();
     oldestNeverConnectedPeerAge = n.peers.getOldestNeverConnectedDarknetPeerAge();
@@ -573,7 +573,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    * @param value {@code true} if reachability has been confirmed; {@code false} if it has not been
    *     confirmed or is known to be unreachable
    */
-  public void setOpennetDefinitelyPortForwarded(boolean value) {
+  public synchronized void setOpennetDefinitelyPortForwarded(boolean value) {
     this.opennetDefinitelyPortForwarded = value;
   }
 
@@ -584,7 +584,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    * @param value {@code true} if reachability has been confirmed; {@code false} if it has not been
    *     confirmed or is known to be unreachable
    */
-  public void setDarknetDefinitelyPortForwarded(boolean value) {
+  public synchronized void setDarknetDefinitelyPortForwarded(boolean value) {
     this.darknetDefinitelyPortForwarded = value;
   }
 
@@ -595,7 +595,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    * @param value {@code true} to assume a NAT is present; {@code false} to avoid applying that
    *     assumption
    */
-  public void setOpennetAssumeNAT(boolean value) {
+  public synchronized void setOpennetAssumeNAT(boolean value) {
     this.opennetAssumeNAT = value;
   }
 
@@ -606,7 +606,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    * @param value {@code true} to assume a NAT is present; {@code false} to avoid applying that
    *     assumption
    */
-  public void setDarknetAssumeNAT(boolean value) {
+  public synchronized void setDarknetAssumeNAT(boolean value) {
     this.darknetAssumeNAT = value;
   }
 
@@ -615,7 +615,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value number of active darknet connections; negative values are not expected
    */
-  public void setDarknetConns(int value) {
+  public synchronized void setDarknetConns(int value) {
     this.darknetConns = value;
   }
 
@@ -624,7 +624,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value number of active connections; negative values are not expected
    */
-  public void setConns(int value) {
+  public synchronized void setConns(int value) {
     this.conns = value;
   }
 
@@ -633,7 +633,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value count of darknet peers; negative values are not expected
    */
-  public void setDarknetPeers(int value) {
+  public synchronized void setDarknetPeers(int value) {
     this.darknetPeers = value;
   }
 
@@ -642,7 +642,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value count of disconnected darknet peers; negative values are not expected
    */
-  public void setDisconnDarknetPeers(int value) {
+  public synchronized void setDisconnDarknetPeers(int value) {
     this.disconnDarknetPeers = value;
   }
 
@@ -651,7 +651,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value peer count; negative values are not expected
    */
-  public void setPeers(int value) {
+  public synchronized void setPeers(int value) {
     this.peers = value;
   }
 
@@ -660,7 +660,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value count of never-connected peers; negative values are not expected
    */
-  public void setNeverConn(int value) {
+  public synchronized void setNeverConn(int value) {
     this.neverConn = value;
   }
 
@@ -669,7 +669,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value count of peers with clock problems; negative values are not expected
    */
-  public void setClockProblem(int value) {
+  public synchronized void setClockProblem(int value) {
     this.clockProblem = value;
   }
 
@@ -679,7 +679,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value count of peers with connection errors; negative values are not expected
    */
-  public void setConnError(int value) {
+  public synchronized void setConnError(int value) {
     this.connError = value;
   }
 
@@ -689,7 +689,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value {@code true} if opennet is enabled; {@code false} if disabled
    */
-  public void setOpennetEnabled(boolean value) {
+  public synchronized void setOpennetEnabled(boolean value) {
     this.isOpennetEnabled = value;
   }
 
@@ -699,7 +699,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value number of too-new darknet peers; negative values are not expected
    */
-  public void setTooNewPeersDarknet(int value) {
+  public synchronized void setTooNewPeersDarknet(int value) {
     this.tooNewPeersDarknet = value;
   }
 
@@ -709,7 +709,7 @@ public class PeerManagerUserAlert extends AbstractUserAlert {
    *
    * @param value total number of too-new peers; negative values are not expected
    */
-  public void setTooNewPeersTotal(int value) {
+  public synchronized void setTooNewPeersTotal(int value) {
     this.tooNewPeersTotal = value;
   }
 }

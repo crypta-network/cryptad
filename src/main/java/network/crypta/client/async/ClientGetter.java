@@ -439,13 +439,19 @@ public class ClientGetter extends BaseClientGetter
 
   private void scheduleIfReady(ClientContext context) {
     // schedule() may deactivate stuff, so store it now.
-    if (currentState != null && !finished) {
+    ClientGetState state;
+    boolean alreadyFinished;
+    synchronized (this) {
+      state = currentState;
+      alreadyFinished = finished;
+    }
+    if (state != null && !alreadyFinished) {
       if (initialMetadata != null
-          && currentState instanceof SingleFileFetcher fetcher
+          && state instanceof SingleFileFetcher fetcher
           && !resumedFetcher) {
         fetcher.startWithMetadata(initialMetadata, context);
       } else {
-        currentState.schedule(context);
+        state.schedule(context);
       }
     }
   }
@@ -629,13 +635,17 @@ public class ClientGetter extends BaseClientGetter
       ClientContext context)
       throws IOException, URISyntaxException {
     FetchResult result = new FetchResult(initialMetadata, finalResult);
+    HashResult[] localHashes;
+    synchronized (this) {
+      localHashes = hashes;
+    }
     try (OutputStream output = finalResult.getOutputStream()) {
       ClientGetWorkerThread worker =
           new ClientGetWorkerThread(
               new BufferedInputStream(processedDataInput),
               output,
               uri,
-              hashes,
+              localHashes,
               new ClientGetWorkerThread.Options(
                   computeMime(initialMetadata),
                   ctx.getSchemeHostAndPort(),
@@ -673,6 +683,11 @@ public class ClientGetter extends BaseClientGetter
   }
 
   private FetchException mapToFetchException(Throwable t) {
+    String localExpectedMIME;
+    long localExpectedSize = expectedSize;
+    synchronized (this) {
+      localExpectedMIME = expectedMIME;
+    }
     if (t == null) {
       LOG.error("Caught null Throwable while mapping to FetchException");
       return new FetchException(FetchExceptionMode.INTERNAL_ERROR);
@@ -681,7 +696,8 @@ public class ClientGetter extends BaseClientGetter
       case UnsafeContentTypeException e -> {
         LOG.info("Error filtering content: will not validate", e);
         return e.createFetchException(
-            ctx.getOverrideMIME() != null ? ctx.getOverrideMIME() : expectedMIME, expectedSize);
+            ctx.getOverrideMIME() != null ? ctx.getOverrideMIME() : localExpectedMIME,
+            localExpectedSize);
       }
       case URISyntaxException e -> {
         LOG.error("URISyntaxException converting a Crypta URI to a URI!: {}", e, e);
@@ -746,6 +762,10 @@ public class ClientGetter extends BaseClientGetter
       File completionFile,
       ClientContext context)
       throws IOException, FetchException, URISyntaxException {
+    HashResult[] localHashes;
+    synchronized (this) {
+      localHashes = hashes;
+    }
     try (RandomAccessFile raf = new RandomAccessFile(tempFile, "rw");
         InputStream is = new BufferedInputStream(new FileInputStream(raf.getFD()))) {
       if (raf.length() < length)
@@ -757,7 +777,7 @@ public class ClientGetter extends BaseClientGetter
               is,
               new NullOutputStream(),
               uri,
-              hashes,
+              localHashes,
               new ClientGetWorkerThread.Options(
                   null,
                   ctx.getSchemeHostAndPort(),
@@ -1044,9 +1064,11 @@ public class ClientGetter extends BaseClientGetter
    *     {@code false}
    */
   public boolean canRestart() {
-    if (currentState != null && !finished) {
-      if (LOG.isDebugEnabled()) LOG.debug("Cannot restart because not finished for {}", uri);
-      return false;
+    synchronized (this) {
+      if (currentState != null && !finished) {
+        if (LOG.isDebugEnabled()) LOG.debug("Cannot restart because not finished for {}", uri);
+        return false;
+      }
     }
     return true;
   }
@@ -1422,11 +1444,17 @@ public class ClientGetter extends BaseClientGetter
   @Override
   public void innerOnResume(ClientContext context) throws ResumeFailedException {
     super.innerOnResume(context);
-    if (currentState != null)
+    ClientGetState state;
+    synchronized (this) {
+      state = currentState;
+    }
+    if (state != null)
       try {
-        currentState.onResume(context);
+        state.onResume(context);
       } catch (FetchException e) {
-        currentState = null;
+        synchronized (this) {
+          if (currentState == state) currentState = null;
+        }
         throw new ResumeFailedException(e);
       } catch (RuntimeException e) {
         // Severe serialization problems, lost a class silently etc.
@@ -1494,8 +1522,11 @@ public class ClientGetter extends BaseClientGetter
       throws IOException {
     if (dis.readBoolean()) {
       try {
-        currentState = new SplitFileFetcher(this, dis, context);
-        resumedFetcher = true;
+        SplitFileFetcher restored = new SplitFileFetcher(this, dis, context);
+        synchronized (this) {
+          currentState = restored;
+          resumedFetcher = true;
+        }
         return true;
       } catch (StorageFormatException | ResumeFailedException | IOException e) {
         LOG.error(RESTORE_FROM_SPLITFILE_FAILED_MSG, e, e);

@@ -11,12 +11,12 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The tracker accepts size deltas (in bytes) via {@link #add(long)} and schedules cache flushes
  * on a {@link Ticker}: immediately when usage crosses a lower threshold (around 90% of the
- * configured maximum) and otherwise after the given period has elapsed since the last write. The
+ * configured maximum) and otherwise after the given period has elapsed since the last writing. The
  * design aims to avoid disk I/O while holding locks; flushes run off-thread by repeatedly calling
  * {@link CachingFreenetStore#pushLeastRecentlyBlock()} on registered stores.
  *
  * <p>Thread-safety: public methods are safe for concurrent use. At most one flush job runs at a
- * time and at most one delayed job is queued. Internal synchronization ensures that accounting
+ * time, and at most one delayed job is queued. Internal synchronization ensures that accounting
  * updates and job scheduling are consistent without performing blocking I/O inside synchronized
  * sections.
  *
@@ -34,7 +34,7 @@ public class CachingFreenetStoreTracker {
   private static final int NUMBER_OF_KEYS_TO_WRITE = 20;
 
   /**
-   * Lower-usage threshold. When the next add crosses this ratio of {@link #maxSize}, the tracker
+   * Lower-usage threshold. When the next adding crosses this ratio of {@link #maxSize}, the tracker
    * schedules an immediate background flush but still accepts the data.
    */
   private static final double LOWER_THRESHOLD = 0.9;
@@ -118,10 +118,10 @@ public class CachingFreenetStoreTracker {
   /**
    * Accounts for a new block and schedules flushes as needed.
    *
-   * <p>If the new total would exceed the lower threshold (about 90% of {@link #maxSize}), an
-   * immediate background flush is scheduled. If the total would exceed {@link #maxSize}, the block
-   * is rejected and the caller should write directly to the underlying store. Otherwise, the block
-   * is accepted and a delayed flush is scheduled if one is not already pending.
+   * <p>If the new total exceeds the lower threshold (about 90% of {@link #maxSize}), an immediate
+   * background flush is scheduled. If the total would exceed {@link #maxSize}, the block is
+   * rejected and the caller should write directly to the underlying store. Otherwise, the block is
+   * accepted and a delayed flush is scheduled if one is not already pending.
    *
    * @param sizeBlock size of the block in bytes; must be non-negative
    * @return {@code true} if the block is accepted for caching; {@code false} if it should be
@@ -157,7 +157,9 @@ public class CachingFreenetStoreTracker {
           try {
             pushAllCachingStores();
           } finally {
-            runningJob = false;
+            synchronized (CachingFreenetStoreTracker.this) {
+              runningJob = false;
+            }
           }
         },
         0);

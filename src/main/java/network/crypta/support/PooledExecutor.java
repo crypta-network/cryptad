@@ -6,6 +6,7 @@ import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.node.PrioRunnable;
 import network.crypta.support.io.NativeThread;
 import org.jetbrains.annotations.NotNull;
@@ -291,7 +292,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
     final String defaultName;
     volatile boolean alive = true;
     Job nextJob;
-    Job job;
+    final AtomicReference<Job> job = new AtomicReference<>();
     final long threadNo;
     private boolean removed = false;
 
@@ -324,8 +325,9 @@ public class PooledExecutor implements PriorityAwareExecutor {
      * @return the current job id if running, otherwise the next job id if assigned, or {@code 0}
      *     when none
      */
-    public int getJobId() {
-      if (job != null) return job.id;
+    public synchronized int getJobId() {
+      Job currentJob = job.get();
+      if (currentJob != null) return currentJob.id;
       if (nextJob != null) return nextJob.id;
       return 0;
     }
@@ -357,14 +359,16 @@ public class PooledExecutor implements PriorityAwareExecutor {
       while (true) {
         moveNextJobToCurrent();
 
-        if (job == null && onNoJobWaitAndMaybeExit(nativePriority, ranJobs)) return;
+        if (job.get() == null && onNoJobWaitAndMaybeExit(nativePriority, ranJobs)) return;
+        Job currentJob = job.get();
+        if (currentJob == null) continue;
 
         // Run the job
         try {
-          setName(job.name + "(" + threadNo + ")");
-          job.runnable.run();
+          setName(currentJob.name + "(" + threadNo + ")");
+          currentJob.runnable.run();
         } catch (Throwable t) {
-          LOG.error("Caught {} running job {}", t, job, t);
+          LOG.error("Caught {} running job {}", t, currentJob, t);
         }
         ranJobs++;
       }
@@ -390,7 +394,7 @@ public class PooledExecutor implements PriorityAwareExecutor {
     /** Move any pending assignment into {@link #job} for execution. */
     private void moveNextJobToCurrent() {
       synchronized (this) {
-        job = nextJob;
+        job.set(nextJob);
         nextJob = null;
       }
     }
@@ -440,11 +444,11 @@ public class PooledExecutor implements PriorityAwareExecutor {
           waitingThreadsCount.decrementAndGet();
 
         synchronized (this) {
-          job = nextJob;
+          job.set(nextJob);
           nextJob = null;
           // Note: Some static analyzers flag this as double-checked locking; here we only
           // re-check after waiting to decide whether to exit the worker when no job arrived.
-          if (job == null) alive = false;
+          if (job.get() == null) alive = false;
         }
 
         if (!alive) {

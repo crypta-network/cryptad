@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Configuration registry that persists to an on-disk file using an atomic write strategy.
+ * Configuration registry that persists to an on-disk file using an atomic writing strategy.
  *
  * <p>At construction, the class loads key/value pairs from the primary configuration file or its
  * temporary counterpart (if present) into a {@link SimpleFieldSet}. During initialization, {@link
@@ -45,7 +45,7 @@ public class FilePersistentConfig extends PersistentConfig {
   protected final Object storeSync = new Object();
 
   /** When {@code true}, defers a requested {@link #store()} until {@link #finishedInit()}. */
-  protected boolean writeOnFinished;
+  protected volatile boolean writeOnFinished;
 
   // No static initialization required.
 
@@ -175,8 +175,8 @@ public class FilePersistentConfig extends PersistentConfig {
    *
    * <p>When {@code throwOnUnreadable} is {@code true} (typically for the temp file), conditions
    * that indicate the file exists but cannot be successfully read—including {@link EOFException}
-   * from a truncated/partial write—are propagated as {@link IOException}. This preserves fail-fast
-   * behavior so we do not silently discard a partially written configuration.
+   * from a truncated/partial writing—are propagated as {@link IOException}. This preserves
+   * fail-fast behavior so we do not silently discard a partially written configuration.
    *
    * @param file the file to read
    * @param throwOnUnreadable whether to propagate unreadable conditions as {@link IOException}
@@ -200,7 +200,7 @@ public class FilePersistentConfig extends PersistentConfig {
         if (throwOnUnreadable) throw e;
         LOG.warn("EOF while reading {} {}", description, file);
       }
-      // Other IOExceptions indicate a more serious problem and will propagate from initialLoad.
+      // Other IOExceptions indicate a more serious problem and will propagate from the initialLoad.
     } else {
       // We probably won't be able to write it either.
       LOG.warn("Cannot read {} {}", description, file);
@@ -214,9 +214,9 @@ public class FilePersistentConfig extends PersistentConfig {
   /**
    * Persists the current configuration to disk.
    *
-   * <p>If initialization has not finished, defers the write and performs it immediately after
+   * <p>If initialization has not finished, defers the writing and performs it immediately after
    * {@link #finishedInit()}. Otherwise, writes to the temporary file and atomically replaces the
-   * destination file. Exceptions during the write are logged.
+   * destination file. Exceptions during the writing are logged.
    */
   @Override
   public void store() {

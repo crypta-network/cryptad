@@ -818,9 +818,10 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private void alertUser() {
     synchronized (this) {
       if (alert != null) return;
-      alert = new PeersSayKeyBlownAlert();
+      UserAlert newAlert = new PeersSayKeyBlownAlert();
+      updateManager.getNode().services().clientCore().getAlerts().register(newAlert);
+      alert = newAlert;
     }
-    updateManager.getNode().services().clientCore().getAlerts().register(alert);
   }
 
   private class PeersSayKeyBlownAlert extends AbstractUserAlert {
@@ -1637,7 +1638,11 @@ public class UpdateOverMandatoryManager implements RequestClient {
    * It is safe to call even when no alert is registered.
    */
   public void killAlert() {
-    updateManager.getNode().services().clientCore().getAlerts().unregister(alert);
+    synchronized (this) {
+      if (alert == null) return;
+      updateManager.getNode().services().clientCore().getAlerts().unregister(alert);
+      alert = null;
+    }
   }
 
   /**

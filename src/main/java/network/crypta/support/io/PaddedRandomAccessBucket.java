@@ -30,7 +30,7 @@ import org.jetbrains.annotations.NotNull;
  * actual data and stop at {@code size()}, even if the underlying storage is larger due to padding.
  *
  * <p>Thread-safety: instances synchronize on {@code this} to guard internal counters and the
- * single-output-stream invariant. It is safe to obtain streams from different threads as long as
+ * single-output-stream invariant. It is safe to get streams from different threads as long as
  * callers respect the “one open OutputStream at a time” rule.
  *
  * <p>Serialization: this class supports both the versioned persistence used by the recovery path
@@ -92,7 +92,7 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
    * underlying storage reaches the next power-of-two length (minimum {@code 1024} bytes).
    *
    * @return a buffered {@link OutputStream}
-   * @throws IOException if an output stream is already open or the underlying bucket fails to
+   * @throws IOException if an output stream is already open, or the underlying bucket fails to
    *     provide a stream
    */
   @Override
@@ -114,7 +114,7 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
    * stream is closed.
    *
    * @return an unbuffered {@link OutputStream}
-   * @throws IOException if an output stream is already open or the underlying bucket fails to
+   * @throws IOException if an output stream is already open, or the underlying bucket fails to
    *     provide a stream
    */
   @Override
@@ -292,10 +292,12 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
     }
 
     @Override
-    public synchronized int available() throws IOException {
-      long max = size - counter;
+    public int available() throws IOException {
       int ret = in.available();
-      if (max < ret) ret = (int) max;
+      synchronized (PaddedRandomAccessBucket.this) {
+        long max = size - counter;
+        if (max < ret) ret = (int) max;
+      }
       return Math.max(ret, 0);
     }
   }
@@ -324,8 +326,7 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
    * Indicates whether this wrapper is marked read-only.
    *
    * <p>Note: This flag is advisory in this implementation and is not enforced by the class when
-   * obtaining output streams. Callers should treat it as a contract and avoid writes once it is
-   * set.
+   * getting output streams. Callers should treat it as a contract and avoid writing once it is set.
    *
    * @return {@code true} if {@link #setReadOnly()} has been called; otherwise {@code false}
    */
@@ -353,8 +354,12 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
    */
   @Override
   public RandomAccessBucket createShadow() {
+    long currentSize;
+    synchronized (this) {
+      currentSize = size;
+    }
     RandomAccessBucket shadow = underlying.createShadow();
-    PaddedRandomAccessBucket ret = new PaddedRandomAccessBucket(shadow, size);
+    PaddedRandomAccessBucket ret = new PaddedRandomAccessBucket(shadow, currentSize);
     ret.setReadOnly();
     return ret;
   }
@@ -385,10 +390,16 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
    */
   @Override
   public void storeTo(DataOutputStream dos) throws IOException {
+    long currentSize;
+    boolean currentReadOnly;
+    synchronized (this) {
+      currentSize = size;
+      currentReadOnly = readOnly;
+    }
     dos.writeInt(MAGIC);
     dos.writeInt(VERSION);
-    dos.writeLong(size);
-    dos.writeBoolean(readOnly);
+    dos.writeLong(currentSize);
+    dos.writeBoolean(currentReadOnly);
     underlying.storeTo(dos);
   }
 
@@ -431,13 +442,15 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
    */
   @Override
   public LockableRandomAccessBuffer toRandomAccessBuffer() throws IOException {
+    long currentSize;
     synchronized (this) {
       if (outputStreamOpen) throw new IOException("Must close first");
       readOnly = true;
+      currentSize = size;
     }
     underlying.setReadOnly();
     LockableRandomAccessBuffer u = underlying.toRandomAccessBuffer();
-    return new PaddedRandomAccessBuffer(u, size);
+    return new PaddedRandomAccessBuffer(u, currentSize);
   }
 
   /**
@@ -451,8 +464,9 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
   }
 
   /* ===== Java serialization support ===== */
-  // Preserve backward compatibility with legacy Java-serialization layout where 'underlying' was
-  // included in the default field block. We include the actual underlying in the field block so
+  // Preserve backward compatibility with the legacy Java-serialization layout where 'underlying'
+  // was
+  // included in the default field block. We include the actual underlying in the field block, so
   // older readers (serialVersionUID 1) do not need to read any trailing data. Newer readers keep
   // accepting both forms.
 
@@ -460,6 +474,7 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
   private static final String FIELD_READ_ONLY = "readOnly";
   private static final String FIELD_UNDERLYING = "underlying";
 
+  @SuppressWarnings("unused")
   @Serial
   private static final ObjectStreamField[] serialPersistentFields = {
     new ObjectStreamField(FIELD_SIZE, long.class),
@@ -469,7 +484,6 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
 
   @Serial
   private void writeObject(ObjectOutputStream out) throws IOException {
-    assert serialPersistentFields.length > 0;
     ObjectOutputStream.PutField fields = out.putFields();
     fields.put(FIELD_SIZE, size);
     fields.put(FIELD_READ_ONLY, readOnly);
@@ -493,7 +507,7 @@ public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializabl
       // Legacy form: underlying was serialized as part of the field set.
       underlying = rab;
     } else {
-      // New form: read trailing underlying object written after the fields.
+      // New form: read a trailing underlying object written after the fields.
       underlying = (RandomAccessBucket) in.readObject();
     }
   }

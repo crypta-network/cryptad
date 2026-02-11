@@ -140,7 +140,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
   private String mimeType;
 
   /** Gone to network? */
-  private boolean goneToNetwork;
+  private volatile boolean goneToNetwork;
 
   /** Total blocks */
   private int totalBlocks;

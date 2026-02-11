@@ -264,7 +264,7 @@ public class Node implements TimeSkewDetectorCallback {
 
   private short maxHTL;
   private boolean skipWrapperWarning;
-  private int maxPacketSize;
+  private volatile int maxPacketSize;
 
   /** Default policy for ignoring low backoff during inserts. */
   public static final boolean IGNORE_LOW_BACKOFF_DEFAULT = false;

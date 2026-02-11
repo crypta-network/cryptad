@@ -39,7 +39,7 @@ public final class USKAttempt implements USKCheckerCallback {
   USKChecker checker;
 
   /** Successful fetch? */
-  boolean succeeded;
+  volatile boolean succeeded;
 
   /** DNF? */
   boolean dnf;

@@ -93,7 +93,7 @@ public class ResizablePersistentIntBuffer {
    */
   private boolean writing;
 
-  private boolean closed;
+  private volatile boolean closed;
 
   /**
    * Sets the global persistence policy.

@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.io.comm.ByteCounter;
 import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.DisconnectedException;
@@ -132,7 +133,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   protected abstract Message createDataRequest();
 
   /** The most recent peer that this sender attempted to route to. May be {@code null}. */
-  protected PeerNode lastNode;
+  protected final AtomicReference<PeerNode> lastNode = new AtomicReference<>();
 
   /**
    * Return the most recent peer that this sender routed to.
@@ -140,7 +141,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
    * @return last routed peer, or {@code null} if none
    */
   public synchronized PeerNode routedLast() {
-    return lastNode;
+    return lastNode.get();
   }
 
   /** Set of peers this sender has attempted to route to during the current operation. */
@@ -170,7 +171,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   protected int rejectOverloads;
 
   /** Number of peers attempted so far (excluding soft retries on the same peer). */
-  protected int routeAttempts = 0;
+  protected volatile int routeAttempts = 0;
 
   private HashMap<PeerNode, Integer> softRejectCount;
 
@@ -217,7 +218,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   protected void innerRouteRequestsOld(PeerNode next, UIDTag origTag) {
 
     synchronized (this) {
-      lastNode = next;
+      lastNode.set(next);
     }
 
     if (LOG.isDebugEnabled()) LOG.debug("Legacy route: sending request to {}", next);
@@ -361,7 +362,7 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     rememberLastPrediction(state);
 
     synchronized (this) {
-      lastNode = state.next;
+      lastNode.set(state.next);
     }
 
     LOG.debug("NLM route: sending request to {} realtime={}", state.next, realTimeFlag);

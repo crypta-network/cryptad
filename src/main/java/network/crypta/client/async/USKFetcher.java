@@ -309,7 +309,7 @@ public class USKFetcher
       needSchedule = schedulingCoordinator.scheduleAfterDBRsDone();
     }
     if (needSchedule) schedule(context);
-    pollingRound.checkFinishedForNow(context, cancelled, completed);
+    checkFinishedForNow(context);
   }
 
   /**
@@ -336,7 +336,13 @@ public class USKFetcher
    * @param context client context used to notify progress callbacks; must not be null
    */
   private void checkFinishedForNow(ClientContext context) {
-    pollingRound.checkFinishedForNow(context, cancelled, completed);
+    boolean cancelledSnapshot;
+    boolean completedSnapshot;
+    synchronized (this) {
+      cancelledSnapshot = cancelled;
+      completedSnapshot = completed;
+    }
+    pollingRound.checkFinishedForNow(context, cancelledSnapshot, completedSnapshot);
   }
 
   // moved into USKStoreCheckerGetter to satisfy S3398
@@ -417,7 +423,7 @@ public class USKFetcher
     long delay =
         pollingRound.rescheduleBackgroundPoll(context, schedulingCoordinator.valueAtSchedule());
     schedule(delay, context);
-    pollingRound.checkFinishedForNow(context, cancelled, completed);
+    checkFinishedForNow(context);
   }
 
   /**

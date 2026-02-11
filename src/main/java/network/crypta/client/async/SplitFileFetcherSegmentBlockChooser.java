@@ -15,10 +15,10 @@ import network.crypta.node.KeysFetchingLocally;
  * block) until other work completes or additional context is available.
  *
  * <p>Instances are stateful. The selection path in the parent class is synchronized and invokes the
- * {@link #checkValid(int)} hook to filter candidates for the current attempt. Callers obtain the
- * next eligible block index by invoking {@code chooseKey()} on this chooser; a return value of
- * {@code -1} indicates a global cooldown is in effect. No I/O is performed during construction, but
- * validating a candidate may read the segment's key list from disk.
+ * {@link #checkValid(int)} hook to filter candidates for the current attempt. Callers get the next
+ * eligible block index by invoking {@code chooseKey()} on this chooser; a return value of {@code
+ * -1} indicates a global cooldown is in effect. No I/O is performed during construction, but
+ * validating a candidate may read the segment's key list from the disk.
  *
  * <ul>
  *   <li>Cooldown: inherits per‑block cooldown after repeated non‑fatal failures.
@@ -49,7 +49,7 @@ public class SplitFileFetcherSegmentBlockChooser extends CooldownBlockChooser {
    * @param cooldownTries number of attempts between cooldowns; when non‑zero, every {@code
    *     cooldownTries}th attempt schedules a temporary cooldown window for a block.
    * @param cooldownTime cooldown duration in milliseconds added to {@link
-   *     System#currentTimeMillis()} to compute per‑block wake‑up times.
+   *     System#currentTimeMillis()} to compute per‑block wakeup times.
    * @param params segment-specific chooser parameters such as key storage and in-flight tracking.
    */
   public SplitFileFetcherSegmentBlockChooser(
@@ -81,10 +81,10 @@ public class SplitFileFetcherSegmentBlockChooser extends CooldownBlockChooser {
    * @param chosen zero‑based block index to validate for selection; must lie within the configured
    *     range for this chooser instance.
    * @return {@code true} when the index passes base checks, is not the ignored index, and is not
-   *     already being fetched locally; {@code false} otherwise.
+   *     yet being fetched locally; {@code false} otherwise.
    */
   @Override
-  protected boolean checkValid(int chosen) {
+  protected synchronized boolean checkValid(int chosen) {
     if (!super.checkValid(chosen)) return false;
     if (chosen == ignoreLastBlock) return false;
     try {

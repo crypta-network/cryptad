@@ -115,7 +115,7 @@ public class SimpleBlockChooser {
   /**
    * Records a non-fatal failure for a block and reports whether the retry limit is now exceeded.
    *
-   * <p>Call this when an attempt fails but the caller wishes to retry according to the configured
+   * <p>Call this when an attempt fails, but the caller wishes to retry, according to the configured
    * policy. The internal counter for the block is incremented, and the method returns {@code true}
    * if retries have now surpassed {@link #maxRetries} (when a limit applies).
    *
@@ -176,7 +176,7 @@ public class SimpleBlockChooser {
   }
 
   /**
-   * Notify that a block has no longer succeeded. E.g. we downloaded it but now the data is no
+   * Notify that a block has no longer succeeded. E.g., we downloaded it, but now the data is no
    * longer available due to disk corruption.
    *
    * @param blockNo zero-based index of the block to mark as not complete any longer; the block must
@@ -199,7 +199,7 @@ public class SimpleBlockChooser {
   }
 
   /**
-   * Is the proposed block valid? Override to implement custom logic e.g. checking which requests
+   * Is the proposed block valid? Override to implement custom logic e.g., checking which requests
    * are already running.
    *
    * @param chosen candidate block index to evaluate for eligibility; the value is within {@code [0,
@@ -223,7 +223,7 @@ public class SimpleBlockChooser {
   }
 
   /**
-   * Mass replace of success/failure. Used by fetchers when we try to decode and fail, possibly
+   * Mass replacement of success/failure. Used by fetchers when we try to decode and fail, possibly
    * because of disk corruption.
    *
    * <p>The {@code used} array represents the authoritative completion state and must have a length
@@ -263,7 +263,7 @@ public class SimpleBlockChooser {
   }
 
   /**
-   * Returns the block number for a known key, taking completed state into account.
+   * Returns the block number for a known key, taking the completed state into account.
    *
    * <p>This convenience delegates to {@link SplitFileSegmentKeys#getBlockNumber(NodeCHK,
    * boolean[])} while keeping the internal {@code completed} array encapsulated.
@@ -332,7 +332,8 @@ public class SimpleBlockChooser {
    * the configured {@code maxRetries} (int), and then retry counters via {@link
    * #writeRetries(DataOutputStream)}. The method leaves the supplied stream open.
    *
-   * @param dos destination stream that receives the serialized state; not closed by this method.
+   * @param dos the destination stream that receives the serialized state; not closed by this
+   *     method.
    * @throws IOException if writing to the destination stream fails at any point.
    */
   public void write(DataOutputStream dos) throws IOException {
@@ -356,7 +357,7 @@ public class SimpleBlockChooser {
    *     maxRetries} differs from this instance's configuration.
    * @throws IOException if reading from the stream fails.
    */
-  public void read(DataInputStream dis) throws StorageFormatException, IOException {
+  public synchronized void read(DataInputStream dis) throws StorageFormatException, IOException {
     if (dis.readInt() != VERSION) throw new StorageFormatException("Bad version in block chooser");
     for (int i = 0; i < completed.length; i++) {
       completed[i] = dis.readBoolean();
@@ -400,7 +401,7 @@ public class SimpleBlockChooser {
   }
 
   /**
-   * Counts blocks that are currently eligible for fetching according to policy.
+   * Counts blocks that are currently eligible for fetching, according to policy.
    *
    * <p>Eligibility requires that a block is not completed, {@link #checkValid(int)} returns {@code
    * true}, and either unlimited retries are configured or the retry counter has not reached the

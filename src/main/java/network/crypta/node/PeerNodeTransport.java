@@ -436,7 +436,7 @@ final class PeerNodeTransport implements PeerTransport {
   private class SyncMessageCallback implements AsyncMessageCallback {
 
     /** True, once the sending path completes or terminates with an error. */
-    private boolean done = false;
+    private volatile boolean done = false;
 
     /** True if completion occurred due to a disconnect. */
     private boolean disconnected = false;

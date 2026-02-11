@@ -25,9 +25,9 @@ public class ThrottleWindowManager {
   static final float PACKET_TRANSMIT_INCREMENT =
       (4 * (1 - (PACKET_DROP_DECREASE_MULTIPLE * PACKET_DROP_DECREASE_MULTIPLE))) / 3;
 
-  private long totalPackets = 0;
-  private long droppedPackets = 0;
-  private double simulatedWindowSize;
+  private volatile long totalPackets = 0;
+  private volatile long droppedPackets = 0;
+  private volatile double simulatedWindowSize;
 
   private final Node node;
 

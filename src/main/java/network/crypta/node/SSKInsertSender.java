@@ -95,7 +95,7 @@ public class SSKInsertSender extends BaseSender
   /** Status: no route found (after forwarding at least once). */
   static final int ROUTE_NOT_FOUND = 1;
 
-  /** Status: internal error occurred. */
+  /** Status: an internal error occurred. */
   static final int INTERNAL_ERROR = 3;
 
   /** Status: timed out while waiting for a peer response. */
@@ -167,10 +167,10 @@ public class SSKInsertSender extends BaseSender
       routeRequests();
     } catch (Exception t) {
       LOG.error("Caught {}", t, t);
-      if (status == NOT_FINISHED) finish(INTERNAL_ERROR, null);
+      if (getStatus() == NOT_FINISHED) finish(INTERNAL_ERROR, null);
     } finally {
       if (LOG.isDebugEnabled()) LOG.debug("Finishing {}", this);
-      if (status == NOT_FINISHED) finish(INTERNAL_ERROR, null);
+      if (getStatus() == NOT_FINISHED) finish(INTERNAL_ERROR, null);
       origTag.finishedSender();
       if (forkedRequestTag != null) forkedRequestTag.finishedSender();
     }
@@ -207,7 +207,7 @@ public class SSKInsertSender extends BaseSender
     if (dontDecrementHTLThisTime) {
       dontDecrementHTLThisTime = false;
     } else {
-      htl = node.routing().decrementHTL(hasForwarded ? lastNode : source, htl);
+      htl = node.routing().decrementHTL(hasForwarded ? lastNode.get() : source, htl);
       if (LOG.isDebugEnabled()) LOG.debug("Decremented HTL to {}", htl);
     }
     if (htl <= 0) {

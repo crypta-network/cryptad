@@ -5,10 +5,12 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.RandomAccessFile;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
+import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.async.ClientContext;
 import network.crypta.support.api.LockableRandomAccessBuffer;
 import org.slf4j.Logger;
@@ -37,7 +39,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
   private static final Logger LOG = LoggerFactory.getLogger(FileRandomAccessBuffer.class);
 
   @Serial private static final long serialVersionUID = 1L;
-  transient RandomAccessFile raf;
+  transient AtomicReference<RandomAccessFile> raf = new AtomicReference<>();
   final File file;
   private boolean closed = false;
   private final long length;
@@ -58,7 +60,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
    */
   public FileRandomAccessBuffer(RandomAccessFile raf, File filename, boolean readOnly)
       throws IOException {
-    this.raf = raf;
+    this.raf.set(raf);
     this.file = filename;
     length = raf.length();
     this.readOnly = readOnly;
@@ -77,8 +79,12 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
    * @throws IOException if the file cannot be opened or resized to {@code length}
    */
   public FileRandomAccessBuffer(File filename, long length, boolean readOnly) throws IOException {
-    raf = new RandomAccessFile(filename, readOnly ? "r" : "rw");
-    raf.setLength(length);
+    raf.set(new RandomAccessFile(filename, readOnly ? "r" : "rw"));
+    try {
+      raf.get().setLength(length);
+    } catch (IOException e) {
+      throw closeOnInitFailure(raf.get(), e);
+    }
     this.length = length;
     this.file = filename;
     this.readOnly = readOnly;
@@ -92,10 +98,30 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
    * @throws IOException if the file cannot be opened or its length cannot be obtained
    */
   public FileRandomAccessBuffer(File filename, boolean readOnly) throws IOException {
-    raf = new RandomAccessFile(filename, readOnly ? "r" : "rw");
-    this.length = raf.length();
+    raf.set(new RandomAccessFile(filename, readOnly ? "r" : "rw"));
+    try {
+      this.length = raf.get().length();
+    } catch (IOException e) {
+      throw closeOnInitFailure(raf.get(), e);
+    }
     this.file = filename;
     this.readOnly = readOnly;
+  }
+
+  private static IOException closeOnInitFailure(
+      RandomAccessFile randomAccessFile, IOException failure) {
+    try {
+      randomAccessFile.close();
+    } catch (IOException closeException) {
+      failure.addSuppressed(closeException);
+    }
+    return failure;
+  }
+
+  @Serial
+  private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+    in.defaultReadObject();
+    raf = new AtomicReference<>();
   }
 
   /**
@@ -125,8 +151,9 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
               + this.length);
     // Serialize access through this instance; RAF itself is not position-safe for concurrency.
     synchronized (this) {
-      raf.seek(fileOffset);
-      raf.readFully(buf, bufOffset, length);
+      RandomAccessFile randomAccessFile = raf.get();
+      randomAccessFile.seek(fileOffset);
+      randomAccessFile.readFully(buf, bufOffset, length);
     }
   }
 
@@ -157,8 +184,9 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
     if (readOnly) throw new IOException("Read only");
     // Serialize access through this instance; RAF writes also move the shared file pointer.
     synchronized (this) {
-      raf.seek(fileOffset);
-      raf.write(buf, bufOffset, length);
+      RandomAccessFile randomAccessFile = raf.get();
+      randomAccessFile.seek(fileOffset);
+      randomAccessFile.write(buf, bufOffset, length);
     }
   }
 
@@ -180,14 +208,16 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
    */
   @Override
   public void close() {
+    RandomAccessFile randomAccessFile;
     synchronized (this) {
       if (closed) return;
       closed = true;
+      randomAccessFile = raf.get();
     }
     try {
-      raf.close();
+      randomAccessFile.close();
     } catch (IOException e) {
-      LOG.error("Could not close {} : {} for {}", raf, e, this, e);
+      LOG.error("Could not close {} : {} for {}", randomAccessFile, e, this, e);
     }
   }
 
@@ -260,7 +290,8 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
     if (!file.exists()) throw new ResumeFailedException("File does not exist any more");
     if (file.length() != length) throw new ResumeFailedException("File is wrong length");
     try {
-      raf = new RandomAccessFile(file, readOnly ? "r" : "rw");
+      if (raf == null) raf = new AtomicReference<>();
+      raf.set(new RandomAccessFile(file, readOnly ? "r" : "rw"));
     } catch (FileNotFoundException _) {
       throw new ResumeFailedException("File does not exist any more");
     }
@@ -321,7 +352,7 @@ public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Seria
     // Validate existence/length before opening since an RAF is needed immediately after.
     if (!file.exists()) throw new ResumeFailedException("File does not exist");
     if (length > file.length()) throw new ResumeFailedException("Bad length");
-    this.raf = new RandomAccessFile(file, readOnly ? "r" : "rw");
+    this.raf.set(new RandomAccessFile(file, readOnly ? "r" : "rw"));
   }
 
   /**

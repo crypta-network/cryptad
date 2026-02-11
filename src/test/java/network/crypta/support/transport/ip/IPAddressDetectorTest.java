@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import network.crypta.node.NodeIPDetector;
 import network.crypta.support.PriorityAwareExecutor;
 import org.jetbrains.annotations.NotNull;
@@ -47,7 +48,7 @@ class IPAddressDetectorTest {
 
     det.onGetAddresses(input);
 
-    InetAddress[] out = det.lastAddressList;
+    InetAddress[] out = toArray(det.lastAddressList.get());
     assertNotNull(out, "Expected filtered addresses");
 
     Set<String> actual = new HashSet<>();
@@ -69,7 +70,7 @@ class IPAddressDetectorTest {
     NodeIPDetector nodeIPDetector = mock(NodeIPDetector.class);
     // Override checkpoint to inject a deterministic change without touching real interfaces
     TestIPAddressDetector det = new TestIPAddressDetector(1, nodeIPDetector);
-    det.lastDetectedTime = -1; // force checkpoint on first call
+    det.lastDetectedTime = -1; // force checkpoint on the first call
 
     PriorityAwareExecutor directExec = new DirectExecutor();
     InetAddress[] out = det.getAddress(directExec);
@@ -85,7 +86,7 @@ class IPAddressDetectorTest {
     NodeIPDetector nodeIPDetector = mock(NodeIPDetector.class);
     IPAddressDetector det = new IPAddressDetector(10, nodeIPDetector);
     det.lastDetectedTime = System.currentTimeMillis();
-    det.lastAddressList = new InetAddress[0];
+    det.lastAddressList.set(new AtomicReferenceArray<>(new InetAddress[0]));
 
     NullPointerException npe = assertThrows(NullPointerException.class, () -> det.getAddress(null));
     assertEquals("executor", npe.getMessage());
@@ -113,7 +114,7 @@ class IPAddressDetectorTest {
     NodeIPDetector nodeIPDetector = mock(NodeIPDetector.class);
     IPAddressDetector det = new IPAddressDetector(10, nodeIPDetector);
     det.lastDetectedTime = System.currentTimeMillis(); // fresh -> no checkpoint
-    det.lastAddressList = null; // no snapshot yet
+    det.lastAddressList.set(null); // no snapshot yet
 
     InetAddress[] out = assertDoesNotThrow(det::getAddressNoCallback);
     assertNotNull(out);
@@ -122,6 +123,15 @@ class IPAddressDetectorTest {
 
   private static InetAddress addr(String host) throws Exception {
     return InetAddress.getAllByName(host)[0];
+  }
+
+  private static InetAddress[] toArray(AtomicReferenceArray<InetAddress> addresses) {
+    if (addresses == null) return null;
+    InetAddress[] out = new InetAddress[addresses.length()];
+    for (int i = 0; i < out.length; i++) {
+      out[i] = addresses.get(i);
+    }
+    return out;
   }
 
   @Test
@@ -174,7 +184,7 @@ class IPAddressDetectorTest {
     NodeIPDetector nodeIPDetector = mock(NodeIPDetector.class);
     IPAddressDetector det = new IPAddressDetector(10, nodeIPDetector);
     det.onGetAddresses(new ArrayList<>());
-    assertNull(det.lastAddressList);
+    assertNull(det.lastAddressList.get());
   }
 
   @Test
@@ -186,9 +196,9 @@ class IPAddressDetectorTest {
     InetAddress loopbackV4 = InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
     input.add(loopbackV4);
     det.onGetAddresses(input);
-    assertNotNull(det.lastAddressList);
-    assertEquals(1, det.lastAddressList.length);
-    assertEquals(loopbackV4.getHostAddress(), det.lastAddressList[0].getHostAddress());
+    assertNotNull(det.lastAddressList.get());
+    assertEquals(1, det.lastAddressList.get().length());
+    assertEquals(loopbackV4.getHostAddress(), det.lastAddressList.get().get(0).getHostAddress());
   }
 
   @Test
@@ -203,7 +213,7 @@ class IPAddressDetectorTest {
     InetAddress cleaned = (InetAddress) m.invoke(det, withScope);
 
     assertEquals("2001:db8:0:0:0:0:0:1", cleaned.getHostAddress());
-    // Ensure original still contains the scope id
+    // Ensure the original still contains the scope id
     assertTrue(withScope.getHostAddress().contains("%"));
   }
 
@@ -216,12 +226,13 @@ class IPAddressDetectorTest {
     @Override
     protected synchronized boolean checkpoint() {
       try {
-        this.lastAddressList = new InetAddress[] {InetAddress.getByName("8.8.8.8")};
+        this.lastAddressList.set(
+            new AtomicReferenceArray<>(new InetAddress[] {InetAddress.getByName("8.8.8.8")}));
       } catch (Exception e) {
         throw new AssertionError(e);
       }
       this.lastDetectedTime = System.currentTimeMillis();
-      return true; // indicate list changed
+      return true; // indicate the list changed
     }
   }
 
@@ -270,7 +281,8 @@ class IPAddressDetectorTest {
     @Override
     protected synchronized boolean checkpoint() {
       try {
-        this.lastAddressList = new InetAddress[] {InetAddress.getByName("8.8.4.4")};
+        this.lastAddressList.set(
+            new AtomicReferenceArray<>(new InetAddress[] {InetAddress.getByName("8.8.4.4")}));
       } catch (Exception e) {
         throw new AssertionError(e);
       }
@@ -281,7 +293,7 @@ class IPAddressDetectorTest {
 
   /** Test subclass that counts checkpoint invocations and supplies a deterministic snapshot. */
   private static final class CountingDetector extends IPAddressDetector {
-    int checkpointCalls = 0;
+    volatile int checkpointCalls = 0;
 
     CountingDetector(long interval, NodeIPDetector detector) {
       super(interval, detector);
@@ -291,8 +303,11 @@ class IPAddressDetectorTest {
     protected synchronized boolean checkpoint() {
       checkpointCalls++;
       try {
-        this.lastAddressList =
-            new InetAddress[] {InetAddress.getByName("1.1.1.1"), InetAddress.getByName("9.9.9.9")};
+        this.lastAddressList.set(
+            new AtomicReferenceArray<>(
+                new InetAddress[] {
+                  InetAddress.getByName("1.1.1.1"), InetAddress.getByName("9.9.9.9")
+                }));
       } catch (Exception e) {
         throw new AssertionError(e);
       }
@@ -301,7 +316,7 @@ class IPAddressDetectorTest {
     }
   }
 
-  /** Executor that captures submitted runnables without executing them automatically. */
+  /** Executor that captures submitted runnable without executing them automatically. */
   private static final class CapturingExecutor implements PriorityAwareExecutor {
     private final List<Runnable> captured = new ArrayList<>();
 

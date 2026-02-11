@@ -116,10 +116,10 @@ public class PartiallyReceivedBulk {
   }
 
   /**
-   * Commits a received block to storage and updates state, then notifies transmitters.
+   * Commits a received block to storage and updates the state, then notifies transmitters.
    *
    * <p>Validates that {@code length} is at least the expected number of bytes for the addressed
-   * block. If validation or storage fails, the transfer is aborted with an appropriate reason.
+   * block. If validation or storage fails, the transfer is aborted for an appropriate reason.
    * Blocks that are already marked as received are ignored.
    *
    * @param blockNum zero-based block index.
@@ -215,7 +215,7 @@ public class PartiallyReceivedBulk {
    *
    * @return {@code true} when every block is present; otherwise {@code false}.
    */
-  public boolean hasWholeFile() {
+  public synchronized boolean hasWholeFile() {
     return blocksReceivedCount >= blocks;
   }
 

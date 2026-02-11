@@ -119,7 +119,7 @@ public final class SimpleToadletServer
   // Theme
   private THEME cssTheme;
   private File cssOverride;
-  private boolean sendAllThemes;
+  private volatile boolean sendAllThemes;
   private boolean advancedModeEnabled;
   private final PageMaker pageMaker;
   private boolean fetchKeyBoxAboveBookmarks;
@@ -158,7 +158,7 @@ public final class SimpleToadletServer
   private volatile boolean fProxyWebPushingEnabled; // ugh?
   private volatile boolean fproxyHasCompletedWizard; // hmmm..
   private volatile boolean disableProgressPage;
-  private int maxFproxyConnections;
+  private volatile int maxFproxyConnections;
 
   private int fproxyConnections;
 
@@ -353,10 +353,12 @@ public final class SimpleToadletServer
     public void set(Boolean val) {
       if (get().equals(val)) return;
       boolean startServer = Boolean.TRUE.equals(val);
+      Thread threadToStart;
       synchronized (SimpleToadletServer.this) {
         if (startServer) {
           // Start it
-          myThread = new Thread(SimpleToadletServer.this, "SimpleToadletServer");
+          threadToStart = new Thread(SimpleToadletServer.this, "SimpleToadletServer");
+          myThread = threadToStart;
         } else {
           myThread.interrupt();
           myThread = null;
@@ -365,8 +367,8 @@ public final class SimpleToadletServer
         }
       }
       createFproxy();
-      myThread.setDaemon(true);
-      myThread.start();
+      threadToStart.setDaemon(true);
+      threadToStart.start();
     }
   }
 
@@ -1242,9 +1244,13 @@ public final class SimpleToadletServer
    * been started.
    */
   public void start() {
-    if (myThread != null) {
+    Thread thread;
+    synchronized (this) {
+      thread = myThread;
+    }
+    if (thread != null) {
       maybeGetNetworkInterface();
-      myThread.start();
+      thread.start();
       LOG.info("Starting FProxy on {}:{}", bindTo, port);
     }
   }
@@ -1660,7 +1666,9 @@ public final class SimpleToadletServer
    * @return {@code true} when the listener thread exists, {@code false} otherwise.
    */
   public boolean isEnabled() {
-    return myThread != null;
+    synchronized (this) {
+      return myThread != null;
+    }
   }
 
   /**
@@ -1850,7 +1858,7 @@ public final class SimpleToadletServer
 
   @Override
   public long generateUniqueID() {
-    // Generates a unique ID per call; replace with a counter if sequential IDs are required.
+    // Generates a unique ID per call; replace it with a counter if sequential IDs are required.
     return random.nextLong();
   }
 

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,7 +34,7 @@ class FailureCodeTrackerTest {
     insertTracker = new FailureCodeTracker(true);
   }
 
-  /** Test that the fixed size representation really is fixed size */
+  /** Test that the fixed size representation really is a fixed size */
   @Test
   void testSize() throws IOException {
     testSize(false);
@@ -83,7 +84,7 @@ class FailureCodeTrackerTest {
     assertEquals(5, fetchTracker.totalCount());
     assertEquals(1, fetchTracker.getErrorCount(7));
 
-    // On subsequent adds, the supplied value is added to the existing one.
+    // On later adding, the supplied value is added to the existing one.
     fetchTracker.inc(7, 4);
     assertEquals(9, fetchTracker.totalCount());
     assertEquals(5, fetchTracker.getErrorCount(7));
@@ -153,7 +154,7 @@ class FailureCodeTrackerTest {
   void toFieldSet_andReconstruct_roundTripsCounts_insertAndFetch() throws Exception {
     // Fetch tracker field set
     fetchTracker.inc(FetchExceptionMode.ROUTE_NOT_FOUND);
-    fetchTracker.inc(FetchExceptionMode.TOO_BIG, 3); // stored as 1 on first write, but total += 3
+    fetchTracker.inc(FetchExceptionMode.TOO_BIG, 3); // stored as 1 on first writing, but total += 3
     SimpleFieldSet fsFetch = fetchTracker.toFieldSet(true);
     // Verify description and count entries exist
     String descFetch = fsFetch.get(FetchExceptionMode.ROUTE_NOT_FOUND.code + ".Description");
@@ -205,7 +206,7 @@ class FailureCodeTrackerTest {
     fetchTracker.inc(fatalCode, -1); // now map value becomes 0
     assertFalse(fetchTracker.isFatal(false));
 
-    // Add a fatal with positive count
+    // Add a fatal with a positive count
     fetchTracker.inc(FetchExceptionMode.TOO_BIG);
     assertTrue(fetchTracker.isFatal(false));
   }
@@ -220,7 +221,7 @@ class FailureCodeTrackerTest {
     assertTrue(t.isOneCodeOnly());
     assertFalse(t.isEmpty());
 
-    // Reduce existing key to zero; map not empty, still not considered empty
+    // Reduce the existing key to zero; map not empty, still not considered empty
     t.inc(FetchExceptionMode.DATA_NOT_FOUND.code, -1);
     assertTrue(t.isOneCodeOnly());
     assertFalse(t.isEmpty());
@@ -280,6 +281,17 @@ class FailureCodeTrackerTest {
   }
 
   @Test
+  void merge_withNullSource_isNoOp() {
+    fetchTracker.inc(FetchExceptionMode.TOO_BIG);
+
+    FailureCodeTracker merged = fetchTracker.merge((FailureCodeTracker) null);
+
+    assertSame(merged, fetchTracker);
+    assertEquals(1, fetchTracker.getErrorCount(FetchExceptionMode.TOO_BIG.code));
+    assertEquals(1, fetchTracker.totalCount());
+  }
+
+  @Test
   void merge_fetchException_mergesCodesAndIncrementsMode() {
     // Prepare error codes in the exception (count 7 for TOO_BIG)
     FailureCodeTracker codes = trackerFromCounts(false, Map.of(FetchExceptionMode.TOO_BIG.code, 7));
@@ -314,7 +326,7 @@ class FailureCodeTrackerTest {
 
   @Test
   void isDataFound_onInsertTracker_usesFetchCodes() {
-    // Insert tracker expects fetch-style codes in its map for this method.
+    // The insert tracker expects fetch-style codes in its map for this method.
     int tooBigFetchCode = FetchExceptionMode.TOO_BIG.code;
     int routeNotFoundCode = FetchExceptionMode.ROUTE_NOT_FOUND.code;
     insertTracker.inc(tooBigFetchCode); // data found

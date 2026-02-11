@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Concurrency: block-level inserts run concurrently via their schedulers; this class maintains
  * thread-safe counters and uses synchronization only for small critical sections (e.g., updating
- * counters and completion state). Instances are single-use: once all blocks complete and a final
+ * counters and completion state). Instances are single-use: once all blocks are complete and an
  * outcome is delivered, the object should not be reused. The class is not intended to be shared
  * across multiple parents.
  *
@@ -116,7 +116,7 @@ public class BinaryBlobInserter implements ClientPutState {
   }
 
   /**
-   * Cancels all outstanding block inserts and reports a cancelled outcome to the parent.
+   * Cancels all outstanding block inserts and reports a canceled outcome to the parent.
    *
    * <p>Any block that has already finished will be ignored. In-flight blocks are asked to cancel,
    * and the parent is notified with an {@link InsertException} of mode {@link
@@ -136,7 +136,7 @@ public class BinaryBlobInserter implements ClientPutState {
   }
 
   /**
-   * Returns the owning parent that receives progress and final outcome notifications.
+   * Returns the owning parent that receives progress and outcome notifications.
    *
    * @return the non-null parent instance; the caller does not gain ownership and must not mutate
    *     its internal state.
@@ -200,7 +200,7 @@ public class BinaryBlobInserter implements ClientPutState {
 
     @Override
     public void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
-      synchronized (this) {
+      synchronized (BinaryBlobInserter.this) {
         if (inserters[blockNum] == null) return;
         inserters[blockNum] = null;
         completedBlocks++;
@@ -276,7 +276,7 @@ public class BinaryBlobInserter implements ClientPutState {
    * <p>When the final block finishes, the method decides between overall success, fatal failure, or
    * too many retries based on internal counters. Success requires that every block succeed, or that
    * the configured consecutive route-not-found threshold be met where applicable. The method is
-   * idempotent within the completion window and ignores subsequent calls once an outcome has been
+   * idempotent within the completion window and ignores later calls once an outcome has been
    * reported.
    *
    * @param context execution context forwarded to the parent callback. The reference is not
@@ -313,7 +313,7 @@ public class BinaryBlobInserter implements ClientPutState {
    * if a pause/resume cycle is desired.
    *
    * @param context execution context required by the interface; ignored by this implementation.
-   * @throws InsertException always thrown to signal that resume is not supported by this type.
+   * @throws InsertException always thrown to signal that this type does not support resume.
    */
   @Override
   public void onResume(ClientContext context) throws InsertException {
@@ -325,8 +325,8 @@ public class BinaryBlobInserter implements ClientPutState {
   /**
    * Notifies the inserter of a system shutdown. This implementation performs no action.
    *
-   * <p>Callers may use this hook to align with framework lifecycles. Any in-flight work is managed
-   * by the schedulers; blocks that complete after shutdown will be ignored once the parent has
+   * <p>Callers may use this hook to align with framework lifecycles. The schedulers manage any
+   * in-flight work; blocks that complete after shutdown will be ignored once the parent has
    * transitioned out of the active state.
    *
    * @param context execution context supplied by the framework; not used.

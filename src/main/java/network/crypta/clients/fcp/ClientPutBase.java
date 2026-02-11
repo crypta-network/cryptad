@@ -873,6 +873,10 @@ public abstract class ClientPutBase extends ClientRequest
     return s;
   }
 
+  final synchronized FCPMessage getProgressMessageSnapshot() {
+    return progressMessage;
+  }
+
   /**
    * Exposes the entire {@link PutFailedMessage} object so that higher-level components can
    * serialize or inspect the fine-grained failure codes before freeing state. Callers must not
@@ -881,8 +885,7 @@ public abstract class ClientPutBase extends ClientRequest
    *
    * @return failure message object or {@code null} if the insert never failed
    */
-  public PutFailedMessage getFailureMessage() {
-    if (putFailedMessage == null) return null;
+  public synchronized PutFailedMessage getFailureMessage() {
     return putFailedMessage;
   }
 
