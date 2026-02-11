@@ -1,5 +1,7 @@
 package network.crypta.support;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -230,6 +232,7 @@ public class SparseBitmap implements Iterable<int[]> {
     return ranges.subSet(startRange, true, endRange, upperInclusive);
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static class SparseBitmapIterator implements Iterator<int[]> {
     private final Iterator<Range> it;
 
@@ -266,7 +269,10 @@ public class SparseBitmap implements Iterable<int[]> {
     }
   }
 
-  private static class RangeComparator implements Comparator<Range> {
+  private static class RangeComparator implements Comparator<Range>, Serializable {
+
+    @Serial private static final long serialVersionUID = 1L;
+
     @Override
     public int compare(Range r1, Range r2) {
       return Integer.compare(r1.start, r2.start);
@@ -276,7 +282,7 @@ public class SparseBitmap implements Iterable<int[]> {
   /**
    * Counts the number of slots in {@code [start, end]} that are not present.
    *
-   * <p>This is equivalent to {@code (end - start + 1) - covered}, where {@code covered} is the
+   * <p>This is an equivalent to {@code (end - start + 1) - covered}, where {@code covered} is the
    * total size of intersections between the query range and the stored intervals.
    *
    * <p>Precondition: {@code start <= end}.

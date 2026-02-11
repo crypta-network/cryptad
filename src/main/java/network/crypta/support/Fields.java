@@ -1,5 +1,7 @@
 package network.crypta.support;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -9,6 +11,7 @@ import java.util.Comparator;
 import java.util.GregorianCalendar;
 import java.util.Locale;
 import java.util.StringTokenizer;
+import java.util.TimeZone;
 import network.crypta.config.Dimension;
 import network.crypta.l10n.NodeL10n;
 import org.slf4j.Logger;
@@ -502,7 +505,9 @@ public abstract class Fields {
   }
 
   /** Comparator that delegates to {@link Fields#compareBytes(byte[], byte[])}. */
-  public static final class ByteArrayComparator implements Comparator<byte[]> {
+  public static final class ByteArrayComparator implements Comparator<byte[]>, Serializable {
+
+    @Serial private static final long serialVersionUID = 1L;
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
