@@ -90,8 +90,13 @@ spotbugs { ignoreFailures = true }
 val spotbugsExcludeFilter =
   rootProject.layout.projectDirectory.file("build-logic/spotbugs-exclude.xml")
 
+val spotbugsTestExcludeFilter =
+  rootProject.layout.projectDirectory.file("build-logic/spotbugs-exclude-test.xml")
+
 tasks.withType<SpotBugsTask>().configureEach {
-  excludeFilter.set(spotbugsExcludeFilter)
+  excludeFilter.set(
+    if (name == "spotbugsTest") spotbugsTestExcludeFilter else spotbugsExcludeFilter
+  )
 
   val xmlReport = reports.maybeCreate("xml")
   xmlReport.required.set(true)
