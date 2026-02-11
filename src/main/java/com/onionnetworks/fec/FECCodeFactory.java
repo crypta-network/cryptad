@@ -6,12 +6,12 @@ package com.onionnetworks.fec;
  * <p>This abstract base coordinates creation of {@link FECCode} instances without binding callers
  * to a specific implementation. A JVM-wide default factory can be configured via the system
  * property {@code com.onionnetworks.fec.defaultcodefactoryclass}; when absent the bundled {@link
- * DefaultFECCodeFactory} is used. Typical consumers obtain the factory once, cache it, and create
+ * DefaultFECCodeFactory} is used. Typical consumers get the factory once, cache it, and create
  * codes as blocks are scheduled for encoding or repair.
  *
  * <p>Instances are expected to be stateless or thread-safe; the default supplier is lazily
  * initialized in a synchronized accessor so repeated lookups are safe across threads. Concrete
- * factories may impose additional constraints on supported {@code k} and {@code n} values or employ
+ * factories may impose additional constraints on supported {@code k} and {@code n} values or use
  * native acceleration, but they all honor the {@link FECCode} contract.
  *
  * <ul>
@@ -29,11 +29,10 @@ public abstract class FECCodeFactory {
   /**
    * Shared cached instance of the default factory selected for this JVM.
    *
-   * <p>Lazily populated when {@link #getDefault()} is first called and reused thereafter;
-   * subclasses may replace it during custom bootstrapping, but regular callers should treat it as
-   * read-mostly global state.
+   * <p>Lazily populated when {@link #getDefault()} is first called and reused thereafter; callers
+   * should treat it as internal, read-mostly global state.
    */
-  protected static FECCodeFactory def;
+  private static FECCodeFactory def;
 
   /**
    * Protected constructor for subclass implementations.
@@ -56,7 +55,7 @@ public abstract class FECCodeFactory {
    * packets ({@code n}). Most providers expect {@code n} to be greater than or equal to {@code k};
    * unsupported combinations may trigger provider-specific validation failures.
    *
-   * @param k Number of original source packets the code will protect; must be positive.
+   * @param k The number of original source packets the code will protect; must be positive.
    * @param n Total packet count (source plus repair) to generate; typically at least k.
    * @return Mutable {@link FECCode} instance ready to encode or decode the specified block size.
    */
@@ -69,7 +68,7 @@ public abstract class FECCodeFactory {
    * property and attempts to load the named class via reflection; if loading or instantiation
    * fails, it falls back to {@link DefaultFECCodeFactory}. Synchronization ensures that the lookup
    * and caching happen once, even under concurrent calls, and the same instance is returned for all
-   * subsequent requests.
+   * following requests.
    *
    * <pre>{@code
    * FECCodeFactory factory = FECCodeFactory.getDefault();

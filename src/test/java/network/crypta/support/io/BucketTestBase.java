@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 public abstract class BucketTestBase {
   private static final String SIZE_EMPTY_MESSAGE = "Size-0";
-  protected static final byte[] dataLong;
+  private static final byte[] dataLong;
 
   static {
     dataLong = new byte[32768 + 1]; // 32K + 1

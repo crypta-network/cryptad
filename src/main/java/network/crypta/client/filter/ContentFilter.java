@@ -57,8 +57,8 @@ public class ContentFilter {
   static final ConcurrentMap<String, FilterMIMEType> mimeTypesByName = new ConcurrentHashMap<>();
   private static final Object MIME_TYPES_REGISTRATION_LOCK = new Object();
 
-  /** The HTML mime types are defined here to allow other modules to identify it */
-  protected static final String[] HTML_MIME_TYPES =
+  /** Package-visible so filters in this package can identify HTML-like content types. */
+  static final String[] HTML_MIME_TYPES =
       new String[] {
         "text/html", "application/xhtml+xml", "text/xml+xhtml", "text/xhtml", "application/xhtml"
       };
