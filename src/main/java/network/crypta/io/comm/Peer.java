@@ -4,6 +4,7 @@ import java.io.DataInput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.Serial;
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Comparator;
@@ -78,7 +79,7 @@ public class Peer implements WritableToDataOutputStream {
 
   /**
    * Constructs a peer from a concrete {@link InetAddress} and port. The numeric address is
-   * considered primary and does not change with subsequent DNS updates.
+   * considered primary and does not change with later DNS updates.
    *
    * @param address resolved numeric address
    * @param port TCP port in {@code [0, 65535]}
@@ -100,7 +101,7 @@ public class Peer implements WritableToDataOutputStream {
    * @param physical input in the form {@code <host>:<port>}
    * @param allowUnknown when {@code true}, allow construction even if the DNS name cannot be
    *     resolved at this time
-   * @throws PeerParseException if the input is malformed or the port is missing/invalid
+   * @throws PeerParseException if the input is malformed, or the port is missing/invalid
    * @throws UnknownHostException if {@code allowUnknown} is {@code false} and the DNS lookup fails
    */
   public Peer(String physical, boolean allowUnknown)
@@ -128,7 +129,7 @@ public class Peer implements WritableToDataOutputStream {
    * @param checkHostnameOrIPSyntax when {@code true}, validate the DNS hostname or IPv4 literal
    *     syntax
    * @throws HostnameSyntaxException if syntax validation fails
-   * @throws PeerParseException if the input is malformed or the port is missing/invalid
+   * @throws PeerParseException if the input is malformed, or the port is missing/invalid
    * @throws UnknownHostException if {@code allowUnknown} is {@code false} and the DNS lookup fails
    */
   public Peer(String physical, boolean allowUnknown, boolean checkHostnameOrIPSyntax)
@@ -265,7 +266,7 @@ public class Peer implements WritableToDataOutputStream {
 
   /**
    * Forces a re‑lookup when the hostname is primary, even if a previous resolution exists. This is
-   * typically used before reconnect attempts when a dynamic DNS address may have changed.
+   * typically used before reconnection attempts when a dynamic DNS address may have changed.
    */
   @SuppressWarnings("UnusedReturnValue")
   public InetAddress getHandshakeAddress() {
@@ -381,7 +382,9 @@ public class Peer implements WritableToDataOutputStream {
    * <p>This is not a strict total ordering. Callers that require a complete order should apply an
    * additional tie‑breaker.
    */
-  public static class PeerComparator implements Comparator<Peer> {
+  public static class PeerComparator implements Comparator<Peer>, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
     /**
      * Compares two peers according to {@link PeerComparator} rules.
      *

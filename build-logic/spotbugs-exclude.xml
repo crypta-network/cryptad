@@ -44,4 +44,18 @@
     <Class name="network.crypta.client.InsertBlock"/>
     <Field name="clientMetadata"/>
   </Match>
+
+  <!--
+    These comparators are request-scoped UI helpers. They carry transient sort parameters for
+    rendering and are never persisted or sent over the wire, so forcing Serializable adds no value.
+  -->
+  <Match>
+    <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
+    <Class name="network.crypta.clients.http.DarknetConnectionsToadlet$DarknetComparator"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
+    <Class name="network.crypta.clients.http.OpennetConnectionsToadlet$OpennetComparator"/>
+  </Match>
 </FindBugsFilter>

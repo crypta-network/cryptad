@@ -1,5 +1,7 @@
 package network.crypta.node;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -751,7 +753,10 @@ class NPFPacket {
         + " fragments";
   }
 
-  private static class MessageFragmentComparator implements Comparator<MessageFragment> {
+  private static class MessageFragmentComparator
+      implements Comparator<MessageFragment>, Serializable {
+    @Serial private static final long serialVersionUID = 1L;
+
     @Override
     public int compare(MessageFragment frag1, MessageFragment frag2) {
       return Integer.compare(frag1.messageID, frag2.messageID);
