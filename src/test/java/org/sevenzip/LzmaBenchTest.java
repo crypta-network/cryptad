@@ -31,7 +31,7 @@ class LzmaBenchTest {
   void setUpStreams() {
     originalOut = System.out;
     outContent = new ByteArrayOutputStream();
-    testOut = new PrintStream(outContent);
+    testOut = new PrintStream(outContent, false, StandardCharsets.UTF_8);
     System.setOut(testOut);
   }
 
@@ -173,7 +173,7 @@ class LzmaBenchTest {
     try (MockedConstruction<Encoder> encoderConstruction =
             Mockito.mockConstruction(
                 Encoder.class,
-                (mock, context) -> {
+                (mock, _) -> {
                   Mockito.when(mock.setDictionarySize(dictionarySize)).thenReturn(true);
                   Mockito.doAnswer(
                           invocation -> {
@@ -198,7 +198,7 @@ class LzmaBenchTest {
         MockedConstruction<Decoder> decoderConstruction =
             Mockito.mockConstruction(
                 Decoder.class,
-                (mock, context) ->
+                (mock, _) ->
                     Mockito.when(
                             mock.code(
                                 Mockito.any(java.io.InputStream.class),
@@ -207,11 +207,11 @@ class LzmaBenchTest {
                         .thenReturn(true));
         MockedConstruction<CRC> crcConstruction =
             Mockito.mockConstruction(
-                CRC.class, (mock, context) -> Mockito.when(mock.getDigest()).thenReturn(123));
+                CRC.class, (mock, _) -> Mockito.when(mock.getDigest()).thenReturn(123));
         MockedConstruction<LzmaBench.CrcOutStream> crcOutConstruction =
             Mockito.mockConstruction(
                 LzmaBench.CrcOutStream.class,
-                (mock, context) -> Mockito.when(mock.getDigest()).thenReturn(123))) {
+                (mock, _) -> Mockito.when(mock.getDigest()).thenReturn(123))) {
       LzmaBench.lzmaBenchmark(1, dictionarySize);
 
       String output = outContent.toString(StandardCharsets.UTF_8);

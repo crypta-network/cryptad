@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Handler;
@@ -72,7 +73,9 @@ public class LzmaAlone {
 
   private static final class SystemOutHandler extends Handler {
     private static final AtomicReference<PrintStream> LOG_STREAM =
-        new AtomicReference<>(new PrintStream(new FileOutputStream(FileDescriptor.out)));
+        new AtomicReference<>(
+            new PrintStream(
+                new FileOutputStream(FileDescriptor.out), false, StandardCharsets.UTF_8));
     private final SimpleFormatter formatter = new SimpleFormatter();
 
     SystemOutHandler() {

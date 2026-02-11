@@ -1,6 +1,7 @@
 package network.crypta.node
 
 import java.io.PrintWriter
+import java.nio.charset.StandardCharsets
 import network.crypta.fs.APP_RUNTIME_SUBPATH
 import picocli.CommandLine
 import picocli.CommandLine.*
@@ -50,7 +51,6 @@ import picocli.CommandLine.*
   versionProvider = NodeCli.CryptadVersionProvider::class,
 )
 class NodeCli {
-
   /** Optional explicit config file path (flag). */
   @Option(
     names = ["-c", "--config-file"],
@@ -99,7 +99,7 @@ class NodeCli {
   )
   var runDir: String? = null
 
-  /** Override the logs directory. */
+  /** Override the logs' directory. */
   @Option(
     names = ["-L", "--logs-dir"],
     paramLabel = "PATH",
@@ -128,6 +128,7 @@ class NodeCli {
       description = ["Shortcut for --service-mode=service"],
     )
     var service: Boolean = false
+
     @Option(names = ["--user", "--app"], description = ["Shortcut for --service-mode=user"])
     var user: Boolean = false
   }
@@ -179,7 +180,8 @@ class NodeCli {
       commandLine: CommandLine?,
       parseResult: ParseResult?,
     ): Int {
-      val out: PrintWriter = commandLine?.err ?: PrintWriter(System.err)
+      val out: PrintWriter =
+        commandLine?.err ?: PrintWriter(System.err, false, StandardCharsets.UTF_8)
       out.println("Error: ${ex?.message}")
       out.println()
       commandLine?.usage(out)

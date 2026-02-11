@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
@@ -511,7 +512,7 @@ public class LzmaBench {
 
   private static final class NonClosingPrintStream extends PrintStream {
     NonClosingPrintStream(PrintStream delegate) {
-      super(delegate);
+      super(delegate, false, StandardCharsets.UTF_8);
     }
 
     @Override

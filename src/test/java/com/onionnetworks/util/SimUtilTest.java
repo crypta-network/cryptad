@@ -40,7 +40,7 @@ class SimUtilTest {
 
     originalOut = System.out;
     stdout = new ByteArrayOutputStream();
-    System.setOut(new PrintStream(stdout));
+    System.setOut(new PrintStream(stdout, false, StandardCharsets.UTF_8));
   }
 
   @AfterEach
