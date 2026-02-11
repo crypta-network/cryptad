@@ -635,12 +635,9 @@ public class SimpleFieldSet {
       boolean overwrite,
       boolean fromRead) {
     if (subsets == null) subsets = new ConcurrentHashMap<>();
-    SimpleFieldSet fs = subsets.get(before);
-    if (fs == null) {
-      fs = new SimpleFieldSet(shortLived, alwaysUseBase64);
-      if (!shortLived) before = before.intern();
-      subsets.put(before, fs);
-    }
+    String subsetKey = shortLived ? before : before.intern();
+    SimpleFieldSet fs =
+        subsets.computeIfAbsent(subsetKey, _ -> new SimpleFieldSet(shortLived, alwaysUseBase64));
     fs.put(after, value, allowMultiple, overwrite, fromRead);
   }
 
