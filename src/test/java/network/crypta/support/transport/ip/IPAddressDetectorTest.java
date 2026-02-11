@@ -293,7 +293,7 @@ class IPAddressDetectorTest {
 
   /** Test subclass that counts checkpoint invocations and supplies a deterministic snapshot. */
   private static final class CountingDetector extends IPAddressDetector {
-    int checkpointCalls = 0;
+    volatile int checkpointCalls = 0;
 
     CountingDetector(long interval, NodeIPDetector detector) {
       super(interval, detector);
