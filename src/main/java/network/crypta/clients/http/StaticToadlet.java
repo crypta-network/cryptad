@@ -21,8 +21,8 @@ import network.crypta.support.io.FileBucket;
  * cautious path validation to prevent escaping the allowed roots, sets conservative cache headers
  * so clients refresh modified assets quickly, and hands buckets to the {@link ToadletContext} for
  * streaming without retaining ownership. Typical usage wires an instance into the HTTP server
- * registry so that theme assets, icons, and HTML fragments can be fetched by browsers. The handler
- * is stateless and thread-safe provided callers supply independent {@link ToadletContext} instances
+ * registry so that browsers can fetch theme assets, icons, and HTML fragments. The handler is
+ * stateless and thread-safe provided callers supply independent {@link ToadletContext} instances
  * per request.
  *
  * <p>Responsibilities include:
@@ -35,8 +35,8 @@ import network.crypta.support.io.FileBucket;
  *       the hosting JAR or file.
  * </ul>
  *
- * Clients should prefer this toadlet over ad-hoc file serving to keep consistent validation, cache
- * behavior, and ownership semantics for buckets.
+ * Clients should prefer this toadlet over the ad-hoc file serving to keep consistent validation,
+ * cache behavior, and ownership semantics for buckets.
  */
 public class StaticToadlet extends Toadlet {
   StaticToadlet() {
@@ -128,9 +128,11 @@ public class StaticToadlet extends Toadlet {
   }
 
   /**
-   * Try to find the modification time for a URL, or return null if not possible We usually load our
-   * resources from the JAR, or possibly from a file in some setups, so we check the modification
-   * time of the JAR for resources in a jar and the mtime for files.
+   * Tries to find the modification time for a URL.
+   *
+   * <p>Returns {@code null} when modification time cannot be determined. Resources are usually
+   * loaded from a JAR, but some setups load from plain files. For JAR resources this checks the JAR
+   * file mtime; for file resources it checks the file mtime.
    */
   private Instant getUrlMTime(URL url) {
     if (url == null) {
@@ -227,7 +229,8 @@ public class StaticToadlet extends Toadlet {
       return;
     }
     // Do not use try-with-resources: ToadletContext assumes ownership of the bucket and will free
-    // it after sending the response. Closing it here could discard data before the send completes.
+    // it after sending the response. Closing it here could discard data before the sending
+    // completes.
     FileBucket fb = new FileBucket(from, true, false, false, false);
     boolean handedOff = false;
     try {
@@ -257,14 +260,16 @@ public class StaticToadlet extends Toadlet {
       sendPathNotFound(ctx);
       return;
     }
-    Bucket data = ctx.getBucketFactory().makeBucket(strm.available());
-    try (InputStream inputStream = strm;
-        OutputStream os = data.getOutputStream()) {
-      byte[] cbuf = new byte[4096];
-      while (true) {
-        int r = inputStream.read(cbuf);
-        if (r == -1) break;
-        os.write(cbuf, 0, r);
+    Bucket data;
+    try (InputStream inputStream = strm) {
+      data = ctx.getBucketFactory().makeBucket(inputStream.available());
+      try (OutputStream os = data.getOutputStream()) {
+        byte[] cbuf = new byte[4096];
+        while (true) {
+          int r = inputStream.read(cbuf);
+          if (r == -1) break;
+          os.write(cbuf, 0, r);
+        }
       }
     }
 

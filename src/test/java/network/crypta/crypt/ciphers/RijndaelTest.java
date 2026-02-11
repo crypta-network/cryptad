@@ -1,6 +1,12 @@
 package network.crypta.crypt.ciphers;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -240,93 +246,93 @@ class RijndaelTest {
               + type
               + testNumber
               + ".txt";
-      InputStream is = getClass().getResourceAsStream(path);
-      assertNotNull(is, "Missing test vector resource: " + path);
-      try (is;
-          InputStreamReader isr = new InputStreamReader(is, StandardCharsets.ISO_8859_1);
-          BufferedReader br = new BufferedReader(isr)) {
-        for (int i = 0; i < 7; i++) {
-          assertNotNull(br.readLine()); // Skip header, ensure present
-        }
-        String line = br.readLine();
-        int blockSize = Integer.parseInt(line.substring("BLOCKSIZE=".length()));
-        line = br.readLine();
-        int keySize = Integer.parseInt(line.substring("KEYSIZE=  ".length()));
-        assert (blockSize == 128 || blockSize == 192 || blockSize == 256);
-        assert (keySize == 128 || keySize == 192 || keySize == 256);
-        assertNotNull(br.readLine());
-        byte[] plaintext = null;
-        byte[] key = null;
-        byte[] ciphertext = null;
-        while (true) {
-          line = br.readLine();
-          if (line == null) {
-            break; // End of file.
+      try (InputStream is = getClass().getResourceAsStream(path)) {
+        assertNotNull(is, "Missing test vector resource: " + path);
+        try (InputStreamReader isr = new InputStreamReader(is, StandardCharsets.ISO_8859_1);
+            BufferedReader br = new BufferedReader(isr)) {
+          for (int i = 0; i < 7; i++) {
+            assertNotNull(br.readLine()); // Skip header, ensure present
           }
-          String prefix = line.substring(0, 6);
-          if (!prefix.equals("TEST= ")) {
-            byte[] data = HexUtil.hexToBytes(line.substring(6));
-            switch (prefix) {
-              case "PT=   " -> {
-                assertNull(plaintext);
-                plaintext = data;
-                assertEquals(plaintext.length, blockSize / 8);
-              }
-              case "KEY=  " -> {
-                assertNull(key);
-                key = data;
-                assertEquals(key.length, keySize / 8);
-              }
-              case "CT=   " -> {
-                assertNull(ciphertext);
-                ciphertext = data;
-                assertEquals(ciphertext.length, blockSize / 8);
-              }
-              default ->
-                  fail(
-                      "Unexpected prefix '"
-                          + prefix
-                          + "' in Gladman vector (type="
-                          + type
-                          + ", test="
-                          + testNumber
-                          + "): "
-                          + line);
+          String line = br.readLine();
+          int blockSize = Integer.parseInt(line.substring("BLOCKSIZE=".length()));
+          line = br.readLine();
+          int keySize = Integer.parseInt(line.substring("KEYSIZE=  ".length()));
+          assert (blockSize == 128 || blockSize == 192 || blockSize == 256);
+          assert (keySize == 128 || keySize == 192 || keySize == 256);
+          assertNotNull(br.readLine());
+          byte[] plaintext = null;
+          byte[] key = null;
+          byte[] ciphertext = null;
+          while (true) {
+            line = br.readLine();
+            if (line == null) {
+              break; // End of file.
             }
-            if (plaintext != null && ciphertext != null && key != null) {
-              Rijndael cipher = new Rijndael(keySize, blockSize);
-              cipher.initialize(key);
-              // Encrypt
-              byte[] copyOfPlaintext = Arrays.copyOf(plaintext, plaintext.length);
-              byte[] output = new byte[blockSize / 8];
-              cipher.encipher(copyOfPlaintext, output);
-              assertArrayEquals(output, ciphertext);
-              // Decrypt
-              byte[] copyOfCiphertext = Arrays.copyOf(ciphertext, ciphertext.length);
-              Arrays.fill(output, (byte) 0);
-              cipher.decipher(copyOfCiphertext, output);
-              assertArrayEquals(output, plaintext);
-              if (blockSize == 128 && (keySize == 128 || TestJca.AES_CTR_AVAILABLE)) {
-                // We can test with JCA too.
-                // Encrypt.
-                SecretKeySpec k = new SecretKeySpec(key, "AES");
-                Cipher c = Cipher.getInstance(JCA_AES_ECB_NOPADDING);
-                c.init(Cipher.ENCRYPT_MODE, k);
-                output = c.doFinal(plaintext);
+            String prefix = line.substring(0, 6);
+            if (!prefix.equals("TEST= ")) {
+              byte[] data = HexUtil.hexToBytes(line.substring(6));
+              switch (prefix) {
+                case "PT=   " -> {
+                  assertNull(plaintext);
+                  plaintext = data;
+                  assertEquals(plaintext.length, blockSize / 8);
+                }
+                case "KEY=  " -> {
+                  assertNull(key);
+                  key = data;
+                  assertEquals(key.length, keySize / 8);
+                }
+                case "CT=   " -> {
+                  assertNull(ciphertext);
+                  ciphertext = data;
+                  assertEquals(ciphertext.length, blockSize / 8);
+                }
+                default ->
+                    fail(
+                        "Unexpected prefix '"
+                            + prefix
+                            + "' in Gladman vector (type="
+                            + type
+                            + ", test="
+                            + testNumber
+                            + "): "
+                            + line);
+              }
+              if (plaintext != null && ciphertext != null && key != null) {
+                Rijndael cipher = new Rijndael(keySize, blockSize);
+                cipher.initialize(key);
+                // Encrypt
+                byte[] copyOfPlaintext = Arrays.copyOf(plaintext, plaintext.length);
+                byte[] output = new byte[blockSize / 8];
+                cipher.encipher(copyOfPlaintext, output);
                 assertArrayEquals(output, ciphertext);
-
-                // Decrypt.
-                c.init(Cipher.DECRYPT_MODE, k);
-                output = c.doFinal(ciphertext);
+                // Decrypt
+                byte[] copyOfCiphertext = Arrays.copyOf(ciphertext, ciphertext.length);
+                Arrays.fill(output, (byte) 0);
+                cipher.decipher(copyOfCiphertext, output);
                 assertArrayEquals(output, plaintext);
-              }
-              // Clear
-              if (type.equals("t")) {
-                plaintext = null;
-              }
-              ciphertext = null;
-              if (type.equals("k")) {
-                key = null;
+                if (blockSize == 128 && (keySize == 128 || TestJca.AES_CTR_AVAILABLE)) {
+                  // We can test with JCA too.
+                  // Encrypt.
+                  SecretKeySpec k = new SecretKeySpec(key, "AES");
+                  Cipher c = Cipher.getInstance(JCA_AES_ECB_NOPADDING);
+                  c.init(Cipher.ENCRYPT_MODE, k);
+                  output = c.doFinal(plaintext);
+                  assertArrayEquals(output, ciphertext);
+
+                  // Decrypt.
+                  c.init(Cipher.DECRYPT_MODE, k);
+                  output = c.doFinal(ciphertext);
+                  assertArrayEquals(output, plaintext);
+                }
+                // Clear
+                if (type.equals("t")) {
+                  plaintext = null;
+                }
+                ciphertext = null;
+                if (type.equals("k")) {
+                  key = null;
+                }
               }
             }
           }
@@ -1940,7 +1946,7 @@ class RijndaelTest {
       HexUtil.hexToBytes("8BAE4EFB70D33A9792EEA9BE70889D72")
     }, //
   };
-  /* This test vector for Rijndael(256,256) was generated with generic implementation */
+  /* This test vector for Rijndael(256,256) was generated with a generic implementation */
   private static final byte[][][] TEST_VK256x256 = { //
     /* I=1 */
     {
