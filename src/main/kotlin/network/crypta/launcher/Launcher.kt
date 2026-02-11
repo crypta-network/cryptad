@@ -15,6 +15,8 @@ import network.crypta.fs.AppEnv
 /** Application display name used across the launcher UI and system integration. */
 internal const val APP_NAME: String = "Crypta Launcher"
 
+@Volatile private var launcherInstance: CryptaLauncher? = null
+
 /**
  * Crypta Swing Launcher (View).
  *
@@ -22,12 +24,6 @@ internal const val APP_NAME: String = "Crypta Launcher"
  * keyboard shortcuts and UI behavior identical to the original implementation.
  */
 class CryptaLauncher : JFrame(APP_NAME) {
-  companion object {
-    @Volatile
-    var instance: CryptaLauncher? = null
-      private set
-  }
-
   private val startStopBtn = JButton("Start")
   private val launchBtn = JButton("Launch in Browser")
   private val quitBtn = JButton("Quit")
@@ -107,7 +103,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
   }
 
   init {
-    instance = this
+    registerLauncherInstance(this)
     defaultCloseOperation = DO_NOTHING_ON_CLOSE
     // Allow shrinking to half of the default size
     minimumSize = Dimension(450, 300)
@@ -220,20 +216,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
     uiScope.launch { controller.logs.collectLatest { appendLog(it) } }
 
     // Bind state
-    uiScope.launch {
-      controller.state.collect { st ->
-        startStopBtn.text = if (st.isRunning) "Stop" else "Start"
-        startStopBtn.isEnabled = !st.isShuttingDown
-        launchBtn.isEnabled = st.isRunning && st.knownPort != null && !st.isShuttingDown
-        // Update the tooltip with the actual port when known
-        launchBtn.toolTipText =
-          if (st.knownPort != null) {
-            "Open http://localhost:${st.knownPort}/ in your browser"
-          } else {
-            "Open http://localhost:<port>/ in your browser"
-          }
-      }
-    }
+    uiScope.launch { controller.state.collect(::renderState) }
 
     // Auto-start
     SwingUtilities.invokeLater { controller.start() }
@@ -253,6 +236,18 @@ class CryptaLauncher : JFrame(APP_NAME) {
         logArea.caretPosition = logArea.document.length
       }
     }
+  }
+
+  private fun renderState(st: AppState) {
+    startStopBtn.text = if (st.isRunning) "Stop" else "Start"
+    startStopBtn.isEnabled = !st.isShuttingDown
+    launchBtn.isEnabled = st.isRunning && st.knownPort != null && !st.isShuttingDown
+    launchBtn.toolTipText =
+      if (st.knownPort != null) {
+        "Open http://localhost:${st.knownPort}/ in your browser"
+      } else {
+        "Open http://localhost:<port>/ in your browser"
+      }
   }
 
   private fun scrollRows(deltaRows: Int) {
@@ -294,6 +289,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
         logDebug("Failed to remove global key dispatcher", t)
       }
       dispose()
+      launcherInstance = null
       uiScope.cancel()
       try {
         ThemeSwitcher.shutdown()
@@ -470,6 +466,10 @@ private fun createAndShowLauncherUi() {
   installWindowsHooksIfNeeded(f)
 }
 
+private fun registerLauncherInstance(launcher: CryptaLauncher) {
+  launcherInstance = launcher
+}
+
 private fun setWindowAndDockIcons(f: JFrame) {
   try {
     val img = loadAppIconImage()
@@ -512,7 +512,7 @@ private fun registerJvmShutdownHook() {
       .addShutdownHook(
         Thread {
           try {
-            CryptaLauncher.instance?.shutdownFromSignal()
+            launcherInstance?.shutdownFromSignal()
           } catch (t: Throwable) {
             logDebug("Shutdown hook failed during shutdownFromSignal()", t)
           }

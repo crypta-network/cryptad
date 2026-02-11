@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -220,6 +219,21 @@ class HashResultTest {
   }
 
   @Test
+  void get_whenReturnedArrayMutated_expectInternalStateUnchanged() {
+    // Arrange
+    byte[] bytes = bytesFor(HashType.SHA1, 1);
+    HashResult[] hashes = new HashResult[] {new HashResult(HashType.SHA1, bytes)};
+
+    // Act
+    byte[] first = HashResult.get(hashes, HashType.SHA1);
+    first[0] = (byte) (first[0] + 1);
+    byte[] second = HashResult.get(hashes, HashType.SHA1);
+
+    // Assert
+    assertArrayEquals(bytes, second);
+  }
+
+  @Test
   void get_whenTypeAbsent_expectEmptyArray() {
     // Arrange
     HashResult[] hashes =
@@ -260,7 +274,7 @@ class HashResultTest {
     assertEquals(1, copy.length);
     assertNotSame(original, copy[0]);
     assertEquals(original.type, copy[0].type);
-    assertSame(resultBytes(original), resultBytes(copy[0]));
+    assertArrayEquals(resultBytes(original), resultBytes(copy[0]));
   }
 
   @Test
@@ -274,7 +288,7 @@ class HashResultTest {
     // Assert
     assertNotSame(original, cloned);
     assertEquals(original.type, cloned.type);
-    assertSame(resultBytes(original), resultBytes(cloned));
+    assertArrayEquals(resultBytes(original), resultBytes(cloned));
   }
 
   @Test

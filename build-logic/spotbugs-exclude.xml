@@ -58,4 +58,26 @@
     <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
     <Class name="network.crypta.clients.http.OpennetConnectionsToadlet$OpennetComparator"/>
   </Match>
+
+  <!--
+    These accessors intentionally expose process-wide singleton services. Defensive copying is not
+    possible for SecureRandom/BaseL10n and would break call sites that rely on shared state.
+  -->
+  <Match>
+    <Bug pattern="MS_EXPOSE_REP"/>
+    <Class name="com.onionnetworks.util.Util"/>
+    <Method name="getRand"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="MS_EXPOSE_REP"/>
+    <Class name="network.crypta.l10n.NodeL10n"/>
+    <Method name="getBase"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="MS_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeStarter"/>
+    <Method name="getGlobalSecureRandom"/>
+  </Match>
 </FindBugsFilter>
