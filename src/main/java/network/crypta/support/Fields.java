@@ -833,9 +833,10 @@ public abstract class Fields {
    */
   public static byte[] shortToBytes(short x) {
     byte[] buf = new byte[2];
+    int unsigned = x & 0xFFFF;
     for (int j = 0; j < 2; j++) {
-      buf[j] = (byte) x;
-      x = (short) (x >>> 8);
+      buf[j] = (byte) unsigned;
+      unsigned >>>= 8;
     }
     return buf;
   }

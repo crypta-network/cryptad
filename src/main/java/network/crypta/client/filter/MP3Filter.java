@@ -280,19 +280,19 @@ public class MP3Filter implements ContentDataFilter {
   private static void processFrame(DataInputStream in, DataOutputStream out, State st)
       throws IOException {
     final int frameHeader = st.frameHeader;
-    final byte version = (byte) ((frameHeader & 0x00180000) >>> 19); // 2 bits
+    final int version = (frameHeader >>> 19) & 0x03; // 2 bits
     if (version == 1) {
       st.foundStream = false;
       return; // Not valid
     }
-    final byte layer = (byte) ((frameHeader & 0x00060000) >>> 17); // 2 bits
+    final int layer = (frameHeader >>> 17) & 0x03; // 2 bits
     if (layer == 0) {
       st.foundStream = false;
       return; // Not valid
     }
     // WARNING: layer is encoded! 1 = layer 3, 2 = layer 2, 3 = layer 1!
     final boolean hasCRC = ((frameHeader & 0x00010000) >>> 16) != 1; // 1 bit, but inverted
-    final byte bitrateIndex = (byte) ((frameHeader & 0x0000f000) >>> 12); // 4 bits
+    final int bitrateIndex = (frameHeader >>> 12) & 0x0F; // 4 bits
     if (bitrateIndex == 0) {
       // Free bitrate ("freeformat") is hard to support and uncommon.
       st.foundStream = false;
@@ -303,7 +303,7 @@ public class MP3Filter implements ContentDataFilter {
       st.foundStream = false;
       return; // Not valid
     }
-    final byte samplerateIndex = (byte) ((frameHeader & 0x00000c00) >>> 10); // 2 bits
+    final int samplerateIndex = (frameHeader >>> 10) & 0x03; // 2 bits
     if (samplerateIndex == 3) {
       st.foundStream = false;
       return; // Not valid
