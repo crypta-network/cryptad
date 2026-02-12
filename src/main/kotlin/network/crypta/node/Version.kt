@@ -306,7 +306,7 @@ fun parseBuildNumberFromVersionStr(
  * @param versionStr The version string from a peer
  */
 fun seenVersion(versionStr: String?) {
-    val v = Fields.commaList(versionStr) ?: return
+    val v = Fields.commaList(versionStr)
     if (v.size < 3) return // bad, but that will be discovered elsewhere
 
     val version =
@@ -422,7 +422,7 @@ private fun parseVersionOrNull(
         return null
     }
 
-    val v = Fields.commaList(version) ?: return null
+    val v = Fields.commaList(version)
     return if (v.size < 3 || !isValidProtocol(v[2])) null else v
 }
 
@@ -614,4 +614,4 @@ fun isBuildAtLeast(
  * @return The node name ("Cryptad", "Fred") or null if the version string
  *    is invalid
  */
-fun parseNodeNameFromVersionStr(version: String?): String? = version?.let { Fields.commaList(it)?.firstOrNull() }
+fun parseNodeNameFromVersionStr(version: String?): String? = version?.let { Fields.commaList(it).firstOrNull() }

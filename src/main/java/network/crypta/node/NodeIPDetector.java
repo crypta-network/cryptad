@@ -495,7 +495,6 @@ public class NodeIPDetector {
 
   public boolean hasDirectlyDetectedIP() {
     InetAddress[] addrs = ipDetector.getAddress(node.network().executor());
-    if (addrs == null) return false;
     for (InetAddress addr : addrs) {
       if (IPUtil.isValidAddress(addr, false)) {
         if (LOG.isDebugEnabled()) LOG.debug("Direct detection available: {}", addr);

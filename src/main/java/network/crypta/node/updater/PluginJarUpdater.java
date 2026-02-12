@@ -220,12 +220,7 @@ public class PluginJarUpdater extends NodeUpdater {
       if (this.result != null) oldResult = this.result.asBucket();
       this.result = result;
     }
-    if (oldResult != null) {
-      //noinspection EmptyTryBlock
-      try (var _ = oldResult) {
-        // release previous result bucket
-      }
-    }
+    if (oldResult != null) oldResult.close();
 
     PluginInfoWrapper loaded = pluginManager.findPluginByIdentifier(pluginName);
 
