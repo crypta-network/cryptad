@@ -503,6 +503,18 @@ public class FailureCodeTracker implements Serializable {
   private static final int MAGIC = 0xb605aa08;
   private static final int VERSION = 1;
 
+  private static int upperLimitErrorCode(boolean insert) {
+    return insert ? insertUpperLimitErrorCode() : fetchUpperLimitErrorCode();
+  }
+
+  private static int insertUpperLimitErrorCode() {
+    return InsertException.UPPER_LIMIT_ERROR_CODE;
+  }
+
+  private static int fetchUpperLimitErrorCode() {
+    return FetchException.UPPER_LIMIT_ERROR_CODE;
+  }
+
   /**
    * Compute the byte length of the fixed-size representation produced by {@link
    * #writeFixedLengthTo(DataOutputStream)}.
@@ -515,8 +527,7 @@ public class FailureCodeTracker implements Serializable {
    * @return the number of bytes required to serialize a tracker at that mode’s upper limit
    */
   public static int getFixedLength(boolean insert) {
-    int upperLimit =
-        insert ? InsertException.UPPER_LIMIT_ERROR_CODE : FetchException.UPPER_LIMIT_ERROR_CODE;
+    int upperLimit = upperLimitErrorCode(insert);
     return 4 + 4 + 4 + 4 * upperLimit;
   }
 
@@ -532,8 +543,7 @@ public class FailureCodeTracker implements Serializable {
    * @throws IOException if writing to {@code dos} fails
    */
   public synchronized void writeFixedLengthTo(DataOutputStream dos) throws IOException {
-    int upperLimit =
-        insert ? InsertException.UPPER_LIMIT_ERROR_CODE : FetchException.UPPER_LIMIT_ERROR_CODE;
+    int upperLimit = upperLimitErrorCode(insert);
     dos.writeInt(MAGIC);
     dos.writeInt(VERSION);
     dos.writeInt(upperLimit);
@@ -596,8 +606,7 @@ public class FailureCodeTracker implements Serializable {
       throw new StorageFormatException("Bad magic for FailureCodeTracker");
     if (dis.readInt() != VERSION)
       throw new StorageFormatException("Bad version for FailureCodeTracker");
-    int upperLimit =
-        insert ? InsertException.UPPER_LIMIT_ERROR_CODE : FetchException.UPPER_LIMIT_ERROR_CODE;
+    int upperLimit = upperLimitErrorCode(insert);
     if (dis.readInt() != upperLimit)
       throw new StorageFormatException("Bad upper limit for FailureCodeTracker");
     for (int i = 0; i < upperLimit; i++) {
