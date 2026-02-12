@@ -214,7 +214,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    *     {@code null} or type-specific.
    * @param cryptoKey Crypto key bytes. When provided must be 32 bytes.
    * @param extra2 Extra parameter bytes (algorithm/mode, etc.), type-specific; may be {@code null}.
-   * @throws IllegalArgumentException if a {@code CHK} routing key is not 32 bytes or if a crypto
+   * @throws IllegalArgumentException if a {@code CHK} routing key is not 32 bytes, or if a crypto
    *     key is not 32 bytes.
    */
   public FreenetURI(
@@ -230,7 +230,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * @param metaStr Single meta-string segment; may be {@code null}.
    * @param routingKey Routing key bytes.
    * @param cryptoKey Crypto key bytes.
-   * @throws IllegalArgumentException on invalid key lengths (see other constructor).
+   * @throws IllegalArgumentException on invalid key lengths (see the other constructor).
    */
   public FreenetURI(
       String keyType, String docName, String metaStr, byte[] routingKey, byte[] cryptoKey) {
@@ -296,7 +296,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
       byte[] cryptoKey,
       byte[] extra2,
       long suggestedEdition) {
-    // Construct from components with explicit edition
+    // Construct from components with an explicit edition
     this.keyType = keyType.trim().toUpperCase(Locale.ROOT).intern();
     this.docName = docName;
     this.metaStr = metaStr;
@@ -346,7 +346,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     String normalized = stripQueryAndMaybeDecode(uriString, noTrim);
     normalized = URI_PREFIX.matcher(normalized).replaceFirst("");
 
-    // decode keyType (left of '@') and remainder (right of '@')
+    // decode keyType (left of '@') and the remainder (right of '@')
     int atchar = normalized.indexOf('@');
     if (atchar == -1)
       throw new MalformedURLException("There is no @ in that URI! (" + normalized + ')');
@@ -406,7 +406,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     throw new MalformedURLException("Invalid key type: " + kt);
   }
 
-  @SuppressWarnings("java:S6206")
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
   private static final class MetaParse {
     private final String docName;
     private final String[] meta;
@@ -536,7 +536,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return meta;
   }
 
-  @SuppressWarnings("java:S6206")
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
   private static final class KeyParts {
     private final byte[] routingKey;
     private final byte[] cryptoKey;
@@ -681,7 +681,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   /**
    * Get the document name. For a KSK this is everything from the @ to the first slash or the end of
    * the key. For an SSK this is everything from the slash to the next slash or the end of the key.
-   * CHKs don't have a doc name, they only have meta strings.
+   * CHKs don't have a doc name, they only have meta-strings.
    */
   public String getDocName() {
     return docName;
@@ -690,7 +690,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   /**
    * Get the first meta-string. This is just after the main part of the key and the doc name.
    * Meta-strings are directory (manifest) lookups delimited by /'es after the main key and the doc
-   * name if any.
+   * name, if any.
    */
   @SuppressWarnings("unused")
   public String getMetaString() {
@@ -698,17 +698,17 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   }
 
   /**
-   * Get the last meta string. Meta-strings are directory (manifest) lookups after the main key and
-   * the doc name if any. So the last meta string, if there is one, is from the last / to the end of
-   * the uri i.e. usually the filename.
+   * Get the last meta-string. Meta-strings are directory (manifest) lookups after the main key and
+   * the doc name, if any. So the last meta-string, if there is one, is from the last / to the end
+   * of the uri, i.e., usually the filename.
    */
   public String lastMetaString() {
     return ((metaStr == null) || (metaStr.length == 0)) ? null : metaStr[metaStr.length - 1];
   }
 
   /**
-   * Get all the meta strings. Meta strings are directory (manifest) lookups after the main key and
-   * the doc name if any. Examples:
+   * Get all the meta-strings. Meta-strings are directory (manifest) lookups after the main key and
+   * the doc name, if any. Examples:
    *
    * <p>CHK@blah,blah,blah/filename
    *
@@ -718,17 +718,17 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * <p>SSK@blah,blah,blah/docname/dir/subdir/filename
    *
    * <p>This has a routing key, a crypto key, extra bytes, a document name, and three meta strings
-   * "dir", "subdir" and "filename". The SSK including the docname is turned into a low level
+   * "dir", "subdir" and "filename". The SSK including the docname is turned into a low-level
    * Freenet key, which we fetch. This will produce a metadata document containing a manifest,
-   * within which we look up "dir". This either gives us another metadata document directly, or a
+   * within which we look up "dir". This either gives us another metadata document directly or a
    * redirect if the dir is inserted separately. And so on. If it's a container, the files will be
    * stored, with the metadata, in the container (tar.bz2 or whatever); the metadata fetched by
    * SSK@blah,blah,blah/docname will say that there is a container and explain how to fetch it.
    *
    * <p>KSK@gpl.txt
    *
-   * <p>This has no routing key, no crypto key, and no meta strings (but KSKs *can* have meta
-   * strings), but it has a document name.
+   * <p>This has no routing key, no crypto key, and no meta-strings (but KSKs *can* have
+   * meta-strings), but it has a document name.
    */
   public String[] getAllMetaStrings() {
     return metaStr;
@@ -740,26 +740,26 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   }
 
   /**
-   * Get the routing key. This is the first part of the key after the @ for CHKs, SSKs and USKs. For
-   * purposes of FreenetURI, KSKs do not have a routing key. For CHKs, this is ultimately derived
-   * from the hash of the encrypted data; for SSKs it is the hash of the public key.
+   * Get the routing key. This is the first part of the key after the @ for CHKs, SSKs, and USKs.
+   * For purposes of FreenetURI, KSKs do not have a routing key. For CHKs, this is ultimately
+   * derived from the hash of the encrypted data; for SSKs it is the hash of the public key.
    */
   public byte[] getRoutingKey() {
     return routingKey;
   }
 
   /**
-   * Get the crypto key. This is the second part of the key after the @ for CHKs, SSKs and USKs. For
-   * purposes of FreenetURI, KSKs do not have a crypto key. For CHKs, this is derived from the hash
-   * of the *original* plaintext data; for SSKs it is a separate key for decryption. The crypto key
-   * is kept on the requesting node and is not sent over the network - but of course many freesites
-   * and other documents on the network include URIs which do include crypto keys.
+   * Get the crypto key. This is the second part of the key after the @ for CHKs, SSKs, and USKs.
+   * For purposes of FreenetURI, KSKs do not have a crypto key. For CHKs, this is derived from the
+   * hash of the *original* plaintext data; for SSKs it is a separate key for decryption. The crypto
+   * key is kept on the requesting node and is not sent over the network - but of course many
+   * freesites and other documents on the network include URIs which do include crypto keys.
    */
   public byte[] getCryptoKey() {
     return cryptoKey;
   }
 
-  /** Get the key type. CHK, SSK, KSK or USK. Upper case, we normally use the constants. */
+  /** Get the key type. CHK, SSK, KSK, or USK. Upper case, we normally use the constants. */
   public String getKeyType() {
     return keyType;
   }
@@ -802,7 +802,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return setMetaString(newMetaStr);
   }
 
-  /** Returns a copy of this URI with these meta strings appended. */
+  /** Returns a copy of this URI with these meta-strings appended. */
   public FreenetURI addMetaStrings(String[] strs) {
     if (strs == null) return this; // legal noop, since getMetaStrings can return null
     for (int i = 0; i < strs.length; i++)
@@ -817,7 +817,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     }
   }
 
-  /** Returns a copy of this URI with these meta strings appended. */
+  /** Returns a copy of this URI with these meta-strings appended. */
   public FreenetURI addMetaStrings(List<String> metaStrings) {
     return addMetaStrings(metaStrings.toArray(new String[0]));
   }
@@ -905,7 +905,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
 
   /**
    * Encode to a user-friendly, incomplete string with ... replacing some of the base64. Allow
-   * spaces, foreign chars etc.
+   * spaces, foreign chars, etc.
    */
   public String toShortString() {
     StringBuilder b = new StringBuilder();
@@ -992,6 +992,22 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
     return readFullBinaryKey(dis);
   }
 
+  private static int extraLengthForBinaryKeyType(byte type) {
+    return switch (type) {
+      case CHK -> chkExtraLength();
+      case SSK -> sskExtraLength();
+      default -> throw new IllegalArgumentException("Unsupported key type " + type);
+    };
+  }
+
+  private static int chkExtraLength() {
+    return ClientCHK.EXTRA_LENGTH;
+  }
+
+  private static int sskExtraLength() {
+    return ClientSSK.EXTRA_LENGTH;
+  }
+
   /**
    * Read a URI from its binary encoding (no length prefix).
    *
@@ -1029,9 +1045,8 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
       // cryptoKey is a 256-bit AES key, so likewise
       cryptoKey = new byte[32];
       dis.readFully(cryptoKey);
-      // Number of bytes of extra depends on key type
-      int extraLen;
-      extraLen = (type == CHK ? ClientCHK.EXTRA_LENGTH : ClientSSK.EXTRA_LENGTH);
+      // The number of bytes of extra depends on the key type
+      int extraLen = extraLengthForBinaryKeyType(type);
       extra = new byte[extraLen];
       dis.readFully(extra);
     }
@@ -1297,7 +1312,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   /**
    * Test whether this {@code SSK} likely originated from {@link #sskForUSK()}.
    *
-   * <p>Heuristic: document name ends with a dash followed by a decimal edition number.
+   * <p>Heuristic: the document name ends with a dash followed by a decimal edition number.
    */
   public boolean isSSKForUSK() {
     return keyType.equalsIgnoreCase("SSK")
@@ -1341,8 +1356,8 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
   /**
    * Compare this URI to another for ordering.
    *
-   * <p>The comparison short-circuits on key type, routing/crypto keys, document name, extra, meta
-   * segments, and suggested edition, in that order. While worst-case cost is non-trivial, in
+   * <p>The comparison short-circuits on key type, routing/crypto keys, document name, extra,
+   * meta-segments, and suggested edition, in that order. While worst-case cost is non-trivial, in
    * practice most comparisons terminate quickly.
    */
   @Override
@@ -1397,8 +1412,8 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
    * <p>If you want to give people access to content at a URI, you should always publish only the
    * request URI. Never give away the insert URI, this allows anyone to insert under your URI!
    *
-   * @return The request URI which belongs to this insert URI.
-   * @throws MalformedURLException If this object is a USK/SSK request URI already. NOT thrown for
+   * @return The request URI, which belongs to this insert URI.
+   * @throws MalformedURLException If this object is a USK/SSK, request URI already. NOT thrown for
    *     CHK/KSK URIs!
    */
   public FreenetURI deriveRequestURIFromInsertURI() throws MalformedURLException {
@@ -1416,7 +1431,7 @@ public class FreenetURI implements Comparable<FreenetURI>, Serializable {
         newURI = newURI.setSuggestedEdition(originalURI.getSuggestedEdition());
       }
       // docName will be preserved.
-      // Any meta strings *should not* be preserved.
+      // Any meta-strings *should not* be preserved.
       return newURI;
     } else if (originalURI.isKSK()) {
       return originalURI;

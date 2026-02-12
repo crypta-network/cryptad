@@ -435,8 +435,7 @@ class FailureCodeTrackerTest {
       try (DataOutputStream dos = new DataOutputStream(bos)) {
         dos.writeInt(0xb605aa08); // MAGIC
         dos.writeInt(1); // VERSION
-        int upper =
-            insert ? InsertException.UPPER_LIMIT_ERROR_CODE : FetchException.UPPER_LIMIT_ERROR_CODE;
+        int upper = upperLimitErrorCode(insert);
         dos.writeInt(upper);
         for (int i = 0; i < upper; i++) {
           dos.writeInt(counts.getOrDefault(i, 0));
@@ -447,6 +446,18 @@ class FailureCodeTrackerTest {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private static int upperLimitErrorCode(boolean insert) {
+    return insert ? insertUpperLimitErrorCode() : fetchUpperLimitErrorCode();
+  }
+
+  private static int insertUpperLimitErrorCode() {
+    return InsertException.UPPER_LIMIT_ERROR_CODE;
+  }
+
+  private static int fetchUpperLimitErrorCode() {
+    return FetchException.UPPER_LIMIT_ERROR_CODE;
   }
 
   private static FailureCodeTracker roundTripFixedLength(
