@@ -221,15 +221,20 @@ class ByteBufferInputStreamTest {
   @Test
   void slice_whenInsufficientRemaining_throwsEOF() throws IOException {
     try (ByteBufferInputStream in = new ByteBufferInputStream(new byte[] {1})) {
-      assertThrows(EOFException.class, () -> in.slice(2));
+      assertThrows(EOFException.class, () -> sliceAndClose(in, 2));
     }
   }
 
   @Test
   void slice_whenNegativeSize_throwsIllegalArgument() throws IOException {
     try (ByteBufferInputStream in = new ByteBufferInputStream(new byte[] {1, 2, 3})) {
-      assertThrows(IllegalArgumentException.class, () -> in.slice(-1));
+      assertThrows(IllegalArgumentException.class, () -> sliceAndClose(in, -1));
     }
+  }
+
+  private static void sliceAndClose(ByteBufferInputStream in, int size) throws IOException {
+    ByteBufferInputStream slice = in.slice(size);
+    slice.close();
   }
 
   // -------------------- Underflow → EOFException tests --------------------

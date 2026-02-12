@@ -1638,11 +1638,12 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
       HTMLNode option = optionList.addChild("li");
       try {
         MediaType textMediaType = new MediaType("text/plain");
-        textMediaType.setParameter(
-            "charset",
-            (e.getExpectedMimeType() != null)
-                ? MediaType.getCharsetRobust(e.getExpectedMimeType())
-                : null);
+        textMediaType =
+            textMediaType.setParameter(
+                "charset",
+                (e.getExpectedMimeType() != null)
+                    ? MediaType.getCharsetRobust(e.getExpectedMimeType())
+                    : null);
         NodeL10n.getBase()
             .addL10nSubstitution(
                 option,

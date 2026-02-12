@@ -42,18 +42,8 @@ class FreenetURITest {
     assertEquals(uri2, uri1.sskForUSK());
     assertEquals(uri1, uri2.uskForSSK());
 
-    try {
-      uri1.uskForSSK();
-      fail("no exception throw!");
-    } catch (IllegalStateException _) {
-      // pass
-    }
-    try {
-      uri2.sskForUSK();
-      fail("no exception throw!");
-    } catch (IllegalStateException _) {
-      // pass
-    }
+    assertThrows(IllegalStateException.class, uri1::uskForSSK);
+    assertThrows(IllegalStateException.class, uri2::sskForUSK);
 
     FreenetURI chkUriForThrows = new FreenetURI(WANNA_CHK_1);
     assertThrows(IllegalStateException.class, chkUriForThrows::sskForUSK);
@@ -232,7 +222,7 @@ class FreenetURITest {
 
     FreenetURI withMeta = chk1.pushMetaString("file.txt");
     assertNotEquals(chk1, withMeta);
-    assertTrue(chk1.equalsKeypair(withMeta)); // keypair unaffected by meta strings
+    assertTrue(chk1.equalsKeypair(withMeta)); // keypair unaffected by meta-strings
   }
 
   @Test
@@ -329,7 +319,7 @@ class FreenetURITest {
     FreenetURI uri = FreenetURI.generateRandomCHK(new Random(1)).pushMetaString("file");
     // Disambiguate overloaded methods by using explicit lambdas
     assertThrows(network.crypta.client.InsertException.class, uri::checkInsertURI);
-    assertDoesNotThrow(() -> FreenetURI.EMPTY_CHK_URI.checkInsertURI());
+    assertDoesNotThrow(FreenetURI.EMPTY_CHK_URI::checkInsertURI);
   }
 
   @Test
@@ -361,7 +351,7 @@ class FreenetURITest {
             + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI.html";
     // Act
     FreenetURI chk = new FreenetURI(chkWithExt);
-    // Assert: extension is ignored; there are no meta strings and toString omits the extension
+    // Assert: extension is ignored; there are no meta-strings, and toString omits the extension
     assertEquals(
         "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
             + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI",
