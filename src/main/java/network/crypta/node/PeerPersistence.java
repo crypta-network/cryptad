@@ -72,10 +72,10 @@ class PeerPersistence {
   /** Serializes file-system writes and backup rotations. */
   private final Object writePeerFileSync = new Object();
 
-  /** Dirty flag for pending darknet writes, set by requests and cleared on write. */
+  /** Dirty flag for pending darknet writes, set by requests and cleared on writing. */
   private volatile boolean shouldWritePeersDarknet = false;
 
-  /** Dirty flag for pending opennet writes, set by requests and cleared on write. */
+  /** Dirty flag for pending opennet writes, set by requests and cleared on writing. */
   private volatile boolean shouldWritePeersOpennet = false;
 
   /** Current filename for the darknet peers file, or {@code null} until known. */
@@ -130,18 +130,19 @@ class PeerPersistence {
    * Schedule the periodic peer persistence job to run immediately.
    *
    * <p>This is normally invoked during startup once the node has completed construction. The
-   * runnable performs a best-effort write if peers are marked dirty, then re-schedules itself using
-   * {@link #scheduleWritePeersNextRun()} so the periodic cycle continues.
+   * runnable performs a best-effort writing if peers are marked dirty, then re-schedules itself
+   * using {@link #scheduleWritePeersNextRun()} so the periodic cycle continues.
    */
   void scheduleInitialWrite() {
     node.network().ticker().queueTimedJob(writePeersRunnable, 0);
   }
 
   /**
-   * Flush peer files during shutdown to avoid waiting for the periodic write interval.
+   * Flush peer files during shutdown to avoid waiting for the periodic writing interval.
    *
    * <p>This marks both darknet and opennet peer lists as dirty and then writes them synchronously
-   * on the current thread. The write is best-effort: failures are logged but do not abort shutdown.
+   * on the current thread. The writing is best-effort: failures are logged but do not abort
+   * shutdown.
    */
   void flushOnShutdown() {
     markWriteDarknet();
@@ -154,11 +155,11 @@ class PeerPersistence {
    * empty or otherwise doesn't work. WARNING: Only call this AFTER the Node constructor has
    * completed! Methods may be called on Node!
    *
-   * <p>The method attempts the primary file first and then tries backup files in order, stopping at
-   * the first successful parse. If entries are unparseable or too old, they are skipped and the
-   * original file is copied to a {@code .broken} file for inspection. When reading old opennet
-   * peers, entries are routed to the opennet manager instead of the routing table. This method does
-   * not throw; all failures are logged and treated as a non-fatal startup condition.
+   * <p>The method attempts the primary file first and then tries to back up files in order,
+   * stopping at the first successful parse. If entries are unparseable or too old, they are skipped
+   * and the original file is copied to a {@code .broken} file for inspection. When reading old
+   * opennet peers, entries are routed to the opennet manager instead of the routing table. This
+   * method does not throw; all failures are logged and treated as a non-fatal startup condition.
    *
    * @param filename path to the peers file; backups are derived from this name
    * @param crypto cryptographic identity for peers being loaded; must not be {@code null}
@@ -176,7 +177,7 @@ class PeerPersistence {
     int maxBackups = isOpennet ? BACKUPS_OPENNET : BACKUPS_DARKNET;
     for (int i = 0; i <= maxBackups; i++) {
       File peersFile = getBackupFilename(filename, i);
-      // Try to read the node list from disk
+      // Try to read the node list from the disk
       if (peersFile.exists() && readPeers(peersFile, crypto, opennet, oldOpennetPeers)) {
         if (LOG.isInfoEnabled()) {
           LOG.info(buildReadMessage(peersFile, opennet, isOpennet, oldOpennetPeers));
@@ -192,7 +193,7 @@ class PeerPersistence {
    * Mark a peer list write request so the next periodic run persists it.
    *
    * <p>This is a low-priority, coalesced update. The flag is checked on the periodic runnable; if
-   * multiple calls arrive before the next tick, only one write occurs. Use {@link
+   * multiple calls arrive before the next tick, only one writing occurs. Use {@link
    * #writePeersUrgent(boolean)} for immediate persistence on a high-priority executor thread.
    *
    * @param opennet {@code true} to mark opennet peers; {@code false} for darknet peers
@@ -205,8 +206,8 @@ class PeerPersistence {
   /**
    * Write peers immediately on a high-priority executor thread.
    *
-   * <p>This bypasses the periodic delay and triggers an immediate write with backup rotation. The
-   * write is still serialized with other disk writes to avoid concurrent file operations.
+   * <p>This bypasses the periodic delay and triggers an immediate writing with backup rotation. The
+   * writing is still serialized with other disk writes to avoid concurrent file operations.
    *
    * @param opennet {@code true} to write opennet peers; {@code false} for darknet peers
    */
@@ -216,9 +217,9 @@ class PeerPersistence {
   }
 
   /**
-   * Schedule the next periodic peer write after the configured delay.
+   * Schedule the next periodic peer writing after the configured delay.
    *
-   * <p>This keeps the persistence loop running even if the previous write encountered errors. The
+   * <p>This keeps the persistence loop running even if the previous writing encountered errors. The
    * delay is fixed and expressed in milliseconds by {@link #MIN_WRITEPEERS_DELAY}.
    */
   private void scheduleWritePeersNextRun() {
@@ -228,7 +229,7 @@ class PeerPersistence {
   /**
    * Write any pending peer lists immediately without rotating backups.
    *
-   * <p>This method performs the periodic, non-urgent write path. It clears dirty flags and writes
+   * <p>This method performs the periodic, non-urgent writing path. It clears dirty flags and writes
    * only if the cached snapshot differs from the current serialized state.
    */
   private void writePeersNow() {
@@ -263,7 +264,7 @@ class PeerPersistence {
    * @param opennet opennet manager for old-peers count, or {@code null} when absent
    * @param isOpennet {@code true} if the file contained opennet peers
    * @param oldOpennetPeers {@code true} if the file contained old opennet peers
-   * @return formatted log message describing the peer counts and source file
+   * @return a formatted log message describing the peer counts and source file
    */
   private String buildReadMessage(
       File peersFile, OpennetManager opennet, boolean isOpennet, boolean oldOpennetPeers) {
@@ -333,7 +334,7 @@ class PeerPersistence {
   }
 
   /**
-   * Dispatch an urgent opennet write on the executor with high priority.
+   * Dispatch an urgent opennet writing on the executor with high priority.
    *
    * <p>This path rotates backups and runs outside the ticker to reduce latency.
    */
@@ -355,7 +356,7 @@ class PeerPersistence {
   }
 
   /**
-   * Dispatch an urgent darknet write on the executor with high priority.
+   * Dispatch an urgent darknet writing on the executor with high priority.
    *
    * <p>This path rotates backups and runs outside the ticker to reduce latency.
    */
@@ -376,12 +377,12 @@ class PeerPersistence {
             });
   }
 
-  /** Mark the darknet peers as dirty so the next write persists them. */
+  /** Mark the darknet peers as dirty so the next writing persists them. */
   private void markWriteDarknet() {
     shouldWritePeersDarknet = true;
   }
 
-  /** Mark the opennet peers as dirty so the next write persists them. */
+  /** Mark the opennet peers as dirty so the next writing persists them. */
   private void markWriteOpennet() {
     shouldWritePeersOpennet = true;
   }
@@ -422,10 +423,9 @@ class PeerPersistence {
    */
   private String getOldOpennetPeersString(OpennetManager om) {
     StringBuilder sb = new StringBuilder();
-    PeerNode[] oldPeers = om.getOldPeers();
-    if (oldPeers == null) return sb.toString();
-    for (PeerNode pn : oldPeers) {
-      if (pn instanceof OpennetPeerNode) sb.append(pn.exportDiskFieldSet().toOrderedString());
+    OpennetPeerNode[] oldPeers = om.getOldPeers();
+    for (OpennetPeerNode pn : oldPeers) {
+      sb.append(pn.exportDiskFieldSet().toOrderedString());
     }
     return sb.toString();
   }
@@ -482,9 +482,9 @@ class PeerPersistence {
   /**
    * Write a serialized peers file to disk.
    *
-   * <p>The write uses a temporary file, flushes and syncs it, then either rotates backups or
+   * <p>The writing uses a temporary file, flushes and syncs it, then either rotates backups or
    * replaces the primary file. This method is synchronized to prevent concurrent writes from
-   * interleaving or corrupting the backup chain. Errors are logged and the previous file is left
+   * interleaving or corrupting the backup chain. Errors are logged, and the previous file is left
    * intact when possible.
    *
    * @param filename target filename to write, not {@code null}
@@ -521,7 +521,7 @@ class PeerPersistence {
       } catch (IOException e) {
         LOG.error("I/O error writing peers file: {}", e, e);
         safeDeleteIfExists(f);
-        // don't overwrite old file!
+        // don't overwrite the old file!
       } finally {
         // Try-with-resources handles the stream cleanup
         safeDeleteIfExists(f);
@@ -570,7 +570,7 @@ class PeerPersistence {
    * <p>If parsing fails for some entries, a copy of the original file is written to a {@code
    * .broken} suffix for later inspection. Old opennet peers are routed to the opennet manager,
    * while darknet peers are added directly to the peer manager. Exceptions are logged and treated
-   * as non-fatal so startup can continue.
+   * as non-fatal, so startup can continue.
    *
    * @param peersFile file to read and parse
    * @param crypto cryptographic identity used to validate parsed peers
