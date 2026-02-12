@@ -8,4 +8,28 @@
   <Match>
     <Bug pattern="DMI_RANDOM_USED_ONLY_ONCE"/>
   </Match>
+  <!--
+    Remaining CT_CONSTRUCTOR_THROW findings in test-only helper classes rely on
+    intentional constructor validation and/or anonymous subclass usage in tests.
+  -->
+  <Match>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    <Class name="com.onionnetworks.fec.DefaultFECCodeFactoryTest$FailingEightBitCode"/>
+  </Match>
+  <Match>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    <Class name="com.onionnetworks.fec.DefaultFECCodeFactoryTest$FailingErrorEightBitCode"/>
+  </Match>
+  <Match>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    <Class name="network.crypta.client.filter.WAVFilterTest$Chunk"/>
+  </Match>
+  <Match>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    <Class name="network.crypta.support.LoaderTest$CtorThrows"/>
+  </Match>
+  <Match>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    <Class name="network.crypta.support.io.PaddedRandomAccessBucketTest$InMemoryUnderlying"/>
+  </Match>
 </FindBugsFilter>
