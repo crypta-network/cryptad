@@ -16,7 +16,6 @@ import network.crypta.client.FetchWaiter;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.InsertBlock;
 import network.crypta.client.InsertException;
-import network.crypta.client.async.ClientGetter;
 import network.crypta.keys.FreenetURI;
 import network.crypta.l10n.NodeL10n;
 import network.crypta.node.RequestClient;
@@ -316,8 +315,7 @@ public abstract class Toadlet {
       fctx.setMaxTempLength(maxSize);
     }
     FetchWaiter fw = new FetchWaiter(clientContext);
-    @SuppressWarnings("unused")
-    ClientGetter getter = getClientImpl().fetch(uri, fw, fctx);
+    getClientImpl().fetch(uri, fw, fctx);
     return fw.waitForCompletion();
   }
 

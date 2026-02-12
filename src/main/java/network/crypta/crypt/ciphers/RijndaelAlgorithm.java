@@ -111,8 +111,6 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
   //	...........................................................................
 
   static {
-    long time = System.currentTimeMillis();
-
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("Algorithm Name: {}", FULL_NAME);
       LOG.debug("Electronic Codebook (ECB) Mode");
@@ -151,8 +149,6 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       r = mul(2, r);
       rcon[t] = (byte) r;
     }
-
-    time = System.currentTimeMillis() - time;
 
     if (RDEBUG && LOG.isDebugEnabled()) {
       LOG.debug("init.banner=begin");
@@ -276,7 +272,6 @@ public final class RijndaelAlgorithm // implicit no-argument constructor
       }
 
       LOG.debug("init.section=rcon.end");
-      LOG.debug("Total initialization time: {} ms.", time);
       LOG.debug("init.section=complete");
     }
   }

@@ -705,7 +705,6 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
   }
 
   private synchronized void fastPoolReseed() {
-    long startTime = System.currentTimeMillis();
     byte[] v0 = fastPool.digest();
     byte[] vi = v0;
 
@@ -721,10 +720,6 @@ public class Yarrow extends RandomSource implements PersistentRandomSource {
     rekey(tmp);
     Arrays.fill(v0, (byte) 0); // Actively wipe intermediate state for security
     fastEntropy = 0;
-    if (DEBUG) {
-      long endTime = System.currentTimeMillis();
-      if (endTime - startTime > 5000) LOG.info("Fast pool reseed took {}ms", endTime - startTime);
-    }
   }
 
   private synchronized void slowPoolReseed() {
