@@ -316,7 +316,7 @@ public final class FProxyToadlet extends Toadlet implements RequestClient {
     }
   }
 
-  static final HTMLNode DOWNLOADS_LINK = QueueToadlet.DOWNLOADS_LINK;
+  static final HTMLNode DOWNLOADS_LINK = HTMLNode.link(DOWNLOADS_PATH).setReadOnly();
 
   private static void addDownloadOptions(
       ToadletContext ctx,
