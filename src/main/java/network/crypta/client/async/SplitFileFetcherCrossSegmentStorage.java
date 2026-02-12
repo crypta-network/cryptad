@@ -337,7 +337,6 @@ public class SplitFileFetcherCrossSegmentStorage {
           try {
             // Note: consider adding a segment API to avoid re-decoding and reduce CPU usage.
             SplitFileSegmentKeys keys = segments[blockNo].getSegmentKeys();
-            if (keys == null) return false;
             boolean success =
                 segments[blockNo].innerOnGotKey(
                     key.getNodeCHK(), block, keys, blockNumbers[blockNo], data);

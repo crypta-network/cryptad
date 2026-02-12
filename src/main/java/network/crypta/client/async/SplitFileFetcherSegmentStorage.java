@@ -341,8 +341,7 @@ public class SplitFileFetcherSegmentStorage {
    * parent storage is closed.
    *
    * @return a cached {@link SplitFileSegmentKeys} instance representing decryption/verification
-   *     keys for data and check blocks; {@code null} only when the segment was initialized without
-   *     persisted keys.
+   *     keys for data and check blocks.
    * @throws IOException if reading the checksummed key list fails or a checksum mismatch is
    *     detected.
    */
@@ -360,7 +359,6 @@ public class SplitFileFetcherSegmentStorage {
         // Treat as IOException, i.e., fatal.
         throw new IOException(e);
       }
-      if (keys == null) return null;
       keysCache = new SoftReference<>(keys);
       return keys;
     }
@@ -483,7 +481,6 @@ public class SplitFileFetcherSegmentStorage {
     int totalBlocks = totalBlocks();
     byte[][] allBlocks = readAllBlocks();
     SplitFileSegmentKeys keys = getSegmentKeys();
-    if (keys == null) return;
     BlocksBuildResult build = buildBlockCandidates(totalBlocks, allBlocks);
     if (build.fetchedCount() < blocksForDecode()) {
       handleInsufficientBlocksAndReturn();
@@ -918,7 +915,6 @@ public class SplitFileFetcherSegmentStorage {
    */
   public boolean onGotKey(NodeCHK key, CHKBlock block) throws IOException {
     SplitFileSegmentKeys keys = getSegmentKeys();
-    if (keys == null) return false;
     int blockNumber;
     ClientCHK decodeKey;
     synchronized (this) {
@@ -1659,7 +1655,6 @@ public class SplitFileFetcherSegmentStorage {
     } catch (IOException _) {
       return null;
     }
-    if (keys == null) return null;
     return keys.getKey(blockNum, null, false);
   }
 

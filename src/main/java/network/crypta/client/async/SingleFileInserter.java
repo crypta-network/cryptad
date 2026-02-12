@@ -1272,7 +1272,6 @@ class SingleFileInserter implements ClientPutState, Serializable {
         meta = Metadata.mkRedirectionManifestWithMetadata(hm);
         metaPutterTargetFilename = null;
         metaBytes = toMetaBytesOrFail(meta, context);
-        if (metaBytes == null) metaBytes = new byte[0];
       }
       return new RedirectResult(meta, metaBytes, metaPutterTargetFilename);
     }

@@ -344,7 +344,7 @@ class ContentFilterTest {
         "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; "
             + "charset=UTF-16\"></head><body><a href=\"http://www.freenetproject"
             + ".org/\">Blah</a></body></html>";
-    // Ensure even-length boundary before appending the closing HTML so the subsequent
+    // Ensure an even-length boundary before appending the closing HTML so the following
     // UTF-16 segment starts on a 2-byte boundary in the mixed stream.
     s += " ";
     s = s + end;
@@ -393,7 +393,7 @@ class ContentFilterTest {
     }
 
     // Assert: no failure conditions should have been recorded. On failure, dump input for
-    // debugging and include first failure message.
+    // debugging and include the first failure message.
     assertTrue(
         failures.isEmpty(),
         () -> {
@@ -449,10 +449,6 @@ class ContentFilterTest {
 
   private String headFilter(String data) throws Exception {
     String s = htmlFilter(HEAD_OPEN + data + HEAD_CLOSE);
-    if (s == null) {
-      return null;
-    }
-
     MatcherAssert.assertThat(s, startsWith(HEAD_OPEN));
     MatcherAssert.assertThat(s, endsWith(HEAD_CLOSE));
 
@@ -857,7 +853,7 @@ class ContentFilterTest {
     assertEquals(WINDOWS_1252, status.charset);
     assertEquals(typeName, status.mimeType);
 
-    // Ensure extractor was consulted
+    // Ensure the extractor was consulted
     Mockito.verify(extractor, Mockito.atLeastOnce()).getCharsetBufferSize();
     Mockito.verify(extractor, Mockito.atLeastOnce())
         .getCharset(Mockito.any(), Mockito.anyInt(), Mockito.eq(WINDOWS_1252));
