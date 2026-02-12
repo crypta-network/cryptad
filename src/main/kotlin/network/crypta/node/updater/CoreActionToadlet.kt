@@ -47,9 +47,14 @@ class CoreActionToadlet(client: HighLevelSimpleClient, private val node: Node) :
   /** Resolves CoreActionToadlet strings from the localization bundle. */
   private fun t(key: String, replacements: Map<String, String> = emptyMap()): String {
     if (replacements.isEmpty()) return l10n.getString("CoreActionToadlet.$key")
-    val entries = replacements.entries.toList()
-    val patterns = entries.map { it.key }.toTypedArray()
-    val values = entries.map { it.value }.toTypedArray()
+    val patterns = Array(replacements.size) { "" }
+    val values = Array(replacements.size) { "" }
+    var index = 0
+    for ((pattern, replacementValue) in replacements) {
+      patterns[index] = pattern
+      values[index] = replacementValue
+      index++
+    }
     return l10n.getString("CoreActionToadlet.$key", patterns, values)
   }
 

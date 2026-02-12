@@ -89,14 +89,22 @@ fun parseWrapperProperties(lines: List<String>): Map<String, String> = buildMap 
  * @param lines original wrapper configuration lines in their existing order.
  * @param key property key to upsert; compared after trimming whitespace.
  * @param value property value to write as a single line after the `=` delimiter.
- * @return new list of lines with the update applied, preserving unrelated content.
+ * @return a new list of lines with the update applied, preserving unrelated content.
  */
 fun upsertWrapperProperty(lines: List<String>, key: String, value: String): List<String> {
+  val updatedLine = "$key=$value"
   val index = lines.indexOfFirst { matchesWrapperKey(it, key) }
   if (index >= 0) {
-    return lines.mapIndexed { i, raw -> if (i == index) "$key=$value" else raw }
+    val updated = ArrayList<String>(lines.size)
+    for (i in lines.indices) {
+      updated.add(if (i == index) updatedLine else lines[i])
+    }
+    return updated
   }
-  return lines + "$key=$value"
+  val appended = ArrayList<String>(lines.size + 1)
+  appended.addAll(lines)
+  appended.add(updatedLine)
+  return appended
 }
 
 /**
