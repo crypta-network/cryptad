@@ -238,7 +238,6 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     this.callback = params.callback();
     collisionPossible = callback.collisionPossible();
     headerBlockLength = callback.headerLength();
-    callback.fullKeyLength(); // ensure callback is initialized; length not needed here
     dataBlockLength = callback.dataLength();
 
     hdPadding =
@@ -1931,7 +1930,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
     private static final int RESIZE_MEMORY_ENTRIES =
         128; // temporary memory store size (in # of entries)
 
-    /** Move old entries to new location and resize store */
+    /** Move old entries to a new location and resize the store */
     private void resizeStore(final long _prevStoreSize, final boolean sleep) {
       LOG.info("Starting datastore resize for {}", name);
 
