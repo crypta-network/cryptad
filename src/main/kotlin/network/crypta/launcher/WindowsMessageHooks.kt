@@ -65,6 +65,7 @@ object WindowsMessageHooks {
   /** Window procedure hook forwarding unhandled messages to the original WNDPROC. */
   private class WndProcHook(hWnd: HWND, private val onQuit: () -> Unit) : WinUser.WindowProc {
     private val prevWndProc: Pointer
+
     @Volatile private var invoked = false
 
     init {
@@ -74,23 +75,29 @@ object WindowsMessageHooks {
       prevWndProc = U32EX.SetWindowLongPtr(hWnd, WinUser.GWL_WNDPROC, fnPtr)
     }
 
-    override fun callback(h: HWND?, uMsg: Int, wParam: WPARAM?, lParam: LPARAM?): LRESULT {
+    override fun callback(h: HWND?, uMsg: Int, wParam: WPARAM?, lParam: LPARAM?): LRESULT =
       when (uMsg) {
         WM_QUERYENDSESSION -> {
           // Begin graceful quit but allow shutdown to continue
           triggerQuitOnce()
-          return LRESULT(1) // TRUE
+          LRESULT(1) // TRUE
         }
+
         WM_ENDSESSION -> {
           if ((wParam?.toInt() ?: 0) != 0) triggerQuitOnce()
+          U32EX.CallWindowProc(prevWndProc, h, uMsg, wParam, lParam)
         }
+
         WinUser.WM_CLOSE -> {
           triggerQuitOnce()
+          U32EX.CallWindowProc(prevWndProc, h, uMsg, wParam, lParam)
+        }
+
+        // Forward all other messages for normal processing.
+        else -> {
+          U32EX.CallWindowProc(prevWndProc, h, uMsg, wParam, lParam)
         }
       }
-      // Forward to the previous window procedure for normal processing
-      return U32EX.CallWindowProc(prevWndProc, h, uMsg, wParam, lParam)
-    }
 
     private fun triggerQuitOnce() {
       if (invoked) return
