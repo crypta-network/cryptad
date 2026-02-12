@@ -23,7 +23,7 @@ import java.util.Arrays;
  *
  * <ul>
  *   <li>Responsive: recent intervals can dominate by lowering {@link #historyWeight}.
- *   <li>Smooth: larger {@link #historySize} and higher weights damp short-term spikes.
+ *   <li>Smooth: larger history buffers and higher weights damp short-term spikes.
  *   <li>Predictive: estimation methods project totals based on the latest observed rate.
  * </ul>
  *
@@ -56,14 +56,7 @@ public class RateCalculator {
    * Interval duration in milliseconds that defines the cadence for finalizing event buckets and
    * contributing them to the historical weighted average used for rate calculations.
    */
-  protected int intervalLength; // Number of milliseconds in interval.
-
-  /**
-   * Total number of completed intervals tracked in the circular history buffer. Only fully elapsed
-   * intervals occupy slots; current work in progress is held separately until the cutoff time is
-   * reached.
-   */
-  protected int historySize; // Number of intervals to keep track of.
+  protected int intervalLength; // Number of milliseconds in the interval.
 
   /**
    * Exponential decay factor applied to historical interval rates, where values closer to {@code 1}
@@ -81,17 +74,17 @@ public class RateCalculator {
    * Current index within the {@link #history} buffer that will be overwritten by the next completed
    * interval, enabling efficient rotation without copying data.
    */
-  protected int historyPos; // history is circular, this is index.
+  protected int historyPos; // history is circular, this is an index.
 
   /**
-   * Millisecond timestamp marking the start of the current interval; initialized on first update
-   * and advanced whenever the interval completes and rolls into the history buffer.
+   * Millisecond timestamp marking the start of the current interval; initialized on the first
+   * update and advanced whenever the interval completes and rolls into the history buffer.
    */
-  protected long lastIntervalTime = -1; // last interval cutoff.
+  protected long lastIntervalTime = -1; // the last interval cutoff.
 
   /**
-   * Total events accrued within the still-open interval. This value is reset when the interval
-   * closes and its rate is persisted into {@link #history}.
+   * Total events grew within the still-open interval. This value is reset when the interval closes
+   * and its rate is persisted into {@link #history}.
    */
   protected double currentIntervalEvents; // Num events this interval.
 
@@ -127,15 +120,14 @@ public class RateCalculator {
    *
    * @param intervalLength length of each interval in milliseconds, defining when buckets close and
    *     commit to history.
-   * @param historySize number of completed intervals retained for weighting; larger sizes smooth
-   *     more aggressively.
+   * @param historySize the number of completed intervals retained for weighting; larger sizes
+   *     smooth more aggressively.
    * @param historyWeight multiplier applied per step into history; values near {@code 0} emphasize
    *     recent changes, values near {@code 1} prefer stability.
    */
   public RateCalculator(int intervalLength, int historySize, float historyWeight) {
 
     this.intervalLength = intervalLength;
-    this.historySize = historySize;
     this.historyWeight = historyWeight;
 
     history = new double[historySize];
@@ -325,8 +317,8 @@ public class RateCalculator {
    * Estimate the remaining duration to reach a target event count, using the current system time as
    * the evaluation point for rate and progress calculations.
    *
-   * @param maxEvents total number of events the caller intends to complete; must be greater than
-   *     the already observed total.
+   * @param maxEvents the total number of events the caller intends to complete; must be greater
+   *     than the already observed total.
    * @return remaining time in milliseconds until {@code maxEvents} are projected to be reached,
    *     based on {@link System#currentTimeMillis()} as the reference time.
    */
@@ -339,8 +331,8 @@ public class RateCalculator {
    * Estimate how long it will take to reach a target cumulative event count given the current
    * smoothed rate and observed totals.
    *
-   * @param maxEvents total number of events the caller intends to complete; must be greater than
-   *     the already observed total.
+   * @param maxEvents the total number of events the caller intends to complete; must be greater
+   *     than the already observed total.
    * @param time millisecond clock value representing when the estimate is requested; must align
    *     with the same time source used for updates.
    * @return remaining time in milliseconds until {@code maxEvents} are projected to be reached,
