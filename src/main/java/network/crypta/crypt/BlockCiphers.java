@@ -1,5 +1,6 @@
 package network.crypta.crypt;
 
+import java.security.GeneralSecurityException;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.NoSuchAlgorithmException;
@@ -149,7 +150,7 @@ class BlockCiphers {
         new JceEcbBlockCipher("AES").init(false, new KeyParameter(new byte[keySize]));
       }
       return true;
-    } catch (Exception _) {
+    } catch (GeneralSecurityException | RuntimeException _) {
       return false;
     }
   }
