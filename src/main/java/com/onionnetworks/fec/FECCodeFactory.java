@@ -86,7 +86,7 @@ public abstract class FECCodeFactory {
                 "com.onionnetworks.fec.DefaultFECCodeFactory");
         Class<?> clazz = Class.forName(factoryClass);
         def = clazz.asSubclass(FECCodeFactory.class).getDeclaredConstructor().newInstance();
-      } catch (Exception _) {
+      } catch (ReflectiveOperationException | RuntimeException _) {
         // krunky structure, but the easiest way to deal with the
         // exception.
         def = new DefaultFECCodeFactory();

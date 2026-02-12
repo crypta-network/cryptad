@@ -518,7 +518,7 @@ public class Id3Handler {
 
       return info;
 
-    } catch (Exception _) {
+    } catch (IOException | RuntimeException _) {
       return null;
     }
   }
