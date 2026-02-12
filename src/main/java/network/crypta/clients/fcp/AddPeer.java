@@ -96,12 +96,15 @@ public class AddPeer extends FCPMessage {
     this.fs = fs;
     this.messageIdentifier = fs.get("Identifier");
     fs.removeValue("Identifier");
-    try {
-      this.trust = FRIEND_TRUST.valueOf(fs.get("Trust"));
-      fs.removeValue("Trust");
-    } catch (NullPointerException _) {
+
+    String trustValue = fs.get("Trust");
+    if (trustValue == null) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "AddPeer requires Trust", messageIdentifier, false);
+    }
+    try {
+      this.trust = FRIEND_TRUST.valueOf(trustValue);
+      fs.removeValue("Trust");
     } catch (IllegalArgumentException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
@@ -109,15 +112,18 @@ public class AddPeer extends FCPMessage {
           messageIdentifier,
           false);
     }
-    try {
-      this.visibility = FRIEND_VISIBILITY.valueOf(fs.get("Visibility"));
-      fs.removeValue("Visibility");
-    } catch (NullPointerException _) {
+
+    String visibilityValue = fs.get("Visibility");
+    if (visibilityValue == null) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD,
           "AddPeer requires Visibility",
           messageIdentifier,
           false);
+    }
+    try {
+      this.visibility = FRIEND_VISIBILITY.valueOf(visibilityValue);
+      fs.removeValue("Visibility");
     } catch (IllegalArgumentException _) {
       throw new MessageInvalidException(
           ProtocolErrorMessage.INVALID_FIELD,
