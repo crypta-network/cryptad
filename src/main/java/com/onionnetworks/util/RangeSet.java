@@ -609,7 +609,7 @@ public class RangeSet {
     int high = (rangeCount * 2) - 1;
 
     while (low <= high) {
-      int mid = (low + high) / 2;
+      int mid = low + ((high - low) >>> 1);
       long midVal = ranges[mid];
 
       if (midVal < key) {
