@@ -80,4 +80,14 @@
     <Class name="network.crypta.node.NodeStarter"/>
     <Method name="getGlobalSecureRandom"/>
   </Match>
+
+  <!--
+    File#deleteOnExit() can throw NullPointerException during JVM shutdown in wrapper-managed
+    environments. We intentionally catch and log that specific failure mode in this one method.
+  -->
+  <Match>
+    <Bug pattern="DCN_NULLPOINTER_EXCEPTION"/>
+    <Class name="network.crypta.support.io.BaseFileBucket"/>
+    <Method name="setDeleteOnExit"/>
+  </Match>
 </FindBugsFilter>
