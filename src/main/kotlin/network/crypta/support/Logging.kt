@@ -20,7 +20,7 @@ object Logging {
     applyDetails(details)
   }
 
-  /** Sets the level for the named logger, when running with Logback. */
+  /** Sets the level for the named logger when running with Logback. */
   @JvmStatic
   fun setLevel(loggerName: String, level: Level) {
     val (ctx, logger) = resolveLogbackLogger(loggerName) ?: return
@@ -28,7 +28,7 @@ object Logging {
     ctx.resetTurboFilterList() // best-effort nudge
   }
 
-  /** Sets the root logger level, when running with Logback. */
+  /** Sets the root logger level when running with Logback. */
   @JvmStatic
   fun setRootLevel(level: Level) {
     val (ctx, logger) = resolveLogbackLogger(org.slf4j.Logger.ROOT_LOGGER_NAME) ?: return
@@ -43,34 +43,39 @@ object Logging {
     clearOverrides(ctx)
     if (details.isNullOrBlank()) return
     // Comma-separated "section:LEVEL" pairs
-    details
-      .split(',')
-      .map { it.trim() }
-      .filter { it.isNotEmpty() && it.contains(':') }
-      .forEach { token ->
-        val idx = token.indexOf(':')
-        val section = token.take(idx)
-        val lvl = token.substring(idx + 1).trim()
-        val up = lvl.uppercase()
-        if (up == "NONE" || up == "OFF") {
-          setOff(section)
-          appliedLoggerNames.add(section)
-          return@forEach
-        }
-        val level = up.toSlf4jLevelOrNull() ?: return@forEach
-        setLevel(section, level)
-        appliedLoggerNames.add(section)
+    details.split(',').forEach { rawToken ->
+      val token = rawToken.trim()
+      if (token.isEmpty() || !token.contains(':')) {
+        return@forEach
       }
+      val idx = token.indexOf(':')
+      val section = token.take(idx)
+      val lvl = token.substring(idx + 1).trim()
+      val up = lvl.uppercase()
+      if (up == "NONE" || up == "OFF") {
+        setOff(section)
+        appliedLoggerNames.add(section)
+        return@forEach
+      }
+      val level = up.toSlf4jLevelOrNull() ?: return@forEach
+      setLevel(section, level)
+      appliedLoggerNames.add(section)
+    }
   }
 
   private fun String.toSlf4jLevelOrNull(): Level? =
     when (this) {
       // Accept only standard SLF4J names
       "ERROR" -> Level.ERROR
+
       "WARN" -> Level.WARN
+
       "INFO" -> Level.INFO
+
       "DEBUG" -> Level.DEBUG
+
       "TRACE" -> Level.TRACE
+
       else -> null
     }
 
@@ -98,7 +103,9 @@ object Logging {
     return if (factory is ch.qos.logback.classic.LoggerContext) {
       val logger = factory.getLogger(name)
       Pair(factory, logger)
-    } else null
+    } else {
+      null
+    }
   }
 
   @Synchronized

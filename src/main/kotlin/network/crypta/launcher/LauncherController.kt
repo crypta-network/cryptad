@@ -329,7 +329,9 @@ class LauncherController(
       val isWindows = AppEnv().isWindows()
       // Snapshot descendants before we start signaling to avoid losing them if the root dies early
       val snapshot = getDescendantTreePids(pid)
-      val allPids = listOf(pid) + snapshot
+      val allPids = ArrayList<Long>(snapshot.size + 1)
+      allPids.add(pid)
+      allPids.addAll(snapshot)
 
       if (isWindows) {
         // Prefer a graceful stop via a Wrapper anchor file on Windows. Falls back to task-kill.
@@ -345,10 +347,10 @@ class LauncherController(
         killUnixSignalPids(allPids, "INT")
         if (!waitForPidsToExit(allPids, 20_000)) {
           logLine(ts() + " Escalating: sending SIGTERM to remaining processes ...")
-          killUnixSignalPids(allPids.filter { isPidAlive(it) }, "TERM")
+          killUnixSignalPids(alivePids(allPids), "TERM")
           if (!waitForPidsToExit(allPids, 5_000)) {
             logLine(ts() + " Escalating: sending SIGKILL to remaining processes ...")
-            killUnixSignalPids(allPids.filter { isPidAlive(it) }, "KILL")
+            killUnixSignalPids(alivePids(allPids), "KILL")
             waitForPidsToExit(allPids, 2_000)
           }
         }
@@ -394,6 +396,16 @@ class LauncherController(
       delay(200)
     }
     return pids.none { isPidAlive(it) }
+  }
+
+  private fun alivePids(pids: List<Long>): List<Long> {
+    val alive = ArrayList<Long>(pids.size)
+    for (pid in pids) {
+      if (isPidAlive(pid)) {
+        alive.add(pid)
+      }
+    }
+    return alive
   }
 
   private fun killUnixSignalPids(pids: List<Long>, signal: String) {
