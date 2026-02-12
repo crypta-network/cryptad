@@ -41,12 +41,12 @@ class ConfigTest {
     /* test if we can register */
     StringBuilder sb = new StringBuilder();
     char[] printableAscii = UTFUtil.printableAscii();
-    for (int i = 0; i < printableAscii.length; i++) {
-      sb.append(printableAscii[i]);
+    for (char value : printableAscii) {
+      sb.append(value);
     }
     char[] stressedUtf = UTFUtil.stressedUtf();
-    for (int i = 0; i < stressedUtf.length; i++) {
-      sb.append(stressedUtf[i]);
+    for (char value : stressedUtf) {
+      sb.append(value);
     }
     assertNotNull(conf.createSubConfig(sb.toString()));
 
@@ -168,9 +168,14 @@ class ConfigTest {
   Config conf;
   SubConfig sc;
 
-  @SuppressWarnings("unused")
   private static void castToLong(Option<Long> opt) {
-    // Trigger a runtime cast to Long without returning a value
-    Long unused = opt.getValue();
+    // Trigger a runtime cast to Long by passing through a Long-typed parameter.
+    consumeLong(opt.getValue());
+  }
+
+  private static void consumeLong(Long value) {
+    if (value == null) {
+      throw new AssertionError("Expected non-null Long");
+    }
   }
 }
