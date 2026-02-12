@@ -5642,8 +5642,7 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
       } else if (previousTracker == brokenKey) previousTracker = null;
       else if (unverifiedTracker == brokenKey) unverifiedTracker = null;
     }
-    // Update connected vs. not connected status.
-    isConnected();
+    // Recompute status after tracker state changes.
     setPeerNodeStatus(System.currentTimeMillis());
   }
 
