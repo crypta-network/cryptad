@@ -35,7 +35,7 @@ import network.crypta.node.NodeClientCore;
  * @see network.crypta.client.async.USKManager#subscribe
  * @see network.crypta.client.async.USKManager#subscribeSparse
  */
-public class SubscribeUSK implements USKProgressCallback {
+public final class SubscribeUSK implements USKProgressCallback {
   final FCPConnectionHandler handler;
   final String clientIdentifier;
   final NodeClientCore core;

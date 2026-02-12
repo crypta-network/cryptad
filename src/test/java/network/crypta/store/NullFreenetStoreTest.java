@@ -23,7 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class NullFreenetStoreTest {
 
-  private static final class TestCallback extends StoreCallback<StorableBlock> {
+  private static class TestCallback extends StoreCallback<StorableBlock> {
     private FreenetStore<StorableBlock> lastSetStore;
 
     @Override

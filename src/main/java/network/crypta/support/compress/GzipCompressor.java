@@ -261,7 +261,7 @@ public class GzipCompressor extends AbstractCompressor {
   }
 
   /** OutputStream wrapper whose {@link #close()} does not close the underlying stream. */
-  private static final class NonClosingOutputStream extends FilterOutputStream {
+  private static class NonClosingOutputStream extends FilterOutputStream {
     NonClosingOutputStream(OutputStream out) {
       super(out);
     }
@@ -280,7 +280,7 @@ public class GzipCompressor extends AbstractCompressor {
 
   /** InputStream wrapper whose {@link #close()} is a no-op to keep the underlying stream open. */
   @SuppressWarnings("java:S4929")
-  private static final class NonClosingInputStream extends FilterInputStream {
+  private static class NonClosingInputStream extends FilterInputStream {
     NonClosingInputStream(InputStream in) {
       super(in);
     }

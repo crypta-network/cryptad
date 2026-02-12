@@ -37,7 +37,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * @author toad
  */
-public class AEADOutputStream extends FilterOutputStream {
+public final class AEADOutputStream extends FilterOutputStream {
 
   private final AEADCipher cipher;
 

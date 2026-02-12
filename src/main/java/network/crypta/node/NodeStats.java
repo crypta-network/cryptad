@@ -57,7 +57,7 @@ import org.slf4j.LoggerFactory;
  * @see Node
  * @see NodeStatsFieldSetExporter
  */
-public class NodeStats implements Persistable, BlockTimeCallback {
+public final class NodeStats implements Persistable, BlockTimeCallback {
   private static final Logger LOG = LoggerFactory.getLogger(NodeStats.class);
 
   /** Kinds of requests and inserts tracked by NodeStats. */

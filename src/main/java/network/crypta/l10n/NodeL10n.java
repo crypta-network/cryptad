@@ -20,7 +20,7 @@ import network.crypta.l10n.BaseL10n.LANGUAGE;
  * concurrently may cause the underlying instance to be assigned more than once; the last write
  * wins. Typical usage initializes this class once during startup.
  */
-public class NodeL10n {
+public final class NodeL10n {
   /** Ensure the newly created BaseL10n is non-null (instance-only helper). */
   private void ensureInitialized(BaseL10n base) {
     if (base == null) {

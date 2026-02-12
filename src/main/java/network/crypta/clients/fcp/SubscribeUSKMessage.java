@@ -30,7 +30,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see SubscribeUSK
  * @see SubscribedUSKMessage
  */
-public class SubscribeUSKMessage extends FCPMessage {
+public final class SubscribeUSKMessage extends FCPMessage {
 
   /**
    * Message name sent over FCP to denote a USK subscription request. Constant value is stable

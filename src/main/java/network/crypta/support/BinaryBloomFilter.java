@@ -169,7 +169,7 @@ public class BinaryBloomFilter extends BloomFilter {
     }
   }
 
-  private static final class LockResource implements Closeable {
+  private static class LockResource implements Closeable {
     private final Lock w;
 
     LockResource(Lock w) {

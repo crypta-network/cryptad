@@ -51,7 +51,7 @@ import org.slf4j.LoggerFactory;
  * @see FilterResultMessage
  * @see ContentFilter
  */
-public class FilterMessage extends DataCarryingMessage {
+public final class FilterMessage extends DataCarryingMessage {
   private static final Logger LOG = LoggerFactory.getLogger(FilterMessage.class);
 
   /**

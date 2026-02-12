@@ -86,7 +86,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  *
  * @author amphibian
  */
-public class Node implements TimeSkewDetectorCallback {
+public final class Node implements TimeSkewDetectorCallback {
   private static final Logger LOG = LoggerFactory.getLogger(Node.class);
 
   /** String literal for the salted-hash store/client-cache type. */

@@ -31,7 +31,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see FCPConnectionHandler
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  */
-public class TestDdaRequestMessage extends FCPMessage {
+public final class TestDdaRequestMessage extends FCPMessage {
 
   /**
    * Message name used by the FCP router and protocol logging to recognize a client-issued DDA test

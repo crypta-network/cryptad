@@ -32,7 +32,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  * <p>Thread-safety: Methods contain no shared mutable state beyond the immutable size; they do not
  * block or perform I/O.
  */
-public final class NullRandomAccessBuffer implements LockableRandomAccessBuffer {
+public class NullRandomAccessBuffer implements LockableRandomAccessBuffer {
 
   private final long length;
 

@@ -34,7 +34,7 @@ import org.spaceroots.mantissa.functions.vectorial.*;
  * @version $Id: RiemannIntegratorSampler.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
  */
-public class RiemannIntegratorSampler implements SampledFunctionIterator {
+public final class RiemannIntegratorSampler implements SampledFunctionIterator {
 
   /** Underlying sample iterator. */
   private final SampledFunctionIterator iter;

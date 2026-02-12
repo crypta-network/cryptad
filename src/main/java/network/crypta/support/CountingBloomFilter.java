@@ -278,7 +278,7 @@ public class CountingBloomFilter extends BloomFilter {
     return f;
   }
 
-  private static final class LockResource implements Closeable {
+  private static class LockResource implements Closeable {
     private final java.util.concurrent.locks.Lock w;
 
     LockResource(java.util.concurrent.locks.Lock w) {

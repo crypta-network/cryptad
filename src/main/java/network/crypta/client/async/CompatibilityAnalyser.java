@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  *
  * @see InsertContext.CompatibilityMode
  */
-public class CompatibilityAnalyser implements Serializable {
+public final class CompatibilityAnalyser implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(CompatibilityAnalyser.class);
 
   @Serial private static final long serialVersionUID = 1L;

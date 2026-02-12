@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
  * plugin thread reference, toadlet link bookkeeping, and shutdown flags; those are guarded with
  * {@code synchronized} and/or {@code volatile} as appropriate.
  */
-public class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
+public final class PluginInfoWrapper implements Comparable<PluginInfoWrapper> {
   private static final Logger LOG = LoggerFactory.getLogger(PluginInfoWrapper.class);
   private static final DateTimeFormatter STARTED_FORMATTER =
       DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.US)

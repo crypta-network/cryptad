@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory;
  * #HEADER_COMPARE_TO}) because legacy blocks may be signed over different digests (truncated vs.
  * full) while remaining semantically equivalent.
  */
-public class SSKBlock implements KeyBlock {
+public final class SSKBlock implements KeyBlock {
   private static final Logger LOG = LoggerFactory.getLogger(SSKBlock.class);
 
   // Number of initial header bytes compared for equality.

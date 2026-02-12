@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Units: sizes are expressed in bytes. Methods are side‑effect-free and thread‑safe.
  */
-public class DatastoreUtil {
+public final class DatastoreUtil {
   private static final Logger LOG = LoggerFactory.getLogger(DatastoreUtil.class);
 
   /** Size of one mebibyte (MiB) in bytes. */

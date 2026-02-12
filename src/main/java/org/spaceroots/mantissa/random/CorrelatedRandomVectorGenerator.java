@@ -42,7 +42,7 @@ import org.spaceroots.mantissa.linalg.SymetricalMatrix;
  * @see NormalizedRandomGenerator
  * @see NotPositiveDefiniteMatrixException
  */
-public class CorrelatedRandomVectorGenerator implements Serializable, RandomVectorGenerator {
+public final class CorrelatedRandomVectorGenerator implements Serializable, RandomVectorGenerator {
 
   /**
    * Creates a generator using explicit mean values and a full covariance matrix.

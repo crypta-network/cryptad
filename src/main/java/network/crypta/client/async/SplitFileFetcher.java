@@ -65,7 +65,7 @@ import org.slf4j.LoggerFactory;
  * @see SplitFileFetcherGet
  * @see FetchContext
  */
-public class SplitFileFetcher
+public final class SplitFileFetcher
     implements ClientGetState, SplitFileFetcherStorageCallback, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcher.class);
   @Serial private static final long serialVersionUID = 1L;

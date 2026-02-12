@@ -38,7 +38,7 @@ import java.util.logging.Logger;
  *
  * @see Range
  */
-public class RangeSet {
+public final class RangeSet {
 
   /**
    * Default number of endpoint pairs allocated for a new {@code RangeSet}. The backing array grows

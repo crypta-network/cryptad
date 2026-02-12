@@ -117,7 +117,7 @@ import org.slf4j.LoggerFactory;
  * @see FProxyRegistrar
  * @see network.crypta.clients.fcp.RequestStatus
  */
-public class QueueToadlet extends Toadlet implements LinkEnabledCallback {
+public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
   private static final Logger LOG = LoggerFactory.getLogger(QueueToadlet.class);
 
   /**

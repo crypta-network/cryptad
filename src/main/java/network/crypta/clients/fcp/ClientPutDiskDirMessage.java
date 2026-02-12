@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  *       behavior.
  * </ul>
  */
-public class ClientPutDiskDirMessage extends ClientPutDirMessage {
+public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutDiskDirMessage.class);
 
   /**

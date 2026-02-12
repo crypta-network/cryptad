@@ -54,7 +54,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /** Test migration from a RAMFreenetStore to a SaltedHashFreenetStore */
-class RAMSaltMigrationTest {
+final class RAMSaltMigrationTest {
 
   private static final File TEMP_DIR = new File("tmp-RAMSaltMigrationTest");
   private static final String STORE_NAME = "teststore";

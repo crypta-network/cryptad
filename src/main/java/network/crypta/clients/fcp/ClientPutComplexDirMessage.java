@@ -54,7 +54,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientPutDirMessage
  * @see DirPutFile
  */
-public class ClientPutComplexDirMessage extends ClientPutDirMessage {
+public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutComplexDirMessage.class);
 
   /** The files attached to this message, in a directory hierarchy */

@@ -36,7 +36,7 @@ import org.spaceroots.mantissa.functions.scalar.*;
  * @version $Id: RiemannIntegratorSampler.java 1237 2002-03-20 21:01:57Z luc $
  * @author L. Maisonobe
  */
-public class RiemannIntegratorSampler implements SampledFunctionIterator {
+public final class RiemannIntegratorSampler implements SampledFunctionIterator {
 
   /**
    * Underlying sample iterator that supplies monotonically increasing abscissae and raw function

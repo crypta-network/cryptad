@@ -90,7 +90,7 @@ import org.slf4j.LoggerFactory;
  *       boundaries against corruption.
  * </ul>
  */
-public class SplitFileInserterStorage {
+public final class SplitFileInserterStorage {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserterStorage.class);
 
   /** The original file to upload */

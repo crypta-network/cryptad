@@ -44,7 +44,7 @@ import org.slf4j.LoggerFactory;
  * @see USK
  * @see USKDateHintFetches
  */
-public class USKFetcher
+public final class USKFetcher
     implements ClientGetState, USKCallback, HasKeyListener, KeyListener, USKAttemptCallbacks {
   /** Logger for polling, scheduling, and hint-processing diagnostics. */
   private static final Logger LOG = LoggerFactory.getLogger(USKFetcher.class);

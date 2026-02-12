@@ -32,7 +32,7 @@ import java.text.ParseException;
  * @see AsyncPersistentProps
  * @see RangeSet
  */
-public class Journal extends AsyncPersistentProps {
+public final class Journal extends AsyncPersistentProps {
 
   /**
    * Property key storing the absolute path of the file this journal represents, written eagerly

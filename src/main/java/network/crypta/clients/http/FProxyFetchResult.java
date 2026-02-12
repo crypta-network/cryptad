@@ -26,7 +26,7 @@ import network.crypta.support.api.Bucket;
  *
  * @author Matthew Toseland &lt;toad@amphibian.dyndns.org&gt; (0xE43DA450)
  */
-public class FProxyFetchResult {
+public final class FProxyFetchResult {
 
   /**
    * MIME type reported for the fetched content when this snapshot was created; may be absent if the

@@ -45,7 +45,7 @@ import org.jetbrains.annotations.Nullable;
  * @see FCPPluginConnection
  * @see FCPPluginConnectionImpl
  */
-public class FCPPluginClientMessage extends DataCarryingMessage {
+public final class FCPPluginClientMessage extends DataCarryingMessage {
 
   /**
    * On-network format name of the message.

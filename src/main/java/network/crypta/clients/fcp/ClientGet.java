@@ -57,7 +57,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientGetter
  * @see network.crypta.client.async.ClientGetCallback
  */
-public class ClientGet extends ClientRequest {
+public final class ClientGet extends ClientRequest {
   private static final Logger LOG = LoggerFactory.getLogger(ClientGet.class);
 
   @Serial private static final long serialVersionUID = 1L;

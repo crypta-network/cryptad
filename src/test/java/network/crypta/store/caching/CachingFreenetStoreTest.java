@@ -95,7 +95,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  */
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
-class CachingFreenetStoreTest {
+final class CachingFreenetStoreTest {
 
   @BeforeAll
   static void setupClass() {
@@ -1387,7 +1387,7 @@ class CachingFreenetStoreTest {
   }
 
   // AutoCloseable wrapper for ExecutorService so we can use try-with-resources
-  private static final class AutoClosingExecutor implements AutoCloseable {
+  private static class AutoClosingExecutor implements AutoCloseable {
     private final java.util.concurrent.ExecutorService delegate;
 
     AutoClosingExecutor(java.util.concurrent.ExecutorService delegate) {

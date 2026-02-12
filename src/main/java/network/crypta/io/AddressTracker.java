@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author toad
  */
-public class AddressTracker {
+public final class AddressTracker {
   private static final Logger LOG = LoggerFactory.getLogger(AddressTracker.class);
 
   /** Per-peer tracker items keyed by {@link Peer}. */

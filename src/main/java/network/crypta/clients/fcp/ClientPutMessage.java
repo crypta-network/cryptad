@@ -46,7 +46,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientRequest
  * @see HighLevelSimpleClientImpl
  */
-public class ClientPutMessage extends DataCarryingMessage {
+public final class ClientPutMessage extends DataCarryingMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutMessage.class);
 
   /**

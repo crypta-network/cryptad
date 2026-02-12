@@ -96,7 +96,7 @@ class USKInserterTest {
       boolean persistent,
       boolean realTimeFlag) {}
 
-  private static final class DummyRandomSource extends RandomSource {
+  private static class DummyRandomSource extends RandomSource {
     @Serial private static final long serialVersionUID = 1L;
 
     @Override

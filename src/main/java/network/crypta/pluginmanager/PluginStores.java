@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Loads stores with a deterministic fallback order.
  * </ul>
  */
-public class PluginStores {
+public final class PluginStores {
 
   private static final Logger LOG = LoggerFactory.getLogger(PluginStores.class);
   private static final String LOAD_STORE_ERROR_PREFIX = "Unable to load plugin data for ";

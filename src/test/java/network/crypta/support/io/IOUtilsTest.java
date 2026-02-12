@@ -199,7 +199,7 @@ class IOUtilsTest {
     assertTrue(errors.isEmpty(), () -> "unexpected error logs: " + errors);
   }
 
-  private static final class ThrowingOnceCloseable implements AutoCloseable {
+  private static class ThrowingOnceCloseable implements AutoCloseable {
     private final String message;
     private boolean thrown;
 

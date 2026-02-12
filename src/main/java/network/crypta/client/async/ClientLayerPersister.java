@@ -858,7 +858,7 @@ public class ClientLayerPersister extends PersistentJobRunnerImpl {
    * OutputStream wrapper that prevents closing the underlying stream when the outer resource is
    * closed. Used to preserve abort-before-close semantics while leveraging try-with-resources.
    */
-  private static final class NonClosingOutputStream extends java.io.FilterOutputStream {
+  private static class NonClosingOutputStream extends java.io.FilterOutputStream {
     NonClosingOutputStream(OutputStream out) {
       super(out);
     }

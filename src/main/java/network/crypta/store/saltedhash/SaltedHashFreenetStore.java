@@ -80,7 +80,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  *
  * @author sdiz
  */
-public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
+public final class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
   private static final Logger LOG = LoggerFactory.getLogger(SaltedHashFreenetStore.class);
 
   /** Option for saving plainkey. SECURITY: never enable this for a client cache. */

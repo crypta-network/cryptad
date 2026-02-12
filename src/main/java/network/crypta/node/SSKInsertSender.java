@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  * collision handling, and bookkeeping (bytes and status). Instances are executed by the node’s
  * executor and are not reused. Methods that expose mutable state or status are synchronized.
  */
-public class SSKInsertSender extends BaseSender
+public final class SSKInsertSender extends BaseSender
     implements PrioRunnable, AnyInsertSender, ByteCounter {
 
   private static final Logger LOG = LoggerFactory.getLogger(SSKInsertSender.class);

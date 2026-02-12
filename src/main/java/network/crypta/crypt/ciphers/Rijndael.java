@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * #initialize(byte[])} before calling {@link #encipher(byte[], byte[])} or {@link #decipher(byte[],
  * byte[])}.
  */
-public class Rijndael implements BlockCipher {
+public final class Rijndael implements BlockCipher {
   private static final Logger LOG = LoggerFactory.getLogger(Rijndael.class);
 
   private Object sessionKey;

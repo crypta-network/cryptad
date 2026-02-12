@@ -28,7 +28,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see FCPMessage
  * @see network.crypta.pluginmanager.PluginManager
  */
-public class ReloadPlugin extends FCPMessage {
+public final class ReloadPlugin extends FCPMessage {
 
   static final String NAME = "ReloadPlugin";
 

@@ -34,7 +34,7 @@ import org.spaceroots.mantissa.functions.vectorial.*;
  * @version $Id: EnhancedSimpsonIntegratorSampler.java 1709 2006-12-03 21:16:50Z luc $
  * @author L. Maisonobe
  */
-public class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator {
+public final class EnhancedSimpsonIntegratorSampler implements SampledFunctionIterator {
 
   /** Underlying sample iterator supplying raw abscissa/ordinate pairs in forward order. */
   private final SampledFunctionIterator iter;

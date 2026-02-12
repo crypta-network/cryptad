@@ -28,7 +28,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see SubscribeUSKMessage
  * @see FCPConnectionHandler#unsubscribeUSK(String)
  */
-public class UnsubscribeUSKMessage extends FCPMessage {
+public final class UnsubscribeUSKMessage extends FCPMessage {
 
   /** Canonical message name advertised to FCP handlers for unsubscribe operations. */
   public static final String NAME = "UnsubscribeUSK";

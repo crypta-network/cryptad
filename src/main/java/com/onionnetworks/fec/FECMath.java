@@ -32,7 +32,7 @@ import java.util.logging.Logger;
  *
  * @author Justin F. Chapweske (justin@chapweske.com)
  */
-public class FECMath {
+public final class FECMath {
 
   /**
    * The following parameter defines how many bits are used for field elements. This probably only

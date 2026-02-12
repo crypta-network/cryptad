@@ -225,7 +225,7 @@ class LineReadingInputStreamTest {
   }
 
   /** ByteArrayInputStream that disables mark/reset support to force non-marking path. */
-  private static final class NonMarkingInputStream extends ByteArrayInputStream {
+  private static class NonMarkingInputStream extends ByteArrayInputStream {
     NonMarkingInputStream(byte[] buf) {
       super(buf);
     }

@@ -59,7 +59,7 @@ import org.slf4j.LoggerFactory;
  * @see NodeCHK
  * @see CHKBlock
  */
-public class SplitFileFetcherKeyListener implements KeyListener {
+public final class SplitFileFetcherKeyListener implements KeyListener {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherKeyListener.class);
 
   /**

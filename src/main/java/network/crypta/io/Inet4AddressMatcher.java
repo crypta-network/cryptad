@@ -23,7 +23,7 @@ import java.util.StringTokenizer;
  * @author David Roden &lt;droden@gmail.com&gt;
  * @version $Id$
  */
-public class Inet4AddressMatcher implements AddressMatcher {
+public final class Inet4AddressMatcher implements AddressMatcher {
   /**
    * Packed IPv4 address of the rule in big-endian order (octet 1 in bits 24–31, octet 4 in 0–7).
    */

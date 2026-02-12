@@ -72,7 +72,7 @@ import org.slf4j.LoggerFactory;
  * fields will affect the wire format and may restart downloads or lose uploads when upgrading
  * persisted state.
  */
-public class FreenetURI implements Comparable<FreenetURI>, Serializable {
+public final class FreenetURI implements Comparable<FreenetURI>, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(FreenetURI.class);
 
   /** For Serializable. */

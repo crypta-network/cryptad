@@ -73,7 +73,7 @@ import org.slf4j.LoggerFactory;
   "java:S2160",
   "java:S1206"
 }) // hashCode() is inherited; equals() restricts to subclass type
-public class DarknetPeerNode extends PeerNode {
+public final class DarknetPeerNode extends PeerNode {
   private static final Logger LOG = LoggerFactory.getLogger(DarknetPeerNode.class);
 
   // Sonar: de-duplicate repeated string literals

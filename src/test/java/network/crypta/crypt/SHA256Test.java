@@ -181,7 +181,7 @@ class SHA256Test {
   }
 
   /** Returns data once, then throws on the next read; tracks closure. */
-  private static final class FailingAfterFirstReadInputStream extends InputStream {
+  private static class FailingAfterFirstReadInputStream extends InputStream {
     private final byte[] first;
     private boolean served;
     boolean wasClosed;

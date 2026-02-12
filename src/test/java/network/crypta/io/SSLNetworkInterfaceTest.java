@@ -148,7 +148,7 @@ class SSLNetworkInterfaceTest {
   }
 
   /** Exposes {@code createServerSocket()} to tests while executing the real implementation. */
-  private static final class TestableSSLNetworkInterface extends SSLNetworkInterface {
+  private static class TestableSSLNetworkInterface extends SSLNetworkInterface {
     TestableSSLNetworkInterface(int port, String allowedHosts, PriorityAwareExecutor executor) {
       super(port, allowedHosts, executor);
     }

@@ -37,7 +37,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  *
  * @since 2
  */
-public class DelayedFreeRandomAccessBuffer
+public final class DelayedFreeRandomAccessBuffer
     implements LockableRandomAccessBuffer, Serializable, DelayedFree {
   @Serial private static final long serialVersionUID = 1L;
   // Underlying random-access buffer being wrapped and delegated to. Not always Serializable; we

@@ -19,7 +19,7 @@ import network.crypta.support.api.StringCallback;
  * <p>Localization: human-readable error messages are resolved through {@link NodeL10n} using the
  * {@code ConfigurablePersister.*} keys.
  */
-public class ConfigurablePersister extends Persister {
+public final class ConfigurablePersister extends Persister {
 
   private static final String L10N_EXISTS_CANNOT_RW = "existsCannotReadWrite";
   private static final String L10N_DOES_NOT_EXIST_CANNOT_CREATE = "doesNotExistCannotCreate";

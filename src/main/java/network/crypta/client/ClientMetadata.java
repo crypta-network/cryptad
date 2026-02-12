@@ -25,7 +25,7 @@ import java.io.*;
  *       by {@link #toString()} is the effective MIME string.
  * </ul>
  */
-public class ClientMetadata implements Serializable {
+public final class ClientMetadata implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 

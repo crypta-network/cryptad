@@ -77,7 +77,7 @@ import org.slf4j.LoggerFactory;
  * @author root
  * @see ToadletContext
  */
-public class ToadletContextImpl implements ToadletContext {
+public final class ToadletContextImpl implements ToadletContext {
   private static final Logger LOG = LoggerFactory.getLogger(ToadletContextImpl.class);
   private static final String HTML_TITLE_PREFIX = "<html><head><title>";
   private static final String BAD_REQUEST = "Bad Request";

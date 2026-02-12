@@ -29,7 +29,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * beyond what the underlying buffer provides. Multiple readers should create separate input
  * streams. The returned {@link InputStream}s are not thread-safe.
  */
-public class RAFBucket implements Bucket, RandomAccessBucket {
+public final class RAFBucket implements Bucket, RandomAccessBucket {
 
   private final LockableRandomAccessBuffer underlying;
   final long size;

@@ -50,7 +50,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Scott G. Miller <scgmille@indiana.edu>
  */
-public class Yarrow extends RandomSource implements PersistentRandomSource {
+public final class Yarrow extends RandomSource implements PersistentRandomSource {
   private static final Logger LOG = LoggerFactory.getLogger(Yarrow.class);
 
   @Serial private static final long serialVersionUID = -1;

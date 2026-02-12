@@ -26,7 +26,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>Thread-safety: instances are not thread-safe. Mark/reset is not supported.
  */
-public class AEADInputStream extends FilterInputStream {
+public final class AEADInputStream extends FilterInputStream {
 
   private static final int MAC_SIZE_BITS = AEADOutputStream.MAC_SIZE_BITS;
   private final AEADCipher cipher;

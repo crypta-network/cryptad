@@ -272,7 +272,7 @@ public class Bzip2Compressor extends AbstractCompressor {
   }
 
   @SuppressWarnings("java:S4929")
-  private static final class NonClosingInputStream extends FilterInputStream {
+  private static class NonClosingInputStream extends FilterInputStream {
     NonClosingInputStream(InputStream in) {
       super(in);
     }

@@ -25,7 +25,7 @@ import network.crypta.support.transport.ip.IPUtil;
  * {@link #getHandshakeAddress()}). Regular address lookups (see {@link #getAddress(boolean)})
  * prefer cached results to avoid unnecessary DNS requests.
  */
-public class Peer implements WritableToDataOutputStream {
+public final class Peer implements WritableToDataOutputStream {
 
   /**
    * Thrown when a resolved address is considered local/non‑public and therefore not acceptable for

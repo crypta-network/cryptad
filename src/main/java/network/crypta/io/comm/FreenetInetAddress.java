@@ -38,7 +38,7 @@ import org.slf4j.LoggerFactory;
  * does not implement its own caching policy beyond storing the last resolved address when helpful
  * for handshakes.
  */
-public class FreenetInetAddress {
+public final class FreenetInetAddress {
   private static final Logger LOG = LoggerFactory.getLogger(FreenetInetAddress.class);
 
   // no static initialization required

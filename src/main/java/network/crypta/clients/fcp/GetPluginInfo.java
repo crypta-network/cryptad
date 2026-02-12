@@ -29,7 +29,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see PluginInfoMessage
  * @see Node
  */
-public class GetPluginInfo extends FCPMessage {
+public final class GetPluginInfo extends FCPMessage {
 
   static final String NAME = "GetPluginInfo";
 

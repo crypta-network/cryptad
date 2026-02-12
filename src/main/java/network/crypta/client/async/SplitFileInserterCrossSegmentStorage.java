@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * @see SplitFileInserterSegmentStorage
  * @see network.crypta.client.FECCodec
  */
-public class SplitFileInserterCrossSegmentStorage {
+public final class SplitFileInserterCrossSegmentStorage {
   private static final Logger LOG =
       LoggerFactory.getLogger(SplitFileInserterCrossSegmentStorage.class);
 

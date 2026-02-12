@@ -67,7 +67,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientEndpoints
  * @see RequestStarterGroup
  */
-public class NodeClientCore implements Persistable {
+public final class NodeClientCore implements Persistable {
   private static final Logger LOG = LoggerFactory.getLogger(NodeClientCore.class);
   private static final String CFG_ENCRYPT_PERSISTENT_TEMP_BUCKETS = "encryptPersistentTempBuckets";
   private static final String DOWNLOADS_DIR_NAME = "downloads";

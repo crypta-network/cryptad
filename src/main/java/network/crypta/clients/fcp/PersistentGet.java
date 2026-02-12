@@ -28,7 +28,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see ClientRequest
  * @see FCPMessage
  */
-public class PersistentGet extends FCPMessage {
+public final class PersistentGet extends FCPMessage {
 
   static final String NAME = "PersistentGet";
 

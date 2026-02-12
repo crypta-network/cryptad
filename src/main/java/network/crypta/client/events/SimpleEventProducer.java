@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientEventListener
  * @author oskar
  */
-public class SimpleEventProducer implements ClientEventProducer, Serializable {
+public final class SimpleEventProducer implements ClientEventProducer, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
   private static final Logger LOG = LoggerFactory.getLogger(SimpleEventProducer.class);

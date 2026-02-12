@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  * synchronized access to the {@code updated} flag. Callers should treat instances as effectively
  * mutable and not inherently thread-safe unless they provide external synchronization.
  */
-public class BookmarkItem extends Bookmark {
+public final class BookmarkItem extends Bookmark {
   private static final Logger LOG = LoggerFactory.getLogger(BookmarkItem.class);
 
   /**

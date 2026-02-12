@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * and the root logger level, and writes to {@code System.err} for early/guarded errors. No
  * application logger is used inside this class to avoid recursion during reconfiguration.
  */
-public class LoggingConfigHandler {
+public final class LoggingConfigHandler {
   // Intentionally, no SLF4J logger; use System.err only for guarded errors.
 
   // String literals used at least 3 times (java:S1192)

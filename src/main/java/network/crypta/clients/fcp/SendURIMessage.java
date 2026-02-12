@@ -33,7 +33,7 @@ import network.crypta.support.io.BucketTools;
  * @see SendPeerMessage
  * @see DarknetPeerNode#sendDownloadFeed(FreenetURI, String)
  */
-public class SendURIMessage extends SendPeerMessage {
+public final class SendURIMessage extends SendPeerMessage {
 
   /**
    * Canonical FCP command name advertised through {@link #getName()} and dispatcher lookups; must

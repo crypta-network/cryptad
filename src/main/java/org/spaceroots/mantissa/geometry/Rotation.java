@@ -31,7 +31,7 @@ import java.io.Serializable;
  * @see Vector3D
  * @see RotationOrder
  */
-public class Rotation implements Serializable {
+public final class Rotation implements Serializable {
 
   private static final double ANGLES_SMALL = 1.0e-10;
   private static final double ANGLES_MAX_THRESHOLD = 1.0 - ANGLES_SMALL;

@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientPutBase
  * @see ClientRequester
  */
-public class ClientPut extends ClientPutBase {
+public final class ClientPut extends ClientPutBase {
   /** Logger for lifecycle and diagnostic messages. */
   private static final Logger LOG = LoggerFactory.getLogger(ClientPut.class);
 

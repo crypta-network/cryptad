@@ -66,7 +66,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * @author toad
  */
-public class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializable {
+public final class EncryptedRandomAccessBucket implements RandomAccessBucket, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 

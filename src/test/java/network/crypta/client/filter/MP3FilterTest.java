@@ -261,7 +261,7 @@ class MP3FilterTest {
    * Minimal wrapper exposing a DataOutputStream over a fixed backing array without reallocations.
    * Throws if more bytes are written than the provided array can hold.
    */
-  private static final class ByteArrayOutputStreamWrapper extends ByteArrayOutputStream {
+  private static class ByteArrayOutputStreamWrapper extends ByteArrayOutputStream {
     ByteArrayOutputStreamWrapper(byte[] backing) {
       super(backing.length);
       this.buf = backing;

@@ -36,7 +36,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see Listener
  * @see FCPConnectionHandler
  */
-public class ProbeRequest extends FCPMessage {
+public final class ProbeRequest extends FCPMessage {
 
   /**
    * Wire-level message name used for serialization and protocol dispatch.

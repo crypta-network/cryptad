@@ -66,7 +66,7 @@ import org.slf4j.LoggerFactory;
  * @see SplitFileFetcherStoragePersistence
  * @author toad
  */
-public class SplitFileFetcherStorage {
+public final class SplitFileFetcherStorage {
   static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherStorage.class);
 
   final SplitFileFetcherStorageCallback fetcher;

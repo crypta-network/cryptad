@@ -80,7 +80,8 @@ import org.slf4j.LoggerFactory;
  * @see ClientKeyBlock
  * @see RequestScheduler
  */
-public class SingleBlockInserter extends SendableInsert implements ClientPutState, Serializable {
+public final class SingleBlockInserter extends SendableInsert
+    implements ClientPutState, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(SingleBlockInserter.class);
   private static final String LOG_CAUGHT = "Caught {}";
   private static final String LOG_CAUGHT_WHEN_CHECKING_COLLISION =

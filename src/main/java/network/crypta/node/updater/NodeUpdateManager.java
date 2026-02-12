@@ -83,7 +83,7 @@ import org.slf4j.LoggerFactory;
  * hard‑coded as the transition version. The next build (X+1) can drop legacy compatibility and is
  * inserted only to the new key. Secure key backups are required and documented elsewhere.
  */
-public class NodeUpdateManager {
+public final class NodeUpdateManager {
   private static final Logger LOG = LoggerFactory.getLogger(NodeUpdateManager.class);
 
   // L10n parameter keys and repeated URL query parts

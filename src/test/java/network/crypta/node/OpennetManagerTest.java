@@ -118,7 +118,7 @@ class OpennetManagerTest {
         () -> OpennetNoderefWaiter.waitForOpennetNoderef(false, peer, uid, byteCounter, node));
   }
 
-  static final class TestCallback implements OpennetNoderefWaiter.NoderefCallback {
+  static class TestCallback implements OpennetNoderefWaiter.NoderefCallback {
 
     boolean timedOut;
     Boolean ackTimedOut;

@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * @see SimpleSendableInsert
  * @see LowLevelPutException
  */
-public class BinaryBlobInserter implements ClientPutState {
+public final class BinaryBlobInserter implements ClientPutState {
   private static final Logger LOG = LoggerFactory.getLogger(BinaryBlobInserter.class);
 
   final ClientPutter parent;

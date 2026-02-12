@@ -31,7 +31,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see NodeHelloMessage
  * @see FCPConnectionHandler
  */
-public class ClientHelloMessage extends FCPMessage {
+public final class ClientHelloMessage extends FCPMessage {
 
   /**
    * Canonical FCP message identifier returned by {@link #getName()} and used by decoders to route

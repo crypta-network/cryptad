@@ -60,7 +60,7 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.crypt.MultiHashInputStream
  * @see ClientGetWorkerThread.Options
  */
-public class ClientGetWorkerThread extends Thread {
+public final class ClientGetWorkerThread extends Thread {
   private static final Logger LOG = LoggerFactory.getLogger(ClientGetWorkerThread.class);
 
   private final InputStream input;

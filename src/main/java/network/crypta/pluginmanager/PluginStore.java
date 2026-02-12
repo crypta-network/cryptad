@@ -34,7 +34,7 @@ import network.crypta.support.SimpleFieldSet;
  * @author Artefact2
  * @see SimpleFieldSet
  */
-public class PluginStore {
+public final class PluginStore {
 
   /**
    * Holds nested stores indexed by logical key names.

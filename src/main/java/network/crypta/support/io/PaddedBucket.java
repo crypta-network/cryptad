@@ -38,7 +38,7 @@ import org.jetbrains.annotations.NotNull;
  * serialized object. See {@link #serialPersistentFields}, {@link #writeObject(ObjectOutputStream)}
  * and {@link #readObject(ObjectInputStream)} for details.
  */
-public class PaddedBucket implements Bucket, Serializable {
+public final class PaddedBucket implements Bucket, Serializable {
   @Serial private static final long serialVersionUID = 1L;
   // Wrapped bucket may not be java.io.Serializable; keep transient and handle via
   // Java-serialization hooks similar to DelayedFreeBucket.
