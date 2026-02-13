@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import network.crypta.support.TimeUtil;
 
@@ -155,7 +156,7 @@ public class Cookie {
 
   @Override
   public int hashCode() {
-    return domain.hashCode() + path.hashCode() + name.hashCode();
+    return Objects.hash(domain == null ? null : domain.toString(), path.toString(), name);
   }
 
   /**
