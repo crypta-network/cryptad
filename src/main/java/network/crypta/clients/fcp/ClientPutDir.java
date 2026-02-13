@@ -150,7 +150,7 @@ public final class ClientPutDir extends ClientPutBase {
             options.realTimeFlag(),
             message.clientToken,
             message.global);
-    super(requestParams, null, options, handler, server);
+    super(requestParams, null, options, handler, server, derivePublicURI(requestParams.uri()));
     // debug level captured via LOG.isDebugEnabled()
     this.wasDiskPut = wasDiskPut;
     this.overrideSplitfileCryptoKey = message.overrideSplitfileCryptoKey;
@@ -239,7 +239,14 @@ public final class ClientPutDir extends ClientPutBase {
             options.realTimeFlag(),
             request.clientToken(),
             request.global());
-    super(requestParams, request.charset(), options, null, request.client(), core);
+    super(
+        requestParams,
+        request.charset(),
+        options,
+        null,
+        request.client(),
+        core,
+        derivePublicURI(requestParams.uri()));
     wasDiskPut = true;
     this.overrideSplitfileCryptoKey = options.overrideSplitfileCryptoKey();
     // debug level captured via LOG.isDebugEnabled()
