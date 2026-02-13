@@ -355,7 +355,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 
     if (result.alreadyFiltered && refilterPolicy == REFILTER_POLICY.ACCEPT_OLD) {
       tracker.removeFetcher(this);
-      onSuccess(result.asFetchResult(), null);
+      onSuccess(result, null);
       return true;
     }
 
@@ -375,20 +375,16 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     }
 
     String cachedMime = result.getMimeType();
-    if (fctx.getOverrideMIME() == null || fctx.getOverrideMIME().equals(cachedMime)) {
+    String overrideMime = fctx.getOverrideMIME();
+    if (overrideMime == null || overrideMime.equals(cachedMime)) {
       tracker.removeFetcher(this);
-      onSuccess(result.asFetchResult(), null);
+      onSuccess(result, null);
       return true;
     }
 
-    if (fctx.getOverrideMIME() != null && !fctx.getOverrideMIME().equals(cachedMime)) {
-      tracker.removeFetcher(this);
-      onSuccess(
-          new FetchResult(new ClientMetadata(fctx.getOverrideMIME()), result.asBucket()), null);
-      return true;
-    }
-
-    return false;
+    tracker.removeFetcher(this);
+    onSuccess(new FetchResult(new ClientMetadata(overrideMime), result.asBucket()), null);
+    return true;
   }
 
   private boolean canReuseFilteredResult(CacheFetchResult result) {

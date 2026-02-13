@@ -9,9 +9,9 @@ import network.crypta.support.io.BucketTools;
  *
  * <p>This type bundles the {@link ClientMetadata} that describes the fetched object (for example,
  * its MIME type) together with the binary payload stored in a {@link Bucket}. It is returned by
- * higher-level client APIs after a successful retrieval and acts as a simple transfer object
- * between layers. The instance does not copy the underlying data; it merely references the provided
- * {@code Bucket} as-is.
+ * higher-level client APIs after successful retrieval and acts as a simple transfer object between
+ * layers. The instance does not copy the underlying data; it merely references the provided {@code
+ * Bucket} as-is.
  *
  * <p>Typical usage patterns include inspecting the MIME type to decide on downstream handling,
  * reading the size via {@link #size()}, and then either streaming bytes from the bucket or
@@ -22,9 +22,11 @@ import network.crypta.support.io.BucketTools;
  * synchronization. Concurrency characteristics therefore depend on the provided {@code Bucket}
  * implementation. Callers must coordinate access to the bucket if it is not inherently thread-safe.
  */
-public final class FetchResult {
+public class FetchResult {
+  private static final String NULL_METADATA_MESSAGE = "ClientMetadata must not be null";
+  private static final String NULL_BUCKET_MESSAGE = "Bucket must not be null";
 
-  /** The ClientMetadata, i.e. MIME type. Must not be null. */
+  /** The ClientMetadata, i.e., MIME type. Must not be null. */
   final ClientMetadata metadata;
 
   /** The data. */
@@ -44,8 +46,8 @@ public final class FetchResult {
    * @throws IllegalArgumentException if {@code dm} or {@code fetched} is {@code null}.
    */
   public FetchResult(ClientMetadata dm, Bucket fetched) {
-    if (dm == null) throw new IllegalArgumentException("ClientMetadata must not be null");
-    if (fetched == null) throw new IllegalArgumentException("Bucket must not be null");
+    if (dm == null) throw new IllegalArgumentException(NULL_METADATA_MESSAGE);
+    if (fetched == null) throw new IllegalArgumentException(NULL_BUCKET_MESSAGE);
     metadata = dm;
     data = fetched;
   }
@@ -109,7 +111,7 @@ public final class FetchResult {
    * Return the payload as a materialized byte array.
    *
    * <p>This method fully reads the underlying {@link Bucket} into memory and returns a new byte
-   * array containing the content. For large payloads this may require substantial heap space;
+   * array containing the content. For large payloads this may require a significant heap of space;
    * prefer streaming from the bucket when possible to limit memory usage.
    *
    * @return a newly allocated byte array containing the entire payload; the caller owns and may
@@ -131,5 +133,12 @@ public final class FetchResult {
    */
   public Bucket asBucket() {
     return data;
+  }
+
+  @Override
+  @SuppressWarnings("removal")
+  protected final void finalize() {
+    // Intentionally empty: a final finalize() prevents subclasses from adding finalizers.
+    // This hardening avoids finalizer-attack risk for constructors that validate inputs.
   }
 }

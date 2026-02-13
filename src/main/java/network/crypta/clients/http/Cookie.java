@@ -36,7 +36,7 @@ import network.crypta.support.TimeUtil;
  *
  * @author xor (xor@freenetproject.org)
  */
-public final class Cookie {
+public class Cookie {
   /** Characters that must not appear unquoted in cookie values (based on RFC2616 separators). */
   private static final Set<Character> INVALID_VALUE_CHARACTERS =
       Set.of('(', ')', '[', ']', '{', '}', '=', ',', '\"', '/', '\\', '?', '@', ':', ';');
@@ -58,43 +58,43 @@ public final class Cookie {
   /**
    * Cookie specification version sent in headers; defaults to {@code 1} to match RFC2965 semantics.
    */
-  private int version;
+  private final int version;
 
   /**
    * Optional domain scope for the cookie. When present it must use the {@code http} or {@code
    * https} scheme and omit path segments.
    */
-  private URI domain;
+  private final URI domain;
 
   /**
    * Path restriction for the cookie. Must begin with {@code /}, is case-sensitive, and must be a
    * relative URI as defined by {@link #validatePath(URI)}.
    */
-  private URI path;
+  private final URI path;
 
   /**
    * Lowercase token identifying the cookie. Restricted to US-ASCII printable characters that are
    * not separators or reserved names defined by RFC2965.
    */
-  private String name;
+  private final String name;
 
   /**
    * Canonicalized cookie payload. Stored as a trimmed US-ASCII string without forbidden separator
    * characters to ensure safe header emission.
    */
-  private String value;
+  private final String value;
 
   /**
    * Expiration timestamp interpreted in the GMT HTTP-date format during header serialization;
    * callers provide an absolute {@link Instant} in the future.
    */
-  private Instant expirationDate;
+  private final Instant expirationDate;
 
   /**
    * Indicates whether the cookie should be discarded when the user agent session ends; defaults to
    * {@code true} for Crypta browser interactions.
    */
-  private boolean discard;
+  private final boolean discard;
 
   /**
    * Builds a {@link Cookie} ready for delivery via {@link ToadletContext#setCookie(Cookie)} after
@@ -115,8 +115,8 @@ public final class Cookie {
    *     value and must avoid control characters and separator tokens.
    * @param myExpirationDate Absolute expiration moment in the future; instants in the past cause an
    *     {@link IllegalArgumentException} during validation.
-   * @throws IllegalArgumentException If any attribute violates RFC-inspired validation rules or the
-   *     expiration time is not in the future.
+   * @throws IllegalArgumentException If any attribute violates RFC-inspired validation rules, or
+   *     the expiration time is not in the future.
    */
   public Cookie(URI myPath, String myName, String myValue, Instant myExpirationDate) {
     version = 1;
@@ -129,7 +129,7 @@ public final class Cookie {
     discard = true; // Freenet cookies are intended to be discarded when the browser is closed.
   }
 
-  /** Returns true if two Cookies have equal domain, path and name. Does not check the value! */
+  /** Returns true if two Cookies have equal domain, path, and name. Does not check the value! */
   @Override
   public boolean equals(Object obj) {
     if (obj == this) return true;
@@ -137,7 +137,7 @@ public final class Cookie {
     if (!(obj instanceof Cookie other)) return false;
 
     // RFC2965: Two cookies are equal if name and domain are equal with case-insensitive comparison
-    // and path is equal with case-sensitive comparison.
+    // and the path is equal with case-sensitive comparison.
     // We don't have to do anything about the case here though because getName() / getDomain()
     // returns lowercase and getPath() returns the original path.
 
@@ -187,7 +187,7 @@ public final class Cookie {
    * @param domain Candidate domain URI, typically derived from the request host; must not be {@code
    *     null}.
    * @return The same {@link URI} instance when validation succeeds, enabling fluent assignment.
-   * @throws IllegalArgumentException If the scheme is not HTTP(S) or the URI includes a path
+   * @throws IllegalArgumentException If the scheme is not HTTP(S), or the URI includes a path
    *     segment other than {@code /}.
    */
   public static URI validateDomain(URI domain) {
@@ -216,7 +216,7 @@ public final class Cookie {
    * @param stringPath Path text expected to start with {@code /} and contain no scheme component.
    * @return A {@link URI} representing the normalized path, suitable for assignment to {@link
    *     Cookie#path}.
-   * @throws URISyntaxException If the string fails URI parsing before validation occurs.
+   * @throws URISyntaxException If the string fails, URI parsing before validation occurs.
    * @throws IllegalArgumentException If the parsed URI is absolute or does not start with a forward
    *     slash.
    */
@@ -280,14 +280,14 @@ public final class Cookie {
       if (Character.isWhitespace(c))
         throw new IllegalArgumentException("Invalid name, contains whitespace: " + name);
 
-      // From isISOControl javadoc: A character is considered to be an ISO control character if it's
+      // From isISOControl Javadoc: A character is considered to be an ISO control character if it's
       // in the range [0,31] or [127,159]
       if (Character.isISOControl(c))
         throw new IllegalArgumentException("Invalid name, contains control characters.");
 
       if (HTTP_SEPARATOR_CHARACTERS.contains(c))
         throw new IllegalArgumentException(
-            "Invalid name, contains one of the explicitely disallowed characters: " + name);
+            "Invalid name, contains one of the explicitly disallowed characters: " + name);
     }
 
     if (name.startsWith("$")
@@ -317,7 +317,7 @@ public final class Cookie {
    * Validates and trims a cookie value, enforcing US-ASCII content and disallowing RFC2616
    * separator characters unless quoted externally by the caller.
    *
-   * <p>Whitespace is permitted within the value but control characters and an explicit separator
+   * <p>Whitespace is permitted within the value, but control characters and an explicit separator
    * set are rejected to avoid malformed header output. The returned value is safe to append to a
    * {@code name=value} pair without additional escaping.
    *
@@ -347,7 +347,7 @@ public final class Cookie {
       // The invalid character list mirrors the separator set used by RFC2616 token rules.
       if (INVALID_VALUE_CHARACTERS.contains(c))
         throw new IllegalArgumentException(
-            "Invalid value, contains one of the explicitely disallowed characters: " + value);
+            "Invalid value, contains one of the explicitly disallowed characters: " + value);
     }
 
     return value;
@@ -462,5 +462,12 @@ public final class Cookie {
     }
 
     return sb.toString();
+  }
+
+  @Override
+  @SuppressWarnings("removal")
+  protected final void finalize() {
+    // Intentionally empty: a final finalize() prevents subclasses from adding finalizers.
+    // This hardening avoids finalizer-attack risk for constructors that validate inputs.
   }
 }

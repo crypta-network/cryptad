@@ -328,6 +328,10 @@ public abstract class ClientRequest implements Serializable {
         : handler.getRebootClient();
   }
 
+  @Override
+  @SuppressWarnings("removal")
+  protected final void finalize() {}
+
   /**
    * No-argument constructor used only by the serialization framework.
    *

@@ -3,6 +3,7 @@ package network.crypta.clients.http;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.text.ParseException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -42,10 +43,13 @@ import org.slf4j.LoggerFactory;
  * @see #parseHeader(String)
  * @author xor (xor@freenetproject.org)
  */
-public final class ReceivedCookie {
+public final class ReceivedCookie extends Cookie {
   private static final Logger LOG = LoggerFactory.getLogger(ReceivedCookie.class);
 
   private static final int DEFAULT_COOKIE_CAPACITY = 4;
+  private static final URI PLACEHOLDER_PATH = URI.create("/");
+  private static final String PLACEHOLDER_NAME = "receivedcookie";
+  private static final Instant PLACEHOLDER_EXPIRATION = Instant.MAX;
 
   private String notValidatedName;
 
@@ -63,6 +67,7 @@ public final class ReceivedCookie {
    * we do not use.
    */
   private ReceivedCookie(String myName, Map<String, String> myContent) {
+    super(PLACEHOLDER_PATH, PLACEHOLDER_NAME, "", PLACEHOLDER_EXPIRATION);
     // We do not validate the input here, we only parse it if someone actually tries to access this
     // cookie.
     notValidatedName = myName;
@@ -249,14 +254,15 @@ public final class ReceivedCookie {
    *
    * <p>The raw name provided by the user agent is validated lazily to avoid work when the cookie is
    * never consumed. Validation lowers the case, checks for illegal separator characters, and
-   * enforces the outbound naming rules inherited from {@link Cookie}. After successful validation
-   * the result is cached and reused for subsequent calls. If the stored name violates the
-   * constraints, the method throws an {@link IllegalArgumentException} to surface the malformed
-   * header to callers.
+   * enforces the outbound naming rules inherited from {@link Cookie}. After successful validation,
+   * the result is cached and reused for later calls. If the stored name violates the constraints,
+   * the method throws an {@link IllegalArgumentException} to surface the malformed header to
+   * callers.
    *
    * @return Canonicalized cookie name; never {@code null} once validation succeeds and cached.
-   * @throws IllegalArgumentException If the stored name fails RFC-inspired validation checks.
+   * @throws IllegalArgumentException If the stored name fails, RFC-inspired validation checks.
    */
+  @Override
   public String getName() {
     if (name == null) {
       name = Cookie.validateName(notValidatedName);
@@ -278,6 +284,7 @@ public final class ReceivedCookie {
    * @return Normalized domain URI or {@code null} when the client did not specify a domain.
    * @throws IllegalArgumentException If domain parsing or validation fails for the stored value.
    */
+  @Override
   public URI getDomain() {
     if (domain == null) {
       try {
@@ -298,13 +305,13 @@ public final class ReceivedCookie {
    *
    * <p>Path parsing is performed lazily using {@link Cookie#validatePath(URI)} to ensure the value
    * is a relative URI beginning with {@code /}. The validated result is cached to avoid repeat work
-   * on subsequent invocations. If the stored path string is malformed or violates the validation
-   * rules, the method throws {@link IllegalArgumentException} to alert request handlers of bad
-   * input.
+   * on later invocations. If the stored path string is malformed or violates the validation rules,
+   * the method throws {@link IllegalArgumentException} to alert request handlers of bad input.
    *
    * @return Canonicalized path URI or {@code null} if no {@code $path} attribute was supplied.
    * @throws IllegalArgumentException If path parsing or validation fails for the recorded value.
    */
+  @Override
   public URI getPath() {
     if (path == null) {
       try {
@@ -329,6 +336,7 @@ public final class ReceivedCookie {
    * @return Canonicalized cookie value string; never {@code null} once successfully validated.
    * @throws IllegalArgumentException If value validation fails for the stored attribute content.
    */
+  @Override
   public String getValue() {
     if (value == null) value = Cookie.validateValue(content.get(getName()));
 
@@ -338,7 +346,7 @@ public final class ReceivedCookie {
   // Expiration parsing intentionally omitted because TimeUtil.parseHTTPDate() is not reliable here.
 
   /**
-   * Always throws because inbound cookies must not be serialized back into header form.
+   * Always throws because inbound cookies must not be serialized back into the header form.
    *
    * <p>{@link ReceivedCookie} models client-supplied data and therefore does not support rendering
    * a {@code Set-Cookie} header. Attempting to call this method indicates a programming error; the
@@ -350,12 +358,13 @@ public final class ReceivedCookie {
    *     received cookies.
    */
   @SuppressWarnings("DoNotCallSuggester")
+  @Override
   String encodeToHeaderValue() {
     throw new UnsupportedOperationException(
         "ReceivedCookie objects cannot be encoded to a HTTP header value, use Cookie objects!");
   }
 
-  /** Returns true if two ReceivedCookie objects have equal domain, path and name. */
+  /** Returns true if two ReceivedCookie objects have equal domain, path, and name. */
   @Override
   public boolean equals(Object obj) {
     if (obj == this) return true;

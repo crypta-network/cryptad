@@ -1,6 +1,5 @@
 package network.crypta.client.async;
 
-import java.io.IOException;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchResult;
 import network.crypta.support.api.Bucket;
@@ -8,17 +7,17 @@ import network.crypta.support.api.Bucket;
 /**
  * Result object for fetches that originate from a local cache or otherwise short‑circuited path.
  *
- * <p>This type is a thin, immutable wrapper around {@code FetchResult} that adds a single boolean
+ * <p>This type is a thin, immutable extension of {@code FetchResult} that adds a single boolean
  * flag indicating whether the binary payload has already been passed through any applicable
  * filtering or post-processing steps earlier in the pipeline. Callers can use this information to
  * avoid reapplying potentially expensive or lossy filters when they know a cache hit already
  * produced data in the final, consumer-ready form.
  *
- * <p>Aside from that marker, the instance behaves like a regular {@code FetchResult}: it exposes
- * the client metadata (for example, the MIME type), provides access to the payload via a {@code
- * Bucket}, and offers convenience methods to inspect the content and size. The class holds only
- * final references and performs no mutation after construction; thread‑safety therefore depends
- * entirely on the provided bucket implementation and how it is used by the caller.
+ * <p>Aside from that marker, the instance behaves exactly like a regular {@code FetchResult}: it
+ * exposes the client metadata (for example, the MIME type), provides access to the payload via a
+ * {@code Bucket}, and offers convenience methods to inspect the content and size. The class holds
+ * only final references and performs no mutation after construction; thread‑safety therefore
+ * depends entirely on the provided bucket implementation and how it is used by the caller.
  *
  * <ul>
  *   <li>Immutability: all fields are final; no setters are provided.
@@ -26,7 +25,7 @@ import network.crypta.support.api.Bucket;
  *   <li>Lifecycle: callers are responsible for closing/freeing the underlying bucket when done.
  * </ul>
  */
-public final class CacheFetchResult {
+public class CacheFetchResult extends FetchResult {
 
   /**
    * Marker that the payload was filtered earlier in the pipeline.
@@ -40,12 +39,10 @@ public final class CacheFetchResult {
    */
   public final boolean alreadyFiltered;
 
-  private final FetchResult delegate;
-
   /**
    * Construct a cache‑aware fetch result.
    *
-   * <p>Creates an instance that wraps the supplied client metadata and data bucket, and records
+   * <p>Creates an instance that wraps the supplied client metadata and data bucket and records
    * whether the payload was filtered before being placed into the cache or otherwise returned.
    * Neither argument is copied; references are stored as‑is. The constructor performs the same
    * validations as {@code FetchResult}: both {@code dm} and {@code fetched} must be non‑null.
@@ -63,64 +60,7 @@ public final class CacheFetchResult {
    *     normalization earlier in the pipeline; callers may use this to skip redundant work.
    */
   public CacheFetchResult(ClientMetadata dm, Bucket fetched, boolean alreadyFiltered) {
-    this.delegate = new FetchResult(dm, fetched);
+    super(dm, fetched);
     this.alreadyFiltered = alreadyFiltered;
-  }
-
-  /**
-   * Returns the payload MIME type.
-   *
-   * @return MIME type from the delegated {@link FetchResult}.
-   */
-  public String getMimeType() {
-    return delegate.getMimeType();
-  }
-
-  /**
-   * Returns client metadata associated with this cached payload.
-   *
-   * @return metadata from the delegated {@link FetchResult}.
-   */
-  public ClientMetadata getMetadata() {
-    return delegate.getMetadata();
-  }
-
-  /**
-   * Returns payload size in bytes.
-   *
-   * @return size from the delegated {@link FetchResult}.
-   */
-  public long size() {
-    return delegate.size();
-  }
-
-  /**
-   * Materializes payload bytes.
-   *
-   * @return payload bytes from the delegated {@link FetchResult}.
-   * @throws IOException if reading from the bucket fails.
-   */
-  public byte[] asByteArray() throws IOException {
-    return delegate.asByteArray();
-  }
-
-  /**
-   * Returns the underlying payload bucket.
-   *
-   * @return bucket from the delegated {@link FetchResult}.
-   */
-  public Bucket asBucket() {
-    return delegate.asBucket();
-  }
-
-  /**
-   * Returns the wrapped plain {@link FetchResult}.
-   *
-   * <p>This is used by call sites that require the exact {@code FetchResult} type.
-   *
-   * @return delegated {@link FetchResult}.
-   */
-  public FetchResult asFetchResult() {
-    return delegate;
   }
 }
