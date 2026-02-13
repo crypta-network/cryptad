@@ -364,12 +364,12 @@ public final class ReceivedCookie extends Cookie {
         "ReceivedCookie objects cannot be encoded to a HTTP header value, use Cookie objects!");
   }
 
-  /** Returns true if two ReceivedCookie objects have equal domain, path, and name. */
+  /** Returns true if this cookie has equal domain, path, and name as another Cookie. */
   @Override
   public boolean equals(Object obj) {
     if (obj == this) return true;
 
-    if (!(obj instanceof ReceivedCookie other)) return false;
+    if (!(obj instanceof Cookie other)) return false;
 
     URI myDomain = getDomain();
     URI otherDomain = other.getDomain();

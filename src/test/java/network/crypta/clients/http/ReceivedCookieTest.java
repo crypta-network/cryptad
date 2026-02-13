@@ -7,12 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.text.ParseException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings({"java:S100", "ResultOfMethodCallIgnored"})
+@SuppressWarnings({"java:S100"})
 class ReceivedCookieTest {
 
   private static final String VALID_NAME = "SessionID";
@@ -121,6 +122,17 @@ class ReceivedCookieTest {
   @Test
   void encodeToHeaderValue_throwsUnsupportedOperation() {
     assertThrows(UnsupportedOperationException.class, () -> cookie.encodeToHeaderValue());
+  }
+
+  @Test
+  void equals_withCookieSubtype_isSymmetric() throws ParseException {
+    Cookie outgoing =
+        new Cookie(URI.create(VALID_PATH), VALID_NAME, "ignored", Instant.now().plusSeconds(60));
+    ReceivedCookie incoming =
+        ReceivedCookie.parseHeader(VALID_NAME + "=other;$path=" + VALID_PATH).getFirst();
+
+    assertEquals(outgoing, incoming);
+    assertEquals(incoming, outgoing);
   }
 
   private static String validHeaderWithAttributes() {
