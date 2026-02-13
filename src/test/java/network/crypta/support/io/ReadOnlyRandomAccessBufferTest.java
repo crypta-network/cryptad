@@ -271,13 +271,7 @@ class ReadOnlyRandomAccessBufferTest {
     ReadOnlyRandomAccessBuffer ro = new ReadOnlyRandomAccessBuffer(underlying);
     // Prefer using assertion helpers instead of calling equals(null) directly
     assertNotEquals(null, ro);
-    // Different runtime class should not be equal due to strict getClass() check
-    class RORABSub extends ReadOnlyRandomAccessBuffer {
-      RORABSub(LockableRandomAccessBuffer u) {
-        super(u);
-      }
-    }
-    ReadOnlyRandomAccessBuffer otherType = new RORABSub(mock(LockableRandomAccessBuffer.class));
-    assertNotEquals(ro, otherType);
+    // Different runtime class should not be equal due to strict getClass() check.
+    assertNotEquals(ro, mock(LockableRandomAccessBuffer.class));
   }
 }

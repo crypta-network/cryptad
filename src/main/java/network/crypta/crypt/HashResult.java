@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@link #copy(HashResult[])} performs a shallow copy that shares hash bytes.
  * </ul>
  */
-public class HashResult implements Comparable<HashResult>, Serializable {
+public final class HashResult implements Comparable<HashResult>, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(HashResult.class);
   private static final HashResult[] EMPTY_HASHES = new HashResult[0];
   private static final byte[] EMPTY_BYTES = new byte[0];

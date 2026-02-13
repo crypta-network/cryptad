@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  *       behavior.
  * </ul>
  */
-public class ClientPutDiskDirMessage extends ClientPutDirMessage {
+public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutDiskDirMessage.class);
 
   /**
@@ -68,7 +68,7 @@ public class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * @throws MessageInvalidException if the {@code Filename} field is absent.
    */
   public ClientPutDiskDirMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    super(fs);
+    super(parseCommonFields(fs));
     allowUnreadableFiles = fs.getBoolean("AllowUnreadableFiles", false);
     includeHiddenFiles = fs.getBoolean("includeHiddenFiles", false);
     String fnam = fs.get("Filename");

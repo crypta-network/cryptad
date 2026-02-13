@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
  *
  * @since 2
  */
-public class DelayedFreeRandomAccessBucket
+public final class DelayedFreeRandomAccessBucket
     implements Bucket, Serializable, RandomAccessBucket, DelayedFree {
 
   private static final Logger LOG = LoggerFactory.getLogger(DelayedFreeRandomAccessBucket.class);

@@ -30,7 +30,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see FCPMessage
  * @see ProtocolErrorMessage
  */
-public class WatchGlobal extends FCPMessage {
+public final class WatchGlobal extends FCPMessage {
 
   final boolean enabled;
   final int verbosityMask;

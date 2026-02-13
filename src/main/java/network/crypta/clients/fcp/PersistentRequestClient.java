@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * @see FCPConnectionHandler
  * @see RequestStatusCache
  */
-public class PersistentRequestClient {
+public final class PersistentRequestClient {
   private static final Logger LOG = LoggerFactory.getLogger(PersistentRequestClient.class);
 
   /**

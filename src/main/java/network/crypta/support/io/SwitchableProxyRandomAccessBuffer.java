@@ -39,11 +39,9 @@ abstract class SwitchableProxyRandomAccessBuffer implements LockableRandomAccess
    */
   private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
-  SwitchableProxyRandomAccessBuffer(LockableRandomAccessBuffer initialWrap, long size)
-      throws IOException {
+  SwitchableProxyRandomAccessBuffer(LockableRandomAccessBuffer initialWrap, long size) {
     this.underlying = initialWrap;
     this.size = size;
-    if (underlying.size() < size) throw new IOException("Underlying must be >= size given");
   }
 
   @Override

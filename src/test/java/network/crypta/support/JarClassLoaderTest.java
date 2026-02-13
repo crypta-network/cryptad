@@ -265,8 +265,8 @@ class JarClassLoaderTest {
         IOException.class,
         () -> {
           try (JarClassLoader ignored = new JarClassLoader(url, wrongLength)) {
-            // Touch the resource so the block isn't empty (static analyzers)
-            ignored.toString();
+            // Keep the resource in scope so the block is not empty for static analyzers.
+            assertNotNull(ignored);
           }
         });
   }

@@ -65,7 +65,7 @@ import org.slf4j.LoggerFactory;
  *
  * @see SplitFileFetcherStorage
  */
-public class SplitFileFetcherSegmentStorage {
+public final class SplitFileFetcherSegmentStorage {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherSegmentStorage.class);
 
   // Set this to "false" to turn off checking the CHKs on blocks decoded (and encoded) via FEC.

@@ -92,7 +92,7 @@ import org.slf4j.LoggerFactory;
  * @see Metadata
  * @see FetchResult
  */
-public class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGetState {
+public final class SingleFileFetcher extends BaseSingleFileFetcher implements ClientGetState {
   private static final Logger LOG = LoggerFactory.getLogger(SingleFileFetcher.class);
   private static final String LOG_META_LABEL = " meta=";
   private static final String LOG_FOR_LABEL = " for ";

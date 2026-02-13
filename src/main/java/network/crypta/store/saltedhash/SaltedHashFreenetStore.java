@@ -80,7 +80,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  *
  * @author sdiz
  */
-public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
+public final class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetStore<T> {
   private static final Logger LOG = LoggerFactory.getLogger(SaltedHashFreenetStore.class);
 
   /** Option for saving plainkey. SECURITY: never enable this for a client cache. */
@@ -931,7 +931,7 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
    *  Gen = Generation
    * </pre>
    */
-  class Entry {
+  final class Entry {
     /** Flag for occupied space */
     private static final long ENTRY_FLAG_OCCUPIED = 0x00000001L;
 
@@ -1108,11 +1108,10 @@ public class SaltedHashFreenetStore<T extends StorableBlock> implements FreenetS
       return (flag & ENTRY_FLAG_OCCUPIED) == 0;
     }
 
-    @SuppressWarnings("java:S1168")
     byte[] getDigestedRoutingKey() {
       if (digestedRoutingKey == null) {
         if (plainRoutingKey == null) {
-          return null;
+          throw new IllegalStateException("Entry has neither plain nor digested routing key");
         } else {
           digestedRoutingKey = cipherManager.getDigestedKey(plainRoutingKey);
         }

@@ -6,6 +6,7 @@ import com.onionnetworks.util.RangeSet;
 import java.io.File;
 import java.io.IOException;
 import java.text.ParseException;
+import java.util.Properties;
 
 /**
  * Persists byte ranges written to a target file so interrupted writes can resume accurately.
@@ -32,7 +33,7 @@ import java.text.ParseException;
  * @see AsyncPersistentProps
  * @see RangeSet
  */
-public class Journal extends AsyncPersistentProps {
+public final class Journal {
 
   /**
    * Property key storing the absolute path of the file this journal represents, written eagerly
@@ -46,6 +47,7 @@ public class Journal extends AsyncPersistentProps {
    */
   public static final String BYTES_PROP = "bytes";
 
+  private final AsyncPersistentProps props;
   File f;
   RangeSet written;
 
@@ -63,10 +65,10 @@ public class Journal extends AsyncPersistentProps {
    *     range data that would make the journal unreliable.
    */
   public Journal(File f) throws IOException {
-    super(f);
+    props = new AsyncPersistentProps(f);
 
     // Read in the byte ranges.
-    String bytes = getProperty(BYTES_PROP);
+    String bytes = props.getProperty(BYTES_PROP);
     if (bytes != null) {
       // try and read existing journal.
       try {
@@ -80,7 +82,7 @@ public class Journal extends AsyncPersistentProps {
     }
 
     // Read in the target file name.
-    String file = getProperty(FILE_PROP);
+    String file = props.getProperty(FILE_PROP);
     if (file != null) {
       this.f = new File(file);
     }
@@ -99,7 +101,7 @@ public class Journal extends AsyncPersistentProps {
    */
   public void setTargetFile(File f) {
     this.f = f;
-    setProperty(FILE_PROP, f.getAbsolutePath());
+    props.setProperty(FILE_PROP, f.getAbsolutePath());
   }
 
   /**
@@ -131,7 +133,7 @@ public class Journal extends AsyncPersistentProps {
    */
   public void addByteRange(Range r) {
     written.add(r);
-    setProperty(BYTES_PROP, written.toString());
+    props.setProperty(BYTES_PROP, written.toString());
   }
 
   /**
@@ -149,5 +151,45 @@ public class Journal extends AsyncPersistentProps {
   @SuppressWarnings("unused")
   public RangeSet getByteRanges() {
     return written;
+  }
+
+  /** Returns the underlying mutable property map used for asynchronous persistence. */
+  public Properties getProperties() {
+    return props.getProperties();
+  }
+
+  /** Returns the backing file used by the asynchronous property store. */
+  public File getFile() {
+    return props.getFile();
+  }
+
+  /** Delegates property writes to the underlying asynchronous property store. */
+  public Object setProperty(String key, String value) {
+    return props.setProperty(key, value);
+  }
+
+  /** Delegates property removal to the underlying asynchronous property store. */
+  public Object remove(Object key) {
+    return props.remove(key);
+  }
+
+  /** Delegates clearing all properties to the underlying asynchronous property store. */
+  public void clear() {
+    props.clear();
+  }
+
+  /** Delegates property lookup to the underlying asynchronous property store. */
+  public String getProperty(String key) {
+    return props.getProperty(key);
+  }
+
+  /** Flushes pending asynchronous writes to disk. */
+  public void flush() throws IOException {
+    props.flush();
+  }
+
+  /** Closes the underlying asynchronous property store. */
+  public void close() throws IOException {
+    props.close();
   }
 }

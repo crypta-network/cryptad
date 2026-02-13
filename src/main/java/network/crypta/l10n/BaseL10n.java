@@ -45,7 +45,7 @@ import org.slf4j.LoggerFactory;
  * @author Florent Daigni&egrave;re &lt;nextgens@freenetproject.org&gt;
  * @author Artefact2
  */
-public class BaseL10n {
+public final class BaseL10n {
   private static final Logger LOG = LoggerFactory.getLogger(BaseL10n.class);
 
   // Sonar: deduplicate common literals used in this class

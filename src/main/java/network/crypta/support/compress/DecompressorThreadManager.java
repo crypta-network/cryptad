@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author sajack
  */
-public class DecompressorThreadManager {
+public final class DecompressorThreadManager {
   private static final Logger LOG = LoggerFactory.getLogger(DecompressorThreadManager.class);
 
   final Queue<DecompressorThread> threads;

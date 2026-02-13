@@ -1696,7 +1696,7 @@ public class PluginManager {
     }
   }
 
-  private static final class JarClassLoaderLease implements AutoCloseable {
+  private static class JarClassLoaderLease implements AutoCloseable {
     private final JarClassLoader loader;
     private boolean keepOpen;
 

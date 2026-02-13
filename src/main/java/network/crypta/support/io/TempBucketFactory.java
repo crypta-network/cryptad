@@ -172,7 +172,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
    * <p>Instances are safe for concurrent use where methods are synchronized; callers should
    * coordinate access patterns when mixing reads, writes, and migration.
    */
-  public class TempBucket implements Bucket, Migratable, RandomAccessBucket {
+  public final class TempBucket implements Bucket, Migratable, RandomAccessBucket {
     /** The current underlying bucket. */
     private RandomAccessBucket currentBucket;
 
@@ -243,7 +243,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
      * @throws IOException if migration fails or I/O operations during copy fail
      */
     @Override
-    public final boolean migrateToDisk() throws IOException {
+    public boolean migrateToDisk() throws IOException {
       Bucket toMigrate;
       long size;
       synchronized (this) {
@@ -292,7 +292,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
      *
      * @return {@code true} when backed by {@link ArrayBucket}; {@code false} when disk-backed
      */
-    public final synchronized boolean isRAMBucket() {
+    public synchronized boolean isRAMBucket() {
       return (currentBucket instanceof ArrayBucket);
     }
 
@@ -333,7 +333,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       return tos;
     }
 
-    private class TempBucketOutputStream extends OutputStream {
+    private final class TempBucketOutputStream extends OutputStream {
       long lastCheckedSize = 0;
       long checkDiskEvery = 4096;
       boolean closed = false;
@@ -404,7 +404,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       @Override
-      public final void write(int b) throws IOException {
+      public void write(int b) throws IOException {
         synchronized (TempBucket.this) {
           if (hasBeenFreed) throw new IOException("Already freed");
           long futureSize = currentSize + 1;
@@ -420,7 +420,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       @Override
-      public final void write(byte @NotNull [] b, int off, int len) throws IOException {
+      public void write(byte @NotNull [] b, int off, int len) throws IOException {
         synchronized (TempBucket.this) {
           if (hasBeenFreed) throw new IOException("Already freed");
           long futureSize = currentSize + len;
@@ -436,7 +436,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       @Override
-      public final void flush() throws IOException {
+      public void flush() throws IOException {
         synchronized (TempBucket.this) {
           if (hasBeenFreed) return;
           maybeMigrateRamBucket(currentSize);
@@ -445,7 +445,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       @Override
-      public final void close() throws IOException {
+      public void close() throws IOException {
         synchronized (TempBucket.this) {
           if (closed) return;
           maybeMigrateRamBucket(currentSize);
@@ -495,7 +495,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       return is;
     }
 
-    private class TempBucketInputStream extends InputStream {
+    private final class TempBucketInputStream extends InputStream {
       /** The current input stream from the underlying bucket. */
       private InputStream currentIS;
 
@@ -526,7 +526,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       @Override
-      public final int read() throws IOException {
+      public int read() throws IOException {
         synchronized (TempBucket.this) {
           if (hasBeenFreed) throw new IOException("Already freed");
           int toReturn = currentIS.read();
@@ -572,7 +572,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       }
 
       @Override
-      public final void close() throws IOException {
+      public void close() throws IOException {
         synchronized (TempBucket.this) {
           IOUtils.closeQuietly(currentIS);
           tbis.remove(this);
@@ -1119,7 +1119,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     // Cleaner for safety net resource cleanup
     private final Cleaner.Cleanable cleanable;
 
-    TempRandomAccessBuffer(int size, long time) throws IOException {
+    TempRandomAccessBuffer(int size, long time) {
       super(new ByteArrayRandomAccessBuffer(size), size);
       creationTimeMillis = time;
       hasMigrated = false;
@@ -1132,8 +1132,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
     }
 
     public TempRandomAccessBuffer(
-        byte[] initialContents, int offset, int size, long time, boolean readOnly)
-        throws IOException {
+        byte[] initialContents, int offset, int size, long time, boolean readOnly) {
       super(new ByteArrayRandomAccessBuffer(initialContents, offset, size, readOnly), size);
       creationTimeMillis = time;
       hasMigrated = false;
@@ -1149,8 +1148,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
         LockableRandomAccessBuffer underlying,
         long creationTime,
         boolean migrated,
-        TempBucket tempBucket)
-        throws IOException {
+        TempBucket tempBucket) {
       super(underlying, underlying.size());
       this.creationTimeMillis = creationTime;
       this.hasMigrated = hasFreedRAM = migrated;

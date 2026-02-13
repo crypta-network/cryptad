@@ -46,7 +46,7 @@ import org.slf4j.LoggerFactory;
  * @see SplitFileFetcherSegmentStorage
  * @see network.crypta.client.FECCodec
  */
-public class SplitFileFetcherCrossSegmentStorage {
+public final class SplitFileFetcherCrossSegmentStorage {
   private static final Logger LOG =
       LoggerFactory.getLogger(SplitFileFetcherCrossSegmentStorage.class);
 

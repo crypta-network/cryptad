@@ -63,7 +63,7 @@ import org.slf4j.LoggerFactory;
  * @see SplitFileInserterStorage
  * @see SplitFileInserterSegmentBlockChooser
  */
-public class SplitFileInserterSegmentStorage {
+public final class SplitFileInserterSegmentStorage {
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserterSegmentStorage.class);
 
   /**

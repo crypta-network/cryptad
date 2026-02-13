@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author toad
  */
-public class ResizablePersistentIntBuffer {
+public final class ResizablePersistentIntBuffer {
   private static final Logger LOG = LoggerFactory.getLogger(ResizablePersistentIntBuffer.class);
   private static final String WRITE_FAILED_SCHEDULED_MSG =
       "Write failed during scheduled flush on {}";

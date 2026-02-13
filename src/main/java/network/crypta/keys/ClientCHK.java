@@ -31,7 +31,7 @@ import network.crypta.support.Fields;
  *   <li>byte[3..4]: compression algorithm (big-endian {@code short}; negative means uncompressed)
  * </ul>
  */
-public class ClientCHK extends ClientKey implements Serializable {
+public final class ClientCHK extends ClientKey implements Serializable {
   @Serial private static final long serialVersionUID = 1L;
 
   /** Lazily constructed cached {@link NodeCHK}. */

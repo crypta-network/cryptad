@@ -259,15 +259,32 @@ public class TempFileBucket extends BaseFileBucket implements Bucket, Serializab
    * @throws StorageFormatException on unknown version or malformed fields
    */
   protected TempFileBucket(DataInputStream dis) throws IOException, StorageFormatException {
-    super(dis);
+    this(readStoredState(dis));
+  }
+
+  private TempFileBucket(StoredState state) {
+    super(state.freed);
+    filenameID = state.filenameID;
+    readOnly = state.readOnly;
+    deleteOnFree = state.deleteOnFree;
+    file = state.file;
+  }
+
+  private static StoredState readStoredState(DataInputStream dis)
+      throws IOException, StorageFormatException {
+    boolean freed = readStoredFreed(dis);
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Bad version");
-    filenameID = dis.readLong();
+    long filenameID = dis.readLong();
     if (filenameID == -1) throw new StorageFormatException("Bad filename ID");
-    readOnly = dis.readBoolean();
-    deleteOnFree = dis.readBoolean();
-    file = new File(dis.readUTF());
+    boolean readOnly = dis.readBoolean();
+    boolean deleteOnFree = dis.readBoolean();
+    File file = new File(dis.readUTF());
+    return new StoredState(freed, filenameID, readOnly, deleteOnFree, file);
   }
+
+  private record StoredState(
+      boolean freed, long filenameID, boolean readOnly, boolean deleteOnFree, File file) {}
 
   @Override
   public int hashCode() {

@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Units: sizes are in bytes; times are in milliseconds since the epoch.
  */
-public class UdpSocketHandler
+public final class UdpSocketHandler
     implements PrioRunnable, PacketSocketHandler, PortForwardSensitiveSocketHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UdpSocketHandler.class);

@@ -65,13 +65,12 @@ class SplitFileInserterSenderTest {
     insertCtx.setForkOnCacheable(true);
 
     // Create a Mockito mock instance of SplitFileInserter (constructor is heavy)
-    parent = mock(SplitFileInserter.class, org.mockito.Mockito.withSettings().withoutAnnotations());
+    parent = mock(SplitFileInserter.class);
     setFinalField(parent, "persistent", true);
     setFinalField(parent, "realTime", false);
     setFinalField(parent, "ctx", insertCtx);
     // Provide a minimal BaseClientPutter parent with priority/client
-    BaseClientPutter base =
-        mock(BaseClientPutter.class, org.mockito.Mockito.withSettings().withoutAnnotations());
+    BaseClientPutter base = mock(BaseClientPutter.class);
     lenient().when(base.getPriorityClass()).thenReturn((short) 7);
     RequestClient rc = mock(RequestClient.class);
     lenient().when(base.getClient()).thenReturn(rc);
@@ -79,7 +78,17 @@ class SplitFileInserterSenderTest {
   }
 
   private static void setFinalField(Object target, String name, Object value) throws Exception {
-    Field f = target.getClass().getSuperclass().getDeclaredField(name);
+    Class<?> cls = target.getClass();
+    Field f = null;
+    while (cls != null) {
+      try {
+        f = cls.getDeclaredField(name);
+        break;
+      } catch (NoSuchFieldException _) {
+        cls = cls.getSuperclass();
+      }
+    }
+    if (f == null) throw new NoSuchFieldException(name);
     f.setAccessible(true);
     f.set(target, value);
   }
@@ -543,6 +552,7 @@ class SplitFileInserterSenderTest {
   }
 
   /** Simple job runner that executes jobs immediately on the calling thread. */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class ImmediateRunner implements PersistentJobRunner {
     private final ClientContext ctx;
 

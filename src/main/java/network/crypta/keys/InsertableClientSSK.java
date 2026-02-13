@@ -78,9 +78,40 @@ public class InsertableClientSSK extends ClientSSK {
       byte[] cryptoKey,
       byte cryptoAlgorithm)
       throws MalformedURLException {
-    super(docName, pubKeyHash, getExtraBytes(cryptoAlgorithm), pubKey, cryptoKey);
+    this(
+        validateConstructionState(
+            docName, pubKeyHash, pubKey, privKey, cryptoKey, cryptoAlgorithm));
+  }
+
+  private InsertableClientSSK(ConstructionState state) {
+    super(state.clientState);
+    this.privKey = state.privKey;
+  }
+
+  private static ConstructionState validateConstructionState(
+      String docName,
+      byte[] pubKeyHash,
+      DSAPublicKey pubKey,
+      DSAPrivateKey privKey,
+      byte[] cryptoKey,
+      byte cryptoAlgorithm)
+      throws MalformedURLException {
+    // Preserve superclass validation/error behavior before subclass-specific null checks.
+    ClientSSK.ConstructionState clientState =
+        ClientSSK.validateConstructionState(
+            docName, pubKeyHash, getExtraBytes(cryptoAlgorithm), pubKey, cryptoKey);
     if (pubKey == null) throw new NullPointerException();
-    this.privKey = privKey;
+    return new ConstructionState(clientState, privKey);
+  }
+
+  private static final class ConstructionState {
+    private final ClientSSK.ConstructionState clientState;
+    private final DSAPrivateKey privKey;
+
+    private ConstructionState(ClientSSK.ConstructionState clientState, DSAPrivateKey privKey) {
+      this.clientState = clientState;
+      this.privKey = privKey;
+    }
   }
 
   /**

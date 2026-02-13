@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  * a moment-in-time view. Listener notifications occur after the corresponding state change and
  * outside the synchronized block.
  */
-public class PartiallyReceivedBlock {
+public final class PartiallyReceivedBlock {
   private static final Logger LOG = LoggerFactory.getLogger(PartiallyReceivedBlock.class);
 
   byte[] data;

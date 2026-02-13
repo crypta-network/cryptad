@@ -33,7 +33,7 @@ import network.crypta.support.io.BucketTools;
  * @see SendPeerMessage
  * @see DarknetPeerNode#sendDownloadFeed(FreenetURI, String)
  */
-public class SendURIMessage extends SendPeerMessage {
+public final class SendURIMessage extends SendPeerMessage {
 
   /**
    * Canonical FCP command name advertised through {@link #getName()} and dispatcher lookups; must
@@ -56,7 +56,7 @@ public class SendURIMessage extends SendPeerMessage {
    * @throws MessageInvalidException if the {@code URI} entry is missing or fails to parse cleanly.
    */
   public SendURIMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    super(fs);
+    super(parseCommonFields(fs));
     try {
       uri = new FreenetURI(fs.get("URI"));
     } catch (MalformedURLException e) {

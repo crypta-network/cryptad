@@ -18,7 +18,7 @@ import network.crypta.io.WritableToDataOutputStream;
  * two-byte signed big-endian value followed by the raw bytes. The constructor that accepts a {@link
  * DataInput} performs the inverse operation and rejects negative lengths.
  */
-public class ShortBuffer implements WritableToDataOutputStream {
+public final class ShortBuffer implements WritableToDataOutputStream {
 
   /**
    * Historical source control identifier retained for compatibility and debugging only.

@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author toad
  */
-public class BulkTransmitter {
+public final class BulkTransmitter {
   private static final Logger LOG = LoggerFactory.getLogger(BulkTransmitter.class);
 
   /**

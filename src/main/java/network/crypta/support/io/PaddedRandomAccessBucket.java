@@ -38,7 +38,7 @@ import org.jetbrains.annotations.NotNull;
  * serialization. The wrapped {@link RandomAccessBucket} is {@code transient} and is written/read by
  * custom {@code writeObject}/{@code readObject} methods because it may not be {@link Serializable}.
  */
-public class PaddedRandomAccessBucket implements RandomAccessBucket, Serializable {
+public final class PaddedRandomAccessBucket implements RandomAccessBucket, Serializable {
   @Serial private static final long serialVersionUID = 1L;
   // The underlying bucket may not be java.io.Serializable; keep transient and handle via
   // Java-serialization hooks similar to DelayedFreeBucket/PaddedBucket.

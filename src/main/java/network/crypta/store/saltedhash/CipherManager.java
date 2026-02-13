@@ -24,7 +24,7 @@ import network.crypta.support.ByteArrayWrapper;
  * <p>Thread safety: the digest cache is synchronized. The {@code encrypt} and {@code decrypt}
  * methods mutate the provided entry and must not be called concurrently for the same entry.
  */
-public class CipherManager {
+public final class CipherManager {
 
   /** The actual salt. 16 bytes. */
   private final byte[] salt;

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import network.crypta.client.async.ClientContext;
@@ -133,9 +134,35 @@ class PersistentRequestRootTest {
     assertNull(root.getForeverClient("ignored-name", null));
   }
 
+  @Test
+  void requestConstructor_whenPersistentClientNull_rejectsImmediately() {
+    assertThrows(
+        IllegalStateException.class,
+        () -> new TestClientRequest(null, "id-null", false, false, true));
+  }
+
+  @Test
+  void requestConstructor_whenPersistentClientMismatched_rejectsImmediately() {
+    PersistentRequestRoot root = new PersistentRequestRoot();
+    PersistentRequestClient client = root.getGlobalForeverClient();
+    ClientRequestParams params =
+        new ClientRequestParams(
+            null,
+            "id-mismatch",
+            0,
+            (short) 0,
+            ClientRequest.Persistence.REBOOT,
+            false,
+            null,
+            false);
+
+    assertThrows(
+        IllegalStateException.class, () -> new TestClientRequest(params, false, true, client));
+  }
+
   /**
-   * Minimal concrete ClientRequest used to exercise PersistentRequestRoot behaviour without
-   * touching networked code.
+   * Minimal concrete ClientRequest used to exercise PersistentRequestRoot behavior without touching
+   * networked code.
    */
   private static final class TestClientRequest extends ClientRequest {
     private final boolean succeeded;
@@ -146,11 +173,20 @@ class PersistentRequestRootTest {
         boolean global,
         boolean finished,
         boolean succeeded) {
-      super(
+      this(
           new ClientRequestParams(
               null, identifier, 0, (short) 0, Persistence.FOREVER, false, null, global),
-          null,
+          finished,
+          succeeded,
           client);
+    }
+
+    TestClientRequest(
+        ClientRequestParams params,
+        boolean finished,
+        boolean succeeded,
+        PersistentRequestClient client) {
+      super(params, null, client);
       this.finished = finished;
       this.succeeded = succeeded;
     }
@@ -226,7 +262,7 @@ class PersistentRequestRootTest {
 
     @Override
     public void start(ClientContext context) {
-      // No-op: start lifecycle isn't needed in these tests.
+      // No-op: a start lifecycle isn't needed in these tests.
     }
 
     @Override

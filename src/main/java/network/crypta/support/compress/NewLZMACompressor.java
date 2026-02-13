@@ -84,7 +84,11 @@ public class NewLZMACompressor extends AbstractCompressor {
       final int minimumCompressionPercentage)
       throws IOException, CompressionRatioException {
     // Enforce caller-provided read/write limits during compression.
-    CountedInputStream cis = createCountedInputStream(is, maxReadLength);
+    CountedInputStream countedInput = new CountedInputStream(is);
+    InputStream encoderInput =
+        (maxReadLength >= 0 && maxReadLength != Long.MAX_VALUE)
+            ? new BoundedInputStream(countedInput, maxReadLength)
+            : countedInput;
     CountedOutputStream cos = createCountedOutputStream(os, maxWriteLength);
 
     // Configure the encoder. An end-marker allows decoding without a known uncompressed length.
@@ -97,20 +101,12 @@ public class NewLZMACompressor extends AbstractCompressor {
 
     ICodeProgress progress =
         createProgressChecker(amountOfDataToCheckCompressionRatio, minimumCompressionPercentage);
-    runEncoder(encoder, cis, cos, progress);
+    runEncoder(encoder, encoderInput, cos, progress);
     if (maxWriteLength >= 0 && cos.written() > maxWriteLength)
       throw new CompressionOutputSizeException(cos.written());
     cos.flush();
-    if (LOG.isDebugEnabled()) LOG.debug("Read {} written {}", cis.count(), cos.written());
+    if (LOG.isDebugEnabled()) LOG.debug("Read {} written {}", countedInput.count(), cos.written());
     return cos.written();
-  }
-
-  /* Select a counting input wrapper. A bounded variant throws when the limit is exceeded; a plain
-   * {@link CountedInputStream} is used otherwise. */
-  private CountedInputStream createCountedInputStream(InputStream is, long maxReadLength) {
-    return (maxReadLength >= 0 && maxReadLength != Long.MAX_VALUE)
-        ? new BoundedInputStream(is, maxReadLength)
-        : new CountedInputStream(is);
   }
 
   /* Select a counting output wrapper. A bounded variant throws on overflow; a plain
@@ -192,22 +188,23 @@ public class NewLZMACompressor extends AbstractCompressor {
    * CompressionInputSizeException} as soon as it can determine the overflow (on the first extra
    * byte). If the underlying stream ends exactly at {@code max}, read methods return {@code -1}.
    */
-  private static final class BoundedInputStream extends CountedInputStream {
+  private static final class BoundedInputStream extends InputStream {
     private final long max;
+    private final CountedInputStream delegate;
 
     // This wrapper does not maintain explicit EOF flags; it probes the delegate as needed.
 
-    BoundedInputStream(InputStream in, long max) {
-      super(in);
+    BoundedInputStream(CountedInputStream in, long max) {
       if (max < 0) throw new IllegalArgumentException("maxReadLength < 0");
       this.max = max;
+      this.delegate = in;
     }
 
     @Override
     public int read() throws IOException {
-      if (count() < max) return super.read();
-      // At the limit: probe the delegate to distinguish true EOF from overflow.
-      int next = in.read();
+      if (delegate.count() < max) return delegate.read();
+      // At the limit: probe one extra byte to distinguish true EOF from overflow.
+      int next = delegate.read();
       if (next == -1) {
         return -1; // true EOF
       }
@@ -216,13 +213,13 @@ public class NewLZMACompressor extends AbstractCompressor {
 
     @Override
     public int read(byte @NotNull [] b, int off, int len) throws IOException {
-      long remaining = max - count();
+      long remaining = max - delegate.count();
       if (remaining > 0) {
         int toRead = (int) Math.min(len, remaining);
-        return super.read(b, off, toRead);
+        return delegate.read(b, off, toRead);
       }
       // No remaining budget: check whether there is more data beyond the limit.
-      int next = in.read();
+      int next = delegate.read();
       if (next == -1) {
         return -1;
       }
@@ -231,16 +228,21 @@ public class NewLZMACompressor extends AbstractCompressor {
 
     @Override
     public int read(byte @NotNull [] b) throws IOException {
-      long remaining = max - count();
+      long remaining = max - delegate.count();
       if (remaining > 0) {
         int toRead = (int) Math.min(b.length, remaining);
-        return super.read(b, 0, toRead);
+        return delegate.read(b, 0, toRead);
       }
-      int next = in.read();
+      int next = delegate.read();
       if (next == -1) {
         return -1;
       }
       throw new CompressionInputSizeException(max);
+    }
+
+    @Override
+    public void close() throws IOException {
+      delegate.close();
     }
   }
 

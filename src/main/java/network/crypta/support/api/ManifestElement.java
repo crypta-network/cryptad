@@ -33,7 +33,7 @@ import network.crypta.support.io.ResumeFailedException;
  * written. The reader also tolerates a trailing object carrying the bucket for compatibility with
  * intermediary streams.
  */
-public class ManifestElement implements Serializable {
+public final class ManifestElement implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 

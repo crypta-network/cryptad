@@ -83,7 +83,7 @@ import org.slf4j.LoggerFactory;
  * hard‑coded as the transition version. The next build (X+1) can drop legacy compatibility and is
  * inserted only to the new key. Secure key backups are required and documented elsewhere.
  */
-public class NodeUpdateManager {
+public final class NodeUpdateManager {
   private static final Logger LOG = LoggerFactory.getLogger(NodeUpdateManager.class);
 
   // L10n parameter keys and repeated URL query parts
@@ -120,6 +120,21 @@ public class NodeUpdateManager {
 
   /** Maximum allowed size in bytes for the IPv4‐to‐country database. */
   public static final long MAX_IP_TO_COUNTRY_LENGTH = 24L * 1024L * 1024L;
+
+  /** Whether the updater is in the legacy final-check phase. */
+  public static final boolean IN_FINAL_CHECK = false;
+
+  /** Remaining time for a legacy final-check timer. */
+  public static final long TIME_REMAINING_ON_CHECK = 0L;
+
+  /** Legacy timestamp for when normal main-jar fetching started. */
+  static final long STARTED_FETCHING_NEXT_MAIN_JAR_TIMESTAMP = 0L;
+
+  /** Whether dependency checks are currently considered broken. */
+  public static final boolean BROKEN_DEPENDENCIES = false;
+
+  /** Whether legacy main-jar Update-over-Mandatory flows are enabled. */
+  public static final boolean SUPPORTS_JAR_UOM = false;
 
   // Installer/seednodes length caps removed with deprecated auto-fetch paths
 
@@ -1063,7 +1078,7 @@ public class NodeUpdateManager {
    * Schedules or triggers UoM announcements if the node is in a suitable state. Protected to allow
    * controlled invocation from internal timers and connection hooks.
    */
-  protected void maybeBroadcastUOMAnnounces() {
+  private void maybeBroadcastUOMAnnounces() {
     if (LOG.isDebugEnabled()) {
       LOG.debug("UOM announce check: begin eligibility scan");
     }
@@ -1129,15 +1144,6 @@ public class NodeUpdateManager {
   public synchronized int fetchingNewMainJarVersion() {
     CoreUpdater cu = coreUpdater;
     return (cu != null) ? cu.fetchingVersion() : -1;
-  }
-
-  /**
-   * Returns whether a legacy final‑check phase is running.
-   *
-   * @return always {@code false} in package‑based updater mode
-   */
-  public boolean inFinalCheck() {
-    return false;
   }
 
   /**
@@ -1299,16 +1305,6 @@ public class NodeUpdateManager {
 
   // Legacy blob serving disabled in package-based updater
 
-  /**
-   * Remaining time on a legacy final‑check timer.
-   *
-   * @return always {@code 0} in package‑based updater mode
-   */
-  public synchronized long timeRemainingOnCheck() {
-    // Legacy UOM final check isn't used; no pending timer
-    return 0L;
-  }
-
   final ByteCounter ctr =
       new ByteCounter() {
 
@@ -1327,16 +1323,6 @@ public class NodeUpdateManager {
           // Ignore. It will be reported to sentBytes() as well.
         }
       };
-
-  /**
-   * Timestamp when a legacy fetch workflow started.
-   *
-   * @return always {@code 0}; legacy timestamp is not tracked
-   */
-  protected long getStartedFetchingNextMainJarTimestamp() {
-    // Legacy normal-updater fetch timestamp no longer tracked
-    return 0L;
-  }
 
   /**
    * Notifies the UoM coordinator that a peer disconnected.
@@ -1404,16 +1390,6 @@ public class NodeUpdateManager {
       cu = coreUpdater;
     }
     if (cu != null) cu.renderProperties(alertNode);
-  }
-
-  /**
-   * Returns whether dependency checks have detected a blocking condition.
-   *
-   * @return always {@code false}; dependency checks are not performed here
-   */
-  public boolean brokenDependencies() {
-    // No dependency checking in package-based updater
-    return false;
   }
 
   /** Callback invoked when beginning a legacy UoM fetch; no‑op in package‑based mode. */
@@ -1493,17 +1469,5 @@ public class NodeUpdateManager {
    */
   public synchronized CoreUpdater getCoreUpdater() {
     return coreUpdater;
-  }
-
-  /**
-   * Whether legacy main‑jar UoM flows should be handled.
-   *
-   * <p>In package‑based updater mode this returns {@code false} to avoid serving/fetching the main
-   * JAR via UoM. Revocation UoM remains enabled.
-   *
-   * @return {@code false} in package‑based mode; legacy flows are disabled for the core JAR
-   */
-  public synchronized boolean supportsJarUOM() {
-    return false;
   }
 }

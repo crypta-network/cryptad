@@ -16,7 +16,6 @@ import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.InsertContext.CompatibilityMode;
 import network.crypta.client.Metadata;
 import network.crypta.client.Metadata.SplitfileAlgorithm;
-import network.crypta.client.MetadataParseException;
 import network.crypta.crypt.ChecksumChecker;
 import network.crypta.crypt.ChecksumFailedException;
 import network.crypta.crypt.RandomSource;
@@ -66,7 +65,7 @@ import org.slf4j.LoggerFactory;
  * @see SplitFileFetcherStoragePersistence
  * @author toad
  */
-public class SplitFileFetcherStorage {
+public final class SplitFileFetcherStorage {
   static final Logger LOG = LoggerFactory.getLogger(SplitFileFetcherStorage.class);
 
   final SplitFileFetcherStorageCallback fetcher;
@@ -239,11 +238,10 @@ public class SplitFileFetcherStorage {
    * @param p immutable parameters, including metadata, factories, and execution helpers, must be
    *     non-null.
    * @throws FetchException when policy validation fails before any network activity begins.
-   * @throws MetadataParseException when metadata cannot describe a supported splitfile layout.
    * @throws IOException when on-disk structures cannot be created or verified.
    */
   public SplitFileFetcherStorage(SplitFileFetcherStorageInitParams p)
-      throws FetchException, MetadataParseException, IOException {
+      throws FetchException, IOException {
     // Initialize immutable/basic fields.
     this.fetcher = p.fetcher;
     this.jobRunner = p.exec;

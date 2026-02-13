@@ -82,6 +82,19 @@ public class AddressTrackerItem {
    */
   static final boolean INCLUDE_RECEIVED_PACKETS = true;
 
+  private static final class ParsedState {
+    private long timeFirstReceivedPacket;
+    private long timeFirstSentPacket;
+    private long timeDefinitelyNoPacketsSent;
+    private long timeDefinitelyNoPacketsReceived;
+    private long timeLastReceivedPacket;
+    private long timeLastSentPacket;
+    private long packetsSent;
+    private long packetsReceived;
+    private long[] gapLengths;
+    private long[] gapLengthRecvTimes;
+  }
+
   /**
    * Creates an empty tracker with known upper bounds for the "no packets yet" window.
    *
@@ -104,6 +117,19 @@ public class AddressTrackerItem {
     gapLengthRecvTimes = new long[TRACK_GAPS];
   }
 
+  private AddressTrackerItem(ParsedState parsed) {
+    timeFirstReceivedPacket = parsed.timeFirstReceivedPacket;
+    timeFirstSentPacket = parsed.timeFirstSentPacket;
+    timeDefinitelyNoPacketsSent = parsed.timeDefinitelyNoPacketsSent;
+    timeDefinitelyNoPacketsReceived = parsed.timeDefinitelyNoPacketsReceived;
+    timeLastReceivedPacket = parsed.timeLastReceivedPacket;
+    timeLastSentPacket = parsed.timeLastSentPacket;
+    packetsSent = parsed.packetsSent;
+    packetsReceived = parsed.packetsReceived;
+    gapLengths = parsed.gapLengths;
+    gapLengthRecvTimes = parsed.gapLengthRecvTimes;
+  }
+
   /**
    * Reconstructs a tracker from a serialized {@link SimpleFieldSet}.
    *
@@ -117,26 +143,32 @@ public class AddressTrackerItem {
    * @throws FSParseException if required keys are missing or values cannot be parsed
    */
   public AddressTrackerItem(SimpleFieldSet fs) throws FSParseException {
-    timeFirstReceivedPacket = fs.getLong("TimeFirstReceivedPacket");
-    timeFirstSentPacket = fs.getLong("TimeFirstSentPacket");
-    timeDefinitelyNoPacketsSent = fs.getLong("TimeDefinitelyNoPacketsSent");
-    timeDefinitelyNoPacketsReceived = fs.getLong("TimeDefinitelyNoPacketsReceived");
-    timeLastReceivedPacket = fs.getLong("TimeLastReceivedPacket");
-    timeLastSentPacket = fs.getLong("TimeLastSentPacket");
-    packetsSent = fs.getLong("PacketsSent");
-    packetsReceived = fs.getLong("PacketsReceived");
+    this(parseState(fs));
+  }
+
+  private static ParsedState parseState(SimpleFieldSet fs) throws FSParseException {
+    ParsedState parsed = new ParsedState();
+    parsed.timeFirstReceivedPacket = fs.getLong("TimeFirstReceivedPacket");
+    parsed.timeFirstSentPacket = fs.getLong("TimeFirstSentPacket");
+    parsed.timeDefinitelyNoPacketsSent = fs.getLong("TimeDefinitelyNoPacketsSent");
+    parsed.timeDefinitelyNoPacketsReceived = fs.getLong("TimeDefinitelyNoPacketsReceived");
+    parsed.timeLastReceivedPacket = fs.getLong("TimeLastReceivedPacket");
+    parsed.timeLastSentPacket = fs.getLong("TimeLastSentPacket");
+    parsed.packetsSent = fs.getLong("PacketsSent");
+    parsed.packetsReceived = fs.getLong("PacketsReceived");
     SimpleFieldSet gaps = fs.getSubset("Gaps");
-    gapLengths = new long[TRACK_GAPS];
-    gapLengthRecvTimes = new long[TRACK_GAPS];
+    parsed.gapLengths = new long[TRACK_GAPS];
+    parsed.gapLengthRecvTimes = new long[TRACK_GAPS];
     for (int i = 0; i < TRACK_GAPS; i++) {
       SimpleFieldSet gap = gaps.subset(Integer.toString(i));
       if (gap == null) {
         LOG.info("No more gaps at i={} - TRACK_GAPS changed??", i);
         break;
       }
-      gapLengths[i] = gap.getLong("Length");
-      gapLengthRecvTimes[i] = gap.getLong("Received");
+      parsed.gapLengths[i] = gap.getLong("Length");
+      parsed.gapLengthRecvTimes[i] = gap.getLong("Received");
     }
+    return parsed;
   }
 
   /**

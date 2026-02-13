@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * <p>Instances hold a generated key pair unless constructed from a serialized {@link
  * SimpleFieldSet}. All methods are thread-safe unless stated otherwise.
  */
-public class ECDSA {
+public final class ECDSA {
   private static final Logger LOG = LoggerFactory.getLogger(ECDSA.class);
 
   private static final String MSG_NO_SUCH_ALGO = "NoSuchAlgorithmException : ";

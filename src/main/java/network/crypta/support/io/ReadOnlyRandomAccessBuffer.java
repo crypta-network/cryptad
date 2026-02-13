@@ -23,7 +23,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  * <p><strong>Equality:</strong> {@link #equals(Object)} and {@link #hashCode()} delegate to the
  * underlying buffer; two wrappers are equal if and only if their underlying instances are equal.
  */
-public class ReadOnlyRandomAccessBuffer implements LockableRandomAccessBuffer {
+public final class ReadOnlyRandomAccessBuffer implements LockableRandomAccessBuffer {
 
   private final LockableRandomAccessBuffer underlying;
 

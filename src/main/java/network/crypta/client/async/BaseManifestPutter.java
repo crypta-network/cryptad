@@ -109,6 +109,16 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   }
 
   /**
+   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
+   *
+   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
+   * otherwise define a finalizer and observe partially initialized state.
+   */
+  @Override
+  @SuppressWarnings({"deprecation", "removal"})
+  protected final void finalize() {}
+
+  /**
    * ArchivePutHandler - wrapper for ContainerInserter
    *
    * <p>Archives are not part of the site structure; they are used to group files that not fit into

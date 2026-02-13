@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  * throttle synchronizes state changes where required. Methods that only read state are not
  * synchronized.
  */
-public class RequestStarterGroup {
+public final class RequestStarterGroup {
   private static final Logger LOG = LoggerFactory.getLogger(RequestStarterGroup.class);
 
   // Scheduler identifiers used in multiple places

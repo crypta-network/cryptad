@@ -748,9 +748,9 @@ final class FcpServerPersistentOps implements DownloadCache {
           new ClientMetadata(get.getMIMEType()), new NoFreeBucket(get.getBucket()));
     }
 
-    FetchResult result = globalForeverClient.getRequestStatusCache().getShadowBucket(key, false);
-    if (result != null) {
-      return result;
+    CacheFetchResult shadow = getGlobalForeverShadowBucket(key, false);
+    if (shadow != null) {
+      return shadow;
     }
 
     final CountDownLatch done = new CountDownLatch(1);
@@ -768,7 +768,8 @@ final class FcpServerPersistentOps implements DownloadCache {
               @Override
               public boolean run(ClientContext context) {
                 try {
-                  resultRef.set(lookup(key, false, context, false, null));
+                  CacheFetchResult lookup = lookup(key, false, context, false, null);
+                  resultRef.set(lookup);
                 } finally {
                   done.countDown();
                 }
@@ -803,9 +804,8 @@ final class FcpServerPersistentOps implements DownloadCache {
       }
     }
 
-    if (origData == null && globalForeverClient != null) {
-      CacheFetchResult result =
-          globalForeverClient.getRequestStatusCache().getShadowBucket(key, noFilter);
+    if (origData == null) {
+      CacheFetchResult result = getGlobalForeverShadowBucket(key, noFilter);
       if (result != null) {
         mime = result.getMimeType();
         origData = result.asBucket();
@@ -856,6 +856,17 @@ final class FcpServerPersistentOps implements DownloadCache {
       return new CacheFetchResult(new ClientMetadata(get.getMIMEType()), newData, filtered);
     }
     return null;
+  }
+
+  private CacheFetchResult getGlobalForeverShadowBucket(FreenetURI key, boolean noFilter) {
+    if (globalForeverClient == null) {
+      return null;
+    }
+    RequestStatusCache statusCache = globalForeverClient.getRequestStatusCache();
+    if (statusCache == null) {
+      return null;
+    }
+    return statusCache.getShadowBucket(key, noFilter);
   }
 
   PersistentRequestClient getGlobalRebootClient() {

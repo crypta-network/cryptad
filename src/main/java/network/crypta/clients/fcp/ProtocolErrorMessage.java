@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Maintains the official descriptions for all known FCP error codes.
  * </ul>
  */
-public class ProtocolErrorMessage extends FCPMessage implements Serializable {
+public final class ProtocolErrorMessage extends FCPMessage implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(ProtocolErrorMessage.class);
 
   @Serial private static final long serialVersionUID = 1L;

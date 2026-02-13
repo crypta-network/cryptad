@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author toad
  */
-public class NodeCrypto {
+public final class NodeCrypto {
   private static final Logger LOG = LoggerFactory.getLogger(NodeCrypto.class);
   private static final String LOG_CAUGHT_PREFIX = "Caught ";
   private static final String SFS_KEY_ECDSA = "ecdsa";

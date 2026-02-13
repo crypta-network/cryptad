@@ -9,9 +9,9 @@ import network.crypta.support.api.Bucket;
  *
  * <p>This type is a thin, immutable extension of {@code FetchResult} that adds a single boolean
  * flag indicating whether the binary payload has already been passed through any applicable
- * filtering or post‑processing steps earlier in the pipeline. Callers can use this information to
+ * filtering or post-processing steps earlier in the pipeline. Callers can use this information to
  * avoid reapplying potentially expensive or lossy filters when they know a cache hit already
- * produced data in the final, consumer‑ready form.
+ * produced data in the final, consumer-ready form.
  *
  * <p>Aside from that marker, the instance behaves exactly like a regular {@code FetchResult}: it
  * exposes the client metadata (for example, the MIME type), provides access to the payload via a
@@ -42,7 +42,7 @@ public class CacheFetchResult extends FetchResult {
   /**
    * Construct a cache‑aware fetch result.
    *
-   * <p>Creates an instance that wraps the supplied client metadata and data bucket, and records
+   * <p>Creates an instance that wraps the supplied client metadata and data bucket and records
    * whether the payload was filtered before being placed into the cache or otherwise returned.
    * Neither argument is copied; references are stored as‑is. The constructor performs the same
    * validations as {@code FetchResult}: both {@code dm} and {@code fetched} must be non‑null.

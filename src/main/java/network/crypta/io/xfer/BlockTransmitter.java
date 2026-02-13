@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  * and counters) is guarded by the {@code senderThread} monitor. Callers must respect the locking
  * notes in the method Javadoc.
  */
-public class BlockTransmitter {
+public final class BlockTransmitter {
   private static final Logger LOG = LoggerFactory.getLogger(BlockTransmitter.class);
 
   /**

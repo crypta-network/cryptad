@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
  * @see ArchiveStoreContext
  * @see ArchiveManager
  */
-class RealArchiveStoreItem extends ArchiveStoreItem {
+final class RealArchiveStoreItem extends ArchiveStoreItem {
   /** Logger for diagnostic messages related to this store item. */
   private static final Logger LOG = LoggerFactory.getLogger(RealArchiveStoreItem.class);
 

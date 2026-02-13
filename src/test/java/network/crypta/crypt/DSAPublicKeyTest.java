@@ -112,13 +112,8 @@ class DSAPublicKeyTest {
 
   @Test
   void asPaddedBytes_whenTooLarge_throwsError() {
-    DSAGroup hugeBytesGroup =
-        new DSAGroup(BigInteger.valueOf(97), BigInteger.valueOf(13), BigInteger.valueOf(5)) {
-          @Override
-          public byte[] asBytes() {
-            return new byte[DSAPublicKey.PADDED_SIZE + 64];
-          }
-        };
+    BigInteger hugeP = BigInteger.ONE.shiftLeft((DSAPublicKey.PADDED_SIZE + 64) * 8);
+    DSAGroup hugeBytesGroup = new DSAGroup(hugeP, BigInteger.valueOf(13), BigInteger.valueOf(5));
     DSAPublicKey key = new DSAPublicKey(hugeBytesGroup, BigInteger.TWO);
     assertThrows(Error.class, key::asPaddedBytes);
   }

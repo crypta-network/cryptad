@@ -108,18 +108,31 @@ public class ClientSSK extends ClientKey {
   public ClientSSK(
       String docName, byte[] pubKeyHash, byte[] extras, DSAPublicKey pubKey, byte[] cryptoKey)
       throws MalformedURLException {
+    this(validateConstructionState(docName, pubKeyHash, extras, pubKey, cryptoKey));
+  }
+
+  ClientSSK(ConstructionState state) {
+    this.docName = state.docName;
+    this.pubKey = state.pubKey;
+    this.pubKeyHash = state.pubKeyHash;
+    this.cryptoAlgorithm = state.cryptoAlgorithm;
+    this.cryptoKey = state.cryptoKey;
+    this.ehDocname = state.ehDocname;
+    this.hashCode = state.hashCodeValue;
+  }
+
+  static ConstructionState validateConstructionState(
+      String docName, byte[] pubKeyHash, byte[] extras, DSAPublicKey pubKey, byte[] cryptoKey)
+      throws MalformedURLException {
     // Validate arguments and compute the encrypted docname used by the node-level key.
-    this.docName = docName;
-    this.pubKey = pubKey;
-    this.pubKeyHash = pubKeyHash;
     if (docName == null) throw new MalformedURLException("No document name.");
     if (extras == null) throw new MalformedURLException("No extra bytes in SSK - maybe a 0.5 key?");
     if (extras.length < 5)
       throw new MalformedURLException("Extra bytes too short: " + extras.length + " bytes");
-    this.cryptoAlgorithm = extras[2];
+    byte cryptoAlgorithm = extras[2];
     if (cryptoAlgorithm != Key.ALGO_AES_PCFB_256_SHA256)
       throw new MalformedURLException("Unknown encryption algorithm " + cryptoAlgorithm);
-    if (!Arrays.equals(extras, getExtraBytes()))
+    if (!Arrays.equals(extras, getExtraBytes(cryptoAlgorithm)))
       throw new MalformedURLException("Wrong extra bytes");
     if (pubKeyHash.length != NodeSSK.PUBKEY_HASH_SIZE)
       throw new MalformedURLException(
@@ -137,9 +150,9 @@ public class ClientSSK extends ClientKey {
       byte[] otherPubKeyHash = md.digest();
       if (!Arrays.equals(otherPubKeyHash, pubKeyHash)) throw new IllegalArgumentException();
     }
-    this.cryptoKey = cryptoKey;
     md.update(docName.getBytes(StandardCharsets.UTF_8));
     byte[] buf = md.digest();
+    byte[] ehDocname;
     try {
       Rijndael aes = new Rijndael(256, 256);
       aes.initialize(cryptoKey);
@@ -148,11 +161,26 @@ public class ClientSSK extends ClientKey {
     } catch (UnsupportedCipherException e) {
       throw new IllegalStateException("AES cipher unavailable", e);
     }
-    hashCode =
+    int hashCode =
         Fields.hashCode(pubKeyHash)
             ^ Fields.hashCode(cryptoKey)
             ^ Fields.hashCode(ehDocname)
             ^ docName.hashCode();
+    return new ConstructionState(
+        docName, pubKey, pubKeyHash, cryptoAlgorithm, cryptoKey, ehDocname, hashCode);
+  }
+
+  private static ConstructionState validateConstruction(FreenetURI origURI)
+      throws MalformedURLException {
+    ConstructionState state =
+        validateConstructionState(
+            origURI.getDocName(),
+            origURI.getRoutingKey(),
+            origURI.getExtra(),
+            null,
+            origURI.getCryptoKey());
+    if (!origURI.getKeyType().equalsIgnoreCase("SSK")) throw new MalformedURLException();
+    return state;
   }
 
   /**
@@ -163,13 +191,34 @@ public class ClientSSK extends ClientKey {
    * @throws MalformedURLException if the URI is not an SSK URI or any component fails validation.
    */
   public ClientSSK(FreenetURI origURI) throws MalformedURLException {
-    this(
-        origURI.getDocName(),
-        origURI.getRoutingKey(),
-        origURI.getExtra(),
-        null,
-        origURI.getCryptoKey());
-    if (!origURI.getKeyType().equalsIgnoreCase("SSK")) throw new MalformedURLException();
+    this(validateConstruction(origURI));
+  }
+
+  static final class ConstructionState {
+    private final String docName;
+    private final DSAPublicKey pubKey;
+    private final byte[] pubKeyHash;
+    private final byte cryptoAlgorithm;
+    private final byte[] cryptoKey;
+    private final byte[] ehDocname;
+    private final int hashCodeValue;
+
+    private ConstructionState(
+        String docName,
+        DSAPublicKey pubKey,
+        byte[] pubKeyHash,
+        byte cryptoAlgorithm,
+        byte[] cryptoKey,
+        byte[] ehDocname,
+        int hashCodeValue) {
+      this.docName = docName;
+      this.pubKey = pubKey;
+      this.pubKeyHash = pubKeyHash;
+      this.cryptoAlgorithm = cryptoAlgorithm;
+      this.cryptoKey = cryptoKey;
+      this.ehDocname = ehDocname;
+      this.hashCodeValue = hashCodeValue;
+    }
   }
 
   /** No-arg constructor for serialization frameworks. Not intended for general use. */

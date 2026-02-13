@@ -23,7 +23,7 @@ import network.crypta.support.SimpleFieldSet;
  * {@code null} to minimize the encoded size. {@link #getGroup()} always returns a non-null
  * instance, resolving {@code null} to the canonical group.
  */
-public class DSAPublicKey extends CryptoKey implements StorableBlock {
+public final class DSAPublicKey extends CryptoKey implements StorableBlock {
 
   @Serial private static final long serialVersionUID = -1;
   private final BigInteger y;

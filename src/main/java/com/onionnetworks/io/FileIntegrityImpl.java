@@ -28,7 +28,7 @@ import com.onionnetworks.util.Util;
  *
  * @author Justin F. Chapweske
  */
-public class FileIntegrityImpl implements FileIntegrity {
+public final class FileIntegrityImpl implements FileIntegrity {
 
   private final String algo;
   private final Buffer fileHash;

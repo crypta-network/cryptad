@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  * @see #readPage(DataInputStream)
  * @see #asPackets()
  */
-public class OggPage {
+public final class OggPage {
   private static final Logger LOG = LoggerFactory.getLogger(OggPage.class);
   static final byte[] magicNumber = new byte[] {0x4f, 0x67, 0x67, 0x53};
   /*This CRC lookup table was taken from libogg. These values

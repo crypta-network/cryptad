@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
+import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import network.crypta.client.HighLevelSimpleClient;
@@ -423,8 +424,8 @@ class PluginInfoWrapperTest {
       throws Exception {
     // Arrange
     Node node = mockNode(false);
-    RecordingJarClassLoader loader =
-        new RecordingJarClassLoader(createEmptyJar(tempDir.resolve("plugin.jar")).toFile());
+    JarClassLoader loader =
+        new JarClassLoader(createEmptyJar(tempDir.resolve("plugin.jar")).toFile());
     FredPlugin plugin =
         (FredPlugin)
             Proxy.newProxyInstance(
@@ -447,7 +448,8 @@ class PluginInfoWrapperTest {
 
     // Assert
     assertTrue(success);
-    assertTrue(loader.isClosed());
+    JarFile jarFile = getTempJarFile(loader);
+    assertThrows(IllegalStateException.class, () -> jarFile.getJarEntry("META-INF/MANIFEST.MF"));
   }
 
   @Test
@@ -520,6 +522,12 @@ class PluginInfoWrapperTest {
     return jarPath;
   }
 
+  private static JarFile getTempJarFile(JarClassLoader loader) throws ReflectiveOperationException {
+    var tempJarField = JarClassLoader.class.getDeclaredField("tempJarFile");
+    tempJarField.setAccessible(true);
+    return (JarFile) tempJarField.get(loader);
+  }
+
   private static final class BasicPlugin implements FredPlugin {
     @Override
     public void terminate() {
@@ -568,24 +576,6 @@ class PluginInfoWrapperTest {
     @Override
     public void runPlugin(PluginRespirator pr) {
       // Intentionally empty: test stub plugin does not start threads or register callbacks.
-    }
-  }
-
-  private static final class RecordingJarClassLoader extends JarClassLoader {
-    private volatile boolean closed = false;
-
-    private RecordingJarClassLoader(java.io.File jar) throws IOException {
-      super(jar);
-    }
-
-    @Override
-    public void close() throws IOException {
-      closed = true;
-      super.close();
-    }
-
-    private boolean isClosed() {
-      return closed;
     }
   }
 }

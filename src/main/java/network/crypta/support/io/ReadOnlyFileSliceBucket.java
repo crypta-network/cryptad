@@ -21,7 +21,7 @@ import org.jetbrains.annotations.NotNull;
  * <p>This class does not verify content hashes; callers should wrap it if integrity checks are
  * required.
  */
-public class ReadOnlyFileSliceBucket implements Bucket, Serializable {
+public final class ReadOnlyFileSliceBucket implements Bucket, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
   private final File file;
@@ -135,7 +135,7 @@ public class ReadOnlyFileSliceBucket implements Bucket, Serializable {
     // Intentional no-op.
   }
 
-  private class MyInputStream extends InputStream {
+  private final class MyInputStream extends InputStream {
 
     private final RandomAccessFile f;
     // Current read position relative to {@code startAt} within the slice.

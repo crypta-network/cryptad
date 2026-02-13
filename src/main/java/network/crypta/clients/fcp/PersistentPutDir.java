@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
  *
  * @see BaseManifestPutter#flatten(Map)
  */
-public class PersistentPutDir extends FCPMessage {
+public final class PersistentPutDir extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(PersistentPutDir.class);
   private static final String NAME = "PersistentPutDir";
   private static final String UPLOAD_FROM = "UploadFrom";

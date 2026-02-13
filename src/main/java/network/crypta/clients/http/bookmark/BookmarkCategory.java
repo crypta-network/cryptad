@@ -30,7 +30,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see BookmarkItem
  * @see BookmarkManager
  */
-public class BookmarkCategory extends Bookmark {
+public final class BookmarkCategory extends Bookmark {
   /**
    * Type discriminator used when encoding or decoding this bookmark kind in a {@link
    * SimpleFieldSet}.

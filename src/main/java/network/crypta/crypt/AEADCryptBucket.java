@@ -44,7 +44,7 @@ import network.crypta.support.io.StorageFormatException;
  *
  * @author toad
  */
-public class AEADCryptBucket implements Bucket, Serializable {
+public final class AEADCryptBucket implements Bucket, Serializable {
   @Serial private static final long serialVersionUID = 1L;
   // The underlying bucket may or may not be java.io.Serializable. Java serialization for this
   // wrapper is enabled only when the underlying is Serializable (see writeObject/readObject). The

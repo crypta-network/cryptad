@@ -30,7 +30,7 @@ package com.onionnetworks.util;
  * @author Justin F. Chapweske
  * @see java.nio.ByteBuffer
  */
-public class Buffer {
+public final class Buffer {
 
   /**
    * Backing byte array that stores the bytes for this buffer view. The array may contain additional

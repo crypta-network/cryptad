@@ -31,6 +31,9 @@ import network.crypta.support.SimpleFieldSet;
  * @see FCPConnectionHandler
  */
 public abstract class SendPeerMessage extends DataCarryingMessage {
+  /** Parsed routing fields used to construct {@link SendPeerMessage} without throwing. */
+  protected record ParsedCommonFields(String identifier, String nodeIdentifier, long dataLength) {}
+
   /**
    * Caller-supplied identifier echoed back in {@link SentPeerMessage} notifications so clients can
    * correlate requests with asynchronous completion events, even when multiple sends are in flight.
@@ -46,36 +49,48 @@ public abstract class SendPeerMessage extends DataCarryingMessage {
   private final long dataLength;
 
   /**
-   * Creates a new send request by extracting the routing identifiers and optional byte-length from
-   * a parsed field set.
+   * Creates a new send request from already-validated common routing fields.
    *
-   * <p>The field set must contain {@code Identifier} for the client correlation id and {@code
-   * NodeIdentifier} for the target peer. {@code DataLength} is optional; when supplied it is
-   * validated to be non-negative and stored verbatim for subsequent serialization. No I/O occurs at
-   * construction time, so subclasses may safely perform additional validation before calling {@link
-   * #run(FCPConnectionHandler, Node)}.
+   * <p>Subclasses should call {@link #parseCommonFields(SimpleFieldSet)} before invoking this
+   * constructor so validation errors are surfaced from the subclass constructor rather than this
+   * non-final base class constructor.
+   *
+   * @param parsed parsed identifier/node/data-length triple produced by {@link
+   *     #parseCommonFields(SimpleFieldSet)}
+   */
+  protected SendPeerMessage(ParsedCommonFields parsed) {
+    this.identifier = parsed.identifier;
+    this.nodeIdentifier = parsed.nodeIdentifier;
+    this.dataLength = parsed.dataLength;
+  }
+
+  /**
+   * Parses and validates common routing fields shared by all send-peer messages.
    *
    * @param fs structured key-value payload parsed from the inbound message; must not be {@code
-   *     null} and should already satisfy FCP framing rules.
-   * @throws MessageInvalidException if any required key is missing or {@code DataLength} cannot be
-   *     parsed as a non-negative base-10 long value.
+   *     null}
+   * @return parsed common routing fields suitable for {@link #SendPeerMessage(ParsedCommonFields)}
+   * @throws MessageInvalidException if {@code DataLength} is present but invalid
    */
-  protected SendPeerMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    identifier = fs.get("Identifier");
-    nodeIdentifier = fs.get("NodeIdentifier");
-    String dataLengthString = fs.get("DataLength");
-    if (dataLengthString != null)
-      try {
-        // May throw NumberFormatException
-        dataLength = Long.parseLong(dataLengthString, 10);
-        if (dataLength < 0) {
-          throw new NumberFormatException("DataLength must be non-negative");
-        }
-      } catch (NumberFormatException _) {
-        throw new MessageInvalidException(
-            ProtocolErrorMessage.INVALID_FIELD, "Invalid DataLength field", identifier, false);
-      }
-    else dataLength = -1;
+  protected static ParsedCommonFields parseCommonFields(SimpleFieldSet fs)
+      throws MessageInvalidException {
+    String identifier = fs.get("Identifier");
+    String nodeIdentifier = fs.get("NodeIdentifier");
+    return new ParsedCommonFields(
+        identifier, nodeIdentifier, parseDataLength(fs.get("DataLength"), identifier));
+  }
+
+  private static long parseDataLength(String dataLengthString, String identifier)
+      throws MessageInvalidException {
+    if (dataLengthString == null) return -1;
+    try {
+      long dataLength = Long.parseLong(dataLengthString, 10);
+      if (dataLength < 0) throw new NumberFormatException("DataLength must be non-negative");
+      return dataLength;
+    } catch (NumberFormatException _) {
+      throw new MessageInvalidException(
+          ProtocolErrorMessage.INVALID_FIELD, "Invalid DataLength field", identifier, false);
+    }
   }
 
   /**

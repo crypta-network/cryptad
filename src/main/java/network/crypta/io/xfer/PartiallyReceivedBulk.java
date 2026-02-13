@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author toad
  */
-public class PartiallyReceivedBulk {
+public final class PartiallyReceivedBulk {
   private static final Logger LOG = LoggerFactory.getLogger(PartiallyReceivedBulk.class);
 
   /**

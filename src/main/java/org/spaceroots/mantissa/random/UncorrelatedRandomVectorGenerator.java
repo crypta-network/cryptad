@@ -29,7 +29,8 @@ import java.io.Serializable;
  * @see NormalizedRandomGenerator
  * @see CorrelatedRandomVectorGenerator
  */
-public class UncorrelatedRandomVectorGenerator implements Serializable, RandomVectorGenerator {
+public final class UncorrelatedRandomVectorGenerator
+    implements Serializable, RandomVectorGenerator {
 
   /**
    * Builds an uncorrelated vector generator with explicit per‑dimension mean and standard

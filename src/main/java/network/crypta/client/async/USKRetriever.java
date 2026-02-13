@@ -58,7 +58,7 @@ import org.slf4j.LoggerFactory;
  *       #onFailure(FetchException, ClientGetState, ClientContext)} and logged with context.
  * </ul>
  */
-public class USKRetriever extends BaseClientGetter implements USKCallback {
+public final class USKRetriever extends BaseClientGetter implements USKCallback {
   private static final Logger LOG = LoggerFactory.getLogger(USKRetriever.class);
   private static final String LOG_CAUGHT = "Caught {}";
 

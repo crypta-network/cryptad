@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author sdiz
  */
-public class CountingBloomFilter extends BloomFilter {
+public final class CountingBloomFilter extends BloomFilter {
 
   private static final Logger LOG = LoggerFactory.getLogger(CountingBloomFilter.class);
 
@@ -80,7 +80,7 @@ public class CountingBloomFilter extends BloomFilter {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   public CountingBloomFilter(int length, int k) {
-    super(length, k);
+    super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     filter = ByteBuffer.allocate(this.length / 4);
   }
 
@@ -98,7 +98,7 @@ public class CountingBloomFilter extends BloomFilter {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   protected CountingBloomFilter(File file, int length, int k) throws IOException {
-    super(length, k);
+    super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     int fileLength = length / 4;
     if (!file.exists() || file.length() != fileLength) needRebuild = true;
 
@@ -123,7 +123,7 @@ public class CountingBloomFilter extends BloomFilter {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   public CountingBloomFilter(int length, int k, byte[] buffer) {
-    super(length, k);
+    super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     if (buffer == null) {
       throw new NullPointerException("buffer");
     }
@@ -278,7 +278,7 @@ public class CountingBloomFilter extends BloomFilter {
     return f;
   }
 
-  private static final class LockResource implements Closeable {
+  private static class LockResource implements Closeable {
     private final java.util.concurrent.locks.Lock w;
 
     LockResource(java.util.concurrent.locks.Lock w) {

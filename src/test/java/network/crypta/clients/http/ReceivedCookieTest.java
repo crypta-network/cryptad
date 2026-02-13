@@ -7,19 +7,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.text.ParseException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-@SuppressWarnings({"java:S100", "ResultOfMethodCallIgnored"})
+@SuppressWarnings({"java:S100"})
 class ReceivedCookieTest {
 
   private static final String VALID_NAME = "SessionID";
   private static final String VALID_VALUE = "abCd12345";
   private static final String VALID_PATH = "/Freetalk";
 
-  private Cookie cookie;
+  private ReceivedCookie cookie;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -28,7 +29,7 @@ class ReceivedCookieTest {
 
   @Test
   void parseHeader_singleCookieLowercasesNameAndKeepsValue() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("SessionID=abCd12345;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("SessionID=abCd12345;$path=/").getFirst();
 
     assertEquals(VALID_NAME.toLowerCase(Locale.ROOT), parsed.getName());
     assertEquals(VALID_VALUE, parsed.getValue());
@@ -48,7 +49,7 @@ class ReceivedCookieTest {
 
   @Test
   void parseHeader_attributesBeforeName_stillExtractsCookieName() throws ParseException {
-    Cookie parsed =
+    ReceivedCookie parsed =
         ReceivedCookie.parseHeader("$version=1; SessionID=abCd12345;$path=/").getFirst();
 
     assertEquals(VALID_NAME.toLowerCase(Locale.ROOT), parsed.getName());
@@ -75,7 +76,7 @@ class ReceivedCookieTest {
 
   @Test
   void getDomain_withInvalidScheme_throwsIllegalArgument() throws ParseException {
-    Cookie parsed =
+    ReceivedCookie parsed =
         ReceivedCookie.parseHeader("sid=value;$domain=ftp://example.com;$path=/").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getDomain);
@@ -83,7 +84,7 @@ class ReceivedCookieTest {
 
   @Test
   void getDomain_withoutDomainAttribute_returnsNull() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("sid=value;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("sid=value;$path=/").getFirst();
 
     assertNull(parsed.getDomain());
   }
@@ -98,21 +99,22 @@ class ReceivedCookieTest {
 
   @Test
   void getPath_withAbsoluteUri_throwsIllegalArgument() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("sid=value;$path=http://example.com").getFirst();
+    ReceivedCookie parsed =
+        ReceivedCookie.parseHeader("sid=value;$path=http://example.com").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getPath);
   }
 
   @Test
   void getName_reservedToken_throwsIllegalArgument() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("path=value;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("path=value;$path=/").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getName);
   }
 
   @Test
   void getValue_withInvalidCharacter_throwsIllegalArgument() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("sid=a,b;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("sid=a,b;$path=/").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getValue);
   }
@@ -120,6 +122,17 @@ class ReceivedCookieTest {
   @Test
   void encodeToHeaderValue_throwsUnsupportedOperation() {
     assertThrows(UnsupportedOperationException.class, () -> cookie.encodeToHeaderValue());
+  }
+
+  @Test
+  void equals_withCookieSubtype_isSymmetric() throws ParseException {
+    Cookie outgoing =
+        new Cookie(URI.create(VALID_PATH), VALID_NAME, "ignored", Instant.now().plusSeconds(60));
+    ReceivedCookie incoming =
+        ReceivedCookie.parseHeader(VALID_NAME + "=other;$path=" + VALID_PATH).getFirst();
+
+    assertEquals(outgoing, incoming);
+    assertEquals(incoming, outgoing);
   }
 
   private static String validHeaderWithAttributes() {

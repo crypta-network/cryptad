@@ -32,7 +32,7 @@ import org.spaceroots.mantissa.functions.scalar.*;
  * @version $Id: TrapezoidIntegratorSampler.java 1237 2002-03-20 21:01:57Z luc $
  * @author L. Maisonobe
  */
-public class TrapezoidIntegratorSampler implements SampledFunctionIterator {
+public final class TrapezoidIntegratorSampler implements SampledFunctionIterator {
 
   /** Underlying sample iterator. */
   private final SampledFunctionIterator iter;

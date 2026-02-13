@@ -44,7 +44,7 @@ import network.crypta.support.api.LockableRandomAccessBuffer;
  *       The wrapped buffer itself must be {@link Serializable}.
  * </ul>
  */
-public class PaddedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+public final class PaddedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
   @Serial private static final long serialVersionUID = 1L;
   // Wrapped buffer reference; may not be Serializable. Keep transient to satisfy serialization
   // safety checks and handle persistence compatibly via custom writeObject/readObject.

@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * allowed to throw; we catch and log {@link Throwable} around those invocations to ensure a
  * misbehaving observer cannot break send, disconnect, or accounting paths.
  */
-public class MessageItem {
+public final class MessageItem {
   private static final Logger LOG = LoggerFactory.getLogger(MessageItem.class);
 
   final Message msg;

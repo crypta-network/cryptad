@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  * {@linkplain #getCause() cause} is preserved when cloning to allow downstream components to detect
  * and specialize on underlying exceptions.
  */
-public class FetchException extends Exception {
+public final class FetchException extends Exception {
   private static final Logger LOG = LoggerFactory.getLogger(FetchException.class);
 
   @Serial private static final long serialVersionUID = -1106716067841151962L;

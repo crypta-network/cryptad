@@ -39,7 +39,7 @@ import network.crypta.node.updater.PluginJarUpdater;
  * @see <a href="https://bugs.freenetproject.org/view.php?id=6600">bug 6600</a>
  * @author <a href="mailto:bombe@pterodactylus.net">David ‘Bombe’ Roden</a>
  */
-public class OfficialPlugins {
+public final class OfficialPlugins {
 
   private static final String GROUP_COMMUNICATION = "communication";
   private static final String GROUP_CONNECTIVITY = "connectivity";
@@ -389,7 +389,7 @@ public class OfficialPlugins {
    * @see PluginJarUpdater
    * @see PluginManager
    */
-  public static class OfficialPluginDescription {
+  public static final class OfficialPluginDescription {
 
     /**
      * The canonical internal name of the plugin.

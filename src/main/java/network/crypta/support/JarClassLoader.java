@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * @author <a href="mailto:dr@ina-germany.de">David Roden</a>
  * @version $Id$
  */
-public class JarClassLoader extends ClassLoader implements Closeable {
+public final class JarClassLoader extends ClassLoader implements Closeable {
   private static final Logger LOG = LoggerFactory.getLogger(JarClassLoader.class);
 
   /**
@@ -288,7 +288,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
    * @throws IllegalArgumentException if an incompatible package definition already exists
    */
   @SuppressWarnings("UnusedReturnValue")
-  protected Package definePackage(String name) throws IllegalArgumentException {
+  private Package definePackage(String name) throws IllegalArgumentException {
     Package pkg = null;
     int i = name.lastIndexOf('.');
     if (i != -1) {
@@ -319,7 +319,7 @@ public class JarClassLoader extends ClassLoader implements Closeable {
    * @throws IllegalArgumentException if a package of the same name already exists with different
    *     attributes
    */
-  protected Package definePackage(String name, Manifest man) throws IllegalArgumentException {
+  private Package definePackage(String name, Manifest man) throws IllegalArgumentException {
     String path = name.replace('.', '/').concat("/");
     String specTitle = null;
     String specVersion = null;

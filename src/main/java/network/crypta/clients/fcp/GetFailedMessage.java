@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Honors legacy verbosity switches so older peers can omit redundant text fields.
  * </ul>
  */
-public class GetFailedMessage extends FCPMessage implements Serializable {
+public final class GetFailedMessage extends FCPMessage implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(GetFailedMessage.class);
 
   @Serial private static final long serialVersionUID = 1L;

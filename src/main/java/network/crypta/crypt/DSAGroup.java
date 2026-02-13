@@ -21,7 +21,7 @@ import network.crypta.support.SimpleFieldSet;
  * <p>A canonical 2048‑bit group is exposed as {@link Global#DSAgroupBigA}. Methods in this class
  * return that shared instance when the provided parameters match, to reduce allocations.
  */
-public class DSAGroup extends CryptoKey {
+public final class DSAGroup extends CryptoKey {
   @Serial private static final long serialVersionUID = -1;
 
   private final BigInteger p;

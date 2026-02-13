@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientGet
  * @see FCPConnectionHandler
  */
-public class ClientGetMessage extends BaseDataCarryingMessage {
+public final class ClientGetMessage extends BaseDataCarryingMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ClientGetMessage.class);
 
   /**

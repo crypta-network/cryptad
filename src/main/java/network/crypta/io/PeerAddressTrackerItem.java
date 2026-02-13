@@ -20,7 +20,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see AddressTracker
  * @see network.crypta.io.comm.Peer
  */
-public class PeerAddressTrackerItem extends AddressTrackerItem {
+public final class PeerAddressTrackerItem extends AddressTrackerItem {
 
   /** The logical remote endpoint this tracker represents; never {@code null}. */
   public final Peer peer;

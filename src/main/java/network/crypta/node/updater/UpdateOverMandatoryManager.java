@@ -91,7 +91,7 @@ import org.slf4j.LoggerFactory;
  * update state managed by {@link NodeUpdateManager}.
  *
  * <p>Behavior differs depending on the update mode. In the current package‑based updater flow
- * (where {@link NodeUpdateManager#supportsJarUOM()} returns {@code false}), UoM is only used for
+ * (where {@link NodeUpdateManager#SUPPORTS_JAR_UOM} is {@code false}), UoM is only used for
  * revocation handling; main‑jar exchange is disabled, and any received main‑jar offers are ignored
  * after being logged for diagnostics. In legacy jar‑based mode, this manager may fetch a new jar
  * directly from peers after a configurable grace period.
@@ -282,7 +282,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
       if (!updateManager.isBlown() && updateManager.isEnabled()) {
         long now = System.currentTimeMillis();
         // In package-based updater mode there is no main-jar UOM; only revocation is handled.
-        if (updateManager.supportsJarUOM()) {
+        if (NodeUpdateManager.SUPPORTS_JAR_UOM) {
           handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
         }
       }
@@ -463,7 +463,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
   private void handleMainJarOffer(
       long now, long mainJarFileLength, int mainJarVersion, PeerNode source, String jarKey) {
 
-    long started = updateManager.getStartedFetchingNextMainJarTimestamp();
+    long started = NodeUpdateManager.STARTED_FETCHING_NEXT_MAIN_JAR_TIMESTAMP;
     long whenToTakeOverTheNormalUpdater =
         (started > 0) ? started + GRACE_TIME : System.currentTimeMillis() + GRACE_TIME;
     boolean isOutdated = updateManager.getNode().isOutdated();
@@ -2080,7 +2080,7 @@ public class UpdateOverMandatoryManager implements RequestClient {
           return;
         }
 
-        if (!updateManager.supportsJarUOM()) {
+        if (!NodeUpdateManager.SUPPORTS_JAR_UOM) {
           LOG.info("Ignoring UOM main jar because jar updates are disabled.");
           try {
             Files.delete(temp.toPath());

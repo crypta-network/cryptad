@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author toad
  */
-public class NodeCryptoConfig {
+public final class NodeCryptoConfig {
   private static final Logger LOG = LoggerFactory.getLogger(NodeCryptoConfig.class);
   private static final String KEY_BIND_TO = "bindTo";
 

@@ -31,8 +31,6 @@ import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Message;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
-import network.crypta.io.comm.PeerParseException;
-import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.io.comm.RetrievalException;
 import network.crypta.io.xfer.BulkReceiver;
 import network.crypta.io.xfer.BulkTransmitter;
@@ -73,7 +71,7 @@ import org.slf4j.LoggerFactory;
   "java:S2160",
   "java:S1206"
 }) // hashCode() is inherited; equals() restricts to subclass type
-public class DarknetPeerNode extends PeerNode {
+public final class DarknetPeerNode extends PeerNode {
   private static final Logger LOG = LoggerFactory.getLogger(DarknetPeerNode.class);
 
   // Sonar: de-duplicate repeated string literals
@@ -251,9 +249,6 @@ public class DarknetPeerNode extends PeerNode {
    * @param visibility2 our initial visibility, used when {@code fromLocal == false}.
    * @param peers owning {@link PeerManager}.
    * @throws FSParseException if {@code fs} is malformed or missing required fields.
-   * @throws PeerParseException if the base {@link PeerNode} parsing fails.
-   * @throws ReferenceSignatureVerificationException if the noderef signature fails verification.
-   * @throws PeerTooOldException if the peer's protocol or build is too old to connect.
    */
   public DarknetPeerNode(
       SimpleFieldSet fs,
@@ -263,10 +258,7 @@ public class DarknetPeerNode extends PeerNode {
       FRIEND_TRUST trust,
       FRIEND_VISIBILITY visibility2,
       PeerManager peers)
-      throws FSParseException,
-          PeerParseException,
-          ReferenceSignatureVerificationException,
-          PeerTooOldException {
+      throws FSParseException {
     super(fs, node2, crypto, fromLocal, peers);
 
     String name = fs.get(FS_KEY_MY_NAME);
@@ -274,41 +266,9 @@ public class DarknetPeerNode extends PeerNode {
     myName = name;
 
     if (fromLocal) {
-      SimpleFieldSet metadata = fs.subset("metadata");
-
-      isDisabled = metadata.getBoolean("isDisabled", false);
-      isListenOnly = metadata.getBoolean("isListenOnly", false);
-      isBurstOnly = metadata.getBoolean("isBurstOnly", false);
-      disableRouting =
-          disableRoutingHasBeenSetLocally =
-              metadata.getBoolean("disableRoutingHasBeenSetLocally", false);
-      ignoreSourcePort = metadata.getBoolean("ignoreSourcePort", false);
-      allowLocalAddresses = metadata.getBoolean("allowLocalAddresses", false);
-      String s = metadata.get("trustLevel");
-      if (s != null) {
-        trustLevel = FRIEND_TRUST.valueOf(s);
-      } else {
-        trustLevel = node.services().securityLevels().getDefaultFriendTrust();
-        LOG.info("Assuming friend ({}) trust is opposite of friend seclevel: {}", name, trustLevel);
-      }
-      s = metadata.get("ourVisibility");
-      if (s != null) {
-        ourVisibility = FRIEND_VISIBILITY.valueOf(s);
-      } else {
-        LOG.info("Assuming friend ({}) wants to be invisible", name);
-        node.services().createVisibilityAlert();
-        ourVisibility = FRIEND_VISIBILITY.NO;
-      }
-      s = metadata.get("theirVisibility");
-      if (s != null) {
-        theirVisibility = FRIEND_VISIBILITY.valueOf(s);
-      } else {
-        theirVisibility = FRIEND_VISIBILITY.NO;
-      }
+      initializeFromLocalMetadata(fs, name);
     } else {
-      if (trust == null) throw new IllegalArgumentException();
-      trustLevel = trust;
-      ourVisibility = visibility2;
+      initializeFromRemoteDefaults(trust, visibility2);
     }
 
     // Set up the private darknet comment note
@@ -320,6 +280,47 @@ public class DarknetPeerNode extends PeerNode {
 
     // Set up the queuedToSendN2NMExtraPeerDataFileNumbers
     queuedToSendN2NMExtraPeerDataFileNumbers = new LinkedHashSet<>();
+  }
+
+  private void initializeFromLocalMetadata(SimpleFieldSet fs, String name) {
+    SimpleFieldSet metadata = fs.subset("metadata");
+    if (metadata == null) metadata = new SimpleFieldSet(true);
+
+    isDisabled = metadata.getBoolean("isDisabled", false);
+    isListenOnly = metadata.getBoolean("isListenOnly", false);
+    isBurstOnly = metadata.getBoolean("isBurstOnly", false);
+    disableRouting =
+        disableRoutingHasBeenSetLocally =
+            metadata.getBoolean("disableRoutingHasBeenSetLocally", false);
+    ignoreSourcePort = metadata.getBoolean("ignoreSourcePort", false);
+    allowLocalAddresses = metadata.getBoolean("allowLocalAddresses", false);
+    String s = metadata.get("trustLevel");
+    if (s != null) {
+      trustLevel = FRIEND_TRUST.valueOf(s);
+    } else {
+      trustLevel = node.services().securityLevels().getDefaultFriendTrust();
+      LOG.info("Assuming friend ({}) trust is opposite of friend seclevel: {}", name, trustLevel);
+    }
+    s = metadata.get("ourVisibility");
+    if (s != null) {
+      ourVisibility = FRIEND_VISIBILITY.valueOf(s);
+    } else {
+      LOG.info("Assuming friend ({}) wants to be invisible", name);
+      node.services().createVisibilityAlert();
+      ourVisibility = FRIEND_VISIBILITY.NO;
+    }
+    s = metadata.get("theirVisibility");
+    if (s != null) {
+      theirVisibility = FRIEND_VISIBILITY.valueOf(s);
+    } else {
+      theirVisibility = FRIEND_VISIBILITY.NO;
+    }
+  }
+
+  private void initializeFromRemoteDefaults(FRIEND_TRUST trust, FRIEND_VISIBILITY visibility2) {
+    if (trust == null) throw new IllegalArgumentException();
+    trustLevel = trust;
+    ourVisibility = visibility2;
   }
 
   /**
@@ -777,6 +778,10 @@ public class DarknetPeerNode extends PeerNode {
   private boolean parseExtraPeerData(SimpleFieldSet fs, File extraPeerDataFile, int fileNumber)
       throws FSParseException {
     String extraPeerDataTypeString = fs.get(SFS_KEY_EXTRA_PEER_DATA_TYPE);
+    if (extraPeerDataTypeString == null) {
+      LOG.error("Missing {} in file {}", SFS_KEY_EXTRA_PEER_DATA_TYPE, extraPeerDataFile.getPath());
+      return false;
+    }
     final int extraPeerDataType;
     try {
       extraPeerDataType = Integer.parseInt(extraPeerDataTypeString);
@@ -821,6 +826,10 @@ public class DarknetPeerNode extends PeerNode {
 
   private boolean handlePeerNote(SimpleFieldSet fs, File extraPeerDataFile, int fileNumber) {
     String peerNoteTypeString = fs.get("peerNoteType");
+    if (peerNoteTypeString == null) {
+      LOG.error("Missing peerNoteType in file {}", extraPeerDataFile.getPath());
+      return false;
+    }
     final int peerNoteType;
     try {
       peerNoteType = Integer.parseInt(peerNoteTypeString);
@@ -1211,7 +1220,7 @@ public class DarknetPeerNode extends PeerNode {
    * <p>Instances are short-lived and not persisted. Depending on {@link #amIOffering}, an instance
    * either sends or receives a bulk transfer. Alerts are posted on success/failure.
    */
-  class FileOffer {
+  final class FileOffer {
     final long uid;
     final String filename;
     final String mimeType;
@@ -1332,7 +1341,7 @@ public class DarknetPeerNode extends PeerNode {
     }
 
     /** Removes this offer from internal maps and closes buffers. */
-    protected void remove() {
+    private void remove() {
       Long l = uid;
       synchronized (DarknetPeerNode.this) {
         myFileOffersByUID.remove(l);
@@ -1387,7 +1396,7 @@ public class DarknetPeerNode extends PeerNode {
     }
 
     /** Posts a user alert describing a failed file reception. */
-    protected void onReceiveFailure() {
+    private void onReceiveFailure() {
       UserAlert alert =
           new AbstractNodeToNodeFileOfferUserAlert() {
             @Override
@@ -1682,7 +1691,7 @@ public class DarknetPeerNode extends PeerNode {
       };
     }
 
-    protected void addComment(HTMLNode node) {
+    private void addComment(HTMLNode node) {
       List<String> lines = new ArrayList<>();
       if (comment.isEmpty()) {
         lines.add("");
@@ -2249,13 +2258,6 @@ public class DarknetPeerNode extends PeerNode {
     return true;
   }
 
-  // Equality and hashing are inherited from PeerNode.
-
-  @Override
-  public final boolean shouldDisconnectAndRemoveNow() {
-    return false;
-  }
-
   /** Darknet peers clear peerAddedTime on connecting. */
   @Override
   protected void maybeClearPeerAddedTimeOnConnect() {
@@ -2512,7 +2514,6 @@ public class DarknetPeerNode extends PeerNode {
    */
   @SuppressWarnings("java:S1181")
   public void handleFullNoderef(Message m) {
-    if (this.dontKeepFullFieldSet()) return;
     long uid = m.getLong(DMT.UID);
     int length = m.getInt(DMT.NODEREF_LENGTH);
     if (length > 8 * 1024) {
@@ -2597,13 +2598,11 @@ public class DarknetPeerNode extends PeerNode {
     } catch (NotConnectedException e) {
       LOG.error("Completed handshake with {} but disconnected: {}", getPeer(), e, e);
     }
-    if (!dontKeepFullFieldSet()) {
-      try {
-        transport()
-            .sendAsync(DMT.createFNPGetYourFullNoderef(), null, node.network().stats().foafCounter);
-      } catch (NotConnectedException _) {
-        // Ignore
-      }
+    try {
+      transport()
+          .sendAsync(DMT.createFNPGetYourFullNoderef(), null, node.network().stats().foafCounter);
+    } catch (NotConnectedException _) {
+      // Ignore
     }
   }
 

@@ -32,41 +32,42 @@ class MessageTest {
   private static final String LIST = "list";
 
   // A single message type used across several tests; registered once.
-  private static final MessageType SIMPLE_SPEC =
-      new MessageType("MessageTest.simple", DMT.PRIORITY_LOW) {
-        {
-          addField(BOOLEAN, Boolean.class);
-          addField(BYTE, Byte.class);
-          addField(SHORT, Short.class);
-          addField(INT, Integer.class);
-          addField(LONG, Long.class);
-          addField(DOUBLE, Double.class);
-          addField(FLOAT, Float.class);
-          addField(DOUBLE_ARRAY, double[].class);
-          addField(FLOAT_ARRAY, float[].class);
-          addField(STR, String.class);
-          addLinkedListField(LIST, Integer.class);
-        }
-      };
-
-  private static final MessageType SUB_SPEC =
-      new MessageType("MessageTest.sub", DMT.PRIORITY_UNSPECIFIED) {
-        {
-          addField("subVal", Integer.class);
-        }
-      };
-
+  private static final MessageType SIMPLE_SPEC = createSimpleSpec();
+  private static final MessageType SUB_SPEC = createSubSpec();
   // Minimal spec for round-trip encode/decode tests to avoid null fields.
-  private static final MessageType ROUNDTRIP_SPEC =
-      new MessageType("MessageTest.roundtrip", DMT.PRIORITY_UNSPECIFIED) {
-        {
-          addField(INT, Integer.class);
-          addField(STR, String.class);
-        }
-      };
+  private static final MessageType ROUNDTRIP_SPEC = createRoundtripSpec();
 
   private static final MessageType INTERNAL_ONLY_SPEC =
       new MessageType("MessageTest.internalOnly", DMT.PRIORITY_LOW, true, false);
+
+  private static MessageType createSimpleSpec() {
+    MessageType spec = new MessageType("MessageTest.simple", DMT.PRIORITY_LOW);
+    spec.addField(BOOLEAN, Boolean.class);
+    spec.addField(BYTE, Byte.class);
+    spec.addField(SHORT, Short.class);
+    spec.addField(INT, Integer.class);
+    spec.addField(LONG, Long.class);
+    spec.addField(DOUBLE, Double.class);
+    spec.addField(FLOAT, Float.class);
+    spec.addField(DOUBLE_ARRAY, double[].class);
+    spec.addField(FLOAT_ARRAY, float[].class);
+    spec.addField(STR, String.class);
+    spec.addLinkedListField(LIST, Integer.class);
+    return spec;
+  }
+
+  private static MessageType createSubSpec() {
+    MessageType spec = new MessageType("MessageTest.sub", DMT.PRIORITY_UNSPECIFIED);
+    spec.addField("subVal", Integer.class);
+    return spec;
+  }
+
+  private static MessageType createRoundtripSpec() {
+    MessageType spec = new MessageType("MessageTest.roundtrip", DMT.PRIORITY_UNSPECIFIED);
+    spec.addField(INT, Integer.class);
+    spec.addField(STR, String.class);
+    return spec;
+  }
 
   // No Mockito mocks needed; use a minimal stub PeerContext below.
 
@@ -248,13 +249,9 @@ class MessageTest {
   void getShortBufferBytes_whenWindowedBuffer_expectOnlyWindowReturned() {
     byte[] backing = new byte[] {0, 1, 2, 3, 4, 5, 6};
     ShortBuffer sb = new ShortBuffer(backing, 2, 3); // bytes 2,3,4
-    Message msg =
-        new Message(
-            new MessageType("MessageTest.shortBuffer", DMT.PRIORITY_LOW) {
-              {
-                addField(DMT.NODE_IDENTITY, ShortBuffer.class);
-              }
-            });
+    MessageType shortBufferSpec = new MessageType("MessageTest.shortBuffer", DMT.PRIORITY_LOW);
+    shortBufferSpec.addField(DMT.NODE_IDENTITY, ShortBuffer.class);
+    Message msg = new Message(shortBufferSpec);
     msg.set(DMT.NODE_IDENTITY, sb);
     byte[] got = msg.getShortBufferBytes(DMT.NODE_IDENTITY);
     assertArrayEquals(new byte[] {2, 3, 4}, got);

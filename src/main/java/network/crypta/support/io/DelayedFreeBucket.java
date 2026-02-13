@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  * purpose; when an instance is restored, it is 0, which signals “created before the last restart”
  * to {@link PersistentFileTracker#delayedFree(DelayedFree, long)}.
  */
-public class DelayedFreeBucket implements Bucket, Serializable, DelayedFree {
+public final class DelayedFreeBucket implements Bucket, Serializable, DelayedFree {
   private static final Logger LOG = LoggerFactory.getLogger(DelayedFreeBucket.class);
 
   @Serial private static final long serialVersionUID = 1L;

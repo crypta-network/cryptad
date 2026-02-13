@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  * EndMessage
  * }</pre>
  */
-public class ModifyPersistentRequest extends FCPMessage {
+public final class ModifyPersistentRequest extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(ModifyPersistentRequest.class);
 
   static final String NAME = "ModifyPersistentRequest";

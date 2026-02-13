@@ -23,7 +23,7 @@ import network.crypta.client.DefaultMIMETypes;
  *
  * @author <a href="mailto:bombe@pterodactylus.net">David ‘Bombe’ Roden</a>
  */
-public class MediaType {
+public final class MediaType {
 
   /** The top-level type. */
   private final String type;

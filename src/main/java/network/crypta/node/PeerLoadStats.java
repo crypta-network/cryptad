@@ -28,7 +28,7 @@ import network.crypta.io.comm.MessageType;
  * @see PeerNode
  * @see RunningRequestsSnapshot
  */
-public class PeerLoadStats {
+public final class PeerLoadStats {
 
   /**
    * Peer that advertised this snapshot, used as a stable identity handle.

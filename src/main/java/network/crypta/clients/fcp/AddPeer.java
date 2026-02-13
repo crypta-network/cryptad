@@ -56,7 +56,7 @@ import org.slf4j.LoggerFactory;
  * @see PeerMessage
  * @see NodeNetworkSubsystem#addPeerConnection(PeerNode)
  */
-public class AddPeer extends FCPMessage {
+public final class AddPeer extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(AddPeer.class);
 
   /**

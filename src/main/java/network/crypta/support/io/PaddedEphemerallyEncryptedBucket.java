@@ -47,7 +47,7 @@ import org.slf4j.LoggerFactory;
  * serialization also writes the underlying bucket when it is {@link java.io.Serializable};
  * otherwise a {@link java.io.NotSerializableException} is thrown.
  */
-public class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
+public final class PaddedEphemerallyEncryptedBucket implements Bucket, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(PaddedEphemerallyEncryptedBucket.class);
 
   private static final AtomicLongFieldUpdater<PaddedEphemerallyEncryptedBucket>

@@ -129,6 +129,26 @@ public abstract class ClientRequest implements Serializable {
     return this == obj;
   }
 
+  private record RuntimeClientState(
+      int verbosity,
+      String clientName,
+      FCPConnectionHandler origHandler,
+      PersistentRequestClient client,
+      RequestClient lowLevelClient) {}
+
+  private record PersistentState(
+      boolean realTime,
+      int verbosity,
+      long startupTime,
+      short priorityClass,
+      String clientToken,
+      boolean finished,
+      String identifier,
+      boolean global,
+      String clientName,
+      PersistentRequestClient client,
+      RequestClient lowLevelClient) {}
+
   // Legacy threshold callback removed.
 
   /**
@@ -145,39 +165,28 @@ public abstract class ClientRequest implements Serializable {
    */
   protected ClientRequest(
       ClientRequestParams params, FCPConnectionHandler handler, PersistentRequestClient client) {
+    RuntimeClientState state = resolveRuntimeState(params, handler, client);
     int hash = System.identityHashCode(this);
     if (hash == 0) hash = 1;
     hashCode = hash;
     this.uri = params.uri();
     this.identifier = params.identifier();
-    if (params.global()) {
-      this.verbosity = Integer.MAX_VALUE;
-      this.clientName = null;
-    } else {
-      this.verbosity = params.verbosity();
-      this.clientName = client.name;
-    }
+    this.verbosity = state.verbosity();
+    this.clientName = state.clientName();
     this.finished = false;
     this.priorityClass = params.priorityClass();
     this.persistence = params.persistence();
     this.clientToken = params.clientToken();
     this.global = params.global();
-    if (persistence == Persistence.CONNECTION) {
-      this.origHandler = handler;
-      lowLevelClient = origHandler.connectionRequestClient(params.realTime());
-      this.client = null;
-    } else {
-      origHandler = null;
-      this.client = client;
-      if (client == null) {
-        throw new IllegalStateException("Persistent client must not be null");
-      }
-      if (client.persistence != persistence) {
-        throw new IllegalStateException("Persistent client has mismatched persistence");
-      }
-      lowLevelClient = client.lowLevelClient(params.realTime());
-    }
-    assert lowLevelClient != null;
+    this.origHandler = state.origHandler();
+    this.client = state.client();
+    this.lowLevelClient =
+        state.lowLevelClient() == null
+            ? new RequestClientBuilder()
+                .persistent(persistence == Persistence.FOREVER)
+                .realTime(params.realTime())
+                .build()
+            : state.lowLevelClient();
     this.startupTime = System.currentTimeMillis();
     this.realTime = params.realTime();
   }
@@ -194,6 +203,7 @@ public abstract class ClientRequest implements Serializable {
    * @param handler connection handler from which persistent client information is derived
    */
   protected ClientRequest(ClientRequestParams params, FCPConnectionHandler handler) {
+    RuntimeClientState state = resolveRuntimeState(params, handler);
     int hash = System.identityHashCode(this);
     if (hash == 0) hash = 1;
     hashCode = hash;
@@ -204,45 +214,110 @@ public abstract class ClientRequest implements Serializable {
     this.persistence = params.persistence();
     this.clientToken = params.clientToken();
     this.global = params.global();
-    if (persistence == Persistence.CONNECTION) {
-      this.origHandler = handler;
-      client = null;
-      lowLevelClient = new RequestClientBuilder().realTime(params.realTime()).build();
-      this.clientName = null;
-      this.verbosity = params.verbosity();
-    } else {
-      origHandler = null;
-      client = resolvePersistentClient(handler, params.persistence(), params.global());
-      if (params.global()) {
-        this.verbosity = Integer.MAX_VALUE;
-        clientName = null;
-      } else {
-        this.verbosity = params.verbosity();
-        this.clientName = client.name;
-      }
-      lowLevelClient = client.lowLevelClient(params.realTime());
-      if (lowLevelClient == null)
-        throw new NullPointerException(
-            "No lowLevelClient from client: "
-                + client
-                + " global = "
-                + params.global()
-                + " persistence = "
-                + persistence);
+    this.origHandler = state.origHandler();
+    this.client = state.client();
+    this.lowLevelClient =
+        state.lowLevelClient() == null
+            ? new RequestClientBuilder()
+                .persistent(persistence == Persistence.FOREVER)
+                .realTime(params.realTime())
+                .build()
+            : state.lowLevelClient();
+    this.verbosity = state.verbosity();
+    this.clientName = state.clientName();
+    if (client != null && client.persistence != persistence) {
+      LOG.warn(
+          "Persistent client {} has mismatched persistence {} for request {}; keeping request"
+              + " persistence {}",
+          client.name,
+          client.persistence,
+          identifier,
+          persistence);
     }
-    if (lowLevelClient.persistent() != (persistence == Persistence.FOREVER))
-      throw new IllegalStateException(
-          "Low level client.persistent="
-              + lowLevelClient.persistent()
-              + " but persistence type = "
-              + persistence);
-    assert client == null || (client.persistence == persistence);
     this.startupTime = System.currentTimeMillis();
     this.realTime = params.realTime();
   }
 
-  private PersistentRequestClient resolvePersistentClient(
+  private static RuntimeClientState resolveRuntimeState(
+      ClientRequestParams params, FCPConnectionHandler handler, PersistentRequestClient client) {
+    if (params.persistence() == Persistence.CONNECTION) {
+      RequestClient lowLevelClient =
+          handler == null
+              ? new RequestClientBuilder().realTime(params.realTime()).build()
+              : handler.connectionRequestClient(params.realTime());
+      return new RuntimeClientState(
+          resolveRuntimeVerbosity(params), null, handler, null, lowLevelClient);
+    }
+    if (client == null) {
+      throw new IllegalStateException("Persistent client must not be null");
+    }
+    if (client.persistence != params.persistence()) {
+      throw new IllegalStateException("Persistent client has mismatched persistence");
+    }
+    RequestClient lowLevelClient = resolveLowLevelClient(params, client);
+    return new RuntimeClientState(
+        resolveRuntimeVerbosity(params),
+        params.global() ? null : client.name,
+        null,
+        client,
+        lowLevelClient);
+  }
+
+  private static RuntimeClientState resolveRuntimeState(
+      ClientRequestParams params, FCPConnectionHandler handler) {
+    if (params.persistence() == Persistence.CONNECTION) {
+      return new RuntimeClientState(
+          params.verbosity(),
+          null,
+          handler,
+          null,
+          new RequestClientBuilder().realTime(params.realTime()).build());
+    }
+    PersistentRequestClient client =
+        resolvePersistentClient(handler, params.persistence(), params.global());
+    if (client == null) {
+      throw new IllegalStateException("Persistent client must not be null");
+    }
+    RequestClient lowLevelClient = resolveLowLevelClient(params, client);
+    return new RuntimeClientState(
+        resolveRuntimeVerbosity(params),
+        params.global() ? null : client.name,
+        null,
+        client,
+        lowLevelClient);
+  }
+
+  private static int resolveRuntimeVerbosity(ClientRequestParams params) {
+    return params.global() ? Integer.MAX_VALUE : params.verbosity();
+  }
+
+  private static RequestClient resolveLowLevelClient(
+      ClientRequestParams params, PersistentRequestClient client) {
+    RequestClient lowLevelClient = client.lowLevelClient(params.realTime());
+    if (lowLevelClient == null) {
+      throw new NullPointerException(
+          "No lowLevelClient from client: "
+              + client
+              + " global = "
+              + params.global()
+              + " persistence = "
+              + params.persistence());
+    }
+    if (lowLevelClient.persistent() != (params.persistence() == Persistence.FOREVER)) {
+      throw new IllegalStateException(
+          "Low level client.persistent="
+              + lowLevelClient.persistent()
+              + " but persistence type = "
+              + params.persistence());
+    }
+    return lowLevelClient;
+  }
+
+  private static PersistentRequestClient resolvePersistentClient(
       FCPConnectionHandler handler, Persistence persistenceType2, boolean global) {
+    if (handler == null) {
+      return null;
+    }
     if (global) {
       return persistenceType2 == Persistence.FOREVER
           ? handler.getServer().getGlobalForeverClient()
@@ -252,6 +327,10 @@ public abstract class ClientRequest implements Serializable {
         ? handler.getForeverClient()
         : handler.getRebootClient();
   }
+
+  @Override
+  @SuppressWarnings("removal")
+  protected final void finalize() {}
 
   /**
    * No-argument constructor used only by the serialization framework.
@@ -870,32 +949,65 @@ public abstract class ClientRequest implements Serializable {
    */
   protected ClientRequest(DataInputStream dis, RequestIdentifier reqID, ClientContext context)
       throws IOException, StorageFormatException {
+    this(parsePersistentState(dis, reqID, context));
+  }
+
+  private ClientRequest(PersistentState state) {
+    int hash = System.identityHashCode(this);
+    if (hash == 0) {
+      hash = 1;
+    }
+    realTime = state.realTime();
+    verbosity = state.verbosity();
+    startupTime = state.startupTime();
+    priorityClass = state.priorityClass();
+    clientToken = state.clientToken();
+    finished = state.finished();
+    persistence = Persistence.FOREVER;
+    origHandler = null;
+    identifier = state.identifier();
+    global = state.global();
+    clientName = state.clientName();
+    hashCode = hash;
+    client = state.client();
+    lowLevelClient = state.lowLevelClient();
+  }
+
+  private static PersistentState parsePersistentState(
+      DataInputStream dis, RequestIdentifier reqID, ClientContext context)
+      throws IOException, StorageFormatException {
     long magic = dis.readLong();
     if (magic != CLIENT_DETAIL_MAGIC) throw new StorageFormatException("Bad magic");
     int version = dis.readInt();
     if (version != CLIENT_DETAIL_VERSION) throw new StorageFormatException("Bad version");
     RequestIdentifier copyReq = new RequestIdentifier(dis);
     if (!copyReq.equals(reqID)) throw new StorageFormatException("Request identifier has changed");
-    realTime = dis.readBoolean();
-    verbosity = dis.readInt();
-    startupTime = dis.readLong();
-    priorityClass = dis.readShort();
+    boolean realTime = dis.readBoolean();
+    int verbosity = dis.readInt();
+    long startupTime = dis.readLong();
+    short priorityClass = dis.readShort();
     if (priorityClass < RequestStarter.MAXIMUM_PRIORITY_CLASS
         || priorityClass > RequestStarter.PAUSED_PRIORITY_CLASS)
       throw new StorageFormatException("Bogus priority");
-    if (dis.readBoolean()) clientToken = dis.readUTF();
-    else clientToken = null;
-    finished = dis.readBoolean();
-    persistence = Persistence.FOREVER;
-    origHandler = null;
-    identifier = reqID.identifier;
-    global = reqID.globalQueue;
-    clientName = reqID.clientName;
-    hashCode = System.identityHashCode(this);
+    String clientToken = dis.readBoolean() ? dis.readUTF() : null;
+    boolean finished = dis.readBoolean();
     // We can't wait until onResume() to get the client, because it may be used in the
     // constructors.
-    this.client = context.persistentRoot.makeClient(global, clientName);
-    this.lowLevelClient = client.lowLevelClient(realTime);
+    PersistentRequestClient client =
+        context.persistentRoot.makeClient(reqID.globalQueue, reqID.clientName);
+    RequestClient lowLevelClient = client.lowLevelClient(realTime);
+    return new PersistentState(
+        realTime,
+        verbosity,
+        startupTime,
+        priorityClass,
+        clientToken,
+        finished,
+        reqID.identifier,
+        reqID.globalQueue,
+        reqID.clientName,
+        client,
+        lowLevelClient);
   }
 
   /**

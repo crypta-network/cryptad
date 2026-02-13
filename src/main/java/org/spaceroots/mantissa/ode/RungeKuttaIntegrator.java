@@ -35,6 +35,15 @@ package org.spaceroots.mantissa.ode;
  * @author L. Maisonobe
  */
 public abstract class RungeKuttaIntegrator implements FirstOrderIntegrator {
+  /**
+   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
+   *
+   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
+   * otherwise define a finalizer and observe partially initialized state.
+   */
+  @Override
+  @SuppressWarnings({"deprecation", "removal"})
+  protected final void finalize() {}
 
   /**
    * Build a Runge–Kutta integrator with constant step size and default no-op step handler.

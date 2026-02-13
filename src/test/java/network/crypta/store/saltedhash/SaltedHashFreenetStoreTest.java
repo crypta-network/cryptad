@@ -457,7 +457,7 @@ class SaltedHashFreenetStoreTest {
     }
   }
 
-  private static final class TestCallback extends StoreCallback<TestBlock> {
+  private static class TestCallback extends StoreCallback<TestBlock> {
     @Override
     public int dataLength() {
       return DATA_LEN;

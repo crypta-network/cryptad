@@ -34,7 +34,7 @@ import org.slf4j.LoggerFactory;
  * <p>The class is request-scoped and not thread-safe on its own; concurrency is handled by the FCP
  * connection and node executor infrastructure that invokes it.
  */
-public class LoadPlugin extends FCPMessage {
+public final class LoadPlugin extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(LoadPlugin.class);
 
   static final String NAME = "LoadPlugin";

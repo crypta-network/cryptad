@@ -26,6 +26,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import network.crypta.crypt.DSAGroup;
 import network.crypta.crypt.DSAPrivateKey;
 import network.crypta.crypt.DSAPublicKey;
@@ -95,7 +97,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  */
 @SuppressWarnings("java:S100")
 @ExtendWith(MockitoExtension.class)
-class CachingFreenetStoreTest {
+final class CachingFreenetStoreTest {
 
   @BeforeAll
   static void setupClass() {
@@ -229,8 +231,8 @@ class CachingFreenetStoreTest {
                 new SaltedHashStoreDependencies<>(
                     store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                 new SaltedHashStoreSizing(howManyBlocks * 5L, false, true, true)))) {
-      WaitableCachingFreenetStoreTracker tracker =
-          new WaitableCachingFreenetStoreTracker(
+      CachingFreenetStoreTracker tracker =
+          new CachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
@@ -251,7 +253,7 @@ class CachingFreenetStoreTest {
           chkBlocks.add(block);
         }
 
-        tracker.waitForZero();
+        waitForZero(tracker);
         // Assert: data present in underlying store and decodable via cache
         boolean atLeastOneKey = false;
         for (int i = 0; i < howManyBlocks; i++) {
@@ -308,8 +310,8 @@ class CachingFreenetStoreTest {
                   new SaltedHashStoreDependencies<>(
                       store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                   new SaltedHashStoreSizing(20, true, true, true)))) {
-        WaitableCachingFreenetStoreTracker tracker =
-            new WaitableCachingFreenetStoreTracker(
+        CachingFreenetStoreTracker tracker =
+            new CachingFreenetStoreTracker(
                 (sskBlockSize * 3L) / 2, cachingFreenetStorePeriod, ticker);
         try (CachingFreenetStore<SSKBlock> cachingStore =
             new CachingFreenetStore<>(store, saltStore, tracker)) {
@@ -421,7 +423,7 @@ class CachingFreenetStoreTest {
           }
 
           // Assert: after a flush both keys are accessible via cache/backing
-          tracker.waitForZero();
+          waitForZero(tracker);
 
           assertEquals(store.fetch(sskBlock.getKey(), false, false, false, false, null), sskBlock);
           assertEquals(
@@ -812,8 +814,8 @@ class CachingFreenetStoreTest {
                 new SaltedHashStoreDependencies<>(
                     store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                 new SaltedHashStoreSizing(10, false, true, true)))) {
-      WaitableCachingFreenetStoreTracker tracker =
-          new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
+      CachingFreenetStoreTracker tracker =
+          new CachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -842,7 +844,7 @@ class CachingFreenetStoreTest {
                   null));
         }
 
-        tracker.waitForZero();
+        waitForZero(tracker);
         // Assert: at least one key persisted to underlying store
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
@@ -1002,8 +1004,8 @@ class CachingFreenetStoreTest {
                 new SaltedHashStoreDependencies<>(
                     store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                 new SaltedHashStoreSizing(10, true, true, true)))) {
-      WaitableCachingFreenetStoreTracker tracker =
-          new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, 100, ticker);
+      CachingFreenetStoreTracker tracker =
+          new CachingFreenetStoreTracker(cachingFreenetStoreMaxSize, 100, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -1029,7 +1031,7 @@ class CachingFreenetStoreTest {
           sskBlocks.add(block);
         }
 
-        tracker.waitForZero();
+        waitForZero(tracker);
         // Assert: at least one key persisted to underlying store
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
@@ -1297,36 +1299,15 @@ class CachingFreenetStoreTest {
             Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
   }
 
-  static class WaitableCachingFreenetStoreTracker extends CachingFreenetStoreTracker {
-    public WaitableCachingFreenetStoreTracker(
-        long cachingFreenetStoreMaxSize, long cachingFreenetStorePeriod, Ticker ticker) {
-      super(cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
-    }
-
-    public void waitForZero() throws InterruptedException {
-      synchronized (sync) {
-        long observedPushGeneration = pushGeneration;
-        while (getSizeOfCache() > 0) {
-          while (getSizeOfCache() > 0 && observedPushGeneration == pushGeneration) {
-            sync.wait();
-          }
-          observedPushGeneration = pushGeneration;
-        }
+  private static void waitForZero(CachingFreenetStoreTracker tracker) throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+    while (tracker.getSizeOfCache() > 0 && System.nanoTime() < deadline) {
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5));
+      if (Thread.interrupted()) {
+        throw new InterruptedException("Interrupted while waiting for cache tracker to drain");
       }
     }
-
-    @Override
-    void pushAllCachingStores() {
-      super.pushAllCachingStores();
-      synchronized (sync) {
-        pushGeneration++;
-        sync.notifyAll();
-      }
-    }
-
-    /* Don't reuse (this), avoid changing locking behavior of the parent class */
-    private final Object sync = new Object();
-    private long pushGeneration;
+    assertEquals(0L, tracker.getSizeOfCache(), "Timed out waiting for cache tracker to drain");
   }
 
   private static final File TEMP_DIR = new File("tmp-CachingFreenetStoreTest");
@@ -1346,6 +1327,7 @@ class CachingFreenetStoreTest {
   // ------------------------------------------------------------
 
   // Simple concrete block used by the Mockito-focused tests in this class
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class TestBlock implements StorableBlock {
     private final byte[] routingKey;
     private final byte[] fullKey;
@@ -1387,7 +1369,8 @@ class CachingFreenetStoreTest {
   }
 
   // AutoCloseable wrapper for ExecutorService so we can use try-with-resources
-  private static final class AutoClosingExecutor implements AutoCloseable {
+  @SuppressWarnings("ClassCanBeRecord")
+  private static class AutoClosingExecutor implements AutoCloseable {
     private final java.util.concurrent.ExecutorService delegate;
 
     AutoClosingExecutor(java.util.concurrent.ExecutorService delegate) {

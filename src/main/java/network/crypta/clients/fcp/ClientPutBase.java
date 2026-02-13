@@ -190,15 +190,15 @@ public abstract class ClientPutBase extends ClientRequest
    * @param options insert tuning options covering retries, compression, and caching behavior
    * @param handler owning connection handler responsible for queuing outbound replies
    * @param server server providing node context, bucket factories, and persistent insert defaults
-   * @throws MalformedURLException if the URI cannot be normalized into an insertable form
+   * @param publicURI precomputed request URI corresponding to {@code requestParams.uri()}
    */
   protected ClientPutBase(
       ClientRequestParams requestParams,
       String charset,
       FcpInsertOptions options,
       FCPConnectionHandler handler,
-      FCPServer server)
-      throws MalformedURLException {
+      FCPServer server,
+      FreenetURI publicURI) {
     super(requestParams, handler);
     warnIfUnsupportedCharset(charset);
     ctx = server.getCore().getClientContext().getDefaultPersistentInsertContext();
@@ -215,7 +215,7 @@ public abstract class ClientPutBase extends ClientRequest
     ctx.setLocalRequestOnly(options.localRequestOnly());
     ctx.setEarlyEncode(options.earlyEncode());
     ctx.setIgnoreUSKDatehints(options.ignoreUSKDatehints());
-    publicURI = this.uri.deriveRequestURIFromInsertURI();
+    this.publicURI = publicURI;
   }
 
   /**
@@ -267,7 +267,7 @@ public abstract class ClientPutBase extends ClientRequest
    * @param handler connection handler for immediate responses during the resume handshake
    * @param client persistent request owner used to enqueue outbound messages after resumption
    * @param core node core used to get shared factories and contexts for resumed jobs
-   * @throws MalformedURLException if the URI cannot be normalized into a supported insert type
+   * @param publicURI precomputed request URI corresponding to {@code requestParams.uri()}
    */
   protected ClientPutBase(
       ClientRequestParams requestParams,
@@ -275,8 +275,8 @@ public abstract class ClientPutBase extends ClientRequest
       FcpInsertOptions options,
       FCPConnectionHandler handler,
       PersistentRequestClient client,
-      NodeClientCore core)
-      throws MalformedURLException {
+      NodeClientCore core,
+      FreenetURI publicURI) {
     super(requestParams, handler, client);
     warnIfUnsupportedCharset(charset);
     ctx = core.getClientContext().getDefaultPersistentInsertContext();
@@ -293,7 +293,18 @@ public abstract class ClientPutBase extends ClientRequest
     ctx.setCompatibilityMode(options.compatibilityMode());
     ctx.setIgnoreUSKDatehints(options.ignoreUSKDatehints());
     ctx.setEarlyEncode(options.earlyEncode());
-    publicURI = this.uri.deriveRequestURIFromInsertURI();
+    this.publicURI = publicURI;
+  }
+
+  /**
+   * Derives the fetchable request URI corresponding to an insert URI.
+   *
+   * @param insertUri normalized insert URI
+   * @return request URI used for status reporting and completion messages
+   * @throws MalformedURLException if the insert URI cannot be converted
+   */
+  protected static FreenetURI derivePublicURI(FreenetURI insertUri) throws MalformedURLException {
+    return insertUri.deriveRequestURIFromInsertURI();
   }
 
   /**

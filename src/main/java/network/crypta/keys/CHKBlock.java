@@ -20,7 +20,7 @@ import network.crypta.support.Fields;
  *
  * @author amphibian
  */
-public class CHKBlock implements KeyBlock {
+public final class CHKBlock implements KeyBlock {
 
   // Backing arrays; returned by accessors without defensive copies. Treat as read-only.
   final byte[] data;

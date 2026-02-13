@@ -66,7 +66,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author amphibian
  */
-public class SimpleFieldSet {
+public final class SimpleFieldSet {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleFieldSet.class);
   private static final String CANNOT_PARSE = "Cannot parse ";
 

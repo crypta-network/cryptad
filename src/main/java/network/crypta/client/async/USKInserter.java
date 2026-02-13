@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.client.InsertContext
  * @see PutCompletionCallback
  */
-public class USKInserter
+public final class USKInserter
     implements ClientPutState, USKFetcherCallback, PutCompletionCallback, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(USKInserter.class);
 

@@ -17,7 +17,7 @@ import network.crypta.io.WritableToDataOutputStream;
  * <p>Instances can be created empty for a given length, copied, or deserialized from a {@link
  * DataInput}. Convenience queries exist to find the first/last set or clear bit.
  */
-public class BitArray implements WritableToDataOutputStream {
+public final class BitArray implements WritableToDataOutputStream {
 
   private int size;
   private final BitSet bits;

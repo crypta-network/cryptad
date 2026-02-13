@@ -26,7 +26,7 @@ import network.crypta.support.api.RandomAccessBucket;
  *
  * @author oskar
  */
-public class FileBucket extends BaseFileBucket implements Bucket, Serializable {
+public final class FileBucket extends BaseFileBucket implements Bucket, Serializable {
 
   /** Serialization identifier. */
   @Serial private static final long serialVersionUID = 1L;

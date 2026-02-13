@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author amphibian
  */
-public class NodeCHK extends Key {
+public final class NodeCHK extends Key {
   private static final Logger LOG = LoggerFactory.getLogger(NodeCHK.class);
   // Holder used to return a null reference without an explicit literal.
   private static final byte[][] NULL_ARRAY_HOLDER = new byte[1][];

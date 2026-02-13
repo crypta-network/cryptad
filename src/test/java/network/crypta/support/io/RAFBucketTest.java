@@ -97,13 +97,7 @@ class RAFBucketTest {
   void getOutputStreamWhenCalledExpectIOException() {
     LockableRandomAccessBuffer underlying = mock(LockableRandomAccessBuffer.class);
     when(underlying.size()).thenReturn(0L);
-    RAFBucket bucket;
-    try {
-      bucket = new RAFBucket(underlying);
-    } catch (IOException e) {
-      fail(e);
-      return;
-    }
+    RAFBucket bucket = new RAFBucket(underlying);
     assertThrows(IOException.class, bucket::getOutputStream);
     assertThrows(IOException.class, bucket::getOutputStreamUnbuffered);
   }

@@ -18,7 +18,7 @@ import org.jetbrains.annotations.NotNull;
  * <p>Thread-safety: like most {@link InputStream} implementations, this class is not inherently
  * thread-safe. If multiple threads access the same instance, external synchronization is required.
  */
-public class CountedInputStream extends FilterInputStream {
+public final class CountedInputStream extends FilterInputStream {
 
   /**
    * Cumulative number of bytes observed by this wrapper.
@@ -27,7 +27,7 @@ public class CountedInputStream extends FilterInputStream {
    * operations and never decreases. It is not automatically adjusted by {@code reset()} on the
    * underlying stream.
    */
-  protected long count = 0;
+  private long count = 0;
 
   /**
    * Creates a counting wrapper around the given input stream.

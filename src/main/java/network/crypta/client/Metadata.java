@@ -66,7 +66,7 @@ import org.slf4j.LoggerFactory;
  * @see network.crypta.client.async.SplitFileSegmentKeys
  * @see network.crypta.keys.ClientCHK
  */
-public class Metadata implements Serializable {
+public final class Metadata implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(Metadata.class);
 
   @Serial private static final long serialVersionUID = 1L;

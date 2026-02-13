@@ -148,9 +148,9 @@ class DefaultFECCodeFactoryTest {
     setSystemProperty("com.onionnetworks.fec.keys", "");
     setSystemProperty("custom.key", "systemValue");
 
-    ExposedFactory factory = new ExposedFactory();
-
-    String value = factory.exposedGetProperty();
+    DefaultFECCodeFactory factory = new DefaultFECCodeFactory();
+    factory.fecProperties.setProperty("custom.key", "fileValue");
+    String value = factory.getProperty("custom.key");
 
     assertEquals("systemValue", value);
   }
@@ -169,18 +169,6 @@ class DefaultFECCodeFactoryTest {
       System.clearProperty(key);
     } else {
       System.setProperty(key, value);
-    }
-  }
-
-  /** Exposes getProperty for targeted assertions. */
-  static class ExposedFactory extends DefaultFECCodeFactory {
-    ExposedFactory() {
-      super();
-      fecProperties.setProperty("custom.key", "fileValue");
-    }
-
-    String exposedGetProperty() {
-      return getProperty("custom.key");
     }
   }
 

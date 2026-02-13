@@ -28,7 +28,7 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Prefers clarity over buffering: no additional buffering is added beyond the parent.
  * </ul>
  */
-public class FiniteInputStream extends FilterInputStream {
+public final class FiniteInputStream extends FilterInputStream {
 
   /**
    * Remaining byte budget, in bytes, still permitted to flow through this view. Updated after every

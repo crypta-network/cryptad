@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * @see FilterCallback
  * @see URIProcessor
  */
-public class GenericReadFilterCallback implements FilterCallback, URIProcessor {
+public final class GenericReadFilterCallback implements FilterCallback, URIProcessor {
   private static final Logger LOG = LoggerFactory.getLogger(GenericReadFilterCallback.class);
 
   private static final Set<String> allowedProtocols;

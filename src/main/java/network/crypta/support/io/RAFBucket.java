@@ -16,7 +16,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * Read-only {@link Bucket} backed by a {@link LockableRandomAccessBuffer}.
  *
  * <p>This bucket exposes streaming reads over an existing random-access buffer and allows callers
- * to obtain that buffer without copying via {@link #toRandomAccessBuffer()}. It never provides an
+ * to get that buffer without copying via {@link #toRandomAccessBuffer()}. It never provides an
  * {@link OutputStream}; attempts to request one will throw {@link IOException} because the bucket
  * is immutable.
  *
@@ -29,7 +29,7 @@ import network.crypta.support.api.RandomAccessBucket;
  * beyond what the underlying buffer provides. Multiple readers should create separate input
  * streams. The returned {@link InputStream}s are not thread-safe.
  */
-public class RAFBucket implements Bucket, RandomAccessBucket {
+public final class RAFBucket implements Bucket, RandomAccessBucket {
 
   private final LockableRandomAccessBuffer underlying;
   final long size;
@@ -38,9 +38,8 @@ public class RAFBucket implements Bucket, RandomAccessBucket {
    * Creates a read-only bucket over an existing random-access buffer.
    *
    * @param underlying the backing {@link LockableRandomAccessBuffer}; must not be {@code null}
-   * @throws IOException if obtaining the current size from the buffer fails
    */
-  public RAFBucket(LockableRandomAccessBuffer underlying) throws IOException {
+  public RAFBucket(LockableRandomAccessBuffer underlying) {
     this.underlying = underlying;
     size = underlying.size();
   }
@@ -137,7 +136,7 @@ public class RAFBucket implements Bucket, RandomAccessBucket {
   /**
    * Releases resources by delegating to the underlying buffer.
    *
-   * <p>After this call, the underlying buffer is freed and subsequent I/O may fail.
+   * <p>After this call, the underlying buffer is freed and further I/O may fail.
    */
   @Override
   public void free() {
@@ -145,7 +144,7 @@ public class RAFBucket implements Bucket, RandomAccessBucket {
   }
 
   /**
-   * Returns {@code null} because this implementation does not provide a cheap shadow copy.
+   * Returns {@code null} because this implementation does not provide an inexpensive shadow copy.
    *
    * @return always {@code null}
    */

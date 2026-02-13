@@ -36,7 +36,7 @@ import org.tanukisoftware.wrapper.WrapperManager;
  *
  * @author toad
  */
-public class FilenameGenerator {
+public final class FilenameGenerator {
   private static final Logger LOG = LoggerFactory.getLogger(FilenameGenerator.class);
 
   private final Random random;

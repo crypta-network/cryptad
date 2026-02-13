@@ -29,7 +29,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see PluginRemovedMessage
  * @see network.crypta.pluginmanager.PluginManager#findPluginByIdentifier(String)
  */
-public class RemovePlugin extends FCPMessage {
+public final class RemovePlugin extends FCPMessage {
 
   static final String NAME = "RemovePlugin";
 

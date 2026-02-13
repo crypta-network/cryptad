@@ -26,7 +26,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see TestDdaRequestMessage
  * @see TestDdaCompleteMessage
  */
-public class TestDdaResponseMessage extends FCPMessage {
+public final class TestDdaResponseMessage extends FCPMessage {
 
   /**
    * Protocol identifier that labels this message on the wire and inside routing tables. Immutable

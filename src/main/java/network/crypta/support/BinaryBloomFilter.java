@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author sdiz
  */
-public class BinaryBloomFilter extends BloomFilter {
+public final class BinaryBloomFilter extends BloomFilter {
   private static final Logger LOG = LoggerFactory.getLogger(BinaryBloomFilter.class);
 
   /**
@@ -54,7 +54,7 @@ public class BinaryBloomFilter extends BloomFilter {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   protected BinaryBloomFilter(int length, int k) {
-    super(length, k);
+    super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     filter = ByteBuffer.allocate(this.length / 8);
   }
 
@@ -72,7 +72,7 @@ public class BinaryBloomFilter extends BloomFilter {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   protected BinaryBloomFilter(File file, int length, int k) throws IOException {
-    super(length, k);
+    super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     if (!file.exists() || file.length() != length / 8) needRebuild = true;
 
     try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
@@ -95,7 +95,7 @@ public class BinaryBloomFilter extends BloomFilter {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   public BinaryBloomFilter(ByteBuffer slice, int length, int k) {
-    super(length, k);
+    super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     filter = slice;
   }
 
@@ -169,7 +169,7 @@ public class BinaryBloomFilter extends BloomFilter {
     }
   }
 
-  private static final class LockResource implements Closeable {
+  private static class LockResource implements Closeable {
     private final Lock w;
 
     LockResource(Lock w) {

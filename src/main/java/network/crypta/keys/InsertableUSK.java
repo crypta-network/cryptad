@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
  *       produce {@link InsertableClientSSK} instances.
  * </ul>
  */
-public class InsertableUSK extends USK {
+public final class InsertableUSK extends USK {
   private static final Logger LOG = LoggerFactory.getLogger(InsertableUSK.class);
 
   @Serial private static final long serialVersionUID = 1L;

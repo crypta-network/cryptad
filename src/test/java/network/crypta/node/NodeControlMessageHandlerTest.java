@@ -209,29 +209,22 @@ class NodeControlMessageHandlerTest {
   void handle_whenUomRequestMainJarUnsupported_returnsFalse() {
     when(message.getSpec()).thenReturn(DMT.CryptadUOMRequestMainJar);
     when(peerNode.isRealConnection()).thenReturn(true);
-    when(node.services()).thenReturn(servicesSubsystem);
-    when(servicesSubsystem.nodeUpdater()).thenReturn(nodeUpdateManager);
-    when(nodeUpdateManager.supportsJarUOM()).thenReturn(false);
 
     boolean handled = handler.handle(message, peerNode);
 
     assertFalse(handled);
-    verify(nodeUpdateManager, never()).getUpdateOverMandatory();
+    verifyNoInteractions(node);
   }
 
   @Test
-  void handle_whenUomRequestMainJarSupported_delegatesAndReturnsTrue() {
-    when(message.getSpec()).thenReturn(DMT.CryptadUOMRequestMainJar);
+  void handle_whenUomSendingMainJar_returnsFalse() {
+    when(message.getSpec()).thenReturn(DMT.CryptadUOMSendingMainJar);
     when(peerNode.isRealConnection()).thenReturn(true);
-    when(node.services()).thenReturn(servicesSubsystem);
-    when(servicesSubsystem.nodeUpdater()).thenReturn(nodeUpdateManager);
-    when(nodeUpdateManager.supportsJarUOM()).thenReturn(true);
-    when(nodeUpdateManager.getUpdateOverMandatory()).thenReturn(uomManager);
 
     boolean handled = handler.handle(message, peerNode);
 
-    assertTrue(handled);
-    verify(uomManager).handleRequestJar(message, peerNode);
+    assertFalse(handled);
+    verifyNoInteractions(node);
   }
 
   @Test

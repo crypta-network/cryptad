@@ -57,7 +57,7 @@ import org.slf4j.LoggerFactory;
  * @see Node
  * @see NodeStatsFieldSetExporter
  */
-public class NodeStats implements Persistable, BlockTimeCallback {
+public final class NodeStats implements Persistable, BlockTimeCallback {
   private static final Logger LOG = LoggerFactory.getLogger(NodeStats.class);
 
   /** Kinds of requests and inserts tracked by NodeStats. */
@@ -196,6 +196,9 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
   /** Accept one request every 10 seconds regardless, to ensure we update the block send time. */
   public static final long MAX_INTERREQUEST_TIME = SECONDS.toMillis(10);
+
+  /** Number of outbound transfers per insert assumed for admission logic. */
+  private static final int OUTWARD_TRANSFERS_PER_INSERT = 1;
 
   /** Locations of incoming requests */
   private final RequestsByLocation incomingRequests = new RequestsByLocation(10);
@@ -441,7 +444,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    * <p>Values are normalized to {@code [0.0, 1.0]} and persisted to capture recent request
    * distribution for diagnostics and trend reporting.
    */
-  protected final DecayingKeyspaceAverage avgRequestLocation;
+  private final DecayingKeyspaceAverage avgRequestLocation;
 
   /**
    * Records a request location into the decaying average.
@@ -1056,7 +1059,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
       // This should normally account for the bulk of request rejections.
 
-      int transfersPerInsert = outwardTransfersPerInsert();
+      int transfersPerInsert = OUTWARD_TRANSFERS_PER_INSERT;
 
       /* Requests running, globally */
       RunningRequestsSnapshot requestsSnapshot =
@@ -1275,16 +1278,6 @@ public class NodeStats implements Persistable, BlockTimeCallback {
     // Bandwidth scheduling is now unfair, based on deadlines.
     // Therefore, we can allocate a large chunk of our capacity to a single peer.
     return upperLimit / 2;
-  }
-
-  /**
-   * Number of outbound transfers per insert assumed for admission logic.
-   *
-   * @return the assumed number of outbound transfers per insert.
-   */
-  public int outwardTransfersPerInsert() {
-    // Consider computing a dynamic average in future revisions
-    return 1;
   }
 
   private double getInputBandwidthUpperLimit(long limit) {
@@ -3530,7 +3523,12 @@ public class NodeStats implements Persistable, BlockTimeCallback {
 
   RunningRequestsSnapshot getRunningRequestsTo(PeerNode peerNode, boolean realTimeFlag) {
     return new RunningRequestsSnapshot(
-        node.routing().tracker(), peerNode, true, false, outwardTransfersPerInsert(), realTimeFlag);
+        node.routing().tracker(),
+        peerNode,
+        true,
+        false,
+        OUTWARD_TRANSFERS_PER_INSERT,
+        realTimeFlag);
   }
 
   /**
@@ -3827,7 +3825,7 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    * @param sigma Proportion change at one standard deviation.
    * @return Value +/- Gaussian percentage.
    */
-  public final double randomNoise(final double input, final double sigma) {
+  public double randomNoise(final double input, final double sigma) {
     double multiplier = (node.bootstrap().random().nextGaussian() * sigma) + 1.0;
 
     /*
@@ -3845,15 +3843,14 @@ public class NodeStats implements Persistable, BlockTimeCallback {
    *
    * @return a ratio in {@code [0.0, +inf)}; values above 1.0 indicate temporary oversubscription.
    */
-  public final double getBandwidthLiabilityUsage() {
+  public double getBandwidthLiabilityUsage() {
     long now = System.currentTimeMillis();
     long limit = getLimitSeconds(false);
-    int transfersPerInsert = outwardTransfersPerInsert();
     RunningRequestsSnapshot requestsSnapshot =
         new RunningRequestsSnapshot(
             node.routing().tracker(),
             ignoreLocalVsRemoteBandwidthLiability,
-            transfersPerInsert,
+            OUTWARD_TRANSFERS_PER_INSERT,
             false);
     double usedBytes = requestsSnapshot.calculate(ignoreLocalVsRemoteBandwidthLiability, false);
     double nonOverheadFraction = getNonOverheadFraction(now);

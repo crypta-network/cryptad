@@ -697,7 +697,7 @@ class ContentFilterTest {
    * AutoCloseable wrapper for ArrayBucket so tests can use try-with-resources and still read
    * contents before resources are freed.
    */
-  private static final class AutoFreeArrayBucket extends ArrayBucket implements AutoCloseable {
+  private static class AutoFreeArrayBucket extends ArrayBucket implements AutoCloseable {
     AutoFreeArrayBucket() {
       super();
     }

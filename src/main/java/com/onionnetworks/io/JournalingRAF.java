@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  * @see Journal
  * @see Range
  */
-public class JournalingRAF extends FilterRAF {
+public final class JournalingRAF extends FilterRAF {
 
   private static final Logger LOGGER = Logger.getLogger(JournalingRAF.class.getName());
 

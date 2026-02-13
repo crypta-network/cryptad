@@ -33,7 +33,7 @@ import network.crypta.support.io.BucketTools;
  * @see SendPeerMessage
  * @see DarknetPeerNode#sendTextFeed(String)
  */
-public class SendTextMessage extends SendPeerMessage {
+public final class SendTextMessage extends SendPeerMessage {
 
   /**
    * Canonical FCP message name advertised to peers when composing or dispatching SendText requests.
@@ -49,7 +49,7 @@ public class SendTextMessage extends SendPeerMessage {
    *     {@link SendPeerMessage} constructor.
    */
   public SendTextMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    super(fs);
+    super(parseCommonFields(fs));
   }
 
   /**

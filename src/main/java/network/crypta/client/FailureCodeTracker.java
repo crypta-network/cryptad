@@ -49,7 +49,7 @@ import org.slf4j.LoggerFactory;
  * @see FetchException
  * @see InsertException
  */
-public class FailureCodeTracker implements Serializable {
+public final class FailureCodeTracker implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(FailureCodeTracker.class);
 
   @Serial private static final long serialVersionUID = 1L;

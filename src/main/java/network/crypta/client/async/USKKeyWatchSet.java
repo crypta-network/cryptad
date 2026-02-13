@@ -565,7 +565,7 @@ final class USKKeyWatchSet {
    * is used to match incoming {@link NodeSSK} keys or to build datastore checkers without
    * recomputing hashes for every request.
    */
-  class KeyList {
+  final class KeyList {
 
     /**
      * USK edition number represented by cache index 0.

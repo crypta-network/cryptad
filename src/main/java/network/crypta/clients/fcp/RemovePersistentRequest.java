@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * @see FCPConnectionHandler
  * @see ClientRequest
  */
-public class RemovePersistentRequest extends FCPMessage {
+public final class RemovePersistentRequest extends FCPMessage {
   private static final Logger LOG = LoggerFactory.getLogger(RemovePersistentRequest.class);
 
   static final String NAME = "RemoveRequest";

@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  *   <li>Wraps buckets with encryption and delayed-free layers when configured.
  * </ul>
  */
-public class PersistentTempBucketFactory implements BucketFactory, PersistentFileTracker {
+public final class PersistentTempBucketFactory implements BucketFactory, PersistentFileTracker {
   private static final Logger LOG = LoggerFactory.getLogger(PersistentTempBucketFactory.class);
 
   /**

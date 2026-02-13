@@ -31,7 +31,7 @@ import network.crypta.support.io.BucketTools;
  *       and ensures UTF-8 decoding for human-readable descriptions.
  * </ul>
  */
-public class SendBookmarkMessage extends SendPeerMessage {
+public final class SendBookmarkMessage extends SendPeerMessage {
   /**
    * Protocol literal clients use when emitting or filtering {@code SendBookmark} traffic, ensuring
    * that GUI tools and scripting clients consistently map the same string to this feature without
@@ -58,7 +58,7 @@ public class SendBookmarkMessage extends SendPeerMessage {
    *     error.
    */
   public SendBookmarkMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    super(fs);
+    super(parseCommonFields(fs));
     try {
       bookmarkName = fs.get("Name");
       if (bookmarkName == null)

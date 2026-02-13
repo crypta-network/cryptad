@@ -54,7 +54,7 @@ import network.crypta.support.io.StorageFormatException;
  * @see RequestScheduler
  * @see HighLevelSimpleClientImpl
  */
-public class FetchContext implements Serializable {
+public final class FetchContext implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 

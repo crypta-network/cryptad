@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * can be resolved when decoding by identifier. The mapping is legacy behavior and may be subject to
  * hash collisions; callers should not rely on the numeric identifier being globally unique.
  */
-public class MessageType {
+public final class MessageType {
   private static final Logger LOG = LoggerFactory.getLogger(MessageType.class);
 
   /** Source-control marker string retained for historical reference. Not used by runtime logic. */

@@ -32,7 +32,7 @@ import java.math.BigInteger;
  * @see Polynomial.Rational
  * @see RationalNumber
  */
-public class PolynomialFraction implements Serializable {
+public final class PolynomialFraction implements Serializable {
 
   /**
    * Creates the zero polynomial fraction {@code 0/1}.

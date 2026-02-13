@@ -10,7 +10,7 @@ import network.crypta.support.HexUtil;
 import network.crypta.support.IllegalBase64Exception;
 import network.crypta.support.SimpleFieldSet;
 
-public class DSAPrivateKey extends CryptoKey {
+public final class DSAPrivateKey extends CryptoKey {
   @Serial private static final long serialVersionUID = -1;
 
   private final BigInteger x;

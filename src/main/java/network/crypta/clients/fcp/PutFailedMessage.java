@@ -41,7 +41,7 @@ import network.crypta.support.SimpleFieldSet;
  * @see FailureCodeTracker
  * @see FreenetURI
  */
-public class PutFailedMessage extends FCPMessage implements Serializable {
+public final class PutFailedMessage extends FCPMessage implements Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
 

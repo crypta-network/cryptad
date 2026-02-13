@@ -2,7 +2,6 @@ package network.crypta.client.async;
 
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.io.Serial;
 import java.util.ArrayList;
 import network.crypta.client.FailureCodeTracker;
 import network.crypta.client.InsertContext;
@@ -53,7 +52,7 @@ import org.slf4j.LoggerFactory;
  * @see SimpleSendableInsert
  * @see LowLevelPutException
  */
-public class BinaryBlobInserter implements ClientPutState {
+public final class BinaryBlobInserter implements ClientPutState {
   private static final Logger LOG = LoggerFactory.getLogger(BinaryBlobInserter.class);
 
   final ClientPutter parent;
@@ -181,25 +180,49 @@ public class BinaryBlobInserter implements ClientPutState {
     }
   }
 
-  class MySendableInsert extends SimpleSendableInsert {
-
-    @Serial private static final long serialVersionUID = 1L;
+  class MySendableInsert {
     final int blockNum;
     private int consecutiveRNFs;
     private int retries;
+    private final SimpleSendableInsert sendableInsert;
 
-    public MySendableInsert(
+    MySendableInsert(
         int i,
         KeyBlock block,
         short prioClass,
         ClientRequestScheduler scheduler,
         RequestClient client) {
-      super(block, prioClass, client, scheduler);
       this.blockNum = i;
+      this.sendableInsert =
+          new SimpleSendableInsert(
+              block,
+              prioClass,
+              client,
+              scheduler,
+              new SimpleSendableInsert.OutcomeCallback() {
+                @Override
+                public void onSuccess(
+                    SendableRequestItem keyNum, ClientKey key, ClientContext context) {
+                  MySendableInsert.this.onSuccess(context);
+                }
+
+                @Override
+                public void onFailure(
+                    LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
+                  MySendableInsert.this.onFailure(e, context);
+                }
+              });
     }
 
-    @Override
-    public void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
+    public void schedule() {
+      sendableInsert.schedule();
+    }
+
+    public void cancel(ClientContext context) {
+      sendableInsert.cancel(context);
+    }
+
+    void onSuccess(ClientContext context) {
       synchronized (BinaryBlobInserter.this) {
         if (inserters[blockNum] == null) return;
         inserters[blockNum] = null;
@@ -211,9 +234,7 @@ public class BinaryBlobInserter implements ClientPutState {
     }
 
     // Note: logic mirrors SingleBlockInserter; consider future refactor.
-    @Override
-    public void onFailure(
-        LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
+    void onFailure(LowLevelPutException e, ClientContext context) {
       synchronized (BinaryBlobInserter.this) {
         if (inserters[blockNum] == null) return;
       }
@@ -242,7 +263,7 @@ public class BinaryBlobInserter implements ClientPutState {
         if (consecutiveRNFs == consecutiveRNFsCountAsSuccess) {
           if (LOG.isDebugEnabled())
             LOG.debug("Consecutive RNFs: {} - counting as success", consecutiveRNFs);
-          onSuccess(keyNum, null, context);
+          onSuccess(context);
           return;
         }
       } else consecutiveRNFs = 0;
@@ -252,9 +273,9 @@ public class BinaryBlobInserter implements ClientPutState {
         fail(false, context);
         return;
       }
-      this.clearWakeupTime(context);
+      sendableInsert.clearWakeupTime(context);
       // Retry *this block*
-      this.schedule();
+      schedule();
     }
 
     private void fail(boolean fatal, ClientContext context) {

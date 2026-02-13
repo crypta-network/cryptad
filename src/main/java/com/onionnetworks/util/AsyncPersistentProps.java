@@ -30,7 +30,7 @@ import java.util.*;
  *
  * @author Justin F. Chapweske
  */
-public class AsyncPersistentProps implements Runnable {
+public final class AsyncPersistentProps implements Runnable {
 
   private final File f;
   private final Properties p;

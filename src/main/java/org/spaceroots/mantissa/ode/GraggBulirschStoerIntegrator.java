@@ -714,7 +714,7 @@ public class GraggBulirschStoerIntegrator extends AdaptiveStepsizeIntegrator {
     }
   }
 
-  private static final class ModifiedMidpointContext {
+  private static class ModifiedMidpointContext {
     private final FirstOrderDifferentialEquations equations;
     private final double t0;
     private final double[] y0;

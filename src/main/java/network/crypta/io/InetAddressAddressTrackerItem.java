@@ -19,7 +19,7 @@ import network.crypta.support.SimpleFieldSet;
  * synchronized where relevant. This type does not add additional mutable state beyond the final
  * {@link #addr} reference.
  */
-public class InetAddressAddressTrackerItem extends AddressTrackerItem {
+public final class InetAddressAddressTrackerItem extends AddressTrackerItem {
 
   /**
    * Create a tracker for the given address with known upper bounds for the initial "no packets"

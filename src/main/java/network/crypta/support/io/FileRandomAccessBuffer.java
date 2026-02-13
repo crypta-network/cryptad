@@ -35,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * #FileRandomAccessBuffer(DataInputStream) restoring constructor}. The persisted data includes the
  * file path, mode, length, and secure-deletion flag.
  */
-public class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+public final class FileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(FileRandomAccessBuffer.class);
 
   @Serial private static final long serialVersionUID = 1L;

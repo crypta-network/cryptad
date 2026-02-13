@@ -24,7 +24,7 @@ import network.crypta.io.AddressIdentifier.AddressType;
  * @author David Roden &lt;droden@gmail.com&gt;
  * @version $Id$
  */
-public class Inet6AddressMatcher implements AddressMatcher {
+public final class Inet6AddressMatcher implements AddressMatcher {
   /**
    * Returns the address family supported by this matcher.
    *

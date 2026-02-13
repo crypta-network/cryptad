@@ -25,7 +25,7 @@ import network.crypta.io.WritableToDataOutputStream;
  *
  * @author ian
  */
-public class Buffer implements WritableToDataOutputStream {
+public final class Buffer implements WritableToDataOutputStream {
 
   /** Historical SCM identifier retained for compatibility/logging. */
   public static final String VERSION = "$Id: Buffer.java,v 1.2 2005/08/25 17:28:19 amphibian Exp $";

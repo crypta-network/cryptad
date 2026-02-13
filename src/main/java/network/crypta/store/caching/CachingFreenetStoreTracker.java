@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Simon Vocella <voxsim@gmail.com>
  */
-public class CachingFreenetStoreTracker {
+public final class CachingFreenetStoreTracker {
   private static final Logger LOG = LoggerFactory.getLogger(CachingFreenetStoreTracker.class);
 
   /**

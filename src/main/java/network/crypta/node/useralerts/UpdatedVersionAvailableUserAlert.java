@@ -201,7 +201,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
     StringBuilder sb = new StringBuilder();
     sb.append(l10n("notLatest")).append(' ');
 
-    if (updater.isArmed() && updater.inFinalCheck()) {
+    if (updater.isArmed() && NodeUpdateManager.IN_FINAL_CHECK) {
       appendFinalCheckInfo(sb);
       return new UpdateThingy(sb.toString(), null);
     }
@@ -221,7 +221,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
                 new String[] {
                   Integer.toString(updater.getRevocationDNFCounter()),
                   Integer.toString(RevocationChecker.REVOCATION_DNF_MIN),
-                  TimeUtil.formatTime(updater.timeRemainingOnCheck())
+                  TimeUtil.formatTime(NodeUpdateManager.TIME_REMAINING_ON_CHECK)
                 }))
         .append(' ');
   }
@@ -238,7 +238,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
       sb.append(' ').append(l10n("updateIsUrgent"));
     }
 
-    if (updater.brokenDependencies()) {
+    if (NodeUpdateManager.BROKEN_DEPENDENCIES) {
       sb.append(' ')
           .append(
               l10n("brokenDependencies", "version", Integer.toString(updater.newMainJarVersion())));
@@ -303,7 +303,7 @@ public class UpdatedVersionAvailableUserAlert extends AbstractUserAlert {
   public short getPriorityClass() {
     Node node = updater.getNode();
     if (node.network().updateIsUrgent()) return UserAlert.CRITICAL_ERROR;
-    if (updater.inFinalCheck() || updater.canUpdateNow() || !updater.isArmed())
+    if (NodeUpdateManager.IN_FINAL_CHECK || updater.canUpdateNow() || !updater.isArmed())
       return UserAlert.ERROR;
     else return UserAlert.MINOR;
   }

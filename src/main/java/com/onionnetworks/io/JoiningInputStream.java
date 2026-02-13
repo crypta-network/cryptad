@@ -28,7 +28,7 @@ import org.jetbrains.annotations.NotNull;
  * @see FilterInputStream
  * @see InputStream
  */
-public class JoiningInputStream extends FilterInputStream {
+public final class JoiningInputStream extends FilterInputStream {
 
   InputStream first;
   InputStream second;

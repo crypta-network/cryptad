@@ -89,19 +89,21 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
   /**
    * Constructs a new bucket and validates file-mode invariants without invoking subclass methods.
    *
-   * @param file target file; must be non-null
+   * @param file target file; may be {@code null} for resilience in deserialization/framework paths
    * @param deleteOnExit when {@code true}, registers the file with {@link File#deleteOnExit()}
    * @param createFileOnly whether writes must fail when the target file already exists
    * @param tempFileAlreadyExists whether writes operate directly on an existing temporary file
-   * @throws NullPointerException if {@code file} is {@code null}
-   * @throws AssertionError if {@code createFileOnly} and {@code tempFileAlreadyExists} are both
-   *     {@code true}
    */
   protected BaseFileBucket(
       File file, boolean deleteOnExit, boolean createFileOnly, boolean tempFileAlreadyExists) {
-    if (file == null) throw new NullPointerException();
-    maybeSetDeleteOnExit(deleteOnExit, file);
-    assert !(createFileOnly && tempFileAlreadyExists); // Mutually incompatible!
+    if (file != null) {
+      maybeSetDeleteOnExit(deleteOnExit, file);
+    }
+    if (createFileOnly && tempFileAlreadyExists) {
+      LOG.warn(
+          "Ignoring incompatible bucket mode createFileOnly+tempFileAlreadyExists for {}",
+          getClass().getSimpleName());
+    }
   }
 
   /** Default constructor for deserialization frameworks. */
@@ -593,12 +595,21 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    * @throws StorageFormatException when the data is malformed or uses an unknown version
    */
   protected BaseFileBucket(DataInputStream dis) throws IOException, StorageFormatException {
+    this(readStoredFreed(dis));
+  }
+
+  protected BaseFileBucket(boolean freed) {
+    this.freed = freed;
+  }
+
+  protected static boolean readStoredFreed(DataInputStream dis)
+      throws IOException, StorageFormatException {
     // Read and validate the header
     int magic = dis.readInt();
     if (magic != MAGIC) throw new StorageFormatException("Bad magic");
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Bad version");
-    freed = dis.readBoolean();
+    return dis.readBoolean();
   }
 
   /**

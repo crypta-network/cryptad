@@ -31,7 +31,7 @@ import org.jetbrains.annotations.NotNull;
  * m)}. - {@link #contains(int, int)} runs in {@code O(log n)}. - Iteration is {@code O(n)} and
  * yields intervals in order.
  */
-public class SparseBitmap implements Iterable<int[]> {
+public final class SparseBitmap implements Iterable<int[]> {
   // Intervals are ordered by start. Invariant: they are disjoint and non-adjacent.
   private final TreeSet<Range> ranges;
 

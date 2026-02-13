@@ -23,7 +23,7 @@ import java.io.*;
  *       destination when possible.
  * </ul>
  */
-public class LazyRenameRAF extends FilterRAF {
+public final class LazyRenameRAF extends FilterRAF {
 
   File destFile;
 

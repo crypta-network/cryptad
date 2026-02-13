@@ -73,7 +73,7 @@ public class HTMLNode {
    * @throws IllegalArgumentException if {@code name} is null or invalid
    */
   public HTMLNode(String name) {
-    this(name, null);
+    this(validateConstructionState(name, null, null, null));
   }
 
   private static final ArrayList<String> EmptyTag = new ArrayList<>(10);
@@ -176,7 +176,7 @@ public class HTMLNode {
    * @throws IllegalArgumentException if {@code name} is invalid
    */
   public HTMLNode(String name, String content) {
-    this(name, null, (String[]) null, content);
+    this(validateConstructionState(name, null, null, content));
   }
 
   /**
@@ -188,7 +188,9 @@ public class HTMLNode {
    * @throws IllegalArgumentException if an argument is invalid
    */
   public HTMLNode(String name, String attributeName, String attributeValue) {
-    this(name, attributeName, attributeValue, null);
+    this(
+        validateConstructionState(
+            name, new String[] {attributeName}, new String[] {attributeValue}, null));
   }
 
   /**
@@ -201,7 +203,9 @@ public class HTMLNode {
    * @throws IllegalArgumentException if an argument is invalid
    */
   public HTMLNode(String name, String attributeName, String attributeValue, String content) {
-    this(name, new String[] {attributeName}, new String[] {attributeValue}, content);
+    this(
+        validateConstructionState(
+            name, new String[] {attributeName}, new String[] {attributeValue}, content));
   }
 
   /**
@@ -213,7 +217,7 @@ public class HTMLNode {
    * @throws IllegalArgumentException if names/values are invalid or lengths differ
    */
   public HTMLNode(String name, String[] attributeNames, String[] attributeValues) {
-    this(name, attributeNames, attributeValues, null);
+    this(validateConstructionState(name, attributeNames, attributeValues, null));
   }
 
   /**
@@ -257,6 +261,10 @@ public class HTMLNode {
    * @return {@code true} if valid; {@code false} otherwise
    */
   protected boolean checkNamePattern(String str) {
+    return checkNamePatternStatic(str);
+  }
+
+  private static boolean checkNamePatternStatic(String str) {
     if (str.isEmpty()) return false;
     if (isSimpleAsciiName(str)) return true;
     return matchesNamePatterns(str);
@@ -285,19 +293,42 @@ public class HTMLNode {
   }
 
   public HTMLNode(String name, String[] attributeNames, String[] attributeValues, String content) {
-    validateNameOrThrow(name);
-    addAttributesFromArrays(attributeNames, attributeValues);
-    this.tagName = name.toLowerCase(Locale.ENGLISH);
-    setContentOrCreateChild(name, content);
+    this(validateConstructionState(name, attributeNames, attributeValues, content));
   }
 
-  private void validateNameOrThrow(String name) {
-    if ((name == null) || (!"#".equals(name) && !"%".equals(name) && !checkNamePattern(name))) {
+  private HTMLNode(ConstructionState state) {
+    this.tagName = state.tagName;
+    this.attributes.putAll(state.attributes);
+    this.content = state.content;
+    if (state.textChild != null) {
+      this.children.add(state.textChild);
+    }
+  }
+
+  private static ConstructionState validateConstructionState(
+      String name, String[] attributeNames, String[] attributeValues, String content) {
+    validateNameOrThrow(name);
+    Map<String, String> validatedAttributes =
+        validateAndCollectAttributes(attributeNames, attributeValues);
+    String lowerTagName = name.toLowerCase(Locale.ENGLISH);
+    if (content != null && !"#".equals(name) && !"%".equals(name)) {
+      // Encode as a dedicated text child to preserve generation behavior.
+      return new ConstructionState(
+          lowerTagName, validatedAttributes, null, new HTMLNode("#", content));
+    }
+    return new ConstructionState(lowerTagName, validatedAttributes, content, null);
+  }
+
+  private static void validateNameOrThrow(String name) {
+    if ((name == null)
+        || (!"#".equals(name) && !"%".equals(name) && !checkNamePatternStatic(name))) {
       throw new IllegalArgumentException("element name is not legal");
     }
   }
 
-  private void addAttributesFromArrays(String[] attributeNames, String[] attributeValues) {
+  private static Map<String, String> validateAndCollectAttributes(
+      String[] attributeNames, String[] attributeValues) {
+    Map<String, String> collected = new HashMap<>();
     if ((attributeNames != null) && (attributeValues != null)) {
       if (attributeNames.length != attributeValues.length) {
         throw new IllegalArgumentException("attribute names and values differ in length");
@@ -306,22 +337,20 @@ public class HTMLNode {
           attributeIndex < attributeCount;
           attributeIndex++) {
         String attrName = attributeNames[attributeIndex];
-        if ((attrName == null) || !checkNamePattern(attrName)) {
+        if ((attrName == null) || !checkNamePatternStatic(attrName)) {
           throw new IllegalArgumentException("attributeName is not legal");
         }
-        addAttribute(attrName, attributeValues[attributeIndex]);
+        String attrValue = attributeValues[attributeIndex];
+        if (attrValue == null)
+          throw new IllegalArgumentException("Cannot add an attribute with a null value");
+        collected.put(attrName, attrValue);
       }
     }
+    return collected;
   }
 
-  private void setContentOrCreateChild(String name, String content) {
-    if (content != null && !"#".equals(name) && !"%".equals(name)) {
-      addChild(new HTMLNode("#", content));
-      this.content = null;
-    } else {
-      this.content = content;
-    }
-  }
+  private record ConstructionState(
+      String tagName, Map<String, String> attributes, String content, HTMLNode textChild) {}
 
   /** Returns the node's content, or {@code null} when unset. */
   public String getContent() {
