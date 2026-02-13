@@ -130,13 +130,33 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
       ClientRequester parent,
       boolean deleteFetchContext,
       boolean realTimeFlag) {
-    super(parent, realTimeFlag);
-    this.deleteFetchContext = deleteFetchContext;
-    if (LOG.isDebugEnabled()) LOG.debug("Creating BaseSingleFileFetcher for {}", key);
+    this(validateConstructionState(key, maxRetries, ctx, parent, deleteFetchContext, realTimeFlag));
+  }
+
+  private BaseSingleFileFetcher(ConstructionState state) {
+    super(state.parent, state.realTimeFlag);
+    this.deleteFetchContext = state.deleteFetchContext;
+    if (LOG.isDebugEnabled()) LOG.debug("Creating BaseSingleFileFetcher for {}", state.key);
     retryCount = 0;
-    this.maxRetries = maxRetries;
-    this.key = key;
-    this.ctx = requireFetchContext(ctx);
+    this.maxRetries = state.maxRetries;
+    this.key = state.key;
+    this.ctx = state.ctx;
+  }
+
+  private static ConstructionState validateConstructionState(
+      ClientKey key,
+      int maxRetries,
+      FetchContext ctx,
+      ClientRequester parent,
+      boolean deleteFetchContext,
+      boolean realTimeFlag) {
+    return new ConstructionState(
+        key,
+        maxRetries,
+        requireParent(parent),
+        requireFetchContext(ctx),
+        deleteFetchContext,
+        realTimeFlag);
   }
 
   private static FetchContext requireFetchContext(FetchContext ctx) {
@@ -144,6 +164,37 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
       throw new NullPointerException();
     }
     return ctx;
+  }
+
+  private static ClientRequester requireParent(ClientRequester parent) {
+    if (parent == null) {
+      throw new NullPointerException();
+    }
+    return parent;
+  }
+
+  private static final class ConstructionState {
+    private final ClientKey key;
+    private final int maxRetries;
+    private final ClientRequester parent;
+    private final FetchContext ctx;
+    private final boolean deleteFetchContext;
+    private final boolean realTimeFlag;
+
+    private ConstructionState(
+        ClientKey key,
+        int maxRetries,
+        ClientRequester parent,
+        FetchContext ctx,
+        boolean deleteFetchContext,
+        boolean realTimeFlag) {
+      this.key = key;
+      this.maxRetries = maxRetries;
+      this.parent = parent;
+      this.ctx = ctx;
+      this.deleteFetchContext = deleteFetchContext;
+      this.realTimeFlag = realTimeFlag;
+    }
   }
 
   @Override
