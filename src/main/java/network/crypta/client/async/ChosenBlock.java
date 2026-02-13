@@ -133,8 +133,7 @@ public abstract class ChosenBlock {
    * @throws NullPointerException if {@code token} is {@code null}.
    */
   protected ChosenBlock(SendableRequestItem token, Key key, ClientKey ckey, Options options) {
-    this.token = token;
-    if (token == null) throw new NullPointerException();
+    this.token = requireToken(token);
     this.key = key;
     this.ckey = ckey;
     this.localRequestOnly = options.localRequestOnly();
@@ -142,6 +141,13 @@ public abstract class ChosenBlock {
     this.canWriteClientCache = options.canWriteClientCache();
     this.forkOnCacheable = options.forkOnCacheable();
     this.realTimeFlag = options.realTimeFlag();
+  }
+
+  private static SendableRequestItem requireToken(SendableRequestItem token) {
+    if (token == null) {
+      throw new NullPointerException();
+    }
+    return token;
   }
 
   /**
