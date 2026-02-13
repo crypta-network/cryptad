@@ -129,65 +129,25 @@ public abstract class ClientRequest implements Serializable {
     return this == obj;
   }
 
-  private static final class RuntimeClientState {
-    final int verbosity;
-    final String clientName;
-    final FCPConnectionHandler origHandler;
-    final PersistentRequestClient client;
-    final RequestClient lowLevelClient;
+  private record RuntimeClientState(
+      int verbosity,
+      String clientName,
+      FCPConnectionHandler origHandler,
+      PersistentRequestClient client,
+      RequestClient lowLevelClient) {}
 
-    RuntimeClientState(
-        int verbosity,
-        String clientName,
-        FCPConnectionHandler origHandler,
-        PersistentRequestClient client,
-        RequestClient lowLevelClient) {
-      this.verbosity = verbosity;
-      this.clientName = clientName;
-      this.origHandler = origHandler;
-      this.client = client;
-      this.lowLevelClient = lowLevelClient;
-    }
-  }
-
-  private static final class PersistentState {
-    final boolean realTime;
-    final int verbosity;
-    final long startupTime;
-    final short priorityClass;
-    final String clientToken;
-    final boolean finished;
-    final String identifier;
-    final boolean global;
-    final String clientName;
-    final PersistentRequestClient client;
-    final RequestClient lowLevelClient;
-
-    PersistentState(
-        boolean realTime,
-        int verbosity,
-        long startupTime,
-        short priorityClass,
-        String clientToken,
-        boolean finished,
-        String identifier,
-        boolean global,
-        String clientName,
-        PersistentRequestClient client,
-        RequestClient lowLevelClient) {
-      this.realTime = realTime;
-      this.verbosity = verbosity;
-      this.startupTime = startupTime;
-      this.priorityClass = priorityClass;
-      this.clientToken = clientToken;
-      this.finished = finished;
-      this.identifier = identifier;
-      this.global = global;
-      this.clientName = clientName;
-      this.client = client;
-      this.lowLevelClient = lowLevelClient;
-    }
-  }
+  private record PersistentState(
+      boolean realTime,
+      int verbosity,
+      long startupTime,
+      short priorityClass,
+      String clientToken,
+      boolean finished,
+      String identifier,
+      boolean global,
+      String clientName,
+      PersistentRequestClient client,
+      RequestClient lowLevelClient) {}
 
   // Legacy threshold callback removed.
 
@@ -211,22 +171,22 @@ public abstract class ClientRequest implements Serializable {
     hashCode = hash;
     this.uri = params.uri();
     this.identifier = params.identifier();
-    this.verbosity = state.verbosity;
-    this.clientName = state.clientName;
+    this.verbosity = state.verbosity();
+    this.clientName = state.clientName();
     this.finished = false;
     this.priorityClass = params.priorityClass();
     this.persistence = params.persistence();
     this.clientToken = params.clientToken();
     this.global = params.global();
-    this.origHandler = state.origHandler;
-    this.client = state.client;
+    this.origHandler = state.origHandler();
+    this.client = state.client();
     this.lowLevelClient =
-        state.lowLevelClient == null
+        state.lowLevelClient() == null
             ? new RequestClientBuilder()
                 .persistent(persistence == Persistence.FOREVER)
                 .realTime(params.realTime())
                 .build()
-            : state.lowLevelClient;
+            : state.lowLevelClient();
     this.startupTime = System.currentTimeMillis();
     this.realTime = params.realTime();
   }
@@ -254,17 +214,17 @@ public abstract class ClientRequest implements Serializable {
     this.persistence = params.persistence();
     this.clientToken = params.clientToken();
     this.global = params.global();
-    this.origHandler = state.origHandler;
-    this.client = state.client;
+    this.origHandler = state.origHandler();
+    this.client = state.client();
     this.lowLevelClient =
-        state.lowLevelClient == null
+        state.lowLevelClient() == null
             ? new RequestClientBuilder()
                 .persistent(persistence == Persistence.FOREVER)
                 .realTime(params.realTime())
                 .build()
-            : state.lowLevelClient;
-    this.verbosity = state.verbosity;
-    this.clientName = state.clientName;
+            : state.lowLevelClient();
+    this.verbosity = state.verbosity();
+    this.clientName = state.clientName();
     if (client != null && client.persistence != persistence) {
       LOG.warn(
           "Persistent client {} has mismatched persistence {} for request {}; keeping request"
@@ -286,25 +246,20 @@ public abstract class ClientRequest implements Serializable {
               ? new RequestClientBuilder().realTime(params.realTime()).build()
               : handler.connectionRequestClient(params.realTime());
       return new RuntimeClientState(
-          params.global() ? Integer.MAX_VALUE : params.verbosity(),
-          null,
-          handler,
-          null,
-          lowLevelClient);
+          resolveRuntimeVerbosity(params), null, handler, null, lowLevelClient);
     }
-    PersistentRequestClient checkedClient = client;
-    if (checkedClient == null || checkedClient.persistence != params.persistence()) {
-      checkedClient = resolvePersistentClient(handler, params.persistence(), params.global());
+    if (client == null) {
+      throw new IllegalStateException("Persistent client must not be null");
     }
-    RequestClient lowLevelClient =
-        checkedClient == null ? null : checkedClient.lowLevelClient(params.realTime());
-    lowLevelClient =
-        normalizeLowLevelClient(lowLevelClient, params.persistence(), params.realTime());
+    if (client.persistence != params.persistence()) {
+      throw new IllegalStateException("Persistent client has mismatched persistence");
+    }
+    RequestClient lowLevelClient = resolveLowLevelClient(params, client);
     return new RuntimeClientState(
-        params.global() ? Integer.MAX_VALUE : params.verbosity(),
-        (params.global() || checkedClient == null) ? null : checkedClient.name,
+        resolveRuntimeVerbosity(params),
+        params.global() ? null : client.name,
         null,
-        checkedClient,
+        client,
         lowLevelClient);
   }
 
@@ -320,25 +275,40 @@ public abstract class ClientRequest implements Serializable {
     }
     PersistentRequestClient client =
         resolvePersistentClient(handler, params.persistence(), params.global());
-    RequestClient lowLevelClient = client == null ? null : client.lowLevelClient(params.realTime());
-    lowLevelClient =
-        normalizeLowLevelClient(lowLevelClient, params.persistence(), params.realTime());
+    if (client == null) {
+      throw new IllegalStateException("Persistent client must not be null");
+    }
+    RequestClient lowLevelClient = resolveLowLevelClient(params, client);
     return new RuntimeClientState(
-        params.global() ? Integer.MAX_VALUE : params.verbosity(),
-        (params.global() || client == null) ? null : client.name,
+        resolveRuntimeVerbosity(params),
+        params.global() ? null : client.name,
         null,
         client,
         lowLevelClient);
   }
 
-  private static RequestClient normalizeLowLevelClient(
-      RequestClient lowLevelClient, Persistence persistence, boolean realTime) {
-    if (lowLevelClient == null
-        || lowLevelClient.persistent() != (persistence == Persistence.FOREVER)) {
-      return new RequestClientBuilder()
-          .persistent(persistence == Persistence.FOREVER)
-          .realTime(realTime)
-          .build();
+  private static int resolveRuntimeVerbosity(ClientRequestParams params) {
+    return params.global() ? Integer.MAX_VALUE : params.verbosity();
+  }
+
+  private static RequestClient resolveLowLevelClient(
+      ClientRequestParams params, PersistentRequestClient client) {
+    RequestClient lowLevelClient = client.lowLevelClient(params.realTime());
+    if (lowLevelClient == null) {
+      throw new NullPointerException(
+          "No lowLevelClient from client: "
+              + client
+              + " global = "
+              + params.global()
+              + " persistence = "
+              + params.persistence());
+    }
+    if (lowLevelClient.persistent() != (params.persistence() == Persistence.FOREVER)) {
+      throw new IllegalStateException(
+          "Low level client.persistent="
+              + lowLevelClient.persistent()
+              + " but persistence type = "
+              + params.persistence());
     }
     return lowLevelClient;
   }
@@ -983,20 +953,20 @@ public abstract class ClientRequest implements Serializable {
     if (hash == 0) {
       hash = 1;
     }
-    realTime = state.realTime;
-    verbosity = state.verbosity;
-    startupTime = state.startupTime;
-    priorityClass = state.priorityClass;
-    clientToken = state.clientToken;
-    finished = state.finished;
+    realTime = state.realTime();
+    verbosity = state.verbosity();
+    startupTime = state.startupTime();
+    priorityClass = state.priorityClass();
+    clientToken = state.clientToken();
+    finished = state.finished();
     persistence = Persistence.FOREVER;
     origHandler = null;
-    identifier = state.identifier;
-    global = state.global;
-    clientName = state.clientName;
+    identifier = state.identifier();
+    global = state.global();
+    clientName = state.clientName();
     hashCode = hash;
-    client = state.client;
-    lowLevelClient = state.lowLevelClient;
+    client = state.client();
+    lowLevelClient = state.lowLevelClient();
   }
 
   private static PersistentState parsePersistentState(
