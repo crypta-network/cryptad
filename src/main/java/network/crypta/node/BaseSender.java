@@ -74,7 +74,6 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   final int incomingSearchTimeout;
 
   BaseSender(Key key, boolean realTimeFlag, PeerNode source, Node node, short htl, long uid) {
-    if (key.getRoutingKey() == null) throw new NullPointerException();
     startTime = System.currentTimeMillis();
     this.uid = uid;
     this.key = key;
@@ -88,6 +87,20 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     this.origHTL = htl;
     newLoadManagement = node.network().enableNewLoadManagement(realTimeFlag);
     incomingSearchTimeout = calculateTimeout(realTimeFlag, htl, node);
+  }
+
+  /**
+   * Validates that the sender key contains a routing key before base-constructor state is built.
+   *
+   * @param key key used for routing
+   * @return the same key when valid
+   * @throws NullPointerException if the key does not contain a routing key
+   */
+  protected static Key requireRoutingKey(Key key) {
+    if (key.getRoutingKey() == null) {
+      throw new NullPointerException("Routing key must not be null");
+    }
+    return key;
   }
 
   static final double EXTRA_HOPS_AT_BOTTOM = 1.0 / Node.DECREMENT_AT_MIN_PROB;

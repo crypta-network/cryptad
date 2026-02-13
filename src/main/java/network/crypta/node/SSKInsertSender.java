@@ -118,7 +118,7 @@ public final class SSKInsertSender extends BaseSender
       PeerNode source,
       Node node,
       SskInsertOptions opts) {
-    super(block.getKey(), opts.realTimeFlag, source, node, htl, uid);
+    super(requireRoutingKey(block.getKey()), opts.realTimeFlag, source, node, htl, uid);
     this.fromStore = opts.fromStore;
     this.origUID = uid;
     this.origTag = tag;

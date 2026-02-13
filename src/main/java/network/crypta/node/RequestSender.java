@@ -167,7 +167,7 @@ public final class RequestSender extends BaseSender implements PrioRunnable {
   public RequestSender(
       RequestSenderContext context, RequestSenderOptions options, boolean canWriteDatastore) {
     super(
-        context.key(),
+        requireRoutingKey(context.key()),
         options.realTimeFlag(),
         context.source(),
         context.node(),

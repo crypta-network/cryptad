@@ -380,7 +380,7 @@ public final class CHKInsertSender extends BaseSender
       PeerNode source,
       Node node,
       ChkInsertOptions opts) {
-    super(myKey, opts.realTimeFlag, source, node, htl, uid);
+    super(requireRoutingKey(myKey), opts.realTimeFlag, source, node, htl, uid);
     this.origUID = uid;
     this.origTag = tag;
     this.headers = opts.headers;
