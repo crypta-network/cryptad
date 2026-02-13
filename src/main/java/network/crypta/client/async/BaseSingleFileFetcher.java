@@ -136,8 +136,14 @@ public abstract class BaseSingleFileFetcher extends SendableGet implements HasKe
     retryCount = 0;
     this.maxRetries = maxRetries;
     this.key = key;
-    this.ctx = ctx;
-    if (ctx == null) throw new NullPointerException();
+    this.ctx = requireFetchContext(ctx);
+  }
+
+  private static FetchContext requireFetchContext(FetchContext ctx) {
+    if (ctx == null) {
+      throw new NullPointerException();
+    }
+    return ctx;
   }
 
   @Override
