@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
  * @see #parseHeader(String)
  * @author xor (xor@freenetproject.org)
  */
-public final class ReceivedCookie extends Cookie {
+public final class ReceivedCookie {
   private static final Logger LOG = LoggerFactory.getLogger(ReceivedCookie.class);
 
   private static final int DEFAULT_COOKIE_CAPACITY = 4;
@@ -50,6 +50,10 @@ public final class ReceivedCookie extends Cookie {
   private String notValidatedName;
 
   private final Map<String, String> content;
+  private URI domain;
+  private URI path;
+  private String name;
+  private String value;
 
   /**
    * Constructor for creating cookies from parsed key-value pairs.
@@ -63,11 +67,6 @@ public final class ReceivedCookie extends Cookie {
     // cookie.
     notValidatedName = myName;
     content = myContent;
-
-    // We do NOT parse the version even though RFC2965 requires it because Firefox (3.0.14) does not
-    // give us a version.
-
-    version = 1;
   }
 
   /**
@@ -258,10 +257,9 @@ public final class ReceivedCookie extends Cookie {
    * @return Canonicalized cookie name; never {@code null} once validation succeeds and cached.
    * @throws IllegalArgumentException If the stored name fails RFC-inspired validation checks.
    */
-  @Override
   public String getName() {
     if (name == null) {
-      name = validateName(notValidatedName);
+      name = Cookie.validateName(notValidatedName);
       notValidatedName = null;
     }
 
@@ -273,21 +271,20 @@ public final class ReceivedCookie extends Cookie {
    *
    * <p>The domain is parsed only when first requested to conserve resources for unused cookies. If
    * the client omitted a {@code $domain} attribute, the method returns {@code null}. Otherwise, the
-   * attribute is validated via {@link #validateDomain(String)} and cached. Invalid domain strings
-   * lead to {@link IllegalArgumentException}, wrapping the underlying {@link URISyntaxException} to
-   * unify error signaling for callers.
+   * attribute is validated via {@link Cookie#validateDomain(String)} and cached. Invalid domain
+   * strings lead to {@link IllegalArgumentException}, wrapping the underlying {@link
+   * URISyntaxException} to unify error signaling for callers.
    *
    * @return Normalized domain URI or {@code null} when the client did not specify a domain.
    * @throws IllegalArgumentException If domain parsing or validation fails for the stored value.
    */
-  @Override
   public URI getDomain() {
     if (domain == null) {
       try {
         String domainString = content.get("$domain");
         if (domainString == null) return null;
 
-        domain = validateDomain(domainString);
+        domain = Cookie.validateDomain(domainString);
       } catch (URISyntaxException e) {
         throw new IllegalArgumentException(e);
       }
@@ -299,20 +296,19 @@ public final class ReceivedCookie extends Cookie {
   /**
    * Returns the validated path attribute, defaulting to {@code null} when unspecified.
    *
-   * <p>Path parsing is performed lazily using {@link #validatePath(URI)} to ensure the value is a
-   * relative URI beginning with {@code /}. The validated result is cached to avoid repeat work on
-   * subsequent invocations. If the stored path string is malformed or violates the validation
+   * <p>Path parsing is performed lazily using {@link Cookie#validatePath(URI)} to ensure the value
+   * is a relative URI beginning with {@code /}. The validated result is cached to avoid repeat work
+   * on subsequent invocations. If the stored path string is malformed or violates the validation
    * rules, the method throws {@link IllegalArgumentException} to alert request handlers of bad
    * input.
    *
    * @return Canonicalized path URI or {@code null} if no {@code $path} attribute was supplied.
    * @throws IllegalArgumentException If path parsing or validation fails for the recorded value.
    */
-  @Override
   public URI getPath() {
     if (path == null) {
       try {
-        path = validatePath(content.get("$path"));
+        path = Cookie.validatePath(content.get("$path"));
       } catch (URISyntaxException e) {
         throw new IllegalArgumentException(e);
       }
@@ -325,7 +321,7 @@ public final class ReceivedCookie extends Cookie {
    * Returns the validated cookie value associated with the cookie name.
    *
    * <p>The value is fetched from the parsed attribute map, validated for illegal characters via the
-   * inherited {@link #validateValue(String)} routine, and cached for later calls. Because
+   * shared {@link Cookie#validateValue(String)} routine, and cached for later calls. Because
    * validation occurs on demand, malformed values encountered here raise {@link
    * IllegalArgumentException} even if the cookie was otherwise accepted during parsing. Callers
    * should be prepared to handle that exception when processing untrusted headers.
@@ -333,9 +329,8 @@ public final class ReceivedCookie extends Cookie {
    * @return Canonicalized cookie value string; never {@code null} once successfully validated.
    * @throws IllegalArgumentException If value validation fails for the stored attribute content.
    */
-  @Override
   public String getValue() {
-    if (value == null) value = validateValue(content.get(getName()));
+    if (value == null) value = Cookie.validateValue(content.get(getName()));
 
     return value;
   }
@@ -354,44 +349,35 @@ public final class ReceivedCookie extends Cookie {
    * @throws UnsupportedOperationException Always thrown to signal that encoding is unsupported for
    *     received cookies.
    */
-  @Override
-  protected String encodeToHeaderValue() {
+  @SuppressWarnings("DoNotCallSuggester")
+  String encodeToHeaderValue() {
     throw new UnsupportedOperationException(
         "ReceivedCookie objects cannot be encoded to a HTTP header value, use Cookie objects!");
   }
 
-  /**
-   * Compares this cookie to another object using the canonical equality rules defined in {@link
-   * Cookie}.
-   *
-   * <p>The comparison delegates to the superclass, which performs case-insensitive checks for the
-   * domain and name and a case-sensitive comparison for the path. Lazy fields are validated on
-   * demand during the comparison, so malformed attributes may trigger an exception before a result
-   * is produced. Equality therefore reflects the canonicalized view of the cookie rather than the
-   * raw, unvalidated input captured during parsing.
-   *
-   * @param obj Object to compare against; typically another {@link Cookie} instance.
-   * @return {@code true} when domain, path, and name match under the superclass rules; otherwise
-   *     {@code false}.
-   */
+  /** Returns true if two ReceivedCookie objects have equal domain, path and name. */
   @Override
   public boolean equals(Object obj) {
-    return super.equals(obj);
+    if (obj == this) return true;
+
+    if (!(obj instanceof ReceivedCookie other)) return false;
+
+    URI myDomain = getDomain();
+    URI otherDomain = other.getDomain();
+
+    if (myDomain != null) {
+      if (otherDomain == null || !otherDomain.toString().equals(myDomain.toString())) return false;
+    } else if (otherDomain != null) return false;
+
+    if (!getPath().toString().equals(other.getPath().toString())) return false;
+
+    return getName().equals(other.getName());
   }
 
-  /**
-   * Returns a hash code consistent with {@link #equals(Object)}, delegating to the superclass
-   * implementation.
-   *
-   * <p>The computation may trigger lazy validation of stored attributes so that the hash reflects
-   * the canonical domain, path, and name values rather than raw user input. This behavior ensures
-   * that placing {@link ReceivedCookie} instances in hash-based collections uses the same
-   * normalization rules as equality checks.
-   *
-   * @return Hash code derived from the normalized domain, path, and name attributes.
-   */
   @Override
   public int hashCode() {
-    return super.hashCode();
+    URI cookieDomain = getDomain();
+    int domainHash = cookieDomain != null ? cookieDomain.hashCode() : 0;
+    return domainHash + getPath().hashCode() + getName().hashCode();
   }
 }

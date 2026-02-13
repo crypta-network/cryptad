@@ -15,9 +15,8 @@ import network.crypta.support.TimeUtil;
  * headers for the web interface. Callers typically construct an instance with {@link #Cookie(URI,
  * String, String, Instant)} and pass it to {@link ToadletContext#setCookie(Cookie)} to attach it to
  * a response. Validation routines enforce a conservative subset of RFC2965/RFC2616 so malformed or
- * potentially dangerous values are rejected early. Instances are mutable only by subclasses (all
- * fields are {@code protected}); typical callers treat them as single-use values assembled on a
- * per-response basis.
+ * potentially dangerous values are rejected early. Typical callers treat instances as single-use
+ * values assembled on a per-response basis.
  *
  * <p>Cookies produced here use version {@code 1}, default to discard-on-close, and expect absolute
  * paths with optional domains limited to HTTP(S) schemes. Timestamp handling uses {@link
@@ -37,7 +36,7 @@ import network.crypta.support.TimeUtil;
  *
  * @author xor (xor@freenetproject.org)
  */
-public class Cookie {
+public final class Cookie {
   /** Characters that must not appear unquoted in cookie values (based on RFC2616 separators). */
   private static final Set<Character> INVALID_VALUE_CHARACTERS =
       Set.of('(', ')', '[', ']', '{', '}', '=', ',', '\"', '/', '\\', '?', '@', ':', ';');
@@ -59,43 +58,43 @@ public class Cookie {
   /**
    * Cookie specification version sent in headers; defaults to {@code 1} to match RFC2965 semantics.
    */
-  protected int version;
+  private int version;
 
   /**
    * Optional domain scope for the cookie. When present it must use the {@code http} or {@code
    * https} scheme and omit path segments.
    */
-  protected URI domain;
+  private URI domain;
 
   /**
    * Path restriction for the cookie. Must begin with {@code /}, is case-sensitive, and must be a
    * relative URI as defined by {@link #validatePath(URI)}.
    */
-  protected URI path;
+  private URI path;
 
   /**
    * Lowercase token identifying the cookie. Restricted to US-ASCII printable characters that are
    * not separators or reserved names defined by RFC2965.
    */
-  protected String name;
+  private String name;
 
   /**
    * Canonicalized cookie payload. Stored as a trimmed US-ASCII string without forbidden separator
    * characters to ensure safe header emission.
    */
-  protected String value;
+  private String value;
 
   /**
    * Expiration timestamp interpreted in the GMT HTTP-date format during header serialization;
    * callers provide an absolute {@link Instant} in the future.
    */
-  protected Instant expirationDate;
+  private Instant expirationDate;
 
   /**
    * Indicates whether the cookie should be discarded when the user agent session ends; defaults to
    * {@code true} for Crypta browser interactions.
    */
-  protected boolean discard;
+  private boolean discard;
 
   /**
    * Builds a {@link Cookie} ready for delivery via {@link ToadletContext#setCookie(Cookie)} after
@@ -129,12 +128,6 @@ public class Cookie {
     expirationDate = validateExpirationDate(myExpirationDate);
     discard = true; // Freenet cookies are intended to be discarded when the browser is closed.
   }
-
-  /**
-   * Protected no-arg constructor for subclass frameworks that populate fields manually before
-   * calling {@link #encodeToHeaderValue()}; regular callers should prefer the public constructor.
-   */
-  protected Cookie() {}
 
   /** Returns true if two Cookies have equal domain, path and name. Does not check the value! */
   @Override
@@ -433,7 +426,7 @@ public class Cookie {
    * @return Serialized header payload representing the cookie; suitable for immediate inclusion in
    *     HTTP responses.
    */
-  protected String encodeToHeaderValue() {
+  String encodeToHeaderValue() {
     StringBuilder sb =
         new StringBuilder(
             512); // Capacity chosen for current Freetalk usage; adjust if headers grow.

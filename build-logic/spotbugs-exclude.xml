@@ -133,10 +133,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.clients.http.Cookie"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.io.AddressTrackerItem"/>
   </Match>
   <Match>

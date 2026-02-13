@@ -19,7 +19,7 @@ class ReceivedCookieTest {
   private static final String VALID_VALUE = "abCd12345";
   private static final String VALID_PATH = "/Freetalk";
 
-  private Cookie cookie;
+  private ReceivedCookie cookie;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -28,7 +28,7 @@ class ReceivedCookieTest {
 
   @Test
   void parseHeader_singleCookieLowercasesNameAndKeepsValue() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("SessionID=abCd12345;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("SessionID=abCd12345;$path=/").getFirst();
 
     assertEquals(VALID_NAME.toLowerCase(Locale.ROOT), parsed.getName());
     assertEquals(VALID_VALUE, parsed.getValue());
@@ -48,7 +48,7 @@ class ReceivedCookieTest {
 
   @Test
   void parseHeader_attributesBeforeName_stillExtractsCookieName() throws ParseException {
-    Cookie parsed =
+    ReceivedCookie parsed =
         ReceivedCookie.parseHeader("$version=1; SessionID=abCd12345;$path=/").getFirst();
 
     assertEquals(VALID_NAME.toLowerCase(Locale.ROOT), parsed.getName());
@@ -75,7 +75,7 @@ class ReceivedCookieTest {
 
   @Test
   void getDomain_withInvalidScheme_throwsIllegalArgument() throws ParseException {
-    Cookie parsed =
+    ReceivedCookie parsed =
         ReceivedCookie.parseHeader("sid=value;$domain=ftp://example.com;$path=/").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getDomain);
@@ -83,7 +83,7 @@ class ReceivedCookieTest {
 
   @Test
   void getDomain_withoutDomainAttribute_returnsNull() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("sid=value;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("sid=value;$path=/").getFirst();
 
     assertNull(parsed.getDomain());
   }
@@ -98,21 +98,22 @@ class ReceivedCookieTest {
 
   @Test
   void getPath_withAbsoluteUri_throwsIllegalArgument() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("sid=value;$path=http://example.com").getFirst();
+    ReceivedCookie parsed =
+        ReceivedCookie.parseHeader("sid=value;$path=http://example.com").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getPath);
   }
 
   @Test
   void getName_reservedToken_throwsIllegalArgument() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("path=value;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("path=value;$path=/").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getName);
   }
 
   @Test
   void getValue_withInvalidCharacter_throwsIllegalArgument() throws ParseException {
-    Cookie parsed = ReceivedCookie.parseHeader("sid=a,b;$path=/").getFirst();
+    ReceivedCookie parsed = ReceivedCookie.parseHeader("sid=a,b;$path=/").getFirst();
 
     assertThrows(IllegalArgumentException.class, parsed::getValue);
   }
