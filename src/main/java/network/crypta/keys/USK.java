@@ -71,17 +71,28 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
   public USK(
       byte[] pubKeyHash, byte[] cryptoKey, byte[] extra, String siteName, long suggestedEdition)
       throws MalformedURLException {
-    this.pubKeyHash = pubKeyHash;
-    this.cryptoKey = cryptoKey;
-    this.siteName = siteName;
-    this.suggestedEdition = suggestedEdition;
+    this(validateConstruction(pubKeyHash, cryptoKey, extra, siteName, suggestedEdition));
+  }
+
+  private USK(ValidatedState state) {
+    this.pubKeyHash = state.pubKeyHash;
+    this.cryptoKey = state.cryptoKey;
+    this.siteName = state.siteName;
+    this.suggestedEdition = state.suggestedEdition;
+    this.cryptoAlgorithm = state.cryptoAlgorithm;
+    this.hashCode = state.hashCodeValue;
+  }
+
+  private static ValidatedState validateConstruction(
+      byte[] pubKeyHash, byte[] cryptoKey, byte[] extra, String siteName, long suggestedEdition)
+      throws MalformedURLException {
     if (extra == null) throw new MalformedURLException("No extra bytes (third bit) in USK");
     if (pubKeyHash == null) throw new MalformedURLException("No pubkey hash (first bit) in USK");
     if (cryptoKey == null) throw new MalformedURLException("No crypto key (second bit) in USK");
     // Verify extra bytes and derive the cryptoAlgorithm. We validate via a temporary ClientSSK
     // to keep the derivation consistent with existing rules.
     ClientSSK tmp = new ClientSSK(siteName, pubKeyHash, extra, null, cryptoKey);
-    cryptoAlgorithm = tmp.cryptoAlgorithm;
+    byte cryptoAlgorithm = tmp.cryptoAlgorithm;
     if (pubKeyHash.length != NodeSSK.PUBKEY_HASH_SIZE)
       throw new MalformedURLException(
           "Pubkey hash wrong length: "
@@ -94,13 +105,23 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
               + cryptoKey.length
               + " should be "
               + ClientSSK.CRYPTO_KEY_LENGTH);
-    hashCode =
+    int hashCode =
         Fields.hashCode(pubKeyHash)
             ^ Fields.hashCode(cryptoKey)
             ^ siteName.hashCode()
             ^ (int) suggestedEdition
             ^ (int) (suggestedEdition >> 32);
+    return new ValidatedState(
+        pubKeyHash, cryptoKey, siteName, suggestedEdition, cryptoAlgorithm, hashCode);
   }
+
+  private record ValidatedState(
+      byte[] pubKeyHash,
+      byte[] cryptoKey,
+      String siteName,
+      long suggestedEdition,
+      byte cryptoAlgorithm,
+      int hashCodeValue) {}
 
   /**
    * Builds a USK from a {@link FreenetURI} of key type {@code USK}.

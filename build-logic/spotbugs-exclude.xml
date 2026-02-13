@@ -113,10 +113,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.keys.USK"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.node.PeerNode"/>
   </Match>
   <Match>
