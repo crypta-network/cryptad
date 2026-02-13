@@ -95,6 +95,7 @@ public abstract class BloomFilter implements AutoCloseable {
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   public static BloomFilter createFilter(int length, int k, boolean counting) {
+    validateFactoryArgs(length, k);
     if (length == 0) return new NullBloomFilter(length, k);
     if (counting) return new CountingBloomFilter(length, k);
     else return new BinaryBloomFilter(length, k);
@@ -119,9 +120,29 @@ public abstract class BloomFilter implements AutoCloseable {
    */
   public static BloomFilter createFilter(File file, int length, int k, boolean counting)
       throws IOException {
+    validateFactoryArgs(length, k);
     if (length == 0) return new NullBloomFilter(length, k);
     if (counting) return new CountingBloomFilter(file, length, k);
     else return new BinaryBloomFilter(file, length, k);
+  }
+
+  protected static int requireNonNegativeLength(int length) {
+    if (length < 0) {
+      throw new IllegalArgumentException("Filter must have positive or zero length");
+    }
+    return length;
+  }
+
+  protected static int requireNonNegativeHashCount(int k) {
+    if (k < 0) {
+      throw new IllegalArgumentException("Filter must have positive or zero hashes");
+    }
+    return k;
+  }
+
+  private static void validateFactoryArgs(int length, int k) {
+    requireNonNegativeLength(length);
+    requireNonNegativeHashCount(k);
   }
 
   /**
@@ -133,14 +154,13 @@ public abstract class BloomFilter implements AutoCloseable {
    *
    * @param length requested length in bits (may be {@code 0})
    * @param k number of hash functions (non-negative)
-   * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
   protected BloomFilter(int length, int k) {
     if (length < 0) {
-      throw new IllegalArgumentException("Filter must have positive or zero length");
+      length = 0;
     }
     if (k < 0) {
-      throw new IllegalArgumentException("Filter must have positive or zero hashes");
+      k = 0;
     }
 
     if (length % 8 != 0) length -= length % 8;
