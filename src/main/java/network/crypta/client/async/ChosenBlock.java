@@ -106,8 +106,8 @@ public abstract class ChosenBlock {
   public final boolean canWriteClientCache;
 
   /**
-   * If {@code true}, permits forking behavior on cacheable results in order to improve throughput
-   * or responsiveness. The concrete sender decides when and how to fork.
+   * If {@code true}, permits forking behavior on cacheable results to improve throughput or
+   * responsiveness. The concrete sender decides when and how to fork.
    */
   public final boolean forkOnCacheable;
 
@@ -130,35 +130,29 @@ public abstract class ChosenBlock {
    * @param ckey an optional client-layer {@link ClientKey}; may be {@code null} depending on type.
    * @param options execution options affecting local-only behavior, cache usage, and real-time
    *     hints; must be non-{@code null}.
-   * @throws NullPointerException if {@code token} is {@code null}.
+   * @throws NullPointerException if {@code token} or {@code options} is {@code null}.
    */
   protected ChosenBlock(SendableRequestItem token, Key key, ClientKey ckey, Options options) {
     this(validateConstructionState(token, key, ckey, options));
   }
 
   private ChosenBlock(ConstructionState state) {
-    this.token = state.token;
-    this.key = state.key;
-    this.ckey = state.ckey;
-    this.localRequestOnly = state.localRequestOnly;
-    this.ignoreStore = state.ignoreStore;
-    this.canWriteClientCache = state.canWriteClientCache;
-    this.forkOnCacheable = state.forkOnCacheable;
-    this.realTimeFlag = state.realTimeFlag;
+    this.token = state.token();
+    this.key = state.key();
+    this.ckey = state.ckey();
+    Options options = state.options();
+    this.localRequestOnly = options.localRequestOnly();
+    this.ignoreStore = options.ignoreStore();
+    this.canWriteClientCache = options.canWriteClientCache();
+    this.forkOnCacheable = options.forkOnCacheable();
+    this.realTimeFlag = options.realTimeFlag();
   }
 
   private static ConstructionState validateConstructionState(
       SendableRequestItem token, Key key, ClientKey ckey, Options options) {
     SendableRequestItem checkedToken = requireToken(token);
-    return new ConstructionState(
-        checkedToken,
-        key,
-        ckey,
-        options.localRequestOnly(),
-        options.ignoreStore(),
-        options.canWriteClientCache(),
-        options.forkOnCacheable(),
-        options.realTimeFlag());
+    Options checkedOptions = requireOptions(options);
+    return new ConstructionState(checkedToken, key, ckey, checkedOptions);
   }
 
   private static SendableRequestItem requireToken(SendableRequestItem token) {
@@ -168,35 +162,15 @@ public abstract class ChosenBlock {
     return token;
   }
 
-  private static final class ConstructionState {
-    private final SendableRequestItem token;
-    private final Key key;
-    private final ClientKey ckey;
-    private final boolean localRequestOnly;
-    private final boolean ignoreStore;
-    private final boolean canWriteClientCache;
-    private final boolean forkOnCacheable;
-    private final boolean realTimeFlag;
-
-    private ConstructionState(
-        SendableRequestItem token,
-        Key key,
-        ClientKey ckey,
-        boolean localRequestOnly,
-        boolean ignoreStore,
-        boolean canWriteClientCache,
-        boolean forkOnCacheable,
-        boolean realTimeFlag) {
-      this.token = token;
-      this.key = key;
-      this.ckey = ckey;
-      this.localRequestOnly = localRequestOnly;
-      this.ignoreStore = ignoreStore;
-      this.canWriteClientCache = canWriteClientCache;
-      this.forkOnCacheable = forkOnCacheable;
-      this.realTimeFlag = realTimeFlag;
+  private static Options requireOptions(Options options) {
+    if (options == null) {
+      throw new NullPointerException();
     }
+    return options;
   }
+
+  private record ConstructionState(
+      SendableRequestItem token, Key key, ClientKey ckey, Options options) {}
 
   /**
    * Indicates whether the underlying request persists across node restarts or failure recovery.
@@ -217,8 +191,8 @@ public abstract class ChosenBlock {
    * Called when an insert operation fails at a low level.
    *
    * <p>Implementations should translate or forward the error to higher-level callbacks owned by the
-   * request, and perform any necessary local clean-up. This method is invoked off-thread relative
-   * to the scheduler loop.
+   * request and perform any necessary local cleanup. This method is invoked off-thread relative to
+   * the scheduler loop.
    *
    * @param e the low-level put exception describing the cause and any diagnostic information.
    * @param context the client execution context associated with the scheduler and request flow.
@@ -241,8 +215,8 @@ public abstract class ChosenBlock {
    * Called when a fetch operation fails at a low level.
    *
    * <p>Implementations should translate or forward the error to higher-level callbacks owned by the
-   * request, and perform any necessary local clean-up. This method is invoked off-thread relative
-   * to the scheduler loop.
+   * request and perform any necessary local cleanup. This method is invoked off-thread relative to
+   * the scheduler loop.
    *
    * @param e the low-level get exception describing the cause and any diagnostic information.
    * @param context the client execution context associated with the scheduler and request flow.
@@ -251,7 +225,7 @@ public abstract class ChosenBlock {
 
   /**
    * The actual data delivery goes through CRS.tripPendingKey(). This is just a notification for
-   * bookkeeping purposes. We call the scheduler to tell it that the request succeeded, so that it
+   * bookkeeping purposes. We call the scheduler to tell it that the request succeeded so that it
    * can be rescheduled soon for more requests.
    *
    * <p>Implementations may use this to update caches or to schedule follow-on work. It is invoked
@@ -263,7 +237,7 @@ public abstract class ChosenBlock {
 
   /**
    * Returns the scheduling priority for this block. Higher values typically indicate greater
-   * urgency; the exact scale and policy are determined by the scheduler.
+   * urgency; the scheduler determines the exact scale and policy.
    *
    * @return a short integer representing the scheduler priority for this block.
    */

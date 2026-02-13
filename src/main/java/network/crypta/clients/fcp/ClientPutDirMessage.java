@@ -22,10 +22,10 @@ import network.crypta.support.compress.InvalidCompressionCodecException;
  * instance from an inbound {@link SimpleFieldSet} and hands it to {@link RequestStarter}, which
  * turns the embedded metadata into the actual insert pipeline. The message spells out the target
  * {@link FreenetURI}, retry envelope, splitfile compatibility mode, compression hints, and
- * persistence knobs expected by the storage layer so that both directory flavours remain
+ * persistence knobs expected by the storage layer so that both directory flavors remain
  * interoperable.
  *
- * <p>All fields are populated during construction and the type is effectively immutable afterward,
+ * <p>All fields are populated during construction, and the type is effectively immutable afterward,
  * which lets callers hand references across worker threads without additional synchronization. The
  * class enforces conservative defaults—such as the immediate priority class and cache-writing
  * guardrails—so that omitted wire fields cannot accidentally degrade node health. Subclasses add
@@ -45,77 +45,50 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
 
   /** Parsed common fields used to construct {@link ClientPutDirMessage} without throwing. */
   protected static final class ParsedCommonFields {
-    final String identifier;
-    final FreenetURI uri;
-    final int verbosity;
-    final int maxRetries;
-    final boolean getCHKOnly;
-    final short priorityClass;
-    final Persistence persistence;
-    final boolean dontCompress;
-    final String clientToken;
-    final boolean global;
-    final String defaultName;
-    final boolean earlyEncode;
-    final boolean canWriteClientCache;
-    final String compressorDescriptor;
-    final boolean forkOnCacheable;
-    final int extraInsertsSingleBlock;
-    final int extraInsertsSplitfileHeaderBlock;
-    final InsertContext.CompatibilityMode compatibilityMode;
-    final byte[] overrideSplitfileCryptoKey;
-    final boolean localRequestOnly;
-    final boolean realTimeFlag;
-    final String targetFilename;
-    final boolean ignoreUSKDatehints;
+    private final ClientRequestParams requestParams;
+    private final FcpInsertBehaviorOptions behaviorOptions;
+    private final FcpInsertTuningOptions tuningOptions;
+    private final String defaultName;
+    private final byte[] overrideSplitfileCryptoKey;
+    private final String targetFilename;
 
-    ParsedCommonFields(
-        String identifier,
-        FreenetURI uri,
-        int verbosity,
-        int maxRetries,
-        boolean getCHKOnly,
-        short priorityClass,
-        Persistence persistence,
-        boolean dontCompress,
-        String clientToken,
-        boolean global,
+    private ParsedCommonFields(
+        ClientRequestParams requestParams,
+        FcpInsertBehaviorOptions behaviorOptions,
+        FcpInsertTuningOptions tuningOptions,
         String defaultName,
-        boolean earlyEncode,
-        boolean canWriteClientCache,
-        String compressorDescriptor,
-        boolean forkOnCacheable,
-        int extraInsertsSingleBlock,
-        int extraInsertsSplitfileHeaderBlock,
-        InsertContext.CompatibilityMode compatibilityMode,
         byte[] overrideSplitfileCryptoKey,
-        boolean localRequestOnly,
-        boolean realTimeFlag,
-        String targetFilename,
-        boolean ignoreUSKDatehints) {
-      this.identifier = identifier;
-      this.uri = uri;
-      this.verbosity = verbosity;
-      this.maxRetries = maxRetries;
-      this.getCHKOnly = getCHKOnly;
-      this.priorityClass = priorityClass;
-      this.persistence = persistence;
-      this.dontCompress = dontCompress;
-      this.clientToken = clientToken;
-      this.global = global;
+        String targetFilename) {
+      this.requestParams = requestParams;
+      this.behaviorOptions = behaviorOptions;
+      this.tuningOptions = tuningOptions;
       this.defaultName = defaultName;
-      this.earlyEncode = earlyEncode;
-      this.canWriteClientCache = canWriteClientCache;
-      this.compressorDescriptor = compressorDescriptor;
-      this.forkOnCacheable = forkOnCacheable;
-      this.extraInsertsSingleBlock = extraInsertsSingleBlock;
-      this.extraInsertsSplitfileHeaderBlock = extraInsertsSplitfileHeaderBlock;
-      this.compatibilityMode = compatibilityMode;
       this.overrideSplitfileCryptoKey = overrideSplitfileCryptoKey;
-      this.localRequestOnly = localRequestOnly;
-      this.realTimeFlag = realTimeFlag;
       this.targetFilename = targetFilename;
-      this.ignoreUSKDatehints = ignoreUSKDatehints;
+    }
+
+    private ClientRequestParams requestParams() {
+      return requestParams;
+    }
+
+    private FcpInsertBehaviorOptions behaviorOptions() {
+      return behaviorOptions;
+    }
+
+    private FcpInsertTuningOptions tuningOptions() {
+      return tuningOptions;
+    }
+
+    private String defaultName() {
+      return defaultName;
+    }
+
+    private byte[] overrideSplitfileCryptoKey() {
+      return overrideSplitfileCryptoKey;
+    }
+
+    private String targetFilename() {
+      return targetFilename;
     }
   }
 
@@ -152,7 +125,7 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
   final boolean ignoreUSKDatehints;
 
   /**
-   * Creates the message from already-validated common directory put fields.
+   * Creates the message from an already-validated common directory put field.
    *
    * <p>Subclasses should call {@link #parseCommonFields(SimpleFieldSet)} before invoking this
    * constructor so parse failures are reported from subclass constructors instead of this non-final
@@ -161,29 +134,32 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
    * @param parsed parsed field group produced by {@link #parseCommonFields(SimpleFieldSet)}
    */
   protected ClientPutDirMessage(ParsedCommonFields parsed) {
-    identifier = parsed.identifier;
-    uri = parsed.uri;
-    verbosity = parsed.verbosity;
-    maxRetries = parsed.maxRetries;
-    getCHKOnly = parsed.getCHKOnly;
-    priorityClass = parsed.priorityClass;
-    persistence = parsed.persistence;
-    dontCompress = parsed.dontCompress;
-    clientToken = parsed.clientToken;
-    global = parsed.global;
-    defaultName = parsed.defaultName;
-    earlyEncode = parsed.earlyEncode;
-    canWriteClientCache = parsed.canWriteClientCache;
-    compressorDescriptor = parsed.compressorDescriptor;
-    forkOnCacheable = parsed.forkOnCacheable;
-    extraInsertsSingleBlock = parsed.extraInsertsSingleBlock;
-    extraInsertsSplitfileHeaderBlock = parsed.extraInsertsSplitfileHeaderBlock;
-    compatibilityMode = parsed.compatibilityMode;
-    overrideSplitfileCryptoKey = parsed.overrideSplitfileCryptoKey;
-    localRequestOnly = parsed.localRequestOnly;
-    realTimeFlag = parsed.realTimeFlag;
-    targetFilename = parsed.targetFilename;
-    ignoreUSKDatehints = parsed.ignoreUSKDatehints;
+    ClientRequestParams requestParams = parsed.requestParams();
+    FcpInsertBehaviorOptions behaviorOptions = parsed.behaviorOptions();
+    FcpInsertTuningOptions tuningOptions = parsed.tuningOptions();
+    identifier = requestParams.identifier();
+    uri = requestParams.uri();
+    verbosity = requestParams.verbosity();
+    maxRetries = behaviorOptions.maxRetries();
+    getCHKOnly = behaviorOptions.getCHKOnly();
+    priorityClass = requestParams.priorityClass();
+    persistence = requestParams.persistence();
+    dontCompress = behaviorOptions.dontCompress();
+    clientToken = requestParams.clientToken();
+    global = requestParams.global();
+    defaultName = parsed.defaultName();
+    earlyEncode = behaviorOptions.earlyEncode();
+    canWriteClientCache = tuningOptions.canWriteClientCache();
+    compressorDescriptor = tuningOptions.compressorDescriptor();
+    forkOnCacheable = tuningOptions.forkOnCacheable();
+    extraInsertsSingleBlock = tuningOptions.extraInsertsSingleBlock();
+    extraInsertsSplitfileHeaderBlock = tuningOptions.extraInsertsSplitfileHeaderBlock();
+    compatibilityMode = tuningOptions.compatibilityMode();
+    overrideSplitfileCryptoKey = parsed.overrideSplitfileCryptoKey();
+    localRequestOnly = behaviorOptions.localRequestOnly();
+    realTimeFlag = behaviorOptions.realTimeFlag();
+    targetFilename = parsed.targetFilename();
+    ignoreUSKDatehints = behaviorOptions.ignoreUSKDatehints();
   }
 
   /**
@@ -207,32 +183,64 @@ public abstract class ClientPutDirMessage extends BaseDataCarryingMessage {
       throw new MessageInvalidException(
           ProtocolErrorMessage.MISSING_FIELD, "No Identifier", null, global);
     }
-    return new ParsedCommonFields(
-        identifier,
-        parseUri(fs, identifier, global),
-        parseOptionalInt(fs, "Verbosity", "Verbosity field", identifier, global),
-        parseOptionalInt(fs, "MaxRetries", "MaxSize field", identifier, global),
-        fs.getBoolean("GetCHKOnly", false),
-        parsePriorityClass(fs, identifier, global),
-        Persistence.parseOrThrow(fs.get("Persistence"), identifier, global),
-        fs.getBoolean("DontCompress", false),
-        fs.get("ClientToken"),
-        global,
-        defaultName,
-        fs.getBoolean("EarlyEncode", false),
-        fs.getBoolean("WriteToClientCache", false),
-        parseCompressorDescriptor(fs, identifier, global),
-        parseForkOnCacheable(fs),
-        fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK),
+
+    FreenetURI uri = parseUri(fs, identifier, global);
+    int verbosity = parseOptionalInt(fs, "Verbosity", "Verbosity field", identifier, global);
+    int maxRetries = parseOptionalInt(fs, "MaxRetries", "MaxSize field", identifier, global);
+    boolean getCHKOnly = fs.getBoolean("GetCHKOnly", false);
+    short priorityClass = parsePriorityClass(fs, identifier, global);
+    Persistence persistence = Persistence.parseOrThrow(fs.get("Persistence"), identifier, global);
+    boolean dontCompress = fs.getBoolean("DontCompress", false);
+    String clientToken = fs.get("ClientToken");
+    boolean earlyEncode = fs.getBoolean("EarlyEncode", false);
+    boolean canWriteClientCache = fs.getBoolean("WriteToClientCache", false);
+    String compressorDescriptor = parseCompressorDescriptor(fs, identifier, global);
+    boolean forkOnCacheable = parseForkOnCacheable(fs);
+    int extraInsertsSingleBlock =
+        fs.getInt("ExtraInsertsSingleBlock", HighLevelSimpleClientImpl.EXTRA_INSERTS_SINGLE_BLOCK);
+    int extraInsertsSplitfileHeaderBlock =
         fs.getInt(
             "ExtraInsertsSplitfileHeaderBlock",
-            HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER),
-        compatibilityMode,
+            HighLevelSimpleClientImpl.EXTRA_INSERTS_SPLITFILE_HEADER);
+    boolean realTimeFlag = fs.getBoolean("RealTimeFlag", false);
+    String targetFilename = fs.get("TargetFilename");
+    boolean ignoreUSKDatehints = fs.getBoolean("IgnoreUSKDatehints", false);
+
+    FcpInsertBehaviorOptions behaviorOptions =
+        new FcpInsertBehaviorOptions(
+            getCHKOnly,
+            dontCompress,
+            localRequestOnly,
+            maxRetries,
+            earlyEncode,
+            realTimeFlag,
+            ignoreUSKDatehints);
+    FcpInsertTuningOptions tuningOptions =
+        new FcpInsertTuningOptions(
+            canWriteClientCache,
+            forkOnCacheable,
+            compressorDescriptor,
+            extraInsertsSingleBlock,
+            extraInsertsSplitfileHeaderBlock,
+            compatibilityMode);
+    ClientRequestParams requestParams =
+        new ClientRequestParams(
+            uri,
+            identifier,
+            verbosity,
+            priorityClass,
+            persistence,
+            realTimeFlag,
+            clientToken,
+            global);
+
+    return new ParsedCommonFields(
+        requestParams,
+        behaviorOptions,
+        tuningOptions,
+        defaultName,
         overrideSplitfileCryptoKey,
-        localRequestOnly,
-        fs.getBoolean("RealTimeFlag", false),
-        fs.get("TargetFilename"),
-        fs.getBoolean("IgnoreUSKDatehints", false));
+        targetFilename);
   }
 
   private static boolean parseForkOnCacheable(SimpleFieldSet fs) {

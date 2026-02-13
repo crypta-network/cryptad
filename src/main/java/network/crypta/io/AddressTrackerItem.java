@@ -83,39 +83,16 @@ public class AddressTrackerItem {
   static final boolean INCLUDE_RECEIVED_PACKETS = true;
 
   private static final class ParsedState {
-    final long timeFirstReceivedPacket;
-    final long timeFirstSentPacket;
-    final long timeDefinitelyNoPacketsSent;
-    final long timeDefinitelyNoPacketsReceived;
-    final long timeLastReceivedPacket;
-    final long timeLastSentPacket;
-    final long packetsSent;
-    final long packetsReceived;
-    final long[] gapLengths;
-    final long[] gapLengthRecvTimes;
-
-    ParsedState(
-        long timeFirstReceivedPacket,
-        long timeFirstSentPacket,
-        long timeDefinitelyNoPacketsSent,
-        long timeDefinitelyNoPacketsReceived,
-        long timeLastReceivedPacket,
-        long timeLastSentPacket,
-        long packetsSent,
-        long packetsReceived,
-        long[] gapLengths,
-        long[] gapLengthRecvTimes) {
-      this.timeFirstReceivedPacket = timeFirstReceivedPacket;
-      this.timeFirstSentPacket = timeFirstSentPacket;
-      this.timeDefinitelyNoPacketsSent = timeDefinitelyNoPacketsSent;
-      this.timeDefinitelyNoPacketsReceived = timeDefinitelyNoPacketsReceived;
-      this.timeLastReceivedPacket = timeLastReceivedPacket;
-      this.timeLastSentPacket = timeLastSentPacket;
-      this.packetsSent = packetsSent;
-      this.packetsReceived = packetsReceived;
-      this.gapLengths = gapLengths;
-      this.gapLengthRecvTimes = gapLengthRecvTimes;
-    }
+    private long timeFirstReceivedPacket;
+    private long timeFirstSentPacket;
+    private long timeDefinitelyNoPacketsSent;
+    private long timeDefinitelyNoPacketsReceived;
+    private long timeLastReceivedPacket;
+    private long timeLastSentPacket;
+    private long packetsSent;
+    private long packetsReceived;
+    private long[] gapLengths;
+    private long[] gapLengthRecvTimes;
   }
 
   /**
@@ -170,37 +147,28 @@ public class AddressTrackerItem {
   }
 
   private static ParsedState parseState(SimpleFieldSet fs) throws FSParseException {
-    long timeFirstReceivedPacket = fs.getLong("TimeFirstReceivedPacket");
-    long timeFirstSentPacket = fs.getLong("TimeFirstSentPacket");
-    long timeDefinitelyNoPacketsSent = fs.getLong("TimeDefinitelyNoPacketsSent");
-    long timeDefinitelyNoPacketsReceived = fs.getLong("TimeDefinitelyNoPacketsReceived");
-    long timeLastReceivedPacket = fs.getLong("TimeLastReceivedPacket");
-    long timeLastSentPacket = fs.getLong("TimeLastSentPacket");
-    long packetsSent = fs.getLong("PacketsSent");
-    long packetsReceived = fs.getLong("PacketsReceived");
+    ParsedState parsed = new ParsedState();
+    parsed.timeFirstReceivedPacket = fs.getLong("TimeFirstReceivedPacket");
+    parsed.timeFirstSentPacket = fs.getLong("TimeFirstSentPacket");
+    parsed.timeDefinitelyNoPacketsSent = fs.getLong("TimeDefinitelyNoPacketsSent");
+    parsed.timeDefinitelyNoPacketsReceived = fs.getLong("TimeDefinitelyNoPacketsReceived");
+    parsed.timeLastReceivedPacket = fs.getLong("TimeLastReceivedPacket");
+    parsed.timeLastSentPacket = fs.getLong("TimeLastSentPacket");
+    parsed.packetsSent = fs.getLong("PacketsSent");
+    parsed.packetsReceived = fs.getLong("PacketsReceived");
     SimpleFieldSet gaps = fs.getSubset("Gaps");
-    long[] gapLengths = new long[TRACK_GAPS];
-    long[] gapLengthRecvTimes = new long[TRACK_GAPS];
+    parsed.gapLengths = new long[TRACK_GAPS];
+    parsed.gapLengthRecvTimes = new long[TRACK_GAPS];
     for (int i = 0; i < TRACK_GAPS; i++) {
       SimpleFieldSet gap = gaps.subset(Integer.toString(i));
       if (gap == null) {
         LOG.info("No more gaps at i={} - TRACK_GAPS changed??", i);
         break;
       }
-      gapLengths[i] = gap.getLong("Length");
-      gapLengthRecvTimes[i] = gap.getLong("Received");
+      parsed.gapLengths[i] = gap.getLong("Length");
+      parsed.gapLengthRecvTimes[i] = gap.getLong("Received");
     }
-    return new ParsedState(
-        timeFirstReceivedPacket,
-        timeFirstSentPacket,
-        timeDefinitelyNoPacketsSent,
-        timeDefinitelyNoPacketsReceived,
-        timeLastReceivedPacket,
-        timeLastSentPacket,
-        packetsSent,
-        packetsReceived,
-        gapLengths,
-        gapLengthRecvTimes);
+    return parsed;
   }
 
   /**
