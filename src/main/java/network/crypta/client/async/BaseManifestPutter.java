@@ -1056,6 +1056,17 @@ public abstract class BaseManifestPutter extends ManifestPutter {
   /** Final URI of the inserted manifest/container, available after encoding of the root. */
   private FreenetURI finalURI;
 
+  /** True when constructor-time manifest handler preparation exceeded safe file limits. */
+  private final boolean initializationTooManyFiles;
+
+  /**
+   * Captured constructor-time failure when handler preparation exceeded safe file limits.
+   *
+   * <p>Transient to avoid persisting full exception state; {@link #initializationTooManyFiles}
+   * carries the durable signal needed for resume behavior.
+   */
+  private transient TooManyFilesInsertException initializationFailure;
+
   /** Target URI (e.g., SSK) for the root container or base metadata. */
   private final FreenetURI targetURI;
 
@@ -1134,8 +1145,18 @@ public abstract class BaseManifestPutter extends ManifestPutter {
     putHandlersArchiveTransformMap = new HashMap<>();
     String defName = p.defaultName;
     Map<String, Object> elements = p.manifestElements;
-    if (defName == null) defName = findDefaultName(new HashMap<>(elements));
-    makePutHandlers(new HashMap<>(elements), defName);
+    TooManyFilesInsertException initFailure = null;
+    try {
+      if (defName == null) defName = findDefaultName(new HashMap<>(elements));
+      makePutHandlers(new HashMap<>(elements), defName);
+    } catch (TooManyFilesInsertException e) {
+      initFailure = e;
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Manifest preparation exceeded limits in constructor", e);
+      }
+    }
+    initializationTooManyFiles = (initFailure != null);
+    initializationFailure = initFailure;
     // builders are no longer needed after constructor
     rootBuilder = null;
     rootContainerBuilder = null;
@@ -1249,6 +1270,17 @@ public abstract class BaseManifestPutter extends ManifestPutter {
    */
   @Override
   public void start(ClientContext context) throws InsertException {
+    if (initializationTooManyFiles) {
+      synchronized (this) {
+        finished = true;
+      }
+      if (initializationFailure != null) {
+        throw new InsertException(
+            InsertExceptionMode.TOO_MANY_FILES, initializationFailure, targetURI);
+      }
+      throw new InsertException(InsertExceptionMode.TOO_MANY_FILES, targetURI);
+    }
+
     if (LOG.isDebugEnabled())
       LOG.debug("Starting {} persistence={} containermode={}", this, persistent(), containerMode);
     PutHandler[] running;
