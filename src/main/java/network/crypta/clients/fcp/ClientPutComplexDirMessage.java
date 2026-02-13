@@ -90,7 +90,7 @@ public final class ClientPutComplexDirMessage extends ClientPutDirMessage {
       SimpleFieldSet fs, BucketFactory bfTemp, PersistentTempBucketFactory bfPersistent)
       throws MessageInvalidException {
     // Parse the standard ClientPutDir headers - URI, etc.
-    super(fs);
+    super(parseCommonFields(fs));
 
     filesByName = new HashMap<>();
     filesToRead = new ArrayList<>();

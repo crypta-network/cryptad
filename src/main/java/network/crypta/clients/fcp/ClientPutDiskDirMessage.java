@@ -68,7 +68,7 @@ public final class ClientPutDiskDirMessage extends ClientPutDirMessage {
    * @throws MessageInvalidException if the {@code Filename} field is absent.
    */
   public ClientPutDiskDirMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    super(fs);
+    super(parseCommonFields(fs));
     allowUnreadableFiles = fs.getBoolean("AllowUnreadableFiles", false);
     includeHiddenFiles = fs.getBoolean("includeHiddenFiles", false);
     String fnam = fs.get("Filename");
