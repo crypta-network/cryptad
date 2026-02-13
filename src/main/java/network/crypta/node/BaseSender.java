@@ -74,19 +74,43 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
   final int incomingSearchTimeout;
 
   BaseSender(Key key, boolean realTimeFlag, PeerNode source, Node node, short htl, long uid) {
+    this(validateConstructionState(key, realTimeFlag, node, htl), realTimeFlag, source, htl, uid);
+  }
+
+  private BaseSender(
+      ConstructionState state, boolean realTimeFlag, PeerNode source, short htl, long uid) {
+    Key resolvedKey = state != null ? state.key : null;
+    Node resolvedNode = state != null ? state.node : null;
+    double resolvedTarget = state != null ? state.target : 0.0d;
+    boolean resolvedIsSSK = state != null && state.isSSK;
+    boolean resolvedNewLoadManagement = state != null && state.newLoadManagement;
+    int resolvedIncomingSearchTimeout = state != null ? state.incomingSearchTimeout : 0;
+
     startTime = System.currentTimeMillis();
     this.uid = uid;
-    this.key = key;
+    this.key = resolvedKey;
     this.realTimeFlag = realTimeFlag;
-    this.node = node;
+    this.node = resolvedNode;
     this.source = source;
-    target = key.toNormalizedDouble();
-    this.isSSK = key instanceof NodeSSK;
-    assert (isSSK || key instanceof NodeCHK);
+    target = resolvedTarget;
+    this.isSSK = resolvedIsSSK;
     this.htl = htl;
     this.origHTL = htl;
-    newLoadManagement = node.network().enableNewLoadManagement(realTimeFlag);
-    incomingSearchTimeout = calculateTimeout(realTimeFlag, htl, node);
+    newLoadManagement = resolvedNewLoadManagement;
+    incomingSearchTimeout = resolvedIncomingSearchTimeout;
+  }
+
+  private static ConstructionState validateConstructionState(
+      Key key, boolean realTimeFlag, Node node, short htl) {
+    Key checkedKey = requireRoutingKey(key);
+    double target = checkedKey.toNormalizedDouble();
+    boolean isSSK = checkedKey instanceof NodeSSK;
+    assert (isSSK || checkedKey instanceof NodeCHK);
+    Node checkedNode = requireNode(node);
+    boolean newLoadManagement = checkedNode.network().enableNewLoadManagement(realTimeFlag);
+    int incomingSearchTimeout = calculateTimeout(realTimeFlag, htl, checkedNode);
+    return new ConstructionState(
+        checkedKey, checkedNode, target, isSSK, newLoadManagement, incomingSearchTimeout);
   }
 
   /**
@@ -102,6 +126,21 @@ public abstract class BaseSender implements ByteCounter, HighHtlAware {
     }
     return key;
   }
+
+  private static Node requireNode(Node node) {
+    if (node == null) {
+      throw new NullPointerException("node");
+    }
+    return node;
+  }
+
+  private record ConstructionState(
+      Key key,
+      Node node,
+      double target,
+      boolean isSSK,
+      boolean newLoadManagement,
+      int incomingSearchTimeout) {}
 
   static final double EXTRA_HOPS_AT_BOTTOM = 1.0 / Node.DECREMENT_AT_MIN_PROB;
 
