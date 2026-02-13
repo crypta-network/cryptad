@@ -389,7 +389,7 @@ public final class OfficialPlugins {
    * @see PluginJarUpdater
    * @see PluginManager
    */
-  public static class OfficialPluginDescription {
+  public static final class OfficialPluginDescription {
 
     /**
      * The canonical internal name of the plugin.

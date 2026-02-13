@@ -205,7 +205,7 @@ public class FirstTimeWizardNewToadlet extends WebTemplateToadlet {
     return NodeL10n.getBase().getString(L10N_PREFIX + key, value);
   }
 
-  private class FormModel {
+  private final class FormModel {
 
     private String knowSomeone = "";
 

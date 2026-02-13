@@ -1211,7 +1211,7 @@ public final class DarknetPeerNode extends PeerNode {
    * <p>Instances are short-lived and not persisted. Depending on {@link #amIOffering}, an instance
    * either sends or receives a bulk transfer. Alerts are posted on success/failure.
    */
-  class FileOffer {
+  final class FileOffer {
     final long uid;
     final String filename;
     final String mimeType;

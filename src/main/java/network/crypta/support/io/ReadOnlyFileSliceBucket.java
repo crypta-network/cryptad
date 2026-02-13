@@ -135,7 +135,7 @@ public final class ReadOnlyFileSliceBucket implements Bucket, Serializable {
     // Intentional no-op.
   }
 
-  private class MyInputStream extends InputStream {
+  private final class MyInputStream extends InputStream {
 
     private final RandomAccessFile f;
     // Current read position relative to {@code startAt} within the slice.

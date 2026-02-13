@@ -26,7 +26,7 @@ public class SentTimeCache {
    * Fixed-capacity, insertion-ordered {@link LinkedHashMap} for {@code int}-to-{@code long}
    * mappings. Used internally by {@link SentTimeCache} to implement FIFO eviction.
    */
-  private static class BoundedSentTimeMap extends LinkedHashMap<Integer, Long> {
+  private static final class BoundedSentTimeMap extends LinkedHashMap<Integer, Long> {
     @Serial private static final long serialVersionUID = 0;
     private final int maxSize;
 

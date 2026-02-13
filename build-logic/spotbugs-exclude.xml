@@ -121,10 +121,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.client.async.USKKeyWatchSet$KeyList"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.client.async.SplitFileInserter"/>
   </Match>
   <Match>
@@ -153,14 +149,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.clients.http.FirstTimeWizardNewToadlet$FormModel"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.crypt.DSAGroup"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.io.AddressTrackerItem"/>
   </Match>
   <Match>
@@ -185,10 +173,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.node.DarknetPeerNode$FileOffer"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.node.PeerNode"/>
   </Match>
   <Match>
@@ -197,15 +181,7 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.pluginmanager.OfficialPlugins$OfficialPluginDescription"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.store.caching.CachingFreenetStoreTracker"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.store.saltedhash.SaltedHashFreenetStore$Entry"/>
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
@@ -221,10 +197,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.SentTimeCache$BoundedSentTimeMap"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.support.io.BaseFileBucket"/>
   </Match>
   <Match>
@@ -233,35 +205,11 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.io.MultiReaderBucket$ReaderBucket$ReaderBucketInputStream"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.io.ReadOnlyFileSliceBucket$MyInputStream"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.support.io.SwitchableProxyRandomAccessBuffer"/>
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.io.TempBucketFactory$TempBucket"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.io.TempBucketFactory$TempBucket$TempBucketInputStream"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.io.TempBucketFactory$TempBucket$TempBucketOutputStream"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.support.io.TempFileBucket"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="org.spaceroots.mantissa.algebra.RationalNumber"/>
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>

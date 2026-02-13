@@ -931,7 +931,7 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
    *  Gen = Generation
    * </pre>
    */
-  class Entry {
+  final class Entry {
     /** Flag for occupied space */
     private static final long ENTRY_FLAG_OCCUPIED = 0x00000001L;
 

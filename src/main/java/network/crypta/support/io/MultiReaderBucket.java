@@ -207,7 +207,7 @@ public class MultiReaderBucket implements Serializable {
       }
     }
 
-    private class ReaderBucketInputStream extends InputStream {
+    private final class ReaderBucketInputStream extends InputStream {
 
       InputStream is;
 

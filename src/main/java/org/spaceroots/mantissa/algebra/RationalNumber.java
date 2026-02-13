@@ -30,7 +30,7 @@ import java.math.BigInteger;
  * @author L. Maisonobe
  * @see java.math.BigInteger
  */
-public class RationalNumber implements Serializable {
+public final class RationalNumber implements Serializable {
 
   /**
    * Canonical representation of zero.

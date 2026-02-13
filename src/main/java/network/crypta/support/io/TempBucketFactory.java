@@ -172,7 +172,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
    * <p>Instances are safe for concurrent use where methods are synchronized; callers should
    * coordinate access patterns when mixing reads, writes, and migration.
    */
-  public class TempBucket implements Bucket, Migratable, RandomAccessBucket {
+  public final class TempBucket implements Bucket, Migratable, RandomAccessBucket {
     /** The current underlying bucket. */
     private RandomAccessBucket currentBucket;
 
@@ -333,7 +333,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       return tos;
     }
 
-    private class TempBucketOutputStream extends OutputStream {
+    private final class TempBucketOutputStream extends OutputStream {
       long lastCheckedSize = 0;
       long checkDiskEvery = 4096;
       boolean closed = false;
@@ -495,7 +495,7 @@ public class TempBucketFactory implements BucketFactory, LockableRandomAccessBuf
       return is;
     }
 
-    private class TempBucketInputStream extends InputStream {
+    private final class TempBucketInputStream extends InputStream {
       /** The current input stream from the underlying bucket. */
       private InputStream currentIS;
 
