@@ -105,10 +105,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.HTMLNode"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="org.spaceroots.mantissa.linalg.Matrix"/>
   </Match>
   <Match>
