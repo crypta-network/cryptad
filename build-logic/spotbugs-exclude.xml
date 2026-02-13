@@ -193,10 +193,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.io.CountedInputStream"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.support.io.SwitchableProxyRandomAccessBuffer"/>
   </Match>
   <Match>
