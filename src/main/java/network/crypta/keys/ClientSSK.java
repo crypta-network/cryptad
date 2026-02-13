@@ -108,10 +108,10 @@ public class ClientSSK extends ClientKey {
   public ClientSSK(
       String docName, byte[] pubKeyHash, byte[] extras, DSAPublicKey pubKey, byte[] cryptoKey)
       throws MalformedURLException {
-    this(validateConstruction(docName, pubKeyHash, extras, pubKey, cryptoKey));
+    this(validateConstructionState(docName, pubKeyHash, extras, pubKey, cryptoKey));
   }
 
-  private ClientSSK(ConstructionState state) {
+  ClientSSK(ConstructionState state) {
     this.docName = state.docName;
     this.pubKey = state.pubKey;
     this.pubKeyHash = state.pubKeyHash;
@@ -121,7 +121,7 @@ public class ClientSSK extends ClientKey {
     this.hashCode = state.hashCodeValue;
   }
 
-  private static ConstructionState validateConstruction(
+  static ConstructionState validateConstructionState(
       String docName, byte[] pubKeyHash, byte[] extras, DSAPublicKey pubKey, byte[] cryptoKey)
       throws MalformedURLException {
     // Validate arguments and compute the encrypted docname used by the node-level key.
@@ -173,7 +173,7 @@ public class ClientSSK extends ClientKey {
   private static ConstructionState validateConstruction(FreenetURI origURI)
       throws MalformedURLException {
     ConstructionState state =
-        validateConstruction(
+        validateConstructionState(
             origURI.getDocName(),
             origURI.getRoutingKey(),
             origURI.getExtra(),
@@ -194,7 +194,7 @@ public class ClientSSK extends ClientKey {
     this(validateConstruction(origURI));
   }
 
-  private static final class ConstructionState {
+  static final class ConstructionState {
     private final String docName;
     private final DSAPublicKey pubKey;
     private final byte[] pubKeyHash;
