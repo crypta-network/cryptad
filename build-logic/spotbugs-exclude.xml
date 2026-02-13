@@ -109,10 +109,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.client.async.ClientRequester"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.clients.fcp.ClientRequest"/>
   </Match>
   <Match>
