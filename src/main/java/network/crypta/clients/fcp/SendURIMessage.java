@@ -56,7 +56,7 @@ public final class SendURIMessage extends SendPeerMessage {
    * @throws MessageInvalidException if the {@code URI} entry is missing or fails to parse cleanly.
    */
   public SendURIMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    super(fs);
+    super(parseCommonFields(fs));
     try {
       uri = new FreenetURI(fs.get("URI"));
     } catch (MalformedURLException e) {

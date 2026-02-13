@@ -58,7 +58,7 @@ public final class SendBookmarkMessage extends SendPeerMessage {
    *     error.
    */
   public SendBookmarkMessage(SimpleFieldSet fs) throws MessageInvalidException {
-    super(fs);
+    super(parseCommonFields(fs));
     try {
       bookmarkName = fs.get("Name");
       if (bookmarkName == null)
