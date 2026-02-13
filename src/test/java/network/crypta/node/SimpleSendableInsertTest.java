@@ -305,6 +305,35 @@ class SimpleSendableInsertTest {
   }
 
   @Test
+  void onSuccess_whenOutcomeCallbackProvided_invokesCallback() {
+    SimpleSendableInsert.OutcomeCallback callback =
+        mock(SimpleSendableInsert.OutcomeCallback.class);
+    SimpleSendableInsert insert =
+        new SimpleSendableInsert(chkBlock, (short) 1, requestClient, insertScheduler, callback);
+    SendableRequestItem token = mock(SendableRequestItem.class);
+
+    insert.onSuccess(token, null, clientContext);
+
+    verify(callback).onSuccess(token, null, clientContext);
+    verify(callback, times(0)).onFailure(any(), any(), any());
+  }
+
+  @Test
+  void onFailure_whenOutcomeCallbackProvided_invokesCallback() {
+    SimpleSendableInsert.OutcomeCallback callback =
+        mock(SimpleSendableInsert.OutcomeCallback.class);
+    SimpleSendableInsert insert =
+        new SimpleSendableInsert(chkBlock, (short) 1, requestClient, insertScheduler, callback);
+    SendableRequestItem token = mock(SendableRequestItem.class);
+    LowLevelPutException exception = new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR);
+
+    insert.onFailure(exception, token, clientContext);
+
+    verify(callback).onFailure(exception, token, clientContext);
+    verify(callback, times(0)).onSuccess(any(), any(), any());
+  }
+
+  @Test
   void countKeys_whenFinishedAndNotFinished_reflectsState() {
     SimpleSendableInsert insert =
         new SimpleSendableInsert(sskBlock, (short) 1, requestClient, insertScheduler);

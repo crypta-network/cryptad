@@ -26,11 +26,11 @@ import org.slf4j.LoggerFactory;
  * short-lived: they are scheduled, run a single blocking sending, and then mark themselves finished
  * so they are not rescheduled.
  *
- * <p>The implementation intentionally avoids retries and callbacks. Success and failure are logged
- * at debug level only, and no {@link ClientRequester} is retained. A small synchronization boundary
- * around key selection and cancellation prevents duplicate scheduling while the insert is in
- * flight. Because the insert is non-persistent, resume hooks are no-ops and scheduling metadata
- * such as the scheduler group is absent.
+ * <p>The implementation intentionally avoids retries and, by default, provides no external
+ * callbacks. Success and failure are logged at debug level only, and no {@link ClientRequester} is
+ * retained. A small synchronization boundary around key selection and cancellation prevents
+ * duplicate scheduling while the insert is in flight. Because the insert is non-persistent, resume
+ * hooks are no-ops and scheduling metadata such as the scheduler group is absent.
  *
  * <p>Responsibilities:
  *
@@ -43,10 +43,25 @@ import org.slf4j.LoggerFactory;
  * @see SendableInsert
  * @see NodeClientCore
  */
-public class SimpleSendableInsert extends SendableInsert {
+public final class SimpleSendableInsert extends SendableInsert {
   private static final Logger LOG = LoggerFactory.getLogger(SimpleSendableInsert.class);
 
   @Serial private static final long serialVersionUID = 1L;
+
+  /**
+   * Optional callback for callers that need custom completion handling.
+   *
+   * <p>Default behavior remains unchanged: success and failure are only logged. Callers that need
+   * additional actions can pass a callback via the extended constructor.
+   */
+  public interface OutcomeCallback {
+    OutcomeCallback NO_OP = new OutcomeCallback() {};
+
+    default void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {}
+
+    default void onFailure(
+        LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {}
+  }
 
   /**
    * Block payload to insert.
@@ -78,6 +93,9 @@ public class SimpleSendableInsert extends SendableInsert {
    */
   private transient RequestClient client;
 
+  /** Optional callback invoked after default success/failure logging. */
+  private transient OutcomeCallback outcomeCallback;
+
   /**
    * Scheduler that executes this insert.
    *
@@ -103,15 +121,20 @@ public class SimpleSendableInsert extends SendableInsert {
    * @throws IllegalStateException if the resolved scheduler is not configured for inserts
    */
   public SimpleSendableInsert(NodeClientCore core, KeyBlock block, short prioClass) {
-    super(false, false);
-    this.block = block;
-    this.prioClass = prioClass;
-    this.client = core.getNode().getNonPersistentClientBulk();
-    if (block instanceof CHKBlock) scheduler = core.getRequestStarters().chkPutSchedulerBulk;
-    else if (block instanceof SSKBlock) scheduler = core.getRequestStarters().sskPutSchedulerBulk;
-    else throw new IllegalArgumentException("Don't know what to do with " + block);
+    this(
+        block,
+        prioClass,
+        core.getNode().getNonPersistentClientBulk(),
+        selectBulkInsertScheduler(core, block));
     if (!scheduler.isInsertScheduler())
       throw new IllegalStateException("Scheduler " + scheduler + " is not an insert scheduler!");
+  }
+
+  private static ClientRequestScheduler selectBulkInsertScheduler(
+      NodeClientCore core, KeyBlock block) {
+    if (block instanceof CHKBlock) return core.getRequestStarters().chkPutSchedulerBulk;
+    if (block instanceof SSKBlock) return core.getRequestStarters().sskPutSchedulerBulk;
+    throw new IllegalArgumentException("Don't know what to do with " + block);
   }
 
   /**
@@ -129,29 +152,56 @@ public class SimpleSendableInsert extends SendableInsert {
    */
   public SimpleSendableInsert(
       KeyBlock block, short prioClass, RequestClient client, ClientRequestScheduler scheduler) {
+    this(block, prioClass, client, scheduler, OutcomeCallback.NO_OP);
+  }
+
+  /**
+   * Creates a simple insert with explicit completion callbacks.
+   *
+   * <p>The callback runs after this class logs success or failure. It allows callers that formerly
+   * subclassed this class to attach custom accounting and retry behavior while keeping this class
+   * non-extensible.
+   *
+   * @param block block payload to insert; expected CHKBlock or SSKBlock instance
+   * @param prioClass scheduler priority class passed through unchanged to scheduling logic
+   * @param client request client used for attribution and queue accounting
+   * @param scheduler scheduler used to run the insert; should accept inserts
+   * @param outcomeCallback completion callback, or {@code null} for no-op behavior
+   */
+  public SimpleSendableInsert(
+      KeyBlock block,
+      short prioClass,
+      RequestClient client,
+      ClientRequestScheduler scheduler,
+      OutcomeCallback outcomeCallback) {
     super(false, false);
     this.block = block;
     this.prioClass = prioClass;
     this.client = client;
     this.scheduler = scheduler;
+    this.outcomeCallback = Objects.requireNonNullElse(outcomeCallback, OutcomeCallback.NO_OP);
   }
 
   /**
    * Handles a successful completion of the single insert attempt.
    *
    * <p>The sender invokes this callback after {@link NodeClientCoreTransfers#realPut} returns
-   * without throwing. It does not notify any {@link ClientRequester} and performs no state changes;
-   * the sender manages the finished flag. The only observable effect is a debug log entry, making
-   * this method safe to call multiple times but ordinarily invoked once per insert.
+   * without throwing. It does not notify any {@link ClientRequester} by default and performs no
+   * state changes; the sender manages the finished flag. The only built-in observable effect is a
+   * debug log entry.
    *
-   * @param keyNum token identifying the scheduled item; used for logging only
+   * <p>If an {@link OutcomeCallback} was supplied at construction time, it is invoked after logging
+   * to allow caller-specific accounting or completion behavior.
+   *
+   * @param keyNum token identifying the scheduled item; used for logging and callback forwarding
    * @param key client key associated with the insert; ignored and may be null
-   * @param context request context for the execution; not used by this implementation
+   * @param context request context for the execution; forwarded to callback
    */
   @Override
   public void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
-    // Successful completion; no client-visible feedback.
+    // Successful completion; no client-visible feedback by default.
     if (LOG.isDebugEnabled()) LOG.debug("Insert completed for {}", block);
+    outcomeCallback.onSuccess(keyNum, key, context);
   }
 
   /**
@@ -159,16 +209,19 @@ public class SimpleSendableInsert extends SendableInsert {
    *
    * <p>This callback is invoked when {@link NodeClientCoreTransfers#realPut} throws a {@link
    * LowLevelPutException}. The method logs the failure at debug level and does not request retries
-   * or propagate the exception. The sender still finalizes the completion state, so this method
-   * focuses solely on recording the outcome for diagnostics.
+   * or propagate the exception. The sender still finalizes the completion state.
+   *
+   * <p>If an {@link OutcomeCallback} was supplied at construction time, it is invoked after logging
+   * to allow caller-specific retry/error accounting behavior.
    *
    * @param e failure describing why the low-level insert did not succeed
-   * @param keyNum token identifying the scheduled item; used for logging only
-   * @param context request context for the execution; not used by this implementation
+   * @param keyNum token identifying the scheduled item; used for logging and callback forwarding
+   * @param context request context for the execution; forwarded to callback
    */
   @Override
   public void onFailure(LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
     if (LOG.isDebugEnabled()) LOG.debug("Insert failed for {}: {}", block, e, e);
+    outcomeCallback.onFailure(e, keyNum, context);
   }
 
   /**
@@ -526,6 +579,7 @@ public class SimpleSendableInsert extends SendableInsert {
   private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();
     this.client = new RequestClientBuilder().build();
+    this.outcomeCallback = OutcomeCallback.NO_OP;
   }
 
   /**

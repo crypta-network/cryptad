@@ -2,7 +2,6 @@ package network.crypta.client.async;
 
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.io.Serial;
 import java.util.ArrayList;
 import network.crypta.client.FailureCodeTracker;
 import network.crypta.client.InsertContext;
@@ -181,25 +180,49 @@ public final class BinaryBlobInserter implements ClientPutState {
     }
   }
 
-  class MySendableInsert extends SimpleSendableInsert {
-
-    @Serial private static final long serialVersionUID = 1L;
+  class MySendableInsert {
     final int blockNum;
     private int consecutiveRNFs;
     private int retries;
+    private final SimpleSendableInsert sendableInsert;
 
-    public MySendableInsert(
+    MySendableInsert(
         int i,
         KeyBlock block,
         short prioClass,
         ClientRequestScheduler scheduler,
         RequestClient client) {
-      super(block, prioClass, client, scheduler);
       this.blockNum = i;
+      this.sendableInsert =
+          new SimpleSendableInsert(
+              block,
+              prioClass,
+              client,
+              scheduler,
+              new SimpleSendableInsert.OutcomeCallback() {
+                @Override
+                public void onSuccess(
+                    SendableRequestItem keyNum, ClientKey key, ClientContext context) {
+                  MySendableInsert.this.onSuccess(keyNum, key, context);
+                }
+
+                @Override
+                public void onFailure(
+                    LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
+                  MySendableInsert.this.onFailure(e, keyNum, context);
+                }
+              });
     }
 
-    @Override
-    public void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
+    public void schedule() {
+      sendableInsert.schedule();
+    }
+
+    public void cancel(ClientContext context) {
+      sendableInsert.cancel(context);
+    }
+
+    void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
       synchronized (BinaryBlobInserter.this) {
         if (inserters[blockNum] == null) return;
         inserters[blockNum] = null;
@@ -211,9 +234,7 @@ public final class BinaryBlobInserter implements ClientPutState {
     }
 
     // Note: logic mirrors SingleBlockInserter; consider future refactor.
-    @Override
-    public void onFailure(
-        LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
+    void onFailure(LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
       synchronized (BinaryBlobInserter.this) {
         if (inserters[blockNum] == null) return;
       }
@@ -252,9 +273,9 @@ public final class BinaryBlobInserter implements ClientPutState {
         fail(false, context);
         return;
       }
-      this.clearWakeupTime(context);
+      sendableInsert.clearWakeupTime(context);
       // Retry *this block*
-      this.schedule();
+      schedule();
     }
 
     private void fail(boolean fatal, ClientContext context) {
