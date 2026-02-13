@@ -36,6 +36,16 @@ import java.util.Arrays;
  */
 public abstract class Matrix implements Serializable {
   /**
+   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
+   *
+   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
+   * otherwise define a finalizer and observe partially initialized state.
+   */
+  @Override
+  @SuppressWarnings({"deprecation", "removal"})
+  protected final void finalize() {}
+
+  /**
    * Create a new matrix with all coefficients initialized to zero.
    *
    * <p>The constructor validates that both dimensions are strictly positive and allocates a dense

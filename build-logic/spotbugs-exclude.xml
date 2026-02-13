@@ -90,17 +90,4 @@
     <Class name="network.crypta.support.io.BaseFileBucket"/>
     <Method name="setDeleteOnExit"/>
   </Match>
-  <!--
-    CT_CONSTRUCTOR_THROW was reviewed for these remaining classes. They are intentionally
-    extensible and/or used with subclassing patterns (including anonymous test subclasses),
-    so forcing final/non-throwing constructors here would be high-churn and risky.
-  -->
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="org.spaceroots.mantissa.linalg.Matrix"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="org.spaceroots.mantissa.ode.RungeKuttaIntegrator"/>
-  </Match>
 </FindBugsFilter>
