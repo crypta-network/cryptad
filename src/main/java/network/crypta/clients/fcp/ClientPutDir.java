@@ -58,7 +58,7 @@ import org.slf4j.LoggerFactory;
  * @see ClientPutBase
  * @see ManifestPutter
  */
-public class ClientPutDir extends ClientPutBase {
+public final class ClientPutDir extends ClientPutBase {
   private static final Logger LOG = LoggerFactory.getLogger(ClientPutDir.class);
 
   @Serial private static final long serialVersionUID = 1L;

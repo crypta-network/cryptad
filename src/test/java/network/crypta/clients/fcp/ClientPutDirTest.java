@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
 import java.lang.reflect.Field;
@@ -40,11 +42,10 @@ class ClientPutDirTest {
 
   @Test
   void register_whenPersistentAndTagsRequested_registersAndQueuesTagMessage() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    FCPMessage message = mock(FCPMessage.class);
+    ClientPutDir putDir = newClientPutDirWithPersistentMessage(message);
     setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.FOREVER);
     setField(ClientRequest.class, putDir, "client", persistentRequestClient);
-    FCPMessage message = mock(FCPMessage.class);
-    putDir.setPersistentMessage(message);
 
     putDir.register(false);
 
@@ -54,7 +55,7 @@ class ClientPutDirTest {
 
   @Test
   void register_whenNoTagsRequested_doesNotQueuePersistentMessage() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    ClientPutDir putDir = newClientPutDir();
     setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.FOREVER);
     setField(ClientRequest.class, putDir, "client", persistentRequestClient);
 
@@ -67,7 +68,7 @@ class ClientPutDirTest {
 
   @Test
   void freeData_whenManifestContainsNestedElements_freesAllEntries() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    ClientPutDir putDir = newClientPutDir();
     ManifestElement fileElement = mock(ManifestElement.class);
     ManifestElement nestedElement = mock(ManifestElement.class);
     Map<String, Object> nested = new HashMap<>();
@@ -86,7 +87,7 @@ class ClientPutDirTest {
 
   @Test
   void getStatus_whenProgressAvailable_returnsCombinedSnapshot() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    ClientPutDir putDir = newClientPutDir();
     String identifier = "req-42";
     setField(ClientRequest.class, putDir, "identifier", identifier);
     setField(ClientRequest.class, putDir, "persistence", ClientRequest.Persistence.FOREVER);
@@ -132,7 +133,7 @@ class ClientPutDirTest {
 
   @Test
   void innerResume_whenManifestPresent_delegatesToContainerInserter() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    ClientPutDir putDir = newClientPutDir();
     Map<String, Object> manifest = new HashMap<>();
     setField(ClientPutDir.class, putDir, "manifestElements", manifest);
     ClientContext context = mock(ClientContext.class);
@@ -145,7 +146,7 @@ class ClientPutDirTest {
 
   @Test
   void canRestart_whenNotFinished_returnsFalse() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    ClientPutDir putDir = newClientPutDir();
     setField(ClientRequest.class, putDir, "finished", false);
 
     assertFalse(putDir.canRestart());
@@ -153,7 +154,7 @@ class ClientPutDirTest {
 
   @Test
   void canRestart_whenFinishedAndSucceeded_returnsFalse() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    ClientPutDir putDir = newClientPutDir();
     setField(ClientRequest.class, putDir, "finished", true);
     setField(ClientPutBase.class, putDir, "succeeded", true);
 
@@ -162,7 +163,7 @@ class ClientPutDirTest {
 
   @Test
   void canRestart_whenFinishedAndFailed_returnsTrue() throws Exception {
-    TestableClientPutDir putDir = new TestableClientPutDir();
+    ClientPutDir putDir = newClientPutDir();
     setField(ClientRequest.class, putDir, "finished", true);
     setField(ClientPutBase.class, putDir, "succeeded", false);
 
@@ -171,7 +172,17 @@ class ClientPutDirTest {
 
   @Test
   void getType_alwaysReturnsPutDir() {
-    assertEquals(RequestType.PUTDIR, new TestableClientPutDir().getType());
+    assertEquals(RequestType.PUTDIR, newClientPutDir().getType());
+  }
+
+  private static ClientPutDir newClientPutDir() {
+    return new ClientPutDir();
+  }
+
+  private static ClientPutDir newClientPutDirWithPersistentMessage(FCPMessage message) {
+    ClientPutDir putDir = spy(newClientPutDir());
+    doReturn(message).when(putDir).persistentTagMessage();
+    return putDir;
   }
 
   private static void setField(Class<?> owner, Object target, String name, Object value)
@@ -194,23 +205,6 @@ class ClientPutDirTest {
       MANIFEST_ELEMENTS_FIELD.setAccessible(true);
     } catch (ReflectiveOperationException e) {
       throw new ExceptionInInitializerError(e);
-    }
-  }
-
-  private static final class TestableClientPutDir extends ClientPutDir {
-    private FCPMessage persistentMessage;
-
-    TestableClientPutDir() {
-      super();
-    }
-
-    void setPersistentMessage(FCPMessage message) {
-      this.persistentMessage = message;
-    }
-
-    @Override
-    protected FCPMessage persistentTagMessage() {
-      return persistentMessage;
     }
   }
 }

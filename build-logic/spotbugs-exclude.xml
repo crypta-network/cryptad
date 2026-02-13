@@ -129,10 +129,6 @@
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.clients.fcp.ClientPutDir"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.clients.fcp.ClientPutDirMessage"/>
   </Match>
   <Match>
