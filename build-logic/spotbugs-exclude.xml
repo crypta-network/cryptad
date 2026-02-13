@@ -90,4 +90,24 @@
     <Class name="network.crypta.support.io.BaseFileBucket"/>
     <Method name="setDeleteOnExit"/>
   </Match>
+
+  <!--
+    Panic mode intentionally forces process restart/termination after sensitive cleanup.
+    The wrapper restart request is followed by an immediate JVM exit by design.
+  -->
+  <Match>
+    <Bug pattern="DM_EXIT"/>
+    <Class name="network.crypta.node.Node"/>
+    <Method name="finishPanic"/>
+  </Match>
+
+  <!--
+    Launcher quit intentionally terminates the JVM after daemon shutdown and UI/resource cleanup.
+    This is generated in the coroutine state-machine class for quitApp().
+  -->
+  <Match>
+    <Bug pattern="DM_EXIT"/>
+    <Class name="~network\.crypta\.launcher\.CryptaLauncher\$quitApp\$.*"/>
+    <Method name="invokeSuspend"/>
+  </Match>
 </FindBugsFilter>

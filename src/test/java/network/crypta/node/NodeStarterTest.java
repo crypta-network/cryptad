@@ -20,6 +20,7 @@ import network.crypta.crypt.DummyRandomSource;
 import network.crypta.crypt.RandomSource;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.support.SimpleFieldSet;
+import network.crypta.support.io.NativeThread;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -121,8 +122,64 @@ class NodeStarterTest {
       File portDir = new File(tmpDir, "12345");
       assertEquals(new File(portDir, "throttle.dat").toString(), sfs.get("node.throttleFile"));
 
-      // And ensure peers list is cleared on the returned node
+      // And ensure the peers list is cleared on the returned node
       verify(node.network().peers(), times(1)).removeAllPeers();
+    }
+  }
+
+  @Test
+  void start_whenNodeStartupThrowsNodeInitException_andWrapperControlled_returnsExitCode(
+      @TempDir File tmpDir) throws ReflectiveOperationException {
+    NodeStarter ns = newNodeStarterViaReflection();
+    int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
+    String[] args = startupArgs(tmpDir);
+
+    try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
+        MockedConstruction<NativeThread> nativeThreadCtor =
+            Mockito.mockConstruction(NativeThread.class);
+        MockedConstruction<Node> nodeCtor =
+            Mockito.mockConstruction(
+                Node.class,
+                (mock, _) ->
+                    Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
+                        .when(mock)
+                        .start(false))) {
+      wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(true);
+      Integer result = ns.start(args);
+
+      assertEquals(expectedExitCode, result);
+      assertEquals(1, nodeCtor.constructed().size());
+      assertEquals(1, nativeThreadCtor.constructed().size());
+      wm.verify(() -> WrapperManager.signalStarting(500000), times(1));
+      wm.verify(() -> WrapperManager.stop(expectedExitCode), times(0));
+    }
+  }
+
+  @Test
+  void start_whenNodeStartupThrowsNodeInitException_andNotWrapper_stopsProcess(@TempDir File tmpDir)
+      throws ReflectiveOperationException {
+    NodeStarter ns = newNodeStarterViaReflection();
+    int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
+    String[] args = startupArgs(tmpDir);
+
+    try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
+        MockedConstruction<NativeThread> nativeThreadCtor =
+            Mockito.mockConstruction(NativeThread.class);
+        MockedConstruction<Node> nodeCtor =
+            Mockito.mockConstruction(
+                Node.class,
+                (mock, _) ->
+                    Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
+                        .when(mock)
+                        .start(false))) {
+      wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
+      Integer result = ns.start(args);
+
+      assertEquals(expectedExitCode, result);
+      assertEquals(1, nodeCtor.constructed().size());
+      assertEquals(1, nativeThreadCtor.constructed().size());
+      wm.verify(() -> WrapperManager.signalStarting(500000), times(1));
+      wm.verify(() -> WrapperManager.stop(expectedExitCode), times(1));
     }
   }
 
@@ -183,7 +240,7 @@ class NodeStarterTest {
       props.setProperty(WRAPPER_BITS_KEY, "32");
       assertFalse(NodeStarter.isSomething32bits());
 
-      // 32-bit JVM -> expect false even if wrapper says 64
+      // 32-bit JVM -> expect false even if the wrapper says 64
       props.setProperty(WRAPPER_BITS_KEY, "64");
       jvm.when(network.crypta.support.JVMVersion::is32Bit).thenReturn(true);
       assertFalse(NodeStarter.isSomething32bits());
@@ -230,6 +287,30 @@ class NodeStarterTest {
   }
 
   // --- helpers ---
+
+  private static String[] startupArgs(File tmpDir) {
+    File configDir = new File(tmpDir, "config");
+    File dataDir = new File(tmpDir, "data");
+    File cacheDir = new File(tmpDir, "cache");
+    File runDir = new File(tmpDir, "run");
+    File logsDir = new File(tmpDir, "logs");
+    File configFile = new File(configDir, "cryptad.ini");
+
+    return new String[] {
+      "--config-file",
+      configFile.getAbsolutePath(),
+      "--config-dir",
+      configDir.getAbsolutePath(),
+      "--data-dir",
+      dataDir.getAbsolutePath(),
+      "--cache-dir",
+      cacheDir.getAbsolutePath(),
+      "--run-dir",
+      runDir.getAbsolutePath(),
+      "--logs-dir",
+      logsDir.getAbsolutePath(),
+    };
+  }
 
   private static void resetNodeStarterStatics() throws ReflectiveOperationException {
     clearStaticBoolean("isStarted");
