@@ -99,7 +99,8 @@ public class Cookie {
 
   /**
    * Builds a {@link Cookie} ready for delivery via {@link ToadletContext#setCookie(Cookie)} after
-   * applying strict validation and normalization rules.
+   * applying strict validation and normalization rules as a host-only cookie (without an explicit
+   * domain attribute).
    *
    * <p>The constructor trims and lowercases the name, normalizes the path, rejects invalid ASCII
    * ranges, and converts a {@code null} value to an empty string for compatibility with browsers
@@ -120,9 +121,34 @@ public class Cookie {
    *     the expiration time is not in the future.
    */
   public Cookie(URI myPath, String myName, String myValue, Instant myExpirationDate) {
+    this(null, myPath, myName, myValue, myExpirationDate);
+  }
+
+  /**
+   * Builds a {@link Cookie} with an optional explicit domain attribute.
+   *
+   * <p>When {@code myDomain} is {@code null}, the cookie remains host-only. When provided, the
+   * domain must pass {@link #validateDomain(URI)} and is emitted in {@link #encodeToHeaderValue()}.
+   * All other validation and normalization rules are identical to {@link #Cookie(URI, String,
+   * String, Instant)}.
+   *
+   * @param myDomain Optional domain scope; must be {@code http} or {@code https} and omit path
+   *     segments when non-null.
+   * @param myPath The cookie path; must be relative, start with {@code /}, and represent the scope
+   *     under which the cookie will be sent back.
+   * @param myName Token identifying the cookie; trimmed, lowercased, US-ASCII, and free of reserved
+   *     names such as {@code domain} or {@code secure}.
+   * @param myValue Payload to send to the client; may be {@code null} to request an empty cookie
+   *     value and must avoid control characters and separator tokens.
+   * @param myExpirationDate Absolute expiration moment in the future; instants in the past cause an
+   *     {@link IllegalArgumentException} during validation.
+   * @throws IllegalArgumentException If any attribute violates RFC-inspired validation rules, or
+   *     the expiration time is not in the future.
+   */
+  public Cookie(URI myDomain, URI myPath, String myName, String myValue, Instant myExpirationDate) {
     version = 1;
 
-    domain = null;
+    domain = myDomain != null ? validateDomain(myDomain) : null;
     path = validatePath(myPath);
     name = validateName(myName);
     value = myValue != null ? validateValue(myValue) : "";
