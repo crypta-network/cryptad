@@ -595,24 +595,22 @@ public abstract class BaseFileBucket implements RandomAccessBucket, AutoCloseabl
    * @throws StorageFormatException when the data is malformed or uses an unknown version
    */
   protected BaseFileBucket(DataInputStream dis) throws IOException, StorageFormatException {
-    this(readStoredState(dis));
+    this(readStoredFreed(dis));
   }
 
-  private BaseFileBucket(StoredState state) {
-    this.freed = state.freed;
+  protected BaseFileBucket(boolean freed) {
+    this.freed = freed;
   }
 
-  private static StoredState readStoredState(DataInputStream dis)
+  protected static boolean readStoredFreed(DataInputStream dis)
       throws IOException, StorageFormatException {
     // Read and validate the header
     int magic = dis.readInt();
     if (magic != MAGIC) throw new StorageFormatException("Bad magic");
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Bad version");
-    return new StoredState(dis.readBoolean());
+    return dis.readBoolean();
   }
-
-  private record StoredState(boolean freed) {}
 
   /**
    * Converts this bucket to a {@link LockableRandomAccessBuffer} for random read access.
