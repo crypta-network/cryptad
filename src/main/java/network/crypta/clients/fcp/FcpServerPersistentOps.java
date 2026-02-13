@@ -748,9 +748,10 @@ final class FcpServerPersistentOps implements DownloadCache {
           new ClientMetadata(get.getMIMEType()), new NoFreeBucket(get.getBucket()));
     }
 
-    FetchResult result = globalForeverClient.getRequestStatusCache().getShadowBucket(key, false);
-    if (result != null) {
-      return result;
+    CacheFetchResult shadow =
+        globalForeverClient.getRequestStatusCache().getShadowBucket(key, false);
+    if (shadow != null) {
+      return shadow.asFetchResult();
     }
 
     final CountDownLatch done = new CountDownLatch(1);
@@ -768,7 +769,8 @@ final class FcpServerPersistentOps implements DownloadCache {
               @Override
               public boolean run(ClientContext context) {
                 try {
-                  resultRef.set(lookup(key, false, context, false, null));
+                  CacheFetchResult lookup = lookup(key, false, context, false, null);
+                  resultRef.set(lookup == null ? null : lookup.asFetchResult());
                 } finally {
                   done.countDown();
                 }

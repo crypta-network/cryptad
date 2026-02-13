@@ -22,7 +22,7 @@ import network.crypta.support.io.BucketTools;
  * synchronization. Concurrency characteristics therefore depend on the provided {@code Bucket}
  * implementation. Callers must coordinate access to the bucket if it is not inherently thread-safe.
  */
-public class FetchResult {
+public final class FetchResult {
 
   /** The ClientMetadata, i.e. MIME type. Must not be null. */
   final ClientMetadata metadata;

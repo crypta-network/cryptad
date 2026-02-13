@@ -355,7 +355,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
 
     if (result.alreadyFiltered && refilterPolicy == REFILTER_POLICY.ACCEPT_OLD) {
       tracker.removeFetcher(this);
-      onSuccess(result, null);
+      onSuccess(result.asFetchResult(), null);
       return true;
     }
 
@@ -377,7 +377,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     String cachedMime = result.getMimeType();
     if (fctx.getOverrideMIME() == null || fctx.getOverrideMIME().equals(cachedMime)) {
       tracker.removeFetcher(this);
-      onSuccess(result, null);
+      onSuccess(result.asFetchResult(), null);
       return true;
     }
 
