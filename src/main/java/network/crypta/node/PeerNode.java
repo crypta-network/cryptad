@@ -563,6 +563,16 @@ public abstract class PeerNode implements BasePeerNode, PeerNodeUnlocked {
   }
 
   /**
+   * Blocks subclass finalizers so constructor failures cannot be exploited via finalizer attacks.
+   *
+   * <p>SpotBugs flags constructors that throw on non-final classes because subclasses could
+   * otherwise define a finalizer and observe partially initialized state.
+   */
+  @Override
+  @SuppressWarnings({"deprecation", "removal"})
+  protected final void finalize() {}
+
+  /**
    * Creates a PeerNode from a {@link SimpleFieldSet} node reference.
    *
    * <p>Does not register the instance with {@link PeerManager}.

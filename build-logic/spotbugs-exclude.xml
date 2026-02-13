@@ -97,10 +97,6 @@
   -->
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.node.PeerNode"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="org.spaceroots.mantissa.linalg.Matrix"/>
   </Match>
   <Match>
