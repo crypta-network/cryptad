@@ -118,16 +118,7 @@ public class NodeSSK extends Key {
    * @throws IllegalArgumentException if either array has an unexpected length.
    */
   public NodeSSK(byte[] pkHash, byte[] ehDocname, byte cryptoAlgorithm) {
-    super(makeRoutingKey(pkHash, ehDocname));
-    this.encryptedHashedDocname = ehDocname;
-    this.pubKeyHash = pkHash;
-    this.cryptoAlgorithm = cryptoAlgorithm;
-    this.pubKey = null;
-    if (ehDocname.length != E_H_DOCNAME_SIZE)
-      throw new IllegalArgumentException("ehDocname must be " + E_H_DOCNAME_SIZE + " bytes");
-    if (pkHash.length != PUBKEY_HASH_SIZE)
-      throw new IllegalArgumentException("pubKeyHash must be " + PUBKEY_HASH_SIZE + " bytes");
-    hashCode = Fields.hashCode(pkHash) ^ Fields.hashCode(ehDocname);
+    this(validateState(pkHash, ehDocname, cryptoAlgorithm));
   }
 
   /**
@@ -146,11 +137,35 @@ public class NodeSSK extends Key {
    */
   public NodeSSK(byte[] pkHash, byte[] ehDocname, DSAPublicKey pubKey, byte cryptoAlgorithm)
       throws SSKVerifyException {
-    super(makeRoutingKey(pkHash, ehDocname));
-    this.encryptedHashedDocname = ehDocname;
-    this.pubKeyHash = pkHash;
-    this.cryptoAlgorithm = cryptoAlgorithm;
-    this.pubKey = pubKey;
+    this(validateState(pkHash, ehDocname, pubKey, cryptoAlgorithm));
+  }
+
+  private NodeSSK(ValidatedState state) {
+    super(makeRoutingKey(state.pkHash, state.ehDocname));
+    this.encryptedHashedDocname = state.ehDocname;
+    this.pubKeyHash = state.pkHash;
+    this.cryptoAlgorithm = state.cryptoAlgorithm;
+    this.pubKey = state.pubKey;
+    this.hashCode = state.hashCodeValue;
+  }
+
+  private static ValidatedState validateState(
+      byte[] pkHash, byte[] ehDocname, byte cryptoAlgorithm) {
+    if (ehDocname.length != E_H_DOCNAME_SIZE)
+      throw new IllegalArgumentException("ehDocname must be " + E_H_DOCNAME_SIZE + " bytes");
+    if (pkHash.length != PUBKEY_HASH_SIZE)
+      throw new IllegalArgumentException("pubKeyHash must be " + PUBKEY_HASH_SIZE + " bytes");
+    return new ValidatedState(
+        pkHash,
+        ehDocname,
+        null,
+        cryptoAlgorithm,
+        Fields.hashCode(pkHash) ^ Fields.hashCode(ehDocname));
+  }
+
+  private static ValidatedState validateState(
+      byte[] pkHash, byte[] ehDocname, DSAPublicKey pubKey, byte cryptoAlgorithm)
+      throws SSKVerifyException {
     if (pubKey != null) {
       byte[] hash = SHA256.digest(pubKey.asBytes());
       if (!Arrays.equals(hash, pkHash)) throw new SSKVerifyException("Invalid pubKey: wrong hash");
@@ -159,8 +174,20 @@ public class NodeSSK extends Key {
       throw new IllegalArgumentException("ehDocname must be " + E_H_DOCNAME_SIZE + " bytes");
     if (pkHash.length != PUBKEY_HASH_SIZE)
       throw new IllegalArgumentException("pubKeyHash must be " + PUBKEY_HASH_SIZE + " bytes");
-    hashCode = Fields.hashCode(pkHash) ^ Fields.hashCode(ehDocname);
+    return new ValidatedState(
+        pkHash,
+        ehDocname,
+        pubKey,
+        cryptoAlgorithm,
+        Fields.hashCode(pkHash) ^ Fields.hashCode(ehDocname));
   }
+
+  private record ValidatedState(
+      byte[] pkHash,
+      byte[] ehDocname,
+      DSAPublicKey pubKey,
+      byte cryptoAlgorithm,
+      int hashCodeValue) {}
 
   private NodeSSK(NodeSSK key) {
     super(key);
