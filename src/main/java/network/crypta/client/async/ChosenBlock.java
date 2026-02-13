@@ -133,14 +133,32 @@ public abstract class ChosenBlock {
    * @throws NullPointerException if {@code token} is {@code null}.
    */
   protected ChosenBlock(SendableRequestItem token, Key key, ClientKey ckey, Options options) {
-    this.token = requireToken(token);
-    this.key = key;
-    this.ckey = ckey;
-    this.localRequestOnly = options.localRequestOnly();
-    this.ignoreStore = options.ignoreStore();
-    this.canWriteClientCache = options.canWriteClientCache();
-    this.forkOnCacheable = options.forkOnCacheable();
-    this.realTimeFlag = options.realTimeFlag();
+    this(validateConstructionState(token, key, ckey, options));
+  }
+
+  private ChosenBlock(ConstructionState state) {
+    this.token = state.token;
+    this.key = state.key;
+    this.ckey = state.ckey;
+    this.localRequestOnly = state.localRequestOnly;
+    this.ignoreStore = state.ignoreStore;
+    this.canWriteClientCache = state.canWriteClientCache;
+    this.forkOnCacheable = state.forkOnCacheable;
+    this.realTimeFlag = state.realTimeFlag;
+  }
+
+  private static ConstructionState validateConstructionState(
+      SendableRequestItem token, Key key, ClientKey ckey, Options options) {
+    SendableRequestItem checkedToken = requireToken(token);
+    return new ConstructionState(
+        checkedToken,
+        key,
+        ckey,
+        options.localRequestOnly(),
+        options.ignoreStore(),
+        options.canWriteClientCache(),
+        options.forkOnCacheable(),
+        options.realTimeFlag());
   }
 
   private static SendableRequestItem requireToken(SendableRequestItem token) {
@@ -148,6 +166,36 @@ public abstract class ChosenBlock {
       throw new NullPointerException();
     }
     return token;
+  }
+
+  private static final class ConstructionState {
+    private final SendableRequestItem token;
+    private final Key key;
+    private final ClientKey ckey;
+    private final boolean localRequestOnly;
+    private final boolean ignoreStore;
+    private final boolean canWriteClientCache;
+    private final boolean forkOnCacheable;
+    private final boolean realTimeFlag;
+
+    private ConstructionState(
+        SendableRequestItem token,
+        Key key,
+        ClientKey ckey,
+        boolean localRequestOnly,
+        boolean ignoreStore,
+        boolean canWriteClientCache,
+        boolean forkOnCacheable,
+        boolean realTimeFlag) {
+      this.token = token;
+      this.key = key;
+      this.ckey = ckey;
+      this.localRequestOnly = localRequestOnly;
+      this.ignoreStore = ignoreStore;
+      this.canWriteClientCache = canWriteClientCache;
+      this.forkOnCacheable = forkOnCacheable;
+      this.realTimeFlag = realTimeFlag;
+    }
   }
 
   /**
