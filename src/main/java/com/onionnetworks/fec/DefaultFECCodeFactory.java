@@ -40,7 +40,7 @@ import java.util.logging.Logger;
  * @see FECCodeFactory
  */
 @SuppressWarnings("java:S1181")
-public class DefaultFECCodeFactory extends FECCodeFactory {
+public final class DefaultFECCodeFactory extends FECCodeFactory {
 
   /**
    * Constructors for FEC implementations that operate on 8-bit symbols, populated from the

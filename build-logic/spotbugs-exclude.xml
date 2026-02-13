@@ -97,10 +97,6 @@
   -->
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="com.onionnetworks.fec.DefaultFECCodeFactory"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="com.onionnetworks.util.AsyncPersistentProps"/>
   </Match>
   <Match>
@@ -166,10 +162,6 @@
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.io.AddressTrackerItem"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.io.comm.MessageType"/>
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
@@ -246,10 +238,6 @@
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.support.io.ReadOnlyFileSliceBucket$MyInputStream"/>
-  </Match>
-  <Match>
-    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
-    <Class name="network.crypta.support.io.ReadOnlyRandomAccessBuffer"/>
   </Match>
   <Match>
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
