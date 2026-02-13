@@ -229,8 +229,8 @@ final class CachingFreenetStoreTest {
                 new SaltedHashStoreDependencies<>(
                     store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                 new SaltedHashStoreSizing(howManyBlocks * 5L, false, true, true)))) {
-      WaitableCachingFreenetStoreTracker tracker =
-          new WaitableCachingFreenetStoreTracker(
+      CachingFreenetStoreTracker tracker =
+          new CachingFreenetStoreTracker(
               cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
@@ -251,7 +251,7 @@ final class CachingFreenetStoreTest {
           chkBlocks.add(block);
         }
 
-        tracker.waitForZero();
+        waitForZero(tracker);
         // Assert: data present in underlying store and decodable via cache
         boolean atLeastOneKey = false;
         for (int i = 0; i < howManyBlocks; i++) {
@@ -308,8 +308,8 @@ final class CachingFreenetStoreTest {
                   new SaltedHashStoreDependencies<>(
                       store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                   new SaltedHashStoreSizing(20, true, true, true)))) {
-        WaitableCachingFreenetStoreTracker tracker =
-            new WaitableCachingFreenetStoreTracker(
+        CachingFreenetStoreTracker tracker =
+            new CachingFreenetStoreTracker(
                 (sskBlockSize * 3L) / 2, cachingFreenetStorePeriod, ticker);
         try (CachingFreenetStore<SSKBlock> cachingStore =
             new CachingFreenetStore<>(store, saltStore, tracker)) {
@@ -421,7 +421,7 @@ final class CachingFreenetStoreTest {
           }
 
           // Assert: after a flush both keys are accessible via cache/backing
-          tracker.waitForZero();
+          waitForZero(tracker);
 
           assertEquals(store.fetch(sskBlock.getKey(), false, false, false, false, null), sskBlock);
           assertEquals(
@@ -812,8 +812,8 @@ final class CachingFreenetStoreTest {
                 new SaltedHashStoreDependencies<>(
                     store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                 new SaltedHashStoreSizing(10, false, true, true)))) {
-      WaitableCachingFreenetStoreTracker tracker =
-          new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
+      CachingFreenetStoreTracker tracker =
+          new CachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -842,7 +842,7 @@ final class CachingFreenetStoreTest {
                   null));
         }
 
-        tracker.waitForZero();
+        waitForZero(tracker);
         // Assert: at least one key persisted to underlying store
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
@@ -1002,8 +1002,8 @@ final class CachingFreenetStoreTest {
                 new SaltedHashStoreDependencies<>(
                     store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                 new SaltedHashStoreSizing(10, true, true, true)))) {
-      WaitableCachingFreenetStoreTracker tracker =
-          new WaitableCachingFreenetStoreTracker(cachingFreenetStoreMaxSize, 100, ticker);
+      CachingFreenetStoreTracker tracker =
+          new CachingFreenetStoreTracker(cachingFreenetStoreMaxSize, 100, ticker);
       try (CachingFreenetStore<SSKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -1029,7 +1029,7 @@ final class CachingFreenetStoreTest {
           sskBlocks.add(block);
         }
 
-        tracker.waitForZero();
+        waitForZero(tracker);
         // Assert: at least one key persisted to underlying store
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {
@@ -1297,36 +1297,12 @@ final class CachingFreenetStoreTest {
             Compressor.DEFAULT_COMPRESSORDESCRIPTOR));
   }
 
-  static class WaitableCachingFreenetStoreTracker extends CachingFreenetStoreTracker {
-    public WaitableCachingFreenetStoreTracker(
-        long cachingFreenetStoreMaxSize, long cachingFreenetStorePeriod, Ticker ticker) {
-      super(cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
+  private static void waitForZero(CachingFreenetStoreTracker tracker) throws InterruptedException {
+    long deadline = System.currentTimeMillis() + 30_000L;
+    while (tracker.getSizeOfCache() > 0 && System.currentTimeMillis() < deadline) {
+      Thread.sleep(5L);
     }
-
-    public void waitForZero() throws InterruptedException {
-      synchronized (sync) {
-        long observedPushGeneration = pushGeneration;
-        while (getSizeOfCache() > 0) {
-          while (getSizeOfCache() > 0 && observedPushGeneration == pushGeneration) {
-            sync.wait();
-          }
-          observedPushGeneration = pushGeneration;
-        }
-      }
-    }
-
-    @Override
-    void pushAllCachingStores() {
-      super.pushAllCachingStores();
-      synchronized (sync) {
-        pushGeneration++;
-        sync.notifyAll();
-      }
-    }
-
-    /* Don't reuse (this), avoid changing locking behavior of the parent class */
-    private final Object sync = new Object();
-    private long pushGeneration;
+    assertEquals(0L, tracker.getSizeOfCache(), "Timed out waiting for cache tracker to drain");
   }
 
   private static final File TEMP_DIR = new File("tmp-CachingFreenetStoreTest");
