@@ -55,7 +55,7 @@ import org.slf4j.LoggerFactory;
  * @see SplitFileInserterStorage
  * @see SplitFileInserterSender
  */
-public class SplitFileInserter
+public final class SplitFileInserter
     implements ClientPutState, Serializable, SplitFileInserterStorageCallback {
 
   private static final Logger LOG = LoggerFactory.getLogger(SplitFileInserter.class);
