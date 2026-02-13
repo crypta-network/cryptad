@@ -26,6 +26,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import network.crypta.crypt.DSAGroup;
 import network.crypta.crypt.DSAPrivateKey;
 import network.crypta.crypt.DSAPublicKey;
@@ -1298,9 +1300,12 @@ final class CachingFreenetStoreTest {
   }
 
   private static void waitForZero(CachingFreenetStoreTracker tracker) throws InterruptedException {
-    long deadline = System.currentTimeMillis() + 30_000L;
-    while (tracker.getSizeOfCache() > 0 && System.currentTimeMillis() < deadline) {
-      Thread.sleep(5L);
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+    while (tracker.getSizeOfCache() > 0 && System.nanoTime() < deadline) {
+      LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5));
+      if (Thread.interrupted()) {
+        throw new InterruptedException("Interrupted while waiting for cache tracker to drain");
+      }
     }
     assertEquals(0L, tracker.getSizeOfCache(), "Timed out waiting for cache tracker to drain");
   }
@@ -1322,6 +1327,7 @@ final class CachingFreenetStoreTest {
   // ------------------------------------------------------------
 
   // Simple concrete block used by the Mockito-focused tests in this class
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class TestBlock implements StorableBlock {
     private final byte[] routingKey;
     private final byte[] fullKey;
@@ -1363,6 +1369,7 @@ final class CachingFreenetStoreTest {
   }
 
   // AutoCloseable wrapper for ExecutorService so we can use try-with-resources
+  @SuppressWarnings("ClassCanBeRecord")
   private static class AutoClosingExecutor implements AutoCloseable {
     private final java.util.concurrent.ExecutorService delegate;
 

@@ -136,6 +136,25 @@ class PeerPersistenceTest {
   }
 
   @Test
+  void flushOnShutdown_whenOldOpennetPeersArrayIsNull_writesEmptyOldOpennetFile(
+      @TempDir Path tempDir) {
+    when(node.network()).thenReturn(network);
+
+    OpennetManager opennetManager = org.mockito.Mockito.mock(OpennetManager.class);
+    Path oldOpennetFile = tempDir.resolve("old-opennet.peers");
+    when(opennetManager.getOldPeersFilename()).thenReturn(oldOpennetFile.toString());
+    when(network.opennet()).thenReturn(opennetManager);
+
+    PeerPersistence persistence = new PeerPersistence(node, peerManager);
+
+    persistence.flushOnShutdown();
+
+    assertAll(
+        () -> assertTrue(Files.exists(oldOpennetFile)),
+        () -> assertEquals("", Files.readString(oldOpennetFile, StandardCharsets.UTF_8)));
+  }
+
+  @Test
   void tryReadPeers_whenOldOpennetPeers_addsOldOpennetNode(@TempDir Path tempDir) throws Exception {
     Path opennetFile = tempDir.resolve("opennet.peers");
     SimpleFieldSet peerFieldSet = simpleFieldSet("peer");

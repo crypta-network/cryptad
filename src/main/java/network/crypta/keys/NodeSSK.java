@@ -109,7 +109,7 @@ public class NodeSSK extends Key {
   /**
    * Creates an SSK identifier with the given payload and algorithm.
    *
-   * <p>Neither argument is copied by the constructor for routing key calculation; however, both are
+   * <p>The constructor copies neither argument for routing key calculation; however, both are
    * validated for expected lengths and stored internally. The attached public key is left unset.
    *
    * @param pkHash 32-byte SHA‑256 of the public key.
@@ -182,12 +182,27 @@ public class NodeSSK extends Key {
         Fields.hashCode(pkHash) ^ Fields.hashCode(ehDocname));
   }
 
-  private record ValidatedState(
-      byte[] pkHash,
-      byte[] ehDocname,
-      DSAPublicKey pubKey,
-      byte cryptoAlgorithm,
-      int hashCodeValue) {}
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class ValidatedState {
+    final byte[] pkHash;
+    final byte[] ehDocname;
+    final DSAPublicKey pubKey;
+    final byte cryptoAlgorithm;
+    final int hashCodeValue;
+
+    ValidatedState(
+        byte[] pkHash,
+        byte[] ehDocname,
+        DSAPublicKey pubKey,
+        byte cryptoAlgorithm,
+        int hashCodeValue) {
+      this.pkHash = pkHash;
+      this.ehDocname = ehDocname;
+      this.pubKey = pubKey;
+      this.cryptoAlgorithm = cryptoAlgorithm;
+      this.hashCodeValue = hashCodeValue;
+    }
+  }
 
   private NodeSSK(NodeSSK key) {
     super(key);
@@ -415,7 +430,7 @@ public class NodeSSK extends Key {
    *
    * <p>The computation hashes {@code E(H(docname))} followed by {@code pubKeyHash} using SHA‑256.
    * If the buffer length differs from {@link #FULL_KEY_LENGTH}, an error is logged but the method
-   * proceeds using the available bytes at the expected offsets.
+   * proceeds to use the available bytes at the expected offsets.
    *
    * @param keyBuf full-key buffer; expected to be {@link #FULL_KEY_LENGTH} bytes.
    * @return 32-byte routing key.

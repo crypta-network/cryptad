@@ -1108,11 +1108,10 @@ public final class SaltedHashFreenetStore<T extends StorableBlock> implements Fr
       return (flag & ENTRY_FLAG_OCCUPIED) == 0;
     }
 
-    @SuppressWarnings("java:S1168")
     byte[] getDigestedRoutingKey() {
       if (digestedRoutingKey == null) {
         if (plainRoutingKey == null) {
-          return null;
+          throw new IllegalStateException("Entry has neither plain nor digested routing key");
         } else {
           digestedRoutingKey = cipherManager.getDigestedKey(plainRoutingKey);
         }

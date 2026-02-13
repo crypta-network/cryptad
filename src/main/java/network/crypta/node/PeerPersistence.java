@@ -424,6 +424,7 @@ class PeerPersistence {
   private String getOldOpennetPeersString(OpennetManager om) {
     StringBuilder sb = new StringBuilder();
     OpennetPeerNode[] oldPeers = om.getOldPeers();
+    if (oldPeers == null) return sb.toString();
     for (OpennetPeerNode pn : oldPeers) {
       sb.append(pn.exportDiskFieldSet().toOrderedString());
     }

@@ -84,7 +84,7 @@ class SplitFileInserterSenderTest {
       try {
         f = cls.getDeclaredField(name);
         break;
-      } catch (NoSuchFieldException ignored) {
+      } catch (NoSuchFieldException _) {
         cls = cls.getSuperclass();
       }
     }
@@ -552,6 +552,7 @@ class SplitFileInserterSenderTest {
   }
 
   /** Simple job runner that executes jobs immediately on the calling thread. */
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class ImmediateRunner implements PersistentJobRunner {
     private final ClientContext ctx;
 

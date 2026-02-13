@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * ClientSSK} locations. A USK itself cannot be fetched directly; callers must derive an SSK for a
  * specific edition.
  *
- * <p>It carries enough information to derive a concrete SSK (public key hash, encryption key and
+ * <p>It carries enough information to derive a concrete SSK (public key hash, encryption key, and
  * algorithm), plus the site name and a suggested edition number. Equality and ordering can include
  * the edition (see {@link #equals(Object, boolean)} and {@link #compareTo(USK)}).
  *
@@ -29,8 +29,8 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
 
   @Serial private static final long serialVersionUID = 1L;
   /* Separator between site name and edition in the derived SSK doc name.
-   * Chosen as "-" to keep USK → SSK conversion trivial; conversion in the other
-   * direction is handled by heuristics in {@link #turnMySSKIntoUSK(FreenetURI)}.
+   * Chosen as "-" to keep USK → SSK conversion trivial; heuristics
+   * handle conversion in the other direction in {@link #turnMySSKIntoUSK(FreenetURI)}.
    */
   protected static final String SEPARATOR = "-";
 
@@ -115,13 +115,30 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
         pubKeyHash, cryptoKey, siteName, suggestedEdition, cryptoAlgorithm, hashCode);
   }
 
-  private record ValidatedState(
-      byte[] pubKeyHash,
-      byte[] cryptoKey,
-      String siteName,
-      long suggestedEdition,
-      byte cryptoAlgorithm,
-      int hashCodeValue) {}
+  @SuppressWarnings("ClassCanBeRecord")
+  private static final class ValidatedState {
+    final byte[] pubKeyHash;
+    final byte[] cryptoKey;
+    final String siteName;
+    final long suggestedEdition;
+    final byte cryptoAlgorithm;
+    final int hashCodeValue;
+
+    ValidatedState(
+        byte[] pubKeyHash,
+        byte[] cryptoKey,
+        String siteName,
+        long suggestedEdition,
+        byte cryptoAlgorithm,
+        int hashCodeValue) {
+      this.pubKeyHash = pubKeyHash;
+      this.cryptoKey = cryptoKey;
+      this.siteName = siteName;
+      this.suggestedEdition = suggestedEdition;
+      this.cryptoAlgorithm = cryptoAlgorithm;
+      this.hashCodeValue = hashCodeValue;
+    }
+  }
 
   /**
    * Builds a USK from a {@link FreenetURI} of key type {@code USK}.
@@ -145,7 +162,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
    *
    * @param pubKeyHash2 Public key hash.
    * @param cryptoKey2 Crypto key.
-   * @param siteName2 Site name without edition.
+   * @param siteName2 Site name without an edition.
    * @param suggestedEdition2 Edition to store on the instance.
    * @param cryptoAlgorithm Algorithm identifier compatible with {@link ClientSSK}.
    */
@@ -168,7 +185,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
             ^ (int) (suggestedEdition >> 32);
   }
 
-  /** For deserialization frameworks only. Fields are initialized to defaults. */
+  /** For deserialization frameworks only. Fields are initialized to default values. */
   protected USK() {
     // For serialization frameworks.
     pubKeyHash = null;
@@ -190,7 +207,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
     this.suggestedEdition = myARKNumber;
     this.cryptoAlgorithm = ssk.cryptoAlgorithm;
 
-    if (hasEditionSuffix(siteName)) { // not error -- just "possible" bug
+    if (hasEditionSuffix(siteName)) { // not error -- just a "possible" bug
       LOG.info("POSSIBLE BUG: edition in ClientSSK {}", ssk);
     }
 
@@ -208,9 +225,9 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
    *
    * <p>Implementation is linear and avoids regex backtracking. It scans for a hyphen followed by at
    * least one digit; the digit run must be followed by either end-of-string or '/'. If a hyphen is
-   * followed by a digit run that is immediately followed by a non-'/' non-terminating character,
-   * the scan continues after the digit run rather than bailing out, so later "-<digits>" segments
-   * are still detected (e.g., {@code foo-1a-23} → {@code true}).
+   * followed by a digit run immediately followed by a non-'/' non-terminating character, the scan
+   * continues after the digit run rather than bailing out, so later "-<digits>" segments are still
+   * detected (e.g., {@code foo-1a-23} → {@code true}).
    */
   private static boolean hasEditionSuffix(String name) {
     if (name == null || name.isEmpty()) return false;
@@ -230,7 +247,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
 
       int j = skipDigits(name, hy + 1); // first non-digit after the run
       if (j == len || name.charAt(j) == '/') {
-        return true; // "-<digits>" at end or before '/'
+        return true; // "-<digits>" at the end or before '/'
       }
 
       // Not a valid suffix at this hyphen; continue scanning from the end of this digit run
@@ -300,7 +317,7 @@ public class USK extends BaseClientKey implements Comparable<USK>, Serializable 
    *
    * @param string Doc name to embed in the SSK (usually {@code siteName + "-" + ver}).
    * @return The corresponding {@code ClientSSK}.
-   * @throws IllegalStateException if the constructed SSK would be malformed.
+   * @throws IllegalStateException if the constructed SSK are malformed.
    */
   public ClientSSK getSSK(String string) {
     try {

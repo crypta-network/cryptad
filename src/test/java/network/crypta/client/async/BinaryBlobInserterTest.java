@@ -133,10 +133,8 @@ class BinaryBlobInserterTest {
 
     // Simulate two RNF failures on the single block.
     BinaryBlobInserter.MySendableInsert si = inserter.inserters[0];
-    si.onFailure(
-        new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND), null, clientContext);
-    si.onFailure(
-        new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND), null, clientContext);
+    si.onFailure(new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND), clientContext);
+    si.onFailure(new LowLevelPutException(LowLevelPutException.ROUTE_NOT_FOUND), clientContext);
 
     // After threshold, it should count as success and complete the whole insert.
     verify(parent).completedBlock(false, clientContext);
@@ -157,10 +155,8 @@ class BinaryBlobInserterTest {
 
     BinaryBlobInserter.MySendableInsert si = inserter.inserters[0];
     // Two internal errors -> retries become 2 > maxRetries (1) -> fail overall.
-    si.onFailure(
-        new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR), null, clientContext);
-    si.onFailure(
-        new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR), null, clientContext);
+    si.onFailure(new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR), clientContext);
+    si.onFailure(new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR), clientContext);
 
     ArgumentCaptor<InsertException> ex = ArgumentCaptor.forClass(InsertException.class);
     verify(parent).failedBlock(clientContext);
@@ -181,8 +177,7 @@ class BinaryBlobInserterTest {
         new BinaryBlobInserter(blob, parent, requestClient, false, (short) 1, ctx, clientContext);
 
     BinaryBlobInserter.MySendableInsert si = inserter.inserters[0];
-    si.onFailure(
-        new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR), null, clientContext);
+    si.onFailure(new LowLevelPutException(LowLevelPutException.INTERNAL_ERROR), clientContext);
 
     ArgumentCaptor<InsertException> ex = ArgumentCaptor.forClass(InsertException.class);
     verify(parent).fatallyFailedBlock(clientContext);

@@ -203,13 +203,13 @@ public final class BinaryBlobInserter implements ClientPutState {
                 @Override
                 public void onSuccess(
                     SendableRequestItem keyNum, ClientKey key, ClientContext context) {
-                  MySendableInsert.this.onSuccess(keyNum, key, context);
+                  MySendableInsert.this.onSuccess(context);
                 }
 
                 @Override
                 public void onFailure(
                     LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
-                  MySendableInsert.this.onFailure(e, keyNum, context);
+                  MySendableInsert.this.onFailure(e, context);
                 }
               });
     }
@@ -222,7 +222,7 @@ public final class BinaryBlobInserter implements ClientPutState {
       sendableInsert.cancel(context);
     }
 
-    void onSuccess(SendableRequestItem keyNum, ClientKey key, ClientContext context) {
+    void onSuccess(ClientContext context) {
       synchronized (BinaryBlobInserter.this) {
         if (inserters[blockNum] == null) return;
         inserters[blockNum] = null;
@@ -234,7 +234,7 @@ public final class BinaryBlobInserter implements ClientPutState {
     }
 
     // Note: logic mirrors SingleBlockInserter; consider future refactor.
-    void onFailure(LowLevelPutException e, SendableRequestItem keyNum, ClientContext context) {
+    void onFailure(LowLevelPutException e, ClientContext context) {
       synchronized (BinaryBlobInserter.this) {
         if (inserters[blockNum] == null) return;
       }
@@ -263,7 +263,7 @@ public final class BinaryBlobInserter implements ClientPutState {
         if (consecutiveRNFs == consecutiveRNFsCountAsSuccess) {
           if (LOG.isDebugEnabled())
             LOG.debug("Consecutive RNFs: {} - counting as success", consecutiveRNFs);
-          onSuccess(keyNum, null, context);
+          onSuccess(context);
           return;
         }
       } else consecutiveRNFs = 0;

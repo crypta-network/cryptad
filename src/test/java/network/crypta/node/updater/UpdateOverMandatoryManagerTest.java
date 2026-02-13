@@ -114,9 +114,8 @@ class UpdateOverMandatoryManagerTest {
         };
     when(node.getRandom()).thenReturn(rs);
 
-    // Default: auto-update enabled, jar-UOM disabled (override per-test when needed)
+    // Default: auto-update enabled.
     when(updateManager.isEnabled()).thenReturn(true);
-    when(updateManager.supportsJarUOM()).thenReturn(false);
 
     uom = new UpdateOverMandatoryManager(updateManager);
   }
@@ -319,18 +318,16 @@ class UpdateOverMandatoryManagerTest {
   }
 
   @Test
-  void flags_and_fetching_state_expectDefaultsAndTransitions()
+  void flags_and_fetching_state_expectDefaultsWhenJarUomDisabled()
       throws MalformedURLException, NotConnectedException {
     // Arrange defaults
     assertFalse(uom.persistent());
     assertFalse(uom.realTimeFlag());
     assertFalse(uom.isFetchingMain());
 
-    // Prepare a main-jar offer scenario to trigger sendUOMRequest() and fetching state
-    when(updateManager.supportsJarUOM()).thenReturn(true);
+    // Prepare a main-jar offer scenario. In package-based mode this should be ignored.
     when(updateManager.isBlown()).thenReturn(false);
     when(node.isOutdated()).thenReturn(true); // intentionally spelled as in production code
-    when(updateManager.getStartedFetchingNextMainJarTimestamp()).thenReturn(0L);
     when(updateManager.newMainJarVersion()).thenReturn(0);
     when(updateManager.getMainVersion()).thenReturn(0);
     when(updateManager.getURI()).thenReturn(new FreenetURI("KSK@main"));
@@ -363,7 +360,7 @@ class UpdateOverMandatoryManagerTest {
     assertTrue(uom.handleAnnounce(m, peer));
 
     // Assert transitions
-    assertTrue(uom.isFetchingMain(), "fetching main jar should be true after request");
-    assertTrue(uom.fetchingUOM(), "fetchingUOM flag should be true after first request");
+    assertFalse(uom.isFetchingMain(), "main-jar UOM must stay disabled");
+    assertFalse(uom.fetchingUOM(), "fetchingUOM must stay false when jar UOM is disabled");
   }
 }

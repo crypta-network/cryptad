@@ -8,6 +8,7 @@ import network.crypta.io.comm.Message;
 import network.crypta.io.comm.MessageType;
 import network.crypta.io.comm.NotConnectedException;
 import network.crypta.io.comm.Peer;
+import network.crypta.node.updater.NodeUpdateManager;
 import network.crypta.support.Fields;
 import network.crypta.support.ShortBuffer;
 import org.slf4j.Logger;
@@ -229,18 +230,18 @@ final class NodeControlMessageHandler {
           .handleSendingRevocation(m, source);
     }
     if (Objects.equals(spec, DMT.CryptadUOMRequestMainJar)
-        && node.services().nodeUpdater().supportsJarUOM()
+        && NodeUpdateManager.SUPPORTS_JAR_UOM
         && source.isRealConnection()) {
       node.services().nodeUpdater().getUpdateOverMandatory().handleRequestJar(m, source);
       return true;
     }
     if (Objects.equals(spec, DMT.CryptadUOMSendingMainJar)
-        && node.services().nodeUpdater().supportsJarUOM()
+        && NodeUpdateManager.SUPPORTS_JAR_UOM
         && source.isRealConnection()) {
       return node.services().nodeUpdater().getUpdateOverMandatory().handleSendingMain(m, source);
     }
     if (Objects.equals(spec, DMT.CryptadUOMFetchDependency)
-        && node.services().nodeUpdater().supportsJarUOM()
+        && NodeUpdateManager.SUPPORTS_JAR_UOM
         && source.isRealConnection()) {
       node.services().nodeUpdater().getUpdateOverMandatory().handleFetchDependency(m, source);
       return true;

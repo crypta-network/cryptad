@@ -19,9 +19,7 @@ import network.crypta.l10n.NodeL10n;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.updater.NodeUpdateManager;
-import network.crypta.node.updater.RevocationChecker;
 import network.crypta.support.HTMLNode;
-import network.crypta.support.TimeUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -94,27 +92,13 @@ class UpdatedVersionAvailableUserAlertTest {
   }
 
   @Test
-  @DisplayName("text_whenArmedFinalCheck_includesFinalCheckMessageWithoutForm")
-  void text_whenArmedFinalCheck_includesFinalCheckMessageWithoutForm() {
+  @DisplayName("text_whenArmed_includesArmedMessageWithoutForm")
+  void text_whenArmed_includesArmedMessageWithoutForm() {
     when(updater.isArmed()).thenReturn(true);
-    when(updater.inFinalCheck()).thenReturn(true);
-    when(updater.getRevocationDNFCounter()).thenReturn(2);
-    long remainingMs = 30_000L;
-    when(updater.timeRemainingOnCheck()).thenReturn(remainingMs);
-
-    String expectedFinalCheck =
-        NodeL10n.getBase()
-            .getString(
-                "UpdatedVersionAvailableUserAlert.finalCheck",
-                new String[] {"count", "max", "time"},
-                new String[] {
-                  Integer.toString(2),
-                  Integer.toString(RevocationChecker.REVOCATION_DNF_MIN),
-                  TimeUtil.formatTime(remainingMs)
-                });
+    String expectedArmed = NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.armed");
 
     String text = alert.getText();
-    assertTrue(text.contains(expectedFinalCheck), "finalCheck message should be present");
+    assertTrue(text.contains(expectedArmed), "armed message should be present");
     assertFalse(text.contains("<form"), "No form should be rendered when in final check");
   }
 
@@ -127,7 +111,6 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.newMainJarVersion()).thenReturn(1234);
     when(updater.canUpdateImmediately()).thenReturn(true);
     when(node.network().updateIsUrgent()).thenReturn(false);
-    when(updater.brokenDependencies()).thenReturn(false);
 
     String downloaded =
         NodeL10n.getBase()
@@ -155,7 +138,6 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.hasNewMainJar()).thenReturn(false);
     when(updater.canUpdateImmediately()).thenReturn(false);
     when(node.network().updateIsUrgent()).thenReturn(false);
-    when(updater.brokenDependencies()).thenReturn(false);
 
     String prompt =
         NodeL10n.getBase().getString("UpdatedVersionAvailableUserAlert.clickToUpdateASAP");
@@ -176,7 +158,6 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.fetchingFromUOM()).thenReturn(true);
     when(updater.fetchingNewMainJar()).thenReturn(false);
     when(node.network().updateIsUrgent()).thenReturn(false);
-    when(updater.brokenDependencies()).thenReturn(false);
 
     Path nodeDir = Files.createTempDirectory("cryptad-node-test");
     try {
@@ -222,7 +203,6 @@ class UpdatedVersionAvailableUserAlertTest {
     when(updater.canUpdateNow()).thenReturn(true);
     when(updater.canUpdateImmediately()).thenReturn(true);
     when(node.network().updateIsUrgent()).thenReturn(false);
-    when(updater.brokenDependencies()).thenReturn(false);
 
     when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getFormPassword()).thenReturn("secret-token");
@@ -261,7 +241,6 @@ class UpdatedVersionAvailableUserAlertTest {
     when(node.services().clientCore()).thenReturn(clientCore);
     when(clientCore.getFormPassword()).thenReturn("pw");
     when(node.network().updateIsUrgent()).thenReturn(false);
-    when(updater.brokenDependencies()).thenReturn(false);
 
     // Capture the version passed into addChangelogLinks (will be overwritten on each call)
     AtomicLong capturedVersion = new AtomicLong(-1);
@@ -308,15 +287,11 @@ class UpdatedVersionAvailableUserAlertTest {
   }
 
   @Test
-  @DisplayName("priority_whenFinalCheckOrReadyOrNotArmed_returnsError")
-  void priority_whenFinalCheckOrReadyOrNotArmed_returnsError() {
+  @DisplayName("priority_whenReadyOrNotArmed_returnsError")
+  void priority_whenReadyOrNotArmed_returnsError() {
     when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.getNode()).thenReturn(node);
 
-    when(updater.inFinalCheck()).thenReturn(true);
-    assertEquals(UserAlert.ERROR, alert.getPriorityClass());
-
-    when(updater.inFinalCheck()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(true);
     assertEquals(UserAlert.ERROR, alert.getPriorityClass());
 
@@ -330,7 +305,6 @@ class UpdatedVersionAvailableUserAlertTest {
   void priority_whenArmedAndNotReady_returnsMinor() {
     when(node.network().updateIsUrgent()).thenReturn(false);
     when(updater.getNode()).thenReturn(node);
-    when(updater.inFinalCheck()).thenReturn(false);
     when(updater.canUpdateNow()).thenReturn(false);
     when(updater.isArmed()).thenReturn(true);
     assertEquals(UserAlert.MINOR, alert.getPriorityClass());
