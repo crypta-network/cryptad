@@ -192,6 +192,15 @@ class CookieTest {
   }
 
   @Test
+  void hashCode_withoutDomain_matchesEqualsContract() {
+    Cookie first = new Cookie(VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie second = new Cookie(VALID_PATH, VALID_NAME, "ignored", FUTURE_DATE);
+
+    assertEquals(first, second);
+    assertEquals(first.hashCode(), second.hashCode());
+  }
+
+  @Test
   void encodeToHeaderValue_includesAllAttributesInOrder() {
     String encoded = cookie.encodeToHeaderValue();
     String expectedExpires = TimeUtil.makeHTTPDate(FUTURE_DATE.toEpochMilli());
