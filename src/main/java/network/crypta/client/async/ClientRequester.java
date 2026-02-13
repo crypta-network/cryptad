@@ -123,7 +123,11 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
    * @throws NullPointerException if {@code requestClient} is {@code null}
    */
   protected ClientRequester(short priorityClass, RequestClient requestClient) {
-    RequestClient checkedClient = requireRequestClient(requestClient);
+    this(priorityClass, requireRequestClient(requestClient), System.currentTimeMillis());
+  }
+
+  private ClientRequester(
+      short priorityClass, RequestClient checkedClient, long creationTimeMillis) {
     this.priorityClass = priorityClass;
     this.client = checkedClient;
     this.realTimeFlag = checkedClient.realTimeFlag();
@@ -131,9 +135,9 @@ public abstract class ClientRequester implements Serializable, ClientRequestSche
         System.identityHashCode(
             this); // the old object id will do fine, as long as we ensure it doesn't change!
     synchronized (allRequesters) {
-      if (!persistent()) allRequesters.put(this, dumbValue);
+      if (!checkedClient.persistent()) allRequesters.put(this, dumbValue);
     }
-    creationTime = System.currentTimeMillis();
+    creationTime = creationTimeMillis;
   }
 
   private static RequestClient requireRequestClient(RequestClient requestClient) {
