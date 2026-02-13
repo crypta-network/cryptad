@@ -201,19 +201,19 @@ public class Cookie {
    *     path component.
    */
   public static URI validateDomain(String domainString) throws URISyntaxException {
-    return validateDomain(new URI(domainString.toLowerCase(Locale.ROOT)));
+    return validateDomain(new URI(domainString));
   }
 
   /**
    * Validates a pre-parsed domain URI for cookie use, enforcing scheme and path constraints.
    *
    * <p>The method accepts only {@code http} or {@code https} schemes and forbids any non-root path
-   * component. It returns the URI unchanged so callers may preserve host and port information while
-   * guaranteeing compatibility with {@link #encodeToHeaderValue()}.
+   * component. On success, it returns a lowercased URI representation, so cookie identity
+   * comparisons remain case-insensitive for domain text.
    *
    * @param domain Candidate domain URI, typically derived from the request host; must not be {@code
    *     null}.
-   * @return The same {@link URI} instance when validation succeeds, enabling fluent assignment.
+   * @return A lowercased {@link URI} suitable for stable cookie identity comparisons.
    * @throws IllegalArgumentException If the scheme is not HTTP(S), or the URI includes a path
    *     segment other than {@code /}.
    */
@@ -228,7 +228,7 @@ public class Cookie {
     if (!"".equals(path) && !"/".equals(path))
       throw new IllegalArgumentException("Illegal cookie domain, contains a path: " + domain);
 
-    return domain;
+    return URI.create(domain.toString().toLowerCase(Locale.ROOT));
   }
 
   /**

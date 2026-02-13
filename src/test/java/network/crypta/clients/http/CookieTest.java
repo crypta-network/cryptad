@@ -71,6 +71,13 @@ class CookieTest {
   }
 
   @Test
+  void validateDomain_withMixedCaseUri_expectLowercasedUri() {
+    URI validated = Cookie.validateDomain(URI.create("http://EXAMPLE.com"));
+
+    assertEquals("http://example.com", validated.toString());
+  }
+
+  @Test
   void validateName_withUppercaseAndWhitespace_expectLowercaseTrimmed() {
     String validated = Cookie.validateName("  SessionID  ");
 
@@ -171,6 +178,19 @@ class CookieTest {
             URI.create("http://other.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
 
     assertNotEquals(withDomain, otherDomain);
+  }
+
+  @Test
+  void equals_whenDomainCaseDiffers_expectTrue() {
+    Cookie uppercaseDomain =
+        new Cookie(
+            URI.create("http://EXAMPLE.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie lowercaseDomain =
+        new Cookie(
+            URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+
+    assertEquals(uppercaseDomain, lowercaseDomain);
+    assertEquals(uppercaseDomain.hashCode(), lowercaseDomain.hashCode());
   }
 
   @Test
