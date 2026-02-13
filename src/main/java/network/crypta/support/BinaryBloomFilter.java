@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author sdiz
  */
-public class BinaryBloomFilter extends BloomFilter {
+public final class BinaryBloomFilter extends BloomFilter {
   private static final Logger LOG = LoggerFactory.getLogger(BinaryBloomFilter.class);
 
   /**

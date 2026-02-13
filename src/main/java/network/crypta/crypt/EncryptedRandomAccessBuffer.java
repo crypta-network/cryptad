@@ -57,7 +57,7 @@ import org.bouncycastle.crypto.params.ParametersWithIV;
  *
  * @author unixninja92 Suggested {@link EncryptedRandomAccessBufferType} to use: ChaCha128
  */
-public class EncryptedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+public final class EncryptedRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
   private ReentrantLock readLock = new ReentrantLock();

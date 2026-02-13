@@ -31,7 +31,7 @@ import java.io.IOException;
  *
  * @author Justin Chapweske (justin@chapweske.com)
  */
-public class TempRaf extends FilterRAF {
+public final class TempRaf extends FilterRAF {
 
   /**
    * Keep policy that always removes the temporary file during {@link #close()}, regardless of

@@ -42,7 +42,8 @@ import org.slf4j.LoggerFactory;
  * <p>Shutdown: this type does not rely on a shutdown hook. Descriptors are reclaimed via explicit
  * close/free and by the JVM on process exit.
  */
-public class PooledFileRandomAccessBuffer implements LockableRandomAccessBuffer, Serializable {
+public final class PooledFileRandomAccessBuffer
+    implements LockableRandomAccessBuffer, Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(PooledFileRandomAccessBuffer.class);
 
   @Serial private static final long serialVersionUID = 1L;

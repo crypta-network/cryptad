@@ -52,7 +52,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author sdiz
  */
-public class CountingBloomFilter extends BloomFilter {
+public final class CountingBloomFilter extends BloomFilter {
 
   private static final Logger LOG = LoggerFactory.getLogger(CountingBloomFilter.class);
 

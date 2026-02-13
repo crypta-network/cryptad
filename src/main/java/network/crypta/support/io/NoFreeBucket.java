@@ -25,7 +25,7 @@ import network.crypta.support.api.Bucket;
  *
  * @since 1
  */
-public class NoFreeBucket implements Bucket, Serializable {
+public final class NoFreeBucket implements Bucket, Serializable {
 
   @Serial private static final long serialVersionUID = 1L;
   private static final String PROXY_FIELD_NAME = "proxy";

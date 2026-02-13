@@ -26,7 +26,7 @@ import java.util.logging.Logger;
  *
  * @see #parse(String)
  */
-public class Range {
+public final class Range {
 
   private static final Logger LOGGER = Logger.getLogger(Range.class.getName());
 
