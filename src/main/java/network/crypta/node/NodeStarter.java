@@ -520,7 +520,11 @@ public class NodeStarter implements WrapperListener {
       LOG.info("Node initialization completed");
     } catch (NodeInitException e) {
       LOG.error("Node load failed (exitCode={}): {}", e.exitCode, e.getMessage(), e);
-      System.exit(e.exitCode);
+      if (WrapperManager.isControlledByNativeWrapper()) {
+        return e.exitCode;
+      }
+      WrapperManager.stop(e.exitCode);
+      return e.exitCode;
     }
 
     return null;
