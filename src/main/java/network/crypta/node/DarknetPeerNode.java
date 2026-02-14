@@ -282,7 +282,7 @@ public final class DarknetPeerNode extends PeerNode {
     queuedToSendN2NMExtraPeerDataFileNumbers = new LinkedHashSet<>();
   }
 
-  private void initializeFromLocalMetadata(SimpleFieldSet fs, String name) {
+  private synchronized void initializeFromLocalMetadata(SimpleFieldSet fs, String name) {
     SimpleFieldSet metadata = fs.subset("metadata");
     if (metadata == null) metadata = new SimpleFieldSet(true);
 
@@ -317,7 +317,8 @@ public final class DarknetPeerNode extends PeerNode {
     }
   }
 
-  private void initializeFromRemoteDefaults(FRIEND_TRUST trust, FRIEND_VISIBILITY visibility2) {
+  private synchronized void initializeFromRemoteDefaults(
+      FRIEND_TRUST trust, FRIEND_VISIBILITY visibility2) {
     if (trust == null) throw new IllegalArgumentException();
     trustLevel = trust;
     ourVisibility = visibility2;
@@ -598,7 +599,7 @@ public final class DarknetPeerNode extends PeerNode {
 
   /** Returns whether the observed source port is ignored when picking a contact address. */
   @Override
-  public boolean isIgnoreSource() {
+  public synchronized boolean isIgnoreSource() {
     return ignoreSourcePort;
   }
 
