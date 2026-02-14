@@ -8,6 +8,11 @@ description: Use the codebase MCP server to semantically search the repo, narrow
 - Iterate retrieval 1–4 times to converge on the right files/symbols.
 - Produce a small, evidence-backed target set (usually 1–5 files) before any significant reading or edits.
 
+## Index scope (important)
+- The codebase MCP index only includes files under the project's `/src` directory.
+- If the task targets files outside `/src` (for example `.agents/`, `build-logic/`, Gradle files, docs, CI config), do **not** query codebase MCP.
+- For non-`/src` work, use deterministic local search/read tools directly (`rg`, `sed`, `ls`, etc.).
+
 ## When to use me
 Use me when the task depends on **this repository’s reality**, e.g.:
 - “Where is X implemented?”, “How does Y work in this repo?”
@@ -16,8 +21,11 @@ Use me when the task depends on **this repository’s reality**, e.g.:
 - Any time you’re not sure which files are relevant
 
 ## How to use the codebase MCP (playbook)
-1) **Start with semantic retrieval** (never skip unless the user already gave exact file paths).
-2) Run **at least one** query. If the results are weak/ambiguous, run 1–3 more:
+1) **Check scope first**:
+    - if likely files are under `/src`, start with semantic retrieval
+    - if likely files are outside `/src`, skip codebase MCP and use local deterministic search instead
+2) For `/src` tasks, run **at least one** retrieval query.
+If the results are weak/ambiguous, run 1–3 more:
     - include synonyms / alternative component names
     - include exact error text or log fragments
     - include likely entrypoints (CLI command, HTTP route, job name, config key)
@@ -33,4 +41,5 @@ Use me when the task depends on **this repository’s reality**, e.g.:
 
 ## Anti-patterns
 - Jumping straight to editing without any retrieval.
+- Querying codebase MCP for files outside `/src`.
 - Treating external/library behavior as repo facts (use the `context7-docs` skill for that).

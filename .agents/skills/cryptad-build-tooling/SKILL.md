@@ -18,6 +18,17 @@ Use this skill when you:
 ## Spotless + dependency verification (common failure mode)
 When Gradle dependency verification is strict, Spotless may fail to resolve formatter artifacts even with `mavenCentral()`.
 
+### Spotless target path outside the project dir
+If Spotless fails with an error like:
+```text
+Spotless error! All target files must be within the project dir.
+```
+run:
+```bash
+./gradlew clean
+```
+then retry Spotless (`./gradlew spotlessJava` or `./gradlew spotlessApply`).
+
 ### Procedure to refresh verification metadata for Spotless
 1) Temporarily set verification to lenient:
 - Edit `gradle.properties` → `org.gradle.dependency.verification=lenient`
@@ -67,7 +78,7 @@ Notes:
 - Text reports are disabled (`reports.matching { it.name == "text" }`) so findings are read from XML files instead of large stdout dumps.
 
 ### Tasks
-- Run main analysis:
+- Run the main analysis:
   - `./gradlew spotbugsMain`
   - Report: `build/reports/spotbugs/spotbugsMain.xml`
 - Run test analysis:
