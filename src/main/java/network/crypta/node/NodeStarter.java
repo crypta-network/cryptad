@@ -303,7 +303,11 @@ public class NodeStarter implements WrapperListener {
     nodestarter_osgi = new NodeStarter();
     Integer exitCode = nodestarter_osgi.start(args);
     if (exitCode != null) {
-      WrapperManager.stop(exitCode);
+      if (WrapperManager.isControlledByNativeWrapper()) {
+        WrapperManager.stop(exitCode);
+      } else if (exitCode != 0) {
+        throw new IllegalStateException("Node startup failed with exit code " + exitCode);
+      }
     }
   }
 

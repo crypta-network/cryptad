@@ -62,6 +62,27 @@ class CookieTest {
   }
 
   @Test
+  void validateDomain_withQuery_expectException() {
+    URI withQuery = URI.create("http://example.com?x=1");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withQuery));
+  }
+
+  @Test
+  void validateDomain_withFragment_expectException() {
+    URI withFragment = URI.create("http://example.com#frag");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withFragment));
+  }
+
+  @Test
+  void validateDomain_withUserInfo_expectException() {
+    URI withUserInfo = URI.create("http://user@example.com");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withUserInfo));
+  }
+
+  @Test
   void validateDomain_withHttpAndHttps_expectReturnedUri() {
     URI http = Cookie.validateDomain(URI.create("http://example.com"));
     URI https = Cookie.validateDomain(URI.create("https://example.com"));
@@ -159,6 +180,15 @@ class CookieTest {
     Cookie created = new Cookie(VALID_PATH, "MiXeD", VALID_VALUE, FUTURE_DATE);
 
     assertEquals("mixed", created.getName());
+  }
+
+  @Test
+  void constructor_withDomainContainingQuery_expectException() {
+    URI withQuery = URI.create("http://example.com?x=1");
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Cookie(withQuery, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
   }
 
   @Test

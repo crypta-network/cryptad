@@ -280,7 +280,7 @@ class NodeStarterTest {
   }
 
   @Test
-  void startOsgi_whenStartReturnsExitCode_stopsWrapper(@TempDir File tmpDir) {
+  void startOsgi_whenStartReturnsExitCode_andWrapperControlled_stopsWrapper(@TempDir File tmpDir) {
     int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
     String[] args = startupArgs(tmpDir);
 
@@ -289,10 +289,47 @@ class NodeStarterTest {
             Mockito.mockConstruction(
                 NodeStarter.class,
                 (mock, _) -> Mockito.doReturn(expectedExitCode).when(mock).start(Mockito.any()))) {
+      wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(true);
       NodeStarter.start_osgi(args);
 
       assertEquals(1, starterCtor.constructed().size());
       wm.verify(() -> WrapperManager.stop(expectedExitCode), times(1));
+    }
+  }
+
+  @Test
+  void startOsgi_whenStartReturnsNonZeroExitCode_andNotWrapper_throws(@TempDir File tmpDir) {
+    int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
+    String[] args = startupArgs(tmpDir);
+
+    try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
+        MockedConstruction<NodeStarter> starterCtor =
+            Mockito.mockConstruction(
+                NodeStarter.class,
+                (mock, _) -> Mockito.doReturn(expectedExitCode).when(mock).start(Mockito.any()))) {
+      wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
+      assertThrows(IllegalStateException.class, () -> NodeStarter.start_osgi(args));
+
+      assertEquals(1, starterCtor.constructed().size());
+      wm.verify(() -> WrapperManager.stop(expectedExitCode), times(0));
+    }
+  }
+
+  @Test
+  void startOsgi_whenStartReturnsZeroExitCode_andNotWrapper_doesNotStopWrapper(
+      @TempDir File tmpDir) {
+    String[] args = startupArgs(tmpDir);
+
+    try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
+        MockedConstruction<NodeStarter> starterCtor =
+            Mockito.mockConstruction(
+                NodeStarter.class,
+                (mock, _) -> Mockito.doReturn(0).when(mock).start(Mockito.any()))) {
+      wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
+      NodeStarter.start_osgi(args);
+
+      assertEquals(1, starterCtor.constructed().size());
+      wm.verify(() -> WrapperManager.stop(0), times(0));
     }
   }
 

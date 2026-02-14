@@ -215,7 +215,7 @@ public class Cookie {
    *     null}.
    * @return A lowercased {@link URI} suitable for stable cookie identity comparisons.
    * @throws IllegalArgumentException If the scheme is not HTTP(S), or the URI includes a path
-   *     segment other than {@code /}.
+   *     segment other than {@code /}, query, fragment, or user-info.
    */
   public static URI validateDomain(URI domain) {
     String scheme = domain.getScheme().toLowerCase(Locale.ROOT);
@@ -227,6 +227,15 @@ public class Cookie {
 
     if (!"".equals(path) && !"/".equals(path))
       throw new IllegalArgumentException("Illegal cookie domain, contains a path: " + domain);
+
+    if (domain.getQuery() != null)
+      throw new IllegalArgumentException("Illegal cookie domain, contains a query: " + domain);
+
+    if (domain.getFragment() != null)
+      throw new IllegalArgumentException("Illegal cookie domain, contains a fragment: " + domain);
+
+    if (domain.getUserInfo() != null)
+      throw new IllegalArgumentException("Illegal cookie domain, contains user info: " + domain);
 
     return URI.create(domain.toString().toLowerCase(Locale.ROOT));
   }
