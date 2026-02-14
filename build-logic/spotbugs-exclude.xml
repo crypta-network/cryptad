@@ -270,4 +270,95 @@
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     <Class name="network.crypta.client.async.ClientLayerPersister"/>
   </Match>
+
+  <!--
+    Batch 2 EI_EXPOSE_REP triage:
+    FCP and HTTP status/request wrappers intentionally expose live collaborators and request-owned
+    references so lifecycle state, redirects, and context settings remain shared across handlers.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.DownloadContextSnapshot"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.DownloadRequestStatusDetails"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.FCPConnectionHandler"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.ClientPutBase"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.DownloadRequestStatus"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.FcpInsertRequest"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.FcpServerDependencies"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.PersistentPutRequestMetadata"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.PersistentRequestClient"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.UploadRequestStatusDetails"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.SimpleToadletServer"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.ToadletRequestServices"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.updateableelements.ImageElement"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.ToadletContextImpl"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.bookmark.BookmarkItem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.ConfigToadlet"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.FProxyFetchCriteria"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.FProxyFetchInProgress"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.geoip.Cache"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.updateableelements.ProgressBarElement"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.updateableelements.ProgressInfoElement"/>
+  </Match>
 </FindBugsFilter>

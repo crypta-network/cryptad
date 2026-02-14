@@ -44,8 +44,8 @@ public final class DownloadRequestStatusDetails {
       boolean dontCompress) {
     this.outcome = outcome;
     this.destFilename = destFilename;
-    this.compatModes = compatModes;
-    this.splitfileKey = splitfileKey;
+    this.compatModes = copyCompatModes(compatModes);
+    this.splitfileKey = copySplitfileKey(splitfileKey);
     this.uri = uri;
     this.overriddenDataType = overriddenDataType;
     this.dontCompress = dontCompress;
@@ -60,11 +60,11 @@ public final class DownloadRequestStatusDetails {
   }
 
   public CompatibilityMode[] compatModes() {
-    return compatModes;
+    return copyCompatModes(compatModes);
   }
 
   public byte[] splitfileKey() {
-    return splitfileKey;
+    return copySplitfileKey(splitfileKey);
   }
 
   public FreenetURI uri() {
@@ -122,5 +122,13 @@ public final class DownloadRequestStatusDetails {
         + ", dontCompress="
         + dontCompress
         + ']';
+  }
+
+  private static CompatibilityMode[] copyCompatModes(CompatibilityMode[] input) {
+    return input == null ? null : input.clone();
+  }
+
+  private static byte[] copySplitfileKey(byte[] input) {
+    return input == null ? null : input.clone();
   }
 }
