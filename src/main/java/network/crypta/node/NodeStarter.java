@@ -306,6 +306,7 @@ public class NodeStarter implements WrapperListener {
       if (WrapperManager.isControlledByNativeWrapper()) {
         WrapperManager.stop(exitCode);
       } else if (exitCode != 0) {
+        stop_osgi(exitCode);
         throw new IllegalStateException("Node startup failed with exit code " + exitCode);
       }
     }
@@ -625,6 +626,9 @@ public class NodeStarter implements WrapperListener {
 
   @SuppressWarnings("java:S1181")
   private static void startKeepAliveNativePlugThread() {
+    if (nativeKeepAlivePlugThread != null && nativeKeepAlivePlugThread.isAlive()) {
+      return;
+    }
     Runnable r =
         () -> {
           while (true) {
@@ -646,7 +650,16 @@ public class NodeStarter implements WrapperListener {
     NativeThread plug =
         new NativeThread(r, "Plug", NativeThread.PriorityLevel.MAX_PRIORITY.value, false);
     plug.setDaemon(false);
+    nativeKeepAlivePlugThread = plug;
     plug.start();
+  }
+
+  private static void stopKeepAliveNativePlugThread() {
+    Thread keepAlive = nativeKeepAlivePlugThread;
+    nativeKeepAlivePlugThread = null;
+    if (keepAlive != null) {
+      keepAlive.interrupt();
+    }
   }
 
   private static void initSSL(FreenetFilePersistentConfig cfg) {
@@ -713,6 +726,7 @@ public class NodeStarter implements WrapperListener {
     } else {
       LOG.warn("Node was not initialized; skipping park during shutdown.");
     }
+    stopKeepAliveNativePlugThread();
     // Extend the wrapper shutdown timeout to 120,000 ms (see #354).
     WrapperManager.signalStopping(120000);
 
@@ -987,6 +1001,7 @@ public class NodeStarter implements WrapperListener {
 
   private static boolean isTestingVM;
   private static boolean isStarted;
+  private static Thread nativeKeepAlivePlugThread;
 
   /** Static instance of SecureRandom, as opposed to Node's copy. @see getSecureRandom() */
   private static SecureRandom globalSecureRandom;

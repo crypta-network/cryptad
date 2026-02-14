@@ -311,6 +311,7 @@ class NodeStarterTest {
       assertThrows(IllegalStateException.class, () -> NodeStarter.start_osgi(args));
 
       assertEquals(1, starterCtor.constructed().size());
+      verify(starterCtor.constructed().getFirst(), times(1)).stop(expectedExitCode);
       wm.verify(() -> WrapperManager.stop(expectedExitCode), times(0));
     }
   }
@@ -329,6 +330,7 @@ class NodeStarterTest {
       NodeStarter.start_osgi(args);
 
       assertEquals(1, starterCtor.constructed().size());
+      verify(starterCtor.constructed().getFirst(), times(0)).stop(0);
       wm.verify(() -> WrapperManager.stop(0), times(0));
     }
   }
