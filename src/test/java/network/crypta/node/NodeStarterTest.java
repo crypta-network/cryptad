@@ -156,8 +156,8 @@ class NodeStarterTest {
   }
 
   @Test
-  void start_whenNodeStartupThrowsNodeInitException_andNotWrapper_stopsProcess(@TempDir File tmpDir)
-      throws ReflectiveOperationException {
+  void start_whenNodeStartupThrowsNodeInitException_andNotWrapper_returnsExitCode(
+      @TempDir File tmpDir) throws ReflectiveOperationException {
     NodeStarter ns = newNodeStarterViaReflection();
     int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
     String[] args = startupArgs(tmpDir);
@@ -179,7 +179,7 @@ class NodeStarterTest {
       assertEquals(1, nodeCtor.constructed().size());
       assertEquals(1, nativeThreadCtor.constructed().size());
       wm.verify(() -> WrapperManager.signalStarting(500000), times(1));
-      wm.verify(() -> WrapperManager.stop(expectedExitCode), times(1));
+      wm.verify(() -> WrapperManager.stop(expectedExitCode), times(0));
     }
   }
 
@@ -263,6 +263,36 @@ class NodeStarterTest {
       assertEquals(123, ret);
       verify(node, times(1)).park();
       wm.verify(() -> WrapperManager.signalStopping(120000), times(1));
+    }
+  }
+
+  @Test
+  void stop_whenNodeNotInitialized_signalsStopping_andReturnsExitCode()
+      throws ReflectiveOperationException {
+    NodeStarter ns = newNodeStarterViaReflection();
+
+    try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class)) {
+      int ret = ns.stop(77);
+
+      assertEquals(77, ret);
+      wm.verify(() -> WrapperManager.signalStopping(120000), times(1));
+    }
+  }
+
+  @Test
+  void startOsgi_whenStartReturnsExitCode_stopsWrapper(@TempDir File tmpDir) {
+    int expectedExitCode = NodeInitException.EXIT_COULD_NOT_START_UPDATER;
+    String[] args = startupArgs(tmpDir);
+
+    try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
+        MockedConstruction<NodeStarter> starterCtor =
+            Mockito.mockConstruction(
+                NodeStarter.class,
+                (mock, _) -> Mockito.doReturn(expectedExitCode).when(mock).start(Mockito.any()))) {
+      NodeStarter.start_osgi(args);
+
+      assertEquals(1, starterCtor.constructed().size());
+      wm.verify(() -> WrapperManager.stop(expectedExitCode), times(1));
     }
   }
 

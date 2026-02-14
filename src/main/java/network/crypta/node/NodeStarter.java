@@ -301,7 +301,10 @@ public class NodeStarter implements WrapperListener {
   @SuppressWarnings({"unused", "java:S100"})
   public static void start_osgi(String[] args) {
     nodestarter_osgi = new NodeStarter();
-    nodestarter_osgi.start(args);
+    Integer exitCode = nodestarter_osgi.start(args);
+    if (exitCode != null) {
+      WrapperManager.stop(exitCode);
+    }
   }
 
   /*---------------------------------------------------------------
@@ -520,10 +523,8 @@ public class NodeStarter implements WrapperListener {
       LOG.info("Node initialization completed");
     } catch (NodeInitException e) {
       LOG.error("Node load failed (exitCode={}): {}", e.exitCode, e.getMessage(), e);
-      if (WrapperManager.isControlledByNativeWrapper()) {
-        return e.exitCode;
-      }
-      WrapperManager.stop(e.exitCode);
+      // Return the exit code so WrapperManager handles process termination without re-entering
+      // stop() while startup may still be partially initialized.
       return e.exitCode;
     }
 
@@ -703,7 +704,11 @@ public class NodeStarter implements WrapperListener {
   @Override
   public int stop(int exitCode) {
     LOG.info("Shutting down with exit code {}", exitCode);
-    node.park();
+    if (node != null) {
+      node.park();
+    } else {
+      LOG.warn("Node was not initialized; skipping park during shutdown.");
+    }
     // Extend the wrapper shutdown timeout to 120,000 ms (see #354).
     WrapperManager.signalStopping(120000);
 
