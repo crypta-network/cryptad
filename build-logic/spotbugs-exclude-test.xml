@@ -32,4 +32,29 @@
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.support.io.PaddedRandomAccessBucketTest$InMemoryUnderlying"/>
   </Match>
+
+  <!--
+    Test-only wrappers intentionally hold live exceptions/randomness/byte arrays for assertions and
+    fixture generation. Defensive copying is unnecessary for these helper classes.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.crypt.RandomShortWriteOutputStream"/>
+    <Method name="&lt;init&gt;"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="~network\.crypta\.node\.NodeCliTest\$.*\$\$inlined\$assertThrows\$1"/>
+    <Method name="&lt;init&gt;"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.NullBasePeerNode"/>
+    <Method name="sendEncryptedPacket"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.test.PngUtil$Chunk"/>
+    <Method name="&lt;init&gt;"/>
+  </Match>
 </FindBugsFilter>
