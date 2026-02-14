@@ -218,7 +218,12 @@ public class Cookie {
    *     segment other than {@code /}, query, fragment, or user-info.
    */
   public static URI validateDomain(URI domain) {
-    String scheme = domain.getScheme().toLowerCase(Locale.ROOT);
+    String scheme = domain.getScheme();
+
+    if (scheme == null)
+      throw new IllegalArgumentException("Illegal cookie domain, must include scheme: " + domain);
+
+    scheme = scheme.toLowerCase(Locale.ROOT);
 
     if (!"http".equals(scheme) && !"https".equals(scheme))
       throw new IllegalArgumentException("Illegal cookie domain, must be http or https: " + domain);

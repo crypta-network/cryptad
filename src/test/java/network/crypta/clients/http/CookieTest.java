@@ -55,6 +55,13 @@ class CookieTest {
   }
 
   @Test
+  void validateDomain_withoutScheme_expectException() {
+    URI withoutScheme = URI.create("example.com");
+
+    assertThrows(IllegalArgumentException.class, () -> Cookie.validateDomain(withoutScheme));
+  }
+
+  @Test
   void validateDomain_withPathComponent_expectException() {
     URI withPath = URI.create("http://example.com/path");
 
@@ -189,6 +196,15 @@ class CookieTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> new Cookie(withQuery, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
+  }
+
+  @Test
+  void constructor_withDomainWithoutScheme_expectException() {
+    URI withoutScheme = URI.create("example.com");
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new Cookie(withoutScheme, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
   }
 
   @Test
