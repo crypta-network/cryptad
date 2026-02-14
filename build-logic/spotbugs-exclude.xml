@@ -361,4 +361,63 @@
     <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
     <Class name="network.crypta.clients.http.updateableelements.ProgressInfoElement"/>
   </Match>
+
+  <!--
+    Batch 3 EI_EXPOSE_REP triage:
+    Core key/block and subsystem classes intentionally share live buffers/collaborators for
+    protocol compatibility and performance-sensitive paths. Copying these structures would alter
+    behavior or impose substantial overhead.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.FreenetURI"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.CHKBlock"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.ClientCHK"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.SSKBlock"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.store.StoreCallback$BlockPayload"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.store.saltedhash.SaltedHashStoreDependencies"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.NodeNetworkSubsystem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.NodeCrypto"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.NodeStorageSubsystem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.NodeServicesSubsystem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.InsertHandlerContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.NodeClientCoreInit"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.updater.NodeUpdateManager"/>
+  </Match>
 </FindBugsFilter>
