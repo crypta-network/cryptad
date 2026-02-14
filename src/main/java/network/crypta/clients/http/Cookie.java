@@ -99,7 +99,8 @@ public class Cookie {
 
   /**
    * Builds a {@link Cookie} ready for delivery via {@link ToadletContext#setCookie(Cookie)} after
-   * applying strict validation and normalization rules.
+   * applying strict validation and normalization rules as a host-only cookie (without an explicit
+   * domain attribute).
    *
    * <p>The constructor trims and lowercases the name, normalizes the path, rejects invalid ASCII
    * ranges, and converts a {@code null} value to an empty string for compatibility with browsers
@@ -120,9 +121,34 @@ public class Cookie {
    *     the expiration time is not in the future.
    */
   public Cookie(URI myPath, String myName, String myValue, Instant myExpirationDate) {
+    this(null, myPath, myName, myValue, myExpirationDate);
+  }
+
+  /**
+   * Builds a {@link Cookie} with an optional explicit domain attribute.
+   *
+   * <p>When {@code myDomain} is {@code null}, the cookie remains host-only. When provided, the
+   * domain must pass {@link #validateDomain(URI)} and is emitted in {@link #encodeToHeaderValue()}.
+   * All other validation and normalization rules are identical to {@link #Cookie(URI, String,
+   * String, Instant)}.
+   *
+   * @param myDomain Optional domain scope; must be {@code http} or {@code https} and omit path
+   *     segments when non-null.
+   * @param myPath The cookie path; must be relative, start with {@code /}, and represent the scope
+   *     under which the cookie will be sent back.
+   * @param myName Token identifying the cookie; trimmed, lowercased, US-ASCII, and free of reserved
+   *     names such as {@code domain} or {@code secure}.
+   * @param myValue Payload to send to the client; may be {@code null} to request an empty cookie
+   *     value and must avoid control characters and separator tokens.
+   * @param myExpirationDate Absolute expiration moment in the future; instants in the past cause an
+   *     {@link IllegalArgumentException} during validation.
+   * @throws IllegalArgumentException If any attribute violates RFC-inspired validation rules, or
+   *     the expiration time is not in the future.
+   */
+  public Cookie(URI myDomain, URI myPath, String myName, String myValue, Instant myExpirationDate) {
     version = 1;
 
-    domain = null;
+    domain = myDomain != null ? validateDomain(myDomain) : null;
     path = validatePath(myPath);
     name = validateName(myName);
     value = myValue != null ? validateValue(myValue) : "";
@@ -175,24 +201,29 @@ public class Cookie {
    *     path component.
    */
   public static URI validateDomain(String domainString) throws URISyntaxException {
-    return validateDomain(new URI(domainString.toLowerCase(Locale.ROOT)));
+    return validateDomain(new URI(domainString));
   }
 
   /**
    * Validates a pre-parsed domain URI for cookie use, enforcing scheme and path constraints.
    *
    * <p>The method accepts only {@code http} or {@code https} schemes and forbids any non-root path
-   * component. It returns the URI unchanged so callers may preserve host and port information while
-   * guaranteeing compatibility with {@link #encodeToHeaderValue()}.
+   * component. On success, it returns a lowercased URI representation, so cookie identity
+   * comparisons remain case-insensitive for domain text.
    *
    * @param domain Candidate domain URI, typically derived from the request host; must not be {@code
    *     null}.
-   * @return The same {@link URI} instance when validation succeeds, enabling fluent assignment.
+   * @return A lowercased {@link URI} suitable for stable cookie identity comparisons.
    * @throws IllegalArgumentException If the scheme is not HTTP(S), or the URI includes a path
-   *     segment other than {@code /}.
+   *     segment other than {@code /}, query, fragment, or user-info.
    */
   public static URI validateDomain(URI domain) {
-    String scheme = domain.getScheme().toLowerCase(Locale.ROOT);
+    String scheme = domain.getScheme();
+
+    if (scheme == null)
+      throw new IllegalArgumentException("Illegal cookie domain, must include scheme: " + domain);
+
+    scheme = scheme.toLowerCase(Locale.ROOT);
 
     if (!"http".equals(scheme) && !"https".equals(scheme))
       throw new IllegalArgumentException("Illegal cookie domain, must be http or https: " + domain);
@@ -202,7 +233,16 @@ public class Cookie {
     if (!"".equals(path) && !"/".equals(path))
       throw new IllegalArgumentException("Illegal cookie domain, contains a path: " + domain);
 
-    return domain;
+    if (domain.getQuery() != null)
+      throw new IllegalArgumentException("Illegal cookie domain, contains a query: " + domain);
+
+    if (domain.getFragment() != null)
+      throw new IllegalArgumentException("Illegal cookie domain, contains a fragment: " + domain);
+
+    if (domain.getUserInfo() != null)
+      throw new IllegalArgumentException("Illegal cookie domain, contains user info: " + domain);
+
+    return URI.create(domain.toString().toLowerCase(Locale.ROOT));
   }
 
   /**
