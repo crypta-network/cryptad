@@ -278,13 +278,12 @@ public class UpdateOverMandatoryManager implements RequestClient {
     if (!stopProcessing) {
       tellFetchers(source);
 
-      // Don't proceed with main-jar logic if blown or disabled
-      if (!updateManager.isBlown() && updateManager.isEnabled()) {
+      // In package-based updater mode there is no main-jar UOM; only revocation is handled.
+      if (!updateManager.isBlown()
+          && updateManager.isEnabled()
+          && NodeUpdateManager.SUPPORTS_JAR_UOM) {
         long now = System.currentTimeMillis();
-        // In package-based updater mode there is no main-jar UOM; only revocation is handled.
-        if (NodeUpdateManager.SUPPORTS_JAR_UOM) {
-          handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
-        }
+        handleMainJarOffer(now, mainJarFileLength, mainJarVersion, source, mainJarKey);
       }
     }
 
@@ -464,8 +463,9 @@ public class UpdateOverMandatoryManager implements RequestClient {
       long now, long mainJarFileLength, int mainJarVersion, PeerNode source, String jarKey) {
 
     long started = NodeUpdateManager.STARTED_FETCHING_NEXT_MAIN_JAR_TIMESTAMP;
-    long whenToTakeOverTheNormalUpdater =
-        (started > 0) ? started + GRACE_TIME : System.currentTimeMillis() + GRACE_TIME;
+    // Legacy main-jar updater start time is not tracked in CoreUpdater mode; use the current offer
+    // time.
+    long whenToTakeOverTheNormalUpdater = now + GRACE_TIME;
     boolean isOutdated = updateManager.getNode().isOutdated();
     // if the new build is self-mandatory, or if the "normal" updater has been trying to update for
     // more than one hour
