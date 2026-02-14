@@ -15,9 +15,9 @@ import org.jetbrains.annotations.NotNull;
  * PlainManifestPutter}. Callers typically build a manifest tree, choose a scheduler priority, and
  * select a target {@link FreenetURI}; those values are captured alongside a {@link InsertContext},
  * an optional crypto key override, and the runtime {@link ClientContext}. The bundle is
- * intentionally lightweight and does not validate, normalize, or copy any of its inputs, so callers
- * and downstream putters remain responsible for enforcing invariants and making defensive copies
- * when needed.
+ * intentionally lightweight and does not validate or normalize inputs. The optional crypto key is
+ * defensively copied at construction and on read; other references are retained as provided so
+ * callers and downstream putters remain responsible for enforcing invariants.
  *
  * <p>Thread-safety is entirely determined by the referenced objects. The instance itself is
  * immutable, but values like the manifest map or the crypto key array can be mutated externally; if
@@ -61,8 +61,7 @@ public final class ManifestPutterParams {
    *     reference and interpreted by the target putter without normalization.
    * @param defaultName default document name for directory levels; may be {@code null} to disable
    *     default document inference by the putter.
-   * @param forceCryptoKey optional explicit splitfile key material; may be {@code null} to allow
-   *     derivation or randomization by downstream putters.
+   * @param forceCryptoKey optional explicit splitfile key material; copied when non-null.
    * @param context client context providing randomness and scheduling services; expected to be
    *     non-{@code null} during putter execution.
    */
@@ -75,7 +74,7 @@ public final class ManifestPutterParams {
     this.requestParams = requestParams;
     this.manifestElements = manifestElements;
     this.defaultName = defaultName;
-    this.forceCryptoKey = forceCryptoKey;
+    this.forceCryptoKey = copyNullable(forceCryptoKey);
     this.context = context;
   }
 
@@ -168,15 +167,18 @@ public final class ManifestPutterParams {
   /**
    * Returns the explicit splitfile crypto key override, if any.
    *
-   * <p>The returned array is the original reference supplied at construction time; it is not copied
-   * or validated. When provided, downstream putters may use these bytes as deterministic key
-   * material; when {@code null}, they may derive or randomize a key as needed. Callers should treat
-   * the returned array as immutable to avoid subtle behavior changes.
+   * <p>The returned array is a defensive copy. When provided, downstream putters may use these
+   * bytes as deterministic key material; when {@code null}, they may derive or randomize a key as
+   * needed.
    *
    * @return the crypto key byte array reference, or {@code null} if no override is set.
    */
   public byte[] forceCryptoKey() {
-    return forceCryptoKey;
+    return copyNullable(forceCryptoKey);
+  }
+
+  private static byte[] copyNullable(byte[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 
   /**

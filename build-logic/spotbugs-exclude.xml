@@ -110,4 +110,164 @@
     <Class name="~network\.crypta\.launcher\.CryptaLauncher\$quitApp\$.*"/>
     <Method name="invokeSuspend"/>
   </Match>
+
+  <!--
+    Batch 1 EI_EXPOSE_REP triage:
+    These records/classes intentionally transport live runtime collaborators (executors, contexts,
+    callbacks, services, endpoint owners). Defensive copying is either impossible or would break
+    expected shared-lifecycle behavior.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.ClientContextInitParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextRuntime"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextDefaults"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextServices"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextStorageFactories"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.BlockInsertParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.InsertRequestParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.RequestHandlerContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.RequestSenderContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.CryptoAndTransportParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.PeerRoutingSelectionParams"/>
+  </Match>
+
+  <!--
+    Endpoint/service owners expose shared singletons by design; callers rely on identity and shared
+    mutable lifecycle state.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.ClientEndpoints"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getClientContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getClientLayerPersister"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getEndpoints"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getNode"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getPersistentTempBucketFactory"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getPluginStores"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getRandom"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getRequestStarters"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getStoreChecker"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getTempBucketFactory"/>
+  </Match>
+
+  <!--
+    Builder methods intentionally stage live runtime/config references. Copying these collaborators
+    is not meaningful; only mutable byte/list fields are defensively copied in code.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileFetcherStorageInitParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileFetcherStorageResumeParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileInserterStorageRuntimeParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileInserterStorageInitParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileInserter$Options$Builder"/>
+  </Match>
+
+  <!--
+    These holders wrap live bucket/writer/context/map/URI references that participate in ongoing
+    request execution. Identity sharing is expected by current call sites.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientGetterOptions"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.BlockInsertPayload"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileFetchOriginalDetails"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ManifestPutterParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientLayerPersister"/>
+  </Match>
 </FindBugsFilter>

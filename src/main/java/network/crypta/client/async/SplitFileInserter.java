@@ -3,6 +3,7 @@ package network.crypta.client.async;
 import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
@@ -143,13 +144,13 @@ public final class SplitFileInserter
     /** Splitfile crypto algorithm identifier used for key derivation and block protection. */
     final byte splitfileCryptoAlgorithm;
 
-    /** Opaque splitfile crypto key material; ownership remains with the caller. */
+    /** Opaque splitfile crypto key material, stored defensively. */
     final byte[] splitfileCryptoKey;
 
-    /** Optional layer-local hash; limits hashing to the current layer when non-null. */
+    /** Optional layer-local hash, stored defensively when non-null. */
     final byte[] hashThisLayerOnly;
 
-    /** Precomputed hash results for segments/blocks used to speed up verification. */
+    /** Precomputed hash results for segments/blocks, stored as a shallow defensive copy. */
     final HashResult[] hashes;
 
     /** If {@code true}, skip top-level compression even when a codec is present. */
@@ -182,9 +183,9 @@ public final class SplitFileInserter
       this.isMetadata = b.isMetadata;
       this.archiveType = b.archiveType;
       this.splitfileCryptoAlgorithm = b.splitfileCryptoAlgorithm;
-      this.splitfileCryptoKey = b.splitfileCryptoKey;
-      this.hashThisLayerOnly = b.hashThisLayerOnly;
-      this.hashes = b.hashes;
+      this.splitfileCryptoKey = copyByteArrayNullable(b.splitfileCryptoKey);
+      this.hashThisLayerOnly = copyByteArrayNullable(b.hashThisLayerOnly);
+      this.hashes = copyHashArrayNullable(b.hashes);
       this.topDontCompress = b.topDontCompress;
       this.topRequiredBlocks = b.topRequiredBlocks;
       this.topTotalBlocks = b.topTotalBlocks;
@@ -192,6 +193,14 @@ public final class SplitFileInserter
       this.origCompressedDataSize = b.origCompressedDataSize;
       this.realTime = b.realTime;
       this.token = b.token;
+    }
+
+    private static byte[] copyByteArrayNullable(byte[] input) {
+      return input == null ? null : Arrays.copyOf(input, input.length);
+    }
+
+    private static HashResult[] copyHashArrayNullable(HashResult[] input) {
+      return input == null ? null : Arrays.copyOf(input, input.length);
     }
 
     /**
@@ -324,22 +333,22 @@ public final class SplitFileInserter
       /**
        * Supplies the splitfile crypto key material.
        *
-       * @param v key bytes; caller retains ownership; array content may be read but not modified
-       * @return this builder for fluent chaining; references the provided array
+       * @param v key bytes copied when non-null
+       * @return this builder for fluent chaining
        */
       public Builder splitfileCryptoKey(byte[] v) {
-        this.splitfileCryptoKey = v;
+        this.splitfileCryptoKey = Options.copyByteArrayNullable(v);
         return this;
       }
 
       /**
        * Restricts hashing to the current layer by providing a layer-local hash.
        *
-       * @param v optional hash bytes indicating current-layer hashing only; may be {@code null}
+       * @param v optional hash bytes indicating current-layer hashing only; copied when non-null
        * @return this builder for fluent chaining; replaces any prior value
        */
       public Builder hashThisLayerOnly(byte[] v) {
-        this.hashThisLayerOnly = v;
+        this.hashThisLayerOnly = Options.copyByteArrayNullable(v);
         return this;
       }
 
@@ -347,10 +356,10 @@ public final class SplitFileInserter
        * Provides precomputed hash results for segments or blocks to speed up verification.
        *
        * @param v array of hash results; elements may be {@code null} if unavailable
-       * @return this builder for fluent chaining; stores the array reference
+       * @return this builder for fluent chaining; stores a shallow copy
        */
       public Builder hashes(HashResult[] v) {
-        this.hashes = v;
+        this.hashes = Options.copyHashArrayNullable(v);
         return this;
       }
 
@@ -434,8 +443,9 @@ public final class SplitFileInserter
       /**
        * Builds an immutable {@link Options} snapshot from the current builder values.
        *
-       * <p>This method does not deep-copy mutable inputs; callers should avoid mutating arrays or
-       * objects after building. Validation, when required, is performed by downstream constructors.
+       * <p>This method creates an immutable snapshot. Mutable byte/hash arrays are defensively
+       * copied; other object references are carried through as provided. Validation, when required,
+       * is performed by downstream constructors.
        *
        * @return a new {@link Options} instance containing the configured values
        */

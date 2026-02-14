@@ -93,7 +93,7 @@ class SessionKeyTest {
   }
 
   @Test
-  void constructor_doesNotDefensivelyCopyArrays_mutationReflectsInFields() {
+  void constructor_defensivelyCopiesArrays_mutationDoesNotReflectInFields() {
     // Arrange
     byte[] outgoingKey = new byte[] {1, 2, 3};
     byte[] incomingKey = new byte[] {4, 5, 6};
@@ -119,9 +119,9 @@ class SessionKeyTest {
     assertNotNull(key.incommingKey, "Incoming key reference should not be null");
     assertNotNull(key.ivNonce, "IV nonce reference should not be null");
     assertNotNull(key.hmacKey, "HMAC key reference should not be null");
-    assertEquals(99, key.outgoingKey[0], "Outgoing key reference should not be copied");
-    assertEquals(88, key.incommingKey[1], "Incoming key reference should not be copied");
-    assertEquals(77, key.ivNonce[0], "IV nonce reference should not be copied");
-    assertEquals(66, key.hmacKey[3], "HMAC key reference should not be copied");
+    assertEquals(1, key.outgoingKey[0], "Outgoing key should be defensively copied");
+    assertEquals(5, key.incommingKey[1], "Incoming key should be defensively copied");
+    assertEquals(7, key.ivNonce[0], "IV nonce should be defensively copied");
+    assertEquals(12, key.hmacKey[3], "HMAC key should be defensively copied");
   }
 }

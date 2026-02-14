@@ -13,8 +13,8 @@ import org.jetbrains.annotations.NotNull;
  * SessionKey} is created. The instance is a simple carrier: it performs no validation and does not
  * derive new keys, so callers are responsible for ensuring the material is consistent and ready for
  * use. Array components are stored by reference rather than copied. This keeps construction
- * lightweight, but it means callers must treat the arrays as mutable, shared state. Mutating the
- * arrays after construction affects any consumer that reads them.
+ * lightweight for object references while still defensively copying key/nonce arrays at ingress and
+ * egress. Callers therefore cannot mutate this instance by retaining original array references.
  *
  * <p>Instances are immutable with respect to their component references and are safe to share
  * across threads when the underlying arrays are not modified. To avoid leaking secrets, do not log
@@ -22,7 +22,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * <ul>
  *   <li>Captures the outgoing, incoming, and IV ciphers needed by packet processing.
- *   <li>Holds raw key bytes and nonces without defensive copying.
+ *   <li>Holds raw key bytes and nonces using defensive copies.
  *   <li>Bundles the material for reuse across constructors and tests.
  * </ul>
  *
@@ -42,12 +42,13 @@ public final class SessionKeyCryptoMaterial {
    * Creates a session key material bundle.
    *
    * @param outgoingCipher cipher used to encrypt outgoing packets; may be {@code null} in tests.
-   * @param outgoingKey raw key bytes for {@code outgoingCipher}; stored by reference and mutable.
+   * @param outgoingKey raw key bytes for {@code outgoingCipher}; defensively copied when non-null.
    * @param incommingCipher cipher used to decrypt incoming packets; may be {@code null} in tests.
-   * @param incommingKey raw key bytes for {@code incommingCipher}; stored by reference and mutable.
+   * @param incommingKey raw key bytes for {@code incommingCipher}; defensively copied when
+   *     non-null.
    * @param ivCipher cipher used to derive per-packet IV material; may be {@code null} in tests.
-   * @param ivNonce base nonce bytes paired with {@code ivCipher}; stored by reference and mutable.
-   * @param hmacKey key bytes for message authentication; stored by reference and mutable.
+   * @param ivNonce base nonce bytes paired with {@code ivCipher}; defensively copied when non-null.
+   * @param hmacKey key bytes for message authentication; defensively copied when non-null.
    */
   public SessionKeyCryptoMaterial(
       BlockCipher outgoingCipher,
@@ -58,12 +59,12 @@ public final class SessionKeyCryptoMaterial {
       byte[] ivNonce,
       byte[] hmacKey) {
     this.outgoingCipher = outgoingCipher;
-    this.outgoingKey = outgoingKey;
+    this.outgoingKey = copyNullable(outgoingKey);
     this.incommingCipher = incommingCipher;
-    this.incommingKey = incommingKey;
+    this.incommingKey = copyNullable(incommingKey);
     this.ivCipher = ivCipher;
-    this.ivNonce = ivNonce;
-    this.hmacKey = hmacKey;
+    this.ivNonce = copyNullable(ivNonce);
+    this.hmacKey = copyNullable(hmacKey);
   }
 
   public BlockCipher outgoingCipher() {
@@ -71,7 +72,7 @@ public final class SessionKeyCryptoMaterial {
   }
 
   public byte[] outgoingKey() {
-    return outgoingKey;
+    return copyNullable(outgoingKey);
   }
 
   public BlockCipher incommingCipher() {
@@ -79,7 +80,7 @@ public final class SessionKeyCryptoMaterial {
   }
 
   public byte[] incommingKey() {
-    return incommingKey;
+    return copyNullable(incommingKey);
   }
 
   public BlockCipher ivCipher() {
@@ -87,11 +88,15 @@ public final class SessionKeyCryptoMaterial {
   }
 
   public byte[] ivNonce() {
-    return ivNonce;
+    return copyNullable(ivNonce);
   }
 
   public byte[] hmacKey() {
-    return hmacKey;
+    return copyNullable(hmacKey);
+  }
+
+  private static byte[] copyNullable(byte[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 
   /**
