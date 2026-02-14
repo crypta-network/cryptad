@@ -625,7 +625,7 @@ public class NodeStarter implements WrapperListener {
   }
 
   @SuppressWarnings("java:S1181")
-  private static void startKeepAliveNativePlugThread() {
+  private static synchronized void startKeepAliveNativePlugThread() {
     if (nativeKeepAlivePlugThread != null && nativeKeepAlivePlugThread.isAlive()) {
       return;
     }
@@ -654,7 +654,7 @@ public class NodeStarter implements WrapperListener {
     plug.start();
   }
 
-  private static void stopKeepAliveNativePlugThread() {
+  private static synchronized void stopKeepAliveNativePlugThread() {
     Thread keepAlive = nativeKeepAlivePlugThread;
     nativeKeepAlivePlugThread = null;
     if (keepAlive != null) {
