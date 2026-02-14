@@ -110,4 +110,37 @@
     <Class name="~network\.crypta\.launcher\.CryptaLauncher\$quitApp\$.*"/>
     <Method name="invokeSuspend"/>
   </Match>
+
+  <!--
+    These methods intentionally use absolute filesystem paths mandated by platform conventions:
+    - Linux service paths under /etc, /var, /run
+    - macOS system Library roots
+    - XDG runtime fallback under /run/user
+    - rpm-ostree marker file at /run/ostree-booted
+    SpotBugs flags them generically as hardcoded absolute filenames, but they are not derived from
+    untrusted input and are required for correct OS integration.
+  -->
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.DirsKt"/>
+    <Method name="computeStandardXdgRuntime"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.DirsKt"/>
+    <Method name="computeSnapRuntime"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.fs.ServiceDirs"/>
+    <Method name="computeBase"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.node.updater.CoreActionToadlet"/>
+    <Method name="isOstree"/>
+  </Match>
 </FindBugsFilter>

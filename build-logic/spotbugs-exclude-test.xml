@@ -32,4 +32,13 @@
     <Bug pattern="CT_CONSTRUCTOR_THROW"/>
     <Class name="network.crypta.support.io.PaddedRandomAccessBucketTest$InMemoryUnderlying"/>
   </Match>
+
+  <!--
+    Path-oriented tests intentionally use absolute path literals to verify resolution behavior for
+    Linux/macOS/Windows scenarios. DMI_HARDCODED_ABSOLUTE_FILENAME is production-oriented and
+    creates high-volume noise for these deterministic test fixtures.
+  -->
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+  </Match>
 </FindBugsFilter>
