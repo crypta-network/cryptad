@@ -7,6 +7,7 @@ import java.awt.desktop.QuitResponse
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -15,7 +16,7 @@ import network.crypta.fs.AppEnv
 /** Application display name used across the launcher UI and system integration. */
 internal const val APP_NAME: String = "Crypta Launcher"
 
-@Volatile private var launcherInstance: CryptaLauncher? = null
+private val launcherInstanceRef = AtomicReference<CryptaLauncher?>(null)
 
 /**
  * Crypta Swing Launcher (View).
@@ -289,7 +290,7 @@ class CryptaLauncher : JFrame(APP_NAME) {
         logDebug("Failed to remove global key dispatcher", t)
       }
       dispose()
-      launcherInstance = null
+      launcherInstanceRef.set(null)
       uiScope.cancel()
       try {
         ThemeSwitcher.shutdown()
@@ -467,7 +468,7 @@ private fun createAndShowLauncherUi() {
 }
 
 private fun registerLauncherInstance(launcher: CryptaLauncher) {
-  launcherInstance = launcher
+  launcherInstanceRef.set(launcher)
 }
 
 private fun setWindowAndDockIcons(f: JFrame) {
@@ -512,7 +513,7 @@ private fun registerJvmShutdownHook() {
       .addShutdownHook(
         Thread {
           try {
-            launcherInstance?.shutdownFromSignal()
+            launcherInstanceRef.get()?.shutdownFromSignal()
           } catch (t: Throwable) {
             logDebug("Shutdown hook failed during shutdownFromSignal()", t)
           }
