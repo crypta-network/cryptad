@@ -136,13 +136,14 @@ class PeerPersistenceTest {
   }
 
   @Test
-  void flushOnShutdown_whenOldOpennetPeersArrayIsNull_writesEmptyOldOpennetFile(
+  void flushOnShutdown_whenOldOpennetPeersArrayIsEmpty_writesEmptyOldOpennetFile(
       @TempDir Path tempDir) {
     when(node.network()).thenReturn(network);
 
     OpennetManager opennetManager = org.mockito.Mockito.mock(OpennetManager.class);
     Path oldOpennetFile = tempDir.resolve("old-opennet.peers");
     when(opennetManager.getOldPeersFilename()).thenReturn(oldOpennetFile.toString());
+    when(opennetManager.getOldPeers()).thenReturn(new OpennetPeerNode[0]);
     when(network.opennet()).thenReturn(opennetManager);
 
     PeerPersistence persistence = new PeerPersistence(node, peerManager);
