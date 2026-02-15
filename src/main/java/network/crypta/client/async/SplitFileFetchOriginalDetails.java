@@ -10,8 +10,7 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>This value object groups the current key, original key, client detail bytes, and the
  * final-fetch flag so persistence helpers can pass a single parameter object instead of long
- * argument lists. The client detail bytes are stored by reference; callers should not mutate the
- * array after construction if they rely on stable serialization output.
+ * argument lists. Client detail bytes are defensively copied at construction and accessor read.
  *
  * <ul>
  *   <li>Captures the current and original request keys used for persistence.
@@ -30,14 +29,14 @@ public final class SplitFileFetchOriginalDetails {
    *
    * @param thisKey key of the fetch currently being persisted
    * @param origKey original request key that seeded the fetch
-   * @param clientDetails client detail bytes written verbatim to storage
+   * @param clientDetails client detail bytes written to storage; copied when non-null
    * @param isFinalFetch true when the request is a final-fetch operation
    */
   public SplitFileFetchOriginalDetails(
       FreenetURI thisKey, FreenetURI origKey, byte[] clientDetails, boolean isFinalFetch) {
     this.thisKey = thisKey;
     this.origKey = origKey;
-    this.clientDetails = clientDetails;
+    this.clientDetails = copyNullable(clientDetails);
     this.isFinalFetch = isFinalFetch;
   }
 
@@ -50,7 +49,11 @@ public final class SplitFileFetchOriginalDetails {
   }
 
   public byte[] clientDetails() {
-    return clientDetails;
+    return copyNullable(clientDetails);
+  }
+
+  private static byte[] copyNullable(byte[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 
   public boolean isFinalFetch() {

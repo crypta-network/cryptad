@@ -10,14 +10,13 @@ import network.crypta.keys.FreenetURI;
  * <p>This value object aggregates the subset of download status data that is derived from the
  * request's execution context rather than its progress counters or outcome. Callers typically build
  * it alongside other snapshot bundles and pass it into a status formatter or encoder that produces
- * an FCP reply. The snapshot stores all references as provided and does not perform validation,
- * normalization, or defensive copying.
+ * an FCP reply. The snapshot stores object references as provided and does not perform validation
+ * or normalization; mutable array inputs are defensively copied.
  *
- * <p>The instance is immutable, but the referenced {@link FetchContext} and any arrays may be
- * mutable. As a result, thread-safety depends on how those objects are shared, and callers should
- * treat the referenced values as read-only after the snapshot is created. The snapshot
- * intentionally does not interpret compatibility mode ordering or URI normalization, leaving those
- * concerns to downstream consumers.
+ * <p>The instance is immutable. Referenced objects such as {@link FetchContext} may still be
+ * mutable and shared, while array fields are defensively copied at construction and access time.
+ * The snapshot intentionally does not interpret compatibility mode ordering or URI normalization,
+ * leaving those concerns to downstream consumers.
  *
  * <ul>
  *   <li>Preserves fetch-context settings that influence status output and filtering.
@@ -64,8 +63,8 @@ public final class DownloadContextSnapshot {
       FreenetURI uri,
       boolean dontCompress) {
     this.fetchContext = fetchContext;
-    this.compatModes = compatModes;
-    this.splitfileKey = splitfileKey;
+    this.compatModes = copyCompatModes(compatModes);
+    this.splitfileKey = copySplitfileKey(splitfileKey);
     this.uri = uri;
     this.dontCompress = dontCompress;
   }
@@ -87,27 +86,24 @@ public final class DownloadContextSnapshot {
   /**
    * Returns the compatibility modes observed for the request.
    *
-   * <p>The returned array is the original reference supplied to the constructor. It may be {@code
-   * null} or empty, and no defensive copy is made. Callers should therefore treat the array as
-   * read-only and avoid mutation that could alter equality or hash-based behavior elsewhere.
+   * <p>The returned array is a defensive copy. It may be {@code null} or empty.
    *
    * @return the compatibility mode array, or {@code null} if no modes were recorded
    */
   public CompatibilityMode[] compatModes() {
-    return compatModes;
+    return copyCompatModes(compatModes);
   }
 
   /**
    * Returns the splitfile crypto key override, if any.
    *
-   * <p>The returned byte array is not copied. It may be {@code null} when no override is configured
-   * or when the request does not involve splitfiles. Callers should not mutate the array after
-   * construction to preserve stable equality and diagnostic output.
+   * <p>The returned byte array is a defensive copy. It may be {@code null} when no override is
+   * configured or when the request does not involve splitfiles.
    *
    * @return the splitfile key bytes, or {@code null} when no override is set
    */
   public byte[] splitfileKey() {
-    return splitfileKey;
+    return copySplitfileKey(splitfileKey);
   }
 
   /**
@@ -134,5 +130,13 @@ public final class DownloadContextSnapshot {
    */
   public boolean dontCompress() {
     return dontCompress;
+  }
+
+  private static CompatibilityMode[] copyCompatModes(CompatibilityMode[] input) {
+    return input == null ? null : input.clone();
+  }
+
+  private static byte[] copySplitfileKey(byte[] input) {
+    return input == null ? null : input.clone();
   }
 }

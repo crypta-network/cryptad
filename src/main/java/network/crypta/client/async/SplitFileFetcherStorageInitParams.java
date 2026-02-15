@@ -1,6 +1,7 @@
 package network.crypta.client.async;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.FetchContext;
@@ -27,10 +28,11 @@ import network.crypta.support.io.FileRandomAccessBufferFactory;
  * SplitFileFetcherStorage#SplitFileFetcherStorage(SplitFileFetcherStorageInitParams)} without
  * further transformation or validation.
  *
- * <p>All fields are stored as references with no defensive copying, so callers should treat the
- * built instance as immutable and avoid mutating supplied objects after {@link Builder#build()}.
- * The container performs no I/O and is not thread-safe; publish it to a single thread or apply
- * external synchronization if multiple threads may read it concurrently.
+ * <p>Most fields are stored as references, while mutable array/list inputs such as client details
+ * and decompressor lists are defensively copied. Callers should still treat the built instance as
+ * immutable and avoid mutating supplied objects after {@link Builder#build()}. The container
+ * performs no I/O and is not thread-safe; publish it to a single thread or apply external
+ * synchronization if multiple threads may read it concurrently.
  *
  * <ul>
  *   <li>Captures metadata, keys, and compression settings for the fetch plan.
@@ -71,11 +73,11 @@ public final class SplitFileFetcherStorageInitParams {
    * Builds {@link SplitFileFetcherStorageInitParams} instances through fluent, mutable setters.
    *
    * <p>This builder is a lightweight accumulator: each setter stores the provided reference and
-   * returns {@code this} for chaining. It performs no I/O, no validation, and no defensive copying.
-   * The final {@link #build()} call creates a new parameter snapshot containing the current
-   * references; subsequent setter calls do not affect already-built instances. Because the builder
-   * is mutable and unsynchronized, it should be confined to one thread or externally synchronized
-   * if shared.
+   * returns {@code this} for chaining. It performs no I/O and no validation. Selected mutable
+   * inputs (byte arrays and decompressor lists) are defensively copied. The final {@link #build()}
+   * call creates a new parameter snapshot containing the current references; subsequent setter
+   * calls do not affect already-built instances. Because the builder is mutable and unsynchronized,
+   * it should be confined to one thread or externally synchronized if shared.
    *
    * <ul>
    *   <li>Set metadata, keys, and compression choices in a single place.
@@ -146,17 +148,17 @@ public final class SplitFileFetcherStorageInitParams {
     /**
      * Configures the decompressor pipeline to apply after block decode.
      *
-     * <p>The list is stored as a direct reference and is not copied or validated. Order matters:
-     * callers are responsible for supplying the correct sequence for the metadata they expect to
-     * decode. A {@code null} or empty list indicates no additional decompression steps beyond the
-     * mandatory decoding performed elsewhere. The last value provided wins when this setter is
-     * called repeatedly.
+     * <p>The list is defensively copied to avoid aliasing with caller-owned mutable lists. Order
+     * matters: callers are responsible for supplying the correct sequence for the metadata they
+     * expect to decode. A {@code null} or empty list indicates no additional decompression steps
+     * beyond the mandatory decoding performed elsewhere. The last value provided wins when this
+     * setter is called repeatedly.
      *
      * @param v ordered compressor list to apply after decode; may be null.
      * @return this builder instance so further parameters can be chained.
      */
     public Builder decompressors(List<COMPRESSOR_TYPE> v) {
-      this.decompressors = v;
+      this.decompressors = copyListNullable(v);
       return this;
     }
 
@@ -310,16 +312,15 @@ public final class SplitFileFetcherStorageInitParams {
     /**
      * Attaches opaque client details preserved for callbacks and auditing.
      *
-     * <p>The byte array reference is stored directly and is not copied or validated. A {@code null}
-     * value indicates that no client details are supplied. If this setter is invoked multiple
-     * times, the most recent array reference replaces any prior one. Callers should avoid mutating
-     * the array contents after {@link #build()}, as the built parameters retain the same reference.
+     * <p>The byte array is defensively copied on set to avoid aliasing mutable caller-owned
+     * buffers. A {@code null} value indicates that no client details are supplied. If this setter
+     * is invoked multiple times, the most recent array value replaces any prior one.
      *
-     * @param v opaque client detail bytes; stored by reference, not copied.
+     * @param v opaque client detail bytes; copied when non-null.
      * @return this builder instance so further parameters can be chained.
      */
     public Builder clientDetails(byte[] v) {
-      this.clientDetails = v;
+      this.clientDetails = copyBytesNullable(v);
       return this;
     }
 
@@ -518,7 +519,7 @@ public final class SplitFileFetcherStorageInitParams {
       SplitFileFetcherStorageInitParams p = new SplitFileFetcherStorageInitParams();
       p.metadata = metadata;
       p.fetcher = fetcher;
-      p.decompressors = decompressors;
+      p.decompressors = copyListNullable(decompressors);
       p.clientMetadata = clientMetadata;
       p.topDontCompress = topDontCompress;
       p.topCompatibilityMode = topCompatibilityMode;
@@ -528,7 +529,7 @@ public final class SplitFileFetcherStorageInitParams {
       p.thisKey = thisKey;
       p.origKey = origKey;
       p.isFinalFetch = isFinalFetch;
-      p.clientDetails = clientDetails;
+      p.clientDetails = copyBytesNullable(clientDetails);
       p.random = random;
       p.tempBucketFactory = tempBucketFactory;
       p.rafFactory = rafFactory;
@@ -542,5 +543,13 @@ public final class SplitFileFetcherStorageInitParams {
       p.keysFetching = keysFetching;
       return p;
     }
+  }
+
+  private static byte[] copyBytesNullable(byte[] input) {
+    return input == null ? null : input.clone();
+  }
+
+  private static List<COMPRESSOR_TYPE> copyListNullable(List<COMPRESSOR_TYPE> input) {
+    return input == null ? null : new ArrayList<>(input);
   }
 }

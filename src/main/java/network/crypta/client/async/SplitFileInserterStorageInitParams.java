@@ -1,5 +1,6 @@
 package network.crypta.client.async;
 
+import java.util.Arrays;
 import network.crypta.client.ArchiveManager.ARCHIVE_TYPE;
 import network.crypta.client.ClientMetadata;
 import network.crypta.client.InsertContext;
@@ -15,8 +16,8 @@ import network.crypta.support.compress.Compressor.COMPRESSOR_TYPE;
  *
  * <p>This parameter holder is populated when a new splitfile insert is started. It captures the
  * original data buffer, encoding configuration, metadata, and runtime helpers needed to construct
- * {@link SplitFileInserterStorage}. Values are stored as provided with no validation or defensive
- * copying.
+ * {@link SplitFileInserterStorage}. Values are stored as provided with no validation, while mutable
+ * byte/hash arrays are defensively copied.
  *
  * @see SplitFileInserterStorage
  * @see SplitFileInserterStorageRuntimeParams
@@ -49,7 +50,8 @@ public final class SplitFileInserterStorageInitParams {
   /**
    * Fluent builder for {@link SplitFileInserterStorageInitParams}.
    *
-   * <p>The builder stores references as-is and performs no validation.
+   * <p>The builder stores references as-is and performs no validation. Mutable byte/hash arrays are
+   * defensively copied.
    */
   public static final class Builder {
     private LockableRandomAccessBuffer originalData;
@@ -202,7 +204,7 @@ public final class SplitFileInserterStorageInitParams {
      * @return this builder for chaining
      */
     public Builder splitfileCryptoKey(byte[] v) {
-      this.splitfileCryptoKey = v;
+      this.splitfileCryptoKey = copyByteArrayNullable(v);
       return this;
     }
 
@@ -213,7 +215,7 @@ public final class SplitFileInserterStorageInitParams {
      * @return this builder for chaining
      */
     public Builder hashThisLayerOnly(byte[] v) {
-      this.hashThisLayerOnly = v;
+      this.hashThisLayerOnly = copyByteArrayNullable(v);
       return this;
     }
 
@@ -224,7 +226,7 @@ public final class SplitFileInserterStorageInitParams {
      * @return this builder for chaining
      */
     public Builder hashes(HashResult[] v) {
-      this.hashes = v;
+      this.hashes = copyHashArrayNullable(v);
       return this;
     }
 
@@ -323,9 +325,9 @@ public final class SplitFileInserterStorageInitParams {
       p.persistent = persistent;
       p.ctx = ctx;
       p.splitfileCryptoAlgorithm = splitfileCryptoAlgorithm;
-      p.splitfileCryptoKey = splitfileCryptoKey;
-      p.hashThisLayerOnly = hashThisLayerOnly;
-      p.hashes = hashes;
+      p.splitfileCryptoKey = copyByteArrayNullable(splitfileCryptoKey);
+      p.hashThisLayerOnly = copyByteArrayNullable(hashThisLayerOnly);
+      p.hashes = copyHashArrayNullable(hashes);
       p.tempBucketFactory = tempBucketFactory;
       p.checker = checker;
       p.topDontCompress = topDontCompress;
@@ -335,5 +337,13 @@ public final class SplitFileInserterStorageInitParams {
       p.origCompressedDataSize = origCompressedDataSize;
       return p;
     }
+  }
+
+  private static byte[] copyByteArrayNullable(byte[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
+  }
+
+  private static HashResult[] copyHashArrayNullable(HashResult[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 }

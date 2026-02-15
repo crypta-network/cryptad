@@ -11,11 +11,11 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>This record groups the bucket payload with the key and encoding metadata required by
  * block-level inserters such as {@link SingleBlockInserter} and {@link USKInserter}. It performs no
- * validation or defensive copying; callers are responsible for supplying valid values and for
- * ensuring the referenced bucket remains readable for the duration of the insert.
+ * validation; callers are responsible for supplying valid values and for ensuring the referenced
+ * bucket remains readable for the duration of the insert.
  *
- * <p>The {@code cryptoKey} array is stored by reference and compared by content for equality. Avoid
- * mutating it after construction if you rely on stable equality or hash semantics.
+ * <p>The {@code cryptoKey} array is defensively copied on construction and accessor read, and is
+ * compared by content for equality.
  */
 public final class BlockInsertPayload {
   private final Bucket data;
@@ -35,7 +35,7 @@ public final class BlockInsertPayload {
    * @param isMetadata whether the content should be encoded as metadata
    * @param sourceLength uncompressed source length in bytes, or {@code -1} if unknown
    * @param cryptoAlgorithm identifier for optional per-block cryptography; {@code 0} for none
-   * @param cryptoKey raw key material for {@code cryptoAlgorithm}; may be {@code null} when unused
+   * @param cryptoKey raw key material for {@code cryptoAlgorithm}; copied when non-null
    */
   public BlockInsertPayload(
       Bucket data,
@@ -51,7 +51,7 @@ public final class BlockInsertPayload {
     this.isMetadata = isMetadata;
     this.sourceLength = sourceLength;
     this.cryptoAlgorithm = cryptoAlgorithm;
-    this.cryptoKey = cryptoKey;
+    this.cryptoKey = copyNullable(cryptoKey);
   }
 
   public Bucket data() {
@@ -79,7 +79,11 @@ public final class BlockInsertPayload {
   }
 
   public byte[] cryptoKey() {
-    return cryptoKey;
+    return copyNullable(cryptoKey);
+  }
+
+  private static byte[] copyNullable(byte[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 
   /**

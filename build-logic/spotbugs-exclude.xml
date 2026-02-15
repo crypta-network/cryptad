@@ -112,6 +112,382 @@
   </Match>
 
   <!--
+    Batch 1 EI_EXPOSE_REP triage:
+    These records/classes intentionally transport live runtime collaborators (executors, contexts,
+    callbacks, services, endpoint owners). Defensive copying is either impossible or would break
+    expected shared-lifecycle behavior.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.ClientContextInitParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextRuntime"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextDefaults"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextServices"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientContextStorageFactories"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.BlockInsertParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.InsertRequestParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.RequestHandlerContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.RequestSenderContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.CryptoAndTransportParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.PeerRoutingSelectionParams"/>
+  </Match>
+
+  <!--
+    Endpoint/service owners expose shared singletons by design; callers rely on identity and shared
+    mutable lifecycle state.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.ClientEndpoints"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getClientContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getClientLayerPersister"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getEndpoints"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getNode"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getPersistentTempBucketFactory"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getPluginStores"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getRandom"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getRequestStarters"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getStoreChecker"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP"/>
+    <Class name="network.crypta.node.NodeClientCore"/>
+    <Method name="getTempBucketFactory"/>
+  </Match>
+
+  <!--
+    Builder methods intentionally stage live runtime/config references. Copying these collaborators
+    is not meaningful; only mutable byte/list fields are defensively copied in code.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileFetcherStorageInitParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileFetcherStorageResumeParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileInserterStorageRuntimeParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileInserterStorageInitParams$Builder"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileInserter$Options$Builder"/>
+  </Match>
+
+  <!--
+    These holders wrap live bucket/writer/context/map/URI references that participate in ongoing
+    request execution. Identity sharing is expected by current call sites.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientGetterOptions"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.BlockInsertPayload"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileFetchOriginalDetails"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ManifestPutterParams"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientLayerPersister"/>
+  </Match>
+
+  <!--
+    Batch 2 EI_EXPOSE_REP triage:
+    FCP and HTTP status/request wrappers intentionally expose live collaborators and request-owned
+    references so lifecycle state, redirects, and context settings remain shared across handlers.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.DownloadContextSnapshot"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.DownloadRequestStatusDetails"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.FCPConnectionHandler"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.ClientPutBase"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.DownloadRequestStatus"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.FcpInsertRequest"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.FcpServerDependencies"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.PersistentPutRequestMetadata"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.PersistentRequestClient"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.fcp.UploadRequestStatusDetails"/>
+  </Match>
+
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.SimpleToadletServer"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.ToadletRequestServices"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.updateableelements.ImageElement"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.ToadletContextImpl"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.bookmark.BookmarkItem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.ConfigToadlet"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.FProxyFetchCriteria"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.FProxyFetchInProgress"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.geoip.Cache"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.updateableelements.ProgressBarElement"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.clients.http.updateableelements.ProgressInfoElement"/>
+  </Match>
+
+  <!--
+    Batch 3 EI_EXPOSE_REP triage:
+    Core key/block and subsystem classes intentionally share live buffers/collaborators for
+    protocol compatibility and performance-sensitive paths. Copying these structures would alter
+    behavior or impose substantial overhead.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.FreenetURI"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.CHKBlock"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.ClientCHK"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.keys.SSKBlock"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.store.StoreCallback$BlockPayload"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.store.saltedhash.SaltedHashStoreDependencies"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.NodeNetworkSubsystem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.NodeCrypto"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.NodeStorageSubsystem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.subsystem.NodeServicesSubsystem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.InsertHandlerContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.NodeClientCoreInit"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.updater.NodeUpdateManager"/>
+  </Match>
+
+  <!--
+    Batch 4 EI_EXPOSE_REP triage:
+    Remaining request/status wrappers and node runtime holders expose live collaborators or payload
+    views by design. Suppressions are scoped to the specific classes still reporting EI findings.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.Metadata"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.InsertException"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.AnnounceSender"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.PeerNode"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.io.xfer.BlockTransferContext"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.FetchResult"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.ClientRequestScheduler"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.async.SplitFileFetcherKeyListener"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.io.comm.FreenetInetAddress"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.MessageItem"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.NodeGetPubkey"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.node.PeerNodeStatus"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.MetadataRedirectTarget"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.SplitfileBlockKeys"/>
+  </Match>
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Class name="network.crypta.client.TopLayerHashInfo"/>
+  </Match>
+
+  <!--
     These methods intentionally use absolute filesystem paths mandated by platform conventions:
     - Linux service paths under /etc, /var, /run
     - macOS system Library roots

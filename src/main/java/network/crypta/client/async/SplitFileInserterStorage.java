@@ -287,7 +287,7 @@ public final class SplitFileInserterStorage {
     this.jobRunner = runtime.jobRunner;
     this.isMetadata = params.isMetadata;
     this.archiveType = params.archiveType;
-    this.hashThisLayerOnly = params.hashThisLayerOnly;
+    this.hashThisLayerOnly = copyByteArray(params.hashThisLayerOnly);
     this.topDontCompress = params.topDontCompress;
     this.origDataSize = params.origDataSize;
     this.origCompressedDataSize = params.origCompressedDataSize;
@@ -302,13 +302,13 @@ public final class SplitFileInserterStorage {
     // Consider getting rid of support for very old splitfiles.
 
     InsertContext ctx = params.ctx;
-    byte[] providedSplitfileCryptoKey = params.splitfileCryptoKey;
+    byte[] providedSplitfileCryptoKey = copyByteArray(params.splitfileCryptoKey);
     cmode = ctx.getCompatibilityMode();
     if (cmode.code < CompatibilityMode.COMPAT_1255.code) {
       this.hashes = null;
       providedSplitfileCryptoKey = null;
     } else {
-      this.hashes = params.hashes;
+      this.hashes = copyHashArray(params.hashes);
     }
 
     SegmentLayout layout = computeSegmentLayout(totalDataBlocks, ctx, cmode);
@@ -334,7 +334,7 @@ public final class SplitFileInserterStorage {
     CryptoInit crypto =
         chooseSplitfileKey(
             providedSplitfileCryptoKey, cmode, params.hashThisLayerOnly, this.hashes);
-    this.splitfileCryptoKey = crypto.key;
+    this.splitfileCryptoKey = copyByteArray(crypto.key);
     specifySplitfileKeyInMetadata = crypto.specifyInMetadata;
 
     int totalCheckBlocksLocal = 0;
@@ -368,11 +368,11 @@ public final class SplitFileInserterStorage {
 
     // Set up offset arrays early so we can compute the length of encodeOffsets().
     OffsetArrays oa = createOffsetArrays(persistent);
-    offsetCrossSegmentBlocks = oa.offsetCrossSegmentBlocks;
-    offsetCrossSegmentStatus = oa.offsetCrossSegmentStatus;
-    offsetSegmentCheckBlocks = oa.offsetSegmentCheckBlocks;
-    offsetSegmentStatus = oa.offsetSegmentStatus;
-    offsetSegmentKeys = oa.offsetSegmentKeys;
+    offsetCrossSegmentBlocks = copyLongArray(oa.offsetCrossSegmentBlocks);
+    offsetCrossSegmentStatus = copyLongArray(oa.offsetCrossSegmentStatus);
+    offsetSegmentCheckBlocks = copyLongArray(oa.offsetSegmentCheckBlocks);
+    offsetSegmentStatus = copyLongArray(oa.offsetSegmentStatus);
+    offsetSegmentKeys = copyLongArray(oa.offsetSegmentKeys);
 
     // First, we have all the fixed stuff ...
 
@@ -520,7 +520,7 @@ public final class SplitFileInserterStorage {
         validateSegmentTotals(segmentSize, checkSegmentSize, crossCheckBlocks);
         this.splitfileCryptoAlgorithm = dis.readByte();
         validateCryptoAlgorithm(splitfileCryptoAlgorithm);
-        splitfileCryptoKey = readOptionalCryptoKey(dis);
+        splitfileCryptoKey = copyByteArray(readOptionalCryptoKey(dis));
         this.keyLength = dis.readInt();
         validateKeyLength(keyLength);
         this.cmode = readCompatibilityModeChecked(dis);
@@ -532,13 +532,13 @@ public final class SplitFileInserterStorage {
         if (consecutiveRNFsCountAsSuccess < 0)
           throw new StorageFormatException("Bad consecutiveRNFsCountAsSuccess");
         specifySplitfileKeyInMetadata = dis.readBoolean();
-        hashThisLayerOnly = readOptionalHashThisLayerOnly(dis);
+        hashThisLayerOnly = copyByteArray(readOptionalHashThisLayerOnly(dis));
         topDontCompress = dis.readBoolean();
         topRequiredBlocks = dis.readInt();
         topTotalBlocks = dis.readInt();
         origDataSize = dis.readLong();
         origCompressedDataSize = dis.readLong();
-        hashes = HashResult.readHashes(dis);
+        hashes = copyHashArray(HashResult.readHashes(dis));
       }
       this.hasPaddedLastBlock = (dataLength % CHKBlock.DATA_LENGTH != 0);
       this.segments = new SplitFileInserterSegmentStorage[segmentCount];
@@ -554,11 +554,11 @@ public final class SplitFileInserterStorage {
       offsetPaddedLastBlock = od.offsetPaddedLastBlock;
       offsetOverallStatus = od.offsetOverallStatus;
       overallStatusLength = od.overallStatusLength;
-      offsetCrossSegmentBlocks = od.arrays.offsetCrossSegmentBlocks;
-      offsetSegmentCheckBlocks = od.arrays.offsetSegmentCheckBlocks;
-      offsetSegmentStatus = od.arrays.offsetSegmentStatus;
-      offsetCrossSegmentStatus = od.arrays.offsetCrossSegmentStatus;
-      offsetSegmentKeys = od.arrays.offsetSegmentKeys;
+      offsetCrossSegmentBlocks = copyLongArray(od.arrays.offsetCrossSegmentBlocks);
+      offsetSegmentCheckBlocks = copyLongArray(od.arrays.offsetSegmentCheckBlocks);
+      offsetSegmentStatus = copyLongArray(od.arrays.offsetSegmentStatus);
+      offsetCrossSegmentStatus = copyLongArray(od.arrays.offsetCrossSegmentStatus);
+      offsetSegmentKeys = copyLongArray(od.arrays.offsetSegmentKeys);
       // Set up segments...
       underlyingOffsetDataSegments = new long[segmentCount];
       try (InputStream is =
@@ -575,6 +575,18 @@ public final class SplitFileInserterStorage {
 
     this.writeMetadataJob = createWriteMetadataJob();
     this.wrapLazyWriteMetadata = () -> jobRunner.queueNormalOrDrop(writeMetadataJob);
+  }
+
+  private static byte[] copyByteArray(byte[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
+  }
+
+  private static long[] copyLongArray(long[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
+  }
+
+  private static HashResult[] copyHashArray(HashResult[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 
   private void computeStatus() {
