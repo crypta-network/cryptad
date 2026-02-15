@@ -14,6 +14,7 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import network.crypta.io.comm.PeerParseException;
 import network.crypta.io.comm.ReferenceSignatureVerificationException;
 import network.crypta.node.useralerts.DroppedOldPeersUserAlert;
@@ -59,6 +60,9 @@ class PeerPersistence {
 
   /** Minimum delay between scheduled non-urgent peer writes, in milliseconds. */
   private static final long MIN_WRITEPEERS_DELAY = MINUTES.toMillis(5);
+
+  /** Defensive fallback used when old-opennet peers are unexpectedly absent. */
+  private static final OpennetPeerNode[] EMPTY_OLD_OPENNET_PEERS = new OpennetPeerNode[0];
 
   /** Owning node, used for scheduling, alerts, and access to opennet services. */
   private final Node node;
@@ -423,8 +427,8 @@ class PeerPersistence {
    */
   private String getOldOpennetPeersString(OpennetManager om) {
     StringBuilder sb = new StringBuilder();
-    OpennetPeerNode[] oldPeers = om.getOldPeers();
-    if (oldPeers == null) return sb.toString();
+    OpennetPeerNode[] oldPeers =
+        Objects.requireNonNullElse(om.getOldPeers(), EMPTY_OLD_OPENNET_PEERS);
     for (OpennetPeerNode pn : oldPeers) {
       sb.append(pn.exportDiskFieldSet().toOrderedString());
     }
