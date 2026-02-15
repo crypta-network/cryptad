@@ -1,5 +1,7 @@
 package org.spaceroots.mantissa.ode;
 
+import java.util.Arrays;
+
 /**
  * Bundles scalar and state inputs used to estimate an initial step size.
  *
@@ -9,12 +11,9 @@ package org.spaceroots.mantissa.ode;
  * before invoking {@link AdaptiveStepsizeIntegrator#initializeStep(StepInitializationContext)} and
  * pair it with a workspace that holds mutable trial buffers used during the Euler probe.
  *
- * <p>The instance is immutable, but it stores references to mutable arrays owned by the caller. No
- * defensive copies are made, and callers are responsible for ensuring that array lengths match the
- * equation dimension and that scaling factors are non-zero. The class does not validate inputs or
- * enforce invariants, so it should be used as a short-lived carrier rather than a long-term cache.
- * It is not thread-safe because its arrays are expected to be mutated by the integrator that uses
- * them.
+ * <p>The instance is immutable and defensively copies its mutable array fields on construction and
+ * access. The class does not validate inputs or enforce invariants, so callers remain responsible
+ * for ensuring array lengths match the equation dimension and scaling factors are non-zero.
  *
  * <p>Responsibilities include:
  *
@@ -39,11 +38,10 @@ public final class StepInitializationInputs {
   /**
    * Creates an input bundle for the initial step-size estimate.
    *
-   * <p>This constructor stores references to the provided arrays without copying or validating
-   * them. Callers must ensure that {@code y0}, {@code yDot0}, and {@code scale} have identical
-   * lengths, that each scale entry is non-zero, and that {@code yDot0} reflects the derivative at
-   * {@code t0}. The resulting instance is intended for immediate use by a single integrator and
-   * should not be shared across threads because the arrays are mutable.
+   * <p>This constructor copies the provided arrays and does not validate dimensional consistency.
+   * Callers must ensure that {@code y0}, {@code yDot0}, and {@code scale} have identical lengths,
+   * that each scale entry is non-zero, and that {@code yDot0} reflects the derivative at {@code
+   * t0}.
    *
    * @param equations derivative provider used by the initialization heuristic; must not be {@code
    *     null}
@@ -65,10 +63,10 @@ public final class StepInitializationInputs {
     this.equations = equations;
     this.forward = forward;
     this.order = order;
-    this.scale = scale;
+    this.scale = copyArray(scale);
     this.t0 = t0;
-    this.y0 = y0;
-    this.yDot0 = yDot0;
+    this.y0 = copyArray(y0);
+    this.yDot0 = copyArray(yDot0);
   }
 
   /**
@@ -116,14 +114,13 @@ public final class StepInitializationInputs {
   /**
    * Returns the per-component scaling factors used for normalization.
    *
-   * <p>The array is shared with the caller and is read repeatedly during the heuristic. Each entry
-   * must be non-zero to avoid division by zero, and the array length must match the state vector
-   * dimension. The class does not validate these conditions and does not copy the array.
+   * <p>The returned array is a defensive copy. Each entry must be non-zero to avoid division by
+   * zero, and the array length must match the state vector dimension.
    *
    * @return scale array used to normalize state and derivative components
    */
   public double[] scale() {
-    return scale;
+    return copyArray(scale);
   }
 
   /**
@@ -143,28 +140,28 @@ public final class StepInitializationInputs {
   /**
    * Returns the state vector at the start time.
    *
-   * <p>The returned array is shared with the caller and is read by the heuristic when estimating
-   * the initial step size. It must have the same length as the equation dimension and the scale
-   * array. The contents should represent the state at {@code t0} and remain stable during
-   * initialization.
+   * <p>The returned array is a defensive copy. It must have the same length as the equation
+   * dimension and the scale array.
    *
    * @return state vector at {@code t0}, shared with the integrator
    */
   public double[] y0() {
-    return y0;
+    return copyArray(y0);
   }
 
   /**
    * Returns the derivative vector at the start time.
    *
-   * <p>The returned array is shared with the caller and is read by the heuristic when computing
-   * normalized derivative norms. It should contain the derivative at {@code t0} and have the same
-   * length as {@code y0}. The integrator may overwrite the array during initialization, so callers
-   * should not rely on its contents after the step is estimated.
+   * <p>The returned array is a defensive copy. It should contain the derivative at {@code t0} and
+   * have the same length as {@code y0}.
    *
    * @return derivative vector at {@code t0}, shared and mutable
    */
   public double[] yDot0() {
-    return yDot0;
+    return copyArray(yDot0);
+  }
+
+  private static double[] copyArray(double[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
   }
 }

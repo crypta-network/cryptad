@@ -9,8 +9,8 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>The value object groups the immutable method definition shared across Runge-Kutta-Fehlberg
  * constructors: the FSAL flag, tableau coefficients, and the step interpolator prototype that is
- * cloned during integration. Instances are simple data carriers; they do not copy the coefficient
- * arrays and therefore rely on the caller to treat those arrays as immutable.
+ * cloned during integration. Instances defensively copy coefficient arrays on construction and
+ * access so callers cannot mutate internal state by retaining external references.
  */
 @SuppressWarnings("java:S6206")
 public final class RungeKuttaFehlbergMethod {
@@ -32,9 +32,9 @@ public final class RungeKuttaFehlbergMethod {
   public RungeKuttaFehlbergMethod(
       boolean fsal, double[] c, double[][] a, double[] b, RungeKuttaStepInterpolator prototype) {
     this.fsal = fsal;
-    this.c = c;
-    this.a = a;
-    this.b = b;
+    this.c = copyArray(c);
+    this.a = copyMatrix(a);
+    this.b = copyArray(b);
     this.prototype = prototype;
   }
 
@@ -43,19 +43,34 @@ public final class RungeKuttaFehlbergMethod {
   }
 
   public double[] c() {
-    return c;
+    return copyArray(c);
   }
 
   public double[][] a() {
-    return a;
+    return copyMatrix(a);
   }
 
   public double[] b() {
-    return b;
+    return copyArray(b);
   }
 
   public RungeKuttaStepInterpolator prototype() {
     return prototype;
+  }
+
+  private static double[] copyArray(double[] input) {
+    return input == null ? null : Arrays.copyOf(input, input.length);
+  }
+
+  private static double[][] copyMatrix(double[][] input) {
+    if (input == null) {
+      return null;
+    }
+    double[][] copy = new double[input.length][];
+    for (int i = 0; i < input.length; i++) {
+      copy[i] = copyArray(input[i]);
+    }
+    return copy;
   }
 
   /**
