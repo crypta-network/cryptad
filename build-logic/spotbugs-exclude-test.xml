@@ -57,4 +57,115 @@
     <Class name="network.crypta.test.PngUtil$Chunk"/>
     <Method name="&lt;init&gt;"/>
   </Match>
+
+  <!--
+    Path-resolution fixtures intentionally use absolute literals to verify behavior across
+    Linux/macOS/Windows path handling. Keep suppression scoped to known test methods only so
+    new hardcoded-path usage in unrelated tests remains visible.
+  -->
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.clients.fcp.DownloadRequestStatusTest"/>
+    <Method name="getPreferredFilename_whenDestFileExists_returnsBasename"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.clients.http.LocalDirectoryConfigToadletTest"/>
+    <Method name="allowedDir_whenCalledWithAnyFile_returnsTrue"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.clients.http.LocalDownloadDirectoryToadletTest"/>
+    <Method name="startingDirScenarios"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.clients.http.LocalFileFilterToadletTest"/>
+    <Method name="startingDir_whenAllowedDirsConfigured_returnsFirstPath"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.clients.http.LocalFileInsertToadletTest"/>
+    <Method name="startingDir_whenExplicitUploadDirectoryConfigured_returnsFirstEntry"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="computeWrapperFilePath_whenAbsoluteSpec_expectReturnedAsIs"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="computeWrapperFilePath_whenBlankSpec_expectNull"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="computeWrapperFilePath_whenRelativeAndWorkingDirAbsolute_expectResolvedAgainstWorkingDir"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="computeWrapperFilePath_whenRelativeAndWorkingDirRelative_expectResolvedAgainstConfDir"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="computeWrapperLogPath_whenAbsolute_expectReturnedAsIs"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="computeWrapperLogPath_whenRelative_expectResolvedAgainstConfDir"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="resolveCryptadPath_whenJarMissing_expectCwdFallback"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="resolveCryptadPath_whenJarSameDirExists_expectLocalScript"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="resolveCryptadPath_whenJarSiblingBinExists_expectBinScript"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="scanWrapperConfPath_whenCFlagPresent_expectParsedPath"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.LauncherUtilsTest"/>
+    <Method name="scanWrapperConfPath_whenConfAssignmentPresent_expectParsedPath"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.WrapperConfUtilsTest"/>
+    <Method name="computesLogPathAbsolute"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.launcher.WrapperConfUtilsTest"/>
+    <Method name="computesLogPathRelative"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.node.NodeCliTest"/>
+    <Method name="config_file_flag_overrides_positional"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.node.useralerts.DiskSpaceUserAlertTest"/>
+    <Method name="basic_properties_areConsistent"/>
+  </Match>
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Class name="network.crypta.node.useralerts.DiskSpaceUserAlertTest"/>
+    <Method name="isValid_boolean_noop_doesNotChangeValidity"/>
+  </Match>
 </FindBugsFilter>
