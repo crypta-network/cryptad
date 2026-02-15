@@ -57,7 +57,7 @@ public final class PointCostPair {
   }
 
   public double[] point() {
-    return point;
+    return point.clone();
   }
 
   public double cost() {
