@@ -290,7 +290,7 @@ public final class DelayedFreeRandomAccessBucket
    * @throws IOException on I/O errors
    * @throws ResumeFailedException if nested buckets cannot be resumed
    */
-  protected DelayedFreeRandomAccessBucket(
+  DelayedFreeRandomAccessBucket(
       DataInputStream dis,
       FilenameGenerator fg,
       PersistentFileTracker persistentFileTracker,

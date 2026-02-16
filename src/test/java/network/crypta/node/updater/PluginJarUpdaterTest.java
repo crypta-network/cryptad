@@ -75,7 +75,7 @@ class PluginJarUpdaterTest {
 
   private static FetchResult fetchResultFromBytes(byte[] jarBytes) {
     ArrayBucket bucket = new ArrayBucket(jarBytes);
-    return new FetchResult(new ClientMetadata("application/java-archive"), bucket);
+    return FetchResult.create(new ClientMetadata("application/java-archive"), bucket);
   }
 
   private static FreenetURI dummyUSK() {

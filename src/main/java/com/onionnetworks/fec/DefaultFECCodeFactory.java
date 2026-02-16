@@ -46,19 +46,19 @@ public final class DefaultFECCodeFactory extends FECCodeFactory {
    * Constructors for FEC implementations that operate on 8-bit symbols, populated from the
    * properties file during construction and never mutated afterward.
    */
-  protected final List<Constructor<? extends FECCode>> eightBitCodes = new ArrayList<>();
+  final List<Constructor<? extends FECCode>> eightBitCodes = new ArrayList<>();
 
   /**
    * Constructors for FEC implementations that operate on 16-bit symbols, kept separate to avoid
    * widening results when callers request byte-sized codes.
    */
-  protected final List<Constructor<? extends FECCode>> sixteenBitCodes = new ArrayList<>();
+  final List<Constructor<? extends FECCode>> sixteenBitCodes = new ArrayList<>();
 
   /**
    * Properties defining available FEC codes, keyed by {@code com.onionnetworks.fec.*}; loaded once
    * from the configured resource path and consulted for every lookup.
    */
-  protected Properties fecProperties;
+  Properties fecProperties;
 
   private static final Logger LOGGER = Logger.getLogger(DefaultFECCodeFactory.class.getName());
 
@@ -122,7 +122,7 @@ public final class DefaultFECCodeFactory extends FECCodeFactory {
    * @param key fully qualified property name to resolve; must not be {@code null}.
    * @return resolved property value or {@code null} when no override or default is present.
    */
-  protected synchronized String getProperty(String key) {
+  synchronized String getProperty(String key) {
     String result = System.getProperty(key);
     if (result == null) {
       result = fecProperties.getProperty(key);

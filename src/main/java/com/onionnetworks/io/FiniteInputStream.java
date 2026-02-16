@@ -36,7 +36,7 @@ public final class FiniteInputStream extends FilterInputStream {
    * originally supplied to the constructor. State is local to the instance and is not synchronized
    * for cross-thread visibility.
    */
-  protected long left;
+  long left;
 
   /**
    * Create a new bounded view onto an existing stream.

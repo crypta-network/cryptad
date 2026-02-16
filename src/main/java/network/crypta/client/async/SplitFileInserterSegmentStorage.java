@@ -813,13 +813,23 @@ public final class SplitFileInserterSegmentStorage {
   public ClientCHKBlock encodeBlock(int blockNo) throws IOException {
     if (parent.isFinishing()) {
       throw new IOException(
-          "Already finishing reading block " + blockNo + " for " + this + " for " + parent);
+          "Already finishing reading block "
+              + blockNo
+              + " for "
+              + this
+              + " for "
+              + java.util.Objects.toIdentityString(parent));
     }
     synchronized (this) {
       if (this.blockChooser.hasSucceeded(blockNo)) {
         LOG.error("Already inserted block {} for {} for {}", blockNo, this, parent);
         throw new IOException(
-            "Already inserted block " + blockNo + " for " + this + " for " + parent);
+            "Already inserted block "
+                + blockNo
+                + " for "
+                + this
+                + " for "
+                + java.util.Objects.toIdentityString(parent));
       }
     }
     byte[] buf = readBlock(blockNo);
@@ -1137,6 +1147,10 @@ public final class SplitFileInserterSegmentStorage {
 
   @Override
   public String toString() {
-    return super.toString() + ":" + parent;
+    return "SplitFileInserterSegmentStorage[segNo="
+        + segNo
+        + ", parent="
+        + java.util.Objects.toIdentityString(parent)
+        + "]";
   }
 }

@@ -97,7 +97,7 @@ public final class CountingBloomFilter extends BloomFilter {
    * @throws IOException if the file cannot be created, resized, or mapped
    * @throws IllegalArgumentException if {@code length < 0} or {@code k < 0}
    */
-  protected CountingBloomFilter(File file, int length, int k) throws IOException {
+  CountingBloomFilter(File file, int length, int k) throws IOException {
     super(requireNonNegativeLength(length), requireNonNegativeHashCount(k));
     int fileLength = length / 4;
     if (!file.exists() || file.length() != fileLength) needRebuild = true;

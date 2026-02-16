@@ -282,7 +282,7 @@ public final class Yarrow extends RandomSource implements PersistentRandomSource
    *
    * @param startupEntropy logical source tracked for estimator state.
    */
-  protected void readStartupEntropy(EntropySource startupEntropy) {
+  void readStartupEntropy(EntropySource startupEntropy) {
     // Consume the current time
     acceptEntropy(startupEntropy, System.currentTimeMillis(), 0);
     acceptEntropy(startupEntropy, System.nanoTime(), 0);

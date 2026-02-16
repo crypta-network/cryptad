@@ -70,7 +70,7 @@ public final class NoFreeBucket implements Bucket, Serializable {
    * deserialization or by the streaming constructor used by {@link BucketTools#restoreFrom}.
    * Invoking other methods before the field is restored will throw {@link NullPointerException}.
    */
-  protected NoFreeBucket() {
+  NoFreeBucket() {
     // Used only by Java serialization. See doc above.
     proxyRef = new AtomicReference<>();
   }
@@ -239,7 +239,7 @@ public final class NoFreeBucket implements Bucket, Serializable {
    * @throws StorageFormatException if the stream is malformed
    * @throws ResumeFailedException if a nested bucket cannot be resumed
    */
-  protected NoFreeBucket(
+  NoFreeBucket(
       DataInputStream dis,
       FilenameGenerator fg,
       PersistentFileTracker persistentFileTracker,

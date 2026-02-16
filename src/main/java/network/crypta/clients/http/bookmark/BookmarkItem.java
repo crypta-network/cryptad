@@ -70,7 +70,7 @@ public final class BookmarkItem extends Bookmark {
    * resolves it via {@link NodeL10n}. Callers should prefer the accessor to get the effective
    * user-facing text.
    */
-  protected String desc;
+  String desc;
 
   /**
    * The persisted short description value for this bookmark, possibly {@code null}.
@@ -79,7 +79,7 @@ public final class BookmarkItem extends Bookmark {
    * resolves it via {@link NodeL10n}. Callers should prefer the accessor to get the effective
    * user-facing text.
    */
-  protected String shortDescription;
+  String shortDescription;
 
   /**
    * Creates a new bookmark item with the supplied fields and associated managers.

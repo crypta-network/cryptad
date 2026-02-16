@@ -169,10 +169,11 @@ class PersistentRequestClientTest {
 
     TestClientRequest(PersistentRequestClient client, String identifier, boolean finished) {
       super(
-          new ClientRequestParams(
-              null, identifier, 0, (short) 1, client.persistence, false, null, false),
-          null,
-          client);
+          prepareConstructorInit(
+              new ClientRequestParams(
+                  null, identifier, 0, (short) 1, client.persistence, false, null, false),
+              null,
+              client));
       this.finished = finished;
     }
 

@@ -187,7 +187,7 @@ public final class ClientCHK extends ClientKey implements Serializable {
     hashCode = Fields.hashCode(routingKey) ^ Fields.hashCode(cryptoKey) ^ compressionAlgorithm;
   }
 
-  protected ClientCHK() {
+  ClientCHK() {
     // For serialization frameworks only.
     routingKey = null;
     cryptoKey = null;

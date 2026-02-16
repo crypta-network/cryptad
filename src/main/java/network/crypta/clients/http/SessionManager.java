@@ -450,7 +450,7 @@ public final class SessionManager {
    */
   private void setSessionCookie(Session session, ToadletContext context) {
     context.setCookie(
-        new Cookie(
+        Cookie.create(
             mCookiePath,
             mCookieName,
             session.getID().toString(),

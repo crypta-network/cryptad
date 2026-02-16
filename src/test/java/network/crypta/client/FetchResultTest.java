@@ -27,7 +27,7 @@ class FetchResultTest {
     try (ArrayBucket bucket = new ArrayBucket()) {
       // Act & Assert
       //noinspection ConstantValue
-      assertThrows(IllegalArgumentException.class, () -> new FetchResult(dm, bucket));
+      assertThrows(IllegalArgumentException.class, () -> FetchResult.create(dm, bucket));
     }
   }
 
@@ -38,7 +38,7 @@ class FetchResultTest {
     byte[] bytes = new byte[] {1, 2, 3, 4, 5};
     try (ArrayBucket bucket = new ArrayBucket(bytes)) {
       // Act
-      FetchResult fr = new FetchResult(dm, bucket);
+      FetchResult fr = FetchResult.create(dm, bucket);
 
       // Assert
       assertSame(dm, fr.getMetadata(), "Metadata instance should be preserved");
@@ -55,10 +55,10 @@ class FetchResultTest {
     ClientMetadata dm = new ClientMetadata("image/png");
     try (ArrayBucket originalData = new ArrayBucket(new byte[] {9, 9});
         ArrayBucket newData = new ArrayBucket(new byte[] {7, 8, 9})) {
-      FetchResult original = new FetchResult(dm, originalData);
+      FetchResult original = FetchResult.create(dm, originalData);
 
       // Act
-      FetchResult copy = new FetchResult(original, newData);
+      FetchResult copy = FetchResult.create(original, newData);
 
       // Assert
       assertSame(dm, copy.getMetadata(), "Metadata should be taken from original");
@@ -76,7 +76,7 @@ class FetchResultTest {
     try (ArrayBucket data = new ArrayBucket()) {
       // Act & Assert
       //noinspection DataFlowIssue,ConstantValue
-      assertThrows(NullPointerException.class, () -> new FetchResult(original, data));
+      assertThrows(NullPointerException.class, () -> FetchResult.create(original, data));
     }
   }
 
@@ -86,7 +86,7 @@ class FetchResultTest {
     ClientMetadata dm = new ClientMetadata();
     try (ArrayBucket bucket = new ArrayBucket()) {
       // Act
-      FetchResult fr = new FetchResult(dm, bucket);
+      FetchResult fr = FetchResult.create(dm, bucket);
 
       // Assert
       assertEquals(DefaultMIMETypes.DEFAULT_MIME_TYPE, fr.getMimeType());
@@ -98,7 +98,7 @@ class FetchResultTest {
     // Arrange
     ClientMetadata dm = new ClientMetadata("application/octet-stream");
     try (ArrayBucket bucket = new ArrayBucket()) {
-      FetchResult fr = new FetchResult(dm, bucket);
+      FetchResult fr = FetchResult.create(dm, bucket);
 
       // Act
       byte[] out = fr.asByteArray();
@@ -114,7 +114,7 @@ class FetchResultTest {
     ClientMetadata dm = new ClientMetadata("application/octet-stream");
     Bucket huge = org.mockito.Mockito.mock(Bucket.class);
     org.mockito.Mockito.when(huge.size()).thenReturn(1L + Integer.MAX_VALUE);
-    FetchResult fr = new FetchResult(dm, huge);
+    FetchResult fr = FetchResult.create(dm, huge);
 
     // Act & Assert
     assertThrows(OutOfMemoryError.class, fr::asByteArray);
@@ -127,7 +127,7 @@ class FetchResultTest {
     Bucket b = org.mockito.Mockito.mock(Bucket.class);
     org.mockito.Mockito.when(b.size()).thenReturn(10L);
     org.mockito.Mockito.when(b.getInputStreamUnbuffered()).thenThrow(new IOException("boom"));
-    FetchResult fr = new FetchResult(dm, b);
+    FetchResult fr = FetchResult.create(dm, b);
 
     // Act & Assert
     assertThrows(IOException.class, fr::asByteArray);
@@ -139,7 +139,7 @@ class FetchResultTest {
     ClientMetadata dm = new ClientMetadata("application/octet-stream");
     Bucket bad = org.mockito.Mockito.mock(Bucket.class);
     org.mockito.Mockito.when(bad.size()).thenThrow(new NullPointerException("boom"));
-    FetchResult fr = new FetchResult(dm, bad);
+    FetchResult fr = FetchResult.create(dm, bad);
 
     // Act & Assert
     assertThrows(NullPointerException.class, fr::size);
@@ -153,7 +153,7 @@ class FetchResultTest {
     org.mockito.Mockito.when(mockBucket.size()).thenReturn((long) data.length);
     org.mockito.Mockito.when(mockBucket.getInputStreamUnbuffered())
         .thenReturn(new ByteArrayInputStream(data));
-    FetchResult fr = new FetchResult(dm, mockBucket);
+    FetchResult fr = FetchResult.create(dm, mockBucket);
 
     // Act
     byte[] out = fr.asByteArray();

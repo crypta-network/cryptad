@@ -72,7 +72,7 @@ public final class PaddedBucket implements Bucket, Serializable {
 
   /** No-arg constructor for Java serialization frameworks. */
   @SuppressWarnings("unused")
-  protected PaddedBucket() {
+  PaddedBucket() {
     // Initialized by deserialization paths.
     underlying = null;
     size = 0;
@@ -92,7 +92,9 @@ public final class PaddedBucket implements Bucket, Serializable {
   public OutputStream getOutputStream() throws IOException {
     OutputStream os;
     synchronized (this) {
-      if (outputStreamOpen) throw new IOException("Already have an OutputStream for " + this);
+      if (outputStreamOpen)
+        throw new IOException(
+            "Already have an OutputStream for " + java.util.Objects.toIdentityString(this));
       os = underlying.getOutputStream();
       outputStreamOpen = true;
       size = 0;
@@ -111,7 +113,9 @@ public final class PaddedBucket implements Bucket, Serializable {
   public OutputStream getOutputStreamUnbuffered() throws IOException {
     OutputStream os;
     synchronized (this) {
-      if (outputStreamOpen) throw new IOException("Already have an OutputStream for " + this);
+      if (outputStreamOpen)
+        throw new IOException(
+            "Already have an OutputStream for " + java.util.Objects.toIdentityString(this));
       os = underlying.getOutputStreamUnbuffered();
       outputStreamOpen = true;
       size = 0;
@@ -168,7 +172,11 @@ public final class PaddedBucket implements Bucket, Serializable {
 
     @Override
     public String toString() {
-      return "TrivialPaddedBucketOutputStream:" + out + "(" + PaddedBucket.this + ")";
+      return "TrivialPaddedBucketOutputStream:"
+          + out
+          + "("
+          + java.util.Objects.toIdentityString(PaddedBucket.this)
+          + ")";
     }
 
     /**
@@ -411,7 +419,7 @@ public final class PaddedBucket implements Bucket, Serializable {
    * @throws StorageFormatException if the on-disk format version is unknown or malformed
    * @throws ResumeFailedException if resuming a persistent artifact fails
    */
-  protected PaddedBucket(
+  PaddedBucket(
       DataInputStream dis,
       FilenameGenerator fg,
       PersistentFileTracker persistentFileTracker,

@@ -42,6 +42,19 @@ public class PlainManifestPutter extends BaseManifestPutter {
   @Serial private static final long serialVersionUID = 1L;
 
   /**
+   * Creates and validates a {@link PlainManifestPutter} without surfacing constructor-thrown
+   * checked exceptions.
+   *
+   * @throws TooManyFilesInsertException if handler creation exceeds supported limits
+   */
+  public static PlainManifestPutter create(ManifestPutterParams params)
+      throws TooManyFilesInsertException {
+    PlainManifestPutter putter = new PlainManifestPutter(params);
+    putter.throwInitializationFailure();
+    return putter;
+  }
+
+  /**
    * Creates a putter that stores every file as an individual redirect and composes a simple
    * directory-like manifest referencing those redirects.
    *
@@ -70,10 +83,8 @@ public class PlainManifestPutter extends BaseManifestPutter {
    *
    * @param params shared manifest putter parameters including callback, manifest map, and context
    *     required by the base putter.
-   * @throws TooManyFilesInsertException if the manifest contains more items than supported or
-   *     exceeds structural limits during handler creation.
    */
-  public PlainManifestPutter(ManifestPutterParams params) throws TooManyFilesInsertException {
+  public PlainManifestPutter(ManifestPutterParams params) {
     super(
         new InitParams()
             .withCb(params.clientCallback())

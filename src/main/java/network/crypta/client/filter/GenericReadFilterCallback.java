@@ -62,7 +62,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
    * validate or sanitize user-supplied URI components. The constant is exposed as {@code protected}
    * for reuse in specialized filters.
    */
-  protected static final String UNRESERVED = "[a-zA-Z0-9\\-._~]";
+  static final String UNRESERVED = "[a-zA-Z0-9\\-._~]";
 
   //  pct-encoded   = "%" HEXDIG HEXDIG
   /**
@@ -70,7 +70,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
    * hexadecimal digits. Callers typically combine this with {@link #UNRESERVED} and other tokens to
    * recognize valid path/query fragments without decoding first.
    */
-  protected static final String PCT_ENCODED = "%[0-9A-Fa-f][0-9A-Fa-f]";
+  static final String PCT_ENCODED = "%[0-9A-Fa-f][0-9A-Fa-f]";
 
   //  sub-delims    = "!" / "$" / "&" / "'" / "(" / ")"
   //                / "*" / "+" / "," / ";" / "="
@@ -79,7 +79,7 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
    * are treated as literals when percent-encoding is not required. Exposing the value enables
    * consistent validation across related filters.
    */
-  protected static final String SUB_DELIMS = "[!$&'()*+,;=]";
+  static final String SUB_DELIMS = "[!$&'()*+,;=]";
 
   //  pchar         = unreserved / pct-encoded / sub-delims / ":" / "@"
   /**
@@ -87,15 +87,14 @@ public final class GenericReadFilterCallback implements FilterCallback, URIProce
    * percent-encoded octets, sub-delimiters, and the literal characters {@code :} and {@code @}.
    * Used to validate path segments and similar components without performing decoding.
    */
-  protected static final String PCHAR =
-      "(?>" + UNRESERVED + "|" + PCT_ENCODED + "|" + SUB_DELIMS + "|[:@])";
+  static final String PCHAR = "(?>" + UNRESERVED + "|" + PCT_ENCODED + "|" + SUB_DELIMS + "|[:@])";
 
   /**
    * Pattern for RFC 3986 fragment content. It accepts a sequence of {@link #PCHAR} along with
    * forward slashes and question marks. This is intentionally permissive within the standard’s
    * constraints to allow safe passthrough of anchors.
    */
-  protected static final String FRAGMENT = "(?>" + PCHAR + "|/|\\?)*";
+  static final String FRAGMENT = "(?>" + PCHAR + "|/|\\?)*";
 
   //  fragment      = *( pchar / "/" / "?" )
   static final String PLUGINS_PREFIX = "/plugins/";

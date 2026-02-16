@@ -355,7 +355,7 @@ public final class ClientPut extends ClientPutBase {
    * accessible no-arg constructor so saved queue snapshots can be deserialized before relinking to
    * live {@link ClientPutter} instances.
    */
-  protected ClientPut() {
+  ClientPut() {
     // For serialization.
     uploadFrom = null;
     origFilename = null;

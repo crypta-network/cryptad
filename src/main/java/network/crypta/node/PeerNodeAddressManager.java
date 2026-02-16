@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.io.comm.PeerParseException;
@@ -165,8 +164,7 @@ final class PeerNodeAddressManager {
 
     Peer[] myNominalPeer;
     synchronized (peer) {
-      AtomicReference<List<Peer>> nominalPeerRef = peer.nominalPeer;
-      List<Peer> localNominalPeer = nominalPeerRef == null ? null : nominalPeerRef.get();
+      List<Peer> localNominalPeer = peer.nominalPeer;
       myNominalPeer =
           localNominalPeer == null ? new Peer[0] : localNominalPeer.toArray(new Peer[0]);
     }
@@ -176,8 +174,7 @@ final class PeerNodeAddressManager {
     Peer[] nodePeers = peer.getOutgoingMangler().getPrimaryIPAddress();
     List<Peer> basePeers;
     synchronized (peer) {
-      AtomicReference<List<Peer>> nominalPeerRef = peer.nominalPeer;
-      List<Peer> localNominalPeer = nominalPeerRef == null ? null : nominalPeerRef.get();
+      List<Peer> localNominalPeer = peer.nominalPeer;
       basePeers = localNominalPeer == null ? new ArrayList<>() : new ArrayList<>(localNominalPeer);
     }
     PeersBuildResult build =
@@ -414,10 +411,8 @@ final class PeerNodeAddressManager {
   /**
    * Determines whether an address matches the detected or nominal addresses of a peer.
    *
-   * <p>This is a convenience wrapper that delegates to {@link
-   * PeerNode#matchesIP(FreenetInetAddress, boolean)} so callers get a consistent, synchronized view
-   * of the peer's address state. Strict matching uses full equality semantics, while non-strict
-   * matching uses relaxed hostname/IP comparison.
+   * <p>The method first captures a synchronized snapshot of the peer's detected and nominal
+   * addresses, then evaluates that snapshot using strict or relaxed matching semantics.
    *
    * @param peerNode peer whose detected and nominal addresses are searched.
    * @param addr address to compare against the peer's known addresses.
@@ -425,45 +420,46 @@ final class PeerNodeAddressManager {
    * @return {@code true} if the address matches under the chosen semantics.
    */
   static boolean matchesIP(PeerNode peerNode, FreenetInetAddress addr, boolean strict) {
-    return peerNode.matchesIP(addr, strict);
+    PeerNode.AddressMatchState peerAddressState = peerNode.snapshotAddressMatchState();
+    if (strict) {
+      return strictMatch(peerAddressState, addr);
+    }
+    return nonStrictMatch(peerAddressState, addr);
   }
 
   /**
    * Performs strict address matching against a peer's detected and nominal addresses.
    *
-   * <p>This helper assumes the caller holds an appropriate lock on {@code peerNode} to prevent
-   * concurrent mutation of the address lists. Strict matching relies on {@link
-   * FreenetInetAddress#equals(Object)} and does not allow relaxed hostname/IP equivalence.
+   * <p>Strict matching relies on {@link FreenetInetAddress#equals(Object)} and does not allow
+   * relaxed hostname/IP equivalence.
    *
-   * @param peerNode peer whose address lists will be searched.
+   * @param peerAddressState a synchronized snapshot of the peer address state.
    * @param addr address to compare using strict equality semantics.
    * @return {@code true} if a detected or nominal address equals {@code addr}.
    */
-  static boolean strictMatch(PeerNode peerNode, FreenetInetAddress addr) {
-    return matchesPeerAddress(peerNode.getPeer(), addr, true)
-        || matchesNominalPeers(peerNode.nominalPeer, addr, true);
+  static boolean strictMatch(PeerNode.AddressMatchState peerAddressState, FreenetInetAddress addr) {
+    return matchesPeerAddress(peerAddressState.detectedPeer(), addr, true)
+        || matchesNominalPeers(peerAddressState.nominalPeers(), addr, true);
   }
 
   /**
    * Performs relaxed address matching against a peer's detected and nominal addresses.
    *
-   * <p>This helper assumes the caller holds an appropriate lock on {@code peerNode} to prevent
-   * concurrent mutation of the address lists. Relaxed matching uses {@link
-   * FreenetInetAddress#laxEquals(FreenetInetAddress)}, which can match hostnames to resolved IP
-   * addresses when appropriate.
+   * <p>Relaxed matching uses {@link FreenetInetAddress#laxEquals(FreenetInetAddress)}, which can
+   * match hostnames to resolved IP addresses when appropriate.
    *
-   * @param peerNode peer whose address lists will be searched.
+   * @param peerAddressState a synchronized snapshot of the peer address state.
    * @param addr address to compare using relaxed equality semantics.
    * @return {@code true} if a detected or nominal address matches {@code addr} laxly.
    */
-  static boolean nonStrictMatch(PeerNode peerNode, FreenetInetAddress addr) {
-    return matchesPeerAddress(peerNode.getPeer(), addr, false)
-        || matchesNominalPeers(peerNode.nominalPeer, addr, false);
+  static boolean nonStrictMatch(
+      PeerNode.AddressMatchState peerAddressState, FreenetInetAddress addr) {
+    return matchesPeerAddress(peerAddressState.detectedPeer(), addr, false)
+        || matchesNominalPeers(peerAddressState.nominalPeers(), addr, false);
   }
 
   private static boolean matchesNominalPeers(
-      AtomicReference<List<Peer>> nominalPeerRef, FreenetInetAddress addr, boolean strict) {
-    List<Peer> localNominalPeer = nominalPeerRef == null ? null : nominalPeerRef.get();
+      List<Peer> localNominalPeer, FreenetInetAddress addr, boolean strict) {
     if (localNominalPeer == null) return false;
     for (Peer peer : localNominalPeer) {
       if (matchesPeerAddress(peer, addr, strict)) return true;

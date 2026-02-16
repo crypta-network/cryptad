@@ -242,9 +242,14 @@ final class SplitFileFetcherSegmentsLoadParams {
    */
   @Override
   public @NotNull String toString() {
+    SplitFileFetcherStorage parentRef = parent;
+    int checksumLengthValue = parentRef == null ? 0 : parentRef.checksumLength;
+    boolean hasSplitfileSingleCryptoKeyValue =
+        parentRef != null && parentRef.splitfileSingleCryptoKey != null;
+
     return "SplitFileFetcherSegmentsLoadParams["
         + "parent="
-        + parent
+        + (parentRef == null ? "null" : java.util.Objects.toIdentityString(parentRef))
         + ", totalDataBlocks="
         + totalDataBlocks
         + ", totalCheckBlocks="
@@ -260,9 +265,9 @@ final class SplitFileFetcherSegmentsLoadParams {
         + ", segments="
         + Arrays.toString(segments)
         + ", checksumLength="
-        + checksumLength()
+        + checksumLengthValue
         + ", hasSplitfileSingleCryptoKey="
-        + hasSplitfileSingleCryptoKey()
+        + hasSplitfileSingleCryptoKeyValue
         + ", offsetKeyList="
         + offsetKeyList
         + ", offsetSegmentStatus="

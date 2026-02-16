@@ -23,7 +23,7 @@ class CookieTest {
 
   @BeforeEach
   void setUp() {
-    cookie = new Cookie(VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    cookie = Cookie.create(VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
   }
 
   @Test
@@ -166,25 +166,27 @@ class CookieTest {
   @Test
   void constructor_withNullPath_expectNullPointer() {
     assertThrows(
-        NullPointerException.class, () -> new Cookie(null, VALID_NAME, VALID_VALUE, FUTURE_DATE));
+        NullPointerException.class,
+        () -> Cookie.create(null, VALID_NAME, VALID_VALUE, FUTURE_DATE));
   }
 
   @Test
   void constructor_withNullName_expectNullPointer() {
     assertThrows(
-        NullPointerException.class, () -> new Cookie(VALID_PATH, null, VALID_VALUE, FUTURE_DATE));
+        NullPointerException.class,
+        () -> Cookie.create(VALID_PATH, null, VALID_VALUE, FUTURE_DATE));
   }
 
   @Test
   void constructor_withNullValue_expectEmptyString() {
-    Cookie created = new Cookie(VALID_PATH, VALID_NAME, null, FUTURE_DATE);
+    Cookie created = Cookie.create(VALID_PATH, VALID_NAME, null, FUTURE_DATE);
 
     assertEquals("", created.getValue());
   }
 
   @Test
   void constructor_normalizesNameToLowercase() {
-    Cookie created = new Cookie(VALID_PATH, "MiXeD", VALID_VALUE, FUTURE_DATE);
+    Cookie created = Cookie.create(VALID_PATH, "MiXeD", VALID_VALUE, FUTURE_DATE);
 
     assertEquals("mixed", created.getName());
   }
@@ -195,7 +197,7 @@ class CookieTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> new Cookie(withQuery, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
+        () -> Cookie.create(withQuery, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
   }
 
   @Test
@@ -204,12 +206,12 @@ class CookieTest {
 
     assertThrows(
         IllegalArgumentException.class,
-        () -> new Cookie(withoutScheme, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
+        () -> Cookie.create(withoutScheme, VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE));
   }
 
   @Test
   void equals_whenPathDiffers_expectFalse() {
-    Cookie other = new Cookie(URI.create("/Other"), VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie other = Cookie.create(URI.create("/Other"), VALID_NAME, VALID_VALUE, FUTURE_DATE);
 
     assertNotEquals(cookie, other);
   }
@@ -217,10 +219,10 @@ class CookieTest {
   @Test
   void equals_whenDomainDiffers_expectFalse() {
     Cookie withDomain =
-        new Cookie(
+        Cookie.create(
             URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
     Cookie otherDomain =
-        new Cookie(
+        Cookie.create(
             URI.create("http://other.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
 
     assertNotEquals(withDomain, otherDomain);
@@ -229,10 +231,10 @@ class CookieTest {
   @Test
   void equals_whenDomainCaseDiffers_expectTrue() {
     Cookie uppercaseDomain =
-        new Cookie(
+        Cookie.create(
             URI.create("http://EXAMPLE.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
     Cookie lowercaseDomain =
-        new Cookie(
+        Cookie.create(
             URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
 
     assertEquals(uppercaseDomain, lowercaseDomain);
@@ -241,7 +243,7 @@ class CookieTest {
 
   @Test
   void equals_whenOnlyValueDiffers_expectTrue() {
-    Cookie other = new Cookie(VALID_PATH, VALID_NAME, "different", FUTURE_DATE);
+    Cookie other = Cookie.create(VALID_PATH, VALID_NAME, "different", FUTURE_DATE);
 
     assertEquals(cookie, other);
   }
@@ -249,10 +251,10 @@ class CookieTest {
   @Test
   void hashCode_whenFieldsSet_matchesEqualsContract() {
     Cookie first =
-        new Cookie(
+        Cookie.create(
             URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
     Cookie second =
-        new Cookie(
+        Cookie.create(
             URI.create("http://example.com"), VALID_PATH, VALID_NAME, "ignored", FUTURE_DATE);
 
     assertEquals(first, second);
@@ -261,8 +263,8 @@ class CookieTest {
 
   @Test
   void hashCode_withoutDomain_matchesEqualsContract() {
-    Cookie first = new Cookie(VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
-    Cookie second = new Cookie(VALID_PATH, VALID_NAME, "ignored", FUTURE_DATE);
+    Cookie first = Cookie.create(VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
+    Cookie second = Cookie.create(VALID_PATH, VALID_NAME, "ignored", FUTURE_DATE);
 
     assertEquals(first, second);
     assertEquals(first.hashCode(), second.hashCode());
@@ -271,7 +273,7 @@ class CookieTest {
   @Test
   void encodeToHeaderValue_withDomain_includesDomainAttribute() {
     Cookie withDomain =
-        new Cookie(
+        Cookie.create(
             URI.create("http://example.com"), VALID_PATH, VALID_NAME, VALID_VALUE, FUTURE_DATE);
 
     String encoded = withDomain.encodeToHeaderValue();

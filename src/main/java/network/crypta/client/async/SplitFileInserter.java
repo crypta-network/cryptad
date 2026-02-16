@@ -726,7 +726,7 @@ public final class SplitFileInserter
    * <p>This helper is invoked on success and failure paths to ensure resources are released and the
    * scheduler state is updated consistently.
    */
-  protected void unregisterSender() {
+  void unregisterSender() {
     SplitFileInserterSender s = senderRef.get();
     if (s != null) s.unregister(context, parent.getPriorityClass());
   }
@@ -740,7 +740,7 @@ public final class SplitFileInserter
    *
    * @param metadata the computed metadata describing the encoded split-file; never {@code null}
    */
-  protected void reportMetadata(Metadata metadata) {
+  void reportMetadata(Metadata metadata) {
     // Splitfile insert is always reportMetadataOnly: metadata is returned to the parent
     // SingleFileInserter, which will persist it and likely insert it as needed.
     cb.onMetadata(metadata, this, context);

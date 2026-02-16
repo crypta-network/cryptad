@@ -259,7 +259,7 @@ public final class ClientGet extends ClientRequest {
    */
   ClientGet(ClientRequestParams params, PersistentRequestClient globalClient, ClientGetSetup setup)
       throws IOException {
-    super(params, null, globalClient);
+    super(prepareConstructorInit(params, null, globalClient));
     state = new ClientGetState(this);
     fctx = setup.fetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
@@ -279,7 +279,7 @@ public final class ClientGet extends ClientRequest {
    */
   ClientGet(ClientRequestParams params, FCPConnectionHandler handler, ClientGetSetup setup)
       throws IOException {
-    super(params, handler);
+    super(prepareConstructorInit(params, handler));
     state = new ClientGetState(this);
     fctx = setup.fetchContext();
     fctx.getEventProducer().addEventListener(new ClientGetEventHandling(this));
@@ -315,7 +315,7 @@ public final class ClientGet extends ClientRequest {
    * and {@link ClientGetter}. This constructor exists solely to satisfy the Java serialization
    * framework and keep field initialization centralized in the resume path.
    */
-  protected ClientGet() {
+  ClientGet() {
     // For serialization.
     state = new ClientGetState(this);
     fctx = null;

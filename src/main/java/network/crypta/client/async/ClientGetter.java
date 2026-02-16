@@ -634,7 +634,7 @@ public class ClientGetter extends BaseClientGetter
       DecompressorThreadManager decompressorManager,
       ClientContext context)
       throws IOException, URISyntaxException {
-    FetchResult result = new FetchResult(initialMetadata, finalResult);
+    FetchResult result = FetchResult.create(initialMetadata, finalResult);
     HashResult[] localHashes;
     synchronized (this) {
       localHashes = hashes;
@@ -672,7 +672,7 @@ public class ClientGetter extends BaseClientGetter
 
       ClientMetadata workerMeta = worker.getClientMetadata();
       if (workerMeta != null) {
-        result = new FetchResult(workerMeta, finalResult);
+        result = FetchResult.create(workerMeta, finalResult);
       }
       synchronized (this) {
         this.expectedMIME = result.getMimeType();
@@ -802,7 +802,7 @@ public class ClientGetter extends BaseClientGetter
       expectedMIME = metadata.getMIMEType();
       expectedSize = length;
     }
-    return new FetchResult(metadata, returnBucket);
+    return FetchResult.create(metadata, returnBucket);
   }
 
   /**

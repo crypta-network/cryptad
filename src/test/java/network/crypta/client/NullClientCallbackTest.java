@@ -52,7 +52,7 @@ class NullClientCallbackTest {
     // Arrange
     NullClientCallback callback = new NullClientCallback(requestClient);
     ClientMetadata metadata = new ClientMetadata("text/plain");
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
 
     // Act
     callback.onSuccess(fetchResult, clientGetter);
@@ -66,7 +66,7 @@ class NullClientCallbackTest {
     // Arrange
     NullClientCallback callback = new NullClientCallback(requestClient);
     ClientMetadata metadata = new ClientMetadata("text/plain");
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
     RuntimeException failure = new RuntimeException("free failed");
     doThrow(failure).when(bucket).free();
 

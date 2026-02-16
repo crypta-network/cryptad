@@ -18,7 +18,6 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.io.comm.FreenetInetAddress;
 import network.crypta.io.comm.Peer;
 import network.crypta.support.SimpleFieldSet;
@@ -72,7 +71,7 @@ class PeerNodeAddressManagerTest {
       throws ReflectiveOperationException {
     // Arrange
     PeerNodeAddressManager manager = new PeerNodeAddressManager(peer);
-    peer.nominalPeer = new AtomicReference<>(new ArrayList<>());
+    peer.nominalPeer = new ArrayList<>();
     setLastAttemptedHandshakeIpUpdateTime(
         manager, System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(1));
 
@@ -88,7 +87,7 @@ class PeerNodeAddressManagerTest {
       throws ReflectiveOperationException {
     // Arrange
     PeerNodeAddressManager manager = new PeerNodeAddressManager(peer);
-    peer.nominalPeer = new AtomicReference<>(new ArrayList<>());
+    peer.nominalPeer = new ArrayList<>();
 
     // Act
     manager.maybeUpdateHandshakeIPs(true);
@@ -103,7 +102,7 @@ class PeerNodeAddressManagerTest {
       throws UnknownHostException {
     // Arrange
     PeerNodeAddressManager manager = new PeerNodeAddressManager(peer);
-    peer.nominalPeer = new AtomicReference<>(new ArrayList<>());
+    peer.nominalPeer = new ArrayList<>();
     Peer detectedPeer = new Peer(inetAddress(203, 0, 113, 10), 1234);
     when(peer.getPeer()).thenReturn(detectedPeer);
 
@@ -138,9 +137,7 @@ class PeerNodeAddressManagerTest {
     Peer peerMatchingNode = new Peer(matchingAddress, 2222);
     Peer duplicatePeer = new Peer(matchingAddress, 2222);
 
-    peer.nominalPeer =
-        new AtomicReference<>(
-            new ArrayList<>(List.of(detectedDuplicate, peerMatchingNode, duplicatePeer)));
+    peer.nominalPeer = new ArrayList<>(List.of(detectedDuplicate, peerMatchingNode, duplicatePeer));
 
     FreenetInetAddress localhost = new FreenetInetAddress(inetAddress(127, 0, 0, 1));
     when(node.network().freenetLocalhostAddress()).thenReturn(localhost);
@@ -176,7 +173,7 @@ class PeerNodeAddressManagerTest {
       throws ReflectiveOperationException {
     // Arrange
     PeerNodeAddressManager manager = new PeerNodeAddressManager(peer);
-    peer.nominalPeer = new AtomicReference<>(new ArrayList<>());
+    peer.nominalPeer = new ArrayList<>();
     long before = System.currentTimeMillis();
 
     // Act
@@ -346,7 +343,7 @@ class PeerNodeAddressManagerTest {
     InetAddress address = inetAddress(198, 51, 100, 9);
     Peer nominal = new Peer(address, 2468);
     PeerNode peerNode = Mockito.mock(PeerNode.class, Mockito.CALLS_REAL_METHODS);
-    peerNode.nominalPeer = new AtomicReference<>(new ArrayList<>(List.of(nominal)));
+    peerNode.nominalPeer = new ArrayList<>(List.of(nominal));
     Mockito.doReturn(null).when(peerNode).getPeer();
 
     FreenetInetAddress matchAddress = new FreenetInetAddress(address);
@@ -364,7 +361,7 @@ class PeerNodeAddressManagerTest {
     InetAddress address = inetAddress(198, 51, 100, 10);
     Peer nominal = new Peer(address, 2468);
     PeerNode peerNode = Mockito.mock(PeerNode.class, Mockito.CALLS_REAL_METHODS);
-    peerNode.nominalPeer = new AtomicReference<>(new ArrayList<>(List.of(nominal)));
+    peerNode.nominalPeer = new ArrayList<>(List.of(nominal));
     Mockito.doReturn(null).when(peerNode).getPeer();
 
     FreenetInetAddress otherAddress = new FreenetInetAddress(inetAddress(203, 0, 113, 99));

@@ -383,7 +383,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
     }
 
     tracker.removeFetcher(this);
-    onSuccess(new FetchResult(new ClientMetadata(overrideMime), result.asBucket()), null);
+    onSuccess(FetchResult.create(new ClientMetadata(overrideMime), result.asBucket()), null);
     return true;
   }
 
@@ -417,7 +417,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       }
       if (type.safeToRead) {
         tracker.removeFetcher(this);
-        onSuccess(new FetchResult(new ClientMetadata(strippedMimeType), cachedData), null);
+        onSuccess(FetchResult.create(new ClientMetadata(strippedMimeType), cachedData), null);
         return true;
       }
       return filterCachedData(context, fullMimeType, cachedData);
@@ -437,7 +437,7 @@ public class FProxyFetchInProgress implements ClientEventListener, ClientGetCall
       ContentFilter.filter(request, callbacks);
       // Since we are not re-using the data bucket, we can happily stay in the
       // FProxyFetchTracker.
-      this.onSuccess(new FetchResult(new ClientMetadata(fullMimeType), output), null);
+      this.onSuccess(FetchResult.create(new ClientMetadata(fullMimeType), output), null);
       return true;
     } catch (IOException _) {
       LOG.info("Failed filtering coalesced data in fproxy");

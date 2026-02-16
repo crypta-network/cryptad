@@ -315,7 +315,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
    * @param forceFatal set to {@code true} to bypass retry and finalize immediately
    * @param context client context for unregistering and scheduling follow‑up work
    */
-  protected void onFailure(FetchException e, boolean forceFatal, ClientContext context) {
+  void onFailure(FetchException e, boolean forceFatal, ClientContext context) {
     if (LOG.isDebugEnabled()) LOG.debug("onFailure( {} , {})", e, forceFatal, e);
     if (parent.isCancelled() || isCancelled()) {
       if (LOG.isDebugEnabled()) LOG.debug("Failing: cancelled");
@@ -384,7 +384,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
    * @param context client context providing factories and disk limits; must not be {@code null}
    * @return a newly allocated bucket with the decoded contents, or {@code null} on failure
    */
-  protected Bucket extract(ClientKeyBlock block, ClientContext context) {
+  Bucket extract(ClientKeyBlock block, ClientContext context) {
     Bucket data;
     try {
       data =
@@ -543,7 +543,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
     }
 
     if (!block.isMetadata()) {
-      onSuccess(new FetchResult(clientMetadata, data), context);
+      onSuccess(FetchResult.create(clientMetadata, data), context);
     } else {
       handleMetadata(data, context);
     }
@@ -605,7 +605,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
    * @param result the completed result bundle containing client metadata and a data bucket
    * @param context client context used for scheduling and follow‑up transitions
    */
-  protected void onSuccess(final FetchResult result, final ClientContext context) {
+  void onSuccess(final FetchResult result, final ClientContext context) {
     synchronized (this) {
       // So a SingleKeyListener isn't created.
       finished = true;
@@ -774,7 +774,8 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
           ArchiveFailureException,
           ArchiveRestartException {
     if (uri == null) {
-      throw new NullPointerException("uri = null on SFI?? " + this);
+      throw new NullPointerException(
+          "uri = null on SFI?? " + java.util.Objects.toIdentityString(this));
     }
     synchronized (this) {
       if (cancelled) return;
@@ -1140,7 +1141,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
     if (dataBucket != null) {
       if (LOG.isDebugEnabled()) LOG.debug("Archive internal entry ready; returning data");
       final Bucket out = copyOrAdoptBucketForReturn(dataBucket, context);
-      onSuccess(new FetchResult(clientMetadata, out), context);
+      onSuccess(FetchResult.create(clientMetadata, out), context);
       return; // returned data, method should return
     }
     if (LOG.isDebugEnabled())
@@ -1156,7 +1157,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
           public void gotBucket(Bucket data, ClientContext ctx1) {
             if (LOG.isDebugEnabled())
               LOG.debug("Archive internal fetch returned bucket; returning data");
-            onSuccess(new FetchResult(clientMetadata, data), ctx1);
+            onSuccess(FetchResult.create(clientMetadata, data), ctx1);
           }
 
           @Override
@@ -1576,7 +1577,7 @@ public final class SingleFileFetcher extends BaseSingleFileFetcher implements Cl
    * @param notFinalizedSize set to {@code true} to mark reported sizes as provisional
    * @param context the client context used by nested operations and callbacks
    */
-  protected void innerWrapHandleMetadata(boolean notFinalizedSize, ClientContext context) {
+  void innerWrapHandleMetadata(boolean notFinalizedSize, ClientContext context) {
     try {
       handleMetadata(context);
     } catch (MetadataParseException e) {

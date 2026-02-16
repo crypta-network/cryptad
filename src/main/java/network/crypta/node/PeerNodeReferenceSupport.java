@@ -114,7 +114,7 @@ final class PeerNodeReferenceSupport {
    * @throws FSParseException if the subset or key material is malformed or invalid
    * @throws PeerTooOldException if the noderef predates required ECC support
    */
-  ECPublicKey readPeerEcdsaKeyReturn(SimpleFieldSet fs)
+  static ECPublicKey readPeerEcdsaKeyReturn(SimpleFieldSet fs)
       throws FSParseException, PeerTooOldException {
     SimpleFieldSet sfs = fs.subset("ecdsa.P256");
     if (sfs == null) {
@@ -149,12 +149,20 @@ final class PeerNodeReferenceSupport {
    */
   void verifySignatureIfPresent(SimpleFieldSet fs, boolean noSig)
       throws ReferenceSignatureVerificationException {
-    if (noSig) {
-      peer.setSignatureVerificationSuccessfull(true);
-      return;
+    try {
+      SignatureVerificationResult result =
+          verifySignatureForConstruction(
+              fs, noSig, peer.peerECDSAPubKey, !peer.dontKeepFullFieldSet());
+      peer.setSignatureVerificationSuccessfull(result.signatureVerificationSuccessful());
+      if (result.fullFieldSet() != null) {
+        synchronized (peer) {
+          peer.fullFieldSet = result.fullFieldSet();
+        }
+      }
+    } catch (ReferenceSignatureVerificationException e) {
+      peer.setSignatureVerificationSuccessfull(false);
+      throw e;
     }
-    // When present, verifyReferenceSignature() sets the flag and may throw on failure.
-    verifyReferenceSignature(fs);
   }
 
   /**
@@ -171,8 +179,14 @@ final class PeerNodeReferenceSupport {
    * @throws PeerParseException if identity is required for a darknet peer but missing
    */
   IdentityValues readIdentityValues(SimpleFieldSet fs) throws FSParseException, PeerParseException {
+    return readIdentityValues(fs, peer.isDarknet(), peer.peerECDSAPubKeyHash);
+  }
+
+  static IdentityValues readIdentityValues(
+      SimpleFieldSet fs, boolean isDarknet, byte[] peerEcdsaPubKeyHash)
+      throws FSParseException, PeerParseException {
     String identityString = fs.get(PeerNode.SFS_KEY_IDENTITY);
-    if (identityString == null && peer.isDarknet()) throw new PeerParseException("No identity!");
+    if (identityString == null && isDarknet) throw new PeerParseException("No identity!");
     try {
       byte[] id;
       if (identityString != null) {
@@ -181,6 +195,7 @@ final class PeerNodeReferenceSupport {
         // We might be talking to a pre-1471 node
         // We need to generate it from the DSA key
         SimpleFieldSet sfs = fs.subset("dsaPubKey");
+        if (sfs == null) throw new FSParseException("No identity");
         id = SHA256.digest(DSAPublicKey.create(sfs, Global.DSAgroupBigA).asBytes());
       }
       if (id == null) throw new FSParseException("No identity");
@@ -188,7 +203,7 @@ final class PeerNodeReferenceSupport {
       byte[] idHash = SHA256.digest(id);
       byte[] idHashHash = SHA256.digest(idHash);
       long swapId = Fields.bytesToLong(idHashHash);
-      int hc = Fields.hashCode(peer.peerECDSAPubKeyHash);
+      int hc = Fields.hashCode(peerEcdsaPubKeyHash);
       return new IdentityValues(id, b64, idHash, idHashHash, swapId, hc);
     } catch (NumberFormatException | IllegalBase64Exception e) {
       throw new FSParseException(e);
@@ -263,7 +278,7 @@ final class PeerNodeReferenceSupport {
    * @param key ECDSA public key to encode and hash; must be non-null
    * @return SHA-256 digest of the encoded key bytes
    */
-  byte[] computePeerPublicKeyHash(ECPublicKey key) {
+  static byte[] computePeerPublicKeyHash(ECPublicKey key) {
     return SHA256.digest(key.getEncoded());
   }
 
@@ -604,6 +619,52 @@ final class PeerNodeReferenceSupport {
     fs.put("ecdsa", Curves.P256.getSFS(key));
   }
 
+  record SignatureVerificationResult(
+      boolean signatureVerificationSuccessful, SimpleFieldSet fullFieldSet) {}
+
+  static SignatureVerificationResult verifySignatureForConstruction(
+      SimpleFieldSet fs, boolean noSig, ECPublicKey peerEcdsaPubKey, boolean keepFullFieldSet)
+      throws ReferenceSignatureVerificationException {
+    if (noSig) {
+      return new SignatureVerificationResult(true, null);
+    }
+    String signatureP256 = fs.get(PeerNode.SFS_KEY_SIG_P256);
+    try {
+      fs.removeValue("sig");
+      fs.removeValue(PeerNode.SFS_KEY_SIG_P256);
+      byte[] toVerifyECDSA = fs.toOrderedString().getBytes(StandardCharsets.UTF_8);
+
+      boolean isECDSAsigPresent = (signatureP256 != null && peerEcdsaPubKey != null);
+      boolean verifyECDSA = false;
+      if (isECDSAsigPresent) {
+        fs.putSingle(PeerNode.SFS_KEY_SIG_P256, signatureP256);
+        verifyECDSA =
+            ECDSA.verify(Curves.P256, peerEcdsaPubKey, Base64.decode(signatureP256), toVerifyECDSA);
+      }
+
+      boolean hasNoSignature = !isECDSAsigPresent;
+      boolean isECDSAsigInvalid = (isECDSAsigPresent && !verifyECDSA);
+      boolean failed = hasNoSignature || isECDSAsigInvalid;
+      if (failed) {
+        String errCause = "";
+        if (hasNoSignature) errCause += " (No signature)";
+        if (isECDSAsigInvalid) errCause += " (ECDSA signature is invalid)";
+        errCause += " (VERIFICATION FAILED)";
+        LOG.atError()
+            .addArgument(errCause)
+            .addArgument(fs::toOrderedString)
+            .log("The integrity of the reference has been compromised!{} fs was\n{}");
+        throw new ReferenceSignatureVerificationException(
+            "The integrity of the reference has been compromised!" + errCause);
+      }
+      return new SignatureVerificationResult(true, keepFullFieldSet ? fs : null);
+    } catch (IllegalBase64Exception e) {
+      LOG.error("Invalid reference: {}", e, e);
+      throw new ReferenceSignatureVerificationException(
+          "The node reference you added is invalid: It does not have a valid ECDSA signature.");
+    }
+  }
+
   /**
    * Verifies the ECDSA signature embedded in the provided noderef field set.
    *
@@ -619,57 +680,7 @@ final class PeerNodeReferenceSupport {
   @SuppressWarnings("UnusedReturnValue")
   boolean verifyReferenceSignature(SimpleFieldSet fs)
       throws ReferenceSignatureVerificationException {
-    // Assume we failed at validating
-    boolean failed;
-    String signatureP256 = fs.get(PeerNode.SFS_KEY_SIG_P256);
-    try {
-      // If we have:
-      // - the new P256 signature AND the P256 pubkey
-      // OR
-      // - the old DSA signature the pubkey and the groups
-      // THEN
-      // verify the signatures
-      fs.removeValue("sig");
-      fs.removeValue(PeerNode.SFS_KEY_SIG_P256);
-      byte[] toVerifyECDSA = fs.toOrderedString().getBytes(StandardCharsets.UTF_8);
-
-      boolean isECDSAsigPresent = (signatureP256 != null && peer.peerECDSAPubKey != null);
-      boolean verifyECDSA = false; // assume it failed.
-
-      // Is there a new ECDSA sig?
-      if (isECDSAsigPresent) {
-        fs.putSingle(PeerNode.SFS_KEY_SIG_P256, signatureP256);
-        verifyECDSA =
-            ECDSA.verify(
-                Curves.P256, peer.peerECDSAPubKey, Base64.decode(signatureP256), toVerifyECDSA);
-      }
-
-      // If there is no signature, FAIL
-      // If there is an ECDSA signature, and it doesn't verify, FAIL
-      boolean hasNoSignature = !isECDSAsigPresent;
-      boolean isECDSAsigInvalid = (isECDSAsigPresent && !verifyECDSA);
-      failed = hasNoSignature || isECDSAsigInvalid;
-      if (failed) {
-        String errCause = "";
-        if (hasNoSignature) errCause += " (No signature)";
-        if (isECDSAsigInvalid) errCause += " (ECDSA signature is invalid)";
-        errCause += " (VERIFICATION FAILED)";
-        LOG.atError()
-            .addArgument(errCause)
-            .addArgument(fs::toOrderedString)
-            .log("The integrity of the reference has been compromised!{} fs was\n{}");
-        peer.setSignatureVerificationSuccessfull(false);
-        throw new ReferenceSignatureVerificationException(
-            "The integrity of the reference has been compromised!" + errCause);
-      } else {
-        peer.setSignatureVerificationSuccessfull(true);
-        if (!peer.dontKeepFullFieldSet()) peer.fullFieldSet.set(fs);
-      }
-    } catch (IllegalBase64Exception e) {
-      LOG.error("Invalid reference: {}", e, e);
-      throw new ReferenceSignatureVerificationException(
-          "The node reference you added is invalid: It does not have a valid ECDSA signature.");
-    }
+    verifySignatureIfPresent(fs, false);
     return true;
   }
 

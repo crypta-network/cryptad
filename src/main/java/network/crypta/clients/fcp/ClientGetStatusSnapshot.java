@@ -457,7 +457,7 @@ public final class ClientGetStatusSnapshot {
         + ", progressPending="
         + progressPending()
         + ", failedMessage="
-        + failedMessage()
+        + (failedMessage() == null ? "null" : java.util.Objects.toIdentityString(failedMessage()))
         + ", foundDataMimeType="
         + foundDataMimeType()
         + ", foundDataLength="
@@ -467,7 +467,7 @@ public final class ClientGetStatusSnapshot {
         + ", dataBucket="
         + dataBucket()
         + ", fetchContext="
-        + fetchContext()
+        + (fetchContext() == null ? "null" : java.util.Objects.toIdentityString(fetchContext()))
         + ", priorityClass="
         + priorityClass()
         + ", compatModes="

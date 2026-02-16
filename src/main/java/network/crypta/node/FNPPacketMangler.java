@@ -221,6 +221,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
   private boolean tryPeersAuthExcept(
       byte[] buf, int offset, int length, Peer peer, PeerNode exclude) {
     PeerNode[] peers = crypto.getPeerNodes();
+    if (peers == null) return false;
     for (PeerNode pn : peers) {
       if (java.util.Objects.equals(pn, exclude)) continue;
       if (LOG.isTraceEnabled()) LOG.trace("Trying auth with {}", pn);
@@ -317,7 +318,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    */
   private boolean tryProcessAuth(
       byte[] buf, int offset, int length, PeerNode pn, Peer peer, boolean oldOpennetPeer) {
-    BlockCipher authKey = pn.handshake().incomingSetupCipher();
+    BlockCipher authKey = (BlockCipher) pn.handshake().incomingSetupCipher();
     if (LOG.isDebugEnabled())
       LOG.debug(
           "Auth decrypt key present (len={})" + FOR_STR + "{} : {} in tryProcessAuth",
@@ -495,7 +496,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    */
   private boolean tryProcessAuthAnonReply(
       byte[] buf, int offset, int length, PeerNode pn, Peer peer) {
-    BlockCipher authKey = pn.handshake().anonymousInitiatorSetupCipher();
+    BlockCipher authKey = (BlockCipher) pn.handshake().anonymousInitiatorSetupCipher();
     // Does the packet match IV E( H(data) data ) ?
     int ivLength = PCFBMode.lengthIV(authKey);
     int digestLength = HASH_LENGTH;
@@ -1173,7 +1174,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     int setupType = negotiation.setupType();
     int negType = negotiation.negType();
 
-    KeyAgreementSchemeContext ctx = pn.handshake().getKeyAgreementSchemeContext();
+    KeyAgreementSchemeContext ctx =
+        (KeyAgreementSchemeContext) pn.handshake().getKeyAgreementSchemeContext();
     if (!(ctx instanceof ECDHLightContext)
         || ((pn.jfkContextLifetime + DH_GENERATION_INTERVAL * DH_CONTEXT_BUFFER_SIZE) < now)) {
       pn.jfkContextLifetime = now;
@@ -1208,7 +1210,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
           message1,
           pn,
           replyTo,
-          pn.handshake().anonymousInitiatorSetupCipher());
+          (BlockCipher) pn.handshake().anonymousInitiatorSetupCipher());
     } else {
       sendAuthPacket(negType, 0, message1, pn, replyTo);
     }
@@ -2013,7 +2015,8 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     } catch (UnsupportedCipherException e) {
       throw new IllegalStateException(e);
     }
-    KeyAgreementSchemeContext ctx = p.pn.handshake().getKeyAgreementSchemeContext();
+    KeyAgreementSchemeContext ctx =
+        (KeyAgreementSchemeContext) p.pn.handshake().getKeyAgreementSchemeContext();
     if (ctx == null) return;
     byte[] ourExponential = ctx.getPublicKeyNetworkFormat();
     p.pn.jfkMyRef =
@@ -2132,7 +2135,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
           message3,
           p.pn,
           p.replyTo,
-          p.pn.handshake().anonymousInitiatorSetupCipher());
+          (BlockCipher) p.pn.handshake().anonymousInitiatorSetupCipher());
     } else {
       sendAuthPacket(p.negotiation.negType(), 2, message3, p.pn, p.replyTo);
     }
@@ -2287,6 +2290,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     boolean sameAsOldTrackerID;
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class SigData {
     final byte[] sig;
     final byte[] data;
@@ -2307,6 +2311,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
     Peer replyTo;
   }
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class Stage1Result {
     enum Status {
       OK,
@@ -2336,6 +2341,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
 
   private record J3Ctx(PeerNode pn, Peer replyTo) {}
 
+  @SuppressWarnings("ClassCanBeRecord")
   private static final class ReplayFields {
     final byte[] responderExponential;
     final byte[] initiatorExponential;
@@ -2526,7 +2532,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
                       message3,
                       pn,
                       replyTo,
-                      pn.handshake().anonymousInitiatorSetupCipher());
+                      (BlockCipher) pn.handshake().anonymousInitiatorSetupCipher());
                 } else {
                   sendAuthPacket(negotiation.negType(), 2, message3, pn, replyTo);
                 }
@@ -2681,7 +2687,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
           data.length,
           replyTo);
     }
-    sendAuthPacket(output, pn.handshake().outgoingSetupCipher(), pn, replyTo, false);
+    sendAuthPacket(output, (BlockCipher) pn.handshake().outgoingSetupCipher(), pn, replyTo, false);
   }
 
   /**
@@ -3149,7 +3155,7 @@ public class FNPPacketMangler implements OutgoingPacketMangler {
    *
    * <p>Result is cached for ~3 minutes to minimize expensive probing.
    *
-   * @return a {@link Status} value describing NAT/connectivity observations
+   * @return a {@link AddressTracker.Status} value describing NAT/connectivity observations
    */
   @Override
   public AddressTracker.Status getConnectivityStatus() {

@@ -526,7 +526,7 @@ class PeerNodeArkManagerTest {
 
   private static FetchResult fetchResultForRef(String ref) {
     byte[] data = ref.getBytes(StandardCharsets.UTF_8);
-    return new FetchResult(new ClientMetadata("text/plain"), new ArrayBucket(data));
+    return FetchResult.create(new ClientMetadata("text/plain"), new ArrayBucket(data));
   }
 
   private void stubArkSubscriptionDependencies() {

@@ -186,7 +186,7 @@ class PersistentRequestRootTest {
         boolean finished,
         boolean succeeded,
         PersistentRequestClient client) {
-      super(params, null, client);
+      super(prepareConstructorInit(params, null, client));
       this.finished = finished;
       this.succeeded = succeeded;
     }

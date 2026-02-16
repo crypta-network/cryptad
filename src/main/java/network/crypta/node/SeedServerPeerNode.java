@@ -47,7 +47,9 @@ public class SeedServerPeerNode extends PeerNode {
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, fromLocal, peers);
+    super(
+        PeerNodeConstructorSupport.prepareConstructorInit(
+            fs, node2, crypto, fromLocal, peers, ConstructorProfile.SEED_SERVER));
   }
 
   /**
@@ -123,7 +125,7 @@ public class SeedServerPeerNode extends PeerNode {
   }
 
   /**
-   * Sends initial messages after connection establishment.
+   * Sends initial messages after the connection establishment.
    *
    * <p>If Opennet is enabled, schedules a delayed announcement via the {@code OpennetManager}
    * announcer after 5 seconds to avoid concentrating early announcements on the quickest
@@ -158,7 +160,7 @@ public class SeedServerPeerNode extends PeerNode {
    * Returns all resolved IP addresses for this seed.
    *
    * <p>Collects unique {@link InetAddress} values from the handshake addresses, dropping any
-   * hostnames. Logs an error and returns an empty array if none are available.
+   * hostnames. Logs an error and returns an empty array if none is available.
    *
    * @return an array of unique addresses (never {@code null}).
    */

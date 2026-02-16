@@ -22,7 +22,6 @@ import java.security.SecureRandom;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import java.util.zip.DeflaterOutputStream;
 import network.crypta.crypt.BlockCipher;
@@ -68,7 +67,7 @@ class PeerNodeReferenceSupportTest {
     setField(peer, "identity", IDENTITY);
     setField(peer, "peerECDSAPubKey", ecdsa.getPublicKey());
     setField(peer, "peerECDSAPubKeyHash", SHA256.digest(ecdsa.getPublicKey().getEncoded()));
-    setField(peer, "fullFieldSet", new AtomicReference<SimpleFieldSet>());
+    setField(peer, "fullFieldSet", null);
     support = new PeerNodeReferenceSupport(peer);
   }
 
@@ -76,7 +75,8 @@ class PeerNodeReferenceSupportTest {
   void readPeerEcdsaKeyReturn_whenMissingSubset_throwsPeerTooOldException() {
     SimpleFieldSet fs = new SimpleFieldSet(true);
 
-    assertThrows(PeerTooOldException.class, () -> support.readPeerEcdsaKeyReturn(fs));
+    assertThrows(
+        PeerTooOldException.class, () -> PeerNodeReferenceSupport.readPeerEcdsaKeyReturn(fs));
   }
 
   @Test
@@ -88,7 +88,7 @@ class PeerNodeReferenceSupportTest {
     ecdsaSfs.put("P256", curve);
     fs.put("ecdsa", ecdsaSfs);
 
-    assertThrows(FSParseException.class, () -> support.readPeerEcdsaKeyReturn(fs));
+    assertThrows(FSParseException.class, () -> PeerNodeReferenceSupport.readPeerEcdsaKeyReturn(fs));
   }
 
   @Test
@@ -101,7 +101,7 @@ class PeerNodeReferenceSupportTest {
     ecdsaSfs.put("P256", curve);
     fs.put("ecdsa", ecdsaSfs);
 
-    assertThrows(FSParseException.class, () -> support.readPeerEcdsaKeyReturn(fs));
+    assertThrows(FSParseException.class, () -> PeerNodeReferenceSupport.readPeerEcdsaKeyReturn(fs));
   }
 
   @Test
@@ -115,7 +115,7 @@ class PeerNodeReferenceSupportTest {
     ecdsaSfs.put("P256", curve);
     fs.put("ecdsa", ecdsaSfs);
 
-    assertThrows(FSParseException.class, () -> support.readPeerEcdsaKeyReturn(fs));
+    assertThrows(FSParseException.class, () -> PeerNodeReferenceSupport.readPeerEcdsaKeyReturn(fs));
   }
 
   @Test
@@ -123,7 +123,7 @@ class PeerNodeReferenceSupportTest {
     SimpleFieldSet fs = new SimpleFieldSet(true);
     fs.put("ecdsa", Curves.P256.getSFS(ecdsa.getPublicKey()));
 
-    assertEquals(ecdsa.getPublicKey(), support.readPeerEcdsaKeyReturn(fs));
+    assertEquals(ecdsa.getPublicKey(), PeerNodeReferenceSupport.readPeerEcdsaKeyReturn(fs));
   }
 
   @Test
@@ -211,7 +211,8 @@ class PeerNodeReferenceSupportTest {
   void computePeerPublicKeyHash_whenCalled_returnsSha256() {
     byte[] expected = SHA256.digest(ecdsa.getPublicKey().getEncoded());
 
-    assertArrayEquals(expected, support.computePeerPublicKeyHash(ecdsa.getPublicKey()));
+    assertArrayEquals(
+        expected, PeerNodeReferenceSupport.computePeerPublicKeyHash(ecdsa.getPublicKey()));
   }
 
   @Test
@@ -362,11 +363,9 @@ class PeerNodeReferenceSupportTest {
     assertTrue(support.verifyReferenceSignature(fs));
 
     verify(peer).setSignatureVerificationSuccessfull(true);
-    @SuppressWarnings("unchecked")
-    AtomicReference<SimpleFieldSet> fullFieldSetRef =
-        (AtomicReference<SimpleFieldSet>) getField(peer, "fullFieldSet");
-    assertNotNull(fullFieldSetRef);
-    assertEquals(fs, fullFieldSetRef.get());
+    SimpleFieldSet fullFieldSet = (SimpleFieldSet) getField(peer, "fullFieldSet");
+    assertNotNull(fullFieldSet);
+    assertEquals(fs, fullFieldSet);
   }
 
   @Test

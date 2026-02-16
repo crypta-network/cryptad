@@ -2418,7 +2418,7 @@ public final class QueueToadlet extends Toadlet implements LinkEnabledCallback {
    * @throws PersistenceDisabledException if the node is running without persistence and request
    *     state cannot be retrieved reliably.
    */
-  protected String makeKeysList(boolean inserts) throws PersistenceDisabledException {
+  String makeKeysList(boolean inserts) throws PersistenceDisabledException {
     RequestStatus[] reqs = fcp.getGlobalRequests();
 
     StringBuilder sb = new StringBuilder();

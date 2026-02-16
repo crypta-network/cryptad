@@ -223,7 +223,7 @@ public final class USKRetriever extends BaseClientGetter implements USKCallback 
       return;
     }
 
-    final FetchResult result = new FetchResult(clientMetadata, finalResult);
+    final FetchResult result = FetchResult.create(clientMetadata, finalResult);
     context.uskManager.updateKnownGood(origUSK, state.getToken(), context);
     context
         .getMainExecutor()

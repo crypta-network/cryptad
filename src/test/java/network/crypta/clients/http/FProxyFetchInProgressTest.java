@@ -96,7 +96,7 @@ class FProxyFetchInProgressTest {
   void notFinishedOrFatallyFinished_whenDataPresent_returnsFalse() {
     FProxyFetchInProgress progress = newProgress(newFetchContext());
     Bucket bucket = new ArrayBucket();
-    FetchResult result = new FetchResult(new ClientMetadata("text/plain"), bucket);
+    FetchResult result = FetchResult.create(new ClientMetadata("text/plain"), bucket);
 
     progress.onSuccess(result, null);
 

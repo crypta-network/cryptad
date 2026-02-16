@@ -37,7 +37,7 @@ class ClientGetLifecycleTest {
     ClientGet request = newSpyRequest(ReturnType.DIRECT, false);
     Bucket bucket = Mockito.mock(Bucket.class);
     when(bucket.size()).thenReturn(123L);
-    FetchResult result = new FetchResult(new ClientMetadata("text/plain"), bucket);
+    FetchResult result = FetchResult.create(new ClientMetadata("text/plain"), bucket);
     ClientGetter getter = Mockito.mock(ClientGetter.class);
     PersistentRequestClient client = Mockito.mock(PersistentRequestClient.class);
     setField(request, "client", client);
@@ -69,7 +69,7 @@ class ClientGetLifecycleTest {
     Bucket resultBucket = Mockito.mock(Bucket.class);
     Bucket blobBucket = Mockito.mock(Bucket.class);
     when(blobBucket.size()).thenReturn(50L);
-    FetchResult result = new FetchResult(new ClientMetadata("text/plain"), resultBucket);
+    FetchResult result = FetchResult.create(new ClientMetadata("text/plain"), resultBucket);
     ClientGetter getter = Mockito.mock(ClientGetter.class);
     when(getter.getBlobBucket()).thenReturn(blobBucket);
     doNothing().when(request).trySendDataFoundOrGetFailed(null, null);

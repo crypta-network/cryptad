@@ -102,7 +102,7 @@ public final class HashResult implements Comparable<HashResult>, Serializable {
    * @param bs raw digest bytes to store directly; may be null only for serialization tests
    * @param testing whether to bypass the length assertion for test-only scenarios
    */
-  protected HashResult(HashType hashType, byte[] bs, boolean testing) {
+  HashResult(HashType hashType, byte[] bs, boolean testing) {
     this.type = hashType;
     this.result = bs;
     assert testing || (bs.length == type.hashLength);
@@ -114,7 +114,7 @@ public final class HashResult implements Comparable<HashResult>, Serializable {
    * <p>This constructor leaves fields null so that the deserialization machinery can populate them.
    * Normal code should use the public constructors instead of this entry point.
    */
-  protected HashResult() {
+  HashResult() {
     // For serialization.
     type = null;
     result = null;

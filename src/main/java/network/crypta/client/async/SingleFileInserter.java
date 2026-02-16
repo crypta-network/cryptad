@@ -1254,7 +1254,7 @@ class SingleFileInserter implements ClientPutState, Serializable {
       @Override
       public @NotNull String toString() {
         return "RedirectResult[meta="
-            + meta
+            + (meta == null ? "null" : java.util.Objects.toIdentityString(meta))
             + ", bytes="
             + java.util.Arrays.toString(bytes)
             + ", target="

@@ -32,7 +32,7 @@ public final class DSAPrivateKey extends CryptoKey {
   }
 
   @SuppressWarnings("unused")
-  protected DSAPrivateKey() {
+  DSAPrivateKey() {
     // For serialization.
     x = null;
   }

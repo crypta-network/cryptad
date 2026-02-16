@@ -313,8 +313,7 @@ public final class ReadOnlyFileSliceBucket implements Bucket, Serializable {
    *     not exist, or the slice exceeds file length.
    * @throws IOException on I/O errors while reading.
    */
-  protected ReadOnlyFileSliceBucket(DataInputStream dis)
-      throws StorageFormatException, IOException {
+  ReadOnlyFileSliceBucket(DataInputStream dis) throws StorageFormatException, IOException {
     int version = dis.readInt();
     if (version != VERSION) throw new StorageFormatException("Bad version");
     file = new File(dis.readUTF());

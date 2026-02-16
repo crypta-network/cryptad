@@ -207,7 +207,7 @@ public final class ProtocolErrorMessage extends FCPMessage implements Serializab
    * parameterized constructors when constructing real messages. The resulting object is mutable
    * only during deserialization because the fields are final once the constructor completes.
    */
-  protected ProtocolErrorMessage() {
+  ProtocolErrorMessage() {
     // For serialization.
     protocolCode = 0;
     extra = null;

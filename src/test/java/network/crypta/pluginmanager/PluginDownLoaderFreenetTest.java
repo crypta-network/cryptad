@@ -172,7 +172,7 @@ class PluginDownLoaderFreenetTest {
     Bucket bucket = mock(Bucket.class);
     when(bucket.getInputStream()).thenReturn(expectedStream);
     ClientMetadata metadata = mock(ClientMetadata.class);
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
 
     try (MockedConstruction<FetchWaiter> mockedWaiter =
             mockConstruction(
@@ -214,7 +214,7 @@ class PluginDownLoaderFreenetTest {
     Bucket bucket = mock(Bucket.class);
     when(bucket.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[] {1}));
     ClientMetadata metadata = mock(ClientMetadata.class);
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
 
     ClientEventListener[] hookHolder = new ClientEventListener[1];
     doAnswer(
@@ -271,7 +271,7 @@ class PluginDownLoaderFreenetTest {
     Bucket bucket = mock(Bucket.class);
     when(bucket.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[] {1}));
     ClientMetadata metadata = mock(ClientMetadata.class);
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
 
     ClientEventListener[] hookHolder = new ClientEventListener[1];
     doAnswer(
@@ -328,7 +328,7 @@ class PluginDownLoaderFreenetTest {
     Bucket bucket = mock(Bucket.class);
     when(bucket.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[] {1, 2, 3}));
     ClientMetadata metadata = mock(ClientMetadata.class);
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
 
     try (MockedConstruction<FetchWaiter> mockedWaiter =
             mockConstruction(
@@ -435,7 +435,7 @@ class PluginDownLoaderFreenetTest {
     when(bucket.getInputStream())
         .thenReturn(new ByteArrayInputStream("ok".getBytes(StandardCharsets.UTF_8)));
     ClientMetadata metadata = mock(ClientMetadata.class);
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
 
     FreenetURI redirectedUri = new FreenetURI("KSK@redirected");
     FetchException redirect =
@@ -488,7 +488,7 @@ class PluginDownLoaderFreenetTest {
     Bucket bucket = mock(Bucket.class);
     when(bucket.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[] {1}));
     ClientMetadata metadata = mock(ClientMetadata.class);
-    FetchResult fetchResult = new FetchResult(metadata, bucket);
+    FetchResult fetchResult = FetchResult.create(metadata, bucket);
 
     try (MockedConstruction<FetchWaiter> mockedWaiter =
             mockConstruction(

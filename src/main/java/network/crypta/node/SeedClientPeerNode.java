@@ -10,7 +10,7 @@ import network.crypta.support.SimpleFieldSet;
 /**
  * Seed-side representation of a remote client that connects only to announce.
  *
- * <p>This peer type exists so seeds can receive announcements and hand out references without
+ * <p>This peer type exists, so seeds can receive announcements and hand out references without
  * treating the connection like a regular Opennet/Darknet link. It deliberately avoids persisting
  * state, routing traffic, or initiating handshakes. Equality is restricted to this concrete type; a
  * {@code SeedClientPeerNode} is not equal to an {@link OpennetPeerNode} even if the identities
@@ -38,7 +38,9 @@ public class SeedClientPeerNode extends PeerNode {
           PeerParseException,
           ReferenceSignatureVerificationException,
           PeerTooOldException {
-    super(fs, node2, crypto, false, peers);
+    super(
+        PeerNodeConstructorSupport.prepareConstructorInit(
+            fs, node2, crypto, false, peers, ConstructorProfile.SEED_CLIENT));
   }
 
   /**
@@ -205,7 +207,7 @@ public class SeedClientPeerNode extends PeerNode {
     return false;
   }
 
-  /** No-op; seed clients do not clear added-time markers on connect. */
+  /** No-op; seed clients do not clear added-time markers on connection. */
   @Override
   protected void maybeClearPeerAddedTimeOnConnect() {
     // Intentionally empty.
@@ -237,7 +239,7 @@ public class SeedClientPeerNode extends PeerNode {
   }
 
   /**
-   * Notifies the {@link OpennetManager}'s seed tracker on connect and then delegates to the base
+   * Notifies the {@link OpennetManager}'s seed tracker on connection and then delegates to the base
    * implementation.
    */
   @Override

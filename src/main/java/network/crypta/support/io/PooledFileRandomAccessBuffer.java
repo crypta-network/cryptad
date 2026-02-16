@@ -257,7 +257,7 @@ public final class PooledFileRandomAccessBuffer
    * construction.
    */
   @SuppressWarnings("unused")
-  protected PooledFileRandomAccessBuffer() {
+  PooledFileRandomAccessBuffer() {
     file = null;
     readOnly = false;
     length = 0;
@@ -476,7 +476,7 @@ public final class PooledFileRandomAccessBuffer
    *
    * <p>Precondition: {@code lockLevel == 0}. Intended for internal use and tests.
    */
-  protected void closeRAF() {
+  void closeRAF() {
     final Object monitor = fds.lock;
     synchronized (monitor) {
       if (lockLevel != 0) throw new IllegalStateException();

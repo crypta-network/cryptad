@@ -26,6 +26,18 @@ import network.crypta.support.api.Bucket;
  * </ul>
  */
 public class CacheFetchResult extends FetchResult {
+  private static final String NULL_METADATA_MESSAGE = "ClientMetadata must not be null";
+  private static final String NULL_BUCKET_MESSAGE = "Bucket must not be null";
+
+  private static ClientMetadata requireMetadata(ClientMetadata dm) {
+    if (dm == null) throw new IllegalArgumentException(NULL_METADATA_MESSAGE);
+    return dm;
+  }
+
+  private static Bucket requireBucket(Bucket fetched) {
+    if (fetched == null) throw new IllegalArgumentException(NULL_BUCKET_MESSAGE);
+    return fetched;
+  }
 
   /**
    * Marker that the payload was filtered earlier in the pipeline.
@@ -60,7 +72,7 @@ public class CacheFetchResult extends FetchResult {
    *     normalization earlier in the pipeline; callers may use this to skip redundant work.
    */
   public CacheFetchResult(ClientMetadata dm, Bucket fetched, boolean alreadyFiltered) {
-    super(dm, fetched);
+    super(requireMetadata(dm), requireBucket(fetched));
     this.alreadyFiltered = alreadyFiltered;
   }
 }
